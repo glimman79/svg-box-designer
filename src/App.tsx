@@ -13,8 +13,10 @@ type LabelGroup = {
 
 type EdgeConnectionProperties = {
   materialThicknessMm: number;
-  tabWidthMm: number;
-  tabCount: number;
+  fingerWidthMm: number;
+  isFingerWidthManual: boolean;
+  playMm: number;
+  extraLengthMm: number;
   kerfMm: number;
   startOffsetMm: number;
   endOffsetMm: number;
@@ -109,8 +111,10 @@ const labelGroups: LabelGroup[] = [
 const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
   E: {
     materialThicknessMm: 3,
-    tabWidthMm: 10,
-    tabCount: 3,
+    fingerWidthMm: 9,
+    isFingerWidthManual: false,
+    playMm: 0,
+    extraLengthMm: 0,
     kerfMm: 0.15,
     startOffsetMm: 0,
     endOffsetMm: 0,
@@ -290,9 +294,22 @@ function App() {
       return;
     }
 
+    const nextProperties: EdgeConnectionProperties = {
+      ...selectedConnection.properties,
+      ...updates,
+    };
+
+    if (updates.materialThicknessMm !== undefined && !selectedConnection.properties.isFingerWidthManual) {
+      nextProperties.fingerWidthMm = updates.materialThicknessMm * 3;
+    }
+
+    if (updates.fingerWidthMm !== undefined) {
+      nextProperties.isFingerWidthManual = true;
+    }
+
     const nextConnection: EdgeConnectionDefinition = {
       ...selectedConnection,
-      properties: { ...selectedConnection.properties, ...updates },
+      properties: nextProperties,
     };
     setConnections((currentConnections) => ({
       ...currentConnections,
@@ -367,13 +384,25 @@ function App() {
     if (selectedConnection.prefix === 'E') {
       const properties = selectedConnection.properties;
       return (
-        <div className="property-grid">
-          <NumericField id="edge-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateEdgeProperties({ materialThicknessMm })} />
-          <NumericField id="edge-tab-width" label="Tab width (mm)" min={0} value={properties.tabWidthMm} onChange={(tabWidthMm) => updateEdgeProperties({ tabWidthMm })} />
-          <NumericField id="edge-tab-count" label="Tab count" min={0} step={1} value={properties.tabCount} onChange={(tabCount) => updateEdgeProperties({ tabCount })} />
-          <NumericField id="edge-kerf" label="Kerf (mm)" min={0} value={properties.kerfMm} onChange={(kerfMm) => updateEdgeProperties({ kerfMm })} />
-          <NumericField id="edge-start-offset" label="Start offset (mm)" min={0} value={properties.startOffsetMm} onChange={(startOffsetMm) => updateEdgeProperties({ startOffsetMm })} />
-          <NumericField id="edge-end-offset" label="End offset (mm)" min={0} value={properties.endOffsetMm} onChange={(endOffsetMm) => updateEdgeProperties({ endOffsetMm })} />
+        <div className="property-sections">
+          <section className="property-section" aria-labelledby="edge-basic-properties">
+            <h4 id="edge-basic-properties">Basic</h4>
+            <div className="property-grid">
+              <NumericField id="edge-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateEdgeProperties({ materialThicknessMm })} />
+              <NumericField id="edge-finger-width" label="Finger width (mm)" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
+              <NumericField id="edge-kerf" label="Kerf (mm)" min={0} value={properties.kerfMm} onChange={(kerfMm) => updateEdgeProperties({ kerfMm })} />
+            </div>
+          </section>
+
+          <section className="property-section" aria-labelledby="edge-advanced-properties">
+            <h4 id="edge-advanced-properties">Advanced</h4>
+            <div className="property-grid">
+              <NumericField id="edge-play" label="Play (mm)" min={0} value={properties.playMm} onChange={(playMm) => updateEdgeProperties({ playMm })} />
+              <NumericField id="edge-start-offset" label="Start offset (mm)" min={0} value={properties.startOffsetMm} onChange={(startOffsetMm) => updateEdgeProperties({ startOffsetMm })} />
+              <NumericField id="edge-end-offset" label="End offset (mm)" min={0} value={properties.endOffsetMm} onChange={(endOffsetMm) => updateEdgeProperties({ endOffsetMm })} />
+              <NumericField id="edge-extra-length" label="Extra length (mm)" value={properties.extraLengthMm} onChange={(extraLengthMm) => updateEdgeProperties({ extraLengthMm })} />
+            </div>
+          </section>
         </div>
       );
     }
@@ -422,7 +451,7 @@ function App() {
           <p className="eyebrow">Reusable connection definitions</p>
           <h1>SVG Box Designer</h1>
           <p>
-            Create reusable connection objects, edit their parameters, select one connection ID, and click every matching edge.
+            Import your own SVG design, then define reusable finger joints, slots, corner connections, and bend patterns for its existing edges.
           </p>
         </div>
         <div className="hero-actions">
@@ -445,7 +474,7 @@ function App() {
         <aside className="panel">
           <h2>Connection manager</h2>
           <p className="muted">
-            Create a connection, select it, tune its properties, then click edges. Every clicked edge receives that exact connection ID.
+            Create a connection, select it, tune its parameters, then click edges from your custom SVG. This app labels your design for future connection generation instead of generating a standard box.
           </p>
 
           <div className="active-label-card" aria-live="polite">
