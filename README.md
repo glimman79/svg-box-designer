@@ -19,9 +19,9 @@ The app is not intended to generate a standard parametric box like boxes.py. Ins
   - `S1`, `S2`, `S3`...
   - `C1`, `C2`, `C3`...
   - `P1`, `P2`, `P3`...
-- Show labels directly on the drawing.
+- Show labels directly on the drawing, including `E` and `S` side roles such as `E1-T`, `E1-S`, `S1-T`, and `S1-S`.
 - Save labels and connection parameters in React application state.
-- Configure `E` edge connection parameters with Basic values for material thickness, finger width, and kerf, plus Advanced values for play, start offset, end offset, and extra length.
+- Configure `E` edge connection parameters with Tab side / Slot side edge roles, Basic values for material thickness and finger width, plus Advanced values for kerf, play, start offset, end offset, and extra length.
 - Automatically default `E` finger width to material thickness × 3 until the user manually edits finger width.
 - Export a labeled SVG file.
 
@@ -31,7 +31,7 @@ The app is not intended to generate a standard parametric box like boxes.py. Ins
 - Slots are not implemented yet.
 - Patterns are not implemented yet.
 
-The `S`, `C`, and `P` labels are available as future-facing placeholders only.
+The `C` and `P` labels are available as future-facing placeholders only.
 
 ## Getting started
 
@@ -59,8 +59,9 @@ npm run build
 2. Click **Import SVG** and choose an SVG file.
 3. Click a highlighted straight edge in the drawing.
 4. Choose a label button such as `E1`, `S1`, `C1`, or `P1`.
-5. Repeat for other edges.
-6. Click **Export SVG** to download an SVG with the labels embedded as text elements.
+5. For `E` and `S` labels, choose whether each assigned edge is the **Tab side** (`-T`) or **Slot side** (`-S`) in the Assigned edges controls.
+6. Repeat for other edges.
+7. Click **Export SVG** to download an SVG with the labels embedded as text elements.
 
 ## Project structure
 

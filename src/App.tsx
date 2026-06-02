@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, midpoint, parseSvgDocument } from './svgUtils';
-import type { EdgeAssignment, SlotEdgeRole, SvgDocumentModel } from './svgUtils';
+import type { EdgeAssignment, EdgeSideRole, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
 
@@ -167,12 +167,12 @@ const getNextLabel = (prefix: LabelPrefix, labels: string[]) => {
   return `${prefix}${usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1}`;
 };
 
-const slotRoleLabels: Record<SlotEdgeRole, string> = {
+const sideRoleLabels: Record<EdgeSideRole, string> = {
   tab: 'Tab side',
   slot: 'Slot side',
 };
 
-const slotRoleOptions = Object.keys(slotRoleLabels) as SlotEdgeRole[];
+const sideRoleOptions = Object.keys(sideRoleLabels) as EdgeSideRole[];
 function getDefaultSlotLength(materialThicknessMm: number) {
   return materialThicknessMm * 3;
 }
@@ -292,7 +292,7 @@ function App() {
     setErrorMessage('');
   };
 
-  const getDefaultSlotEdgeRole = (connectionId: string, assignments: Record<string, EdgeAssignment>): SlotEdgeRole => {
+  const getDefaultEdgeSideRole = (connectionId: string, assignments: Record<string, EdgeAssignment>): EdgeSideRole => {
     const rolesForConnection = Object.values(assignments)
       .filter((assignment) => assignment.connectionId === connectionId)
       .map((assignment) => assignment.slotRole);
@@ -321,8 +321,8 @@ function App() {
       ...currentAssignments,
       [edgeId]: {
         connectionId: selectedLabelId,
-        ...(connection?.prefix === 'S'
-          ? { slotRole: currentAssignments[edgeId]?.slotRole ?? getDefaultSlotEdgeRole(selectedLabelId, currentAssignments) }
+        ...(connection?.prefix === 'E' || connection?.prefix === 'S'
+          ? { slotRole: currentAssignments[edgeId]?.slotRole ?? getDefaultEdgeSideRole(selectedLabelId, currentAssignments) }
           : {}),
       },
     }));
@@ -401,8 +401,8 @@ function App() {
     }));
   };
 
-  const updateSlotEdgeRole = (edgeId: string, slotRole: SlotEdgeRole) => {
-    if (!selectedConnection || selectedConnection.prefix !== 'S') {
+  const updateEdgeSideRole = (edgeId: string, slotRole: EdgeSideRole) => {
+    if (!selectedConnection || (selectedConnection.prefix !== 'E' && selectedConnection.prefix !== 'S')) {
       return;
     }
 
@@ -479,6 +479,52 @@ function App() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  const renderSideRoleSection = (connectionId: string, connectionPrefix: 'E' | 'S') => {
+    const assignedRoleEdges = svgModel.edges.filter((edge) => edgeAssignments[edge.id]?.connectionId === connectionId);
+    const hasTabSide = assignedRoleEdges.some((edge) => edgeAssignments[edge.id]?.slotRole === 'tab');
+    const hasSlotSide = assignedRoleEdges.some((edge) => edgeAssignments[edge.id]?.slotRole === 'slot');
+    const sectionId = `${connectionPrefix.toLowerCase()}-edge-roles`;
+
+    return (
+      <section className="property-section" aria-labelledby={sectionId}>
+        <h4 id={sectionId}>Assigned edges</h4>
+        {assignedRoleEdges.length > 0 ? (
+          <>
+            {(!hasTabSide || !hasSlotSide) && (
+              <p className="role-warning">{connectionPrefix} labels normally need at least one Tab side and one Slot side edge.</p>
+            )}
+            <ul className="assigned-edge-list">
+              {assignedRoleEdges.map((edge) => {
+                const assignment = edgeAssignments[edge.id];
+                return (
+                  <li key={edge.id}>
+                    <div>
+                      <strong>{edge.id}</strong>
+                      <span>{edge.source}</span>
+                    </div>
+                    <select
+                      aria-label={`${edge.id} ${connectionPrefix} side role`}
+                      value={assignment?.slotRole ?? 'tab'}
+                      onChange={(event) => updateEdgeSideRole(edge.id, event.target.value as EdgeSideRole)}
+                    >
+                      {sideRoleOptions.map((role) => (
+                        <option key={role} value={role}>
+                          {sideRoleLabels[role]}
+                        </option>
+                      ))}
+                    </select>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        ) : (
+          <p className="muted">No edges assigned to this {connectionPrefix} label yet. Select this label, then click edges in the drawing.</p>
+        )}
+      </section>
+    );
+  };
+
   const renderPropertiesPanel = () => {
     if (!selectedConnection) {
       return <p className="muted">Select E1, S1, C1, or P1 to edit its saved connection properties.</p>;
@@ -488,6 +534,8 @@ function App() {
       const properties = selectedConnection.properties;
       return (
         <div className="property-sections">
+          {renderSideRoleSection(selectedConnection.id, selectedConnection.prefix)}
+
           <section className="property-section" aria-labelledby="edge-basic-properties">
             <h4 id="edge-basic-properties">Basic</h4>
             <div className="property-grid">
@@ -512,50 +560,10 @@ function App() {
 
     if (selectedConnection.prefix === 'S') {
       const properties = selectedConnection.properties;
-      const assignedSlotEdges = svgModel.edges.filter(
-        (edge) => edgeAssignments[edge.id]?.connectionId === selectedConnection.id,
-      );
-      const hasTabSide = assignedSlotEdges.some((edge) => edgeAssignments[edge.id]?.slotRole === 'tab');
-      const hasSlotSide = assignedSlotEdges.some((edge) => edgeAssignments[edge.id]?.slotRole === 'slot');
 
       return (
         <div className="property-sections">
-          <section className="property-section" aria-labelledby="slot-edge-roles">
-            <h4 id="slot-edge-roles">Assigned edges</h4>
-            {assignedSlotEdges.length > 0 ? (
-              <>
-                {(!hasTabSide || !hasSlotSide) && (
-                  <p className="role-warning">S labels normally need at least one Tab side and one Slot side edge.</p>
-                )}
-                <ul className="assigned-edge-list">
-                  {assignedSlotEdges.map((edge) => {
-                    const assignment = edgeAssignments[edge.id];
-                    return (
-                      <li key={edge.id}>
-                        <div>
-                          <strong>{edge.id}</strong>
-                          <span>{edge.source}</span>
-                        </div>
-                        <select
-                          aria-label={`${edge.id} S side role`}
-                          value={assignment?.slotRole ?? 'tab'}
-                          onChange={(event) => updateSlotEdgeRole(edge.id, event.target.value as SlotEdgeRole)}
-                        >
-                          {slotRoleOptions.map((role) => (
-                            <option key={role} value={role}>
-                              {slotRoleLabels[role]}
-                            </option>
-                          ))}
-                        </select>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </>
-            ) : (
-              <p className="muted">No edges assigned to this S label yet. Select this label, then click edges in the drawing.</p>
-            )}
-          </section>
+          {renderSideRoleSection(selectedConnection.id, selectedConnection.prefix)}
 
           <section className="property-section" aria-labelledby="slot-basic-properties">
             <h4 id="slot-basic-properties">Basic</h4>

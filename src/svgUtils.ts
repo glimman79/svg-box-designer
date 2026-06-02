@@ -10,11 +10,11 @@ export type SvgEdge = {
   end: Point;
 };
 
-export type SlotEdgeRole = 'tab' | 'slot';
+export type EdgeSideRole = 'tab' | 'slot';
 
 export type EdgeAssignment = {
   connectionId: string;
-  slotRole?: SlotEdgeRole;
+  slotRole?: EdgeSideRole;
 };
 
 export const getEdgeAssignmentDisplayLabel = (assignment: EdgeAssignment | undefined) => {
