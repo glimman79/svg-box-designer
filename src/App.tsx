@@ -5,11 +5,17 @@ import type { SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
 
-const labelPrefixes: Array<{ prefix: LabelPrefix; description: string }> = [
-  { prefix: 'E', description: 'Edge labels' },
-  { prefix: 'S', description: 'Slot placeholders' },
-  { prefix: 'C', description: 'Connector placeholders' },
-  { prefix: 'P', description: 'Pattern placeholders' },
+type LabelGroup = {
+  prefix: LabelPrefix;
+  name: string;
+  description: string;
+};
+
+const labelGroups: LabelGroup[] = [
+  { prefix: 'E', name: 'Edge connections', description: 'Reusable edge connection IDs' },
+  { prefix: 'S', name: 'Slot connections', description: 'Reusable slot connection IDs' },
+  { prefix: 'C', name: 'Corner connections', description: 'Reusable corner connection IDs' },
+  { prefix: 'P', name: 'Pattern zones', description: 'Reusable pattern zone IDs' },
 ];
 
 const starterSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 260">
@@ -17,26 +23,41 @@ const starterSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 260
   <line x1="70" y1="130" x2="350" y2="130" stroke="#94a3b8" stroke-width="3" stroke-dasharray="10 8"/>
 </svg>`;
 
+const getLabelPrefix = (label: string) => label.charAt(0) as LabelPrefix;
+
+const getNextLabel = (prefix: LabelPrefix, labels: string[]) => {
+  const usedNumbers = labels
+    .filter((label) => getLabelPrefix(label) === prefix)
+    .map((label) => Number.parseInt(label.slice(1), 10))
+    .filter((value) => Number.isFinite(value));
+
+  return `${prefix}${usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1}`;
+};
+
 function App() {
   const [svgModel, setSvgModel] = useState<SvgDocumentModel>(() => parseSvgDocument(starterSvg));
   const [labels, setLabels] = useState<Record<string, string>>({});
+  const [availableLabels, setAvailableLabels] = useState<string[]>([]);
+  const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
 
   const selectedEdge = svgModel.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
+
   const labelCounts = useMemo(() => {
-    return Object.values(labels).reduce<Record<LabelPrefix, number>>(
-      (counts, label) => {
-        const prefix = label.charAt(0) as LabelPrefix;
-        if (prefix in counts) {
-          counts[prefix] += 1;
-        }
-        return counts;
-      },
-      { E: 0, S: 0, C: 0, P: 0 },
-    );
-  }, [labels]);
+    return availableLabels.reduce<Record<string, number>>((counts, label) => {
+      counts[label] = Object.values(labels).filter((assignedLabel) => assignedLabel === label).length;
+      return counts;
+    }, {});
+  }, [availableLabels, labels]);
+
+  const labelsByGroup = useMemo(() => {
+    return labelGroups.map((group) => ({
+      ...group,
+      labels: availableLabels.filter((label) => getLabelPrefix(label) === group.prefix),
+    }));
+  }, [availableLabels]);
 
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -59,15 +80,24 @@ function App() {
     });
   };
 
-  const assignLabel = (prefix: LabelPrefix) => {
-    if (!selectedEdgeId) {
-      setErrorMessage('Select a straight edge before assigning a label.');
+  const createLabel = (prefix: LabelPrefix) => {
+    const nextLabel = getNextLabel(prefix, availableLabels);
+    setAvailableLabels((currentLabels) => [...currentLabels, nextLabel]);
+    setSelectedLabelId(nextLabel);
+    setErrorMessage('');
+  };
+
+  const assignSelectedLabelToEdge = (edgeId: string) => {
+    setSelectedEdgeId(edgeId);
+
+    if (!selectedLabelId) {
+      setErrorMessage('Create and select a label before clicking an edge.');
       return;
     }
 
     setLabels((currentLabels) => ({
       ...currentLabels,
-      [selectedEdgeId]: `${prefix}${labelCounts[prefix] + 1}`,
+      [edgeId]: selectedLabelId,
     }));
     setErrorMessage('');
   };
@@ -102,10 +132,10 @@ function App() {
     <main className="app-shell">
       <header className="hero">
         <div>
-          <p className="eyebrow">Version 1 foundation</p>
+          <p className="eyebrow">Reusable connection IDs</p>
           <h1>SVG Box Designer</h1>
           <p>
-            Import an SVG, select straight edges, assign foundational labels, and export the labeled SVG.
+            Create reusable labels, select one connection ID, click every matching edge, and export the labeled SVG.
           </p>
         </div>
         <div className="hero-actions">
@@ -126,16 +156,51 @@ function App() {
 
       <section className="workspace" aria-label="SVG labeling workspace">
         <aside className="panel">
-          <h2>Label tools</h2>
+          <h2>Label manager</h2>
           <p className="muted">
-            Select a highlighted straight edge on the drawing, then assign one of the v1 labels.
+            Create a label, select it, then click edges. Every clicked edge receives that exact label; labels never auto-increment on edge clicks.
           </p>
-          <div className="label-grid">
-            {labelPrefixes.map(({ prefix, description }) => (
-              <button key={prefix} type="button" onClick={() => assignLabel(prefix)} disabled={!selectedEdgeId}>
-                <strong>{prefix}{labelCounts[prefix] + 1}</strong>
-                <span>{description}</span>
-              </button>
+
+          <div className="active-label-card" aria-live="polite">
+            <span>Selected label</span>
+            <strong>{selectedLabelId ?? 'None'}</strong>
+          </div>
+
+          <div className="label-manager">
+            {labelsByGroup.map(({ prefix, name, description, labels: groupLabels }) => (
+              <section className="label-group" key={prefix} aria-label={name}>
+                <div className="label-group-header">
+                  <div>
+                    <h3>{prefix} = {name}</h3>
+                    <p>{description}</p>
+                  </div>
+                  <button type="button" onClick={() => createLabel(prefix)}>
+                    Add {getNextLabel(prefix, availableLabels)}
+                  </button>
+                </div>
+
+                {groupLabels.length > 0 ? (
+                  <ul className="label-list">
+                    {groupLabels.map((label) => (
+                      <li key={label}>
+                        <button
+                          type="button"
+                          className={selectedLabelId === label ? 'selected-label' : ''}
+                          onClick={() => {
+                            setSelectedLabelId(label);
+                            setErrorMessage('');
+                          }}
+                        >
+                          <strong>{label}</strong>
+                          <span>{labelCounts[label] ?? 0} {(labelCounts[label] ?? 0) === 1 ? 'edge' : 'edges'}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="empty-labels">No {prefix} labels yet.</p>
+                )}
+              </section>
             ))}
           </div>
 
@@ -154,28 +219,8 @@ function App() {
               <p className="muted">No edge selected.</p>
             )}
             <button type="button" onClick={clearSelectedLabel} disabled={!selectedEdgeId || !labels[selectedEdgeId]}>
-              Clear selected label
+              Clear selected edge label
             </button>
-          </div>
-
-          <div className="selection-card">
-            <h3>Saved labels</h3>
-            {Object.keys(labels).length > 0 ? (
-              <ul className="saved-labels">
-                {svgModel.edges
-                  .filter((edge) => labels[edge.id])
-                  .map((edge) => (
-                    <li key={edge.id}>
-                      <button type="button" onClick={() => setSelectedEdgeId(edge.id)}>
-                        <strong>{labels[edge.id]}</strong>
-                        <span>{edge.id}</span>
-                      </button>
-                    </li>
-                  ))}
-              </ul>
-            ) : (
-              <p className="muted">Labels are saved in application state as you assign them.</p>
-            )}
           </div>
         </aside>
 
@@ -204,7 +249,7 @@ function App() {
                         y1={edge.start.y}
                         x2={edge.end.x}
                         y2={edge.end.y}
-                        onClick={() => setSelectedEdgeId(edge.id)}
+                        onClick={() => assignSelectedLabelToEdge(edge.id)}
                       />
                       {label && (
                         <text className="edge-label" x={center.x} y={center.y} textAnchor="middle" dominantBaseline="middle">

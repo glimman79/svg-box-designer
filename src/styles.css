@@ -87,8 +87,8 @@ button:disabled {
 
 .button,
 .selection-card button,
-.label-grid button,
-.saved-labels button {
+.label-group-header button,
+.label-list button {
   border: 0;
   border-radius: 14px;
 }
@@ -155,38 +155,115 @@ button:disabled {
   color: #64748b;
 }
 
-.label-grid {
+.active-label-card {
   display: grid;
-  gap: 10px;
+  gap: 4px;
   margin: 18px 0;
+  padding: 16px;
+  color: #0f172a;
+  background: #ecfeff;
+  border: 1px solid #99f6e4;
+  border-radius: 16px;
 }
 
-.label-grid button,
-.saved-labels button {
-  width: 100%;
+.active-label-card span {
+  color: #0f766e;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.active-label-card strong {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.label-manager {
+  display: grid;
+  gap: 16px;
+}
+
+.label-group {
+  display: grid;
+  gap: 10px;
   padding: 14px;
-  text-align: left;
   background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 18px;
+}
+
+.label-group-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.label-group-header h3,
+.label-group-header p,
+.empty-labels {
+  margin: 0;
+}
+
+.label-group-header h3 {
+  color: #0f172a;
+  font-size: 0.98rem;
+}
+
+.label-group-header p,
+.empty-labels {
+  color: #64748b;
+  font-size: 0.86rem;
+}
+
+.label-group-header button {
+  padding: 10px 12px;
+  color: #022c22;
+  background: #5eead4;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.label-list {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.label-list button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  text-align: left;
+  background: #ffffff;
   border: 1px solid #e2e8f0;
 }
 
-.label-grid button:hover:not(:disabled),
-.saved-labels button:hover {
+.label-list button:hover,
+.label-list button.selected-label {
   border-color: #2dd4bf;
   background: #ecfeff;
 }
 
-.label-grid strong,
-.saved-labels strong {
-  display: block;
+.label-list button.selected-label {
+  box-shadow: 0 0 0 3px rgb(45 212 191 / 20%);
+}
+
+.label-list strong {
   color: #0f766e;
   font-size: 1.2rem;
 }
 
-.label-grid span,
-.saved-labels span {
+.label-list span {
   color: #64748b;
   font-size: 0.88rem;
+  font-weight: 800;
 }
 
 .selection-card {
@@ -221,12 +298,6 @@ button:disabled {
   font-weight: 800;
 }
 
-.saved-labels {
-  display: grid;
-  gap: 8px;
-  padding: 0;
-  list-style: none;
-}
 
 .canvas-card {
   overflow: hidden;

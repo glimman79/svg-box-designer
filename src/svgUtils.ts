@@ -267,6 +267,7 @@ export const exportLabeledSvg = (svgContent: string, labels: Record<string, stri
     text.setAttribute('text-anchor', 'middle');
     text.setAttribute('dominant-baseline', 'middle');
     text.setAttribute('data-edge-id', edge.id);
+    text.setAttribute('data-connection-id', label);
     text.textContent = label;
     labelGroup.append(text);
   });
