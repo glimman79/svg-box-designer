@@ -19,7 +19,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -400,4 +401,58 @@ button:disabled {
   .canvas-frame {
     min-height: 420px;
   }
+}
+
+.properties-card {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.properties-card .eyebrow {
+  margin: 0 0 6px;
+  color: #0f766e;
+}
+
+.properties-card h3 {
+  margin: 0;
+  color: #0f172a;
+}
+
+.property-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.property-field {
+  display: grid;
+  gap: 6px;
+}
+
+.property-field span {
+  color: #475569;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.property-field input,
+.property-field select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  color: #0f172a;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 700;
+}
+
+.property-field input:focus,
+.property-field select:focus {
+  border-color: #14b8a6;
+  box-shadow: 0 0 0 3px rgb(20 184 166 / 20%);
+  outline: none;
 }
