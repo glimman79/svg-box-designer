@@ -17,6 +17,22 @@ export type EdgeAssignment = {
   slotRole?: SlotEdgeRole;
 };
 
+export const getEdgeAssignmentDisplayLabel = (assignment: EdgeAssignment | undefined) => {
+  if (!assignment) {
+    return undefined;
+  }
+
+  if (assignment.slotRole === 'tab') {
+    return `${assignment.connectionId}-T`;
+  }
+
+  if (assignment.slotRole === 'slot') {
+    return `${assignment.connectionId}-S`;
+  }
+
+  return assignment.connectionId;
+};
+
 export type SvgDocumentModel = {
   content: string;
   innerMarkup: string;
@@ -278,7 +294,7 @@ export const exportLabeledSvg = (svgContent: string, edgeAssignments: Record<str
     if (assignment.slotRole) {
       text.setAttribute('data-slot-role', assignment.slotRole);
     }
-    text.textContent = assignment.connectionId;
+    text.textContent = getEdgeAssignmentDisplayLabel(assignment) ?? assignment.connectionId;
     labelGroup.append(text);
   });
 
