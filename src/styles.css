@@ -338,35 +338,37 @@ button:disabled {
   box-shadow: 0 18px 45px rgb(15 23 42 / 12%);
 }
 
+.design-svg .drawing-layer :is(path, line, polyline, polygon, rect, circle, ellipse) {
+  fill: none !important;
+  stroke: #000000 !important;
+  stroke-width: 1px !important;
+  vector-effect: non-scaling-stroke;
+}
+
 .edge-hitbox {
-  stroke: #14b8a6;
+  fill: none;
+  stroke: transparent;
   stroke-linecap: round;
   stroke-width: 12;
-  stroke-opacity: 0.35;
+  pointer-events: stroke;
   vector-effect: non-scaling-stroke;
   cursor: pointer;
-  transition: stroke 160ms ease, stroke-opacity 160ms ease, stroke-width 160ms ease;
 }
 
 .edge-hitbox:hover,
-.edge-hitbox.selected {
-  stroke: #f97316;
-  stroke-opacity: 0.75;
-  stroke-width: 16;
-}
-
+.edge-hitbox.selected,
 .edge-hitbox.labeled {
-  stroke: #2563eb;
+  stroke: transparent;
 }
 
 .edge-label {
-  fill: #0f172a;
+  fill: #000000;
   stroke: #ffffff;
   stroke-linejoin: round;
-  stroke-width: 5;
+  stroke-width: 3;
   paint-order: stroke;
-  font-size: 18px;
-  font-weight: 900;
+  font-size: 14px;
+  font-weight: 800;
   pointer-events: none;
 }
 

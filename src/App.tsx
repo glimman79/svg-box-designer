@@ -152,8 +152,8 @@ const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
 };
 
 const starterSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 260">
-  <rect x="70" y="45" width="280" height="170" rx="0" fill="#f8fafc" stroke="#334155" stroke-width="4"/>
-  <line x1="70" y1="130" x2="350" y2="130" stroke="#94a3b8" stroke-width="3" stroke-dasharray="10 8"/>
+  <rect x="70" y="45" width="280" height="170" rx="0" fill="none" stroke="#000000" stroke-width="1"/>
+  <line x1="70" y1="130" x2="350" y2="130" stroke="#000000" stroke-width="1"/>
 </svg>`;
 
 const getLabelPrefix = (label: string) => label.charAt(0) as LabelPrefix;
@@ -767,7 +767,7 @@ function App() {
 
           <div className="canvas-frame">
             <svg className="design-svg" viewBox={svgModel.viewBox} role="img" aria-label="Imported SVG with selectable edges">
-              <g dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
+              <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
               <g className="edge-overlays">
                 {svgModel.edges.map((edge) => {
                   const assignment = edgeAssignments[edge.id];
@@ -785,7 +785,7 @@ function App() {
                         y2={edge.end.y}
                         onClick={() => assignSelectedLabelToEdge(edge.id)}
                       />
-                      {label && (
+                      {selected && label && (
                         <text className="edge-label" x={center.x} y={center.y} textAnchor="middle" dominantBaseline="middle">
                           {label}
                         </text>
