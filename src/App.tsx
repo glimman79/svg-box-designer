@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { exportLabeledSvg, midpoint, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, midpoint, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, SlotEdgeRole, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -26,6 +26,7 @@ type SlotConnectionProperties = {
   slotOffsetMm: number;
   slotWidthMm: number;
   slotLengthMm: number;
+  isSlotLengthManual: boolean;
   materialThicknessMm: number;
 };
 
@@ -122,7 +123,8 @@ const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
   S: {
     slotOffsetMm: 0,
     slotWidthMm: 3,
-    slotLengthMm: 12,
+    slotLengthMm: getDefaultSlotLength(3),
+    isSlotLengthManual: false,
     materialThicknessMm: 3,
   },
   C: {
@@ -163,6 +165,9 @@ const slotRoleLabels: Record<SlotEdgeRole, string> = {
 };
 
 const slotRoleOptions = Object.keys(slotRoleLabels) as SlotEdgeRole[];
+function getDefaultSlotLength(materialThicknessMm: number) {
+  return materialThicknessMm * 3;
+}
 
 const getAssignedConnectionId = (assignment: EdgeAssignment | undefined) => assignment?.connectionId;
 
@@ -353,9 +358,22 @@ function App() {
       return;
     }
 
+    const nextProperties: SlotConnectionProperties = {
+      ...selectedConnection.properties,
+      ...updates,
+    };
+
+    if (updates.materialThicknessMm !== undefined && !selectedConnection.properties.isSlotLengthManual) {
+      nextProperties.slotLengthMm = getDefaultSlotLength(updates.materialThicknessMm);
+    }
+
+    if (updates.slotLengthMm !== undefined) {
+      nextProperties.isSlotLengthManual = true;
+    }
+
     const nextConnection: SlotConnectionDefinition = {
       ...selectedConnection,
-      properties: { ...selectedConnection.properties, ...updates },
+      properties: nextProperties,
     };
     setConnections((currentConnections) => ({
       ...currentConnections,
@@ -662,7 +680,7 @@ function App() {
               <g className="edge-overlays">
                 {svgModel.edges.map((edge) => {
                   const assignment = edgeAssignments[edge.id];
-                  const label = getAssignedConnectionId(assignment);
+                  const label = getEdgeAssignmentDisplayLabel(assignment);
                   const center = midpoint(edge);
                   const selected = selectedEdgeId === edge.id;
 
