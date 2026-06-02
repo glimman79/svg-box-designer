@@ -1,1 +1,78 @@
-# svg-box-designer
+# SVG Box Designer
+
+SVG Box Designer is a React + TypeScript + Vite application for importing SVG drawings, selecting straight edges, assigning foundational edge labels, and exporting the labeled SVG.
+
+This version intentionally focuses on the application foundation for future geometry features.
+
+## Version 1 features
+
+- Import SVG files from your computer.
+- Display the imported SVG on screen.
+- Detect and manually select straight edges from common SVG primitives:
+  - `line`
+  - `rect`
+  - `polyline`
+  - `polygon`
+  - straight `path` commands (`M`, `L`, `H`, `V`, `Z`)
+- Assign labels directly to selected straight edges:
+  - `E1`, `E2`, `E3`...
+  - `S1`, `S2`, `S3`...
+  - `C1`, `C2`, `C3`...
+  - `P1`, `P2`, `P3`...
+- Show labels directly on the drawing.
+- Save labels in React application state.
+- Export a labeled SVG file.
+
+## Not included in v1
+
+- Finger joints are not implemented yet.
+- Slots are not implemented yet.
+- Patterns are not implemented yet.
+
+The `S`, `C`, and `P` labels are available as future-facing placeholders only.
+
+## Getting started
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run the development server:
+
+```bash
+npm run dev
+```
+
+Build for production:
+
+```bash
+npm run build
+```
+
+## Usage
+
+1. Start the app with `npm run dev`.
+2. Click **Import SVG** and choose an SVG file.
+3. Click a highlighted straight edge in the drawing.
+4. Choose a label button such as `E1`, `S1`, `C1`, or `P1`.
+5. Repeat for other edges.
+6. Click **Export SVG** to download an SVG with the labels embedded as text elements.
+
+## Project structure
+
+```text
+svg-box-designer/
+├── index.html
+├── package.json
+├── src/
+│   ├── App.tsx
+│   ├── main.tsx
+│   ├── styles.css
+│   └── svgUtils.ts
+├── tsconfig.app.json
+├── tsconfig.json
+├── tsconfig.node.json
+└── vite.config.ts
+```
