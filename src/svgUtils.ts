@@ -17,6 +17,20 @@ export type EdgeAssignment = {
   slotRole?: EdgeSideRole;
 };
 
+export type EGeometryConnectionProperties = {
+  materialThicknessMm: number;
+  fingerWidthMm: number;
+  playMm: number;
+  kerfMm: number;
+  startOffsetMm: number;
+  endOffsetMm: number;
+};
+
+export type EGeometryConnectionDefinition = {
+  prefix: 'E';
+  properties: EGeometryConnectionProperties;
+};
+
 export const getEdgeAssignmentDisplayLabel = (assignment: EdgeAssignment | undefined) => {
   if (!assignment) {
     return undefined;
@@ -299,5 +313,218 @@ export const exportLabeledSvg = (svgContent: string, edgeAssignments: Record<str
   });
 
   svgElement.append(labelGroup);
+  return new XMLSerializer().serializeToString(svgElement);
+};
+
+const svgNamespace = 'http://www.w3.org/2000/svg';
+
+type EdgePathSegment = {
+  edge: SvgEdge;
+  d: string;
+};
+
+const formatNumber = (value: number) => Number(value.toFixed(4)).toString();
+
+const pointAtDistance = (edge: SvgEdge, distance: number, length: number): Point => ({
+  x: edge.start.x + ((edge.end.x - edge.start.x) * distance) / length,
+  y: edge.start.y + ((edge.end.y - edge.start.y) * distance) / length,
+});
+
+const pointCommand = (command: 'M' | 'L', point: Point) => `${command} ${formatNumber(point.x)} ${formatNumber(point.y)}`;
+
+const cloneGeometryAttributes = (from: Element, to: Element, blockedAttributes: string[]) => {
+  const blocked = new Set(blockedAttributes);
+  [...from.attributes].forEach((attribute) => {
+    if (!blocked.has(attribute.name)) {
+      to.setAttribute(attribute.name, attribute.value);
+    }
+  });
+};
+
+const isAssignedEEdge = (
+  edge: SvgEdge,
+  edgeAssignments: Record<string, EdgeAssignment>,
+  connections: Record<string, EGeometryConnectionDefinition>,
+) => {
+  const assignment = edgeAssignments[edge.id];
+  return Boolean(assignment && assignment.slotRole && connections[assignment.connectionId]?.prefix === 'E');
+};
+
+const generateFingerJointCommands = (
+  edge: SvgEdge,
+  assignment: EdgeAssignment,
+  connection: EGeometryConnectionDefinition,
+) => {
+  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+  const properties = connection.properties;
+  const fingerWidth = Math.max(0, properties.fingerWidthMm);
+  const startOffset = Math.max(0, Math.min(properties.startOffsetMm, length));
+  const endOffset = Math.max(0, Math.min(properties.endOffsetMm, Math.max(0, length - startOffset)));
+  const jointLength = length - startOffset - endOffset;
+
+  if (length <= 0 || fingerWidth <= 0 || jointLength <= 0 || properties.materialThicknessMm <= 0) {
+    return [pointCommand('M', edge.start), pointCommand('L', edge.end)];
+  }
+
+  const unitX = (edge.end.x - edge.start.x) / length;
+  const unitY = (edge.end.y - edge.start.y) / length;
+  const normal = { x: -unitY, y: unitX };
+  const role = assignment.slotRole ?? 'tab';
+  const clearance = Math.max(0, properties.kerfMm + properties.playMm);
+  const depth = Math.max(0, properties.materialThicknessMm + (role === 'slot' ? clearance : 0));
+  const direction = role === 'tab' ? 1 : -1;
+  const firstIntervalIsFeature = true;
+  const commands = [pointCommand('M', edge.start)];
+
+  const addLineAt = (distance: number, offset = 0) => {
+    const base = pointAtDistance(edge, distance, length);
+    commands.push(pointCommand('L', { x: base.x + normal.x * offset, y: base.y + normal.y * offset }));
+  };
+
+  addLineAt(startOffset);
+
+  let distance = startOffset;
+  let intervalIndex = 0;
+  const endDistance = length - endOffset;
+
+  while (distance < endDistance - 0.0001) {
+    const nextDistance = Math.min(distance + fingerWidth, endDistance);
+    const isFeature = intervalIndex % 2 === 0 ? firstIntervalIsFeature : !firstIntervalIsFeature;
+
+    if (isFeature) {
+      const inset = Math.min(clearance / 2, Math.max(0, (nextDistance - distance) / 3));
+      const featureStart = Math.min(distance + inset, nextDistance);
+      const featureEnd = Math.max(featureStart, nextDistance - inset);
+      const offset = direction * depth;
+
+      addLineAt(featureStart);
+      addLineAt(featureStart, offset);
+      addLineAt(featureEnd, offset);
+      addLineAt(featureEnd);
+      addLineAt(nextDistance);
+    } else {
+      addLineAt(nextDistance);
+    }
+
+    distance = nextDistance;
+    intervalIndex += 1;
+  }
+
+  addLineAt(length);
+  return commands;
+};
+
+const getEdgePathSegment = (
+  edge: SvgEdge,
+  edgeAssignments: Record<string, EdgeAssignment>,
+  connections: Record<string, EGeometryConnectionDefinition>,
+  includeMove: boolean,
+): EdgePathSegment => {
+  const assignment = edgeAssignments[edge.id];
+  const connection = assignment ? connections[assignment.connectionId] : undefined;
+  const commands = assignment?.slotRole && connection
+    ? generateFingerJointCommands(edge, assignment, connection)
+    : [pointCommand('M', edge.start), pointCommand('L', edge.end)];
+
+  return {
+    edge,
+    d: (includeMove ? commands : commands.slice(1)).join(' '),
+  };
+};
+
+const replaceElementWithPath = (element: Element, pathData: string, blockedAttributes: string[]) => {
+  const path = element.ownerDocument.createElementNS(svgNamespace, 'path');
+  cloneGeometryAttributes(element, path, blockedAttributes);
+  path.setAttribute('d', pathData);
+  element.replaceWith(path);
+};
+
+const simplePathToEdges = (pathData: string | null, source: string) => {
+  const edges: SvgEdge[] = [];
+  parsePathSegments(pathData, source, edges);
+  return edges;
+};
+
+export const generateEGeometrySvg = (
+  svgContent: string,
+  edgeAssignments: Record<string, EdgeAssignment>,
+  edges: SvgEdge[],
+  connections: Record<string, EGeometryConnectionDefinition>,
+) => {
+  const document = new DOMParser().parseFromString(svgContent, 'image/svg+xml');
+  const svgElement = document.querySelector('svg');
+
+  if (!svgElement) {
+    throw new Error('Cannot generate E geometry because no SVG is loaded.');
+  }
+
+  const lineElements = [...svgElement.querySelectorAll('line')];
+  const polyElements = [...svgElement.querySelectorAll('polyline, polygon')];
+  const rectElements = [...svgElement.querySelectorAll('rect')];
+  const pathElements = [...svgElement.querySelectorAll('path')];
+  let edgeIndex = 0;
+  let generatedCount = 0;
+
+  lineElements.forEach((line) => {
+    const edge = edges[edgeIndex++];
+    if (!edge || !isAssignedEEdge(edge, edgeAssignments, connections)) {
+      return;
+    }
+
+    replaceElementWithPath(
+      line,
+      getEdgePathSegment(edge, edgeAssignments, connections, true).d,
+      ['x1', 'y1', 'x2', 'y2'],
+    );
+    generatedCount += 1;
+  });
+
+  polyElements.forEach((shape) => {
+    const points = parsePoints(shape.getAttribute('points'));
+    const segmentCount = Math.max(0, points.length - 1) + (shape.tagName.toLowerCase() === 'polygon' && points.length > 2 ? 1 : 0);
+    const shapeEdges = edges.slice(edgeIndex, edgeIndex + segmentCount);
+    edgeIndex += segmentCount;
+
+    if (!shapeEdges.some((edge) => isAssignedEEdge(edge, edgeAssignments, connections))) {
+      return;
+    }
+
+    const segments = shapeEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0).d);
+    const closeCommand = shape.tagName.toLowerCase() === 'polygon' ? ' Z' : '';
+    replaceElementWithPath(shape, `${segments.join(' ')}${closeCommand}`, ['points']);
+    generatedCount += shapeEdges.filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections)).length;
+  });
+
+  rectElements.forEach((rect) => {
+    const rectEdges = edges.slice(edgeIndex, edgeIndex + 4);
+    edgeIndex += 4;
+
+    if (!rectEdges.some((edge) => isAssignedEEdge(edge, edgeAssignments, connections))) {
+      return;
+    }
+
+    const segments = rectEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0).d);
+    replaceElementWithPath(rect, `${segments.join(' ')} Z`, ['x', 'y', 'width', 'height', 'rx', 'ry']);
+    generatedCount += rectEdges.filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections)).length;
+  });
+
+  pathElements.forEach((path, pathIndex) => {
+    const pathEdges = simplePathToEdges(path.getAttribute('d'), `path ${pathIndex + 1}`);
+    const sourceEdges = edges.slice(edgeIndex, edgeIndex + pathEdges.length);
+    edgeIndex += pathEdges.length;
+
+    if (pathEdges.length === 0 || !sourceEdges.some((edge) => isAssignedEEdge(edge, edgeAssignments, connections))) {
+      return;
+    }
+
+    const segments = sourceEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0).d);
+    path.setAttribute('d', segments.join(' '));
+    generatedCount += sourceEdges.filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections)).length;
+  });
+
+  if (generatedCount === 0) {
+    throw new Error('Assign at least one E-T or E-S edge before generating E geometry.');
+  }
+
   return new XMLSerializer().serializeToString(svgElement);
 };

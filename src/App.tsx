@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, midpoint, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, generateEGeometrySvg, getEdgeAssignmentDisplayLabel, midpoint, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgeSideRole, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -465,6 +465,23 @@ function App() {
     }));
   };
 
+  const generateEGeometryPreview = () => {
+    const eConnections = Object.fromEntries(
+      Object.entries(connections).filter(([, connection]) => connection.prefix === 'E'),
+    ) as Record<string, EdgeConnectionDefinition>;
+
+    try {
+      const output = generateEGeometrySvg(svgModel.content, edgeAssignments, svgModel.edges, eConnections);
+      const parsedSvg = parseSvgDocument(output);
+      setSvgModel(parsedSvg);
+      setEdgeAssignments({});
+      setSelectedEdgeId(null);
+      setErrorMessage('Generated E geometry preview. Assignments were cleared because the original straight edges were replaced.');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to generate E geometry.');
+    }
+  };
+
   const exportSvg = () => {
     const output = exportLabeledSvg(svgModel.content, edgeAssignments, svgModel.edges);
     const blob = new Blob([output], { type: 'image/svg+xml' });
@@ -648,6 +665,9 @@ function App() {
             Import SVG
             <input type="file" accept=".svg,image/svg+xml" onChange={handleImportWithError} />
           </label>
+          <button className="button" type="button" onClick={generateEGeometryPreview}>
+            Generate E Geometry
+          </button>
           <button className="button" type="button" onClick={exportSvg} disabled={Object.keys(edgeAssignments).length === 0}>
             Export SVG
           </button>
