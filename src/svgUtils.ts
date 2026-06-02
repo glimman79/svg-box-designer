@@ -432,10 +432,18 @@ const getEdgePathSegment = (
   };
 };
 
+const applyTechnicalLineStyle = (element: Element) => {
+  element.setAttribute('fill', 'none');
+  element.setAttribute('stroke', '#000000');
+  element.setAttribute('stroke-width', '1');
+  element.setAttribute('vector-effect', 'non-scaling-stroke');
+};
+
 const replaceElementWithPath = (element: Element, pathData: string, blockedAttributes: string[]) => {
   const path = element.ownerDocument.createElementNS(svgNamespace, 'path');
   cloneGeometryAttributes(element, path, blockedAttributes);
   path.setAttribute('d', pathData);
+  applyTechnicalLineStyle(path);
   element.replaceWith(path);
 };
 
@@ -519,6 +527,7 @@ export const generateEGeometrySvg = (
 
     const segments = sourceEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0).d);
     path.setAttribute('d', segments.join(' '));
+    applyTechnicalLineStyle(path);
     generatedCount += sourceEdges.filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections)).length;
   });
 
