@@ -11,12 +11,131 @@ type LabelGroup = {
   description: string;
 };
 
+type EdgeConnectionProperties = {
+  materialThicknessMm: number;
+  tabWidthMm: number;
+  tabCount: number;
+  kerfMm: number;
+  startOffsetMm: number;
+  endOffsetMm: number;
+};
+
+type SlotConnectionProperties = {
+  slotOffsetMm: number;
+  slotWidthMm: number;
+  slotLengthMm: number;
+  materialThicknessMm: number;
+};
+
+type CornerConnectionProperties = {
+  cornerType: string;
+  materialThicknessMm: number;
+  kerfMm: number;
+};
+
+type PatternConnectionProperties = {
+  patternType: string;
+  lineSpacingMm: number;
+  cutLengthMm: number;
+  rowOffsetMm: number;
+  marginMm: number;
+  strokeWidthMm: number;
+  direction: string;
+};
+
+type ConnectionPropertiesByPrefix = {
+  E: EdgeConnectionProperties;
+  S: SlotConnectionProperties;
+  C: CornerConnectionProperties;
+  P: PatternConnectionProperties;
+};
+
+type EdgeConnectionDefinition = {
+  id: string;
+  prefix: 'E';
+  properties: EdgeConnectionProperties;
+};
+
+type SlotConnectionDefinition = {
+  id: string;
+  prefix: 'S';
+  properties: SlotConnectionProperties;
+};
+
+type CornerConnectionDefinition = {
+  id: string;
+  prefix: 'C';
+  properties: CornerConnectionProperties;
+};
+
+type PatternConnectionDefinition = {
+  id: string;
+  prefix: 'P';
+  properties: PatternConnectionProperties;
+};
+
+type ConnectionDefinition =
+  | EdgeConnectionDefinition
+  | SlotConnectionDefinition
+  | CornerConnectionDefinition
+  | PatternConnectionDefinition;
+
+type ConnectionMap = Record<string, ConnectionDefinition>;
+
+type NumericFieldProps = {
+  id: string;
+  label: string;
+  value: number;
+  min?: number;
+  step?: number;
+  onChange: (value: number) => void;
+};
+
+type SelectFieldProps = {
+  id: string;
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+};
+
 const labelGroups: LabelGroup[] = [
   { prefix: 'E', name: 'Edge connections', description: 'Reusable edge connection IDs' },
   { prefix: 'S', name: 'Slot connections', description: 'Reusable slot connection IDs' },
   { prefix: 'C', name: 'Corner connections', description: 'Reusable corner connection IDs' },
-  { prefix: 'P', name: 'Pattern zones', description: 'Reusable pattern zone IDs' },
+  { prefix: 'P', name: 'Pattern connections', description: 'Reusable pattern connection IDs' },
 ];
+
+const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
+  E: {
+    materialThicknessMm: 3,
+    tabWidthMm: 10,
+    tabCount: 3,
+    kerfMm: 0.15,
+    startOffsetMm: 0,
+    endOffsetMm: 0,
+  },
+  S: {
+    slotOffsetMm: 0,
+    slotWidthMm: 3,
+    slotLengthMm: 12,
+    materialThicknessMm: 3,
+  },
+  C: {
+    cornerType: 'finger',
+    materialThicknessMm: 3,
+    kerfMm: 0.15,
+  },
+  P: {
+    patternType: 'line-fill',
+    lineSpacingMm: 5,
+    cutLengthMm: 20,
+    rowOffsetMm: 0,
+    marginMm: 2,
+    strokeWidthMm: 0.1,
+    direction: 'horizontal',
+  },
+};
 
 const starterSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 260">
   <rect x="70" y="45" width="280" height="170" rx="0" fill="#f8fafc" stroke="#334155" stroke-width="4"/>
@@ -34,15 +153,64 @@ const getNextLabel = (prefix: LabelPrefix, labels: string[]) => {
   return `${prefix}${usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1}`;
 };
 
+const cloneDefaultProperties = <P extends LabelPrefix>(prefix: P): ConnectionPropertiesByPrefix[P] => ({
+  ...defaultConnectionProperties[prefix],
+});
+
+const createConnectionDefinition = (id: string, prefix: LabelPrefix): ConnectionDefinition => {
+  if (prefix === 'E') {
+    return { id, prefix, properties: cloneDefaultProperties(prefix) };
+  }
+
+  if (prefix === 'S') {
+    return { id, prefix, properties: cloneDefaultProperties(prefix) };
+  }
+
+  if (prefix === 'C') {
+    return { id, prefix, properties: cloneDefaultProperties(prefix) };
+  }
+
+  return { id, prefix, properties: cloneDefaultProperties(prefix) };
+};
+
+const NumericField = ({ id, label, value, min, step = 0.1, onChange }: NumericFieldProps) => (
+  <label className="property-field" htmlFor={id}>
+    <span>{label}</span>
+    <input
+      id={id}
+      type="number"
+      min={min}
+      step={step}
+      value={value}
+      onChange={(event) => onChange(Number.isFinite(event.target.valueAsNumber) ? event.target.valueAsNumber : 0)}
+    />
+  </label>
+);
+
+const SelectField = ({ id, label, value, options, onChange }: SelectFieldProps) => (
+  <label className="property-field" htmlFor={id}>
+    <span>{label}</span>
+    <select id={id} value={value} onChange={(event) => onChange(event.target.value)}>
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
+  </label>
+);
+
 function App() {
   const [svgModel, setSvgModel] = useState<SvgDocumentModel>(() => parseSvgDocument(starterSvg));
   const [labels, setLabels] = useState<Record<string, string>>({});
-  const [availableLabels, setAvailableLabels] = useState<string[]>([]);
+  const [connections, setConnections] = useState<ConnectionMap>({});
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
 
+  const availableLabels = useMemo(() => Object.keys(connections), [connections]);
+  const selectedConnection = selectedLabelId ? connections[selectedLabelId] ?? null : null;
   const selectedEdge = svgModel.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
 
   const labelCounts = useMemo(() => {
@@ -82,7 +250,10 @@ function App() {
 
   const createLabel = (prefix: LabelPrefix) => {
     const nextLabel = getNextLabel(prefix, availableLabels);
-    setAvailableLabels((currentLabels) => [...currentLabels, nextLabel]);
+    setConnections((currentConnections) => ({
+      ...currentConnections,
+      [nextLabel]: createConnectionDefinition(nextLabel, prefix),
+    }));
     setSelectedLabelId(nextLabel);
     setErrorMessage('');
   };
@@ -91,7 +262,7 @@ function App() {
     setSelectedEdgeId(edgeId);
 
     if (!selectedLabelId) {
-      setErrorMessage('Create and select a label before clicking an edge.');
+      setErrorMessage('Create and select a connection before clicking an edge.');
       return;
     }
 
@@ -114,6 +285,66 @@ function App() {
     });
   };
 
+  const updateEdgeProperties = (updates: Partial<EdgeConnectionProperties>) => {
+    if (!selectedConnection || selectedConnection.prefix !== 'E') {
+      return;
+    }
+
+    const nextConnection: EdgeConnectionDefinition = {
+      ...selectedConnection,
+      properties: { ...selectedConnection.properties, ...updates },
+    };
+    setConnections((currentConnections) => ({
+      ...currentConnections,
+      [nextConnection.id]: nextConnection,
+    }));
+  };
+
+  const updateSlotProperties = (updates: Partial<SlotConnectionProperties>) => {
+    if (!selectedConnection || selectedConnection.prefix !== 'S') {
+      return;
+    }
+
+    const nextConnection: SlotConnectionDefinition = {
+      ...selectedConnection,
+      properties: { ...selectedConnection.properties, ...updates },
+    };
+    setConnections((currentConnections) => ({
+      ...currentConnections,
+      [nextConnection.id]: nextConnection,
+    }));
+  };
+
+  const updateCornerProperties = (updates: Partial<CornerConnectionProperties>) => {
+    if (!selectedConnection || selectedConnection.prefix !== 'C') {
+      return;
+    }
+
+    const nextConnection: CornerConnectionDefinition = {
+      ...selectedConnection,
+      properties: { ...selectedConnection.properties, ...updates },
+    };
+    setConnections((currentConnections) => ({
+      ...currentConnections,
+      [nextConnection.id]: nextConnection,
+    }));
+  };
+
+  const updatePatternProperties = (updates: Partial<PatternConnectionProperties>) => {
+    if (!selectedConnection || selectedConnection.prefix !== 'P') {
+      return;
+    }
+
+    const nextConnection: PatternConnectionDefinition = {
+      ...selectedConnection,
+      properties: { ...selectedConnection.properties, ...updates },
+    };
+    setConnections((currentConnections) => ({
+      ...currentConnections,
+      [nextConnection.id]: nextConnection,
+    }));
+  };
+
   const exportSvg = () => {
     const output = exportLabeledSvg(svgModel.content, labels, svgModel.edges);
     const blob = new Blob([output], { type: 'image/svg+xml' });
@@ -128,14 +359,70 @@ function App() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
+  const renderPropertiesPanel = () => {
+    if (!selectedConnection) {
+      return <p className="muted">Select E1, S1, C1, or P1 to edit its saved connection properties.</p>;
+    }
+
+    if (selectedConnection.prefix === 'E') {
+      const properties = selectedConnection.properties;
+      return (
+        <div className="property-grid">
+          <NumericField id="edge-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateEdgeProperties({ materialThicknessMm })} />
+          <NumericField id="edge-tab-width" label="Tab width (mm)" min={0} value={properties.tabWidthMm} onChange={(tabWidthMm) => updateEdgeProperties({ tabWidthMm })} />
+          <NumericField id="edge-tab-count" label="Tab count" min={0} step={1} value={properties.tabCount} onChange={(tabCount) => updateEdgeProperties({ tabCount })} />
+          <NumericField id="edge-kerf" label="Kerf (mm)" min={0} value={properties.kerfMm} onChange={(kerfMm) => updateEdgeProperties({ kerfMm })} />
+          <NumericField id="edge-start-offset" label="Start offset (mm)" min={0} value={properties.startOffsetMm} onChange={(startOffsetMm) => updateEdgeProperties({ startOffsetMm })} />
+          <NumericField id="edge-end-offset" label="End offset (mm)" min={0} value={properties.endOffsetMm} onChange={(endOffsetMm) => updateEdgeProperties({ endOffsetMm })} />
+        </div>
+      );
+    }
+
+    if (selectedConnection.prefix === 'S') {
+      const properties = selectedConnection.properties;
+      return (
+        <div className="property-grid">
+          <NumericField id="slot-offset" label="Slot offset (mm)" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
+          <NumericField id="slot-width" label="Slot width (mm)" min={0} value={properties.slotWidthMm} onChange={(slotWidthMm) => updateSlotProperties({ slotWidthMm })} />
+          <NumericField id="slot-length" label="Slot length (mm)" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
+          <NumericField id="slot-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateSlotProperties({ materialThicknessMm })} />
+        </div>
+      );
+    }
+
+    if (selectedConnection.prefix === 'C') {
+      const properties = selectedConnection.properties;
+      return (
+        <div className="property-grid">
+          <SelectField id="corner-type" label="Corner type" value={properties.cornerType} options={['finger', 'miter', 'butt', 'rounded']} onChange={(cornerType) => updateCornerProperties({ cornerType })} />
+          <NumericField id="corner-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateCornerProperties({ materialThicknessMm })} />
+          <NumericField id="corner-kerf" label="Kerf (mm)" min={0} value={properties.kerfMm} onChange={(kerfMm) => updateCornerProperties({ kerfMm })} />
+        </div>
+      );
+    }
+
+    const properties = selectedConnection.properties;
+    return (
+      <div className="property-grid">
+        <SelectField id="pattern-type" label="Pattern type" value={properties.patternType} options={['line-fill', 'dash', 'perforation', 'hatch']} onChange={(patternType) => updatePatternProperties({ patternType })} />
+        <NumericField id="pattern-line-spacing" label="Line spacing (mm)" min={0} value={properties.lineSpacingMm} onChange={(lineSpacingMm) => updatePatternProperties({ lineSpacingMm })} />
+        <NumericField id="pattern-cut-length" label="Cut length (mm)" min={0} value={properties.cutLengthMm} onChange={(cutLengthMm) => updatePatternProperties({ cutLengthMm })} />
+        <NumericField id="pattern-row-offset" label="Row offset (mm)" value={properties.rowOffsetMm} onChange={(rowOffsetMm) => updatePatternProperties({ rowOffsetMm })} />
+        <NumericField id="pattern-margin" label="Margin (mm)" min={0} value={properties.marginMm} onChange={(marginMm) => updatePatternProperties({ marginMm })} />
+        <NumericField id="pattern-stroke-width" label="Stroke width (mm)" min={0} value={properties.strokeWidthMm} onChange={(strokeWidthMm) => updatePatternProperties({ strokeWidthMm })} />
+        <SelectField id="pattern-direction" label="Direction" value={properties.direction} options={['horizontal', 'vertical', 'diagonal']} onChange={(direction) => updatePatternProperties({ direction })} />
+      </div>
+    );
+  };
+
   return (
     <main className="app-shell">
       <header className="hero">
         <div>
-          <p className="eyebrow">Reusable connection IDs</p>
+          <p className="eyebrow">Reusable connection definitions</p>
           <h1>SVG Box Designer</h1>
           <p>
-            Create reusable labels, select one connection ID, click every matching edge, and export the labeled SVG.
+            Create reusable connection objects, edit their parameters, select one connection ID, and click every matching edge.
           </p>
         </div>
         <div className="hero-actions">
@@ -154,15 +441,15 @@ function App() {
 
       {errorMessage && <div className="notice">{errorMessage}</div>}
 
-      <section className="workspace" aria-label="SVG labeling workspace">
+      <section className="workspace" aria-label="SVG connection workspace">
         <aside className="panel">
-          <h2>Label manager</h2>
+          <h2>Connection manager</h2>
           <p className="muted">
-            Create a label, select it, then click edges. Every clicked edge receives that exact label; labels never auto-increment on edge clicks.
+            Create a connection, select it, tune its properties, then click edges. Every clicked edge receives that exact connection ID.
           </p>
 
           <div className="active-label-card" aria-live="polite">
-            <span>Selected label</span>
+            <span>Selected connection</span>
             <strong>{selectedLabelId ?? 'None'}</strong>
           </div>
 
@@ -198,10 +485,18 @@ function App() {
                     ))}
                   </ul>
                 ) : (
-                  <p className="empty-labels">No {prefix} labels yet.</p>
+                  <p className="empty-labels">No {prefix} connections yet.</p>
                 )}
               </section>
             ))}
+          </div>
+
+          <div className="properties-card">
+            <div>
+              <p className="eyebrow">Properties</p>
+              <h3>{selectedConnection ? `${selectedConnection.id} parameters` : 'No connection selected'}</h3>
+            </div>
+            {renderPropertiesPanel()}
           </div>
 
           <div className="selection-card">
@@ -212,14 +507,14 @@ function App() {
                 <dd>{selectedEdge.id}</dd>
                 <dt>Source</dt>
                 <dd>{selectedEdge.source}</dd>
-                <dt>Label</dt>
-                <dd>{labels[selectedEdge.id] ?? 'Unlabeled'}</dd>
+                <dt>Connection</dt>
+                <dd>{labels[selectedEdge.id] ?? 'Unassigned'}</dd>
               </dl>
             ) : (
               <p className="muted">No edge selected.</p>
             )}
             <button type="button" onClick={clearSelectedLabel} disabled={!selectedEdgeId || !labels[selectedEdgeId]}>
-              Clear selected edge label
+              Clear selected edge connection
             </button>
           </div>
         </aside>
