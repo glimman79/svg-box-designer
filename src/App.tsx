@@ -777,15 +777,24 @@ function App() {
 
                   return (
                     <g key={edge.id}>
+                      {(label || selected) && (
+                        <line
+                          className={`edge-highlight${label ? ' labeled' : ''}${selected ? ' selected' : ''}`}
+                          x1={edge.start.x}
+                          y1={edge.start.y}
+                          x2={edge.end.x}
+                          y2={edge.end.y}
+                        />
+                      )}
                       <line
-                        className={`edge-hitbox${selected ? ' selected' : ''}${label ? ' labeled' : ''}`}
+                        className="edge-hitbox"
                         x1={edge.start.x}
                         y1={edge.start.y}
                         x2={edge.end.x}
                         y2={edge.end.y}
                         onClick={() => assignSelectedLabelToEdge(edge.id)}
                       />
-                      {selected && label && (
+                      {label && (
                         <text className="edge-label" x={center.x} y={center.y} textAnchor="middle" dominantBaseline="middle">
                           {label}
                         </text>
