@@ -355,10 +355,19 @@ button:disabled {
   cursor: pointer;
 }
 
-.edge-hitbox:hover,
-.edge-hitbox.selected,
-.edge-hitbox.labeled {
-  stroke: transparent;
+.edge-highlight {
+  fill: none;
+  stroke: #1f2937;
+  stroke-dasharray: 6 4;
+  stroke-linecap: round;
+  stroke-width: 2;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.edge-highlight.selected {
+  stroke: #000000;
+  stroke-width: 3;
 }
 
 .edge-label {
