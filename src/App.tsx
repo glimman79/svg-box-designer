@@ -28,22 +28,26 @@ type SlotConnectionProperties = {
   slotLengthMm: number;
   isSlotLengthManual: boolean;
   materialThicknessMm: number;
+  kerfMm: number;
+  playMm: number;
 };
 
 type CornerConnectionProperties = {
-  cornerType: string;
+  cornerDepthMm: number;
+  isCornerDepthManual: boolean;
   materialThicknessMm: number;
   kerfMm: number;
+  playMm: number;
+  cornerType: string;
 };
 
 type PatternConnectionProperties = {
   patternType: string;
+  patternWidthMm: number;
+  materialThicknessMm: number;
   lineSpacingMm: number;
-  cutLengthMm: number;
   rowOffsetMm: number;
   marginMm: number;
-  strokeWidthMm: number;
-  direction: string;
 };
 
 type ConnectionPropertiesByPrefix = {
@@ -122,24 +126,28 @@ const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
   },
   S: {
     slotOffsetMm: 0,
-    slotWidthMm: 3,
+    slotWidthMm: getDefaultSlotWidth(3),
     slotLengthMm: getDefaultSlotLength(3),
     isSlotLengthManual: false,
     materialThicknessMm: 3,
+    kerfMm: 0.15,
+    playMm: 0,
   },
   C: {
-    cornerType: 'finger',
+    cornerDepthMm: getDefaultCornerDepth(3),
+    isCornerDepthManual: false,
     materialThicknessMm: 3,
     kerfMm: 0.15,
+    playMm: 0,
+    cornerType: 'finger',
   },
   P: {
     patternType: 'line-fill',
+    patternWidthMm: 20,
+    materialThicknessMm: 3,
     lineSpacingMm: 5,
-    cutLengthMm: 20,
     rowOffsetMm: 0,
     marginMm: 2,
-    strokeWidthMm: 0.1,
-    direction: 'horizontal',
   },
 };
 
@@ -166,6 +174,14 @@ const slotRoleLabels: Record<SlotEdgeRole, string> = {
 
 const slotRoleOptions = Object.keys(slotRoleLabels) as SlotEdgeRole[];
 function getDefaultSlotLength(materialThicknessMm: number) {
+  return materialThicknessMm * 3;
+}
+
+function getDefaultSlotWidth(materialThicknessMm: number) {
+  return materialThicknessMm;
+}
+
+function getDefaultCornerDepth(materialThicknessMm: number) {
   return materialThicknessMm * 3;
 }
 
@@ -363,8 +379,12 @@ function App() {
       ...updates,
     };
 
-    if (updates.materialThicknessMm !== undefined && !selectedConnection.properties.isSlotLengthManual) {
-      nextProperties.slotLengthMm = getDefaultSlotLength(updates.materialThicknessMm);
+    if (updates.materialThicknessMm !== undefined) {
+      nextProperties.slotWidthMm = getDefaultSlotWidth(updates.materialThicknessMm);
+
+      if (!selectedConnection.properties.isSlotLengthManual) {
+        nextProperties.slotLengthMm = getDefaultSlotLength(updates.materialThicknessMm);
+      }
     }
 
     if (updates.slotLengthMm !== undefined) {
@@ -407,9 +427,22 @@ function App() {
       return;
     }
 
+    const nextProperties: CornerConnectionProperties = {
+      ...selectedConnection.properties,
+      ...updates,
+    };
+
+    if (updates.materialThicknessMm !== undefined && !selectedConnection.properties.isCornerDepthManual) {
+      nextProperties.cornerDepthMm = getDefaultCornerDepth(updates.materialThicknessMm);
+    }
+
+    if (updates.cornerDepthMm !== undefined) {
+      nextProperties.isCornerDepthManual = true;
+    }
+
     const nextConnection: CornerConnectionDefinition = {
       ...selectedConnection,
-      properties: { ...selectedConnection.properties, ...updates },
+      properties: nextProperties,
     };
     setConnections((currentConnections) => ({
       ...currentConnections,
@@ -458,15 +491,15 @@ function App() {
           <section className="property-section" aria-labelledby="edge-basic-properties">
             <h4 id="edge-basic-properties">Basic</h4>
             <div className="property-grid">
-              <NumericField id="edge-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateEdgeProperties({ materialThicknessMm })} />
               <NumericField id="edge-finger-width" label="Finger width (mm)" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
-              <NumericField id="edge-kerf" label="Kerf (mm)" min={0} value={properties.kerfMm} onChange={(kerfMm) => updateEdgeProperties({ kerfMm })} />
+              <NumericField id="edge-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateEdgeProperties({ materialThicknessMm })} />
             </div>
           </section>
 
           <section className="property-section" aria-labelledby="edge-advanced-properties">
             <h4 id="edge-advanced-properties">Advanced</h4>
             <div className="property-grid">
+              <NumericField id="edge-kerf" label="Kerf (mm)" min={0} value={properties.kerfMm} onChange={(kerfMm) => updateEdgeProperties({ kerfMm })} />
               <NumericField id="edge-play" label="Play (mm)" min={0} value={properties.playMm} onChange={(playMm) => updateEdgeProperties({ playMm })} />
               <NumericField id="edge-start-offset" label="Start offset (mm)" min={0} value={properties.startOffsetMm} onChange={(startOffsetMm) => updateEdgeProperties({ startOffsetMm })} />
               <NumericField id="edge-end-offset" label="End offset (mm)" min={0} value={properties.endOffsetMm} onChange={(endOffsetMm) => updateEdgeProperties({ endOffsetMm })} />
@@ -524,13 +557,20 @@ function App() {
             )}
           </section>
 
-          <section className="property-section" aria-labelledby="slot-parameters">
-            <h4 id="slot-parameters">Parameters</h4>
+          <section className="property-section" aria-labelledby="slot-basic-properties">
+            <h4 id="slot-basic-properties">Basic</h4>
             <div className="property-grid">
               <NumericField id="slot-offset" label="Slot offset from edge (mm)" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
-              <NumericField id="slot-width" label="Slot width (mm)" min={0} value={properties.slotWidthMm} onChange={(slotWidthMm) => updateSlotProperties({ slotWidthMm })} />
-              <NumericField id="slot-length" label="Slot length (mm)" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
               <NumericField id="slot-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateSlotProperties({ materialThicknessMm })} />
+              <NumericField id="slot-length" label="Slot length (mm)" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
+            </div>
+          </section>
+
+          <section className="property-section" aria-labelledby="slot-advanced-properties">
+            <h4 id="slot-advanced-properties">Advanced</h4>
+            <div className="property-grid">
+              <NumericField id="slot-kerf" label="Kerf (mm)" min={0} value={properties.kerfMm} onChange={(kerfMm) => updateSlotProperties({ kerfMm })} />
+              <NumericField id="slot-play" label="Play (mm)" min={0} value={properties.playMm} onChange={(playMm) => updateSlotProperties({ playMm })} />
             </div>
           </section>
         </div>
@@ -540,24 +580,47 @@ function App() {
     if (selectedConnection.prefix === 'C') {
       const properties = selectedConnection.properties;
       return (
-        <div className="property-grid">
-          <SelectField id="corner-type" label="Corner type" value={properties.cornerType} options={['finger', 'miter', 'butt', 'rounded']} onChange={(cornerType) => updateCornerProperties({ cornerType })} />
-          <NumericField id="corner-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateCornerProperties({ materialThicknessMm })} />
-          <NumericField id="corner-kerf" label="Kerf (mm)" min={0} value={properties.kerfMm} onChange={(kerfMm) => updateCornerProperties({ kerfMm })} />
+        <div className="property-sections">
+          <section className="property-section" aria-labelledby="corner-basic-properties">
+            <h4 id="corner-basic-properties">Basic</h4>
+            <div className="property-grid">
+              <NumericField id="corner-depth" label="Corner depth (mm)" min={0} value={properties.cornerDepthMm} onChange={(cornerDepthMm) => updateCornerProperties({ cornerDepthMm })} />
+              <NumericField id="corner-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateCornerProperties({ materialThicknessMm })} />
+            </div>
+          </section>
+
+          <section className="property-section" aria-labelledby="corner-advanced-properties">
+            <h4 id="corner-advanced-properties">Advanced</h4>
+            <div className="property-grid">
+              <NumericField id="corner-kerf" label="Kerf (mm)" min={0} value={properties.kerfMm} onChange={(kerfMm) => updateCornerProperties({ kerfMm })} />
+              <NumericField id="corner-play" label="Play (mm)" min={0} value={properties.playMm} onChange={(playMm) => updateCornerProperties({ playMm })} />
+              <SelectField id="corner-type" label="Corner type" value={properties.cornerType} options={['finger', 'miter', 'butt', 'rounded']} onChange={(cornerType) => updateCornerProperties({ cornerType })} />
+            </div>
+          </section>
         </div>
       );
     }
 
     const properties = selectedConnection.properties;
     return (
-      <div className="property-grid">
-        <SelectField id="pattern-type" label="Pattern type" value={properties.patternType} options={['line-fill', 'dash', 'perforation', 'hatch']} onChange={(patternType) => updatePatternProperties({ patternType })} />
-        <NumericField id="pattern-line-spacing" label="Line spacing (mm)" min={0} value={properties.lineSpacingMm} onChange={(lineSpacingMm) => updatePatternProperties({ lineSpacingMm })} />
-        <NumericField id="pattern-cut-length" label="Cut length (mm)" min={0} value={properties.cutLengthMm} onChange={(cutLengthMm) => updatePatternProperties({ cutLengthMm })} />
-        <NumericField id="pattern-row-offset" label="Row offset (mm)" value={properties.rowOffsetMm} onChange={(rowOffsetMm) => updatePatternProperties({ rowOffsetMm })} />
-        <NumericField id="pattern-margin" label="Margin (mm)" min={0} value={properties.marginMm} onChange={(marginMm) => updatePatternProperties({ marginMm })} />
-        <NumericField id="pattern-stroke-width" label="Stroke width (mm)" min={0} value={properties.strokeWidthMm} onChange={(strokeWidthMm) => updatePatternProperties({ strokeWidthMm })} />
-        <SelectField id="pattern-direction" label="Direction" value={properties.direction} options={['horizontal', 'vertical', 'diagonal']} onChange={(direction) => updatePatternProperties({ direction })} />
+      <div className="property-sections">
+        <section className="property-section" aria-labelledby="pattern-basic-properties">
+          <h4 id="pattern-basic-properties">Basic</h4>
+          <div className="property-grid">
+            <SelectField id="pattern-type" label="Pattern type" value={properties.patternType} options={['line-fill', 'dash', 'perforation', 'hatch']} onChange={(patternType) => updatePatternProperties({ patternType })} />
+            <NumericField id="pattern-width" label="Pattern width (mm)" min={0} value={properties.patternWidthMm} onChange={(patternWidthMm) => updatePatternProperties({ patternWidthMm })} />
+            <NumericField id="pattern-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updatePatternProperties({ materialThicknessMm })} />
+          </div>
+        </section>
+
+        <section className="property-section" aria-labelledby="pattern-advanced-properties">
+          <h4 id="pattern-advanced-properties">Advanced</h4>
+          <div className="property-grid">
+            <NumericField id="pattern-line-spacing" label="Line spacing (mm)" min={0} value={properties.lineSpacingMm} onChange={(lineSpacingMm) => updatePatternProperties({ lineSpacingMm })} />
+            <NumericField id="pattern-row-offset" label="Row offset (mm)" value={properties.rowOffsetMm} onChange={(rowOffsetMm) => updatePatternProperties({ rowOffsetMm })} />
+            <NumericField id="pattern-margin" label="Margin (mm)" min={0} value={properties.marginMm} onChange={(marginMm) => updatePatternProperties({ marginMm })} />
+          </div>
+        </section>
       </div>
     );
   };
