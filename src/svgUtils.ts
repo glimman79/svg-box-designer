@@ -10,6 +10,13 @@ export type SvgEdge = {
   end: Point;
 };
 
+export type SlotEdgeRole = 'tab' | 'slot';
+
+export type EdgeAssignment = {
+  connectionId: string;
+  slotRole?: SlotEdgeRole;
+};
+
 export type SvgDocumentModel = {
   content: string;
   innerMarkup: string;
@@ -233,7 +240,7 @@ export const midpoint = (edge: SvgEdge): Point => ({
   y: (edge.start.y + edge.end.y) / 2,
 });
 
-export const exportLabeledSvg = (svgContent: string, labels: Record<string, string>, edges: SvgEdge[]) => {
+export const exportLabeledSvg = (svgContent: string, edgeAssignments: Record<string, EdgeAssignment>, edges: SvgEdge[]) => {
   const document = new DOMParser().parseFromString(svgContent, 'image/svg+xml');
   const svgElement = document.querySelector('svg');
 
@@ -255,8 +262,8 @@ export const exportLabeledSvg = (svgContent: string, labels: Record<string, stri
   labelGroup.setAttribute('stroke-linejoin', 'round');
 
   edges.forEach((edge) => {
-    const label = labels[edge.id];
-    if (!label) {
+    const assignment = edgeAssignments[edge.id];
+    if (!assignment) {
       return;
     }
 
@@ -267,8 +274,11 @@ export const exportLabeledSvg = (svgContent: string, labels: Record<string, stri
     text.setAttribute('text-anchor', 'middle');
     text.setAttribute('dominant-baseline', 'middle');
     text.setAttribute('data-edge-id', edge.id);
-    text.setAttribute('data-connection-id', label);
-    text.textContent = label;
+    text.setAttribute('data-connection-id', assignment.connectionId);
+    if (assignment.slotRole) {
+      text.setAttribute('data-slot-role', assignment.slotRole);
+    }
+    text.textContent = assignment.connectionId;
     labelGroup.append(text);
   });
 
