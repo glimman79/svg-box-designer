@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { exportLabeledSvg, midpoint, parseSvgDocument } from './svgUtils';
-import type { SvgDocumentModel } from './svgUtils';
+import type { EdgeAssignment, SlotEdgeRole, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
 
@@ -157,6 +157,15 @@ const getNextLabel = (prefix: LabelPrefix, labels: string[]) => {
   return `${prefix}${usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1}`;
 };
 
+const slotRoleLabels: Record<SlotEdgeRole, string> = {
+  tab: 'Tab side',
+  slot: 'Slot side',
+};
+
+const slotRoleOptions = Object.keys(slotRoleLabels) as SlotEdgeRole[];
+
+const getAssignedConnectionId = (assignment: EdgeAssignment | undefined) => assignment?.connectionId;
+
 const cloneDefaultProperties = <P extends LabelPrefix>(prefix: P): ConnectionPropertiesByPrefix[P] => ({
   ...defaultConnectionProperties[prefix],
 });
@@ -206,7 +215,7 @@ const SelectField = ({ id, label, value, options, onChange }: SelectFieldProps) 
 
 function App() {
   const [svgModel, setSvgModel] = useState<SvgDocumentModel>(() => parseSvgDocument(starterSvg));
-  const [labels, setLabels] = useState<Record<string, string>>({});
+  const [edgeAssignments, setEdgeAssignments] = useState<Record<string, EdgeAssignment>>({});
   const [connections, setConnections] = useState<ConnectionMap>({});
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
@@ -219,10 +228,10 @@ function App() {
 
   const labelCounts = useMemo(() => {
     return availableLabels.reduce<Record<string, number>>((counts, label) => {
-      counts[label] = Object.values(labels).filter((assignedLabel) => assignedLabel === label).length;
+      counts[label] = Object.values(edgeAssignments).filter((assignment) => assignment.connectionId === label).length;
       return counts;
     }, {});
-  }, [availableLabels, labels]);
+  }, [availableLabels, edgeAssignments]);
 
   const labelsByGroup = useMemo(() => {
     return labelGroups.map((group) => ({
@@ -240,7 +249,7 @@ function App() {
     const text = await file.text();
     const parsedSvg = parseSvgDocument(text);
     setSvgModel(parsedSvg);
-    setLabels({});
+    setEdgeAssignments({});
     setSelectedEdgeId(null);
     setErrorMessage('');
     event.target.value = '';
@@ -262,6 +271,22 @@ function App() {
     setErrorMessage('');
   };
 
+  const getDefaultSlotEdgeRole = (connectionId: string, assignments: Record<string, EdgeAssignment>): SlotEdgeRole => {
+    const rolesForConnection = Object.values(assignments)
+      .filter((assignment) => assignment.connectionId === connectionId)
+      .map((assignment) => assignment.slotRole);
+
+    if (!rolesForConnection.includes('tab')) {
+      return 'tab';
+    }
+
+    if (!rolesForConnection.includes('slot')) {
+      return 'slot';
+    }
+
+    return 'tab';
+  };
+
   const assignSelectedLabelToEdge = (edgeId: string) => {
     setSelectedEdgeId(edgeId);
 
@@ -270,9 +295,15 @@ function App() {
       return;
     }
 
-    setLabels((currentLabels) => ({
-      ...currentLabels,
-      [edgeId]: selectedLabelId,
+    const connection = connections[selectedLabelId];
+    setEdgeAssignments((currentAssignments) => ({
+      ...currentAssignments,
+      [edgeId]: {
+        connectionId: selectedLabelId,
+        ...(connection?.prefix === 'S'
+          ? { slotRole: currentAssignments[edgeId]?.slotRole ?? getDefaultSlotEdgeRole(selectedLabelId, currentAssignments) }
+          : {}),
+      },
     }));
     setErrorMessage('');
   };
@@ -282,10 +313,10 @@ function App() {
       return;
     }
 
-    setLabels((currentLabels) => {
-      const nextLabels = { ...currentLabels };
-      delete nextLabels[selectedEdgeId];
-      return nextLabels;
+    setEdgeAssignments((currentAssignments) => {
+      const nextAssignments = { ...currentAssignments };
+      delete nextAssignments[selectedEdgeId];
+      return nextAssignments;
     });
   };
 
@@ -332,6 +363,27 @@ function App() {
     }));
   };
 
+  const updateSlotEdgeRole = (edgeId: string, slotRole: SlotEdgeRole) => {
+    if (!selectedConnection || selectedConnection.prefix !== 'S') {
+      return;
+    }
+
+    setEdgeAssignments((currentAssignments) => {
+      const assignment = currentAssignments[edgeId];
+      if (!assignment || assignment.connectionId !== selectedConnection.id) {
+        return currentAssignments;
+      }
+
+      return {
+        ...currentAssignments,
+        [edgeId]: {
+          ...assignment,
+          slotRole,
+        },
+      };
+    });
+  };
+
   const updateCornerProperties = (updates: Partial<CornerConnectionProperties>) => {
     if (!selectedConnection || selectedConnection.prefix !== 'C') {
       return;
@@ -363,7 +415,7 @@ function App() {
   };
 
   const exportSvg = () => {
-    const output = exportLabeledSvg(svgModel.content, labels, svgModel.edges);
+    const output = exportLabeledSvg(svgModel.content, edgeAssignments, svgModel.edges);
     const blob = new Blob([output], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
 
@@ -409,12 +461,60 @@ function App() {
 
     if (selectedConnection.prefix === 'S') {
       const properties = selectedConnection.properties;
+      const assignedSlotEdges = svgModel.edges.filter(
+        (edge) => edgeAssignments[edge.id]?.connectionId === selectedConnection.id,
+      );
+      const hasTabSide = assignedSlotEdges.some((edge) => edgeAssignments[edge.id]?.slotRole === 'tab');
+      const hasSlotSide = assignedSlotEdges.some((edge) => edgeAssignments[edge.id]?.slotRole === 'slot');
+
       return (
-        <div className="property-grid">
-          <NumericField id="slot-offset" label="Slot offset (mm)" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
-          <NumericField id="slot-width" label="Slot width (mm)" min={0} value={properties.slotWidthMm} onChange={(slotWidthMm) => updateSlotProperties({ slotWidthMm })} />
-          <NumericField id="slot-length" label="Slot length (mm)" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
-          <NumericField id="slot-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateSlotProperties({ materialThicknessMm })} />
+        <div className="property-sections">
+          <section className="property-section" aria-labelledby="slot-edge-roles">
+            <h4 id="slot-edge-roles">Assigned edges</h4>
+            {assignedSlotEdges.length > 0 ? (
+              <>
+                {(!hasTabSide || !hasSlotSide) && (
+                  <p className="role-warning">S labels normally need at least one Tab side and one Slot side edge.</p>
+                )}
+                <ul className="assigned-edge-list">
+                  {assignedSlotEdges.map((edge) => {
+                    const assignment = edgeAssignments[edge.id];
+                    return (
+                      <li key={edge.id}>
+                        <div>
+                          <strong>{edge.id}</strong>
+                          <span>{edge.source}</span>
+                        </div>
+                        <select
+                          aria-label={`${edge.id} S side role`}
+                          value={assignment?.slotRole ?? 'tab'}
+                          onChange={(event) => updateSlotEdgeRole(edge.id, event.target.value as SlotEdgeRole)}
+                        >
+                          {slotRoleOptions.map((role) => (
+                            <option key={role} value={role}>
+                              {slotRoleLabels[role]}
+                            </option>
+                          ))}
+                        </select>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            ) : (
+              <p className="muted">No edges assigned to this S label yet. Select this label, then click edges in the drawing.</p>
+            )}
+          </section>
+
+          <section className="property-section" aria-labelledby="slot-parameters">
+            <h4 id="slot-parameters">Parameters</h4>
+            <div className="property-grid">
+              <NumericField id="slot-offset" label="Slot offset from edge (mm)" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
+              <NumericField id="slot-width" label="Slot width (mm)" min={0} value={properties.slotWidthMm} onChange={(slotWidthMm) => updateSlotProperties({ slotWidthMm })} />
+              <NumericField id="slot-length" label="Slot length (mm)" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
+              <NumericField id="slot-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateSlotProperties({ materialThicknessMm })} />
+            </div>
+          </section>
         </div>
       );
     }
@@ -459,7 +559,7 @@ function App() {
             Import SVG
             <input type="file" accept=".svg,image/svg+xml" onChange={handleImportWithError} />
           </label>
-          <button className="button" type="button" onClick={exportSvg} disabled={Object.keys(labels).length === 0}>
+          <button className="button" type="button" onClick={exportSvg} disabled={Object.keys(edgeAssignments).length === 0}>
             Export SVG
           </button>
           <a ref={downloadRef} className="visually-hidden" aria-hidden="true">
@@ -537,12 +637,12 @@ function App() {
                 <dt>Source</dt>
                 <dd>{selectedEdge.source}</dd>
                 <dt>Connection</dt>
-                <dd>{labels[selectedEdge.id] ?? 'Unassigned'}</dd>
+                <dd>{getAssignedConnectionId(edgeAssignments[selectedEdge.id]) ?? 'Unassigned'}</dd>
               </dl>
             ) : (
               <p className="muted">No edge selected.</p>
             )}
-            <button type="button" onClick={clearSelectedLabel} disabled={!selectedEdgeId || !labels[selectedEdgeId]}>
+            <button type="button" onClick={clearSelectedLabel} disabled={!selectedEdgeId || !edgeAssignments[selectedEdgeId]}>
               Clear selected edge connection
             </button>
           </div>
@@ -561,7 +661,8 @@ function App() {
               <g dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
               <g className="edge-overlays">
                 {svgModel.edges.map((edge) => {
-                  const label = labels[edge.id];
+                  const assignment = edgeAssignments[edge.id];
+                  const label = getAssignedConnectionId(assignment);
                   const center = midpoint(edge);
                   const selected = selectedEdgeId === edge.id;
 
