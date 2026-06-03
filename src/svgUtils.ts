@@ -476,6 +476,7 @@ export type EGeometryPreviewDebugInfo = {
   edgeLengthMm: number;
   materialThicknessMm: number;
   fingerWidthMm: number;
+  patternPreview: string;
   generatedPointCount: number;
   generatedPoints: Point[];
   warning?: string;
@@ -847,16 +848,25 @@ const getMaxInwardPocketDepth = (
   return Math.max(0, Math.min(requestedDepth, ...maxDepths));
 };
 
-const shouldCutEPreviewPatternSegment = (segmentIndex: number) => {
+const shouldCutEPatternSegment = (segmentIndex: number, role: EdgeSideRole) => {
   const segmentNumber = segmentIndex + 1;
-  return segmentNumber % 2 === 0;
+  return role === 'tab'
+    ? segmentNumber % 2 === 1
+    : segmentNumber % 2 === 0;
 };
+
+const getEPatternPreviewString = (segmentCount: number, role: EdgeSideRole) => (
+  Array.from({ length: segmentCount }, (_, segmentIndex) => (
+    shouldCutEPatternSegment(segmentIndex, role) ? 'pocket' : 'solid'
+  )).join(', ')
+);
 
 const buildSteppedEPolyline = (
   edge: SvgEdge,
   settings: EGeometryConnectionProperties,
   inwardDirection: Point,
   pocketDepthMm: number,
+  role: EdgeSideRole,
 ): Point[] => {
   const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
   const patternInfo = calculateEGeometryPatternInfo(length, settings);
@@ -890,7 +900,7 @@ const buildSteppedEPolyline = (
     const distance = patternInfo.segmentDistancesMm[intervalIndex];
     const nextDistance = patternInfo.segmentDistancesMm[intervalIndex + 1];
 
-    if (shouldCutEPreviewPatternSegment(intervalIndex)) {
+    if (shouldCutEPatternSegment(intervalIndex, role)) {
       addPointAt(distance);
       addPointAt(distance, pocketDepthMm);
       addPointAt(nextDistance, pocketDepthMm);
@@ -912,7 +922,7 @@ export const buildNotchedEdgePolyline = (
 ): Point[] => {
   const inwardDirection = getInwardDirection(edge, panelBounds);
   const depth = getMaxInwardPocketDepth(edge, inwardDirection, settings.materialThicknessMm, panelBounds);
-  return buildSteppedEPolyline(edge, settings, inwardDirection, depth);
+  return buildSteppedEPolyline(edge, settings, inwardDirection, depth, 'tab');
 };
 
 const polylinePointsToCommands = (points: Point[]) => points.map((point, index) => (
@@ -923,9 +933,15 @@ const generateInwardPocketJointCommands = (
   edge: SvgEdge,
   connection: EGeometryConnectionDefinition,
   context: SourceGeometryContext | undefined,
-) => polylinePointsToCommands(
-  buildNotchedEdgePolyline(edge, connection.properties, context?.bounds),
-);
+  role: EdgeSideRole,
+) => {
+  const inwardDirection = getInwardDirection(edge, context?.bounds);
+  const depth = getMaxInwardPocketDepth(edge, inwardDirection, connection.properties.materialThicknessMm, context?.bounds);
+
+  return polylinePointsToCommands(
+    buildSteppedEPolyline(edge, connection.properties, inwardDirection, depth, role),
+  );
+};
 
 const getEdgePathSegment = (
   edge: SvgEdge,
@@ -937,7 +953,7 @@ const getEdgePathSegment = (
   const assignment = edgeAssignments[edge.id];
   const connection = assignment ? connections[assignment.connectionId] : undefined;
   const commands = assignment?.slotRole && connection
-    ? generateInwardPocketJointCommands(edge, connection, context)
+    ? generateInwardPocketJointCommands(edge, connection, context, assignment.slotRole)
     : [pointCommand('M', edge.start), pointCommand('L', edge.end)];
 
   return {
@@ -1017,11 +1033,13 @@ const buildEPreviewPolyline = (
   edge: SvgEdge,
   side: EdgeSide,
   settings: EGeometryConnectionProperties,
+  role: EdgeSideRole,
 ) => buildSteppedEPolyline(
   edge,
   settings,
   getEPreviewInwardDirection(side),
   settings.materialThicknessMm,
+  role,
 );
 
 const formatDirection = (direction: Point) => `(${formatNumber(direction.x)}, ${formatNumber(direction.y)})`;
@@ -1040,7 +1058,7 @@ const generateEPreviewForEdge = (
   const label = getEPreviewLabel(assignment);
   const role = assignment.slotRole === 'tab' ? 'E-T' : 'E-S';
   const centerY = (edge.start.y + edge.end.y) / 2;
-  const baseDebugInfo: Omit<EGeometryPreviewDebugInfo, 'generatedPointCount' | 'generatedPoints' | 'warning'> = {
+  const baseDebugInfo: Omit<EGeometryPreviewDebugInfo, 'patternPreview' | 'generatedPointCount' | 'generatedPoints' | 'warning'> = {
     edgeId: edge.id,
     sourceId: edge.source,
     label,
@@ -1065,6 +1083,7 @@ const generateEPreviewForEdge = (
       paths: [],
       debugInfo: {
         ...baseDebugInfo,
+        patternPreview: '',
         generatedPointCount: 0,
         generatedPoints: [],
         warning: 'Could not detect a top, bottom, left, or right side for this edge; skipped preview notches for this edge.',
@@ -1079,6 +1098,7 @@ const generateEPreviewForEdge = (
       paths: [],
       debugInfo: {
         ...baseDebugInfo,
+        patternPreview: '',
         generatedPointCount: 0,
         generatedPoints: [],
         warning: 'Edge length, material thickness, or finger width is too small to generate preview notches.',
@@ -1086,15 +1106,17 @@ const generateEPreviewForEdge = (
     };
   }
 
+  const patternPreview = getEPatternPreviewString(patternInfo.segmentCount, assignment.slotRole ?? 'tab');
   const hasCutSegments = patternInfo.segmentDistancesMm.slice(0, patternInfo.segmentCount)
-    .some((_, intervalIndex) => shouldCutEPreviewPatternSegment(intervalIndex));
-  const polyline = buildEPreviewPolyline(edge, side, properties);
+    .some((_, intervalIndex) => shouldCutEPatternSegment(intervalIndex, assignment.slotRole ?? 'tab'));
+  const polyline = buildEPreviewPolyline(edge, side, properties, assignment.slotRole ?? 'tab');
   const path = polylinePointsToCommands(polyline).join(' ');
 
   return {
     paths: [path],
     debugInfo: {
       ...baseDebugInfo,
+      patternPreview,
       generatedPointCount: polyline.length,
       generatedPoints: polyline,
       ...(polyline.length <= 2 && hasCutSegments
