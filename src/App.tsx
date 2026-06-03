@@ -1198,7 +1198,7 @@ function App() {
                 checked={showEGeometryDebugPoints}
                 onChange={(event) => setShowEGeometryDebugPoints(event.target.checked)}
               />
-              Show numbered debug points on the drawing
+              Show debug points
             </label>
             {eGeometryPreviewDebugInfo.some((info) => info.warning) && (
               <ul className="e-preview-warnings">
