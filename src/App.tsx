@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { calculateEGeometryPatternInfo, exportLabeledSvg, generateEGeometrySvg, getEdgeAssignmentDisplayLabel, midpoint, parseSvgDocument } from './svgUtils';
+import { calculateEGeometryPatternInfo, exportLabeledSvg, generateEGeometrySvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgeSideRole, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -197,7 +197,7 @@ const labelFontSizePx = 18;
 const minLabelFontSizePx = 12;
 const labelPaddingXPx = 7;
 const labelPaddingYPx = 4;
-const labelEdgeOffsetPx = 18;
+const labelEdgeOffsetPx = 10;
 
 const parseViewBox = (viewBox: string): CanvasViewBox => {
   const [x, y, width, height] = viewBox.split(/[\s,]+/).map(Number);
@@ -211,19 +211,6 @@ const parseViewBox = (viewBox: string): CanvasViewBox => {
 };
 
 const formatViewBox = ({ x, y, width, height }: CanvasViewBox) => `${x} ${y} ${width} ${height}`;
-
-const getEdgeNormal = (edge: SvgDocumentModel['edges'][number]) => {
-  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
-
-  if (length === 0) {
-    return { x: 0, y: -1 };
-  }
-
-  return {
-    x: -(edge.end.y - edge.start.y) / length,
-    y: (edge.end.x - edge.start.x) / length,
-  };
-};
 
 const zoomViewBox = (
   viewBox: CanvasViewBox,
@@ -965,6 +952,14 @@ function App() {
   const labelScreenFontSize = Math.max(minLabelFontSizePx, labelFontSizePx);
   const labelScale = labelScreenFontSize / labelZoom / labelFontSizePx;
   const labelEdgeOffset = labelEdgeOffsetPx / labelZoom;
+  const labelPlacements = getEdgeLabelPlacements(svgModel.edges, edgeAssignments, {
+    fontSizePx: labelFontSizePx,
+    paddingXPx: labelPaddingXPx,
+    paddingYPx: labelPaddingYPx,
+    edgeOffsetPx: labelEdgeOffset,
+    labelScale,
+  });
+  const labelPlacementsByEdgeId = new Map(labelPlacements.map((placement) => [placement.edgeId, placement]));
 
   return (
     <main className="app-shell">
@@ -1106,15 +1101,10 @@ function App() {
                 {svgModel.edges.map((edge) => {
                   const assignment = edgeAssignments[edge.id];
                   const label = getEdgeAssignmentDisplayLabel(assignment);
-                  const center = midpoint(edge);
                   const selected = selectedEdgeId === edge.id;
-                  const normal = getEdgeNormal(edge);
-                  const labelCenter = {
-                    x: center.x + normal.x * labelEdgeOffset,
-                    y: center.y + normal.y * labelEdgeOffset,
-                  };
-                  const labelWidth = label ? label.length * labelFontSizePx * 0.68 + labelPaddingXPx * 2 : 0;
-                  const labelHeight = labelFontSizePx + labelPaddingYPx * 2;
+                  const labelPlacement = labelPlacementsByEdgeId.get(edge.id);
+                  const labelWidth = labelPlacement?.width ?? 0;
+                  const labelHeight = labelPlacement?.height ?? 0;
 
                   return (
                     <g key={edge.id}>
@@ -1145,10 +1135,10 @@ function App() {
                           assignSelectedLabelToEdge(edge.id);
                         }}
                       />
-                      {label && (
+                      {label && labelPlacement && (
                         <g
                           className="edge-label"
-                          transform={`translate(${labelCenter.x} ${labelCenter.y}) scale(${labelScale})`}
+                          transform={`translate(${labelPlacement.x} ${labelPlacement.y}) scale(${labelScale})`}
                         >
                           <rect
                             className="edge-label-background"
