@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { calculateEGeometryPatternInfo, exportLabeledSvg, generateEGeometryPreviewPaths, generateEGeometrySvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
-import type { EdgeAssignment, EdgeSideRole, SvgDocumentModel } from './svgUtils';
+import { calculateEGeometryPatternInfo, exportLabeledSvg, generateEGeometryPreview, generateEGeometrySvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
+import type { EGeometryPreviewDebugInfo, EdgeAssignment, EdgeSideRole, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
 
@@ -309,6 +309,7 @@ function App() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [eGeometryPreviewPaths, setEGeometryPreviewPaths] = useState<string[]>([]);
+  const [eGeometryPreviewDebugInfo, setEGeometryPreviewDebugInfo] = useState<EGeometryPreviewDebugInfo[]>([]);
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const panStateRef = useRef<PanState | null>(null);
@@ -347,6 +348,7 @@ function App() {
     setEdgeAssignments({});
     setSelectedEdgeId(null);
     setEGeometryPreviewPaths([]);
+    setEGeometryPreviewDebugInfo([]);
     setErrorMessage('');
     event.target.value = '';
   };
@@ -409,6 +411,7 @@ function App() {
 
   const clearEdgeLabel = (edgeId: string) => {
     setEGeometryPreviewPaths([]);
+    setEGeometryPreviewDebugInfo([]);
     setEdgeAssignments((currentAssignments) => {
       const nextAssignments = { ...currentAssignments };
       delete nextAssignments[edgeId];
@@ -420,6 +423,7 @@ function App() {
   const assignSelectedLabelToEdge = (edgeId: string) => {
     setSelectedEdgeId(edgeId);
     setEGeometryPreviewPaths([]);
+    setEGeometryPreviewDebugInfo([]);
 
     if (!selectedLabelId) {
       setErrorMessage('Create and select a connection before clicking an edge.');
@@ -471,6 +475,7 @@ function App() {
 
   const updateEdgeProperties = (updates: Partial<EdgeConnectionProperties>) => {
     setEGeometryPreviewPaths([]);
+    setEGeometryPreviewDebugInfo([]);
     if (!selectedConnection || selectedConnection.prefix !== 'E') {
       return;
     }
@@ -532,6 +537,7 @@ function App() {
 
   const updateEdgeSideRole = (edgeId: string, slotRole: EdgeSideRole) => {
     setEGeometryPreviewPaths([]);
+    setEGeometryPreviewDebugInfo([]);
     if (!selectedConnection || (selectedConnection.prefix !== 'E' && selectedConnection.prefix !== 'S')) {
       return;
     }
@@ -613,10 +619,15 @@ function App() {
 
   const previewEGeometry = () => {
     try {
-      setEGeometryPreviewPaths(generateEGeometryPreviewPaths(edgeAssignments, svgModel.edges, getEConnections()));
-      setErrorMessage('Showing E geometry preview overlay. Original SVG geometry is unchanged.');
+      const preview = generateEGeometryPreview(edgeAssignments, svgModel.edges, getEConnections());
+      setEGeometryPreviewPaths(preview.paths);
+      setEGeometryPreviewDebugInfo(preview.debugInfo);
+      setErrorMessage(preview.paths.length > 0
+        ? 'Showing simple E geometry preview overlay. Original SVG geometry is unchanged.'
+        : 'No E preview notches were generated. Check the E preview debug output for skipped edges.');
     } catch (error) {
       setEGeometryPreviewPaths([]);
+      setEGeometryPreviewDebugInfo([]);
       setErrorMessage(error instanceof Error ? error.message : 'Unable to preview E geometry.');
     }
   };
@@ -629,6 +640,7 @@ function App() {
       setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
       setEdgeAssignments({});
       setEGeometryPreviewPaths([]);
+      setEGeometryPreviewDebugInfo([]);
       setSelectedEdgeId(null);
       setErrorMessage('Applied E geometry to the selected original E edges.');
     } catch (error) {
@@ -638,6 +650,7 @@ function App() {
 
   const clearEGeometryPreview = () => {
     setEGeometryPreviewPaths([]);
+    setEGeometryPreviewDebugInfo([]);
     setErrorMessage('Cleared E geometry preview. Original SVG geometry is unchanged.');
   };
 
@@ -1011,7 +1024,7 @@ function App() {
           <button className="button" type="button" onClick={applyEGeometry}>
             Apply E Geometry
           </button>
-          <button className="button" type="button" onClick={clearEGeometryPreview} disabled={eGeometryPreviewPaths.length === 0}>
+          <button className="button" type="button" onClick={clearEGeometryPreview} disabled={eGeometryPreviewPaths.length === 0 && eGeometryPreviewDebugInfo.length === 0}>
             Clear Preview
           </button>
           <button className="button" type="button" onClick={exportSvg} disabled={Object.keys(edgeAssignments).length === 0}>
@@ -1108,6 +1121,51 @@ function App() {
             <div><span className="legend-line dashed" aria-hidden="true" /> dashed gray = E geometry preview</div>
             <div><strong>E-T</strong> = inward pockets on segments 2, 4, 6…</div>
             <div><strong>E-S</strong> = inward pockets on segments 1, 3, 5…</div>
+          </div>
+
+          <div className="e-preview-debug" aria-label="E geometry preview debug output" hidden={eGeometryPreviewDebugInfo.length === 0}>
+            <h3>E preview debug</h3>
+            <div className="e-preview-debug-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Edge</th>
+                    <th>Label</th>
+                    <th>Role</th>
+                    <th>Side</th>
+                    <th>Inward</th>
+                    <th>Length</th>
+                    <th>Thickness</th>
+                    <th>Finger</th>
+                    <th>Notches</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {eGeometryPreviewDebugInfo.map((info) => (
+                    <tr key={info.edgeId} className={info.warning ? 'has-warning' : undefined}>
+                      <td>{info.edgeId}</td>
+                      <td>{info.label}</td>
+                      <td>{info.role}</td>
+                      <td>{info.detectedSide}</td>
+                      <td>{info.inwardDirection}</td>
+                      <td>{formatCalculatedMm(info.edgeLengthMm)}</td>
+                      <td>{formatCalculatedMm(info.materialThicknessMm)}</td>
+                      <td>{formatCalculatedMm(info.fingerWidthMm)}</td>
+                      <td>{info.generatedNotchCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {eGeometryPreviewDebugInfo.some((info) => info.warning) && (
+              <ul className="e-preview-warnings">
+                {eGeometryPreviewDebugInfo.filter((info) => info.warning).map((info) => (
+                  <li key={`${info.edgeId}-warning`}>
+                    <strong>{info.edgeId}:</strong> {info.warning}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </aside>
 
