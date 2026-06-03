@@ -310,6 +310,39 @@ function App() {
     return 'tab';
   };
 
+  const getAssignedEEdges = (connectionId: string, assignments: Record<string, EdgeAssignment>) => (
+    Object.entries(assignments).filter(([, assignment]) => assignment.connectionId === connectionId)
+  );
+
+  const isEConnectionFull = (connectionId: string, assignments: Record<string, EdgeAssignment>) => (
+    getAssignedEEdges(connectionId, assignments).length >= 2
+  );
+
+  const findNextAvailableLabel = (prefix: LabelPrefix, labels: string[]) => {
+    const usedNumbers = new Set(
+      labels
+        .filter((label) => getLabelPrefix(label) === prefix)
+        .map((label) => Number.parseInt(label.slice(1), 10))
+        .filter((value) => Number.isFinite(value)),
+    );
+
+    let nextNumber = 1;
+    while (usedNumbers.has(nextNumber)) {
+      nextNumber += 1;
+    }
+
+    return `${prefix}${nextNumber}`;
+  };
+
+  const clearEdgeLabel = (edgeId: string) => {
+    setEdgeAssignments((currentAssignments) => {
+      const nextAssignments = { ...currentAssignments };
+      delete nextAssignments[edgeId];
+      return nextAssignments;
+    });
+    setErrorMessage('');
+  };
+
   const assignSelectedLabelToEdge = (edgeId: string) => {
     setSelectedEdgeId(edgeId);
 
@@ -319,16 +352,38 @@ function App() {
     }
 
     const connection = connections[selectedLabelId];
+    if (!connection) {
+      setErrorMessage('Select a valid connection before clicking an edge.');
+      return;
+    }
+
+    let targetLabelId = selectedLabelId;
+    let targetConnection = connection;
+    let warningMessage = '';
+
+    if (connection.prefix === 'E' && edgeAssignments[edgeId]?.connectionId !== selectedLabelId && isEConnectionFull(selectedLabelId, edgeAssignments)) {
+      targetLabelId = findNextAvailableLabel('E', availableLabels);
+      targetConnection = createConnectionDefinition(targetLabelId, 'E') as EdgeConnectionDefinition;
+      setConnections((currentConnections) => ({
+        ...currentConnections,
+        [targetLabelId]: targetConnection,
+      }));
+      setSelectedLabelId(targetLabelId);
+      warningMessage = `${selectedLabelId} already has 2 edges. Switched to ${targetLabelId}.`;
+    }
+
     setEdgeAssignments((currentAssignments) => ({
       ...currentAssignments,
       [edgeId]: {
-        connectionId: selectedLabelId,
-        ...(connection?.prefix === 'E' || connection?.prefix === 'S'
-          ? { slotRole: currentAssignments[edgeId]?.slotRole ?? getDefaultEdgeSideRole(selectedLabelId, currentAssignments) }
+        connectionId: targetLabelId,
+        ...(targetConnection.prefix === 'E' || targetConnection.prefix === 'S'
+          ? { slotRole: currentAssignments[edgeId]?.connectionId === targetLabelId
+            ? currentAssignments[edgeId]?.slotRole ?? getDefaultEdgeSideRole(targetLabelId, currentAssignments)
+            : getDefaultEdgeSideRole(targetLabelId, currentAssignments) }
           : {}),
       },
     }));
-    setErrorMessage('');
+    setErrorMessage(warningMessage);
   };
 
   const clearSelectedLabel = () => {
@@ -336,11 +391,7 @@ function App() {
       return;
     }
 
-    setEdgeAssignments((currentAssignments) => {
-      const nextAssignments = { ...currentAssignments };
-      delete nextAssignments[selectedEdgeId];
-      return nextAssignments;
-    });
+    clearEdgeLabel(selectedEdgeId);
   };
 
   const updateEdgeProperties = (updates: Partial<EdgeConnectionProperties>) => {
@@ -408,6 +459,17 @@ function App() {
       return;
     }
 
+    const hasDuplicateERole = selectedConnection.prefix === 'E' && Object.entries(edgeAssignments).some(([assignedEdgeId, assignedEdge]) => (
+      assignedEdgeId !== edgeId
+      && assignedEdge.connectionId === selectedConnection.id
+      && assignedEdge.slotRole === slotRole
+    ));
+
+    if (hasDuplicateERole) {
+      setErrorMessage(`${selectedConnection.id} already has an ${selectedConnection.id}-${slotRole === 'tab' ? 'T' : 'S'} edge.`);
+      return;
+    }
+
     setEdgeAssignments((currentAssignments) => {
       const assignment = currentAssignments[edgeId];
       if (!assignment || assignment.connectionId !== selectedConnection.id) {
@@ -422,6 +484,7 @@ function App() {
         },
       };
     });
+    setErrorMessage('');
   };
 
   const updateCornerProperties = (updates: Partial<CornerConnectionProperties>) => {
@@ -521,17 +584,24 @@ function App() {
                       <strong>{edge.id}</strong>
                       <span>{edge.source}</span>
                     </div>
-                    <select
-                      aria-label={`${edge.id} ${connectionPrefix} side role`}
-                      value={assignment?.slotRole ?? 'tab'}
-                      onChange={(event) => updateEdgeSideRole(edge.id, event.target.value as EdgeSideRole)}
-                    >
-                      {sideRoleOptions.map((role) => (
-                        <option key={role} value={role}>
-                          {sideRoleLabels[role]}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="assigned-edge-actions">
+                      <select
+                        aria-label={`${edge.id} ${connectionPrefix} side role`}
+                        value={assignment?.slotRole ?? 'tab'}
+                        onChange={(event) => updateEdgeSideRole(edge.id, event.target.value as EdgeSideRole)}
+                      >
+                        {sideRoleOptions.map((role) => (
+                          <option key={role} value={role}>
+                            {sideRoleLabels[role]}
+                          </option>
+                        ))}
+                      </select>
+                      {connectionPrefix === 'E' && (
+                        <button type="button" onClick={() => clearEdgeLabel(edge.id)}>
+                          Remove
+                        </button>
+                      )}
+                    </div>
                   </li>
                 );
               })}
@@ -569,12 +639,24 @@ function App() {
                       <strong>{edge.id}</strong>
                       <dl>
                         <div>
-                          <dt>Actual finger width</dt>
-                          <dd>{info.segmentCount > 0 ? formatCalculatedMm(info.segmentWidthMm) : 'No full segments'}</dd>
+                          <dt>Requested finger width</dt>
+                          <dd>{formatCalculatedMm(properties.fingerWidthMm)}</dd>
+                        </div>
+                        <div>
+                          <dt>Middle finger width</dt>
+                          <dd>{info.segmentCount > 2 ? formatCalculatedMm(info.middleSegmentWidthMm) : 'No middle fingers'}</dd>
+                        </div>
+                        <div>
+                          <dt>First/last finger or slot width</dt>
+                          <dd>{info.segmentCount > 0 ? formatCalculatedMm(info.firstLastSegmentWidthMm) : 'No full segments'}</dd>
                         </div>
                         <div>
                           <dt>Number of tabs</dt>
                           <dd>{info.tabCount}</dd>
+                        </div>
+                        <div>
+                          <dt>Number of gaps</dt>
+                          <dd>{info.gapCount}</dd>
                         </div>
                         <div>
                           <dt>End margin</dt>
@@ -789,7 +871,7 @@ function App() {
               <p className="muted">No edge selected.</p>
             )}
             <button type="button" onClick={clearSelectedLabel} disabled={!selectedEdgeId || !edgeAssignments[selectedEdgeId]}>
-              Clear selected edge connection
+              Clear selected edge label
             </button>
           </div>
         </aside>

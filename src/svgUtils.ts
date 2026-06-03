@@ -30,10 +30,14 @@ export type EGeometryPatternInfo = {
   availableLengthMm: number;
   segmentCount: number;
   segmentWidthMm: number;
+  middleSegmentWidthMm: number;
+  firstLastSegmentWidthMm: number;
   tabCount: number;
+  gapCount: number;
   endMarginMm: number;
   startDistanceMm: number;
   endDistanceMm: number;
+  segmentDistancesMm: number[];
 };
 
 export type EGeometryConnectionDefinition = {
@@ -365,28 +369,43 @@ export const calculateEGeometryPatternInfo = (
   properties: EGeometryConnectionProperties,
 ): EGeometryPatternInfo => {
   const length = Math.max(0, edgeLengthMm);
-  const targetSegmentWidth = Math.max(0, properties.fingerWidthMm);
+  const requestedSegmentWidth = Math.max(0, properties.fingerWidthMm);
   const startOffset = Math.max(0, Math.min(properties.startOffsetMm, length));
   const endOffset = Math.max(0, Math.min(properties.endOffsetMm, Math.max(0, length - startOffset)));
   const availableLength = Math.max(0, length - startOffset - endOffset);
-  const targetSegmentCount = targetSegmentWidth > 0 ? Math.floor(availableLength / targetSegmentWidth) : 0;
-  const segmentCount = targetSegmentCount < 2
-    ? 0
-    : targetSegmentCount % 2 === 1
-      ? targetSegmentCount - 1
-      : targetSegmentCount;
-  const segmentWidth = segmentCount > 0 ? availableLength / (segmentCount + 1) : 0;
-  const patternLength = segmentWidth * segmentCount;
-  const endMargin = Math.max(0, (availableLength - patternLength) / 2);
+  const maxFullSegments = requestedSegmentWidth > 0 ? Math.floor(availableLength / requestedSegmentWidth) : 0;
+  const segmentCount = maxFullSegments >= 3
+    ? maxFullSegments - (maxFullSegments % 2 === 0 ? 1 : 0)
+    : maxFullSegments >= 2
+      ? 2
+      : 0;
+  const middleSegmentWidth = segmentCount > 2 ? requestedSegmentWidth : 0;
+  const firstLastSegmentWidth = segmentCount > 0
+    ? (availableLength - Math.max(0, segmentCount - 2) * requestedSegmentWidth) / 2
+    : 0;
+  const segmentWidths = Array.from({ length: segmentCount }, (_, index) => (
+    index === 0 || index === segmentCount - 1 ? firstLastSegmentWidth : requestedSegmentWidth
+  ));
+  const segmentDistances = [startOffset];
+
+  segmentWidths.reduce((distance, width) => {
+    const nextDistance = distance + width;
+    segmentDistances.push(nextDistance);
+    return nextDistance;
+  }, startOffset);
 
   return {
     availableLengthMm: availableLength,
     segmentCount,
-    segmentWidthMm: segmentWidth,
+    segmentWidthMm: middleSegmentWidth || firstLastSegmentWidth,
+    middleSegmentWidthMm: middleSegmentWidth,
+    firstLastSegmentWidthMm: firstLastSegmentWidth,
     tabCount: Math.ceil(segmentCount / 2),
-    endMarginMm: endMargin,
-    startDistanceMm: startOffset + endMargin,
-    endDistanceMm: length - endOffset - endMargin,
+    gapCount: Math.floor(segmentCount / 2),
+    endMarginMm: 0,
+    startDistanceMm: startOffset,
+    endDistanceMm: length - endOffset,
+    segmentDistancesMm: segmentDistances,
   };
 };
 
@@ -425,10 +444,8 @@ const generateFingerJointCommands = (
   addLineAt(patternInfo.startDistanceMm);
 
   for (let intervalIndex = 0; intervalIndex < patternInfo.segmentCount; intervalIndex += 1) {
-    const distance = patternInfo.startDistanceMm + patternInfo.segmentWidthMm * intervalIndex;
-    const nextDistance = intervalIndex === patternInfo.segmentCount - 1
-      ? patternInfo.endDistanceMm
-      : patternInfo.startDistanceMm + patternInfo.segmentWidthMm * (intervalIndex + 1);
+    const distance = patternInfo.segmentDistancesMm[intervalIndex];
+    const nextDistance = patternInfo.segmentDistancesMm[intervalIndex + 1];
     const isFeature = role === 'tab' ? intervalIndex % 2 === 0 : intervalIndex % 2 === 1;
 
     if (isFeature) {
@@ -443,6 +460,7 @@ const generateFingerJointCommands = (
     }
   }
 
+  addLineAt(patternInfo.endDistanceMm);
   addLineAt(length);
   return commands;
 };
