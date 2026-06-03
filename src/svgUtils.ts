@@ -149,6 +149,12 @@ const addEdge = (
   });
 };
 
+const pointEqualityTolerance = 0.0001;
+
+const pointsAreEqual = (first: Point, second: Point) => (
+  Math.abs(first.x - second.x) < pointEqualityTolerance && Math.abs(first.y - second.y) < pointEqualityTolerance
+);
+
 const getBoundsForPoints = (points: Point[]): SourceBounds | undefined => {
   if (points.length === 0) {
     return undefined;
@@ -163,6 +169,10 @@ const getBoundsForPoints = (points: Point[]): SourceBounds | undefined => {
 };
 
 type PendingPathEdge = { start: Point; end: Point };
+
+const isClosedEdgeChain = (edges: PendingPathEdge[]) => (
+  edges.length >= 3 && pointsAreEqual(edges[0].start, edges[edges.length - 1].end)
+);
 
 const parsePathSegments = (pathData: string | null, source: string, edges: SvgEdge[]) => {
   if (!pathData) {
@@ -183,7 +193,9 @@ const parsePathSegments = (pathData: string | null, source: string, edges: SvgEd
       return;
     }
 
-    const panelBounds = getBoundsForPoints(pendingSubpathEdges.flatMap((edge) => [edge.start, edge.end]));
+    const panelBounds = isClosedEdgeChain(pendingSubpathEdges)
+      ? getBoundsForPoints(pendingSubpathEdges.flatMap((edge) => [edge.start, edge.end]))
+      : undefined;
     pendingSubpathEdges.forEach((edge) => addEdge(edges, source, edge.start, edge.end, panelBounds));
     pendingSubpathEdges = [];
   };
@@ -245,6 +257,79 @@ const parsePathSegments = (pathData: string | null, source: string, edges: SvgEd
   }
 
   flushSubpathEdges();
+};
+
+const getPanelPointKey = (point: Point) => `${Math.round(point.x / pointEqualityTolerance)},${Math.round(point.y / pointEqualityTolerance)}`;
+
+const assignConnectedPathPanelBounds = (edges: SvgEdge[]) => {
+  const pathEdgeEntries = edges
+    .map((edge, edgeIndex) => ({ edge, edgeIndex }))
+    .filter(({ edge }) => edge.source.startsWith('path '));
+
+  const edgeIndexesByPoint = new Map<string, number[]>();
+
+  pathEdgeEntries.forEach(({ edgeIndex, edge }) => {
+    [edge.start, edge.end].forEach((point) => {
+      const key = getPanelPointKey(point);
+      edgeIndexesByPoint.set(key, [...(edgeIndexesByPoint.get(key) ?? []), edgeIndex]);
+    });
+  });
+
+  const visitedEdges = new Set<number>();
+
+  pathEdgeEntries.forEach(({ edgeIndex }) => {
+    if (visitedEdges.has(edgeIndex)) {
+      return;
+    }
+
+    const componentEdgeIndexes = new Set<number>();
+    const componentPointKeys = new Set<string>();
+    const pendingEdgeIndexes = [edgeIndex];
+
+    while (pendingEdgeIndexes.length > 0) {
+      const currentEdgeIndex = pendingEdgeIndexes.pop();
+
+      if (currentEdgeIndex === undefined || visitedEdges.has(currentEdgeIndex)) {
+        continue;
+      }
+
+      visitedEdges.add(currentEdgeIndex);
+      componentEdgeIndexes.add(currentEdgeIndex);
+      const edge = edges[currentEdgeIndex];
+
+      [edge.start, edge.end].forEach((point) => {
+        const key = getPanelPointKey(point);
+        componentPointKeys.add(key);
+        (edgeIndexesByPoint.get(key) ?? []).forEach((connectedEdgeIndex) => {
+          if (!visitedEdges.has(connectedEdgeIndex)) {
+            pendingEdgeIndexes.push(connectedEdgeIndex);
+          }
+        });
+      });
+    }
+
+    const isClosedPanel = componentEdgeIndexes.size >= 3
+      && componentPointKeys.size >= 3
+      && [...componentPointKeys].every((pointKey) => (edgeIndexesByPoint.get(pointKey) ?? [])
+        .filter((connectedEdgeIndex) => componentEdgeIndexes.has(connectedEdgeIndex)).length === 2);
+
+    if (!isClosedPanel) {
+      return;
+    }
+
+    const panelBounds = getBoundsForPoints([...componentEdgeIndexes]
+      .flatMap((componentEdgeIndex) => [edges[componentEdgeIndex].start, edges[componentEdgeIndex].end]));
+
+    if (!panelBounds
+      || Math.abs(panelBounds.maxX - panelBounds.minX) <= pointEqualityTolerance
+      || Math.abs(panelBounds.maxY - panelBounds.minY) <= pointEqualityTolerance) {
+      return;
+    }
+
+    componentEdgeIndexes.forEach((componentEdgeIndex) => {
+      edges[componentEdgeIndex].panelBounds = panelBounds;
+    });
+  });
 };
 
 const sanitizeSvg = (svgElement: SVGSVGElement) => {
@@ -340,6 +425,8 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
   svgElement.querySelectorAll('path').forEach((path, elementIndex) => {
     parsePathSegments(path.getAttribute('d'), `path ${elementIndex + 1}`, edges);
   });
+
+  assignConnectedPathPanelBounds(edges);
 
   return {
     content: new XMLSerializer().serializeToString(svgElement),
@@ -759,10 +846,6 @@ const getMaxInwardPocketDepth = (
 
   return Math.max(0, Math.min(requestedDepth, ...maxDepths));
 };
-
-const pointsAreEqual = (first: Point, second: Point) => (
-  Math.abs(first.x - second.x) < 0.0001 && Math.abs(first.y - second.y) < 0.0001
-);
 
 const shouldCutEPreviewPatternSegment = (segmentIndex: number) => {
   const segmentNumber = segmentIndex + 1;
