@@ -673,6 +673,22 @@ const simplePathToEdges = (pathData: string | null, source: string) => {
   return edges;
 };
 
+export const generateEGeometryPreviewPaths = (
+  edgeAssignments: Record<string, EdgeAssignment>,
+  edges: SvgEdge[],
+  connections: Record<string, EGeometryConnectionDefinition>,
+) => {
+  const previewPaths = edges
+    .filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections))
+    .map((edge) => getEdgePathSegment(edge, edgeAssignments, connections, true).d);
+
+  if (previewPaths.length === 0) {
+    throw new Error('Assign at least one E-T or E-S edge before previewing E geometry.');
+  }
+
+  return previewPaths;
+};
+
 export const generateEGeometrySvg = (
   svgContent: string,
   edgeAssignments: Record<string, EdgeAssignment>,
