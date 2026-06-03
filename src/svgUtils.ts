@@ -70,6 +70,23 @@ export type SvgDocumentModel = {
   edges: SvgEdge[];
 };
 
+export type EdgeLabelPlacement = {
+  edgeId: string;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type EdgeLabelPlacementOptions = {
+  fontSizePx: number;
+  paddingXPx: number;
+  paddingYPx: number;
+  edgeOffsetPx: number;
+  labelScale?: number;
+};
+
 const defaultCanvas = {
   viewBox: '0 0 800 600',
   width: 800,
@@ -79,7 +96,7 @@ const defaultCanvas = {
 const exportedLabelFontSize = 18;
 const exportedLabelPaddingX = 7;
 const exportedLabelPaddingY = 4;
-const exportedLabelEdgeOffset = 18;
+const exportedLabelEdgeOffset = 10;
 
 const svgNumber = (value: string | null, fallback = 0) => {
   if (!value) {
@@ -302,6 +319,106 @@ const getEdgeNormal = (edge: SvgEdge): Point => {
   };
 };
 
+const getEdgesBySourceBounds = (edges: SvgEdge[]) => {
+  return edges.reduce<Record<string, { minX: number; maxX: number; minY: number; maxY: number }>>((boundsBySource, edge) => {
+    const existing = boundsBySource[edge.source];
+    const minX = Math.min(edge.start.x, edge.end.x);
+    const maxX = Math.max(edge.start.x, edge.end.x);
+    const minY = Math.min(edge.start.y, edge.end.y);
+    const maxY = Math.max(edge.start.y, edge.end.y);
+
+    boundsBySource[edge.source] = existing
+      ? {
+        minX: Math.min(existing.minX, minX),
+        maxX: Math.max(existing.maxX, maxX),
+        minY: Math.min(existing.minY, minY),
+        maxY: Math.max(existing.maxY, maxY),
+      }
+      : { minX, maxX, minY, maxY };
+
+    return boundsBySource;
+  }, {});
+};
+
+const getInwardLabelDirection = (
+  edge: SvgEdge,
+  bounds: { minX: number; maxX: number; minY: number; maxY: number } | undefined,
+): Point => {
+  const center = midpoint(edge);
+  const dx = edge.end.x - edge.start.x;
+  const dy = edge.end.y - edge.start.y;
+  const fallbackNormal = getEdgeNormal(edge);
+  const epsilon = 0.0001;
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    if (!bounds || Math.abs(bounds.maxY - bounds.minY) <= epsilon) {
+      return Math.abs(fallbackNormal.y) > epsilon ? { x: 0, y: Math.sign(fallbackNormal.y) } : { x: 0, y: 1 };
+    }
+
+    const sourceCenterY = (bounds.minY + bounds.maxY) / 2;
+    return { x: 0, y: center.y <= sourceCenterY ? 1 : -1 };
+  }
+
+  if (!bounds || Math.abs(bounds.maxX - bounds.minX) <= epsilon) {
+    return Math.abs(fallbackNormal.x) > epsilon ? { x: Math.sign(fallbackNormal.x), y: 0 } : { x: 1, y: 0 };
+  }
+
+  const sourceCenterX = (bounds.minX + bounds.maxX) / 2;
+  return { x: center.x <= sourceCenterX ? 1 : -1, y: 0 };
+};
+
+const labelBoxesOverlap = (
+  box: { x: number; y: number; width: number; height: number },
+  otherBox: { x: number; y: number; width: number; height: number },
+) => (
+  Math.abs(box.x - otherBox.x) < (box.width + otherBox.width) / 2 + 2
+  && Math.abs(box.y - otherBox.y) < (box.height + otherBox.height) / 2 + 2
+);
+
+export const getEdgeLabelPlacements = (
+  edges: SvgEdge[],
+  edgeAssignments: Record<string, EdgeAssignment>,
+  options: EdgeLabelPlacementOptions,
+): EdgeLabelPlacement[] => {
+  const labelScale = options.labelScale ?? 1;
+  const boundsBySource = getEdgesBySourceBounds(edges);
+  const placedBoxes: { x: number; y: number; width: number; height: number }[] = [];
+
+  return edges.flatMap((edge) => {
+    const assignment = edgeAssignments[edge.id];
+    const label = getEdgeAssignmentDisplayLabel(assignment);
+
+    if (!label) {
+      return [];
+    }
+
+    const width = label.length * options.fontSizePx * 0.68 + options.paddingXPx * 2;
+    const height = options.fontSizePx + options.paddingYPx * 2;
+    const renderedWidth = width * labelScale;
+    const renderedHeight = height * labelScale;
+    const direction = getInwardLabelDirection(edge, boundsBySource[edge.source]);
+    const halfSizeAlongDirection = Math.abs(direction.x) > 0 ? renderedWidth / 2 : renderedHeight / 2;
+    const baseDistance = options.edgeOffsetPx + halfSizeAlongDirection;
+    const center = midpoint(edge);
+    const stackStep = (Math.abs(direction.x) > 0 ? renderedWidth : renderedHeight) + 4 * labelScale;
+    let x = center.x + direction.x * baseDistance;
+    let y = center.y + direction.y * baseDistance;
+    let renderedBox = { x, y, width: renderedWidth, height: renderedHeight };
+    let stackIndex = 0;
+
+    while (placedBoxes.some((box) => labelBoxesOverlap(renderedBox, box)) && stackIndex < 12) {
+      stackIndex += 1;
+      x = center.x + direction.x * (baseDistance + stackStep * stackIndex);
+      y = center.y + direction.y * (baseDistance + stackStep * stackIndex);
+      renderedBox = { x, y, width: renderedWidth, height: renderedHeight };
+    }
+
+    placedBoxes.push(renderedBox);
+
+    return [{ edgeId: edge.id, label, x, y, width, height }];
+  });
+};
+
 export const exportLabeledSvg = (svgContent: string, edgeAssignments: Record<string, EdgeAssignment>, edges: SvgEdge[]) => {
   const document = new DOMParser().parseFromString(svgContent, 'image/svg+xml');
   const svgElement = document.querySelector('svg');
@@ -311,6 +428,13 @@ export const exportLabeledSvg = (svgContent: string, edgeAssignments: Record<str
   }
 
   svgElement.querySelector('#svg-box-designer-labels')?.remove();
+
+  const labelPlacementsByEdgeId = new Map(getEdgeLabelPlacements(edges, edgeAssignments, {
+    fontSizePx: exportedLabelFontSize,
+    paddingXPx: exportedLabelPaddingX,
+    paddingYPx: exportedLabelPaddingY,
+    edgeOffsetPx: exportedLabelEdgeOffset,
+  }).map((placement) => [placement.edgeId, placement]));
 
   const labelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   labelGroup.setAttribute('id', 'svg-box-designer-labels');
@@ -325,26 +449,27 @@ export const exportLabeledSvg = (svgContent: string, edgeAssignments: Record<str
       return;
     }
 
-    const center = midpoint(edge);
-    const normal = getEdgeNormal(edge);
-    const label = getEdgeAssignmentDisplayLabel(assignment) ?? assignment.connectionId;
-    const labelWidth = label.length * exportedLabelFontSize * 0.68 + exportedLabelPaddingX * 2;
-    const labelHeight = exportedLabelFontSize + exportedLabelPaddingY * 2;
+    const placement = labelPlacementsByEdgeId.get(edge.id);
+
+    if (!placement) {
+      return;
+    }
+
     const labelElement = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
 
-    labelElement.setAttribute('transform', `translate(${center.x + normal.x * exportedLabelEdgeOffset} ${center.y + normal.y * exportedLabelEdgeOffset})`);
+    labelElement.setAttribute('transform', `translate(${placement.x} ${placement.y})`);
     labelElement.setAttribute('data-edge-id', edge.id);
     labelElement.setAttribute('data-connection-id', assignment.connectionId);
     if (assignment.slotRole) {
       labelElement.setAttribute('data-slot-role', assignment.slotRole);
     }
 
-    background.setAttribute('x', String(-labelWidth / 2));
-    background.setAttribute('y', String(-labelHeight / 2));
-    background.setAttribute('width', String(labelWidth));
-    background.setAttribute('height', String(labelHeight));
+    background.setAttribute('x', String(-placement.width / 2));
+    background.setAttribute('y', String(-placement.height / 2));
+    background.setAttribute('width', String(placement.width));
+    background.setAttribute('height', String(placement.height));
     background.setAttribute('rx', '5');
     background.setAttribute('fill', '#ffffff');
     background.setAttribute('stroke', '#cbd5e1');
@@ -353,7 +478,7 @@ export const exportLabeledSvg = (svgContent: string, edgeAssignments: Record<str
 
     text.setAttribute('text-anchor', 'middle');
     text.setAttribute('dominant-baseline', 'middle');
-    text.textContent = label;
+    text.textContent = placement.label;
     labelElement.append(background, text);
     labelGroup.append(labelElement);
   });
@@ -411,35 +536,29 @@ export const calculateEGeometryPatternInfo = (
   const maxFullSegments = requestedSegmentWidth > 0 ? Math.floor(availableLength / requestedSegmentWidth) : 0;
   const segmentCount = maxFullSegments >= 3
     ? maxFullSegments - (maxFullSegments % 2 === 0 ? 1 : 0)
-    : maxFullSegments >= 2
-      ? 2
-      : 0;
-  const middleSegmentWidth = segmentCount > 2 ? requestedSegmentWidth : 0;
-  const firstLastSegmentWidth = segmentCount > 0
-    ? (availableLength - Math.max(0, segmentCount - 2) * requestedSegmentWidth) / 2
     : 0;
-  const segmentWidths = Array.from({ length: segmentCount }, (_, index) => (
-    index === 0 || index === segmentCount - 1 ? firstLastSegmentWidth : requestedSegmentWidth
-  ));
-  const segmentDistances = [startOffset];
+  const segmentWidth = segmentCount > 0 ? requestedSegmentWidth : 0;
+  const patternLength = segmentCount * segmentWidth;
+  const extraMargin = Math.max(0, availableLength - patternLength) / 2;
+  const startDistance = startOffset + extraMargin;
+  const endDistance = length - endOffset - extraMargin;
+  const segmentDistances = [startDistance];
 
-  segmentWidths.reduce((distance, width) => {
-    const nextDistance = distance + width;
-    segmentDistances.push(nextDistance);
-    return nextDistance;
-  }, startOffset);
+  for (let index = 0; index < segmentCount; index += 1) {
+    segmentDistances.push(startDistance + segmentWidth * (index + 1));
+  }
 
   return {
     availableLengthMm: availableLength,
     segmentCount,
-    segmentWidthMm: middleSegmentWidth || firstLastSegmentWidth,
-    middleSegmentWidthMm: middleSegmentWidth,
-    firstLastSegmentWidthMm: firstLastSegmentWidth,
+    segmentWidthMm: segmentWidth,
+    middleSegmentWidthMm: segmentCount > 2 ? segmentWidth : 0,
+    firstLastSegmentWidthMm: segmentWidth,
     tabCount: Math.ceil(segmentCount / 2),
     gapCount: Math.floor(segmentCount / 2),
-    endMarginMm: Math.min(startOffset, endOffset),
-    startDistanceMm: startOffset,
-    endDistanceMm: length - endOffset,
+    endMarginMm: Math.min(startDistance, length - endDistance),
+    startDistanceMm: startDistance,
+    endDistanceMm: endDistance,
     segmentDistancesMm: segmentDistances,
   };
 };
@@ -470,10 +589,18 @@ const generateFingerJointCommands = (
   const depth = Math.max(0, properties.materialThicknessMm + (role === 'slot' ? clearance : 0));
   const direction = role === 'tab' ? 1 : -1;
   const commands = [pointCommand('M', edge.start)];
+  let lastPoint = edge.start;
 
   const addLineAt = (distance: number, offset = 0) => {
     const base = pointAtDistance(edge, distance, length);
-    commands.push(pointCommand('L', { x: base.x + normal.x * offset, y: base.y + normal.y * offset }));
+    const nextPoint = { x: base.x + normal.x * offset, y: base.y + normal.y * offset };
+
+    if (Math.abs(nextPoint.x - lastPoint.x) < 0.0001 && Math.abs(nextPoint.y - lastPoint.y) < 0.0001) {
+      return;
+    }
+
+    commands.push(pointCommand('L', nextPoint));
+    lastPoint = nextPoint;
   };
 
   addLineAt(patternInfo.startDistanceMm);
