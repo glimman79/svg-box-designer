@@ -596,9 +596,16 @@ export const calculateEGeometryPatternInfo = (
   };
 };
 
-const getEdgeSide = (edge: SvgEdge, bounds: SourceBounds | undefined): EdgeSide | undefined => {
+const getEdgeSide = (edge: SvgEdge, bounds: SourceBounds | undefined): EdgeSide => {
   if (!bounds) {
-    return undefined;
+    const dx = Math.abs(edge.end.x - edge.start.x);
+    const dy = Math.abs(edge.end.y - edge.start.y);
+
+    if (dx >= dy) {
+      return edge.start.y <= edge.end.y ? 'top' : 'bottom';
+    }
+
+    return edge.start.x <= edge.end.x ? 'left' : 'right';
   }
 
   const center = midpoint(edge);
@@ -618,30 +625,8 @@ const getEdgeSide = (edge: SvgEdge, bounds: SourceBounds | undefined): EdgeSide 
   return distanceToSide.left <= distanceToSide.right ? 'left' : 'right';
 };
 
-const getInwardEdgeNormal = (side: EdgeSide | undefined, edge: SvgEdge, bounds: SourceBounds | undefined): Point => {
-  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
-
-  if (length === 0) {
-    return { x: 0, y: 0 };
-  }
-
-  const leftNormal = getEdgeNormal(edge);
-  const rightNormal = { x: -leftNormal.x, y: -leftNormal.y };
-
-  if (bounds && (bounds.maxX - bounds.minX > 0.0001 || bounds.maxY - bounds.minY > 0.0001)) {
-    const center = midpoint(edge);
-    const panelCenter = {
-      x: (bounds.minX + bounds.maxX) / 2,
-      y: (bounds.minY + bounds.maxY) / 2,
-    };
-    const towardPanel = { x: panelCenter.x - center.x, y: panelCenter.y - center.y };
-    const leftDot = leftNormal.x * towardPanel.x + leftNormal.y * towardPanel.y;
-    const rightDot = rightNormal.x * towardPanel.x + rightNormal.y * towardPanel.y;
-
-    if (Math.max(leftDot, rightDot) > 0.0001) {
-      return leftDot >= rightDot ? leftNormal : rightNormal;
-    }
-  }
+const getInwardDirection = (edge: SvgEdge, panelBounds: SourceBounds | undefined): Point => {
+  const side = getEdgeSide(edge, panelBounds);
 
   if (side === 'top') {
     return { x: 0, y: 1 };
@@ -655,42 +640,42 @@ const getInwardEdgeNormal = (side: EdgeSide | undefined, edge: SvgEdge, bounds: 
     return { x: 1, y: 0 };
   }
 
-  if (side === 'right') {
-    return { x: -1, y: 0 };
-  }
-
-  return leftNormal;
+  return { x: -1, y: 0 };
 };
 
 const getMaxInwardPocketDepth = (
   edge: SvgEdge,
-  normal: Point,
+  inwardDirection: Point,
   requestedDepth: number,
   bounds: SourceBounds | undefined,
 ) => {
-  if (!bounds || requestedDepth <= 0) {
-    return Math.max(0, requestedDepth);
+  if (requestedDepth <= 0) {
+    return 0;
   }
 
-  const normalAxisSpan = Math.abs(normal.x) * (bounds.maxX - bounds.minX) + Math.abs(normal.y) * (bounds.maxY - bounds.minY);
+  if (!bounds) {
+    return 0;
+  }
 
-  if (normalAxisSpan <= 0.0001) {
-    return Math.max(0, requestedDepth);
+  const inwardAxisSpan = Math.abs(inwardDirection.x) * (bounds.maxX - bounds.minX) + Math.abs(inwardDirection.y) * (bounds.maxY - bounds.minY);
+
+  if (inwardAxisSpan <= 0.0001) {
+    return 0;
   }
 
   const maxDepths = [edge.start, edge.end].flatMap((point) => {
     const axisLimits: number[] = [];
 
-    if (normal.x > 0.0001) {
-      axisLimits.push((bounds.maxX - point.x) / normal.x);
-    } else if (normal.x < -0.0001) {
-      axisLimits.push((bounds.minX - point.x) / normal.x);
+    if (inwardDirection.x > 0.0001) {
+      axisLimits.push((bounds.maxX - point.x) / inwardDirection.x);
+    } else if (inwardDirection.x < -0.0001) {
+      axisLimits.push((bounds.minX - point.x) / inwardDirection.x);
     }
 
-    if (normal.y > 0.0001) {
-      axisLimits.push((bounds.maxY - point.y) / normal.y);
-    } else if (normal.y < -0.0001) {
-      axisLimits.push((bounds.minY - point.y) / normal.y);
+    if (inwardDirection.y > 0.0001) {
+      axisLimits.push((bounds.maxY - point.y) / inwardDirection.y);
+    } else if (inwardDirection.y < -0.0001) {
+      axisLimits.push((bounds.minY - point.y) / inwardDirection.y);
     }
 
     return axisLimits.filter((value) => Number.isFinite(value) && value >= 0);
@@ -722,16 +707,18 @@ const generateInwardPocketJointCommands = (
     return [pointCommand('M', edge.start), pointCommand('L', edge.end)];
   }
 
-  const side = getEdgeSide(edge, context?.bounds);
-  const normal = getInwardEdgeNormal(side, edge, context?.bounds);
+  const inwardDirection = getInwardDirection(edge, context?.bounds);
   const role = assignment.slotRole ?? 'tab';
-  const depth = getMaxInwardPocketDepth(edge, normal, properties.materialThicknessMm, context?.bounds);
+  const depth = getMaxInwardPocketDepth(edge, inwardDirection, properties.materialThicknessMm, context?.bounds);
   const commands = [pointCommand('M', edge.start)];
   let lastPoint = edge.start;
 
   const addLineAt = (distance: number, offset = 0) => {
     const base = pointAtDistance(edge, distance, length);
-    const nextPoint = { x: base.x + normal.x * Math.max(0, offset), y: base.y + normal.y * Math.max(0, offset) };
+    const nextPoint = {
+      x: base.x + inwardDirection.x * Math.max(0, offset),
+      y: base.y + inwardDirection.y * Math.max(0, offset),
+    };
 
     if (Math.abs(nextPoint.x - lastPoint.x) < 0.0001 && Math.abs(nextPoint.y - lastPoint.y) < 0.0001) {
       return;
@@ -746,8 +733,9 @@ const generateInwardPocketJointCommands = (
   for (let intervalIndex = 0; intervalIndex < patternInfo.segmentCount; intervalIndex += 1) {
     const distance = patternInfo.segmentDistancesMm[intervalIndex];
     const nextDistance = patternInfo.segmentDistancesMm[intervalIndex + 1];
-    const isEvenPatternSegment = intervalIndex % 2 === 0;
-    const shouldCutInward = role === 'tab' ? !isEvenPatternSegment : isEvenPatternSegment;
+    const segmentNumber = intervalIndex + 1;
+    const isEvenSegment = segmentNumber % 2 === 0;
+    const shouldCutInward = role === 'tab' ? isEvenSegment : !isEvenSegment;
 
     if (shouldCutInward) {
       const offset = depth;
