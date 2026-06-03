@@ -192,6 +192,11 @@ const eSideRoleLabels: Record<EdgeSideRole, string> = {
   slot: 'E-S label',
 };
 
+const eSideRoleSuffixes: Record<EdgeSideRole, 'T' | 'S'> = {
+  tab: 'T',
+  slot: 'S',
+};
+
 const sideRoleOptions = Object.keys(sideRoleLabels) as EdgeSideRole[];
 
 const minZoom = 0.1;
@@ -254,6 +259,10 @@ const getAssignedConnectionId = (assignment: EdgeAssignment | undefined) => assi
 
 const formatCalculatedMm = (value: number) => `${Number(value.toFixed(2)).toString()} mm`;
 const formatOptionalCalculatedMm = (value: number | undefined) => (value === undefined ? 'n/a' : formatCalculatedMm(value));
+
+const getEGeometryPocketCount = (segmentCount: number, role: EdgeSideRole) => (
+  role === 'tab' ? Math.ceil(segmentCount / 2) : Math.floor(segmentCount / 2)
+);
 const formatCoordinate = (value: number) => Number(value.toFixed(4)).toString();
 const formatDebugPoint = (point: Point) => `(${formatCoordinate(point.x)}, ${formatCoordinate(point.y)})`;
 const formatDebugPointList = (points: Point[]) => points.length > 0 ? points.slice(0, 10).map(formatDebugPoint).join(' → ') : 'None';
@@ -858,36 +867,23 @@ function App() {
             {assignedEEdges.length > 0 ? (
               <ul className="calculated-edge-list">
                 {assignedEEdges.map((edge) => {
+                  const assignment = edgeAssignments[edge.id];
+                  const role = assignment?.slotRole ?? 'tab';
                   const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
                   const info = calculateEGeometryPatternInfo(length, properties);
+                  const displayLabel = `${selectedConnection.id}-${eSideRoleSuffixes[role]}`;
 
                   return (
                     <li key={edge.id}>
-                      <strong>{edge.id}</strong>
+                      <strong>{displayLabel}</strong>
                       <dl>
                         <div>
-                          <dt>Tab size</dt>
-                          <dd>{formatCalculatedMm(properties.fingerWidthMm)}</dd>
+                          <dt>Segment count</dt>
+                          <dd>{info.segmentCount}</dd>
                         </div>
                         <div>
-                          <dt>Middle segment width</dt>
-                          <dd>{info.segmentCount > 2 ? formatCalculatedMm(info.middleSegmentWidthMm) : 'No middle segments'}</dd>
-                        </div>
-                        <div>
-                          <dt>First/last segment width</dt>
-                          <dd>{info.segmentCount > 0 ? formatCalculatedMm(info.firstLastSegmentWidthMm) : 'No full segments'}</dd>
-                        </div>
-                        <div>
-                          <dt>Preview solid segments</dt>
-                          <dd>{info.tabCount}</dd>
-                        </div>
-                        <div>
-                          <dt>Preview pocket segments</dt>
-                          <dd>{info.gapCount}</dd>
-                        </div>
-                        <div>
-                          <dt>End margin</dt>
-                          <dd>{formatCalculatedMm(info.endMarginMm)}</dd>
+                          <dt>Pocket count</dt>
+                          <dd>{getEGeometryPocketCount(info.segmentCount, role)}</dd>
                         </div>
                       </dl>
                     </li>
