@@ -364,8 +364,12 @@ button:disabled {
   box-shadow: 0 18px 45px rgb(15 23 42 / 12%);
 }
 
-.design-svg:active {
+.design-svg.is-panning {
   cursor: grabbing;
+}
+
+.design-svg .drawing-layer {
+  pointer-events: none;
 }
 
 .design-svg .drawing-layer :is(path, line, polyline, polygon, rect, circle, ellipse) {
@@ -373,6 +377,10 @@ button:disabled {
   stroke: #000000 !important;
   stroke-width: 1px !important;
   vector-effect: non-scaling-stroke;
+}
+
+.edge-overlays {
+  pointer-events: none;
 }
 
 .edge-hitbox {

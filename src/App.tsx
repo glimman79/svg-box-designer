@@ -116,7 +116,8 @@ type PanState = {
   pointerId: number;
   startClientX: number;
   startClientY: number;
-  startViewBox: CanvasViewBox;
+  lastClientX: number;
+  lastClientY: number;
   moved: boolean;
 };
 
@@ -302,6 +303,7 @@ function App() {
   const panStateRef = useRef<PanState | null>(null);
   const suppressEdgeClickRef = useRef(false);
   const [canvasViewBox, setCanvasViewBox] = useState<CanvasViewBox>(() => parseViewBox(svgModel.viewBox));
+  const [isCanvasPanning, setIsCanvasPanning] = useState(false);
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
   const selectedConnection = selectedLabelId ? connections[selectedLabelId] ?? null : null;
@@ -623,19 +625,20 @@ function App() {
 
   const getSvgPointFromClient = (clientX: number, clientY: number) => {
     const svgElement = svgRef.current;
-    const bounds = svgElement?.getBoundingClientRect();
+    const screenMatrix = svgElement?.getScreenCTM();
 
-    if (!bounds || bounds.width === 0 || bounds.height === 0) {
+    if (!svgElement || !screenMatrix) {
       return {
         x: canvasViewBox.x + canvasViewBox.width / 2,
         y: canvasViewBox.y + canvasViewBox.height / 2,
       };
     }
 
-    return {
-      x: canvasViewBox.x + ((clientX - bounds.left) / bounds.width) * canvasViewBox.width,
-      y: canvasViewBox.y + ((clientY - bounds.top) / bounds.height) * canvasViewBox.height,
-    };
+    const point = svgElement.createSVGPoint();
+    point.x = clientX;
+    point.y = clientY;
+
+    return point.matrixTransform(screenMatrix.inverse());
   };
 
   const zoomCanvas = (factor: number, center = {
@@ -657,7 +660,7 @@ function App() {
   };
 
   const handleCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
-    if (event.button !== 0) {
+    if (event.button !== 0 || event.target !== event.currentTarget) {
       return;
     }
 
@@ -665,33 +668,46 @@ function App() {
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
-      startViewBox: canvasViewBox,
+      lastClientX: event.clientX,
+      lastClientY: event.clientY,
       moved: false,
     };
+    suppressEdgeClickRef.current = false;
+    setIsCanvasPanning(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const handleCanvasPointerMove = (event: PointerEvent<SVGSVGElement>) => {
     const panState = panStateRef.current;
-    const svgElement = svgRef.current;
-    const bounds = svgElement?.getBoundingClientRect();
+    const screenMatrix = svgRef.current?.getScreenCTM();
 
-    if (!panState || panState.pointerId !== event.pointerId || !bounds || bounds.width === 0 || bounds.height === 0) {
+    if (!panState || panState.pointerId !== event.pointerId || !screenMatrix) {
       return;
     }
 
-    const dx = event.clientX - panState.startClientX;
-    const dy = event.clientY - panState.startClientY;
+    const totalDx = event.clientX - panState.startClientX;
+    const totalDy = event.clientY - panState.startClientY;
+    const dx = event.clientX - panState.lastClientX;
+    const dy = event.clientY - panState.lastClientY;
+    const scaleX = Math.hypot(screenMatrix.a, screenMatrix.b);
+    const scaleY = Math.hypot(screenMatrix.c, screenMatrix.d);
 
-    if (Math.hypot(dx, dy) > 3) {
+    if (Math.hypot(totalDx, totalDy) > 3) {
       panState.moved = true;
     }
 
-    setCanvasViewBox({
-      ...panState.startViewBox,
-      x: panState.startViewBox.x - (dx / bounds.width) * panState.startViewBox.width,
-      y: panState.startViewBox.y - (dy / bounds.height) * panState.startViewBox.height,
-    });
+    panState.lastClientX = event.clientX;
+    panState.lastClientY = event.clientY;
+
+    if (scaleX === 0 || scaleY === 0) {
+      return;
+    }
+
+    setCanvasViewBox((currentViewBox) => ({
+      ...currentViewBox,
+      x: currentViewBox.x - dx / scaleX,
+      y: currentViewBox.y - dy / scaleY,
+    }));
   };
 
   const handleCanvasPointerUp = (event: PointerEvent<SVGSVGElement>) => {
@@ -700,6 +716,7 @@ function App() {
     if (panState?.pointerId === event.pointerId) {
       suppressEdgeClickRef.current = panState.moved;
       panStateRef.current = null;
+      setIsCanvasPanning(false);
       window.setTimeout(() => {
         suppressEdgeClickRef.current = false;
       }, 0);
@@ -713,6 +730,7 @@ function App() {
   const handleCanvasPointerLeave = (event: PointerEvent<SVGSVGElement>) => {
     if (panStateRef.current?.pointerId === event.pointerId) {
       panStateRef.current = null;
+      setIsCanvasPanning(false);
     }
   };
 
@@ -1055,7 +1073,7 @@ function App() {
           <div className="canvas-frame">
             <svg
               ref={svgRef}
-              className="design-svg"
+              className={`design-svg${isCanvasPanning ? ' is-panning' : ''}`}
               viewBox={formatViewBox(canvasViewBox)}
               role="img"
               aria-label="Imported SVG with selectable edges"
@@ -1091,7 +1109,11 @@ function App() {
                         y1={edge.start.y}
                         x2={edge.end.x}
                         y2={edge.end.y}
+                        onPointerDown={(event) => {
+                          event.stopPropagation();
+                        }}
                         onClick={(event) => {
+                          event.stopPropagation();
                           if (suppressEdgeClickRef.current) {
                             event.preventDefault();
                             return;
