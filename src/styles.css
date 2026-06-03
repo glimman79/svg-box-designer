@@ -551,6 +551,27 @@ button:disabled {
   outline: none;
 }
 
+.assigned-edge-list .assigned-edge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.assigned-edge-list .assigned-edge-actions button {
+  min-height: 38px;
+  padding: 0 12px;
+  color: #7f1d1d;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  font-weight: 900;
+}
+
+.assigned-edge-list .assigned-edge-actions button:hover {
+  background: #fecaca;
+}
+
 .calculated-edge-list {
   display: grid;
   gap: 10px;
