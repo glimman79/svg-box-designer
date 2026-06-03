@@ -327,6 +327,24 @@ type SourceGeometryContext = {
 
 type EdgeSide = 'top' | 'bottom' | 'left' | 'right';
 
+export type EGeometryPreviewDebugInfo = {
+  edgeId: string;
+  label: string;
+  role: string;
+  detectedSide: EdgeSide | 'unknown';
+  inwardDirection: string;
+  edgeLengthMm: number;
+  materialThicknessMm: number;
+  fingerWidthMm: number;
+  generatedNotchCount: number;
+  warning?: string;
+};
+
+export type EGeometryPreviewResult = {
+  paths: string[];
+  debugInfo: EGeometryPreviewDebugInfo[];
+};
+
 const getEdgesBySourceBounds = (edges: SvgEdge[]) => {
   return edges.reduce<Record<string, SourceBounds>>((boundsBySource, edge) => {
     const existing = boundsBySource[edge.source];
@@ -794,22 +812,172 @@ const simplePathToEdges = (pathData: string | null, source: string) => {
   return edges;
 };
 
+const detectAxisAlignedEdgeSide = (edge: SvgEdge, bounds: SourceBounds | undefined): EdgeSide | undefined => {
+  const dx = Math.abs(edge.end.x - edge.start.x);
+  const dy = Math.abs(edge.end.y - edge.start.y);
+  const epsilon = 0.0001;
+
+  if (dx <= epsilon && dy <= epsilon) {
+    return undefined;
+  }
+
+  if (dy <= epsilon) {
+    if (!bounds) {
+      return edge.start.y <= edge.end.y ? 'top' : 'bottom';
+    }
+
+    const centerY = (edge.start.y + edge.end.y) / 2;
+    return Math.abs(centerY - bounds.minY) <= Math.abs(centerY - bounds.maxY) ? 'top' : 'bottom';
+  }
+
+  if (dx <= epsilon) {
+    if (!bounds) {
+      return edge.start.x <= edge.end.x ? 'left' : 'right';
+    }
+
+    const centerX = (edge.start.x + edge.end.x) / 2;
+    return Math.abs(centerX - bounds.minX) <= Math.abs(centerX - bounds.maxX) ? 'left' : 'right';
+  }
+
+  return undefined;
+};
+
+const getSimplePreviewInwardDirection = (side: EdgeSide): Point => {
+  if (side === 'top') {
+    return { x: 0, y: 1 };
+  }
+
+  if (side === 'bottom') {
+    return { x: 0, y: -1 };
+  }
+
+  if (side === 'left') {
+    return { x: 1, y: 0 };
+  }
+
+  return { x: -1, y: 0 };
+};
+
+const formatDirection = (direction: Point) => `(${formatNumber(direction.x)}, ${formatNumber(direction.y)})`;
+
+const getEPreviewLabel = (assignment: EdgeAssignment) => `${assignment.connectionId}-${assignment.slotRole === 'tab' ? 'T' : 'S'}`;
+
+const generateSimpleEPreviewForEdge = (
+  edge: SvgEdge,
+  assignment: EdgeAssignment,
+  connection: EGeometryConnectionDefinition,
+  bounds: SourceBounds | undefined,
+): { paths: string[]; debugInfo: EGeometryPreviewDebugInfo } => {
+  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+  const properties = connection.properties;
+  const side = detectAxisAlignedEdgeSide(edge, bounds);
+  const label = getEPreviewLabel(assignment);
+  const role = assignment.slotRole === 'tab' ? 'E-T' : 'E-S';
+  const baseDebugInfo: Omit<EGeometryPreviewDebugInfo, 'generatedNotchCount' | 'warning'> = {
+    edgeId: edge.id,
+    label,
+    role,
+    detectedSide: side ?? 'unknown',
+    inwardDirection: side ? formatDirection(getSimplePreviewInwardDirection(side)) : 'unknown',
+    edgeLengthMm: length,
+    materialThicknessMm: properties.materialThicknessMm,
+    fingerWidthMm: properties.fingerWidthMm,
+  };
+
+  if (!side) {
+    return {
+      paths: [],
+      debugInfo: {
+        ...baseDebugInfo,
+        generatedNotchCount: 0,
+        warning: 'Could not detect a top, bottom, left, or right side for this edge; skipped preview notches for this edge.',
+      },
+    };
+  }
+
+  const patternInfo = calculateEGeometryPatternInfo(length, properties);
+  const depth = Math.max(0, properties.materialThicknessMm);
+  const inwardDirection = getSimplePreviewInwardDirection(side);
+
+  if (length <= 0 || depth <= 0 || properties.fingerWidthMm <= 0 || patternInfo.segmentCount <= 0) {
+    return {
+      paths: [],
+      debugInfo: {
+        ...baseDebugInfo,
+        generatedNotchCount: 0,
+        warning: 'Edge length, material thickness, or finger width is too small to generate preview notches.',
+      },
+    };
+  }
+
+  const paths: string[] = [];
+
+  for (let intervalIndex = 0; intervalIndex < patternInfo.segmentCount; intervalIndex += 1) {
+    const segmentNumber = intervalIndex + 1;
+    const isEvenSegment = segmentNumber % 2 === 0;
+    const shouldCutInward = assignment.slotRole === 'tab' ? isEvenSegment : !isEvenSegment;
+
+    if (!shouldCutInward) {
+      continue;
+    }
+
+    const start = pointAtDistance(edge, patternInfo.segmentDistancesMm[intervalIndex], length);
+    const end = pointAtDistance(edge, patternInfo.segmentDistancesMm[intervalIndex + 1], length);
+    const inwardStart = {
+      x: start.x + inwardDirection.x * depth,
+      y: start.y + inwardDirection.y * depth,
+    };
+    const inwardEnd = {
+      x: end.x + inwardDirection.x * depth,
+      y: end.y + inwardDirection.y * depth,
+    };
+
+    paths.push([
+      pointCommand('M', start),
+      pointCommand('L', inwardStart),
+      pointCommand('L', inwardEnd),
+      pointCommand('L', end),
+    ].join(' '));
+  }
+
+  return {
+    paths,
+    debugInfo: {
+      ...baseDebugInfo,
+      generatedNotchCount: paths.length,
+    },
+  };
+};
+
+export const generateEGeometryPreview = (
+  edgeAssignments: Record<string, EdgeAssignment>,
+  edges: SvgEdge[],
+  connections: Record<string, EGeometryConnectionDefinition>,
+): EGeometryPreviewResult => {
+  const geometryContextsBySource = getEdgesBySourceGeometryContext(edges);
+  const preview = edges
+    .filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections))
+    .map((edge) => {
+      const assignment = edgeAssignments[edge.id];
+      const connection = connections[assignment.connectionId];
+      return generateSimpleEPreviewForEdge(edge, assignment, connection, geometryContextsBySource[edge.source]?.bounds);
+    });
+
+  if (preview.length === 0) {
+    throw new Error('Assign at least one E-T or E-S edge before previewing E geometry.');
+  }
+
+  return {
+    paths: preview.flatMap((entry) => entry.paths),
+    debugInfo: preview.map((entry) => entry.debugInfo),
+  };
+};
+
 export const generateEGeometryPreviewPaths = (
   edgeAssignments: Record<string, EdgeAssignment>,
   edges: SvgEdge[],
   connections: Record<string, EGeometryConnectionDefinition>,
-) => {
-  const geometryContextsBySource = getEdgesBySourceGeometryContext(edges);
-  const previewPaths = edges
-    .filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections))
-    .map((edge) => getEdgePathSegment(edge, edgeAssignments, connections, true, geometryContextsBySource[edge.source]).d);
-
-  if (previewPaths.length === 0) {
-    throw new Error('Assign at least one E-T or E-S edge before previewing E geometry.');
-  }
-
-  return previewPaths;
-};
+) => generateEGeometryPreview(edgeAssignments, edges, connections).paths;
 
 export const generateEGeometrySvg = (
   svgContent: string,
