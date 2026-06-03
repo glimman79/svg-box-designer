@@ -1124,8 +1124,8 @@ function App() {
             <h3>E preview legend</h3>
             <div><span className="legend-line solid" aria-hidden="true" /> solid black = original SVG</div>
             <div><span className="legend-line dashed" aria-hidden="true" /> dashed blue = E geometry preview</div>
-            <div><strong>E-T</strong> and <strong>E-S</strong> use the same preview geometry.</div>
-            <div>Role only changes the label text shown on the assigned edge.</div>
+            <div><strong>E-T</strong> and <strong>E-S</strong> both cut inward pockets.</div>
+            <div>Roles use complementary alternating pocket segments so matching edges fit.</div>
           </div>
 
           <div className="e-preview-debug" aria-label="E geometry preview debug output" hidden={eGeometryPreviewDebugInfo.length === 0}>
@@ -1149,6 +1149,7 @@ function App() {
                     <th>Length</th>
                     <th>Thickness</th>
                     <th>Tab size</th>
+                    <th>Pattern</th>
                     <th>Point count</th>
                     <th>First 10 points</th>
                   </tr>
@@ -1171,6 +1172,7 @@ function App() {
                       <td>{formatCalculatedMm(info.edgeLengthMm)}</td>
                       <td>{formatCalculatedMm(info.materialThicknessMm)}</td>
                       <td>{formatCalculatedMm(info.fingerWidthMm)}</td>
+                      <td>{info.patternPreview ? `${info.label}: ${info.patternPreview}` : '—'}</td>
                       <td>{info.generatedPointCount}</td>
                       <td className="debug-point-list">{formatDebugPointList(info.generatedPoints)}</td>
                     </tr>
