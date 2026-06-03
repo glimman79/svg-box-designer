@@ -315,6 +315,7 @@ function App() {
   const [eGeometryPreviewPaths, setEGeometryPreviewPaths] = useState<string[]>([]);
   const [eGeometryPreviewDebugInfo, setEGeometryPreviewDebugInfo] = useState<EGeometryPreviewDebugInfo[]>([]);
   const [showEGeometryDebugPoints, setShowEGeometryDebugPoints] = useState(false);
+  const [isEGeometryPreviewOnly, setIsEGeometryPreviewOnly] = useState(false);
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const panStateRef = useRef<PanState | null>(null);
@@ -325,6 +326,14 @@ function App() {
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
   const selectedConnection = selectedLabelId ? connections[selectedLabelId] ?? null : null;
   const selectedEdge = svgModel.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
+  const hasEGeometryPreview = eGeometryPreviewPaths.length > 0;
+  const showEGeometryPreviewOnly = isEGeometryPreviewOnly && hasEGeometryPreview;
+
+  const resetEGeometryPreview = () => {
+    setEGeometryPreviewPaths([]);
+    setEGeometryPreviewDebugInfo([]);
+    setIsEGeometryPreviewOnly(false);
+  };
 
   const labelCounts = useMemo(() => {
     return availableLabels.reduce<Record<string, number>>((counts, label) => {
@@ -352,8 +361,7 @@ function App() {
     setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
     setEdgeAssignments({});
     setSelectedEdgeId(null);
-    setEGeometryPreviewPaths([]);
-    setEGeometryPreviewDebugInfo([]);
+    resetEGeometryPreview();
     setErrorMessage('');
     event.target.value = '';
   };
@@ -415,8 +423,7 @@ function App() {
   };
 
   const clearEdgeLabel = (edgeId: string) => {
-    setEGeometryPreviewPaths([]);
-    setEGeometryPreviewDebugInfo([]);
+    resetEGeometryPreview();
     setEdgeAssignments((currentAssignments) => {
       const nextAssignments = { ...currentAssignments };
       delete nextAssignments[edgeId];
@@ -427,8 +434,7 @@ function App() {
 
   const assignSelectedLabelToEdge = (edgeId: string) => {
     setSelectedEdgeId(edgeId);
-    setEGeometryPreviewPaths([]);
-    setEGeometryPreviewDebugInfo([]);
+    resetEGeometryPreview();
 
     if (!selectedLabelId) {
       setErrorMessage('Create and select a connection before clicking an edge.');
@@ -479,8 +485,7 @@ function App() {
   };
 
   const updateEdgeProperties = (updates: Partial<EdgeConnectionProperties>) => {
-    setEGeometryPreviewPaths([]);
-    setEGeometryPreviewDebugInfo([]);
+    resetEGeometryPreview();
     if (!selectedConnection || selectedConnection.prefix !== 'E') {
       return;
     }
@@ -541,8 +546,7 @@ function App() {
   };
 
   const updateEdgeSideRole = (edgeId: string, slotRole: EdgeSideRole) => {
-    setEGeometryPreviewPaths([]);
-    setEGeometryPreviewDebugInfo([]);
+    resetEGeometryPreview();
     if (!selectedConnection || (selectedConnection.prefix !== 'E' && selectedConnection.prefix !== 'S')) {
       return;
     }
@@ -627,12 +631,12 @@ function App() {
       const preview = generateEGeometryPreview(edgeAssignments, svgModel.edges, getEConnections());
       setEGeometryPreviewPaths(preview.paths);
       setEGeometryPreviewDebugInfo(preview.debugInfo);
+      setIsEGeometryPreviewOnly((currentValue) => preview.paths.length > 0 && currentValue);
       setErrorMessage(preview.paths.length > 0
         ? 'Showing E notched edge preview overlay. Original SVG geometry is unchanged.'
         : 'No E preview notches were generated. Check the E preview debug output for skipped edges.');
     } catch (error) {
-      setEGeometryPreviewPaths([]);
-      setEGeometryPreviewDebugInfo([]);
+      resetEGeometryPreview();
       setErrorMessage(error instanceof Error ? error.message : 'Unable to preview E geometry.');
     }
   };
@@ -644,8 +648,7 @@ function App() {
       setSvgModel(parsedSvg);
       setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
       setEdgeAssignments({});
-      setEGeometryPreviewPaths([]);
-      setEGeometryPreviewDebugInfo([]);
+      resetEGeometryPreview();
       setSelectedEdgeId(null);
       setErrorMessage('Applied E geometry to the selected original E edges.');
     } catch (error) {
@@ -654,8 +657,7 @@ function App() {
   };
 
   const clearEGeometryPreview = () => {
-    setEGeometryPreviewPaths([]);
-    setEGeometryPreviewDebugInfo([]);
+    resetEGeometryPreview();
     setErrorMessage('Cleared E geometry preview. Original SVG geometry is unchanged.');
   };
 
@@ -1029,7 +1031,17 @@ function App() {
           <button className="button" type="button" onClick={applyEGeometry}>
             Apply E Geometry
           </button>
-          <button className="button" type="button" onClick={clearEGeometryPreview} disabled={eGeometryPreviewPaths.length === 0 && eGeometryPreviewDebugInfo.length === 0}>
+          <button
+            className={`button${showEGeometryPreviewOnly ? ' active' : ''}`}
+            type="button"
+            onClick={() => setIsEGeometryPreviewOnly((currentValue) => !currentValue)}
+            disabled={!hasEGeometryPreview}
+            aria-pressed={showEGeometryPreviewOnly}
+            title="Hide the original SVG so only the generated E preview geometry is visible."
+          >
+            Preview only
+          </button>
+          <button className="button" type="button" onClick={clearEGeometryPreview} disabled={!hasEGeometryPreview && eGeometryPreviewDebugInfo.length === 0}>
             Clear Preview
           </button>
           <button className="button" type="button" onClick={exportSvg} disabled={Object.keys(edgeAssignments).length === 0}>
@@ -1120,10 +1132,14 @@ function App() {
             </button>
           </div>
 
-          <div className="e-preview-legend" aria-label="E geometry preview legend" hidden={eGeometryPreviewPaths.length === 0}>
+          <div className="e-preview-legend" aria-label="E geometry preview legend" hidden={!hasEGeometryPreview}>
             <h3>E preview legend</h3>
-            <div><span className="legend-line solid" aria-hidden="true" /> solid black = original SVG</div>
-            <div><span className="legend-line dashed" aria-hidden="true" /> dashed blue = E geometry preview</div>
+            <div hidden={showEGeometryPreviewOnly}><span className="legend-line solid" aria-hidden="true" /> solid black = original SVG</div>
+            <div>
+              <span className="legend-line dashed" aria-hidden="true" />
+              {showEGeometryPreviewOnly ? 'solid blue = E geometry preview only' : 'dashed blue = E geometry preview'}
+            </div>
+            <div hidden={!showEGeometryPreviewOnly}>Preview only mode hides the original SVG and edge labels.</div>
             <div><strong>E-T</strong> and <strong>E-S</strong> both cut inward pockets.</div>
             <div>Roles use complementary alternating pocket segments so matching edges fit.</div>
           </div>
@@ -1217,7 +1233,7 @@ function App() {
           <div className="canvas-frame">
             <svg
               ref={svgRef}
-              className={`design-svg${isCanvasPanning ? ' is-panning' : ''}${eGeometryPreviewPaths.length > 0 ? ' has-e-preview' : ''}`}
+              className={`design-svg${isCanvasPanning ? ' is-panning' : ''}${hasEGeometryPreview ? ' has-e-preview' : ''}${showEGeometryPreviewOnly ? ' is-preview-only' : ''}`}
               viewBox={formatViewBox(canvasViewBox)}
               role="img"
               aria-label="Imported SVG with selectable edges"
@@ -1228,9 +1244,14 @@ function App() {
               onPointerCancel={handleCanvasPointerUp}
               onPointerLeave={handleCanvasPointerLeave}
             >
-              <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
-              {eGeometryPreviewPaths.length > 0 && (
-                <g className="e-geometry-preview-layer" aria-label="E geometry preview overlay">
+              {!showEGeometryPreviewOnly && (
+                <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
+              )}
+              {hasEGeometryPreview && (
+                <g
+                  className="e-geometry-preview-layer"
+                  aria-label={showEGeometryPreviewOnly ? 'E geometry preview only' : 'E geometry preview overlay'}
+                >
                   {eGeometryPreviewPaths.map((pathData, index) => (
                     <path key={`${pathData}-${index}`} d={pathData} />
                   ))}
@@ -1246,8 +1267,9 @@ function App() {
                   )))}
                 </g>
               )}
-              <g className="edge-overlays">
-                {svgModel.edges.map((edge) => {
+              {!showEGeometryPreviewOnly && (
+                <g className="edge-overlays">
+                  {svgModel.edges.map((edge) => {
                   const assignment = edgeAssignments[edge.id];
                   const label = getEdgeAssignmentDisplayLabel(assignment);
                   const selected = selectedEdgeId === edge.id;
@@ -1308,8 +1330,9 @@ function App() {
                       )}
                     </g>
                   );
-                })}
-              </g>
+                  })}
+                </g>
+              )}
             </svg>
           </div>
         </section>
