@@ -314,6 +314,7 @@ function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [eGeometryPreviewPaths, setEGeometryPreviewPaths] = useState<string[]>([]);
   const [eGeometryPreviewDebugInfo, setEGeometryPreviewDebugInfo] = useState<EGeometryPreviewDebugInfo[]>([]);
+  const [showEGeometryDebugPoints, setShowEGeometryDebugPoints] = useState(false);
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const panStateRef = useRef<PanState | null>(null);
@@ -1122,7 +1123,7 @@ function App() {
           <div className="e-preview-legend" aria-label="E geometry preview legend" hidden={eGeometryPreviewPaths.length === 0}>
             <h3>E preview legend</h3>
             <div><span className="legend-line solid" aria-hidden="true" /> solid black = original SVG</div>
-            <div><span className="legend-line dashed" aria-hidden="true" /> dashed gray = E geometry preview</div>
+            <div><span className="legend-line dashed" aria-hidden="true" /> dashed blue = E geometry preview</div>
             <div><strong>E-T</strong> and <strong>E-S</strong> use the same preview geometry.</div>
             <div>Role only changes the label text shown on the assigned edge.</div>
           </div>
@@ -1177,6 +1178,14 @@ function App() {
                 </tbody>
               </table>
             </div>
+            <label className="debug-point-toggle">
+              <input
+                type="checkbox"
+                checked={showEGeometryDebugPoints}
+                onChange={(event) => setShowEGeometryDebugPoints(event.target.checked)}
+              />
+              Show numbered debug points on the drawing
+            </label>
             {eGeometryPreviewDebugInfo.some((info) => info.warning) && (
               <ul className="e-preview-warnings">
                 {eGeometryPreviewDebugInfo.filter((info) => info.warning).map((info) => (
@@ -1225,7 +1234,7 @@ function App() {
                   ))}
                 </g>
               )}
-              {eGeometryPreviewDebugInfo.length > 0 && (
+              {showEGeometryDebugPoints && eGeometryPreviewDebugInfo.length > 0 && (
                 <g className="e-geometry-debug-point-layer" aria-label="Numbered E geometry debug points">
                   {eGeometryPreviewDebugInfo.flatMap((info) => info.generatedPoints.map((point, index) => (
                     <g key={`${info.edgeId}-debug-point-${index}`} transform={`translate(${point.x} ${point.y})`}>

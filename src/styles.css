@@ -678,11 +678,12 @@ button:disabled {
 
 .e-geometry-preview-layer path {
   fill: none;
-  stroke: #4b5563;
-  stroke-dasharray: 6 4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1;
+  stroke: #2563eb;
+  stroke-dasharray: 4 2;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+  stroke-miterlimit: 2;
+  stroke-width: 2.5;
   vector-effect: non-scaling-stroke;
 }
 
@@ -718,8 +719,9 @@ button:disabled {
 }
 
 .legend-line.dashed {
-  border-color: #4b5563;
+  border-color: #2563eb;
   border-top-style: dashed;
+  border-top-width: 2px;
 }
 
 .e-preview-debug {
@@ -783,6 +785,21 @@ button:disabled {
 .e-preview-debug .debug-point-list {
   max-width: 360px;
   white-space: normal;
+}
+
+.debug-point-toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: #334155;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.debug-point-toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
 }
 
 .e-geometry-debug-point-layer {
