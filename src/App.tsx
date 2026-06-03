@@ -188,8 +188,8 @@ const sideRoleLabels: Record<EdgeSideRole, string> = {
 };
 
 const eSideRoleLabels: Record<EdgeSideRole, string> = {
-  tab: 'E-T pockets on segments 2, 4, 6…',
-  slot: 'E-S pockets on segments 1, 3, 5…',
+  tab: 'E-T label',
+  slot: 'E-S label',
 };
 
 const sideRoleOptions = Object.keys(sideRoleLabels) as EdgeSideRole[];
@@ -874,11 +874,11 @@ function App() {
                           <dd>{info.segmentCount > 0 ? formatCalculatedMm(info.firstLastSegmentWidthMm) : 'No full segments'}</dd>
                         </div>
                         <div>
-                          <dt>E-T solid segments</dt>
+                          <dt>Preview solid segments</dt>
                           <dd>{info.tabCount}</dd>
                         </div>
                         <div>
-                          <dt>E-T pocket segments</dt>
+                          <dt>Preview pocket segments</dt>
                           <dd>{info.gapCount}</dd>
                         </div>
                         <div>
@@ -1122,8 +1122,8 @@ function App() {
             <h3>E preview legend</h3>
             <div><span className="legend-line solid" aria-hidden="true" /> solid black = original SVG</div>
             <div><span className="legend-line dashed" aria-hidden="true" /> dashed gray = E geometry preview</div>
-            <div><strong>E-T</strong> = inward pockets on segments 2, 4, 6…</div>
-            <div><strong>E-S</strong> = inward pockets on segments 1, 3, 5…</div>
+            <div><strong>E-T</strong> and <strong>E-S</strong> use the same preview geometry.</div>
+            <div>Role only changes the label text shown on the assigned edge.</div>
           </div>
 
           <div className="e-preview-debug" aria-label="E geometry preview debug output" hidden={eGeometryPreviewDebugInfo.length === 0}>
