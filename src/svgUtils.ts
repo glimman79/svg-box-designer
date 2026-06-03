@@ -3,11 +3,14 @@ export type Point = {
   y: number;
 };
 
+export type SourceBounds = { minX: number; maxX: number; minY: number; maxY: number };
+
 export type SvgEdge = {
   id: string;
   source: string;
   start: Point;
   end: Point;
+  panelBounds?: SourceBounds;
 };
 
 export type EdgeSideRole = 'tab' | 'slot';
@@ -131,6 +134,7 @@ const addEdge = (
   source: string,
   start: Point,
   end: Point,
+  panelBounds?: SourceBounds,
 ) => {
   if (start.x === end.x && start.y === end.y) {
     return;
@@ -141,8 +145,24 @@ const addEdge = (
     source,
     start,
     end,
+    ...(panelBounds ? { panelBounds } : {}),
   });
 };
+
+const getBoundsForPoints = (points: Point[]): SourceBounds | undefined => {
+  if (points.length === 0) {
+    return undefined;
+  }
+
+  return points.reduce<SourceBounds>((bounds, point) => ({
+    minX: Math.min(bounds.minX, point.x),
+    maxX: Math.max(bounds.maxX, point.x),
+    minY: Math.min(bounds.minY, point.y),
+    maxY: Math.max(bounds.maxY, point.y),
+  }), { minX: points[0].x, maxX: points[0].x, minY: points[0].y, maxY: points[0].y });
+};
+
+type PendingPathEdge = { start: Point; end: Point };
 
 const parsePathSegments = (pathData: string | null, source: string, edges: SvgEdge[]) => {
   if (!pathData) {
@@ -154,9 +174,26 @@ const parsePathSegments = (pathData: string | null, source: string, edges: SvgEd
   let command = '';
   let current: Point = { x: 0, y: 0 };
   let subpathStart: Point = { x: 0, y: 0 };
+  let pendingSubpathEdges: PendingPathEdge[] = [];
 
   const isCommand = (token: string) => /^[a-zA-Z]$/.test(token);
   const readNumber = () => Number.parseFloat(tokens[index++]);
+  const flushSubpathEdges = () => {
+    if (pendingSubpathEdges.length === 0) {
+      return;
+    }
+
+    const panelBounds = getBoundsForPoints(pendingSubpathEdges.flatMap((edge) => [edge.start, edge.end]));
+    pendingSubpathEdges.forEach((edge) => addEdge(edges, source, edge.start, edge.end, panelBounds));
+    pendingSubpathEdges = [];
+  };
+  const addPathEdge = (start: Point, end: Point) => {
+    if (start.x === end.x && start.y === end.y) {
+      return;
+    }
+
+    pendingSubpathEdges.push({ start, end });
+  };
 
   while (index < tokens.length) {
     if (isCommand(tokens[index])) {
@@ -167,6 +204,7 @@ const parsePathSegments = (pathData: string | null, source: string, edges: SvgEd
     const upperCommand = command.toUpperCase();
 
     if (upperCommand === 'M') {
+      flushSubpathEdges();
       const x = readNumber();
       const y = readNumber();
       current = {
@@ -182,21 +220,22 @@ const parsePathSegments = (pathData: string | null, source: string, edges: SvgEd
         x: relative ? current.x + x : x,
         y: relative ? current.y + y : y,
       };
-      addEdge(edges, source, current, next);
+      addPathEdge(current, next);
       current = next;
     } else if (upperCommand === 'H') {
       const x = readNumber();
       const next = { x: relative ? current.x + x : x, y: current.y };
-      addEdge(edges, source, current, next);
+      addPathEdge(current, next);
       current = next;
     } else if (upperCommand === 'V') {
       const y = readNumber();
       const next = { x: current.x, y: relative ? current.y + y : y };
-      addEdge(edges, source, current, next);
+      addPathEdge(current, next);
       current = next;
     } else if (upperCommand === 'Z') {
-      addEdge(edges, source, current, subpathStart);
+      addPathEdge(current, subpathStart);
       current = subpathStart;
+      flushSubpathEdges();
     } else {
       // Curves and arcs are intentionally ignored in v1; this app labels straight edges only.
       while (index < tokens.length && !isCommand(tokens[index])) {
@@ -204,6 +243,8 @@ const parsePathSegments = (pathData: string | null, source: string, edges: SvgEd
       }
     }
   }
+
+  flushSubpathEdges();
 };
 
 const sanitizeSvg = (svgElement: SVGSVGElement) => {
@@ -253,22 +294,27 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
   const edges: SvgEdge[] = [];
 
   svgElement.querySelectorAll('line').forEach((line, elementIndex) => {
+    const start = { x: svgNumber(line.getAttribute('x1')), y: svgNumber(line.getAttribute('y1')) };
+    const end = { x: svgNumber(line.getAttribute('x2')), y: svgNumber(line.getAttribute('y2')) };
     addEdge(
       edges,
       `line ${elementIndex + 1}`,
-      { x: svgNumber(line.getAttribute('x1')), y: svgNumber(line.getAttribute('y1')) },
-      { x: svgNumber(line.getAttribute('x2')), y: svgNumber(line.getAttribute('y2')) },
+      start,
+      end,
+      getBoundsForPoints([start, end]),
     );
   });
 
   svgElement.querySelectorAll('polyline, polygon').forEach((shape, elementIndex) => {
     const points = parsePoints(shape.getAttribute('points'));
+    const source = `${shape.tagName} ${elementIndex + 1}`;
+    const panelBounds = getBoundsForPoints(points);
     points.slice(1).forEach((point, pointIndex) => {
-      addEdge(edges, `${shape.tagName} ${elementIndex + 1}`, points[pointIndex], point);
+      addEdge(edges, source, points[pointIndex], point, panelBounds);
     });
 
     if (shape.tagName.toLowerCase() === 'polygon' && points.length > 2) {
-      addEdge(edges, `${shape.tagName} ${elementIndex + 1}`, points[points.length - 1], points[0]);
+      addEdge(edges, source, points[points.length - 1], points[0], panelBounds);
     }
   });
 
@@ -284,8 +330,10 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
       { x, y: y + height },
     ];
 
+    const panelBounds = getBoundsForPoints(corners);
+
     corners.forEach((corner, cornerIndex) => {
-      addEdge(edges, `rect ${elementIndex + 1}`, corner, corners[(cornerIndex + 1) % corners.length]);
+      addEdge(edges, `rect ${elementIndex + 1}`, corner, corners[(cornerIndex + 1) % corners.length], panelBounds);
     });
   });
 
@@ -319,8 +367,6 @@ const getEdgeNormal = (edge: SvgEdge): Point => {
   };
 };
 
-export type SourceBounds = { minX: number; maxX: number; minY: number; maxY: number };
-
 type SourceGeometryContext = {
   bounds: SourceBounds;
 };
@@ -329,12 +375,17 @@ type EdgeSide = 'top' | 'bottom' | 'left' | 'right';
 
 export type EGeometryPreviewDebugInfo = {
   edgeId: string;
+  sourceId: string;
   label: string;
   role: string;
   start: Point;
   end: Point;
   detectedSide: EdgeSide | 'unknown';
   inwardDirection: string;
+  panelMinY?: number;
+  panelMaxY?: number;
+  distanceToPanelMinY?: number;
+  distanceToPanelMaxY?: number;
   edgeLengthMm: number;
   materialThicknessMm: number;
   fingerWidthMm: number;
@@ -833,7 +884,7 @@ const simplePathToEdges = (pathData: string | null, source: string) => {
   return edges;
 };
 
-const detectEPreviewSide = (edge: SvgEdge, bounds: SourceBounds | undefined): EdgeSide | undefined => {
+const detectEPreviewSide = (edge: SvgEdge, panelBounds: SourceBounds | undefined): EdgeSide | undefined => {
   const dx = Math.abs(edge.end.x - edge.start.x);
   const dy = Math.abs(edge.end.y - edge.start.y);
   const epsilon = 0.0001;
@@ -843,21 +894,21 @@ const detectEPreviewSide = (edge: SvgEdge, bounds: SourceBounds | undefined): Ed
   }
 
   if (dy <= epsilon) {
-    if (!bounds) {
+    if (!panelBounds) {
       return edge.start.y <= edge.end.y ? 'top' : 'bottom';
     }
 
     const centerY = (edge.start.y + edge.end.y) / 2;
-    return Math.abs(centerY - bounds.minY) <= Math.abs(centerY - bounds.maxY) ? 'top' : 'bottom';
+    return Math.abs(centerY - panelBounds.minY) <= Math.abs(centerY - panelBounds.maxY) ? 'top' : 'bottom';
   }
 
   if (dx <= epsilon) {
-    if (!bounds) {
+    if (!panelBounds) {
       return edge.start.x <= edge.end.x ? 'left' : 'right';
     }
 
     const centerX = (edge.start.x + edge.end.x) / 2;
-    return Math.abs(centerX - bounds.minX) <= Math.abs(centerX - bounds.maxX) ? 'left' : 'right';
+    return Math.abs(centerX - panelBounds.minX) <= Math.abs(centerX - panelBounds.maxX) ? 'left' : 'right';
   }
 
   return undefined;
@@ -898,21 +949,29 @@ const generateEPreviewForEdge = (
   edge: SvgEdge,
   assignment: EdgeAssignment,
   connection: EGeometryConnectionDefinition,
-  bounds: SourceBounds | undefined,
+  panelBounds: SourceBounds | undefined,
 ): { paths: string[]; debugInfo: EGeometryPreviewDebugInfo } => {
   const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
   const properties = connection.properties;
-  const side = detectEPreviewSide(edge, bounds);
+  const side = detectEPreviewSide(edge, panelBounds);
   const label = getEPreviewLabel(assignment);
   const role = assignment.slotRole === 'tab' ? 'E-T' : 'E-S';
+  const centerY = (edge.start.y + edge.end.y) / 2;
   const baseDebugInfo: Omit<EGeometryPreviewDebugInfo, 'generatedPointCount' | 'generatedPoints' | 'warning'> = {
     edgeId: edge.id,
+    sourceId: edge.source,
     label,
     role,
     start: edge.start,
     end: edge.end,
     detectedSide: side ?? 'unknown',
     inwardDirection: side ? formatDirection(getEPreviewInwardDirection(side)) : 'unknown',
+    ...(panelBounds ? {
+      panelMinY: panelBounds.minY,
+      panelMaxY: panelBounds.maxY,
+      distanceToPanelMinY: Math.abs(centerY - panelBounds.minY),
+      distanceToPanelMaxY: Math.abs(centerY - panelBounds.maxY),
+    } : {}),
     edgeLengthMm: length,
     materialThicknessMm: properties.materialThicknessMm,
     fingerWidthMm: properties.fingerWidthMm,
@@ -967,13 +1026,12 @@ export const generateEGeometryPreview = (
   edges: SvgEdge[],
   connections: Record<string, EGeometryConnectionDefinition>,
 ): EGeometryPreviewResult => {
-  const geometryContextsBySource = getEdgesBySourceGeometryContext(edges);
   const preview = edges
     .filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections))
     .map((edge) => {
       const assignment = edgeAssignments[edge.id];
       const connection = connections[assignment.connectionId];
-      return generateEPreviewForEdge(edge, assignment, connection, geometryContextsBySource[edge.source]?.bounds);
+      return generateEPreviewForEdge(edge, assignment, connection, edge.panelBounds);
     });
 
   if (preview.length === 0) {
