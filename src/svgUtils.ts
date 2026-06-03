@@ -494,13 +494,6 @@ type EdgePathSegment = {
   d: string;
 };
 
-export type EGeometryGenerationResult = {
-  svgContent: string;
-  warnings: string[];
-};
-
-type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
-
 const formatNumber = (value: number) => Number(value.toFixed(4)).toString();
 
 const pointAtDistance = (edge: SvgEdge, distance: number, length: number): Point => ({
@@ -534,9 +527,13 @@ export const calculateEGeometryPatternInfo = (
 ): EGeometryPatternInfo => {
   const length = Math.max(0, edgeLengthMm);
   const requestedSegmentWidth = Math.max(0, properties.fingerWidthMm);
-  const defaultEndMargin = Math.max(0, properties.materialThicknessMm);
-  const requestedStartOffset = properties.startOffsetMm > 0 ? properties.startOffsetMm : defaultEndMargin;
-  const requestedEndOffset = properties.endOffsetMm > 0 ? properties.endOffsetMm : defaultEndMargin;
+  const cornerClearance = Math.max(0, properties.materialThicknessMm);
+  const requestedStartOffset = properties.startOffsetMm > 0
+    ? Math.max(properties.startOffsetMm, cornerClearance)
+    : cornerClearance;
+  const requestedEndOffset = properties.endOffsetMm > 0
+    ? Math.max(properties.endOffsetMm, cornerClearance)
+    : cornerClearance;
   const startOffset = Math.max(0, Math.min(requestedStartOffset, length));
   const endOffset = Math.max(0, Math.min(requestedEndOffset, Math.max(0, length - startOffset)));
   const availableLength = Math.max(0, length - startOffset - endOffset);
@@ -570,30 +567,10 @@ export const calculateEGeometryPatternInfo = (
   };
 };
 
-const getInwardEdgeNormal = (
-  edge: SvgEdge,
-  bounds: Bounds | undefined,
-): Point => {
-  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
-
-  if (length === 0) {
-    return { x: 0, y: 0 };
-  }
-
-  const unitX = (edge.end.x - edge.start.x) / length;
-  const unitY = (edge.end.y - edge.start.y) / length;
-  const normal = { x: -unitY, y: unitX };
-  const inwardDirection = getInwardLabelDirection(edge, bounds);
-  const dotProduct = normal.x * inwardDirection.x + normal.y * inwardDirection.y;
-
-  return dotProduct < 0 ? { x: -normal.x, y: -normal.y } : normal;
-};
-
 const generateFingerJointCommands = (
   edge: SvgEdge,
   assignment: EdgeAssignment,
   connection: EGeometryConnectionDefinition,
-  sourceBounds: Bounds | undefined,
 ) => {
   const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
   const properties = connection.properties;
@@ -608,10 +585,13 @@ const generateFingerJointCommands = (
     return [pointCommand('M', edge.start), pointCommand('L', edge.end)];
   }
 
-  const normal = getInwardEdgeNormal(edge, sourceBounds);
+  const unitX = (edge.end.x - edge.start.x) / length;
+  const unitY = (edge.end.y - edge.start.y) / length;
+  const normal = { x: -unitY, y: unitX };
   const role = assignment.slotRole ?? 'tab';
   const clearance = Math.max(0, properties.kerfMm + properties.playMm);
   const depth = Math.max(0, properties.materialThicknessMm + (role === 'slot' ? clearance : 0));
+  const direction = role === 'tab' ? 1 : -1;
   const commands = [pointCommand('M', edge.start)];
   let lastPoint = edge.start;
 
@@ -635,9 +615,10 @@ const generateFingerJointCommands = (
     const isEvenPatternSegment = intervalIndex % 2 === 0;
     const isTabSegment = role === 'tab' ? isEvenPatternSegment : !isEvenPatternSegment;
     const isGapSegment = !isTabSegment;
+    const shouldStepOffEdge = role === 'tab' ? isTabSegment : isGapSegment;
 
-    if (isGapSegment) {
-      const offset = depth;
+    if (shouldStepOffEdge) {
+      const offset = direction * depth;
 
       addLineAt(distance);
       addLineAt(distance, offset);
@@ -658,12 +639,11 @@ const getEdgePathSegment = (
   edgeAssignments: Record<string, EdgeAssignment>,
   connections: Record<string, EGeometryConnectionDefinition>,
   includeMove: boolean,
-  sourceBounds: Bounds | undefined,
 ): EdgePathSegment => {
   const assignment = edgeAssignments[edge.id];
   const connection = assignment ? connections[assignment.connectionId] : undefined;
   const commands = assignment?.slotRole && connection
-    ? generateFingerJointCommands(edge, assignment, connection, sourceBounds)
+    ? generateFingerJointCommands(edge, assignment, connection)
     : [pointCommand('M', edge.start), pointCommand('L', edge.end)];
 
   return {
@@ -693,48 +673,12 @@ const simplePathToEdges = (pathData: string | null, source: string) => {
   return edges;
 };
 
-const getBoundsFromEdges = (sourceEdges: SvgEdge[]): Bounds | undefined => {
-  if (sourceEdges.length === 0) {
-    return undefined;
-  }
-
-  return sourceEdges.reduce<Bounds>((bounds, edge) => ({
-    minX: Math.min(bounds.minX, edge.start.x, edge.end.x),
-    maxX: Math.max(bounds.maxX, edge.start.x, edge.end.x),
-    minY: Math.min(bounds.minY, edge.start.y, edge.end.y),
-    maxY: Math.max(bounds.maxY, edge.start.y, edge.end.y),
-  }), {
-    minX: Number.POSITIVE_INFINITY,
-    maxX: Number.NEGATIVE_INFINITY,
-    minY: Number.POSITIVE_INFINITY,
-    maxY: Number.NEGATIVE_INFINITY,
-  });
-};
-
-const getBoundsFromPathData = (pathData: string, source: string) => getBoundsFromEdges(simplePathToEdges(pathData, source));
-
-const doesBoundsGrow = (originalBounds: Bounds | undefined, generatedBounds: Bounds | undefined) => {
-  if (!originalBounds || !generatedBounds) {
-    return false;
-  }
-
-  const epsilon = 0.0001;
-  return generatedBounds.minX < originalBounds.minX - epsilon
-    || generatedBounds.maxX > originalBounds.maxX + epsilon
-    || generatedBounds.minY < originalBounds.minY - epsilon
-    || generatedBounds.maxY > originalBounds.maxY + epsilon;
-};
-
-const boundsWarningMessage = (source: string) => (
-  `Warning: generated E geometry for ${source} grew outside the original panel bounding box.`
-);
-
 export const generateEGeometrySvg = (
   svgContent: string,
   edgeAssignments: Record<string, EdgeAssignment>,
   edges: SvgEdge[],
   connections: Record<string, EGeometryConnectionDefinition>,
-): EGeometryGenerationResult => {
+) => {
   const document = new DOMParser().parseFromString(svgContent, 'image/svg+xml');
   const svgElement = document.querySelector('svg');
 
@@ -746,8 +690,6 @@ export const generateEGeometrySvg = (
   const polyElements = [...svgElement.querySelectorAll('polyline, polygon')];
   const rectElements = [...svgElement.querySelectorAll('rect')];
   const pathElements = [...svgElement.querySelectorAll('path')];
-  const boundsBySource = getEdgesBySourceBounds(edges);
-  const warnings = new Set<string>();
   let edgeIndex = 0;
   let generatedCount = 0;
 
@@ -757,16 +699,11 @@ export const generateEGeometrySvg = (
       return;
     }
 
-    const pathData = getEdgePathSegment(edge, edgeAssignments, connections, true, boundsBySource[edge.source]).d;
     replaceElementWithPath(
       line,
-      pathData,
+      getEdgePathSegment(edge, edgeAssignments, connections, true).d,
       ['x1', 'y1', 'x2', 'y2'],
     );
-
-    if (doesBoundsGrow(getBoundsFromEdges([edge]), getBoundsFromPathData(pathData, edge.source))) {
-      warnings.add(boundsWarningMessage(edge.source));
-    }
     generatedCount += 1;
   });
 
@@ -780,15 +717,9 @@ export const generateEGeometrySvg = (
       return;
     }
 
-    const segments = shapeEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0, boundsBySource[edge.source]).d);
+    const segments = shapeEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0).d);
     const closeCommand = shape.tagName.toLowerCase() === 'polygon' ? ' Z' : '';
-    const pathData = `${segments.join(' ')}${closeCommand}`;
-    replaceElementWithPath(shape, pathData, ['points']);
-
-    if (doesBoundsGrow(getBoundsFromEdges(shapeEdges), getBoundsFromPathData(pathData, shapeEdges[0]?.source ?? 'shape'))) {
-      warnings.add(boundsWarningMessage(shapeEdges[0]?.source ?? 'shape'));
-    }
-
+    replaceElementWithPath(shape, `${segments.join(' ')}${closeCommand}`, ['points']);
     generatedCount += shapeEdges.filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections)).length;
   });
 
@@ -800,14 +731,8 @@ export const generateEGeometrySvg = (
       return;
     }
 
-    const segments = rectEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0, boundsBySource[edge.source]).d);
-    const pathData = `${segments.join(' ')} Z`;
-    replaceElementWithPath(rect, pathData, ['x', 'y', 'width', 'height', 'rx', 'ry']);
-
-    if (doesBoundsGrow(getBoundsFromEdges(rectEdges), getBoundsFromPathData(pathData, rectEdges[0]?.source ?? 'rect'))) {
-      warnings.add(boundsWarningMessage(rectEdges[0]?.source ?? 'rect'));
-    }
-
+    const segments = rectEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0).d);
+    replaceElementWithPath(rect, `${segments.join(' ')} Z`, ['x', 'y', 'width', 'height', 'rx', 'ry']);
     generatedCount += rectEdges.filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections)).length;
   });
 
@@ -820,15 +745,9 @@ export const generateEGeometrySvg = (
       return;
     }
 
-    const segments = sourceEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0, boundsBySource[edge.source]).d);
-    const pathData = segments.join(' ');
-    path.setAttribute('d', pathData);
+    const segments = sourceEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0).d);
+    path.setAttribute('d', segments.join(' '));
     applyTechnicalLineStyle(path);
-
-    if (doesBoundsGrow(getBoundsFromEdges(sourceEdges), getBoundsFromPathData(pathData, sourceEdges[0]?.source ?? `path ${pathIndex + 1}`))) {
-      warnings.add(boundsWarningMessage(sourceEdges[0]?.source ?? `path ${pathIndex + 1}`));
-    }
-
     generatedCount += sourceEdges.filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections)).length;
   });
 
@@ -836,8 +755,5 @@ export const generateEGeometrySvg = (
     throw new Error('Assign at least one E-T or E-S edge before generating E geometry.');
   }
 
-  return {
-    svgContent: new XMLSerializer().serializeToString(svgElement),
-    warnings: [...warnings],
-  };
+  return new XMLSerializer().serializeToString(svgElement);
 };
