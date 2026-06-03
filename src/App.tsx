@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { calculateEGeometryPatternInfo, exportLabeledSvg, generateEGeometryPreview, generateEGeometrySvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
-import type { EGeometryPreviewDebugInfo, EdgeAssignment, EdgeSideRole, SvgDocumentModel } from './svgUtils';
+import type { EGeometryPreviewDebugInfo, EdgeAssignment, EdgeSideRole, Point, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
 
@@ -253,6 +253,9 @@ function getDefaultCornerDepth(materialThicknessMm: number) {
 const getAssignedConnectionId = (assignment: EdgeAssignment | undefined) => assignment?.connectionId;
 
 const formatCalculatedMm = (value: number) => `${Number(value.toFixed(2)).toString()} mm`;
+const formatCoordinate = (value: number) => Number(value.toFixed(4)).toString();
+const formatDebugPoint = (point: Point) => `(${formatCoordinate(point.x)}, ${formatCoordinate(point.y)})`;
+const formatDebugPointList = (points: Point[]) => points.length > 0 ? points.slice(0, 10).map(formatDebugPoint).join(' → ') : 'None';
 
 const cloneDefaultProperties = <P extends LabelPrefix>(prefix: P): ConnectionPropertiesByPrefix[P] => ({
   ...defaultConnectionProperties[prefix],
@@ -1132,12 +1135,15 @@ function App() {
                     <th>Edge</th>
                     <th>Label</th>
                     <th>Role</th>
+                    <th>Start x/y</th>
+                    <th>End x/y</th>
                     <th>Side</th>
                     <th>Inward</th>
                     <th>Length</th>
                     <th>Thickness</th>
                     <th>Finger</th>
-                    <th>Notches</th>
+                    <th>Point count</th>
+                    <th>First 10 points</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1146,12 +1152,15 @@ function App() {
                       <td>{info.edgeId}</td>
                       <td>{info.label}</td>
                       <td>{info.role}</td>
+                      <td>{formatDebugPoint(info.start)}</td>
+                      <td>{formatDebugPoint(info.end)}</td>
                       <td>{info.detectedSide}</td>
                       <td>{info.inwardDirection}</td>
                       <td>{formatCalculatedMm(info.edgeLengthMm)}</td>
                       <td>{formatCalculatedMm(info.materialThicknessMm)}</td>
                       <td>{formatCalculatedMm(info.fingerWidthMm)}</td>
-                      <td>{info.generatedNotchCount}</td>
+                      <td>{info.generatedPointCount}</td>
+                      <td className="debug-point-list">{formatDebugPointList(info.generatedPoints)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1203,6 +1212,16 @@ function App() {
                   {eGeometryPreviewPaths.map((pathData, index) => (
                     <path key={`${pathData}-${index}`} d={pathData} />
                   ))}
+                </g>
+              )}
+              {eGeometryPreviewDebugInfo.length > 0 && (
+                <g className="e-geometry-debug-point-layer" aria-label="Numbered E geometry debug points">
+                  {eGeometryPreviewDebugInfo.flatMap((info) => info.generatedPoints.map((point, index) => (
+                    <g key={`${info.edgeId}-debug-point-${index}`} transform={`translate(${point.x} ${point.y})`}>
+                      <circle r={5 / labelZoom} />
+                      <text dy={3 / labelZoom} fontSize={9 / labelZoom}>{index + 1}</text>
+                    </g>
+                  )))}
                 </g>
               )}
               <g className="edge-overlays">

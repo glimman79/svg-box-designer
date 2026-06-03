@@ -331,12 +331,15 @@ export type EGeometryPreviewDebugInfo = {
   edgeId: string;
   label: string;
   role: string;
+  start: Point;
+  end: Point;
   detectedSide: EdgeSide | 'unknown';
   inwardDirection: string;
   edgeLengthMm: number;
   materialThicknessMm: number;
   fingerWidthMm: number;
-  generatedNotchCount: number;
+  generatedPointCount: number;
+  generatedPoints: Point[];
   warning?: string;
 };
 
@@ -885,10 +888,12 @@ const generateSimpleEPreviewForEdge = (
   const side = detectAxisAlignedEdgeSide(edge, bounds);
   const label = getEPreviewLabel(assignment);
   const role = assignment.slotRole === 'tab' ? 'E-T' : 'E-S';
-  const baseDebugInfo: Omit<EGeometryPreviewDebugInfo, 'generatedNotchCount' | 'warning'> = {
+  const baseDebugInfo: Omit<EGeometryPreviewDebugInfo, 'generatedPointCount' | 'generatedPoints' | 'warning'> = {
     edgeId: edge.id,
     label,
     role,
+    start: edge.start,
+    end: edge.end,
     detectedSide: side ?? 'unknown',
     inwardDirection: side ? formatDirection(getSimplePreviewInwardDirection(side)) : 'unknown',
     edgeLengthMm: length,
@@ -901,7 +906,8 @@ const generateSimpleEPreviewForEdge = (
       paths: [],
       debugInfo: {
         ...baseDebugInfo,
-        generatedNotchCount: 0,
+        generatedPointCount: 0,
+        generatedPoints: [],
         warning: 'Could not detect a top, bottom, left, or right side for this edge; skipped preview notches for this edge.',
       },
     };
@@ -915,15 +921,15 @@ const generateSimpleEPreviewForEdge = (
       paths: [],
       debugInfo: {
         ...baseDebugInfo,
-        generatedNotchCount: 0,
+        generatedPointCount: 0,
+        generatedPoints: [],
         warning: 'Edge length, material thickness, or finger width is too small to generate preview notches.',
       },
     };
   }
 
-  const notchCount = patternInfo.segmentDistancesMm.slice(0, patternInfo.segmentCount)
-    .filter((_, intervalIndex) => shouldCutEPatternSegment(sideRole, intervalIndex))
-    .length;
+  const hasCutSegments = patternInfo.segmentDistancesMm.slice(0, patternInfo.segmentCount)
+    .some((_, intervalIndex) => shouldCutEPatternSegment(sideRole, intervalIndex));
   const polyline = buildNotchedEdgePolyline(edge, sideRole, properties, bounds);
   const path = polylinePointsToCommands(polyline).join(' ');
 
@@ -931,8 +937,9 @@ const generateSimpleEPreviewForEdge = (
     paths: [path],
     debugInfo: {
       ...baseDebugInfo,
-      generatedNotchCount: notchCount,
-      ...(polyline.length <= 2 && notchCount > 0
+      generatedPointCount: polyline.length,
+      generatedPoints: polyline,
+      ...(polyline.length <= 2 && hasCutSegments
         ? { warning: 'Preview stayed on the original edge because no inward panel depth was available.' }
         : {}),
     },
