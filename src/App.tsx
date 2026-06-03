@@ -623,7 +623,7 @@ function App() {
       setEGeometryPreviewPaths(preview.paths);
       setEGeometryPreviewDebugInfo(preview.debugInfo);
       setErrorMessage(preview.paths.length > 0
-        ? 'Showing simple E geometry preview overlay. Original SVG geometry is unchanged.'
+        ? 'Showing E notched edge preview overlay. Original SVG geometry is unchanged.'
         : 'No E preview notches were generated. Check the E preview debug output for skipped edges.');
     } catch (error) {
       setEGeometryPreviewPaths([]);
