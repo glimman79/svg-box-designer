@@ -111,6 +111,11 @@ button:disabled {
   background: #5eead4;
 }
 
+.button.active {
+  color: #ffffff;
+  background: #2563eb;
+}
+
 .button input {
   display: none;
 }
@@ -685,6 +690,10 @@ button:disabled {
   stroke-miterlimit: 2;
   stroke-width: 2.5;
   vector-effect: non-scaling-stroke;
+}
+
+.design-svg.is-preview-only .e-geometry-preview-layer path {
+  stroke-dasharray: none;
 }
 
 .e-preview-legend {
