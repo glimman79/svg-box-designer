@@ -1094,6 +1094,14 @@ function App() {
               Clear selected edge label
             </button>
           </div>
+
+          <div className="e-preview-legend" aria-label="E geometry preview legend" hidden={eGeometryPreviewPaths.length === 0}>
+            <h3>E preview legend</h3>
+            <div><span className="legend-line solid" aria-hidden="true" /> solid black = original SVG</div>
+            <div><span className="legend-line dashed" aria-hidden="true" /> dashed gray = E geometry preview</div>
+            <div><strong>E-T</strong> = tab side</div>
+            <div><strong>E-S</strong> = slot side</div>
+          </div>
         </aside>
 
         <section className="canvas-card">
@@ -1111,14 +1119,6 @@ function App() {
           </div>
 
           <div className="canvas-frame">
-            {eGeometryPreviewPaths.length > 0 && (
-              <div className="e-preview-legend" aria-label="E geometry preview legend">
-                <div><span className="legend-line solid" aria-hidden="true" /> solid black = original SVG</div>
-                <div><span className="legend-line dashed" aria-hidden="true" /> dashed gray = E geometry preview</div>
-                <div><strong>E-T</strong> = tab side</div>
-                <div><strong>E-S</strong> = slot side</div>
-              </div>
-            )}
             <svg
               ref={svgRef}
               className={`design-svg${isCanvasPanning ? ' is-panning' : ''}${eGeometryPreviewPaths.length > 0 ? ' has-e-preview' : ''}`}
