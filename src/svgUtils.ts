@@ -454,10 +454,6 @@ const getEdgeNormal = (edge: SvgEdge): Point => {
   };
 };
 
-type SourceGeometryContext = {
-  bounds: SourceBounds;
-};
-
 type EdgeSide = 'top' | 'bottom' | 'left' | 'right';
 
 export type EGeometryPreviewDebugInfo = {
@@ -505,15 +501,6 @@ const getEdgesBySourceBounds = (edges: SvgEdge[]) => {
       : { minX, maxX, minY, maxY };
 
     return boundsBySource;
-  }, {});
-};
-
-const getEdgesBySourceGeometryContext = (edges: SvgEdge[]) => {
-  const boundsBySource = getEdgesBySourceBounds(edges);
-
-  return Object.entries(boundsBySource).reduce<Record<string, SourceGeometryContext>>((contexts, [source, bounds]) => {
-    contexts[source] = { bounds };
-    return contexts;
   }, {});
 };
 
@@ -929,17 +916,19 @@ const polylinePointsToCommands = (points: Point[]) => points.map((point, index) 
   pointCommand(index === 0 ? 'M' : 'L', point)
 ));
 
-const generateInwardPocketJointCommands = (
+const generateAppliedEPreviewMatchingCommands = (
   edge: SvgEdge,
   connection: EGeometryConnectionDefinition,
-  context: SourceGeometryContext | undefined,
   role: EdgeSideRole,
 ) => {
-  const inwardDirection = getInwardDirection(edge, context?.bounds);
-  const depth = getMaxInwardPocketDepth(edge, inwardDirection, connection.properties.materialThicknessMm, context?.bounds);
+  const side = detectEPreviewSide(edge, edge.panelBounds);
+
+  if (!side) {
+    return [pointCommand('M', edge.start), pointCommand('L', edge.end)];
+  }
 
   return polylinePointsToCommands(
-    buildSteppedEPolyline(edge, connection.properties, inwardDirection, depth, role),
+    buildEPreviewPolyline(edge, side, connection.properties, role),
   );
 };
 
@@ -948,12 +937,11 @@ const getEdgePathSegment = (
   edgeAssignments: Record<string, EdgeAssignment>,
   connections: Record<string, EGeometryConnectionDefinition>,
   includeMove: boolean,
-  context: SourceGeometryContext | undefined,
 ): EdgePathSegment => {
   const assignment = edgeAssignments[edge.id];
   const connection = assignment ? connections[assignment.connectionId] : undefined;
   const commands = assignment?.slotRole && connection
-    ? generateInwardPocketJointCommands(edge, connection, context, assignment.slotRole)
+    ? generateAppliedEPreviewMatchingCommands(edge, connection, assignment.slotRole)
     : [pointCommand('M', edge.start), pointCommand('L', edge.end)];
 
   return {
@@ -1172,7 +1160,6 @@ export const generateEGeometrySvg = (
   const polyElements = [...svgElement.querySelectorAll('polyline, polygon')];
   const rectElements = [...svgElement.querySelectorAll('rect')];
   const pathElements = [...svgElement.querySelectorAll('path')];
-  const geometryContextsBySource = getEdgesBySourceGeometryContext(edges);
   let edgeIndex = 0;
   let generatedCount = 0;
 
@@ -1184,7 +1171,7 @@ export const generateEGeometrySvg = (
 
     replaceElementWithPath(
       line,
-      getEdgePathSegment(edge, edgeAssignments, connections, true, geometryContextsBySource[edge.source]).d,
+      getEdgePathSegment(edge, edgeAssignments, connections, true).d,
       ['x1', 'y1', 'x2', 'y2'],
     );
     generatedCount += 1;
@@ -1200,7 +1187,7 @@ export const generateEGeometrySvg = (
       return;
     }
 
-    const segments = shapeEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0, geometryContextsBySource[edge.source]).d);
+    const segments = shapeEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0).d);
     const closeCommand = shape.tagName.toLowerCase() === 'polygon' ? ' Z' : '';
     replaceElementWithPath(shape, `${segments.join(' ')}${closeCommand}`, ['points']);
     generatedCount += shapeEdges.filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections)).length;
@@ -1214,7 +1201,7 @@ export const generateEGeometrySvg = (
       return;
     }
 
-    const segments = rectEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0, geometryContextsBySource[edge.source]).d);
+    const segments = rectEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0).d);
     replaceElementWithPath(rect, `${segments.join(' ')} Z`, ['x', 'y', 'width', 'height', 'rx', 'ry']);
     generatedCount += rectEdges.filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections)).length;
   });
@@ -1228,7 +1215,7 @@ export const generateEGeometrySvg = (
       return;
     }
 
-    const segments = sourceEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0, geometryContextsBySource[edge.source]).d);
+    const segments = sourceEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0).d);
     path.setAttribute('d', segments.join(' '));
     applyTechnicalLineStyle(path);
     generatedCount += sourceEdges.filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections)).length;

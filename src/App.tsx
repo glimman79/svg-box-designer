@@ -659,7 +659,7 @@ function App() {
       setEdgeAssignments({});
       resetEGeometryPreview();
       setSelectedEdgeId(null);
-      setErrorMessage('Applied E geometry to the selected original E edges.');
+      setErrorMessage('Applied E geometry successfully.');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to apply E geometry.');
     }
