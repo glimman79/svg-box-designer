@@ -319,8 +319,15 @@ const getEdgeNormal = (edge: SvgEdge): Point => {
   };
 };
 
+type SourceBounds = { minX: number; maxX: number; minY: number; maxY: number };
+
+type SourceGeometryContext = {
+  bounds: SourceBounds;
+  inwardNormalSign?: 1 | -1;
+};
+
 const getEdgesBySourceBounds = (edges: SvgEdge[]) => {
-  return edges.reduce<Record<string, { minX: number; maxX: number; minY: number; maxY: number }>>((boundsBySource, edge) => {
+  return edges.reduce<Record<string, SourceBounds>>((boundsBySource, edge) => {
     const existing = boundsBySource[edge.source];
     const minX = Math.min(edge.start.x, edge.end.x);
     const maxX = Math.max(edge.start.x, edge.end.x);
@@ -340,9 +347,41 @@ const getEdgesBySourceBounds = (edges: SvgEdge[]) => {
   }, {});
 };
 
+const pointsAlmostEqual = (first: Point, second: Point) => (
+  Math.abs(first.x - second.x) <= 0.0001 && Math.abs(first.y - second.y) <= 0.0001
+);
+
+const getEdgesBySourceGeometryContext = (edges: SvgEdge[]) => {
+  const boundsBySource = getEdgesBySourceBounds(edges);
+  const edgesBySource = edges.reduce<Record<string, SvgEdge[]>>((groupedEdges, edge) => {
+    if (!groupedEdges[edge.source]) {
+      groupedEdges[edge.source] = [];
+    }
+
+    groupedEdges[edge.source].push(edge);
+    return groupedEdges;
+  }, {});
+
+  return Object.entries(boundsBySource).reduce<Record<string, SourceGeometryContext>>((contexts, [source, bounds]) => {
+    const sourceEdges = edgesBySource[source] ?? [];
+    const isClosed = sourceEdges.length > 2
+      && sourceEdges.every((edge, index) => pointsAlmostEqual(edge.end, sourceEdges[(index + 1) % sourceEdges.length].start));
+    const signedArea = isClosed
+      ? sourceEdges.reduce((area, edge) => area + edge.start.x * edge.end.y - edge.end.x * edge.start.y, 0) / 2
+      : 0;
+
+    contexts[source] = {
+      bounds,
+      inwardNormalSign: Math.abs(signedArea) > 0.0001 ? (signedArea > 0 ? 1 : -1) : undefined,
+    };
+
+    return contexts;
+  }, {});
+};
+
 const getInwardLabelDirection = (
   edge: SvgEdge,
-  bounds: { minX: number; maxX: number; minY: number; maxY: number } | undefined,
+  bounds: SourceBounds | undefined,
 ): Point => {
   const center = midpoint(edge);
   const dx = edge.end.x - edge.start.x;
@@ -567,10 +606,49 @@ export const calculateEGeometryPatternInfo = (
   };
 };
 
+const getInwardEdgeNormal = (
+  edge: SvgEdge,
+  context: SourceGeometryContext | undefined,
+): Point => {
+  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+
+  if (length === 0) {
+    return { x: 0, y: 0 };
+  }
+
+  const unitX = (edge.end.x - edge.start.x) / length;
+  const unitY = (edge.end.y - edge.start.y) / length;
+  const normal = { x: -unitY, y: unitX };
+
+  if (!context) {
+    return normal;
+  }
+
+  if (context.inwardNormalSign) {
+    return { x: normal.x * context.inwardNormalSign, y: normal.y * context.inwardNormalSign };
+  }
+
+  const center = midpoint(edge);
+  const sourceCenter = {
+    x: (context.bounds.minX + context.bounds.maxX) / 2,
+    y: (context.bounds.minY + context.bounds.maxY) / 2,
+  };
+  const towardSourceCenter = { x: sourceCenter.x - center.x, y: sourceCenter.y - center.y };
+  const dot = normal.x * towardSourceCenter.x + normal.y * towardSourceCenter.y;
+  const epsilon = 0.0001;
+
+  if (Math.abs(dot) <= epsilon) {
+    return normal;
+  }
+
+  return dot > 0 ? normal : { x: -normal.x, y: -normal.y };
+};
+
 const generateFingerJointCommands = (
   edge: SvgEdge,
   assignment: EdgeAssignment,
   connection: EGeometryConnectionDefinition,
+  context: SourceGeometryContext | undefined,
 ) => {
   const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
   const properties = connection.properties;
@@ -585,13 +663,9 @@ const generateFingerJointCommands = (
     return [pointCommand('M', edge.start), pointCommand('L', edge.end)];
   }
 
-  const unitX = (edge.end.x - edge.start.x) / length;
-  const unitY = (edge.end.y - edge.start.y) / length;
-  const normal = { x: -unitY, y: unitX };
+  const normal = getInwardEdgeNormal(edge, context);
   const role = assignment.slotRole ?? 'tab';
-  const clearance = Math.max(0, properties.kerfMm + properties.playMm);
-  const depth = Math.max(0, properties.materialThicknessMm + (role === 'slot' ? clearance : 0));
-  const direction = role === 'tab' ? 1 : -1;
+  const depth = Math.max(0, properties.materialThicknessMm);
   const commands = [pointCommand('M', edge.start)];
   let lastPoint = edge.start;
 
@@ -613,12 +687,10 @@ const generateFingerJointCommands = (
     const distance = patternInfo.segmentDistancesMm[intervalIndex];
     const nextDistance = patternInfo.segmentDistancesMm[intervalIndex + 1];
     const isEvenPatternSegment = intervalIndex % 2 === 0;
-    const isTabSegment = role === 'tab' ? isEvenPatternSegment : !isEvenPatternSegment;
-    const isGapSegment = !isTabSegment;
-    const shouldStepOffEdge = role === 'tab' ? isTabSegment : isGapSegment;
+    const shouldCutInward = role === 'tab' ? !isEvenPatternSegment : isEvenPatternSegment;
 
-    if (shouldStepOffEdge) {
-      const offset = direction * depth;
+    if (shouldCutInward) {
+      const offset = depth;
 
       addLineAt(distance);
       addLineAt(distance, offset);
@@ -639,11 +711,12 @@ const getEdgePathSegment = (
   edgeAssignments: Record<string, EdgeAssignment>,
   connections: Record<string, EGeometryConnectionDefinition>,
   includeMove: boolean,
+  context: SourceGeometryContext | undefined,
 ): EdgePathSegment => {
   const assignment = edgeAssignments[edge.id];
   const connection = assignment ? connections[assignment.connectionId] : undefined;
   const commands = assignment?.slotRole && connection
-    ? generateFingerJointCommands(edge, assignment, connection)
+    ? generateFingerJointCommands(edge, assignment, connection, context)
     : [pointCommand('M', edge.start), pointCommand('L', edge.end)];
 
   return {
@@ -678,9 +751,10 @@ export const generateEGeometryPreviewPaths = (
   edges: SvgEdge[],
   connections: Record<string, EGeometryConnectionDefinition>,
 ) => {
+  const geometryContextsBySource = getEdgesBySourceGeometryContext(edges);
   const previewPaths = edges
     .filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections))
-    .map((edge) => getEdgePathSegment(edge, edgeAssignments, connections, true).d);
+    .map((edge) => getEdgePathSegment(edge, edgeAssignments, connections, true, geometryContextsBySource[edge.source]).d);
 
   if (previewPaths.length === 0) {
     throw new Error('Assign at least one E-T or E-S edge before previewing E geometry.');
@@ -706,6 +780,7 @@ export const generateEGeometrySvg = (
   const polyElements = [...svgElement.querySelectorAll('polyline, polygon')];
   const rectElements = [...svgElement.querySelectorAll('rect')];
   const pathElements = [...svgElement.querySelectorAll('path')];
+  const geometryContextsBySource = getEdgesBySourceGeometryContext(edges);
   let edgeIndex = 0;
   let generatedCount = 0;
 
@@ -717,7 +792,7 @@ export const generateEGeometrySvg = (
 
     replaceElementWithPath(
       line,
-      getEdgePathSegment(edge, edgeAssignments, connections, true).d,
+      getEdgePathSegment(edge, edgeAssignments, connections, true, geometryContextsBySource[edge.source]).d,
       ['x1', 'y1', 'x2', 'y2'],
     );
     generatedCount += 1;
@@ -733,7 +808,7 @@ export const generateEGeometrySvg = (
       return;
     }
 
-    const segments = shapeEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0).d);
+    const segments = shapeEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0, geometryContextsBySource[edge.source]).d);
     const closeCommand = shape.tagName.toLowerCase() === 'polygon' ? ' Z' : '';
     replaceElementWithPath(shape, `${segments.join(' ')}${closeCommand}`, ['points']);
     generatedCount += shapeEdges.filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections)).length;
@@ -747,7 +822,7 @@ export const generateEGeometrySvg = (
       return;
     }
 
-    const segments = rectEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0).d);
+    const segments = rectEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0, geometryContextsBySource[edge.source]).d);
     replaceElementWithPath(rect, `${segments.join(' ')} Z`, ['x', 'y', 'width', 'height', 'rx', 'ry']);
     generatedCount += rectEdges.filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections)).length;
   });
@@ -761,7 +836,7 @@ export const generateEGeometrySvg = (
       return;
     }
 
-    const segments = sourceEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0).d);
+    const segments = sourceEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0, geometryContextsBySource[edge.source]).d);
     path.setAttribute('d', segments.join(' '));
     applyTechnicalLineStyle(path);
     generatedCount += sourceEdges.filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections)).length;
