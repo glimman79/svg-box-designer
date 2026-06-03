@@ -656,6 +656,7 @@ const svgNamespace = 'http://www.w3.org/2000/svg';
 type EdgePathSegment = {
   edge: SvgEdge;
   d: string;
+  points: Point[];
 };
 
 const formatNumber = (value: number) => Number(value.toFixed(4)).toString();
@@ -666,6 +667,8 @@ const pointAtDistance = (edge: SvgEdge, distance: number, length: number): Point
 });
 
 const pointCommand = (command: 'M' | 'L', point: Point) => `${command} ${formatNumber(point.x)} ${formatNumber(point.y)}`;
+
+const pointDistance = (first: Point, second: Point) => Math.hypot(first.x - second.x, first.y - second.y);
 
 const cloneGeometryAttributes = (from: Element, to: Element, blockedAttributes: string[]) => {
   const blocked = new Set(blockedAttributes);
@@ -916,7 +919,7 @@ const polylinePointsToCommands = (points: Point[]) => points.map((point, index) 
   pointCommand(index === 0 ? 'M' : 'L', point)
 ));
 
-const generateAppliedEPreviewMatchingCommands = (
+const getAppliedEPreviewMatchingPoints = (
   edge: SvgEdge,
   connection: EGeometryConnectionDefinition,
   role: EdgeSideRole,
@@ -924,12 +927,10 @@ const generateAppliedEPreviewMatchingCommands = (
   const side = detectEPreviewSide(edge, edge.panelBounds);
 
   if (!side) {
-    return [pointCommand('M', edge.start), pointCommand('L', edge.end)];
+    return [edge.start, edge.end];
   }
 
-  return polylinePointsToCommands(
-    buildEPreviewPolyline(edge, side, connection.properties, role),
-  );
+  return buildEPreviewPolyline(edge, side, connection.properties, role);
 };
 
 const getEdgePathSegment = (
@@ -940,13 +941,15 @@ const getEdgePathSegment = (
 ): EdgePathSegment => {
   const assignment = edgeAssignments[edge.id];
   const connection = assignment ? connections[assignment.connectionId] : undefined;
-  const commands = assignment?.slotRole && connection
-    ? generateAppliedEPreviewMatchingCommands(edge, connection, assignment.slotRole)
-    : [pointCommand('M', edge.start), pointCommand('L', edge.end)];
+  const points = assignment?.slotRole && connection
+    ? getAppliedEPreviewMatchingPoints(edge, connection, assignment.slotRole)
+    : [edge.start, edge.end];
+  const commands = polylinePointsToCommands(points);
 
   return {
     edge,
     d: (includeMove ? commands : commands.slice(1)).join(' '),
+    points,
   };
 };
 
@@ -1328,6 +1331,55 @@ const getFirstDocumentOrderedElement = (elements: Element[]) => elements
     return 0;
   })[0];
 
+const logAppliedEPanelDebug = (segments: EdgePathSegment[], records: OrientedEdgeRecord[]) => {
+  const firstGeneratedPoint = segments[0]?.points[0];
+  const finalGeneratedPoint = segments[segments.length - 1]?.points.at(-1);
+  const finalPointEqualsFirstPoint = Boolean(
+    firstGeneratedPoint
+    && finalGeneratedPoint
+    && pointsAreEqual(finalGeneratedPoint, firstGeneratedPoint),
+  );
+
+  console.debug('[Apply E Geometry] panel debug', {
+    edgeCount: segments.length,
+    firstGeneratedPoint,
+    finalGeneratedPoint,
+    finalPointEqualsFirstPointBeforeZ: finalPointEqualsFirstPoint,
+  });
+
+  segments.forEach((segment, index) => {
+    const nextEdge = records[(index + 1) % records.length]?.edge;
+    const generatedFirstPoint = segment.points[0];
+    const generatedLastPoint = segment.points.at(-1);
+
+    console.debug('[Apply E Geometry] oriented edge debug', {
+      edgeId: segment.edge.id,
+      edgeStart: segment.edge.start,
+      edgeEnd: segment.edge.end,
+      generatedFirstPoint,
+      generatedLastPoint,
+      nextEdgeStart: nextEdge?.start,
+      generatedLastPointEqualsNextEdgeStart: Boolean(
+        generatedLastPoint
+        && nextEdge
+        && pointsAreEqual(generatedLastPoint, nextEdge.start),
+      ),
+    });
+  });
+
+  if (firstGeneratedPoint && finalGeneratedPoint) {
+    const closingDistanceMm = pointDistance(finalGeneratedPoint, firstGeneratedPoint);
+
+    if (closingDistanceMm > 0.01) {
+      console.warn('[Apply E Geometry] closing Z would create visible segment longer than 0.01 mm', {
+        closingDistanceMm,
+        finalGeneratedPoint,
+        firstGeneratedPoint,
+      });
+    }
+  }
+};
+
 const replaceConnectedPanelWithPath = (
   records: OrientedEdgeRecord[],
   duplicateRecords: OriginalEdgeRecord[],
@@ -1341,7 +1393,9 @@ const replaceConnectedPanelWithPath = (
     return false;
   }
 
-  const pathData = `${records.map(({ edge }, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0).d).join(' ')} Z`;
+  const segments = records.map(({ edge }, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0));
+  logAppliedEPanelDebug(segments, records);
+  const pathData = `${segments.map((segment) => segment.d).join(' ')} Z`;
   const path = firstElement.ownerDocument.createElementNS(svgNamespace, 'path');
   cloneGeometryAttributes(firstElement, path, duplicateRecords.find((record) => record.element === firstElement)?.blockedAttributes ?? []);
   path.setAttribute('d', pathData);
