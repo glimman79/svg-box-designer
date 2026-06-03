@@ -319,7 +319,7 @@ const getEdgeNormal = (edge: SvgEdge): Point => {
   };
 };
 
-type SourceBounds = { minX: number; maxX: number; minY: number; maxY: number };
+export type SourceBounds = { minX: number; maxX: number; minY: number; maxY: number };
 
 type SourceGeometryContext = {
   bounds: SourceBounds;
@@ -706,71 +706,83 @@ const getMaxInwardPocketDepth = (
   return Math.max(0, Math.min(requestedDepth, ...maxDepths));
 };
 
-const generateInwardPocketJointCommands = (
+const pointsAreEqual = (first: Point, second: Point) => (
+  Math.abs(first.x - second.x) < 0.0001 && Math.abs(first.y - second.y) < 0.0001
+);
+
+const shouldCutEPatternSegment = (role: EdgeSideRole, segmentIndex: number) => {
+  const segmentNumber = segmentIndex + 1;
+  const isEvenSegment = segmentNumber % 2 === 0;
+  return role === 'tab' ? isEvenSegment : !isEvenSegment;
+};
+
+export const buildNotchedEdgePolyline = (
   edge: SvgEdge,
-  assignment: EdgeAssignment,
-  connection: EGeometryConnectionDefinition,
-  context: SourceGeometryContext | undefined,
-) => {
+  role: EdgeSideRole,
+  settings: EGeometryConnectionProperties,
+  panelBounds: SourceBounds | undefined,
+): Point[] => {
   const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
-  const properties = connection.properties;
-  const patternInfo = calculateEGeometryPatternInfo(length, properties);
+  const patternInfo = calculateEGeometryPatternInfo(length, settings);
 
   if (
     length <= 0
     || patternInfo.segmentCount <= 0
     || patternInfo.segmentWidthMm <= 0
-    || properties.materialThicknessMm <= 0
+    || settings.materialThicknessMm <= 0
   ) {
-    return [pointCommand('M', edge.start), pointCommand('L', edge.end)];
+    return [edge.start, edge.end];
   }
 
-  const inwardDirection = getInwardDirection(edge, context?.bounds);
-  const role = assignment.slotRole ?? 'tab';
-  const depth = getMaxInwardPocketDepth(edge, inwardDirection, properties.materialThicknessMm, context?.bounds);
-  const commands = [pointCommand('M', edge.start)];
-  let lastPoint = edge.start;
+  const inwardDirection = getInwardDirection(edge, panelBounds);
+  const depth = getMaxInwardPocketDepth(edge, inwardDirection, settings.materialThicknessMm, panelBounds);
+  const points: Point[] = [edge.start];
 
-  const addLineAt = (distance: number, offset = 0) => {
+  const addPointAt = (distance: number, offset = 0) => {
     const base = pointAtDistance(edge, distance, length);
     const nextPoint = {
       x: base.x + inwardDirection.x * Math.max(0, offset),
       y: base.y + inwardDirection.y * Math.max(0, offset),
     };
 
-    if (Math.abs(nextPoint.x - lastPoint.x) < 0.0001 && Math.abs(nextPoint.y - lastPoint.y) < 0.0001) {
-      return;
+    if (!pointsAreEqual(nextPoint, points[points.length - 1])) {
+      points.push(nextPoint);
     }
-
-    commands.push(pointCommand('L', nextPoint));
-    lastPoint = nextPoint;
   };
 
-  addLineAt(patternInfo.startDistanceMm);
+  addPointAt(patternInfo.startDistanceMm);
 
   for (let intervalIndex = 0; intervalIndex < patternInfo.segmentCount; intervalIndex += 1) {
     const distance = patternInfo.segmentDistancesMm[intervalIndex];
     const nextDistance = patternInfo.segmentDistancesMm[intervalIndex + 1];
-    const segmentNumber = intervalIndex + 1;
-    const isEvenSegment = segmentNumber % 2 === 0;
-    const shouldCutInward = role === 'tab' ? isEvenSegment : !isEvenSegment;
 
-    if (shouldCutInward) {
-      const offset = depth;
-
-      addLineAt(distance);
-      addLineAt(distance, offset);
-      addLineAt(nextDistance, offset);
-      addLineAt(nextDistance);
+    if (shouldCutEPatternSegment(role, intervalIndex)) {
+      addPointAt(distance);
+      addPointAt(distance, depth);
+      addPointAt(nextDistance, depth);
+      addPointAt(nextDistance);
     } else {
-      addLineAt(nextDistance);
+      addPointAt(nextDistance);
     }
   }
 
-  addLineAt(patternInfo.endDistanceMm);
-  addLineAt(length);
-  return commands;
+  addPointAt(patternInfo.endDistanceMm);
+  addPointAt(length);
+  return points;
 };
+
+const polylinePointsToCommands = (points: Point[]) => points.map((point, index) => (
+  pointCommand(index === 0 ? 'M' : 'L', point)
+));
+
+const generateInwardPocketJointCommands = (
+  edge: SvgEdge,
+  assignment: EdgeAssignment,
+  connection: EGeometryConnectionDefinition,
+  context: SourceGeometryContext | undefined,
+) => polylinePointsToCommands(
+  buildNotchedEdgePolyline(edge, assignment.slotRole ?? 'tab', connection.properties, context?.bounds),
+);
 
 const getEdgePathSegment = (
   edge: SvgEdge,
@@ -896,10 +908,9 @@ const generateSimpleEPreviewForEdge = (
   }
 
   const patternInfo = calculateEGeometryPatternInfo(length, properties);
-  const depth = Math.max(0, properties.materialThicknessMm);
-  const inwardDirection = getSimplePreviewInwardDirection(side);
+  const sideRole = assignment.slotRole ?? 'tab';
 
-  if (length <= 0 || depth <= 0 || properties.fingerWidthMm <= 0 || patternInfo.segmentCount <= 0) {
+  if (length <= 0 || properties.materialThicknessMm <= 0 || properties.fingerWidthMm <= 0 || patternInfo.segmentCount <= 0) {
     return {
       paths: [],
       debugInfo: {
@@ -910,41 +921,20 @@ const generateSimpleEPreviewForEdge = (
     };
   }
 
-  const paths: string[] = [];
-
-  for (let intervalIndex = 0; intervalIndex < patternInfo.segmentCount; intervalIndex += 1) {
-    const segmentNumber = intervalIndex + 1;
-    const isEvenSegment = segmentNumber % 2 === 0;
-    const shouldCutInward = assignment.slotRole === 'tab' ? isEvenSegment : !isEvenSegment;
-
-    if (!shouldCutInward) {
-      continue;
-    }
-
-    const start = pointAtDistance(edge, patternInfo.segmentDistancesMm[intervalIndex], length);
-    const end = pointAtDistance(edge, patternInfo.segmentDistancesMm[intervalIndex + 1], length);
-    const inwardStart = {
-      x: start.x + inwardDirection.x * depth,
-      y: start.y + inwardDirection.y * depth,
-    };
-    const inwardEnd = {
-      x: end.x + inwardDirection.x * depth,
-      y: end.y + inwardDirection.y * depth,
-    };
-
-    paths.push([
-      pointCommand('M', start),
-      pointCommand('L', inwardStart),
-      pointCommand('L', inwardEnd),
-      pointCommand('L', end),
-    ].join(' '));
-  }
+  const notchCount = patternInfo.segmentDistancesMm.slice(0, patternInfo.segmentCount)
+    .filter((_, intervalIndex) => shouldCutEPatternSegment(sideRole, intervalIndex))
+    .length;
+  const polyline = buildNotchedEdgePolyline(edge, sideRole, properties, bounds);
+  const path = polylinePointsToCommands(polyline).join(' ');
 
   return {
-    paths,
+    paths: [path],
     debugInfo: {
       ...baseDebugInfo,
-      generatedNotchCount: paths.length,
+      generatedNotchCount: notchCount,
+      ...(polyline.length <= 2 && notchCount > 0
+        ? { warning: 'Preview stayed on the original edge because no inward panel depth was available.' }
+        : {}),
     },
   };
 };
