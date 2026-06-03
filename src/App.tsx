@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { calculateEGeometryPatternInfo, exportLabeledSvg, generateEGeometrySvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
+import { calculateEGeometryPatternInfo, exportLabeledSvg, generateEGeometryPreviewPaths, generateEGeometrySvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgeSideRole, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -303,6 +303,7 @@ function App() {
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
+  const [eGeometryPreviewPaths, setEGeometryPreviewPaths] = useState<string[]>([]);
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const panStateRef = useRef<PanState | null>(null);
@@ -340,6 +341,7 @@ function App() {
     setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
     setEdgeAssignments({});
     setSelectedEdgeId(null);
+    setEGeometryPreviewPaths([]);
     setErrorMessage('');
     event.target.value = '';
   };
@@ -401,6 +403,7 @@ function App() {
   };
 
   const clearEdgeLabel = (edgeId: string) => {
+    setEGeometryPreviewPaths([]);
     setEdgeAssignments((currentAssignments) => {
       const nextAssignments = { ...currentAssignments };
       delete nextAssignments[edgeId];
@@ -411,6 +414,7 @@ function App() {
 
   const assignSelectedLabelToEdge = (edgeId: string) => {
     setSelectedEdgeId(edgeId);
+    setEGeometryPreviewPaths([]);
 
     if (!selectedLabelId) {
       setErrorMessage('Create and select a connection before clicking an edge.');
@@ -461,6 +465,7 @@ function App() {
   };
 
   const updateEdgeProperties = (updates: Partial<EdgeConnectionProperties>) => {
+    setEGeometryPreviewPaths([]);
     if (!selectedConnection || selectedConnection.prefix !== 'E') {
       return;
     }
@@ -521,6 +526,7 @@ function App() {
   };
 
   const updateEdgeSideRole = (edgeId: string, slotRole: EdgeSideRole) => {
+    setEGeometryPreviewPaths([]);
     if (!selectedConnection || (selectedConnection.prefix !== 'E' && selectedConnection.prefix !== 'S')) {
       return;
     }
@@ -596,22 +602,38 @@ function App() {
     }));
   };
 
-  const generateEGeometryPreview = () => {
-    const eConnections = Object.fromEntries(
-      Object.entries(connections).filter(([, connection]) => connection.prefix === 'E'),
-    ) as Record<string, EdgeConnectionDefinition>;
+  const getEConnections = () => Object.fromEntries(
+    Object.entries(connections).filter(([, connection]) => connection.prefix === 'E'),
+  ) as Record<string, EdgeConnectionDefinition>;
 
+  const previewEGeometry = () => {
     try {
-      const output = generateEGeometrySvg(svgModel.content, edgeAssignments, svgModel.edges, eConnections);
+      setEGeometryPreviewPaths(generateEGeometryPreviewPaths(edgeAssignments, svgModel.edges, getEConnections()));
+      setErrorMessage('Showing E geometry preview overlay. Original SVG geometry is unchanged.');
+    } catch (error) {
+      setEGeometryPreviewPaths([]);
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to preview E geometry.');
+    }
+  };
+
+  const applyEGeometry = () => {
+    try {
+      const output = generateEGeometrySvg(svgModel.content, edgeAssignments, svgModel.edges, getEConnections());
       const parsedSvg = parseSvgDocument(output);
       setSvgModel(parsedSvg);
       setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
       setEdgeAssignments({});
+      setEGeometryPreviewPaths([]);
       setSelectedEdgeId(null);
-      setErrorMessage('Generated E geometry preview. Assignments were cleared because the original straight edges were replaced.');
+      setErrorMessage('Applied E geometry to the selected original E edges.');
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to generate E geometry.');
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to apply E geometry.');
     }
+  };
+
+  const clearEGeometryPreview = () => {
+    setEGeometryPreviewPaths([]);
+    setErrorMessage('Cleared E geometry preview. Original SVG geometry is unchanged.');
   };
 
   const exportSvg = () => {
@@ -976,8 +998,14 @@ function App() {
             Import SVG
             <input type="file" accept=".svg,image/svg+xml" onChange={handleImportWithError} />
           </label>
-          <button className="button" type="button" onClick={generateEGeometryPreview}>
-            Generate E Geometry
+          <button className="button" type="button" onClick={previewEGeometry}>
+            Preview E Geometry
+          </button>
+          <button className="button" type="button" onClick={applyEGeometry}>
+            Apply E Geometry
+          </button>
+          <button className="button" type="button" onClick={clearEGeometryPreview} disabled={eGeometryPreviewPaths.length === 0}>
+            Clear Preview
           </button>
           <button className="button" type="button" onClick={exportSvg} disabled={Object.keys(edgeAssignments).length === 0}>
             Export SVG
@@ -1083,9 +1111,17 @@ function App() {
           </div>
 
           <div className="canvas-frame">
+            {eGeometryPreviewPaths.length > 0 && (
+              <div className="e-preview-legend" aria-label="E geometry preview legend">
+                <div><span className="legend-line solid" aria-hidden="true" /> solid black = original SVG</div>
+                <div><span className="legend-line dashed" aria-hidden="true" /> dashed gray = E geometry preview</div>
+                <div><strong>E-T</strong> = tab side</div>
+                <div><strong>E-S</strong> = slot side</div>
+              </div>
+            )}
             <svg
               ref={svgRef}
-              className={`design-svg${isCanvasPanning ? ' is-panning' : ''}`}
+              className={`design-svg${isCanvasPanning ? ' is-panning' : ''}${eGeometryPreviewPaths.length > 0 ? ' has-e-preview' : ''}`}
               viewBox={formatViewBox(canvasViewBox)}
               role="img"
               aria-label="Imported SVG with selectable edges"
@@ -1097,6 +1133,13 @@ function App() {
               onPointerLeave={handleCanvasPointerLeave}
             >
               <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
+              {eGeometryPreviewPaths.length > 0 && (
+                <g className="e-geometry-preview-layer" aria-label="E geometry preview overlay">
+                  {eGeometryPreviewPaths.map((pathData, index) => (
+                    <path key={`${pathData}-${index}`} d={pathData} />
+                  ))}
+                </g>
+              )}
               <g className="edge-overlays">
                 {svgModel.edges.map((edge) => {
                   const assignment = edgeAssignments[edge.id];
