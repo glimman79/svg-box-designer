@@ -618,7 +618,31 @@ const getEdgeSide = (edge: SvgEdge, bounds: SourceBounds | undefined): EdgeSide 
   return distanceToSide.left <= distanceToSide.right ? 'left' : 'right';
 };
 
-const getInwardEdgeNormal = (side: EdgeSide | undefined, edge: SvgEdge): Point => {
+const getInwardEdgeNormal = (side: EdgeSide | undefined, edge: SvgEdge, bounds: SourceBounds | undefined): Point => {
+  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+
+  if (length === 0) {
+    return { x: 0, y: 0 };
+  }
+
+  const leftNormal = getEdgeNormal(edge);
+  const rightNormal = { x: -leftNormal.x, y: -leftNormal.y };
+
+  if (bounds && (bounds.maxX - bounds.minX > 0.0001 || bounds.maxY - bounds.minY > 0.0001)) {
+    const center = midpoint(edge);
+    const panelCenter = {
+      x: (bounds.minX + bounds.maxX) / 2,
+      y: (bounds.minY + bounds.maxY) / 2,
+    };
+    const towardPanel = { x: panelCenter.x - center.x, y: panelCenter.y - center.y };
+    const leftDot = leftNormal.x * towardPanel.x + leftNormal.y * towardPanel.y;
+    const rightDot = rightNormal.x * towardPanel.x + rightNormal.y * towardPanel.y;
+
+    if (Math.max(leftDot, rightDot) > 0.0001) {
+      return leftDot >= rightDot ? leftNormal : rightNormal;
+    }
+  }
+
   if (side === 'top') {
     return { x: 0, y: 1 };
   }
@@ -635,37 +659,51 @@ const getInwardEdgeNormal = (side: EdgeSide | undefined, edge: SvgEdge): Point =
     return { x: -1, y: 0 };
   }
 
-  return getEdgeNormal(edge);
+  return leftNormal;
 };
 
-const clampInwardOffset = (base: Point, offset: number, side: EdgeSide | undefined, bounds: SourceBounds | undefined) => {
-  if (!bounds || offset <= 0) {
-    return Math.max(0, offset);
+const getMaxInwardPocketDepth = (
+  edge: SvgEdge,
+  normal: Point,
+  requestedDepth: number,
+  bounds: SourceBounds | undefined,
+) => {
+  if (!bounds || requestedDepth <= 0) {
+    return Math.max(0, requestedDepth);
   }
 
-  const hasHeight = bounds.maxY - bounds.minY > 0.0001;
-  const hasWidth = bounds.maxX - bounds.minX > 0.0001;
+  const normalAxisSpan = Math.abs(normal.x) * (bounds.maxX - bounds.minX) + Math.abs(normal.y) * (bounds.maxY - bounds.minY);
 
-  if (side === 'top' && hasHeight) {
-    return Math.max(0, Math.min(offset, bounds.maxY - base.y));
+  if (normalAxisSpan <= 0.0001) {
+    return Math.max(0, requestedDepth);
   }
 
-  if (side === 'bottom' && hasHeight) {
-    return Math.max(0, Math.min(offset, base.y - bounds.minY));
+  const maxDepths = [edge.start, edge.end].flatMap((point) => {
+    const axisLimits: number[] = [];
+
+    if (normal.x > 0.0001) {
+      axisLimits.push((bounds.maxX - point.x) / normal.x);
+    } else if (normal.x < -0.0001) {
+      axisLimits.push((bounds.minX - point.x) / normal.x);
+    }
+
+    if (normal.y > 0.0001) {
+      axisLimits.push((bounds.maxY - point.y) / normal.y);
+    } else if (normal.y < -0.0001) {
+      axisLimits.push((bounds.minY - point.y) / normal.y);
+    }
+
+    return axisLimits.filter((value) => Number.isFinite(value) && value >= 0);
+  });
+
+  if (maxDepths.length === 0) {
+    return Math.max(0, requestedDepth);
   }
 
-  if (side === 'left' && hasWidth) {
-    return Math.max(0, Math.min(offset, bounds.maxX - base.x));
-  }
-
-  if (side === 'right' && hasWidth) {
-    return Math.max(0, Math.min(offset, base.x - bounds.minX));
-  }
-
-  return Math.max(0, offset);
+  return Math.max(0, Math.min(requestedDepth, ...maxDepths));
 };
 
-const generateFingerJointCommands = (
+const generateInwardPocketJointCommands = (
   edge: SvgEdge,
   assignment: EdgeAssignment,
   connection: EGeometryConnectionDefinition,
@@ -685,16 +723,15 @@ const generateFingerJointCommands = (
   }
 
   const side = getEdgeSide(edge, context?.bounds);
-  const normal = getInwardEdgeNormal(side, edge);
+  const normal = getInwardEdgeNormal(side, edge, context?.bounds);
   const role = assignment.slotRole ?? 'tab';
-  const depth = Math.max(0, properties.materialThicknessMm);
+  const depth = getMaxInwardPocketDepth(edge, normal, properties.materialThicknessMm, context?.bounds);
   const commands = [pointCommand('M', edge.start)];
   let lastPoint = edge.start;
 
   const addLineAt = (distance: number, offset = 0) => {
     const base = pointAtDistance(edge, distance, length);
-    const inwardOffset = clampInwardOffset(base, offset, side, context?.bounds);
-    const nextPoint = { x: base.x + normal.x * inwardOffset, y: base.y + normal.y * inwardOffset };
+    const nextPoint = { x: base.x + normal.x * Math.max(0, offset), y: base.y + normal.y * Math.max(0, offset) };
 
     if (Math.abs(nextPoint.x - lastPoint.x) < 0.0001 && Math.abs(nextPoint.y - lastPoint.y) < 0.0001) {
       return;
@@ -739,7 +776,7 @@ const getEdgePathSegment = (
   const assignment = edgeAssignments[edge.id];
   const connection = assignment ? connections[assignment.connectionId] : undefined;
   const commands = assignment?.slotRole && connection
-    ? generateFingerJointCommands(edge, assignment, connection, context)
+    ? generateInwardPocketJointCommands(edge, assignment, connection, context)
     : [pointCommand('M', edge.start), pointCommand('L', edge.end)];
 
   return {
