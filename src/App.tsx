@@ -1159,6 +1159,10 @@ function App() {
                     <th>Dist minY</th>
                     <th>Dist maxY</th>
                     <th>Length</th>
+                    <th>First pocket start</th>
+                    <th>First pocket end</th>
+                    <th>Last pocket start</th>
+                    <th>Last pocket end</th>
                     <th>Thickness</th>
                     <th>Tab size</th>
                     <th>Pattern</th>
@@ -1182,6 +1186,10 @@ function App() {
                       <td>{formatOptionalCalculatedMm(info.distanceToPanelMinY)}</td>
                       <td>{formatOptionalCalculatedMm(info.distanceToPanelMaxY)}</td>
                       <td>{formatCalculatedMm(info.edgeLengthMm)}</td>
+                      <td>{formatOptionalCalculatedMm(info.firstPocketStartDistanceMm)}</td>
+                      <td>{formatOptionalCalculatedMm(info.firstPocketEndDistanceMm)}</td>
+                      <td>{formatOptionalCalculatedMm(info.lastPocketStartDistanceMm)}</td>
+                      <td>{formatOptionalCalculatedMm(info.lastPocketEndDistanceMm)}</td>
                       <td>{formatCalculatedMm(info.materialThicknessMm)}</td>
                       <td>{formatCalculatedMm(info.fingerWidthMm)}</td>
                       <td>{info.patternPreview ? `${info.label}: ${info.patternPreview}` : '—'}</td>

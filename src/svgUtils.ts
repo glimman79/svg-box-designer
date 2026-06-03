@@ -470,6 +470,10 @@ export type EGeometryPreviewDebugInfo = {
   distanceToPanelMinY?: number;
   distanceToPanelMaxY?: number;
   edgeLengthMm: number;
+  firstPocketStartDistanceMm?: number;
+  firstPocketEndDistanceMm?: number;
+  lastPocketStartDistanceMm?: number;
+  lastPocketEndDistanceMm?: number;
   materialThicknessMm: number;
   fingerWidthMm: number;
   patternPreview: string;
@@ -851,6 +855,32 @@ const getEPatternPreviewString = (segmentCount: number, role: EdgeSideRole) => (
   )).join(', ')
 );
 
+const getEPatternPocketDistanceSummary = (
+  patternInfo: EGeometryPatternInfo,
+  role: EdgeSideRole,
+) => {
+  const pocketSegments = patternInfo.segmentDistancesMm
+    .slice(0, patternInfo.segmentCount)
+    .flatMap((distance, intervalIndex) => (
+      shouldCutEPatternSegment(intervalIndex, role)
+        ? [{
+          startDistanceMm: distance,
+          endDistanceMm: patternInfo.segmentDistancesMm[intervalIndex + 1],
+        }]
+        : []
+    ));
+
+  const firstPocket = pocketSegments[0];
+  const lastPocket = pocketSegments[pocketSegments.length - 1];
+
+  return {
+    firstPocketStartDistanceMm: firstPocket?.startDistanceMm,
+    firstPocketEndDistanceMm: firstPocket?.endDistanceMm,
+    lastPocketStartDistanceMm: lastPocket?.startDistanceMm,
+    lastPocketEndDistanceMm: lastPocket?.endDistanceMm,
+  };
+};
+
 const buildSteppedEPolyline = (
   edge: SvgEdge,
   settings: EGeometryConnectionProperties,
@@ -1069,11 +1099,15 @@ const generateEPreviewForEdge = (
     fingerWidthMm: properties.fingerWidthMm,
   };
 
+  const patternInfo = calculateEGeometryPatternInfo(length, properties);
+  const pocketDistanceSummary = getEPatternPocketDistanceSummary(patternInfo, assignment.slotRole ?? 'tab');
+
   if (!side) {
     return {
       paths: [],
       debugInfo: {
         ...baseDebugInfo,
+        ...pocketDistanceSummary,
         patternPreview: '',
         generatedPointCount: 0,
         generatedPoints: [],
@@ -1082,13 +1116,12 @@ const generateEPreviewForEdge = (
     };
   }
 
-  const patternInfo = calculateEGeometryPatternInfo(length, properties);
-
   if (length <= 0 || properties.materialThicknessMm <= 0 || properties.fingerWidthMm <= 0 || patternInfo.segmentCount <= 0) {
     return {
       paths: [],
       debugInfo: {
         ...baseDebugInfo,
+        ...pocketDistanceSummary,
         patternPreview: '',
         generatedPointCount: 0,
         generatedPoints: [],
@@ -1107,6 +1140,7 @@ const generateEPreviewForEdge = (
     paths: [path],
     debugInfo: {
       ...baseDebugInfo,
+      ...pocketDistanceSummary,
       patternPreview,
       generatedPointCount: polyline.length,
       generatedPoints: polyline,
@@ -1129,6 +1163,19 @@ export const generateEGeometryPreview = (
       const connection = connections[assignment.connectionId];
       return generateEPreviewForEdge(edge, assignment, connection, edge.panelBounds);
     });
+
+  if (preview.length > 0) {
+    console.table(preview.map(({ debugInfo }) => ({
+      edgeId: debugInfo.edgeId,
+      label: debugInfo.label,
+      role: debugInfo.role,
+      firstPocketStartDistanceMm: debugInfo.firstPocketStartDistanceMm,
+      firstPocketEndDistanceMm: debugInfo.firstPocketEndDistanceMm,
+      lastPocketStartDistanceMm: debugInfo.lastPocketStartDistanceMm,
+      lastPocketEndDistanceMm: debugInfo.lastPocketEndDistanceMm,
+      edgeLengthMm: debugInfo.edgeLengthMm,
+    })));
+  }
 
   if (preview.length === 0) {
     throw new Error('Assign at least one E-T or E-S edge before previewing E geometry.');
