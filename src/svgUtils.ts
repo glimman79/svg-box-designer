@@ -76,6 +76,11 @@ const defaultCanvas = {
   height: 600,
 };
 
+const exportedLabelFontSize = 18;
+const exportedLabelPaddingX = 7;
+const exportedLabelPaddingY = 4;
+const exportedLabelEdgeOffset = 18;
+
 const svgNumber = (value: string | null, fallback = 0) => {
   if (!value) {
     return fallback;
@@ -284,6 +289,19 @@ export const midpoint = (edge: SvgEdge): Point => ({
   y: (edge.start.y + edge.end.y) / 2,
 });
 
+const getEdgeNormal = (edge: SvgEdge): Point => {
+  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+
+  if (length === 0) {
+    return { x: 0, y: -1 };
+  }
+
+  return {
+    x: -(edge.end.y - edge.start.y) / length,
+    y: (edge.end.x - edge.start.x) / length,
+  };
+};
+
 export const exportLabeledSvg = (svgContent: string, edgeAssignments: Record<string, EdgeAssignment>, edges: SvgEdge[]) => {
   const document = new DOMParser().parseFromString(svgContent, 'image/svg+xml');
   const svgElement = document.querySelector('svg');
@@ -297,13 +315,9 @@ export const exportLabeledSvg = (svgContent: string, edgeAssignments: Record<str
   const labelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   labelGroup.setAttribute('id', 'svg-box-designer-labels');
   labelGroup.setAttribute('font-family', 'Inter, Arial, sans-serif');
-  labelGroup.setAttribute('font-size', '16');
-  labelGroup.setAttribute('font-weight', '700');
+  labelGroup.setAttribute('font-size', String(exportedLabelFontSize));
+  labelGroup.setAttribute('font-weight', '900');
   labelGroup.setAttribute('fill', '#0f172a');
-  labelGroup.setAttribute('paint-order', 'stroke');
-  labelGroup.setAttribute('stroke', '#ffffff');
-  labelGroup.setAttribute('stroke-width', '4');
-  labelGroup.setAttribute('stroke-linejoin', 'round');
 
   edges.forEach((edge) => {
     const assignment = edgeAssignments[edge.id];
@@ -312,18 +326,36 @@ export const exportLabeledSvg = (svgContent: string, edgeAssignments: Record<str
     }
 
     const center = midpoint(edge);
+    const normal = getEdgeNormal(edge);
+    const label = getEdgeAssignmentDisplayLabel(assignment) ?? assignment.connectionId;
+    const labelWidth = label.length * exportedLabelFontSize * 0.68 + exportedLabelPaddingX * 2;
+    const labelHeight = exportedLabelFontSize + exportedLabelPaddingY * 2;
+    const labelElement = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', String(center.x));
-    text.setAttribute('y', String(center.y));
+    const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+
+    labelElement.setAttribute('transform', `translate(${center.x + normal.x * exportedLabelEdgeOffset} ${center.y + normal.y * exportedLabelEdgeOffset})`);
+    labelElement.setAttribute('data-edge-id', edge.id);
+    labelElement.setAttribute('data-connection-id', assignment.connectionId);
+    if (assignment.slotRole) {
+      labelElement.setAttribute('data-slot-role', assignment.slotRole);
+    }
+
+    background.setAttribute('x', String(-labelWidth / 2));
+    background.setAttribute('y', String(-labelHeight / 2));
+    background.setAttribute('width', String(labelWidth));
+    background.setAttribute('height', String(labelHeight));
+    background.setAttribute('rx', '5');
+    background.setAttribute('fill', '#ffffff');
+    background.setAttribute('stroke', '#cbd5e1');
+    background.setAttribute('stroke-width', '1');
+    background.setAttribute('opacity', '0.96');
+
     text.setAttribute('text-anchor', 'middle');
     text.setAttribute('dominant-baseline', 'middle');
-    text.setAttribute('data-edge-id', edge.id);
-    text.setAttribute('data-connection-id', assignment.connectionId);
-    if (assignment.slotRole) {
-      text.setAttribute('data-slot-role', assignment.slotRole);
-    }
-    text.textContent = getEdgeAssignmentDisplayLabel(assignment) ?? assignment.connectionId;
-    labelGroup.append(text);
+    text.textContent = label;
+    labelElement.append(background, text);
+    labelGroup.append(labelElement);
   });
 
   svgElement.append(labelGroup);
@@ -370,8 +402,11 @@ export const calculateEGeometryPatternInfo = (
 ): EGeometryPatternInfo => {
   const length = Math.max(0, edgeLengthMm);
   const requestedSegmentWidth = Math.max(0, properties.fingerWidthMm);
-  const startOffset = Math.max(0, Math.min(properties.startOffsetMm, length));
-  const endOffset = Math.max(0, Math.min(properties.endOffsetMm, Math.max(0, length - startOffset)));
+  const defaultEndMargin = Math.max(0, properties.materialThicknessMm);
+  const requestedStartOffset = properties.startOffsetMm > 0 ? properties.startOffsetMm : defaultEndMargin;
+  const requestedEndOffset = properties.endOffsetMm > 0 ? properties.endOffsetMm : defaultEndMargin;
+  const startOffset = Math.max(0, Math.min(requestedStartOffset, length));
+  const endOffset = Math.max(0, Math.min(requestedEndOffset, Math.max(0, length - startOffset)));
   const availableLength = Math.max(0, length - startOffset - endOffset);
   const maxFullSegments = requestedSegmentWidth > 0 ? Math.floor(availableLength / requestedSegmentWidth) : 0;
   const segmentCount = maxFullSegments >= 3
@@ -402,7 +437,7 @@ export const calculateEGeometryPatternInfo = (
     firstLastSegmentWidthMm: firstLastSegmentWidth,
     tabCount: Math.ceil(segmentCount / 2),
     gapCount: Math.floor(segmentCount / 2),
-    endMarginMm: 0,
+    endMarginMm: Math.min(startOffset, endOffset),
     startDistanceMm: startOffset,
     endDistanceMm: length - endOffset,
     segmentDistancesMm: segmentDistances,

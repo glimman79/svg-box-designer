@@ -193,6 +193,11 @@ const minZoom = 0.1;
 const maxZoom = 20;
 const buttonZoomFactor = 1.25;
 const wheelZoomSensitivity = 0.0015;
+const labelFontSizePx = 18;
+const minLabelFontSizePx = 12;
+const labelPaddingXPx = 7;
+const labelPaddingYPx = 4;
+const labelEdgeOffsetPx = 18;
 
 const parseViewBox = (viewBox: string): CanvasViewBox => {
   const [x, y, width, height] = viewBox.split(/[\s,]+/).map(Number);
@@ -206,6 +211,19 @@ const parseViewBox = (viewBox: string): CanvasViewBox => {
 };
 
 const formatViewBox = ({ x, y, width, height }: CanvasViewBox) => `${x} ${y} ${width} ${height}`;
+
+const getEdgeNormal = (edge: SvgDocumentModel['edges'][number]) => {
+  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+
+  if (length === 0) {
+    return { x: 0, y: -1 };
+  }
+
+  return {
+    x: -(edge.end.y - edge.start.y) / length,
+    y: (edge.end.x - edge.start.x) / length,
+  };
+};
 
 const zoomViewBox = (
   viewBox: CanvasViewBox,
@@ -944,10 +962,9 @@ function App() {
 
   const baseViewBox = parseViewBox(svgModel.viewBox);
   const labelZoom = Math.max(minZoom, baseViewBox.width / canvasViewBox.width);
-  const readableLabelStyle = {
-    fontSize: `${14 / labelZoom}px`,
-    strokeWidth: 3 / labelZoom,
-  };
+  const labelScreenFontSize = Math.max(minLabelFontSizePx, labelFontSizePx);
+  const labelScale = labelScreenFontSize / labelZoom / labelFontSizePx;
+  const labelEdgeOffset = labelEdgeOffsetPx / labelZoom;
 
   return (
     <main className="app-shell">
@@ -1091,6 +1108,13 @@ function App() {
                   const label = getEdgeAssignmentDisplayLabel(assignment);
                   const center = midpoint(edge);
                   const selected = selectedEdgeId === edge.id;
+                  const normal = getEdgeNormal(edge);
+                  const labelCenter = {
+                    x: center.x + normal.x * labelEdgeOffset,
+                    y: center.y + normal.y * labelEdgeOffset,
+                  };
+                  const labelWidth = label ? label.length * labelFontSizePx * 0.68 + labelPaddingXPx * 2 : 0;
+                  const labelHeight = labelFontSizePx + labelPaddingYPx * 2;
 
                   return (
                     <g key={edge.id}>
@@ -1122,16 +1146,26 @@ function App() {
                         }}
                       />
                       {label && (
-                        <text
+                        <g
                           className="edge-label"
-                          x={center.x}
-                          y={center.y}
-                          textAnchor="middle"
-                          dominantBaseline="middle"
-                          style={readableLabelStyle}
+                          transform={`translate(${labelCenter.x} ${labelCenter.y}) scale(${labelScale})`}
                         >
-                          {label}
-                        </text>
+                          <rect
+                            className="edge-label-background"
+                            x={-labelWidth / 2}
+                            y={-labelHeight / 2}
+                            width={labelWidth}
+                            height={labelHeight}
+                            rx={5}
+                          />
+                          <text
+                            className="edge-label-text"
+                            textAnchor="middle"
+                            dominantBaseline="middle"
+                          >
+                            {label}
+                          </text>
+                        </g>
                       )}
                     </g>
                   );
