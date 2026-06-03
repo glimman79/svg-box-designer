@@ -862,7 +862,7 @@ function App() {
                       <strong>{edge.id}</strong>
                       <dl>
                         <div>
-                          <dt>Requested finger width</dt>
+                          <dt>Tab size</dt>
                           <dd>{formatCalculatedMm(properties.fingerWidthMm)}</dd>
                         </div>
                         <div>
@@ -898,7 +898,7 @@ function App() {
           <section className="property-section" aria-labelledby="edge-basic-properties">
             <h4 id="edge-basic-properties">Basic</h4>
             <div className="property-grid">
-              <NumericField id="edge-finger-width" label="Finger width (mm)" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
+              <NumericField id="edge-finger-width" label="Tab size (mm)" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
               <NumericField id="edge-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateEdgeProperties({ materialThicknessMm })} />
             </div>
           </section>
@@ -1141,7 +1141,7 @@ function App() {
                     <th>Inward</th>
                     <th>Length</th>
                     <th>Thickness</th>
-                    <th>Finger</th>
+                    <th>Tab size</th>
                     <th>Point count</th>
                     <th>First 10 points</th>
                   </tr>
