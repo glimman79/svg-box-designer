@@ -833,7 +833,7 @@ const simplePathToEdges = (pathData: string | null, source: string) => {
   return edges;
 };
 
-const detectAxisAlignedEdgeSide = (edge: SvgEdge, bounds: SourceBounds | undefined): EdgeSide | undefined => {
+const detectEPreviewSide = (edge: SvgEdge, bounds: SourceBounds | undefined): EdgeSide | undefined => {
   const dx = Math.abs(edge.end.x - edge.start.x);
   const dy = Math.abs(edge.end.y - edge.start.y);
   const epsilon = 0.0001;
@@ -863,7 +863,7 @@ const detectAxisAlignedEdgeSide = (edge: SvgEdge, bounds: SourceBounds | undefin
   return undefined;
 };
 
-const getSimplePreviewInwardDirection = (side: EdgeSide): Point => {
+const getEPreviewInwardDirection = (side: EdgeSide): Point => {
   if (side === 'top') {
     return { x: 0, y: 1 };
   }
@@ -879,14 +879,14 @@ const getSimplePreviewInwardDirection = (side: EdgeSide): Point => {
   return { x: -1, y: 0 };
 };
 
-const buildSimpleEPreviewPolyline = (
+const buildEPreviewPolyline = (
   edge: SvgEdge,
   side: EdgeSide,
   settings: EGeometryConnectionProperties,
 ) => buildSteppedEPolyline(
   edge,
   settings,
-  getSimplePreviewInwardDirection(side),
+  getEPreviewInwardDirection(side),
   settings.materialThicknessMm,
 );
 
@@ -894,7 +894,7 @@ const formatDirection = (direction: Point) => `(${formatNumber(direction.x)}, ${
 
 const getEPreviewLabel = (assignment: EdgeAssignment) => `${assignment.connectionId}-${assignment.slotRole === 'tab' ? 'T' : 'S'}`;
 
-const generateSimpleEPreviewForEdge = (
+const generateEPreviewForEdge = (
   edge: SvgEdge,
   assignment: EdgeAssignment,
   connection: EGeometryConnectionDefinition,
@@ -902,7 +902,7 @@ const generateSimpleEPreviewForEdge = (
 ): { paths: string[]; debugInfo: EGeometryPreviewDebugInfo } => {
   const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
   const properties = connection.properties;
-  const side = detectAxisAlignedEdgeSide(edge, bounds);
+  const side = detectEPreviewSide(edge, bounds);
   const label = getEPreviewLabel(assignment);
   const role = assignment.slotRole === 'tab' ? 'E-T' : 'E-S';
   const baseDebugInfo: Omit<EGeometryPreviewDebugInfo, 'generatedPointCount' | 'generatedPoints' | 'warning'> = {
@@ -912,7 +912,7 @@ const generateSimpleEPreviewForEdge = (
     start: edge.start,
     end: edge.end,
     detectedSide: side ?? 'unknown',
-    inwardDirection: side ? formatDirection(getSimplePreviewInwardDirection(side)) : 'unknown',
+    inwardDirection: side ? formatDirection(getEPreviewInwardDirection(side)) : 'unknown',
     edgeLengthMm: length,
     materialThicknessMm: properties.materialThicknessMm,
     fingerWidthMm: properties.fingerWidthMm,
@@ -946,7 +946,7 @@ const generateSimpleEPreviewForEdge = (
 
   const hasCutSegments = patternInfo.segmentDistancesMm.slice(0, patternInfo.segmentCount)
     .some((_, intervalIndex) => shouldCutEPreviewPatternSegment(intervalIndex));
-  const polyline = buildSimpleEPreviewPolyline(edge, side, properties);
+  const polyline = buildEPreviewPolyline(edge, side, properties);
   const path = polylinePointsToCommands(polyline).join(' ');
 
   return {
@@ -973,7 +973,7 @@ export const generateEGeometryPreview = (
     .map((edge) => {
       const assignment = edgeAssignments[edge.id];
       const connection = connections[assignment.connectionId];
-      return generateSimpleEPreviewForEdge(edge, assignment, connection, geometryContextsBySource[edge.source]?.bounds);
+      return generateEPreviewForEdge(edge, assignment, connection, geometryContextsBySource[edge.source]?.bounds);
     });
 
   if (preview.length === 0) {
