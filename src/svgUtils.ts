@@ -26,6 +26,16 @@ export type EGeometryConnectionProperties = {
   endOffsetMm: number;
 };
 
+export type EGeometryPatternInfo = {
+  availableLengthMm: number;
+  segmentCount: number;
+  segmentWidthMm: number;
+  tabCount: number;
+  endMarginMm: number;
+  startDistanceMm: number;
+  endDistanceMm: number;
+};
+
 export type EGeometryConnectionDefinition = {
   prefix: 'E';
   properties: EGeometryConnectionProperties;
@@ -350,6 +360,36 @@ const isAssignedEEdge = (
   return Boolean(assignment && assignment.slotRole && connections[assignment.connectionId]?.prefix === 'E');
 };
 
+export const calculateEGeometryPatternInfo = (
+  edgeLengthMm: number,
+  properties: EGeometryConnectionProperties,
+): EGeometryPatternInfo => {
+  const length = Math.max(0, edgeLengthMm);
+  const targetSegmentWidth = Math.max(0, properties.fingerWidthMm);
+  const startOffset = Math.max(0, Math.min(properties.startOffsetMm, length));
+  const endOffset = Math.max(0, Math.min(properties.endOffsetMm, Math.max(0, length - startOffset)));
+  const availableLength = Math.max(0, length - startOffset - endOffset);
+  const targetSegmentCount = targetSegmentWidth > 0 ? Math.floor(availableLength / targetSegmentWidth) : 0;
+  const segmentCount = targetSegmentCount < 2
+    ? 0
+    : targetSegmentCount % 2 === 1
+      ? targetSegmentCount - 1
+      : targetSegmentCount;
+  const segmentWidth = segmentCount > 0 ? availableLength / (segmentCount + 1) : 0;
+  const patternLength = segmentWidth * segmentCount;
+  const endMargin = Math.max(0, (availableLength - patternLength) / 2);
+
+  return {
+    availableLengthMm: availableLength,
+    segmentCount,
+    segmentWidthMm: segmentWidth,
+    tabCount: Math.ceil(segmentCount / 2),
+    endMarginMm: endMargin,
+    startDistanceMm: startOffset + endMargin,
+    endDistanceMm: length - endOffset - endMargin,
+  };
+};
+
 const generateFingerJointCommands = (
   edge: SvgEdge,
   assignment: EdgeAssignment,
@@ -357,12 +397,14 @@ const generateFingerJointCommands = (
 ) => {
   const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
   const properties = connection.properties;
-  const fingerWidth = Math.max(0, properties.fingerWidthMm);
-  const startOffset = Math.max(0, Math.min(properties.startOffsetMm, length));
-  const endOffset = Math.max(0, Math.min(properties.endOffsetMm, Math.max(0, length - startOffset)));
-  const jointLength = length - startOffset - endOffset;
+  const patternInfo = calculateEGeometryPatternInfo(length, properties);
 
-  if (length <= 0 || fingerWidth <= 0 || jointLength <= 0 || properties.materialThicknessMm <= 0) {
+  if (
+    length <= 0
+    || patternInfo.segmentCount <= 0
+    || patternInfo.segmentWidthMm <= 0
+    || properties.materialThicknessMm <= 0
+  ) {
     return [pointCommand('M', edge.start), pointCommand('L', edge.end)];
   }
 
@@ -373,7 +415,6 @@ const generateFingerJointCommands = (
   const clearance = Math.max(0, properties.kerfMm + properties.playMm);
   const depth = Math.max(0, properties.materialThicknessMm + (role === 'slot' ? clearance : 0));
   const direction = role === 'tab' ? 1 : -1;
-  const firstIntervalIsFeature = true;
   const commands = [pointCommand('M', edge.start)];
 
   const addLineAt = (distance: number, offset = 0) => {
@@ -381,33 +422,25 @@ const generateFingerJointCommands = (
     commands.push(pointCommand('L', { x: base.x + normal.x * offset, y: base.y + normal.y * offset }));
   };
 
-  addLineAt(startOffset);
+  addLineAt(patternInfo.startDistanceMm);
 
-  let distance = startOffset;
-  let intervalIndex = 0;
-  const endDistance = length - endOffset;
-
-  while (distance < endDistance - 0.0001) {
-    const nextDistance = Math.min(distance + fingerWidth, endDistance);
-    const isFeature = intervalIndex % 2 === 0 ? firstIntervalIsFeature : !firstIntervalIsFeature;
+  for (let intervalIndex = 0; intervalIndex < patternInfo.segmentCount; intervalIndex += 1) {
+    const distance = patternInfo.startDistanceMm + patternInfo.segmentWidthMm * intervalIndex;
+    const nextDistance = intervalIndex === patternInfo.segmentCount - 1
+      ? patternInfo.endDistanceMm
+      : patternInfo.startDistanceMm + patternInfo.segmentWidthMm * (intervalIndex + 1);
+    const isFeature = role === 'tab' ? intervalIndex % 2 === 0 : intervalIndex % 2 === 1;
 
     if (isFeature) {
-      const inset = Math.min(clearance / 2, Math.max(0, (nextDistance - distance) / 3));
-      const featureStart = Math.min(distance + inset, nextDistance);
-      const featureEnd = Math.max(featureStart, nextDistance - inset);
       const offset = direction * depth;
 
-      addLineAt(featureStart);
-      addLineAt(featureStart, offset);
-      addLineAt(featureEnd, offset);
-      addLineAt(featureEnd);
+      addLineAt(distance);
+      addLineAt(distance, offset);
+      addLineAt(nextDistance, offset);
       addLineAt(nextDistance);
     } else {
       addLineAt(nextDistance);
     }
-
-    distance = nextDistance;
-    intervalIndex += 1;
   }
 
   addLineAt(length);

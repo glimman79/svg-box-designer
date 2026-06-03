@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { exportLabeledSvg, generateEGeometrySvg, getEdgeAssignmentDisplayLabel, midpoint, parseSvgDocument } from './svgUtils';
+import { calculateEGeometryPatternInfo, exportLabeledSvg, generateEGeometrySvg, getEdgeAssignmentDisplayLabel, midpoint, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgeSideRole, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -186,6 +186,8 @@ function getDefaultCornerDepth(materialThicknessMm: number) {
 }
 
 const getAssignedConnectionId = (assignment: EdgeAssignment | undefined) => assignment?.connectionId;
+
+const formatCalculatedMm = (value: number) => `${Number(value.toFixed(2)).toString()} mm`;
 
 const cloneDefaultProperties = <P extends LabelPrefix>(prefix: P): ConnectionPropertiesByPrefix[P] => ({
   ...defaultConnectionProperties[prefix],
@@ -549,9 +551,44 @@ function App() {
 
     if (selectedConnection.prefix === 'E') {
       const properties = selectedConnection.properties;
+      const assignedEEdges = svgModel.edges.filter((edge) => edgeAssignments[edge.id]?.connectionId === selectedConnection.id);
       return (
         <div className="property-sections">
           {renderSideRoleSection(selectedConnection.id, selectedConnection.prefix)}
+
+          <section className="property-section" aria-labelledby="edge-calculated-properties">
+            <h4 id="edge-calculated-properties">Calculated geometry</h4>
+            {assignedEEdges.length > 0 ? (
+              <ul className="calculated-edge-list">
+                {assignedEEdges.map((edge) => {
+                  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+                  const info = calculateEGeometryPatternInfo(length, properties);
+
+                  return (
+                    <li key={edge.id}>
+                      <strong>{edge.id}</strong>
+                      <dl>
+                        <div>
+                          <dt>Actual finger width</dt>
+                          <dd>{info.segmentCount > 0 ? formatCalculatedMm(info.segmentWidthMm) : 'No full segments'}</dd>
+                        </div>
+                        <div>
+                          <dt>Number of tabs</dt>
+                          <dd>{info.tabCount}</dd>
+                        </div>
+                        <div>
+                          <dt>End margin</dt>
+                          <dd>{formatCalculatedMm(info.endMarginMm)}</dd>
+                        </div>
+                      </dl>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="muted">Assign this E label to an edge to preview its fitted finger width, tab count, and end margin.</p>
+            )}
+          </section>
 
           <section className="property-section" aria-labelledby="edge-basic-properties">
             <h4 id="edge-basic-properties">Basic</h4>

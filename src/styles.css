@@ -550,3 +550,56 @@ button:disabled {
   box-shadow: 0 0 0 3px rgb(20 184 166 / 20%);
   outline: none;
 }
+
+.calculated-edge-list {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.calculated-edge-list li {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+}
+
+.calculated-edge-list strong {
+  color: #0f172a;
+  font-size: 0.94rem;
+}
+
+.calculated-edge-list dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.calculated-edge-list dl div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.calculated-edge-list dt,
+.calculated-edge-list dd {
+  margin: 0;
+}
+
+.calculated-edge-list dt {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.calculated-edge-list dd {
+  color: #0f172a;
+  font-size: 0.9rem;
+  font-weight: 900;
+  text-align: right;
+}
