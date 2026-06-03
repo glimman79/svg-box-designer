@@ -1143,6 +1143,214 @@ export const generateEGeometryPreviewPaths = (
   connections: Record<string, EGeometryConnectionDefinition>,
 ) => generateEGeometryPreview(edgeAssignments, edges, connections).paths;
 
+
+type OriginalEdgeRecord = {
+  edge: SvgEdge;
+  element: Element;
+  blockedAttributes: string[];
+  order: number;
+};
+
+type OrientedEdgeRecord = {
+  record: OriginalEdgeRecord;
+  edge: SvgEdge;
+};
+
+const getUndirectedEdgeKey = (edge: SvgEdge) => {
+  const startKey = getPanelPointKey(edge.start);
+  const endKey = getPanelPointKey(edge.end);
+  return startKey < endKey ? `${startKey}|${endKey}` : `${endKey}|${startKey}`;
+};
+
+const reverseEdge = (edge: SvgEdge): SvgEdge => ({
+  ...edge,
+  start: edge.end,
+  end: edge.start,
+});
+
+const buildOriginalEdgeRecords = (svgElement: SVGSVGElement, edges: SvgEdge[]): OriginalEdgeRecord[] => {
+  const records: OriginalEdgeRecord[] = [];
+  let edgeIndex = 0;
+
+  const addRecord = (edge: SvgEdge | undefined, element: Element, blockedAttributes: string[]) => {
+    if (!edge) {
+      return;
+    }
+
+    records.push({ edge, element, blockedAttributes, order: records.length });
+  };
+
+  [...svgElement.querySelectorAll('line')].forEach((line) => {
+    addRecord(edges[edgeIndex++], line, ['x1', 'y1', 'x2', 'y2']);
+  });
+
+  [...svgElement.querySelectorAll('polyline, polygon')].forEach((shape) => {
+    const points = parsePoints(shape.getAttribute('points'));
+    const segmentCount = Math.max(0, points.length - 1) + (shape.tagName.toLowerCase() === 'polygon' && points.length > 2 ? 1 : 0);
+
+    for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex += 1) {
+      addRecord(edges[edgeIndex++], shape, ['points']);
+    }
+  });
+
+  [...svgElement.querySelectorAll('rect')].forEach((rect) => {
+    for (let segmentIndex = 0; segmentIndex < 4; segmentIndex += 1) {
+      addRecord(edges[edgeIndex++], rect, ['x', 'y', 'width', 'height', 'rx', 'ry']);
+    }
+  });
+
+  [...svgElement.querySelectorAll('path')].forEach((path, pathIndex) => {
+    const pathEdges = simplePathToEdges(path.getAttribute('d'), `path ${pathIndex + 1}`);
+
+    for (let segmentIndex = 0; segmentIndex < pathEdges.length; segmentIndex += 1) {
+      addRecord(edges[edgeIndex++], path, ['d']);
+    }
+  });
+
+  return records;
+};
+
+const getClosedComponentRecords = (records: OriginalEdgeRecord[]) => {
+  const uniqueRecords: OriginalEdgeRecord[] = [];
+  const duplicateRecordsByKey = new Map<string, OriginalEdgeRecord[]>();
+  const seenEdgeKeys = new Set<string>();
+
+  records.forEach((record) => {
+    const edgeKey = getUndirectedEdgeKey(record.edge);
+    duplicateRecordsByKey.set(edgeKey, [...(duplicateRecordsByKey.get(edgeKey) ?? []), record]);
+
+    if (!seenEdgeKeys.has(edgeKey)) {
+      seenEdgeKeys.add(edgeKey);
+      uniqueRecords.push(record);
+    }
+  });
+
+  const recordIndexesByPoint = new Map<string, number[]>();
+  uniqueRecords.forEach((record, recordIndex) => {
+    [record.edge.start, record.edge.end].forEach((point) => {
+      const key = getPanelPointKey(point);
+      recordIndexesByPoint.set(key, [...(recordIndexesByPoint.get(key) ?? []), recordIndex]);
+    });
+  });
+
+  const visited = new Set<number>();
+  const components: { records: OriginalEdgeRecord[]; duplicateRecords: OriginalEdgeRecord[] }[] = [];
+
+  uniqueRecords.forEach((_, recordIndex) => {
+    if (visited.has(recordIndex)) {
+      return;
+    }
+
+    const componentIndexes = new Set<number>();
+    const pending = [recordIndex];
+
+    while (pending.length > 0) {
+      const currentIndex = pending.pop();
+
+      if (currentIndex === undefined || visited.has(currentIndex)) {
+        continue;
+      }
+
+      visited.add(currentIndex);
+      componentIndexes.add(currentIndex);
+
+      [uniqueRecords[currentIndex].edge.start, uniqueRecords[currentIndex].edge.end].forEach((point) => {
+        (recordIndexesByPoint.get(getPanelPointKey(point)) ?? []).forEach((connectedIndex) => {
+          if (!visited.has(connectedIndex)) {
+            pending.push(connectedIndex);
+          }
+        });
+      });
+    }
+
+    const pointKeys = new Set<string>();
+    componentIndexes.forEach((componentIndex) => {
+      pointKeys.add(getPanelPointKey(uniqueRecords[componentIndex].edge.start));
+      pointKeys.add(getPanelPointKey(uniqueRecords[componentIndex].edge.end));
+    });
+
+    const isClosed = componentIndexes.size >= 3
+      && pointKeys.size >= 3
+      && [...pointKeys].every((pointKey) => (recordIndexesByPoint.get(pointKey) ?? [])
+        .filter((connectedIndex) => componentIndexes.has(connectedIndex)).length === 2);
+
+    if (!isClosed) {
+      return;
+    }
+
+    const componentRecords = [...componentIndexes].map((componentIndex) => uniqueRecords[componentIndex]);
+    const duplicateRecords = componentRecords.flatMap((record) => duplicateRecordsByKey.get(getUndirectedEdgeKey(record.edge)) ?? [record]);
+    components.push({ records: componentRecords, duplicateRecords });
+  });
+
+  return components;
+};
+
+const orientClosedComponentRecords = (
+  records: OriginalEdgeRecord[],
+  edgeAssignments: Record<string, EdgeAssignment>,
+  connections: Record<string, EGeometryConnectionDefinition>,
+): OrientedEdgeRecord[] | undefined => {
+  const unused = new Set(records);
+  const firstRecord = records.find((record) => isAssignedEEdge(record.edge, edgeAssignments, connections)) ?? records[0];
+  const orientedRecords: OrientedEdgeRecord[] = [{ record: firstRecord, edge: firstRecord.edge }];
+  unused.delete(firstRecord);
+  let currentPoint = firstRecord.edge.end;
+
+  while (unused.size > 0) {
+    const nextRecord = [...unused].find((record) => pointsAreEqual(record.edge.start, currentPoint) || pointsAreEqual(record.edge.end, currentPoint));
+
+    if (!nextRecord) {
+      return undefined;
+    }
+
+    const orientedEdge = pointsAreEqual(nextRecord.edge.start, currentPoint) ? nextRecord.edge : reverseEdge(nextRecord.edge);
+    orientedRecords.push({ record: nextRecord, edge: orientedEdge });
+    unused.delete(nextRecord);
+    currentPoint = orientedEdge.end;
+  }
+
+  return pointsAreEqual(currentPoint, firstRecord.edge.start) ? orientedRecords : undefined;
+};
+
+const getFirstDocumentOrderedElement = (elements: Element[]) => elements
+  .sort((first, second) => {
+    const position = first.compareDocumentPosition(second);
+
+    if (position & Node.DOCUMENT_POSITION_PRECEDING) {
+      return 1;
+    }
+
+    if (position & Node.DOCUMENT_POSITION_FOLLOWING) {
+      return -1;
+    }
+
+    return 0;
+  })[0];
+
+const replaceConnectedPanelWithPath = (
+  records: OrientedEdgeRecord[],
+  duplicateRecords: OriginalEdgeRecord[],
+  edgeAssignments: Record<string, EdgeAssignment>,
+  connections: Record<string, EGeometryConnectionDefinition>,
+) => {
+  const elements = [...new Set(duplicateRecords.map((record) => record.element))];
+  const firstElement = getFirstDocumentOrderedElement(elements);
+
+  if (!firstElement?.parentNode) {
+    return false;
+  }
+
+  const pathData = `${records.map(({ edge }, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0).d).join(' ')} Z`;
+  const path = firstElement.ownerDocument.createElementNS(svgNamespace, 'path');
+  cloneGeometryAttributes(firstElement, path, duplicateRecords.find((record) => record.element === firstElement)?.blockedAttributes ?? []);
+  path.setAttribute('d', pathData);
+  applyTechnicalLineStyle(path);
+  firstElement.parentNode.insertBefore(path, firstElement);
+  elements.forEach((element) => element.remove());
+  return true;
+};
+
 export const generateEGeometrySvg = (
   svgContent: string,
   edgeAssignments: Record<string, EdgeAssignment>,
@@ -1160,10 +1368,42 @@ export const generateEGeometrySvg = (
   const polyElements = [...svgElement.querySelectorAll('polyline, polygon')];
   const rectElements = [...svgElement.querySelectorAll('rect')];
   const pathElements = [...svgElement.querySelectorAll('path')];
-  let edgeIndex = 0;
+  const originalEdgeRecords = buildOriginalEdgeRecords(svgElement, edges);
+  const handledElements = new Set<Element>();
   let generatedCount = 0;
 
+  getClosedComponentRecords(originalEdgeRecords).forEach((component) => {
+    if (!component.duplicateRecords.some((record) => isAssignedEEdge(record.edge, edgeAssignments, connections))) {
+      return;
+    }
+
+    const elements = new Set(component.duplicateRecords.map((record) => record.element));
+    const elementRecords = originalEdgeRecords.filter((record) => elements.has(record.element));
+
+    if (!elementRecords.every((record) => component.duplicateRecords.includes(record))) {
+      return;
+    }
+
+    const orientedRecords = orientClosedComponentRecords(component.records, edgeAssignments, connections);
+
+    if (!orientedRecords) {
+      return;
+    }
+
+    if (replaceConnectedPanelWithPath(orientedRecords, component.duplicateRecords, edgeAssignments, connections)) {
+      elements.forEach((element) => handledElements.add(element));
+      generatedCount += component.duplicateRecords.filter((record) => isAssignedEEdge(record.edge, edgeAssignments, connections)).length;
+    }
+  });
+
+  let edgeIndex = 0;
+
   lineElements.forEach((line) => {
+    if (handledElements.has(line)) {
+      edgeIndex += 1;
+      return;
+    }
+
     const edge = edges[edgeIndex++];
     if (!edge || !isAssignedEEdge(edge, edgeAssignments, connections)) {
       return;
@@ -1179,6 +1419,12 @@ export const generateEGeometrySvg = (
 
   polyElements.forEach((shape) => {
     const points = parsePoints(shape.getAttribute('points'));
+    if (handledElements.has(shape)) {
+      const handledSegmentCount = Math.max(0, points.length - 1) + (shape.tagName.toLowerCase() === 'polygon' && points.length > 2 ? 1 : 0);
+      edgeIndex += handledSegmentCount;
+      return;
+    }
+
     const segmentCount = Math.max(0, points.length - 1) + (shape.tagName.toLowerCase() === 'polygon' && points.length > 2 ? 1 : 0);
     const shapeEdges = edges.slice(edgeIndex, edgeIndex + segmentCount);
     edgeIndex += segmentCount;
@@ -1194,6 +1440,11 @@ export const generateEGeometrySvg = (
   });
 
   rectElements.forEach((rect) => {
+    if (handledElements.has(rect)) {
+      edgeIndex += 4;
+      return;
+    }
+
     const rectEdges = edges.slice(edgeIndex, edgeIndex + 4);
     edgeIndex += 4;
 
@@ -1208,6 +1459,11 @@ export const generateEGeometrySvg = (
 
   pathElements.forEach((path, pathIndex) => {
     const pathEdges = simplePathToEdges(path.getAttribute('d'), `path ${pathIndex + 1}`);
+    if (handledElements.has(path)) {
+      edgeIndex += pathEdges.length;
+      return;
+    }
+
     const sourceEdges = edges.slice(edgeIndex, edgeIndex + pathEdges.length);
     edgeIndex += pathEdges.length;
 
