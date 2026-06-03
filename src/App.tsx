@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { calculateEGeometryPatternInfo, exportLabeledSvg, generateEGeometrySvg, getEdgeAssignmentDisplayLabel, midpoint, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgeSideRole, SvgDocumentModel } from './svgUtils';
 
@@ -105,6 +105,20 @@ type SelectFieldProps = {
   options: string[];
   onChange: (value: string) => void;
 };
+type CanvasViewBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type PanState = {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startViewBox: CanvasViewBox;
+  moved: boolean;
+};
 
 const labelGroups: LabelGroup[] = [
   { prefix: 'E', name: 'Edge connections', description: 'Reusable edge connection IDs' },
@@ -173,6 +187,46 @@ const sideRoleLabels: Record<EdgeSideRole, string> = {
 };
 
 const sideRoleOptions = Object.keys(sideRoleLabels) as EdgeSideRole[];
+
+const minZoom = 0.1;
+const maxZoom = 20;
+const buttonZoomFactor = 1.25;
+const wheelZoomSensitivity = 0.0015;
+
+const parseViewBox = (viewBox: string): CanvasViewBox => {
+  const [x, y, width, height] = viewBox.split(/[\s,]+/).map(Number);
+
+  return {
+    x: Number.isFinite(x) ? x : 0,
+    y: Number.isFinite(y) ? y : 0,
+    width: Number.isFinite(width) && width > 0 ? width : 800,
+    height: Number.isFinite(height) && height > 0 ? height : 600,
+  };
+};
+
+const formatViewBox = ({ x, y, width, height }: CanvasViewBox) => `${x} ${y} ${width} ${height}`;
+
+const zoomViewBox = (
+  viewBox: CanvasViewBox,
+  factor: number,
+  center: { x: number; y: number },
+  originalViewBox: CanvasViewBox,
+): CanvasViewBox => {
+  const currentZoom = originalViewBox.width / viewBox.width;
+  const nextZoom = Math.min(maxZoom, Math.max(minZoom, currentZoom * factor));
+  const clampedFactor = nextZoom / currentZoom;
+  const nextWidth = viewBox.width / clampedFactor;
+  const nextHeight = viewBox.height / clampedFactor;
+  const centerXRatio = (center.x - viewBox.x) / viewBox.width;
+  const centerYRatio = (center.y - viewBox.y) / viewBox.height;
+
+  return {
+    x: center.x - nextWidth * centerXRatio,
+    y: center.y - nextHeight * centerYRatio,
+    width: nextWidth,
+    height: nextHeight,
+  };
+};
 function getDefaultSlotLength(materialThicknessMm: number) {
   return materialThicknessMm * 3;
 }
@@ -244,6 +298,10 @@ function App() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const panStateRef = useRef<PanState | null>(null);
+  const suppressEdgeClickRef = useRef(false);
+  const [canvasViewBox, setCanvasViewBox] = useState<CanvasViewBox>(() => parseViewBox(svgModel.viewBox));
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
   const selectedConnection = selectedLabelId ? connections[selectedLabelId] ?? null : null;
@@ -272,6 +330,7 @@ function App() {
     const text = await file.text();
     const parsedSvg = parseSvgDocument(text);
     setSvgModel(parsedSvg);
+    setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
     setEdgeAssignments({});
     setSelectedEdgeId(null);
     setErrorMessage('');
@@ -539,6 +598,7 @@ function App() {
       const output = generateEGeometrySvg(svgModel.content, edgeAssignments, svgModel.edges, eConnections);
       const parsedSvg = parseSvgDocument(output);
       setSvgModel(parsedSvg);
+      setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
       setEdgeAssignments({});
       setSelectedEdgeId(null);
       setErrorMessage('Generated E geometry preview. Assignments were cleared because the original straight edges were replaced.');
@@ -559,6 +619,101 @@ function App() {
     }
 
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const getSvgPointFromClient = (clientX: number, clientY: number) => {
+    const svgElement = svgRef.current;
+    const bounds = svgElement?.getBoundingClientRect();
+
+    if (!bounds || bounds.width === 0 || bounds.height === 0) {
+      return {
+        x: canvasViewBox.x + canvasViewBox.width / 2,
+        y: canvasViewBox.y + canvasViewBox.height / 2,
+      };
+    }
+
+    return {
+      x: canvasViewBox.x + ((clientX - bounds.left) / bounds.width) * canvasViewBox.width,
+      y: canvasViewBox.y + ((clientY - bounds.top) / bounds.height) * canvasViewBox.height,
+    };
+  };
+
+  const zoomCanvas = (factor: number, center = {
+    x: canvasViewBox.x + canvasViewBox.width / 2,
+    y: canvasViewBox.y + canvasViewBox.height / 2,
+  }) => {
+    const originalViewBox = parseViewBox(svgModel.viewBox);
+    setCanvasViewBox((currentViewBox) => zoomViewBox(currentViewBox, factor, center, originalViewBox));
+  };
+
+  const resetCanvasView = () => {
+    setCanvasViewBox(parseViewBox(svgModel.viewBox));
+  };
+
+  const handleCanvasWheel = (event: WheelEvent<SVGSVGElement>) => {
+    event.preventDefault();
+    const center = getSvgPointFromClient(event.clientX, event.clientY);
+    zoomCanvas(Math.exp(-event.deltaY * wheelZoomSensitivity), center);
+  };
+
+  const handleCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    panStateRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startViewBox: canvasViewBox,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleCanvasPointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    const panState = panStateRef.current;
+    const svgElement = svgRef.current;
+    const bounds = svgElement?.getBoundingClientRect();
+
+    if (!panState || panState.pointerId !== event.pointerId || !bounds || bounds.width === 0 || bounds.height === 0) {
+      return;
+    }
+
+    const dx = event.clientX - panState.startClientX;
+    const dy = event.clientY - panState.startClientY;
+
+    if (Math.hypot(dx, dy) > 3) {
+      panState.moved = true;
+    }
+
+    setCanvasViewBox({
+      ...panState.startViewBox,
+      x: panState.startViewBox.x - (dx / bounds.width) * panState.startViewBox.width,
+      y: panState.startViewBox.y - (dy / bounds.height) * panState.startViewBox.height,
+    });
+  };
+
+  const handleCanvasPointerUp = (event: PointerEvent<SVGSVGElement>) => {
+    const panState = panStateRef.current;
+
+    if (panState?.pointerId === event.pointerId) {
+      suppressEdgeClickRef.current = panState.moved;
+      panStateRef.current = null;
+      window.setTimeout(() => {
+        suppressEdgeClickRef.current = false;
+      }, 0);
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const handleCanvasPointerLeave = (event: PointerEvent<SVGSVGElement>) => {
+    if (panStateRef.current?.pointerId === event.pointerId) {
+      panStateRef.current = null;
+    }
   };
 
   const renderSideRoleSection = (connectionId: string, connectionPrefix: 'E' | 'S') => {
@@ -769,6 +924,13 @@ function App() {
     );
   };
 
+  const baseViewBox = parseViewBox(svgModel.viewBox);
+  const labelZoom = Math.max(minZoom, baseViewBox.width / canvasViewBox.width);
+  const readableLabelStyle = {
+    fontSize: `${14 / labelZoom}px`,
+    strokeWidth: 3 / labelZoom,
+  };
+
   return (
     <main className="app-shell">
       <header className="hero">
@@ -882,10 +1044,28 @@ function App() {
               <h2>Drawing</h2>
               <p>{svgModel.edges.length} selectable straight edges detected.</p>
             </div>
+            <div className="view-controls" aria-label="Drawing view controls">
+              <button type="button" onClick={() => zoomCanvas(buttonZoomFactor)}>Zoom in</button>
+              <button type="button" onClick={() => zoomCanvas(1 / buttonZoomFactor)}>Zoom out</button>
+              <button type="button" onClick={resetCanvasView}>Reset view</button>
+              <button type="button" onClick={resetCanvasView}>Fit to screen</button>
+            </div>
           </div>
 
           <div className="canvas-frame">
-            <svg className="design-svg" viewBox={svgModel.viewBox} role="img" aria-label="Imported SVG with selectable edges">
+            <svg
+              ref={svgRef}
+              className="design-svg"
+              viewBox={formatViewBox(canvasViewBox)}
+              role="img"
+              aria-label="Imported SVG with selectable edges"
+              onWheel={handleCanvasWheel}
+              onPointerDown={handleCanvasPointerDown}
+              onPointerMove={handleCanvasPointerMove}
+              onPointerUp={handleCanvasPointerUp}
+              onPointerCancel={handleCanvasPointerUp}
+              onPointerLeave={handleCanvasPointerLeave}
+            >
               <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
               <g className="edge-overlays">
                 {svgModel.edges.map((edge) => {
@@ -911,10 +1091,23 @@ function App() {
                         y1={edge.start.y}
                         x2={edge.end.x}
                         y2={edge.end.y}
-                        onClick={() => assignSelectedLabelToEdge(edge.id)}
+                        onClick={(event) => {
+                          if (suppressEdgeClickRef.current) {
+                            event.preventDefault();
+                            return;
+                          }
+                          assignSelectedLabelToEdge(edge.id);
+                        }}
                       />
                       {label && (
-                        <text className="edge-label" x={center.x} y={center.y} textAnchor="middle" dominantBaseline="middle">
+                        <text
+                          className="edge-label"
+                          x={center.x}
+                          y={center.y}
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          style={readableLabelStyle}
+                        >
                           {label}
                         </text>
                       )}

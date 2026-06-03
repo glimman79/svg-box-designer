@@ -446,9 +446,12 @@ const generateFingerJointCommands = (
   for (let intervalIndex = 0; intervalIndex < patternInfo.segmentCount; intervalIndex += 1) {
     const distance = patternInfo.segmentDistancesMm[intervalIndex];
     const nextDistance = patternInfo.segmentDistancesMm[intervalIndex + 1];
-    const isFeature = role === 'tab' ? intervalIndex % 2 === 0 : intervalIndex % 2 === 1;
+    const isEvenPatternSegment = intervalIndex % 2 === 0;
+    const isTabSegment = role === 'tab' ? isEvenPatternSegment : !isEvenPatternSegment;
+    const isGapSegment = !isTabSegment;
+    const shouldStepOffEdge = role === 'tab' ? isTabSegment : isGapSegment;
 
-    if (isFeature) {
+    if (shouldStepOffEdge) {
       const offset = direction * depth;
 
       addLineAt(distance);
