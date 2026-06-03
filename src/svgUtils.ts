@@ -544,42 +544,54 @@ export const calculateEGeometryPatternInfo = (
 ): EGeometryPatternInfo => {
   const length = Math.max(0, edgeLengthMm);
   const requestedSegmentWidth = Math.max(0, properties.fingerWidthMm);
-  const cornerClearance = Math.max(0, properties.materialThicknessMm);
-  const requestedStartOffset = properties.startOffsetMm > 0
-    ? Math.max(properties.startOffsetMm, cornerClearance)
-    : cornerClearance;
-  const requestedEndOffset = properties.endOffsetMm > 0
-    ? Math.max(properties.endOffsetMm, cornerClearance)
-    : cornerClearance;
-  const startOffset = Math.max(0, Math.min(requestedStartOffset, length));
-  const endOffset = Math.max(0, Math.min(requestedEndOffset, Math.max(0, length - startOffset)));
-  const availableLength = Math.max(0, length - startOffset - endOffset);
-  const maxFullSegments = requestedSegmentWidth > 0 ? Math.floor(availableLength / requestedSegmentWidth) : 0;
-  const segmentCount = maxFullSegments >= 3
-    ? maxFullSegments - (maxFullSegments % 2 === 0 ? 1 : 0)
+  const segmentCount = requestedSegmentWidth > 0 && length > 0
+    ? Math.max(1, Math.floor(length / requestedSegmentWidth))
     : 0;
-  const segmentWidth = segmentCount > 0 ? requestedSegmentWidth : 0;
-  const patternLength = segmentCount * segmentWidth;
-  const extraMargin = Math.max(0, availableLength - patternLength) / 2;
-  const startDistance = startOffset + extraMargin;
-  const endDistance = length - endOffset - extraMargin;
-  const segmentDistances = [startDistance];
 
-  for (let index = 0; index < segmentCount; index += 1) {
-    segmentDistances.push(startDistance + segmentWidth * (index + 1));
+  if (segmentCount === 0) {
+    return {
+      availableLengthMm: length,
+      segmentCount: 0,
+      segmentWidthMm: 0,
+      middleSegmentWidthMm: 0,
+      firstLastSegmentWidthMm: 0,
+      tabCount: 0,
+      gapCount: 0,
+      endMarginMm: 0,
+      startDistanceMm: 0,
+      endDistanceMm: length,
+      segmentDistancesMm: [0],
+    };
   }
 
+  const usedLength = segmentCount * requestedSegmentWidth;
+  const extraLength = Math.max(0, length - usedLength);
+  const firstLastSegmentWidth = segmentCount === 1
+    ? length
+    : requestedSegmentWidth + extraLength / 2;
+  const segmentDistances = [0];
+  let currentDistance = 0;
+
+  for (let index = 0; index < segmentCount; index += 1) {
+    const isFirstOrLast = index === 0 || index === segmentCount - 1;
+    const segmentWidth = isFirstOrLast ? firstLastSegmentWidth : requestedSegmentWidth;
+    currentDistance += segmentWidth;
+    segmentDistances.push(Math.min(length, currentDistance));
+  }
+
+  segmentDistances[segmentDistances.length - 1] = length;
+
   return {
-    availableLengthMm: availableLength,
+    availableLengthMm: length,
     segmentCount,
-    segmentWidthMm: segmentWidth,
-    middleSegmentWidthMm: segmentCount > 2 ? segmentWidth : 0,
-    firstLastSegmentWidthMm: segmentWidth,
+    segmentWidthMm: requestedSegmentWidth,
+    middleSegmentWidthMm: segmentCount > 2 ? requestedSegmentWidth : 0,
+    firstLastSegmentWidthMm: firstLastSegmentWidth,
     tabCount: Math.ceil(segmentCount / 2),
     gapCount: Math.floor(segmentCount / 2),
-    endMarginMm: Math.min(startDistance, length - endDistance),
-    startDistanceMm: startDistance,
-    endDistanceMm: endDistance,
+    endMarginMm: 0,
+    startDistanceMm: 0,
+    endDistanceMm: length,
     segmentDistancesMm: segmentDistances,
   };
 };

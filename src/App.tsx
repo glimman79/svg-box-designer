@@ -187,6 +187,11 @@ const sideRoleLabels: Record<EdgeSideRole, string> = {
   slot: 'Slot side',
 };
 
+const eSideRoleLabels: Record<EdgeSideRole, string> = {
+  tab: 'E-T pockets on segments 2, 4, 6…',
+  slot: 'E-S pockets on segments 1, 3, 5…',
+};
+
 const sideRoleOptions = Object.keys(sideRoleLabels) as EdgeSideRole[];
 
 const minZoom = 0.1;
@@ -538,7 +543,7 @@ function App() {
     ));
 
     if (hasDuplicateERole) {
-      setErrorMessage(`${selectedConnection.id} already has an ${selectedConnection.id}-${slotRole === 'tab' ? 'T' : 'S'} edge.`);
+      setErrorMessage(`${selectedConnection.id} already has an ${selectedConnection.id}-${slotRole === 'tab' ? 'T' : 'S'} pocket-pattern edge.`);
       return;
     }
 
@@ -773,7 +778,9 @@ function App() {
         {assignedRoleEdges.length > 0 ? (
           <>
             {(!hasTabSide || !hasSlotSide) && (
-              <p className="role-warning">{connectionPrefix} labels normally need at least one Tab side and one Slot side edge.</p>
+              <p className="role-warning">{connectionPrefix === 'E'
+                ? 'E labels normally need one E-T edge and one complementary E-S edge.'
+                : `${connectionPrefix} labels normally need at least one Tab side and one Slot side edge.`}</p>
             )}
             <ul className="assigned-edge-list">
               {assignedRoleEdges.map((edge) => {
@@ -792,7 +799,7 @@ function App() {
                       >
                         {sideRoleOptions.map((role) => (
                           <option key={role} value={role}>
-                            {sideRoleLabels[role]}
+                            {connectionPrefix === 'E' ? eSideRoleLabels[role] : sideRoleLabels[role]}
                           </option>
                         ))}
                       </select>
@@ -843,19 +850,19 @@ function App() {
                           <dd>{formatCalculatedMm(properties.fingerWidthMm)}</dd>
                         </div>
                         <div>
-                          <dt>Middle finger width</dt>
-                          <dd>{info.segmentCount > 2 ? formatCalculatedMm(info.middleSegmentWidthMm) : 'No middle fingers'}</dd>
+                          <dt>Middle segment width</dt>
+                          <dd>{info.segmentCount > 2 ? formatCalculatedMm(info.middleSegmentWidthMm) : 'No middle segments'}</dd>
                         </div>
                         <div>
-                          <dt>First/last finger or slot width</dt>
+                          <dt>First/last segment width</dt>
                           <dd>{info.segmentCount > 0 ? formatCalculatedMm(info.firstLastSegmentWidthMm) : 'No full segments'}</dd>
                         </div>
                         <div>
-                          <dt>Number of tabs</dt>
+                          <dt>E-T solid segments</dt>
                           <dd>{info.tabCount}</dd>
                         </div>
                         <div>
-                          <dt>Number of gaps</dt>
+                          <dt>E-T pocket segments</dt>
                           <dd>{info.gapCount}</dd>
                         </div>
                         <div>
@@ -868,7 +875,7 @@ function App() {
                 })}
               </ul>
             ) : (
-              <p className="muted">Assign this E label to an edge to preview its fitted finger width, tab count, and end margin.</p>
+              <p className="muted">Assign this E label to an edge to preview its fitted segment widths and inward pocket counts.</p>
             )}
           </section>
 
@@ -1099,8 +1106,8 @@ function App() {
             <h3>E preview legend</h3>
             <div><span className="legend-line solid" aria-hidden="true" /> solid black = original SVG</div>
             <div><span className="legend-line dashed" aria-hidden="true" /> dashed gray = E geometry preview</div>
-            <div><strong>E-T</strong> = tab side</div>
-            <div><strong>E-S</strong> = slot side</div>
+            <div><strong>E-T</strong> = inward pockets on segments 2, 4, 6…</div>
+            <div><strong>E-S</strong> = inward pockets on segments 1, 3, 5…</div>
           </div>
         </aside>
 
