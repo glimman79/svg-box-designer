@@ -323,8 +323,9 @@ type SourceBounds = { minX: number; maxX: number; minY: number; maxY: number };
 
 type SourceGeometryContext = {
   bounds: SourceBounds;
-  inwardNormalSign?: 1 | -1;
 };
+
+type EdgeSide = 'top' | 'bottom' | 'left' | 'right';
 
 const getEdgesBySourceBounds = (edges: SvgEdge[]) => {
   return edges.reduce<Record<string, SourceBounds>>((boundsBySource, edge) => {
@@ -347,34 +348,11 @@ const getEdgesBySourceBounds = (edges: SvgEdge[]) => {
   }, {});
 };
 
-const pointsAlmostEqual = (first: Point, second: Point) => (
-  Math.abs(first.x - second.x) <= 0.0001 && Math.abs(first.y - second.y) <= 0.0001
-);
-
 const getEdgesBySourceGeometryContext = (edges: SvgEdge[]) => {
   const boundsBySource = getEdgesBySourceBounds(edges);
-  const edgesBySource = edges.reduce<Record<string, SvgEdge[]>>((groupedEdges, edge) => {
-    if (!groupedEdges[edge.source]) {
-      groupedEdges[edge.source] = [];
-    }
-
-    groupedEdges[edge.source].push(edge);
-    return groupedEdges;
-  }, {});
 
   return Object.entries(boundsBySource).reduce<Record<string, SourceGeometryContext>>((contexts, [source, bounds]) => {
-    const sourceEdges = edgesBySource[source] ?? [];
-    const isClosed = sourceEdges.length > 2
-      && sourceEdges.every((edge, index) => pointsAlmostEqual(edge.end, sourceEdges[(index + 1) % sourceEdges.length].start));
-    const signedArea = isClosed
-      ? sourceEdges.reduce((area, edge) => area + edge.start.x * edge.end.y - edge.end.x * edge.start.y, 0) / 2
-      : 0;
-
-    contexts[source] = {
-      bounds,
-      inwardNormalSign: Math.abs(signedArea) > 0.0001 ? (signedArea > 0 ? 1 : -1) : undefined,
-    };
-
+    contexts[source] = { bounds };
     return contexts;
   }, {});
 };
@@ -606,42 +584,73 @@ export const calculateEGeometryPatternInfo = (
   };
 };
 
-const getInwardEdgeNormal = (
-  edge: SvgEdge,
-  context: SourceGeometryContext | undefined,
-): Point => {
-  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
-
-  if (length === 0) {
-    return { x: 0, y: 0 };
-  }
-
-  const unitX = (edge.end.x - edge.start.x) / length;
-  const unitY = (edge.end.y - edge.start.y) / length;
-  const normal = { x: -unitY, y: unitX };
-
-  if (!context) {
-    return normal;
-  }
-
-  if (context.inwardNormalSign) {
-    return { x: normal.x * context.inwardNormalSign, y: normal.y * context.inwardNormalSign };
+const getEdgeSide = (edge: SvgEdge, bounds: SourceBounds | undefined): EdgeSide | undefined => {
+  if (!bounds) {
+    return undefined;
   }
 
   const center = midpoint(edge);
-  const sourceCenter = {
-    x: (context.bounds.minX + context.bounds.maxX) / 2,
-    y: (context.bounds.minY + context.bounds.maxY) / 2,
+  const dx = Math.abs(edge.end.x - edge.start.x);
+  const dy = Math.abs(edge.end.y - edge.start.y);
+  const distanceToSide: Record<EdgeSide, number> = {
+    top: Math.abs(center.y - bounds.minY),
+    bottom: Math.abs(center.y - bounds.maxY),
+    left: Math.abs(center.x - bounds.minX),
+    right: Math.abs(center.x - bounds.maxX),
   };
-  const towardSourceCenter = { x: sourceCenter.x - center.x, y: sourceCenter.y - center.y };
-  const dot = normal.x * towardSourceCenter.x + normal.y * towardSourceCenter.y;
-  const epsilon = 0.0001;
 
-  if (Math.abs(dot) <= epsilon) {
-    return normal;
+  if (dx >= dy) {
+    return distanceToSide.top <= distanceToSide.bottom ? 'top' : 'bottom';
   }
 
-  return dot > 0 ? normal : { x: -normal.x, y: -normal.y };
+  return distanceToSide.left <= distanceToSide.right ? 'left' : 'right';
+};
+
+const getInwardEdgeNormal = (side: EdgeSide | undefined, edge: SvgEdge): Point => {
+  if (side === 'top') {
+    return { x: 0, y: 1 };
+  }
+
+  if (side === 'bottom') {
+    return { x: 0, y: -1 };
+  }
+
+  if (side === 'left') {
+    return { x: 1, y: 0 };
+  }
+
+  if (side === 'right') {
+    return { x: -1, y: 0 };
+  }
+
+  return getEdgeNormal(edge);
+};
+
+const clampInwardOffset = (base: Point, offset: number, side: EdgeSide | undefined, bounds: SourceBounds | undefined) => {
+  if (!bounds || offset <= 0) {
+    return Math.max(0, offset);
+  }
+
+  const hasHeight = bounds.maxY - bounds.minY > 0.0001;
+  const hasWidth = bounds.maxX - bounds.minX > 0.0001;
+
+  if (side === 'top' && hasHeight) {
+    return Math.max(0, Math.min(offset, bounds.maxY - base.y));
+  }
+
+  if (side === 'bottom' && hasHeight) {
+    return Math.max(0, Math.min(offset, base.y - bounds.minY));
+  }
+
+  if (side === 'left' && hasWidth) {
+    return Math.max(0, Math.min(offset, bounds.maxX - base.x));
+  }
+
+  if (side === 'right' && hasWidth) {
+    return Math.max(0, Math.min(offset, base.x - bounds.minX));
+  }
+
+  return Math.max(0, offset);
 };
 
 const generateFingerJointCommands = (
@@ -663,7 +672,8 @@ const generateFingerJointCommands = (
     return [pointCommand('M', edge.start), pointCommand('L', edge.end)];
   }
 
-  const normal = getInwardEdgeNormal(edge, context);
+  const side = getEdgeSide(edge, context?.bounds);
+  const normal = getInwardEdgeNormal(side, edge);
   const role = assignment.slotRole ?? 'tab';
   const depth = Math.max(0, properties.materialThicknessMm);
   const commands = [pointCommand('M', edge.start)];
@@ -671,7 +681,8 @@ const generateFingerJointCommands = (
 
   const addLineAt = (distance: number, offset = 0) => {
     const base = pointAtDistance(edge, distance, length);
-    const nextPoint = { x: base.x + normal.x * offset, y: base.y + normal.y * offset };
+    const inwardOffset = clampInwardOffset(base, offset, side, context?.bounds);
+    const nextPoint = { x: base.x + normal.x * inwardOffset, y: base.y + normal.y * inwardOffset };
 
     if (Math.abs(nextPoint.x - lastPoint.x) < 0.0001 && Math.abs(nextPoint.y - lastPoint.y) < 0.0001) {
       return;
