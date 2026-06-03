@@ -253,6 +253,7 @@ function getDefaultCornerDepth(materialThicknessMm: number) {
 const getAssignedConnectionId = (assignment: EdgeAssignment | undefined) => assignment?.connectionId;
 
 const formatCalculatedMm = (value: number) => `${Number(value.toFixed(2)).toString()} mm`;
+const formatOptionalCalculatedMm = (value: number | undefined) => (value === undefined ? 'n/a' : formatCalculatedMm(value));
 const formatCoordinate = (value: number) => Number(value.toFixed(4)).toString();
 const formatDebugPoint = (point: Point) => `(${formatCoordinate(point.x)}, ${formatCoordinate(point.y)})`;
 const formatDebugPointList = (points: Point[]) => points.length > 0 ? points.slice(0, 10).map(formatDebugPoint).join(' → ') : 'None';
@@ -1133,12 +1134,17 @@ function App() {
                 <thead>
                   <tr>
                     <th>Edge</th>
+                    <th>Source</th>
                     <th>Label</th>
                     <th>Role</th>
                     <th>Start x/y</th>
                     <th>End x/y</th>
                     <th>Side</th>
                     <th>Inward</th>
+                    <th>Panel minY</th>
+                    <th>Panel maxY</th>
+                    <th>Dist minY</th>
+                    <th>Dist maxY</th>
                     <th>Length</th>
                     <th>Thickness</th>
                     <th>Tab size</th>
@@ -1150,12 +1156,17 @@ function App() {
                   {eGeometryPreviewDebugInfo.map((info) => (
                     <tr key={info.edgeId} className={info.warning ? 'has-warning' : undefined}>
                       <td>{info.edgeId}</td>
+                      <td>{info.sourceId}</td>
                       <td>{info.label}</td>
                       <td>{info.role}</td>
                       <td>{formatDebugPoint(info.start)}</td>
                       <td>{formatDebugPoint(info.end)}</td>
                       <td>{info.detectedSide}</td>
                       <td>{info.inwardDirection}</td>
+                      <td>{formatOptionalCalculatedMm(info.panelMinY)}</td>
+                      <td>{formatOptionalCalculatedMm(info.panelMaxY)}</td>
+                      <td>{formatOptionalCalculatedMm(info.distanceToPanelMinY)}</td>
+                      <td>{formatOptionalCalculatedMm(info.distanceToPanelMaxY)}</td>
                       <td>{formatCalculatedMm(info.edgeLengthMm)}</td>
                       <td>{formatCalculatedMm(info.materialThicknessMm)}</td>
                       <td>{formatCalculatedMm(info.fingerWidthMm)}</td>
