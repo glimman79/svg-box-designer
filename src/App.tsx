@@ -602,15 +602,13 @@ function App() {
     ) as Record<string, EdgeConnectionDefinition>;
 
     try {
-      const result = generateEGeometrySvg(svgModel.content, edgeAssignments, svgModel.edges, eConnections);
-      const parsedSvg = parseSvgDocument(result.svgContent);
+      const output = generateEGeometrySvg(svgModel.content, edgeAssignments, svgModel.edges, eConnections);
+      const parsedSvg = parseSvgDocument(output);
       setSvgModel(parsedSvg);
       setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
       setEdgeAssignments({});
       setSelectedEdgeId(null);
-      setErrorMessage(result.warnings.length > 0
-        ? `${result.warnings.join(' ')} Generated E geometry preview. Assignments were cleared because the original straight edges were replaced.`
-        : 'Generated E geometry preview. Assignments were cleared because the original straight edges were replaced.');
+      setErrorMessage('Generated E geometry preview. Assignments were cleared because the original straight edges were replaced.');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to generate E geometry.');
     }
