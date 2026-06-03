@@ -404,14 +404,14 @@ button:disabled {
   stroke: #1f2937;
   stroke-dasharray: 6 4;
   stroke-linecap: round;
-  stroke-width: 2;
+  stroke-width: 1;
   pointer-events: none;
   vector-effect: non-scaling-stroke;
 }
 
 .edge-highlight.selected {
   stroke: #000000;
-  stroke-width: 3;
+  stroke-width: 1;
 }
 
 .edge-label {
@@ -688,7 +688,7 @@ button:disabled {
   stroke-linecap: butt;
   stroke-linejoin: miter;
   stroke-miterlimit: 2;
-  stroke-width: 2.5;
+  stroke-width: 1;
   vector-effect: non-scaling-stroke;
 }
 
@@ -730,7 +730,7 @@ button:disabled {
 .legend-line.dashed {
   border-color: #2563eb;
   border-top-style: dashed;
-  border-top-width: 2px;
+  border-top-width: 1px;
 }
 
 .e-preview-debug {
