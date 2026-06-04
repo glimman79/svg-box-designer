@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, generateEGeometryPreview, generateEGeometrySvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
-import type { EGeometryPreviewDebugInfo, EdgeAssignment, EdgeSideRole, Point, SvgDocumentModel } from './svgUtils';
+import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
+import type { EdgeAssignment, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
 
@@ -15,11 +15,6 @@ type EdgeConnectionProperties = {
   materialThicknessMm: number;
   fingerWidthMm: number;
   isFingerWidthManual: boolean;
-  playMm: number;
-  extraLengthMm: number;
-  kerfMm: number;
-  startOffsetMm: number;
-  endOffsetMm: number;
 };
 
 type SlotConnectionProperties = {
@@ -133,11 +128,6 @@ const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
     materialThicknessMm: 3,
     fingerWidthMm: 9,
     isFingerWidthManual: false,
-    playMm: 0,
-    extraLengthMm: 0,
-    kerfMm: 0.15,
-    startOffsetMm: 0,
-    endOffsetMm: 0,
   },
   S: {
     slotOffsetMm: 0,
@@ -181,23 +171,6 @@ const getNextLabel = (prefix: LabelPrefix, labels: string[]) => {
 
   return `${prefix}${usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1}`;
 };
-
-const sideRoleLabels: Record<EdgeSideRole, string> = {
-  tab: 'Tab side',
-  slot: 'Slot side',
-};
-
-const eSideRoleLabels: Record<EdgeSideRole, string> = {
-  tab: 'E-T label',
-  slot: 'E-S label',
-};
-
-const eSideRoleSuffixes: Record<EdgeSideRole, 'T' | 'S'> = {
-  tab: 'T',
-  slot: 'S',
-};
-
-const sideRoleOptions = Object.keys(sideRoleLabels) as EdgeSideRole[];
 
 const minZoom = 0.1;
 const maxZoom = 20;
@@ -258,12 +231,6 @@ function getDefaultCornerDepth(materialThicknessMm: number) {
 const getAssignedConnectionId = (assignment: EdgeAssignment | undefined) => assignment?.connectionId;
 
 const formatCalculatedMm = (value: number) => `${Number(value.toFixed(2)).toString()} mm`;
-const formatOptionalCalculatedMm = (value: number | undefined) => (value === undefined ? 'n/a' : formatCalculatedMm(value));
-
-const formatCoordinate = (value: number) => Number(value.toFixed(4)).toString();
-const formatDebugPoint = (point: Point) => `(${formatCoordinate(point.x)}, ${formatCoordinate(point.y)})`;
-const formatDebugPointList = (points: Point[]) => points.length > 0 ? points.slice(0, 10).map(formatDebugPoint).join(' → ') : 'None';
-
 const cloneDefaultProperties = <P extends LabelPrefix>(prefix: P): ConnectionPropertiesByPrefix[P] => ({
   ...defaultConnectionProperties[prefix],
 });
@@ -318,10 +285,6 @@ function App() {
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
-  const [eGeometryPreviewPaths, setEGeometryPreviewPaths] = useState<string[]>([]);
-  const [eGeometryPreviewDebugInfo, setEGeometryPreviewDebugInfo] = useState<EGeometryPreviewDebugInfo[]>([]);
-  const [showEGeometryDebugPoints, setShowEGeometryDebugPoints] = useState(false);
-  const [isEGeometryPreviewOnly, setIsEGeometryPreviewOnly] = useState(false);
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const panStateRef = useRef<PanState | null>(null);
@@ -332,15 +295,6 @@ function App() {
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
   const selectedConnection = selectedLabelId ? connections[selectedLabelId] ?? null : null;
   const selectedEdge = svgModel.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
-  const hasEGeometryPreview = eGeometryPreviewPaths.length > 0;
-  const showEGeometryPreviewOnly = isEGeometryPreviewOnly && hasEGeometryPreview;
-
-  const resetEGeometryPreview = () => {
-    setEGeometryPreviewPaths([]);
-    setEGeometryPreviewDebugInfo([]);
-    setIsEGeometryPreviewOnly(false);
-  };
-
   const labelCounts = useMemo(() => {
     return availableLabels.reduce<Record<string, number>>((counts, label) => {
       counts[label] = Object.values(edgeAssignments).filter((assignment) => assignment.connectionId === label).length;
@@ -367,7 +321,6 @@ function App() {
     setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
     setEdgeAssignments({});
     setSelectedEdgeId(null);
-    resetEGeometryPreview();
     setErrorMessage('');
     event.target.value = '';
   };
@@ -388,48 +341,7 @@ function App() {
     setErrorMessage('');
   };
 
-  const getDefaultEdgeSideRole = (connectionId: string, assignments: Record<string, EdgeAssignment>): EdgeSideRole => {
-    const rolesForConnection = Object.values(assignments)
-      .filter((assignment) => assignment.connectionId === connectionId)
-      .map((assignment) => assignment.slotRole);
-
-    if (!rolesForConnection.includes('tab')) {
-      return 'tab';
-    }
-
-    if (!rolesForConnection.includes('slot')) {
-      return 'slot';
-    }
-
-    return 'tab';
-  };
-
-  const getAssignedEEdges = (connectionId: string, assignments: Record<string, EdgeAssignment>) => (
-    Object.entries(assignments).filter(([, assignment]) => assignment.connectionId === connectionId)
-  );
-
-  const isEConnectionFull = (connectionId: string, assignments: Record<string, EdgeAssignment>) => (
-    getAssignedEEdges(connectionId, assignments).length >= 2
-  );
-
-  const findNextAvailableLabel = (prefix: LabelPrefix, labels: string[]) => {
-    const usedNumbers = new Set(
-      labels
-        .filter((label) => getLabelPrefix(label) === prefix)
-        .map((label) => Number.parseInt(label.slice(1), 10))
-        .filter((value) => Number.isFinite(value)),
-    );
-
-    let nextNumber = 1;
-    while (usedNumbers.has(nextNumber)) {
-      nextNumber += 1;
-    }
-
-    return `${prefix}${nextNumber}`;
-  };
-
   const clearEdgeLabel = (edgeId: string) => {
-    resetEGeometryPreview();
     setEdgeAssignments((currentAssignments) => {
       const nextAssignments = { ...currentAssignments };
       delete nextAssignments[edgeId];
@@ -440,7 +352,6 @@ function App() {
 
   const assignSelectedLabelToEdge = (edgeId: string) => {
     setSelectedEdgeId(edgeId);
-    resetEGeometryPreview();
 
     if (!selectedLabelId) {
       setErrorMessage('Create and select a connection before clicking an edge.');
@@ -453,33 +364,13 @@ function App() {
       return;
     }
 
-    let targetLabelId = selectedLabelId;
-    let targetConnection = connection;
-    let warningMessage = '';
-
-    if (connection.prefix === 'E' && edgeAssignments[edgeId]?.connectionId !== selectedLabelId && isEConnectionFull(selectedLabelId, edgeAssignments)) {
-      targetLabelId = findNextAvailableLabel('E', availableLabels);
-      targetConnection = createConnectionDefinition(targetLabelId, 'E') as EdgeConnectionDefinition;
-      setConnections((currentConnections) => ({
-        ...currentConnections,
-        [targetLabelId]: targetConnection,
-      }));
-      setSelectedLabelId(targetLabelId);
-      warningMessage = `${selectedLabelId} already has 2 edges. Switched to ${targetLabelId}.`;
-    }
-
     setEdgeAssignments((currentAssignments) => ({
       ...currentAssignments,
       [edgeId]: {
-        connectionId: targetLabelId,
-        ...(targetConnection.prefix === 'E' || targetConnection.prefix === 'S'
-          ? { slotRole: currentAssignments[edgeId]?.connectionId === targetLabelId
-            ? currentAssignments[edgeId]?.slotRole ?? getDefaultEdgeSideRole(targetLabelId, currentAssignments)
-            : getDefaultEdgeSideRole(targetLabelId, currentAssignments) }
-          : {}),
+        connectionId: selectedLabelId,
       },
     }));
-    setErrorMessage(warningMessage);
+    setErrorMessage('');
   };
 
   const clearSelectedLabel = () => {
@@ -491,7 +382,6 @@ function App() {
   };
 
   const updateEdgeProperties = (updates: Partial<EdgeConnectionProperties>) => {
-    resetEGeometryPreview();
     if (!selectedConnection || selectedConnection.prefix !== 'E') {
       return;
     }
@@ -551,40 +441,6 @@ function App() {
     }));
   };
 
-  const updateEdgeSideRole = (edgeId: string, slotRole: EdgeSideRole) => {
-    resetEGeometryPreview();
-    if (!selectedConnection || (selectedConnection.prefix !== 'E' && selectedConnection.prefix !== 'S')) {
-      return;
-    }
-
-    const hasDuplicateERole = selectedConnection.prefix === 'E' && Object.entries(edgeAssignments).some(([assignedEdgeId, assignedEdge]) => (
-      assignedEdgeId !== edgeId
-      && assignedEdge.connectionId === selectedConnection.id
-      && assignedEdge.slotRole === slotRole
-    ));
-
-    if (hasDuplicateERole) {
-      setErrorMessage(`${selectedConnection.id} already has an ${selectedConnection.id}-${slotRole === 'tab' ? 'T' : 'S'} E geometry edge.`);
-      return;
-    }
-
-    setEdgeAssignments((currentAssignments) => {
-      const assignment = currentAssignments[edgeId];
-      if (!assignment || assignment.connectionId !== selectedConnection.id) {
-        return currentAssignments;
-      }
-
-      return {
-        ...currentAssignments,
-        [edgeId]: {
-          ...assignment,
-          slotRole,
-        },
-      };
-    });
-    setErrorMessage('');
-  };
-
   const updateCornerProperties = (updates: Partial<CornerConnectionProperties>) => {
     if (!selectedConnection || selectedConnection.prefix !== 'C') {
       return;
@@ -626,45 +482,6 @@ function App() {
       ...currentConnections,
       [nextConnection.id]: nextConnection,
     }));
-  };
-
-  const getEConnections = () => Object.fromEntries(
-    Object.entries(connections).filter(([, connection]) => connection.prefix === 'E'),
-  ) as Record<string, EdgeConnectionDefinition>;
-
-  const previewEGeometry = () => {
-    try {
-      const preview = generateEGeometryPreview(edgeAssignments, svgModel.edges, getEConnections());
-      setEGeometryPreviewPaths(preview.paths);
-      setEGeometryPreviewDebugInfo(preview.debugInfo);
-      setIsEGeometryPreviewOnly((currentValue) => preview.paths.length > 0 && currentValue);
-      setErrorMessage(preview.paths.length > 0
-        ? 'Showing E notched edge preview overlay. Original SVG geometry is unchanged.'
-        : 'No E preview notches were generated. Check the E preview debug output for skipped edges.');
-    } catch (error) {
-      resetEGeometryPreview();
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to preview E geometry.');
-    }
-  };
-
-  const applyEGeometry = () => {
-    try {
-      const output = generateEGeometrySvg(svgModel.content, edgeAssignments, svgModel.edges, getEConnections());
-      const parsedSvg = parseSvgDocument(output);
-      setSvgModel(parsedSvg);
-      setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
-      setEdgeAssignments({});
-      resetEGeometryPreview();
-      setSelectedEdgeId(null);
-      setErrorMessage('Applied E geometry successfully.');
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to apply E geometry.');
-    }
-  };
-
-  const clearEGeometryPreview = () => {
-    resetEGeometryPreview();
-    setErrorMessage('Cleared E geometry preview. Original SVG geometry is unchanged.');
   };
 
   const exportSvg = () => {
@@ -792,61 +609,6 @@ function App() {
     }
   };
 
-  const renderSideRoleSection = (connectionId: string, connectionPrefix: 'E' | 'S') => {
-    const assignedRoleEdges = svgModel.edges.filter((edge) => edgeAssignments[edge.id]?.connectionId === connectionId);
-    const hasTabSide = assignedRoleEdges.some((edge) => edgeAssignments[edge.id]?.slotRole === 'tab');
-    const hasSlotSide = assignedRoleEdges.some((edge) => edgeAssignments[edge.id]?.slotRole === 'slot');
-    const sectionId = `${connectionPrefix.toLowerCase()}-edge-roles`;
-
-    return (
-      <section className="property-section" aria-labelledby={sectionId}>
-        <h4 id={sectionId}>Assigned edges</h4>
-        {assignedRoleEdges.length > 0 ? (
-          <>
-            {(!hasTabSide || !hasSlotSide) && (
-              <p className="role-warning">{connectionPrefix === 'E'
-                ? 'E labels normally need one E-T edge and one complementary E-S edge.'
-                : `${connectionPrefix} labels normally need at least one Tab side and one Slot side edge.`}</p>
-            )}
-            <ul className="assigned-edge-list">
-              {assignedRoleEdges.map((edge) => {
-                const assignment = edgeAssignments[edge.id];
-                return (
-                  <li key={edge.id}>
-                    <div>
-                      <strong>{edge.id}</strong>
-                      <span>{edge.source}</span>
-                    </div>
-                    <div className="assigned-edge-actions">
-                      <select
-                        aria-label={`${edge.id} ${connectionPrefix} side role`}
-                        value={assignment?.slotRole ?? 'tab'}
-                        onChange={(event) => updateEdgeSideRole(edge.id, event.target.value as EdgeSideRole)}
-                      >
-                        {sideRoleOptions.map((role) => (
-                          <option key={role} value={role}>
-                            {connectionPrefix === 'E' ? eSideRoleLabels[role] : sideRoleLabels[role]}
-                          </option>
-                        ))}
-                      </select>
-                      {connectionPrefix === 'E' && (
-                        <button type="button" onClick={() => clearEdgeLabel(edge.id)}>
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </>
-        ) : (
-          <p className="muted">No edges assigned to this {connectionPrefix} label yet. Select this label, then click edges in the drawing.</p>
-        )}
-      </section>
-    );
-  };
-
   const renderPropertiesPanel = () => {
     if (!selectedConnection) {
       return <p className="muted">Select E1, S1, C1, or P1 to edit its saved connection properties.</p>;
@@ -857,33 +619,31 @@ function App() {
       const assignedEEdges = svgModel.edges.filter((edge) => edgeAssignments[edge.id]?.connectionId === selectedConnection.id);
       return (
         <div className="property-sections">
-          {renderSideRoleSection(selectedConnection.id, selectedConnection.prefix)}
-
-          <section className="property-section" aria-labelledby="edge-calculated-properties">
-            <h4 id="edge-calculated-properties">Calculated geometry</h4>
+          <section className="property-section" aria-labelledby="edge-assigned-edges">
+            <h4 id="edge-assigned-edges">Assigned edges</h4>
             {assignedEEdges.length > 0 ? (
               <ul className="calculated-edge-list">
-                {assignedEEdges.map((edge) => {
-                  const assignment = edgeAssignments[edge.id];
-                  const role = assignment?.slotRole ?? 'tab';
-                  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
-                  const displayLabel = `${selectedConnection.id}-${eSideRoleSuffixes[role]}`;
-
-                  return (
-                    <li key={edge.id}>
-                      <strong>{displayLabel}</strong>
-                      <dl>
-                        <div>
-                          <dt>Edge length</dt>
-                          <dd>{formatCalculatedMm(length)}</dd>
-                        </div>
-                      </dl>
-                    </li>
-                  );
-                })}
+                {assignedEEdges.map((edge) => (
+                  <li key={edge.id}>
+                    <strong>{edge.id}</strong>
+                    <dl>
+                      <div>
+                        <dt>Source</dt>
+                        <dd>{edge.source}</dd>
+                      </div>
+                      <div>
+                        <dt>Edge length</dt>
+                        <dd>{formatCalculatedMm(Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y))}</dd>
+                      </div>
+                    </dl>
+                    <button type="button" onClick={() => clearEdgeLabel(edge.id)}>
+                      Remove
+                    </button>
+                  </li>
+                ))}
               </ul>
             ) : (
-              <p className="muted">Assign this E label to an edge to preview the placeholder E geometry path.</p>
+              <p className="muted">No edges assigned to this E label yet. Select this label, then click edges in the drawing.</p>
             )}
           </section>
 
@@ -895,16 +655,6 @@ function App() {
             </div>
           </section>
 
-          <section className="property-section" aria-labelledby="edge-advanced-properties">
-            <h4 id="edge-advanced-properties">Advanced</h4>
-            <div className="property-grid">
-              <NumericField id="edge-kerf" label="Kerf (mm)" min={0} value={properties.kerfMm} onChange={(kerfMm) => updateEdgeProperties({ kerfMm })} />
-              <NumericField id="edge-play" label="Play (mm)" min={0} value={properties.playMm} onChange={(playMm) => updateEdgeProperties({ playMm })} />
-              <NumericField id="edge-start-offset" label="Start offset (mm)" min={0} value={properties.startOffsetMm} onChange={(startOffsetMm) => updateEdgeProperties({ startOffsetMm })} />
-              <NumericField id="edge-end-offset" label="End offset (mm)" min={0} value={properties.endOffsetMm} onChange={(endOffsetMm) => updateEdgeProperties({ endOffsetMm })} />
-              <NumericField id="edge-extra-length" label="Extra length (mm)" value={properties.extraLengthMm} onChange={(extraLengthMm) => updateEdgeProperties({ extraLengthMm })} />
-            </div>
-          </section>
         </div>
       );
     }
@@ -914,8 +664,6 @@ function App() {
 
       return (
         <div className="property-sections">
-          {renderSideRoleSection(selectedConnection.id, selectedConnection.prefix)}
-
           <section className="property-section" aria-labelledby="slot-basic-properties">
             <h4 id="slot-basic-properties">Basic</h4>
             <div className="property-grid">
@@ -1005,7 +753,7 @@ function App() {
           <p className="eyebrow">Reusable connection definitions</p>
           <h1>SVG Box Designer</h1>
           <p>
-            Import your own SVG design, then define reusable finger joints, slots, corner connections, and bend patterns for its existing edges.
+            Import your own SVG design, then define reusable edge labels for its existing straight edges.
           </p>
         </div>
         <div className="hero-actions">
@@ -1013,25 +761,6 @@ function App() {
             Import SVG
             <input type="file" accept=".svg,image/svg+xml" onChange={handleImportWithError} />
           </label>
-          <button className="button" type="button" onClick={previewEGeometry}>
-            Preview E Geometry
-          </button>
-          <button className="button" type="button" onClick={applyEGeometry}>
-            Apply E Geometry
-          </button>
-          <button
-            className={`button${showEGeometryPreviewOnly ? ' active' : ''}`}
-            type="button"
-            onClick={() => setIsEGeometryPreviewOnly((currentValue) => !currentValue)}
-            disabled={!hasEGeometryPreview}
-            aria-pressed={showEGeometryPreviewOnly}
-            title="Hide the original SVG so only the generated E preview geometry is visible."
-          >
-            Preview only
-          </button>
-          <button className="button" type="button" onClick={clearEGeometryPreview} disabled={!hasEGeometryPreview && eGeometryPreviewDebugInfo.length === 0}>
-            Clear Preview
-          </button>
           <button className="button" type="button" onClick={exportSvg} disabled={Object.keys(edgeAssignments).length === 0}>
             Export SVG
           </button>
@@ -1047,7 +776,7 @@ function App() {
         <aside className="panel">
           <h2>Connection manager</h2>
           <p className="muted">
-            Create a connection, select it, tune its parameters, then click edges from your custom SVG. This app labels your design for future connection generation instead of generating a standard box.
+            Create a connection, select it, tune its parameters, then click edges from your custom SVG. This app assigns and exports labels without generating or replacing SVG geometry.
           </p>
 
           <div className="active-label-card" aria-live="polite">
@@ -1120,85 +849,6 @@ function App() {
             </button>
           </div>
 
-          <div className="e-preview-legend" aria-label="E geometry preview legend" hidden={!hasEGeometryPreview}>
-            <h3>E preview legend</h3>
-            <div hidden={showEGeometryPreviewOnly}><span className="legend-line solid" aria-hidden="true" /> solid black = original SVG</div>
-            <div>
-              <span className="legend-line dashed" aria-hidden="true" />
-              {showEGeometryPreviewOnly ? 'solid blue = E geometry preview only' : 'dashed blue = E geometry preview'}
-            </div>
-            <div hidden={!showEGeometryPreviewOnly}>Preview only mode hides the original SVG and edge labels.</div>
-            <div><strong>E-T</strong> and <strong>E-S</strong> use placeholder E geometry in this cleanup phase.</div>
-          </div>
-
-          <div className="e-preview-debug" aria-label="E geometry preview debug output" hidden={eGeometryPreviewDebugInfo.length === 0}>
-            <h3>E preview debug</h3>
-            <div className="e-preview-debug-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Edge</th>
-                    <th>Source</th>
-                    <th>Label</th>
-                    <th>Role</th>
-                    <th>Start x/y</th>
-                    <th>End x/y</th>
-                    <th>Side</th>
-                    <th>Inward</th>
-                    <th>Panel minY</th>
-                    <th>Panel maxY</th>
-                    <th>Dist minY</th>
-                    <th>Dist maxY</th>
-                    <th>Length</th>
-                    <th>Thickness</th>
-                    <th>Tab size</th>
-                    <th>Point count</th>
-                    <th>First 10 points</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {eGeometryPreviewDebugInfo.map((info) => (
-                    <tr key={info.edgeId} className={info.warning ? 'has-warning' : undefined}>
-                      <td>{info.edgeId}</td>
-                      <td>{info.sourceId}</td>
-                      <td>{info.label}</td>
-                      <td>{info.role}</td>
-                      <td>{formatDebugPoint(info.start)}</td>
-                      <td>{formatDebugPoint(info.end)}</td>
-                      <td>{info.detectedSide}</td>
-                      <td>{info.inwardDirection}</td>
-                      <td>{formatOptionalCalculatedMm(info.panelMinY)}</td>
-                      <td>{formatOptionalCalculatedMm(info.panelMaxY)}</td>
-                      <td>{formatOptionalCalculatedMm(info.distanceToPanelMinY)}</td>
-                      <td>{formatOptionalCalculatedMm(info.distanceToPanelMaxY)}</td>
-                      <td>{formatCalculatedMm(info.edgeLengthMm)}</td>
-                      <td>{formatCalculatedMm(info.materialThicknessMm)}</td>
-                      <td>{formatCalculatedMm(info.fingerWidthMm)}</td>
-                      <td>{info.generatedPointCount}</td>
-                      <td className="debug-point-list">{formatDebugPointList(info.generatedPoints)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <label className="debug-point-toggle">
-              <input
-                type="checkbox"
-                checked={showEGeometryDebugPoints}
-                onChange={(event) => setShowEGeometryDebugPoints(event.target.checked)}
-              />
-              Show debug points
-            </label>
-            {eGeometryPreviewDebugInfo.some((info) => info.warning) && (
-              <ul className="e-preview-warnings">
-                {eGeometryPreviewDebugInfo.filter((info) => info.warning).map((info) => (
-                  <li key={`${info.edgeId}-warning`}>
-                    <strong>{info.edgeId}:</strong> {info.warning}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
         </aside>
 
         <section className="canvas-card">
@@ -1218,7 +868,7 @@ function App() {
           <div className="canvas-frame">
             <svg
               ref={svgRef}
-              className={`design-svg${isCanvasPanning ? ' is-panning' : ''}${hasEGeometryPreview ? ' has-e-preview' : ''}${showEGeometryPreviewOnly ? ' is-preview-only' : ''}`}
+              className={`design-svg${isCanvasPanning ? ' is-panning' : ''}`}
               viewBox={formatViewBox(canvasViewBox)}
               role="img"
               aria-label="Imported SVG with selectable edges"
@@ -1229,31 +879,8 @@ function App() {
               onPointerCancel={handleCanvasPointerUp}
               onPointerLeave={handleCanvasPointerLeave}
             >
-              {!showEGeometryPreviewOnly && (
-                <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
-              )}
-              {hasEGeometryPreview && (
-                <g
-                  className="e-geometry-preview-layer"
-                  aria-label={showEGeometryPreviewOnly ? 'E geometry preview only' : 'E geometry preview overlay'}
-                >
-                  {eGeometryPreviewPaths.map((pathData, index) => (
-                    <path key={`${pathData}-${index}`} d={pathData} />
-                  ))}
-                </g>
-              )}
-              {showEGeometryDebugPoints && eGeometryPreviewDebugInfo.length > 0 && (
-                <g className="e-geometry-debug-point-layer" aria-label="Numbered E geometry debug points">
-                  {eGeometryPreviewDebugInfo.flatMap((info) => info.generatedPoints.map((point, index) => (
-                    <g key={`${info.edgeId}-debug-point-${index}`} transform={`translate(${point.x} ${point.y})`}>
-                      <circle r={5 / labelZoom} />
-                      <text dy={3 / labelZoom} fontSize={9 / labelZoom}>{index + 1}</text>
-                    </g>
-                  )))}
-                </g>
-              )}
-              {!showEGeometryPreviewOnly && (
-                <g className="edge-overlays">
+              <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
+              <g className="edge-overlays">
                   {svgModel.edges.map((edge) => {
                   const assignment = edgeAssignments[edge.id];
                   const label = getEdgeAssignmentDisplayLabel(assignment);
@@ -1317,7 +944,6 @@ function App() {
                   );
                   })}
                 </g>
-              )}
             </svg>
           </div>
         </section>
