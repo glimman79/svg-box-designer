@@ -860,51 +860,25 @@ type EPatternPocketInterval = {
   endDistanceMm: number;
 };
 
-const getEPatternEndCoverageExtension = (settings: EGeometryConnectionProperties) => (
-  Math.max(0, settings.materialThicknessMm, settings.fingerWidthMm / 2)
-);
-
 const getEPatternPocketIntervals = (
   patternInfo: EGeometryPatternInfo,
   role: EdgeSideRole,
-  edgeLengthMm: number,
-  endCoverageExtensionMm = 0,
-): EPatternPocketInterval[] => {
-  const pocketIntervals = patternInfo.segmentDistancesMm
-    .slice(0, patternInfo.segmentCount)
-    .flatMap((distance, intervalIndex) => (
-      shouldCutEPatternSegment(intervalIndex, role)
-        ? [{
-          startDistanceMm: distance,
-          endDistanceMm: patternInfo.segmentDistancesMm[intervalIndex + 1],
-        }]
-        : []
-    ));
-
-  if (pocketIntervals.length === 0 || endCoverageExtensionMm <= 0 || edgeLengthMm <= 0) {
-    return pocketIntervals;
-  }
-
-  return pocketIntervals.map((interval, intervalIndex) => {
-    const isFirstPocket = intervalIndex === 0;
-    const isLastPocket = intervalIndex === pocketIntervals.length - 1;
-
-    // Extend the terminal E pockets beyond the source edge, then let the
-    // generated outline clip them back to the original edge endpoints.
-    return {
-      startDistanceMm: isFirstPocket ? -endCoverageExtensionMm : interval.startDistanceMm,
-      endDistanceMm: isLastPocket ? edgeLengthMm + endCoverageExtensionMm : interval.endDistanceMm,
-    };
-  });
-};
+): EPatternPocketInterval[] => patternInfo.segmentDistancesMm
+  .slice(0, patternInfo.segmentCount)
+  .flatMap((distance, intervalIndex) => (
+    shouldCutEPatternSegment(intervalIndex, role)
+      ? [{
+        startDistanceMm: distance,
+        endDistanceMm: patternInfo.segmentDistancesMm[intervalIndex + 1],
+      }]
+      : []
+  ));
 
 const getEPatternPocketDistanceSummary = (
   patternInfo: EGeometryPatternInfo,
   role: EdgeSideRole,
-  edgeLengthMm: number,
-  endCoverageExtensionMm = 0,
 ) => {
-  const pocketSegments = getEPatternPocketIntervals(patternInfo, role, edgeLengthMm, endCoverageExtensionMm);
+  const pocketSegments = getEPatternPocketIntervals(patternInfo, role);
   const firstPocket = pocketSegments[0];
   const lastPocket = pocketSegments[pocketSegments.length - 1];
 
@@ -936,34 +910,9 @@ const buildSteppedEPolyline = (
   }
 
   const points: Point[] = [edge.start];
-  const endCoverageExtensionMm = getEPatternEndCoverageExtension(settings);
-  const clippedPocketIntervals = getEPatternPocketIntervals(
-    patternInfo,
-    role,
-    length,
-    endCoverageExtensionMm,
-  )
-    .map((interval) => ({
-      startDistanceMm: Math.max(0, Math.min(length, interval.startDistanceMm)),
-      endDistanceMm: Math.max(0, Math.min(length, interval.endDistanceMm)),
-    }))
-    .filter((interval) => interval.endDistanceMm - interval.startDistanceMm > pointEqualityTolerance)
-    .sort((first, second) => first.startDistanceMm - second.startDistanceMm)
-    .reduce<EPatternPocketInterval[]>((mergedIntervals, interval) => {
-      const previous = mergedIntervals[mergedIntervals.length - 1];
-
-      if (!previous || interval.startDistanceMm > previous.endDistanceMm + pointEqualityTolerance) {
-        mergedIntervals.push(interval);
-        return mergedIntervals;
-      }
-
-      previous.endDistanceMm = Math.max(previous.endDistanceMm, interval.endDistanceMm);
-      return mergedIntervals;
-    }, []);
 
   const addPointAt = (distance: number, offset = 0) => {
-    const clippedDistance = Math.max(0, Math.min(length, distance));
-    const base = pointAtDistance(edge, clippedDistance, length);
+    const base = pointAtDistance(edge, distance, length);
     const nextPoint = {
       x: base.x + inwardDirection.x * Math.max(0, offset),
       y: base.y + inwardDirection.y * Math.max(0, offset),
@@ -974,13 +923,23 @@ const buildSteppedEPolyline = (
     }
   };
 
-  clippedPocketIntervals.forEach((interval) => {
-    addPointAt(interval.startDistanceMm);
-    addPointAt(interval.startDistanceMm, pocketDepthMm);
-    addPointAt(interval.endDistanceMm, pocketDepthMm);
-    addPointAt(interval.endDistanceMm);
-  });
+  addPointAt(patternInfo.startDistanceMm);
 
+  for (let intervalIndex = 0; intervalIndex < patternInfo.segmentCount; intervalIndex += 1) {
+    const distance = patternInfo.segmentDistancesMm[intervalIndex];
+    const nextDistance = patternInfo.segmentDistancesMm[intervalIndex + 1];
+
+    if (shouldCutEPatternSegment(intervalIndex, role)) {
+      addPointAt(distance);
+      addPointAt(distance, pocketDepthMm);
+      addPointAt(nextDistance, pocketDepthMm);
+      addPointAt(nextDistance);
+    } else {
+      addPointAt(nextDistance);
+    }
+  }
+
+  addPointAt(patternInfo.endDistanceMm);
   addPointAt(length);
   return points;
 };
@@ -1037,6 +996,9 @@ const applyTechnicalLineStyle = (element: Element) => {
   element.setAttribute('fill', 'none');
   element.setAttribute('stroke', '#000000');
   element.setAttribute('stroke-width', '1');
+  element.setAttribute('stroke-linecap', 'butt');
+  element.setAttribute('stroke-linejoin', 'miter');
+  element.setAttribute('stroke-miterlimit', '2');
   element.setAttribute('vector-effect', 'non-scaling-stroke');
 };
 
@@ -1150,13 +1112,7 @@ const generateEPreviewForEdge = (
   };
 
   const patternInfo = calculateEGeometryPatternInfo(length, properties);
-  const endCoverageExtensionMm = getEPatternEndCoverageExtension(properties);
-  const pocketDistanceSummary = getEPatternPocketDistanceSummary(
-    patternInfo,
-    assignment.slotRole ?? 'tab',
-    length,
-    endCoverageExtensionMm,
-  );
+  const pocketDistanceSummary = getEPatternPocketDistanceSummary(patternInfo, assignment.slotRole ?? 'tab');
 
   if (!side) {
     return {
