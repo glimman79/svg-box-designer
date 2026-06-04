@@ -966,18 +966,20 @@ const polylinePointsToCommands = (points: Point[]) => points.map((point, index) 
   pointCommand(index === 0 ? 'M' : 'L', point)
 ));
 
-const getAppliedEPreviewMatchingPoints = (
+const getAppliedEGeometryPolylineV1 = (
   edge: SvgEdge,
   connection: EGeometryConnectionDefinition,
   role: EdgeSideRole,
 ) => {
-  const side = detectEPreviewSide(edge, edge.panelBounds);
+  const inwardDirection = getInwardDirection(edge, edge.panelBounds);
+  const depth = getMaxInwardPocketDepth(
+    edge,
+    inwardDirection,
+    connection.properties.materialThicknessMm,
+    edge.panelBounds,
+  );
 
-  if (!side) {
-    return [edge.start, edge.end];
-  }
-
-  return buildEPreviewPolyline(edge, side, connection.properties, role);
+  return buildSteppedEPolyline(edge, connection.properties, inwardDirection, depth, role);
 };
 
 const getEdgePathSegment = (
@@ -989,7 +991,7 @@ const getEdgePathSegment = (
   const assignment = edgeAssignments[edge.id];
   const connection = assignment ? connections[assignment.connectionId] : undefined;
   const points = assignment?.slotRole && connection
-    ? getAppliedEPreviewMatchingPoints(edge, connection, assignment.slotRole)
+    ? getAppliedEGeometryPolylineV1(edge, connection, assignment.slotRole)
     : [edge.start, edge.end];
   const commands = polylinePointsToCommands(points);
 
@@ -1070,18 +1072,86 @@ const getEPreviewInwardDirection = (side: EdgeSide): Point => {
   return { x: -1, y: 0 };
 };
 
-const buildEPreviewPolyline = (
+const buildEGeometryPolylineV2 = (
   edge: SvgEdge,
   side: EdgeSide,
   settings: EGeometryConnectionProperties,
   role: EdgeSideRole,
-) => buildSteppedEPolyline(
-  edge,
-  settings,
-  getEPreviewInwardDirection(side),
-  settings.materialThicknessMm,
-  role,
-);
+): Point[] => {
+  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+  const inwardDirection = getEPreviewInwardDirection(side);
+  const pocketDepthMm = Math.max(0, settings.materialThicknessMm);
+  const activeStartDistanceMm = Math.min(pocketDepthMm, length / 2);
+  const activeEndDistanceMm = Math.max(activeStartDistanceMm, length - pocketDepthMm);
+  const activeLengthMm = Math.max(0, activeEndDistanceMm - activeStartDistanceMm);
+  const requestedSegmentWidthMm = Math.max(0, settings.fingerWidthMm);
+  const segmentCount = requestedSegmentWidthMm > 0 && activeLengthMm > 0
+    ? Math.max(1, Math.floor(activeLengthMm / requestedSegmentWidthMm))
+    : 0;
+
+  if (length <= 0 || segmentCount <= 0 || requestedSegmentWidthMm <= 0 || pocketDepthMm <= 0) {
+    return [edge.start, edge.end];
+  }
+
+  const usedLengthMm = segmentCount * requestedSegmentWidthMm;
+  const extraLengthMm = Math.max(0, activeLengthMm - usedLengthMm);
+  const firstLastSegmentWidthMm = segmentCount === 1
+    ? activeLengthMm
+    : requestedSegmentWidthMm + extraLengthMm / 2;
+  const segmentDistancesMm = [0];
+  let currentDistanceMm = 0;
+
+  for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex += 1) {
+    const isFirstOrLast = segmentIndex === 0 || segmentIndex === segmentCount - 1;
+    const segmentWidthMm = isFirstOrLast ? firstLastSegmentWidthMm : requestedSegmentWidthMm;
+    currentDistanceMm += segmentWidthMm;
+    segmentDistancesMm.push(Math.min(activeLengthMm, currentDistanceMm));
+  }
+
+  segmentDistancesMm[segmentDistancesMm.length - 1] = activeLengthMm;
+
+  const points: Point[] = [edge.start];
+
+  const addPointAt = (activeDistanceMm: number, offset = 0) => {
+    const distanceMm = activeStartDistanceMm + Math.max(0, Math.min(activeLengthMm, activeDistanceMm));
+    const base = pointAtDistance(edge, distanceMm, length);
+    const nextPoint = {
+      x: base.x + inwardDirection.x * Math.max(0, offset),
+      y: base.y + inwardDirection.y * Math.max(0, offset),
+    };
+
+    if (!pointsAreEqual(nextPoint, points[points.length - 1])) {
+      points.push(nextPoint);
+    }
+  };
+
+  addPointAt(0);
+
+  for (let intervalIndex = 0; intervalIndex < segmentCount; intervalIndex += 1) {
+    const distanceMm = segmentDistancesMm[intervalIndex];
+    const nextDistanceMm = segmentDistancesMm[intervalIndex + 1];
+
+    if (shouldCutEPatternSegment(intervalIndex, role)) {
+      addPointAt(distanceMm);
+      addPointAt(distanceMm, pocketDepthMm);
+      addPointAt(nextDistanceMm, pocketDepthMm);
+      addPointAt(nextDistanceMm);
+    } else {
+      addPointAt(nextDistanceMm);
+    }
+  }
+
+  addPointAt(activeLengthMm);
+  const endPoint = pointAtDistance(edge, length, length);
+
+  if (!pointsAreEqual(endPoint, points[points.length - 1])) {
+    points.push(endPoint);
+  }
+
+  return points;
+};
+
+const buildEPreviewPolyline = buildEGeometryPolylineV2;
 
 const formatDirection = (direction: Point) => `(${formatNumber(direction.x)}, ${formatNumber(direction.y)})`;
 
