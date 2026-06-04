@@ -770,9 +770,62 @@ const simplePathToEdges = (pathData: string | null, source: string) => {
 
 const buildEGeometryPolyline = (
   edge: SvgEdge,
-  _connection: EGeometryConnectionDefinition,
-  _role: EdgeSideRole,
-): Point[] => [edge.start, edge.end];
+  connection: EGeometryConnectionDefinition,
+  role: EdgeSideRole,
+): Point[] => {
+  const edgeLength = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+
+  if (edgeLength === 0) {
+    return [edge.start, edge.end];
+  }
+
+  const { materialThicknessMm, fingerWidthMm } = connection.properties;
+  const segmentCount = fingerWidthMm > 0
+    ? Math.max(1, Math.floor(edgeLength / fingerWidthMm))
+    : 1;
+  const actualSegmentWidth = edgeLength / segmentCount;
+  const edgeDirection = {
+    x: (edge.end.x - edge.start.x) / edgeLength,
+    y: (edge.end.y - edge.start.y) / edgeLength,
+  };
+  const inwardDirection = getInwardDirection(edge, edge.panelBounds);
+  const pocketDepth = Math.max(0, materialThicknessMm);
+  const points: Point[] = [edge.start];
+
+  for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex += 1) {
+    const segmentStartDistance = actualSegmentWidth * segmentIndex;
+    const segmentEndDistance = segmentIndex === segmentCount - 1
+      ? edgeLength
+      : actualSegmentWidth * (segmentIndex + 1);
+    const segmentStart = {
+      x: edge.start.x + edgeDirection.x * segmentStartDistance,
+      y: edge.start.y + edgeDirection.y * segmentStartDistance,
+    };
+    const segmentEnd = {
+      x: edge.start.x + edgeDirection.x * segmentEndDistance,
+      y: edge.start.y + edgeDirection.y * segmentEndDistance,
+    };
+    const isPocket = role === 'tab' ? segmentIndex % 2 === 0 : segmentIndex % 2 === 1;
+
+    if (isPocket) {
+      points.push(
+        {
+          x: segmentStart.x + inwardDirection.x * pocketDepth,
+          y: segmentStart.y + inwardDirection.y * pocketDepth,
+        },
+        {
+          x: segmentEnd.x + inwardDirection.x * pocketDepth,
+          y: segmentEnd.y + inwardDirection.y * pocketDepth,
+        },
+        segmentEnd,
+      );
+    } else {
+      points.push(segmentEnd);
+    }
+  }
+
+  return points;
+};
 
 const formatDirection = (direction: Point) => `(${formatNumber(direction.x)}, ${formatNumber(direction.y)})`;
 
@@ -847,15 +900,6 @@ export const generateEGeometryPreview = (
       const connection = connections[assignment.connectionId];
       return generateEPreviewForEdge(edge, assignment, connection, edge.panelBounds);
     });
-
-  if (preview.length > 0) {
-    console.table(preview.map(({ debugInfo }) => ({
-      edgeId: debugInfo.edgeId,
-      label: debugInfo.label,
-      role: debugInfo.role,
-      edgeLengthMm: debugInfo.edgeLengthMm,
-    })));
-  }
 
   if (preview.length === 0) {
     throw new Error('Assign at least one E-T or E-S edge before previewing E geometry.');
@@ -940,121 +984,6 @@ const buildOriginalEdgeRecords = (svgElement: SVGSVGElement, edges: SvgEdge[]): 
   return records;
 };
 
-
-const getElementDebugId = (element: Element) => {
-  const id = element.getAttribute('id');
-  const tagName = element.tagName.toLowerCase();
-  return id ? `${tagName}#${id}` : tagName;
-};
-
-const getRecordDebugId = (record: OriginalEdgeRecord) => `${getElementDebugId(record.element)}:${record.edge.id}`;
-
-const countSvgPathLineElements = (svgElement: SVGSVGElement) => ({
-  path: svgElement.querySelectorAll('path').length,
-  line: svgElement.querySelectorAll('line').length,
-  total: svgElement.querySelectorAll('path,line').length,
-});
-
-const crossProduct = (first: Point, second: Point) => first.x * second.y - first.y * second.x;
-const pointsAreCollinear = (first: Point, second: Point, third: Point) => {
-  const base = { x: second.x - first.x, y: second.y - first.y };
-  const candidate = { x: third.x - first.x, y: third.y - first.y };
-  const baseLength = Math.hypot(base.x, base.y);
-
-  if (baseLength <= 0.0001) {
-    return false;
-  }
-
-  return Math.abs(crossProduct(base, candidate)) / baseLength <= 0.01;
-};
-
-const edgesAreCollinearAndOverlapping = (first: SvgEdge, second: SvgEdge) => {
-  if (!pointsAreCollinear(first.start, first.end, second.start) || !pointsAreCollinear(first.start, first.end, second.end)) {
-    return false;
-  }
-
-  const axis = Math.abs(first.end.x - first.start.x) >= Math.abs(first.end.y - first.start.y) ? 'x' : 'y';
-  const firstMin = Math.min(first.start[axis], first.end[axis]);
-  const firstMax = Math.max(first.start[axis], first.end[axis]);
-  const secondMin = Math.min(second.start[axis], second.end[axis]);
-  const secondMax = Math.max(second.start[axis], second.end[axis]);
-
-  return Math.min(firstMax, secondMax) - Math.max(firstMin, secondMin) > 0.01;
-};
-
-const getGeneratedSubEdges = (segments: EdgePathSegment[]) => segments.flatMap((edgeSegment) => edgeSegment.points.slice(1).map((point, index) => ({
-  edgeId: edgeSegment.edge.id,
-  start: edgeSegment.points[index],
-  end: point,
-})));
-
-type GeneratedEGeometrySubEdge = ReturnType<typeof getGeneratedSubEdges>[number];
-
-const getAssignedGeneratedSubEdges = (
-  segments: EdgePathSegment[],
-  edgeAssignments: Record<string, EdgeAssignment>,
-  connections: Record<string, EGeometryConnectionDefinition>,
-) => getGeneratedSubEdges(segments.filter((segment) => isAssignedEEdge(segment.edge, edgeAssignments, connections)));
-
-const highlightCollinearRemainingElement = (element: Element, matchingEdgeIds: string[]) => {
-  element.setAttribute('data-e-geometry-leftover-collinear', 'true');
-  element.setAttribute('data-e-geometry-matching-edge-ids', [...new Set(matchingEdgeIds)].join(','));
-  element.setAttribute('stroke', '#ff0000');
-  element.setAttribute('stroke-width', '3');
-  element.setAttribute('vector-effect', 'non-scaling-stroke');
-};
-
-const logOriginalGeometryInvestigation = (
-  svgElement: SVGSVGElement,
-  originalEdgeRecords: OriginalEdgeRecord[],
-  removedOriginalElements: Set<Element>,
-  generatedSubEdges: GeneratedEGeometrySubEdge[],
-  beforePathLineCount: ReturnType<typeof countSvgPathLineElements>,
-) => {
-  const afterPathLineCount = countSvgPathLineElements(svgElement);
-  const removedRecords = originalEdgeRecords.filter((record) => removedOriginalElements.has(record.element));
-  const remainingRecords = originalEdgeRecords.filter((record) => !removedOriginalElements.has(record.element));
-  const removedSourcePathIds = [...new Set(removedRecords.map(getRecordDebugId))];
-  const remainingSourcePathIds = [...new Set(remainingRecords.map(getRecordDebugId))];
-  const removedSourcePaths = [...new Set(removedRecords.map((record) => record.edge.source))];
-  const remainingSourcePaths = [...new Set(remainingRecords.map((record) => record.edge.source))];
-  const collinearRemainingRecords = remainingRecords.flatMap((record) => {
-    const matchingGeneratedEdges = generatedSubEdges
-      .filter((generatedEdge) => edgesAreCollinearAndOverlapping(record.edge, {
-        id: generatedEdge.edgeId,
-        source: generatedEdge.edgeId,
-        start: generatedEdge.start,
-        end: generatedEdge.end,
-      }))
-      .map((generatedEdge) => generatedEdge.edgeId);
-
-    if (matchingGeneratedEdges.length === 0) {
-      return [];
-    }
-
-    highlightCollinearRemainingElement(record.element, matchingGeneratedEdges);
-    return [{
-      sourcePathId: getRecordDebugId(record),
-      element: getElementDebugId(record.element),
-      originalEdgeId: record.edge.id,
-      originalSource: record.edge.source,
-      originalStart: record.edge.start,
-      originalEnd: record.edge.end,
-      matchingAppliedEEdgeIds: [...new Set(matchingGeneratedEdges)],
-    }];
-  });
-
-  console.debug('[Apply E Geometry] original geometry investigation', {
-    pathLineElementCountBeforeApply: beforePathLineCount,
-    pathLineElementCountAfterApply: afterPathLineCount,
-    removedOriginalSourcePathIds: removedSourcePathIds,
-    remainingOriginalSourcePathIds: remainingSourcePathIds,
-    removedOriginalSources: removedSourcePaths,
-    remainingOriginalSources: remainingSourcePaths,
-    collinearRemainingOriginalSegments: collinearRemainingRecords,
-    highlightedCollinearElementCount: new Set(collinearRemainingRecords.map((record) => record.element)).size,
-  });
-};
 
 const getClosedComponentRecords = (records: OriginalEdgeRecord[]) => {
   const uniqueRecords: OriginalEdgeRecord[] = [];
@@ -1174,62 +1103,12 @@ const getFirstDocumentOrderedElement = (elements: Element[]) => elements
     return 0;
   })[0];
 
-const logAppliedEPanelDebug = (segments: EdgePathSegment[], records: OrientedEdgeRecord[]) => {
-  const firstGeneratedPoint = segments[0]?.points[0];
-  const finalGeneratedPoint = segments[segments.length - 1]?.points.at(-1);
-  const finalPointEqualsFirstPoint = Boolean(
-    firstGeneratedPoint
-    && finalGeneratedPoint
-    && pointsAreEqual(finalGeneratedPoint, firstGeneratedPoint),
-  );
-
-  console.debug('[Apply E Geometry] panel debug', {
-    edgeCount: segments.length,
-    firstGeneratedPoint,
-    finalGeneratedPoint,
-    finalPointEqualsFirstPointBeforeZ: finalPointEqualsFirstPoint,
-  });
-
-  segments.forEach((segment, index) => {
-    const nextEdge = records[(index + 1) % records.length]?.edge;
-    const generatedFirstPoint = segment.points[0];
-    const generatedLastPoint = segment.points.at(-1);
-
-    console.debug('[Apply E Geometry] oriented edge debug', {
-      edgeId: segment.edge.id,
-      edgeStart: segment.edge.start,
-      edgeEnd: segment.edge.end,
-      generatedFirstPoint,
-      generatedLastPoint,
-      nextEdgeStart: nextEdge?.start,
-      generatedLastPointEqualsNextEdgeStart: Boolean(
-        generatedLastPoint
-        && nextEdge
-        && pointsAreEqual(generatedLastPoint, nextEdge.start),
-      ),
-    });
-  });
-
-  if (firstGeneratedPoint && finalGeneratedPoint) {
-    const closingDistanceMm = pointDistance(finalGeneratedPoint, firstGeneratedPoint);
-
-    if (closingDistanceMm > 0.01) {
-      console.warn('[Apply E Geometry] closing Z would create visible segment longer than 0.01 mm', {
-        closingDistanceMm,
-        finalGeneratedPoint,
-        firstGeneratedPoint,
-      });
-    }
-  }
-};
-
 const replaceConnectedPanelWithPath = (
   records: OrientedEdgeRecord[],
   duplicateRecords: OriginalEdgeRecord[],
   edgeAssignments: Record<string, EdgeAssignment>,
   connections: Record<string, EGeometryConnectionDefinition>,
   removedOriginalElements?: Set<Element>,
-  generatedSubEdges?: GeneratedEGeometrySubEdge[],
 ) => {
   const elements = [...new Set(duplicateRecords.map((record) => record.element))];
   const firstElement = getFirstDocumentOrderedElement(elements);
@@ -1239,8 +1118,6 @@ const replaceConnectedPanelWithPath = (
   }
 
   const segments = records.map(({ edge }, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0));
-  generatedSubEdges?.push(...getAssignedGeneratedSubEdges(segments, edgeAssignments, connections));
-  logAppliedEPanelDebug(segments, records);
   const pathData = `${segments.map((segment) => segment.d).join(' ')} Z`;
   const path = firstElement.ownerDocument.createElementNS(svgNamespace, 'path');
   cloneGeometryAttributes(firstElement, path, duplicateRecords.find((record) => record.element === firstElement)?.blockedAttributes ?? []);
@@ -1271,14 +1148,10 @@ export const generateEGeometrySvg = (
   const polyElements = [...svgElement.querySelectorAll('polyline, polygon')];
   const rectElements = [...svgElement.querySelectorAll('rect')];
   const pathElements = [...svgElement.querySelectorAll('path')];
-  const beforePathLineCount = countSvgPathLineElements(svgElement);
   const originalEdgeRecords = buildOriginalEdgeRecords(svgElement, edges);
   const handledElements = new Set<Element>();
   const removedOriginalElements = new Set<Element>();
-  const generatedSubEdges: GeneratedEGeometrySubEdge[] = [];
   let generatedCount = 0;
-
-  console.debug('[Apply E Geometry] path/line element count before apply', beforePathLineCount);
 
   getClosedComponentRecords(originalEdgeRecords).forEach((component) => {
     if (!component.duplicateRecords.some((record) => isAssignedEEdge(record.edge, edgeAssignments, connections))) {
@@ -1304,7 +1177,6 @@ export const generateEGeometrySvg = (
       edgeAssignments,
       connections,
       removedOriginalElements,
-      generatedSubEdges,
     )) {
       elements.forEach((element) => handledElements.add(element));
       generatedCount += component.duplicateRecords.filter((record) => isAssignedEEdge(record.edge, edgeAssignments, connections)).length;
@@ -1325,7 +1197,6 @@ export const generateEGeometrySvg = (
     }
 
     const segments = [getEdgePathSegment(edge, edgeAssignments, connections, true)];
-    generatedSubEdges.push(...getAssignedGeneratedSubEdges(segments, edgeAssignments, connections));
     replaceElementWithPath(
       line,
       segments[0].d,
@@ -1352,7 +1223,6 @@ export const generateEGeometrySvg = (
     }
 
     const segments = shapeEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0));
-    generatedSubEdges.push(...getAssignedGeneratedSubEdges(segments, edgeAssignments, connections));
     const closeCommand = shape.tagName.toLowerCase() === 'polygon' ? ' Z' : '';
     replaceElementWithPath(shape, `${segments.map((segment) => segment.d).join(' ')}${closeCommand}`, ['points']);
     removedOriginalElements.add(shape);
@@ -1373,7 +1243,6 @@ export const generateEGeometrySvg = (
     }
 
     const segments = rectEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0));
-    generatedSubEdges.push(...getAssignedGeneratedSubEdges(segments, edgeAssignments, connections));
     replaceElementWithPath(rect, `${segments.map((segment) => segment.d).join(' ')} Z`, ['x', 'y', 'width', 'height', 'rx', 'ry']);
     removedOriginalElements.add(rect);
     generatedCount += rectEdges.filter((edge) => isAssignedEEdge(edge, edgeAssignments, connections)).length;
@@ -1394,7 +1263,6 @@ export const generateEGeometrySvg = (
     }
 
     const segments = sourceEdges.map((edge, index) => getEdgePathSegment(edge, edgeAssignments, connections, index === 0));
-    generatedSubEdges.push(...getAssignedGeneratedSubEdges(segments, edgeAssignments, connections));
     path.setAttribute('d', segments.map((segment) => segment.d).join(' '));
     applyTechnicalLineStyle(path);
     removedOriginalElements.add(path);
@@ -1404,14 +1272,6 @@ export const generateEGeometrySvg = (
   if (generatedCount === 0) {
     throw new Error('Assign at least one E-T or E-S edge before generating E geometry.');
   }
-
-  logOriginalGeometryInvestigation(
-    svgElement,
-    originalEdgeRecords,
-    removedOriginalElements,
-    generatedSubEdges,
-    beforePathLineCount,
-  );
 
   return new XMLSerializer().serializeToString(svgElement);
 };
