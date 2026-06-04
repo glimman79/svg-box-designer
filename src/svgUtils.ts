@@ -29,20 +29,6 @@ export type EGeometryConnectionProperties = {
   endOffsetMm: number;
 };
 
-export type EGeometryPatternInfo = {
-  availableLengthMm: number;
-  segmentCount: number;
-  segmentWidthMm: number;
-  middleSegmentWidthMm: number;
-  firstLastSegmentWidthMm: number;
-  tabCount: number;
-  gapCount: number;
-  endMarginMm: number;
-  startDistanceMm: number;
-  endDistanceMm: number;
-  segmentDistancesMm: number[];
-};
-
 export type EGeometryConnectionDefinition = {
   prefix: 'E';
   properties: EGeometryConnectionProperties;
@@ -470,13 +456,8 @@ export type EGeometryPreviewDebugInfo = {
   distanceToPanelMinY?: number;
   distanceToPanelMaxY?: number;
   edgeLengthMm: number;
-  firstPocketStartDistanceMm?: number;
-  firstPocketEndDistanceMm?: number;
-  lastPocketStartDistanceMm?: number;
-  lastPocketEndDistanceMm?: number;
   materialThicknessMm: number;
   fingerWidthMm: number;
-  patternPreview: string;
   generatedPointCount: number;
   generatedPoints: Point[];
   warning?: string;
@@ -692,72 +673,6 @@ const isAssignedEEdge = (
   return Boolean(assignment && assignment.slotRole && connections[assignment.connectionId]?.prefix === 'E');
 };
 
-const getEEdgeEndClearanceMm = (properties: EGeometryConnectionProperties) => (
-  Math.max(0, properties.materialThicknessMm)
-);
-
-export const calculateEGeometryPatternInfo = (
-  edgeLengthMm: number,
-  properties: EGeometryConnectionProperties,
-): EGeometryPatternInfo => {
-  const length = Math.max(0, edgeLengthMm);
-  const endClearanceMm = getEEdgeEndClearanceMm(properties);
-  const startDistance = Math.min(endClearanceMm, length / 2);
-  const endDistance = Math.max(startDistance, length - endClearanceMm);
-  const activeLength = Math.max(0, endDistance - startDistance);
-  const requestedSegmentWidth = Math.max(0, properties.fingerWidthMm);
-  const segmentCount = requestedSegmentWidth > 0 && activeLength > 0
-    ? Math.max(1, Math.floor(activeLength / requestedSegmentWidth))
-    : 0;
-
-  if (segmentCount === 0) {
-    return {
-      availableLengthMm: activeLength,
-      segmentCount: 0,
-      segmentWidthMm: 0,
-      middleSegmentWidthMm: 0,
-      firstLastSegmentWidthMm: 0,
-      tabCount: 0,
-      gapCount: 0,
-      endMarginMm: endClearanceMm,
-      startDistanceMm: startDistance,
-      endDistanceMm: endDistance,
-      segmentDistancesMm: [startDistance],
-    };
-  }
-
-  const usedLength = segmentCount * requestedSegmentWidth;
-  const extraLength = Math.max(0, activeLength - usedLength);
-  const firstLastSegmentWidth = segmentCount === 1
-    ? activeLength
-    : requestedSegmentWidth + extraLength / 2;
-  const segmentDistances = [startDistance];
-  let currentDistance = startDistance;
-
-  for (let index = 0; index < segmentCount; index += 1) {
-    const isFirstOrLast = index === 0 || index === segmentCount - 1;
-    const segmentWidth = isFirstOrLast ? firstLastSegmentWidth : requestedSegmentWidth;
-    currentDistance += segmentWidth;
-    segmentDistances.push(Math.min(endDistance, currentDistance));
-  }
-
-  segmentDistances[segmentDistances.length - 1] = endDistance;
-
-  return {
-    availableLengthMm: activeLength,
-    segmentCount,
-    segmentWidthMm: requestedSegmentWidth,
-    middleSegmentWidthMm: segmentCount > 2 ? requestedSegmentWidth : 0,
-    firstLastSegmentWidthMm: firstLastSegmentWidth,
-    tabCount: Math.ceil(segmentCount / 2),
-    gapCount: Math.floor(segmentCount / 2),
-    endMarginMm: endClearanceMm,
-    startDistanceMm: startDistance,
-    endDistanceMm: endDistance,
-    segmentDistancesMm: segmentDistances,
-  };
-};
-
 const getEdgeSide = (edge: SvgEdge, bounds: SourceBounds | undefined): EdgeSide => {
   if (!bounds) {
     const dx = Math.abs(edge.end.x - edge.start.x);
@@ -805,182 +720,9 @@ const getInwardDirection = (edge: SvgEdge, panelBounds: SourceBounds | undefined
   return { x: -1, y: 0 };
 };
 
-const getMaxInwardPocketDepth = (
-  edge: SvgEdge,
-  inwardDirection: Point,
-  requestedDepth: number,
-  bounds: SourceBounds | undefined,
-) => {
-  if (requestedDepth <= 0) {
-    return 0;
-  }
-
-  if (!bounds) {
-    return 0;
-  }
-
-  const inwardAxisSpan = Math.abs(inwardDirection.x) * (bounds.maxX - bounds.minX) + Math.abs(inwardDirection.y) * (bounds.maxY - bounds.minY);
-
-  if (inwardAxisSpan <= 0.0001) {
-    return 0;
-  }
-
-  const maxDepths = [edge.start, edge.end].flatMap((point) => {
-    const axisLimits: number[] = [];
-
-    if (inwardDirection.x > 0.0001) {
-      axisLimits.push((bounds.maxX - point.x) / inwardDirection.x);
-    } else if (inwardDirection.x < -0.0001) {
-      axisLimits.push((bounds.minX - point.x) / inwardDirection.x);
-    }
-
-    if (inwardDirection.y > 0.0001) {
-      axisLimits.push((bounds.maxY - point.y) / inwardDirection.y);
-    } else if (inwardDirection.y < -0.0001) {
-      axisLimits.push((bounds.minY - point.y) / inwardDirection.y);
-    }
-
-    return axisLimits.filter((value) => Number.isFinite(value) && value >= 0);
-  });
-
-  if (maxDepths.length === 0) {
-    return Math.max(0, requestedDepth);
-  }
-
-  return Math.max(0, Math.min(requestedDepth, ...maxDepths));
-};
-
-const shouldCutEPatternSegment = (segmentIndex: number, role: EdgeSideRole) => {
-  const segmentNumber = segmentIndex + 1;
-  return role === 'tab'
-    ? segmentNumber % 2 === 1
-    : segmentNumber % 2 === 0;
-};
-
-const getEPatternPreviewString = (segmentCount: number, role: EdgeSideRole) => (
-  Array.from({ length: segmentCount }, (_, segmentIndex) => (
-    shouldCutEPatternSegment(segmentIndex, role) ? 'pocket' : 'solid'
-  )).join(', ')
-);
-
-type EPatternPocketInterval = {
-  startDistanceMm: number;
-  endDistanceMm: number;
-};
-
-const getEPatternPocketIntervals = (
-  patternInfo: EGeometryPatternInfo,
-  role: EdgeSideRole,
-): EPatternPocketInterval[] => patternInfo.segmentDistancesMm
-  .slice(0, patternInfo.segmentCount)
-  .flatMap((distance, intervalIndex) => (
-    shouldCutEPatternSegment(intervalIndex, role)
-      ? [{
-        startDistanceMm: distance,
-        endDistanceMm: patternInfo.segmentDistancesMm[intervalIndex + 1],
-      }]
-      : []
-  ));
-
-const getEPatternPocketDistanceSummary = (
-  patternInfo: EGeometryPatternInfo,
-  role: EdgeSideRole,
-) => {
-  const pocketSegments = getEPatternPocketIntervals(patternInfo, role);
-  const firstPocket = pocketSegments[0];
-  const lastPocket = pocketSegments[pocketSegments.length - 1];
-
-  return {
-    firstPocketStartDistanceMm: firstPocket?.startDistanceMm,
-    firstPocketEndDistanceMm: firstPocket?.endDistanceMm,
-    lastPocketStartDistanceMm: lastPocket?.startDistanceMm,
-    lastPocketEndDistanceMm: lastPocket?.endDistanceMm,
-  };
-};
-
-const buildSteppedEPolyline = (
-  edge: SvgEdge,
-  settings: EGeometryConnectionProperties,
-  inwardDirection: Point,
-  pocketDepthMm: number,
-  role: EdgeSideRole,
-): Point[] => {
-  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
-  const patternInfo = calculateEGeometryPatternInfo(length, settings);
-
-  if (
-    length <= 0
-    || patternInfo.segmentCount <= 0
-    || patternInfo.segmentWidthMm <= 0
-    || pocketDepthMm <= 0
-  ) {
-    return [edge.start, edge.end];
-  }
-
-  const points: Point[] = [edge.start];
-
-  const addPointAt = (distance: number, offset = 0) => {
-    const base = pointAtDistance(edge, distance, length);
-    const nextPoint = {
-      x: base.x + inwardDirection.x * Math.max(0, offset),
-      y: base.y + inwardDirection.y * Math.max(0, offset),
-    };
-
-    if (!pointsAreEqual(nextPoint, points[points.length - 1])) {
-      points.push(nextPoint);
-    }
-  };
-
-  addPointAt(patternInfo.startDistanceMm);
-
-  for (let intervalIndex = 0; intervalIndex < patternInfo.segmentCount; intervalIndex += 1) {
-    const distance = patternInfo.segmentDistancesMm[intervalIndex];
-    const nextDistance = patternInfo.segmentDistancesMm[intervalIndex + 1];
-
-    if (shouldCutEPatternSegment(intervalIndex, role)) {
-      addPointAt(distance);
-      addPointAt(distance, pocketDepthMm);
-      addPointAt(nextDistance, pocketDepthMm);
-      addPointAt(nextDistance);
-    } else {
-      addPointAt(nextDistance);
-    }
-  }
-
-  addPointAt(patternInfo.endDistanceMm);
-  addPointAt(length);
-  return points;
-};
-
-export const buildNotchedEdgePolyline = (
-  edge: SvgEdge,
-  settings: EGeometryConnectionProperties,
-  panelBounds: SourceBounds | undefined,
-): Point[] => {
-  const inwardDirection = getInwardDirection(edge, panelBounds);
-  const depth = getMaxInwardPocketDepth(edge, inwardDirection, settings.materialThicknessMm, panelBounds);
-  return buildSteppedEPolyline(edge, settings, inwardDirection, depth, 'tab');
-};
-
 const polylinePointsToCommands = (points: Point[]) => points.map((point, index) => (
   pointCommand(index === 0 ? 'M' : 'L', point)
 ));
-
-const getAppliedEGeometryPolylineV1 = (
-  edge: SvgEdge,
-  connection: EGeometryConnectionDefinition,
-  role: EdgeSideRole,
-) => {
-  const inwardDirection = getInwardDirection(edge, edge.panelBounds);
-  const depth = getMaxInwardPocketDepth(
-    edge,
-    inwardDirection,
-    connection.properties.materialThicknessMm,
-    edge.panelBounds,
-  );
-
-  return buildSteppedEPolyline(edge, connection.properties, inwardDirection, depth, role);
-};
 
 const getEdgePathSegment = (
   edge: SvgEdge,
@@ -991,7 +733,7 @@ const getEdgePathSegment = (
   const assignment = edgeAssignments[edge.id];
   const connection = assignment ? connections[assignment.connectionId] : undefined;
   const points = assignment?.slotRole && connection
-    ? getAppliedEGeometryPolylineV1(edge, connection, assignment.slotRole)
+    ? buildEGeometryPolyline(edge, connection, assignment.slotRole)
     : [edge.start, edge.end];
   const commands = polylinePointsToCommands(points);
 
@@ -1026,158 +768,11 @@ const simplePathToEdges = (pathData: string | null, source: string) => {
   return edges;
 };
 
-const detectEPreviewSide = (edge: SvgEdge, panelBounds: SourceBounds | undefined): EdgeSide | undefined => {
-  const dx = Math.abs(edge.end.x - edge.start.x);
-  const dy = Math.abs(edge.end.y - edge.start.y);
-  const epsilon = 0.0001;
-
-  if (dx <= epsilon && dy <= epsilon) {
-    return undefined;
-  }
-
-  if (dy <= epsilon) {
-    if (!panelBounds) {
-      return edge.start.y <= edge.end.y ? 'top' : 'bottom';
-    }
-
-    const centerY = (edge.start.y + edge.end.y) / 2;
-    return Math.abs(centerY - panelBounds.minY) <= Math.abs(centerY - panelBounds.maxY) ? 'top' : 'bottom';
-  }
-
-  if (dx <= epsilon) {
-    if (!panelBounds) {
-      return edge.start.x <= edge.end.x ? 'left' : 'right';
-    }
-
-    const centerX = (edge.start.x + edge.end.x) / 2;
-    return Math.abs(centerX - panelBounds.minX) <= Math.abs(centerX - panelBounds.maxX) ? 'left' : 'right';
-  }
-
-  return undefined;
-};
-
-const getEPreviewInwardDirection = (side: EdgeSide): Point => {
-  if (side === 'top') {
-    return { x: 0, y: 1 };
-  }
-
-  if (side === 'bottom') {
-    return { x: 0, y: -1 };
-  }
-
-  if (side === 'left') {
-    return { x: 1, y: 0 };
-  }
-
-  return { x: -1, y: 0 };
-};
-
-const buildEGeometryPolylineV2 = (
+const buildEGeometryPolyline = (
   edge: SvgEdge,
-  side: EdgeSide,
-  settings: EGeometryConnectionProperties,
-  role: EdgeSideRole,
-): Point[] => {
-  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
-  const inwardDirection = getEPreviewInwardDirection(side);
-  const pocketDepthMm = Math.max(0, settings.materialThicknessMm);
-  const activeStartDistanceMm = Math.min(pocketDepthMm, length / 2);
-  const activeEndDistanceMm = Math.max(activeStartDistanceMm, length - pocketDepthMm);
-  const activeLengthMm = Math.max(0, activeEndDistanceMm - activeStartDistanceMm);
-  const requestedSegmentWidthMm = Math.max(0, settings.fingerWidthMm);
-  const segmentCount = requestedSegmentWidthMm > 0 && activeLengthMm > 0
-    ? Math.max(1, Math.floor(activeLengthMm / requestedSegmentWidthMm))
-    : 0;
-
-  if (length <= 0 || segmentCount <= 0 || requestedSegmentWidthMm <= 0 || pocketDepthMm <= 0) {
-    return [edge.start, edge.end];
-  }
-
-  const usedLengthMm = segmentCount * requestedSegmentWidthMm;
-  const extraLengthMm = Math.max(0, activeLengthMm - usedLengthMm);
-  const firstLastSegmentWidthMm = segmentCount === 1
-    ? activeLengthMm
-    : requestedSegmentWidthMm + extraLengthMm / 2;
-  const segmentDistancesMm = [0];
-  let currentDistanceMm = 0;
-
-  for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex += 1) {
-    const isFirstOrLast = segmentIndex === 0 || segmentIndex === segmentCount - 1;
-    const segmentWidthMm = isFirstOrLast ? firstLastSegmentWidthMm : requestedSegmentWidthMm;
-    currentDistanceMm += segmentWidthMm;
-    segmentDistancesMm.push(Math.min(activeLengthMm, currentDistanceMm));
-  }
-
-  segmentDistancesMm[segmentDistancesMm.length - 1] = activeLengthMm;
-
-  const points: Point[] = [edge.start];
-  const edgeDx = edge.end.x - edge.start.x;
-  const edgeDy = edge.end.y - edge.start.y;
-  const isReversedFromPhysicalIndex = Math.abs(edgeDx) >= Math.abs(edgeDy)
-    ? edgeDx < 0
-    : edgeDy < 0;
-  const getPhysicalSegmentIndex = (intervalIndex: number) => (
-    isReversedFromPhysicalIndex ? segmentCount - 1 - intervalIndex : intervalIndex
-  );
-
-  const addPointAt = (activeDistanceMm: number, offset = 0) => {
-    const distanceMm = activeStartDistanceMm + Math.max(0, Math.min(activeLengthMm, activeDistanceMm));
-    const base = pointAtDistance(edge, distanceMm, length);
-    const nextPoint = {
-      x: base.x + inwardDirection.x * Math.max(0, offset),
-      y: base.y + inwardDirection.y * Math.max(0, offset),
-    };
-
-    if (!pointsAreEqual(nextPoint, points[points.length - 1])) {
-      points.push(nextPoint);
-    }
-  };
-
-  addPointAt(0);
-
-  const segmentDebug = [];
-
-  for (let intervalIndex = 0; intervalIndex < segmentCount; intervalIndex += 1) {
-    const distanceMm = segmentDistancesMm[intervalIndex];
-    const nextDistanceMm = segmentDistancesMm[intervalIndex + 1];
-    const physicalSegmentIndex = getPhysicalSegmentIndex(intervalIndex);
-    const isPocket = shouldCutEPatternSegment(physicalSegmentIndex, role);
-
-    segmentDebug.push({
-      edgeId: edge.id,
-      role: role === 'tab' ? 'E-T' : 'E-S',
-      side,
-      localSegmentIndex: intervalIndex,
-      physicalSegmentIndex,
-      isReversedFromPhysicalIndex,
-      pattern: isPocket ? 'pocket' : 'solid',
-      activeStartDistanceMm: distanceMm,
-      activeEndDistanceMm: nextDistanceMm,
-    });
-
-    if (isPocket) {
-      addPointAt(distanceMm);
-      addPointAt(distanceMm, pocketDepthMm);
-      addPointAt(nextDistanceMm, pocketDepthMm);
-      addPointAt(nextDistanceMm);
-    } else {
-      addPointAt(nextDistanceMm);
-    }
-  }
-
-  console.table(segmentDebug);
-
-  addPointAt(activeLengthMm);
-  const endPoint = pointAtDistance(edge, length, length);
-
-  if (!pointsAreEqual(endPoint, points[points.length - 1])) {
-    points.push(endPoint);
-  }
-
-  return points;
-};
-
-const buildEPreviewPolyline = buildEGeometryPolylineV2;
+  _connection: EGeometryConnectionDefinition,
+  _role: EdgeSideRole,
+): Point[] => [edge.start, edge.end];
 
 const formatDirection = (direction: Point) => `(${formatNumber(direction.x)}, ${formatNumber(direction.y)})`;
 
@@ -1191,19 +786,19 @@ const generateEPreviewForEdge = (
 ): { paths: string[]; debugInfo: EGeometryPreviewDebugInfo } => {
   const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
   const properties = connection.properties;
-  const side = detectEPreviewSide(edge, panelBounds);
+  const side = getEdgeSide(edge, panelBounds);
   const label = getEPreviewLabel(assignment);
   const role = assignment.slotRole === 'tab' ? 'E-T' : 'E-S';
   const centerY = (edge.start.y + edge.end.y) / 2;
-  const baseDebugInfo: Omit<EGeometryPreviewDebugInfo, 'patternPreview' | 'generatedPointCount' | 'generatedPoints' | 'warning'> = {
+  const baseDebugInfo: Omit<EGeometryPreviewDebugInfo, 'generatedPointCount' | 'generatedPoints' | 'warning'> = {
     edgeId: edge.id,
     sourceId: edge.source,
     label,
     role,
     start: edge.start,
     end: edge.end,
-    detectedSide: side ?? 'unknown',
-    inwardDirection: side ? formatDirection(getEPreviewInwardDirection(side)) : 'unknown',
+    detectedSide: side,
+    inwardDirection: formatDirection(getInwardDirection(edge, panelBounds)),
     ...(panelBounds ? {
       panelMinY: panelBounds.minY,
       panelMaxY: panelBounds.maxY,
@@ -1215,54 +810,27 @@ const generateEPreviewForEdge = (
     fingerWidthMm: properties.fingerWidthMm,
   };
 
-  const patternInfo = calculateEGeometryPatternInfo(length, properties);
-  const pocketDistanceSummary = getEPatternPocketDistanceSummary(patternInfo, assignment.slotRole ?? 'tab');
-
-  if (!side) {
+  if (length <= 0) {
     return {
       paths: [],
       debugInfo: {
         ...baseDebugInfo,
-        ...pocketDistanceSummary,
-        patternPreview: '',
         generatedPointCount: 0,
         generatedPoints: [],
-        warning: 'Could not detect a top, bottom, left, or right side for this edge; skipped preview notches for this edge.',
+        warning: 'Edge length is too small to generate an E geometry preview.',
       },
     };
   }
 
-  if (length <= 0 || properties.materialThicknessMm <= 0 || properties.fingerWidthMm <= 0 || patternInfo.segmentCount <= 0) {
-    return {
-      paths: [],
-      debugInfo: {
-        ...baseDebugInfo,
-        ...pocketDistanceSummary,
-        patternPreview: '',
-        generatedPointCount: 0,
-        generatedPoints: [],
-        warning: 'Edge length, material thickness, or finger width is too small to generate preview notches.',
-      },
-    };
-  }
-
-  const patternPreview = getEPatternPreviewString(patternInfo.segmentCount, assignment.slotRole ?? 'tab');
-  const hasCutSegments = patternInfo.segmentDistancesMm.slice(0, patternInfo.segmentCount)
-    .some((_, intervalIndex) => shouldCutEPatternSegment(intervalIndex, assignment.slotRole ?? 'tab'));
-  const polyline = buildEPreviewPolyline(edge, side, properties, assignment.slotRole ?? 'tab');
+  const polyline = buildEGeometryPolyline(edge, connection, assignment.slotRole ?? 'tab');
   const path = polylinePointsToCommands(polyline).join(' ');
 
   return {
     paths: [path],
     debugInfo: {
       ...baseDebugInfo,
-      ...pocketDistanceSummary,
-      patternPreview,
       generatedPointCount: polyline.length,
       generatedPoints: polyline,
-      ...(polyline.length <= 2 && hasCutSegments
-        ? { warning: 'Preview stayed on the original edge because no inward pocket depth was available.' }
-        : {}),
     },
   };
 };
@@ -1285,10 +853,6 @@ export const generateEGeometryPreview = (
       edgeId: debugInfo.edgeId,
       label: debugInfo.label,
       role: debugInfo.role,
-      firstPocketStartDistanceMm: debugInfo.firstPocketStartDistanceMm,
-      firstPocketEndDistanceMm: debugInfo.firstPocketEndDistanceMm,
-      lastPocketStartDistanceMm: debugInfo.lastPocketStartDistanceMm,
-      lastPocketEndDistanceMm: debugInfo.lastPocketEndDistanceMm,
       edgeLengthMm: debugInfo.edgeLengthMm,
     })));
   }
