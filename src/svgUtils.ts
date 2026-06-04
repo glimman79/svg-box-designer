@@ -12,11 +12,24 @@ export type SvgEdge = {
   end: Point;
 };
 
+export type EdgeRole = 'outer' | 'inner';
+
 export type EdgeAssignment = {
   connectionId: string;
+  edgeRole?: EdgeRole;
 };
 
-export const getEdgeAssignmentDisplayLabel = (assignment: EdgeAssignment | undefined) => assignment?.connectionId;
+export const getEdgeAssignmentDisplayLabel = (assignment: EdgeAssignment | undefined) => {
+  if (!assignment) {
+    return undefined;
+  }
+
+  if (assignment.connectionId.startsWith('E') && assignment.edgeRole) {
+    return `${assignment.connectionId}-${assignment.edgeRole === 'outer' ? 'O' : 'I'}`;
+  }
+
+  return assignment.connectionId;
+};
 
 export type SvgDocumentModel = {
   content: string;

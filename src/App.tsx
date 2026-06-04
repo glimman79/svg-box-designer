@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
-import type { EdgeAssignment, SvgDocumentModel } from './svgUtils';
+import type { EdgeAssignment, EdgeRole, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
 
@@ -230,6 +230,32 @@ function getDefaultCornerDepth(materialThicknessMm: number) {
 
 const getAssignedConnectionId = (assignment: EdgeAssignment | undefined) => assignment?.connectionId;
 
+const getDefaultEdgeRole = (assignments: Record<string, EdgeAssignment>, connectionId: string): EdgeRole => {
+  const assignedRoles = Object.values(assignments)
+    .filter((assignment) => assignment.connectionId === connectionId)
+    .map((assignment) => assignment.edgeRole);
+  const hasOuter = assignedRoles.includes('outer');
+  const hasInner = assignedRoles.includes('inner');
+
+  if (hasOuter && !hasInner) {
+    return 'inner';
+  }
+
+  return 'outer';
+};
+
+const formatEdgeRoleLabel = (role: EdgeRole | undefined) => {
+  if (role === 'outer') {
+    return 'Outer';
+  }
+
+  if (role === 'inner') {
+    return 'Inner';
+  }
+
+  return 'No role';
+};
+
 const formatCalculatedMm = (value: number) => `${Number(value.toFixed(2)).toString()} mm`;
 const cloneDefaultProperties = <P extends LabelPrefix>(prefix: P): ConnectionPropertiesByPrefix[P] => ({
   ...defaultConnectionProperties[prefix],
@@ -271,7 +297,7 @@ const SelectField = ({ id, label, value, options, onChange }: SelectFieldProps) 
     <select id={id} value={value} onChange={(event) => onChange(event.target.value)}>
       {options.map((option) => (
         <option key={option} value={option}>
-          {option}
+          {option === 'outer' ? 'Outer' : option === 'inner' ? 'Inner' : option}
         </option>
       ))}
     </select>
@@ -368,8 +394,28 @@ function App() {
       ...currentAssignments,
       [edgeId]: {
         connectionId: selectedLabelId,
+        ...(connection.prefix === 'E' ? { edgeRole: getDefaultEdgeRole(currentAssignments, selectedLabelId) } : {}),
       },
     }));
+    setErrorMessage('');
+  };
+
+  const updateAssignedEdgeRole = (edgeId: string, edgeRole: EdgeRole) => {
+    setEdgeAssignments((currentAssignments) => {
+      const assignment = currentAssignments[edgeId];
+
+      if (!assignment) {
+        return currentAssignments;
+      }
+
+      return {
+        ...currentAssignments,
+        [edgeId]: {
+          ...assignment,
+          edgeRole,
+        },
+      };
+    });
     setErrorMessage('');
   };
 
@@ -635,7 +681,18 @@ function App() {
                         <dt>Edge length</dt>
                         <dd>{formatCalculatedMm(Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y))}</dd>
                       </div>
+                      <div>
+                        <dt>Current role</dt>
+                        <dd>{formatEdgeRoleLabel(edgeAssignments[edge.id]?.edgeRole)}</dd>
+                      </div>
                     </dl>
+                    <SelectField
+                      id={`${edge.id}-edge-role`}
+                      label="Role"
+                      value={edgeAssignments[edge.id]?.edgeRole ?? 'outer'}
+                      options={['outer', 'inner']}
+                      onChange={(edgeRole) => updateAssignedEdgeRole(edge.id, edgeRole as EdgeRole)}
+                    />
                     <button type="button" onClick={() => clearEdgeLabel(edge.id)}>
                       Remove
                     </button>
