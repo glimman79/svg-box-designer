@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { calculateEGeometryPatternInfo, exportLabeledSvg, generateEGeometryPreview, generateEGeometrySvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, generateEGeometryPreview, generateEGeometrySvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import type { EGeometryPreviewDebugInfo, EdgeAssignment, EdgeSideRole, Point, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -260,9 +260,6 @@ const getAssignedConnectionId = (assignment: EdgeAssignment | undefined) => assi
 const formatCalculatedMm = (value: number) => `${Number(value.toFixed(2)).toString()} mm`;
 const formatOptionalCalculatedMm = (value: number | undefined) => (value === undefined ? 'n/a' : formatCalculatedMm(value));
 
-const getEGeometryPocketCount = (segmentCount: number, role: EdgeSideRole) => (
-  role === 'tab' ? Math.ceil(segmentCount / 2) : Math.floor(segmentCount / 2)
-);
 const formatCoordinate = (value: number) => Number(value.toFixed(4)).toString();
 const formatDebugPoint = (point: Point) => `(${formatCoordinate(point.x)}, ${formatCoordinate(point.y)})`;
 const formatDebugPointList = (points: Point[]) => points.length > 0 ? points.slice(0, 10).map(formatDebugPoint).join(' → ') : 'None';
@@ -567,7 +564,7 @@ function App() {
     ));
 
     if (hasDuplicateERole) {
-      setErrorMessage(`${selectedConnection.id} already has an ${selectedConnection.id}-${slotRole === 'tab' ? 'T' : 'S'} pocket-pattern edge.`);
+      setErrorMessage(`${selectedConnection.id} already has an ${selectedConnection.id}-${slotRole === 'tab' ? 'T' : 'S'} E geometry edge.`);
       return;
     }
 
@@ -870,7 +867,6 @@ function App() {
                   const assignment = edgeAssignments[edge.id];
                   const role = assignment?.slotRole ?? 'tab';
                   const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
-                  const info = calculateEGeometryPatternInfo(length, properties);
                   const displayLabel = `${selectedConnection.id}-${eSideRoleSuffixes[role]}`;
 
                   return (
@@ -878,12 +874,8 @@ function App() {
                       <strong>{displayLabel}</strong>
                       <dl>
                         <div>
-                          <dt>Segment count</dt>
-                          <dd>{info.segmentCount}</dd>
-                        </div>
-                        <div>
-                          <dt>Pocket count</dt>
-                          <dd>{getEGeometryPocketCount(info.segmentCount, role)}</dd>
+                          <dt>Edge length</dt>
+                          <dd>{formatCalculatedMm(length)}</dd>
                         </div>
                       </dl>
                     </li>
@@ -891,7 +883,7 @@ function App() {
                 })}
               </ul>
             ) : (
-              <p className="muted">Assign this E label to an edge to preview its fitted segment widths and inward pocket counts.</p>
+              <p className="muted">Assign this E label to an edge to preview the placeholder E geometry path.</p>
             )}
           </section>
 
@@ -1136,8 +1128,7 @@ function App() {
               {showEGeometryPreviewOnly ? 'solid blue = E geometry preview only' : 'dashed blue = E geometry preview'}
             </div>
             <div hidden={!showEGeometryPreviewOnly}>Preview only mode hides the original SVG and edge labels.</div>
-            <div><strong>E-T</strong> and <strong>E-S</strong> both cut inward pockets.</div>
-            <div>Roles use complementary alternating pocket segments so matching edges fit.</div>
+            <div><strong>E-T</strong> and <strong>E-S</strong> use placeholder E geometry in this cleanup phase.</div>
           </div>
 
           <div className="e-preview-debug" aria-label="E geometry preview debug output" hidden={eGeometryPreviewDebugInfo.length === 0}>
@@ -1159,13 +1150,8 @@ function App() {
                     <th>Dist minY</th>
                     <th>Dist maxY</th>
                     <th>Length</th>
-                    <th>First pocket start</th>
-                    <th>First pocket end</th>
-                    <th>Last pocket start</th>
-                    <th>Last pocket end</th>
                     <th>Thickness</th>
                     <th>Tab size</th>
-                    <th>Pattern</th>
                     <th>Point count</th>
                     <th>First 10 points</th>
                   </tr>
@@ -1186,13 +1172,8 @@ function App() {
                       <td>{formatOptionalCalculatedMm(info.distanceToPanelMinY)}</td>
                       <td>{formatOptionalCalculatedMm(info.distanceToPanelMaxY)}</td>
                       <td>{formatCalculatedMm(info.edgeLengthMm)}</td>
-                      <td>{formatOptionalCalculatedMm(info.firstPocketStartDistanceMm)}</td>
-                      <td>{formatOptionalCalculatedMm(info.firstPocketEndDistanceMm)}</td>
-                      <td>{formatOptionalCalculatedMm(info.lastPocketStartDistanceMm)}</td>
-                      <td>{formatOptionalCalculatedMm(info.lastPocketEndDistanceMm)}</td>
                       <td>{formatCalculatedMm(info.materialThicknessMm)}</td>
                       <td>{formatCalculatedMm(info.fingerWidthMm)}</td>
-                      <td>{info.patternPreview ? `${info.label}: ${info.patternPreview}` : '—'}</td>
                       <td>{info.generatedPointCount}</td>
                       <td className="debug-point-list">{formatDebugPointList(info.generatedPoints)}</td>
                     </tr>
