@@ -692,60 +692,68 @@ const isAssignedEEdge = (
   return Boolean(assignment && assignment.slotRole && connections[assignment.connectionId]?.prefix === 'E');
 };
 
+const getEEdgeEndClearanceMm = (properties: EGeometryConnectionProperties) => (
+  Math.max(0, properties.materialThicknessMm)
+);
+
 export const calculateEGeometryPatternInfo = (
   edgeLengthMm: number,
   properties: EGeometryConnectionProperties,
 ): EGeometryPatternInfo => {
   const length = Math.max(0, edgeLengthMm);
+  const endClearanceMm = getEEdgeEndClearanceMm(properties);
+  const startDistance = Math.min(endClearanceMm, length / 2);
+  const endDistance = Math.max(startDistance, length - endClearanceMm);
+  const activeLength = Math.max(0, endDistance - startDistance);
   const requestedSegmentWidth = Math.max(0, properties.fingerWidthMm);
-  const segmentCount = requestedSegmentWidth > 0 && length > 0
-    ? Math.max(1, Math.floor(length / requestedSegmentWidth))
+  const segmentCount = requestedSegmentWidth > 0 && activeLength > 0
+    ? Math.max(1, Math.floor(activeLength / requestedSegmentWidth))
     : 0;
 
   if (segmentCount === 0) {
     return {
-      availableLengthMm: length,
+      availableLengthMm: activeLength,
       segmentCount: 0,
       segmentWidthMm: 0,
       middleSegmentWidthMm: 0,
       firstLastSegmentWidthMm: 0,
       tabCount: 0,
       gapCount: 0,
-      endMarginMm: 0,
-      startDistanceMm: 0,
-      endDistanceMm: length,
-      segmentDistancesMm: [0],
+      endMarginMm: endClearanceMm,
+      startDistanceMm: startDistance,
+      endDistanceMm: endDistance,
+      segmentDistancesMm: [startDistance],
     };
   }
 
   const usedLength = segmentCount * requestedSegmentWidth;
-  const extraLength = Math.max(0, length - usedLength);
+  const extraLength = Math.max(0, activeLength - usedLength);
   const firstLastSegmentWidth = segmentCount === 1
-    ? length
+    ? activeLength
     : requestedSegmentWidth + extraLength / 2;
-  const segmentDistances = [0];
-  let currentDistance = 0;
+  const segmentDistances = [startDistance];
+  let currentDistance = startDistance;
 
   for (let index = 0; index < segmentCount; index += 1) {
     const isFirstOrLast = index === 0 || index === segmentCount - 1;
     const segmentWidth = isFirstOrLast ? firstLastSegmentWidth : requestedSegmentWidth;
     currentDistance += segmentWidth;
-    segmentDistances.push(Math.min(length, currentDistance));
+    segmentDistances.push(Math.min(endDistance, currentDistance));
   }
 
-  segmentDistances[segmentDistances.length - 1] = length;
+  segmentDistances[segmentDistances.length - 1] = endDistance;
 
   return {
-    availableLengthMm: length,
+    availableLengthMm: activeLength,
     segmentCount,
     segmentWidthMm: requestedSegmentWidth,
     middleSegmentWidthMm: segmentCount > 2 ? requestedSegmentWidth : 0,
     firstLastSegmentWidthMm: firstLastSegmentWidth,
     tabCount: Math.ceil(segmentCount / 2),
     gapCount: Math.floor(segmentCount / 2),
-    endMarginMm: 0,
-    startDistanceMm: 0,
-    endDistanceMm: length,
+    endMarginMm: endClearanceMm,
+    startDistanceMm: startDistance,
+    endDistanceMm: endDistance,
     segmentDistancesMm: segmentDistances,
   };
 };
