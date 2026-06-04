@@ -1111,6 +1111,14 @@ const buildEGeometryPolylineV2 = (
   segmentDistancesMm[segmentDistancesMm.length - 1] = activeLengthMm;
 
   const points: Point[] = [edge.start];
+  const edgeDx = edge.end.x - edge.start.x;
+  const edgeDy = edge.end.y - edge.start.y;
+  const isReversedFromPhysicalIndex = Math.abs(edgeDx) >= Math.abs(edgeDy)
+    ? edgeDx < 0
+    : edgeDy < 0;
+  const getPhysicalSegmentIndex = (intervalIndex: number) => (
+    isReversedFromPhysicalIndex ? segmentCount - 1 - intervalIndex : intervalIndex
+  );
 
   const addPointAt = (activeDistanceMm: number, offset = 0) => {
     const distanceMm = activeStartDistanceMm + Math.max(0, Math.min(activeLengthMm, activeDistanceMm));
@@ -1127,11 +1135,27 @@ const buildEGeometryPolylineV2 = (
 
   addPointAt(0);
 
+  const segmentDebug = [];
+
   for (let intervalIndex = 0; intervalIndex < segmentCount; intervalIndex += 1) {
     const distanceMm = segmentDistancesMm[intervalIndex];
     const nextDistanceMm = segmentDistancesMm[intervalIndex + 1];
+    const physicalSegmentIndex = getPhysicalSegmentIndex(intervalIndex);
+    const isPocket = shouldCutEPatternSegment(physicalSegmentIndex, role);
 
-    if (shouldCutEPatternSegment(intervalIndex, role)) {
+    segmentDebug.push({
+      edgeId: edge.id,
+      role: role === 'tab' ? 'E-T' : 'E-S',
+      side,
+      localSegmentIndex: intervalIndex,
+      physicalSegmentIndex,
+      isReversedFromPhysicalIndex,
+      pattern: isPocket ? 'pocket' : 'solid',
+      activeStartDistanceMm: distanceMm,
+      activeEndDistanceMm: nextDistanceMm,
+    });
+
+    if (isPocket) {
       addPointAt(distanceMm);
       addPointAt(distanceMm, pocketDepthMm);
       addPointAt(nextDistanceMm, pocketDepthMm);
@@ -1140,6 +1164,8 @@ const buildEGeometryPolylineV2 = (
       addPointAt(nextDistanceMm);
     }
   }
+
+  console.table(segmentDebug);
 
   addPointAt(activeLengthMm);
   const endPoint = pointAtDistance(edge, length, length);
