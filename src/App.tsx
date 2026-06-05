@@ -118,6 +118,7 @@ type PanState = {
 
 type AppliedEPanelPath = {
   panelKey: string;
+  panelBounds: SourceBounds;
   d: string;
 };
 
@@ -263,6 +264,7 @@ const buildAppliedEPanelPaths = (
 
     return {
       panelKey,
+      panelBounds: panelGroup.panelBounds,
       d: pointsToClosedPath(panelPoints),
     };
   });
@@ -1200,11 +1202,20 @@ function App() {
               <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
               <g className="applied-panel-layer">
                 {appliedEPanelPaths.map((panelPath) => (
-                  <path
-                    key={panelPath.panelKey}
-                    className="applied-panel-path"
-                    d={panelPath.d}
-                  />
+                  <g key={panelPath.panelKey}>
+                    <rect
+                      x={panelPath.panelBounds.minX - 1}
+                      y={panelPath.panelBounds.minY - 1}
+                      width={panelPath.panelBounds.maxX - panelPath.panelBounds.minX + 2}
+                      height={panelPath.panelBounds.maxY - panelPath.panelBounds.minY + 2}
+                      fill="white"
+                      stroke="none"
+                    />
+                    <path
+                      className="applied-panel-path"
+                      d={panelPath.d}
+                    />
+                  </g>
                 ))}
               </g>
               <g className="edge-overlays">
