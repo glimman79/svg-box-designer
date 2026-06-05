@@ -571,11 +571,30 @@ const labelBoxesOverlap = (
   && Math.abs(box.y - otherBox.y) < (box.height + otherBox.height) / 2 + 2
 );
 
-const getEdgeLabelDirection = (edge: SvgEdge): Point => {
-  const dx = Math.abs(edge.end.x - edge.start.x);
-  const dy = Math.abs(edge.end.y - edge.start.y);
+const getEdgeLabelPlacementDirection = (edge: SvgEdge): Point => {
+  const side = getPanelEdgeSide(edge, edge.panelBounds);
 
-  if (dx >= dy) {
+  if (side === 'top') {
+    return { x: 0, y: -1 };
+  }
+
+  if (side === 'bottom') {
+    return { x: 0, y: 1 };
+  }
+
+  if (side === 'left') {
+    return { x: -1, y: 0 };
+  }
+
+  if (side === 'right') {
+    return { x: 1, y: 0 };
+  }
+
+  const tolerance = 0.1;
+  const isHorizontal = Math.abs(edge.end.y - edge.start.y) <= tolerance;
+  const isVertical = Math.abs(edge.end.x - edge.start.x) <= tolerance;
+
+  if (isHorizontal || !isVertical) {
     return { x: 0, y: -1 };
   }
 
@@ -602,7 +621,7 @@ export const getEdgeLabelPlacements = (
     const height = options.fontSizePx + options.paddingYPx * 2;
     const renderedWidth = width * labelScale;
     const renderedHeight = height * labelScale;
-    const direction = getEdgeLabelDirection(edge);
+    const direction = getEdgeLabelPlacementDirection(edge);
     const halfSizeAlongDirection = Math.abs(direction.x) > 0 ? renderedWidth / 2 : renderedHeight / 2;
     const baseDistance = options.edgeOffsetPx + halfSizeAlongDirection;
     const center = midpoint(edge);
