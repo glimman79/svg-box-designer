@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardOffsetPreviewLine, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getInwardOffsetPreviewLine, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgeRole, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -809,8 +809,34 @@ function App() {
     labelScale,
   });
   const labelPlacementsByEdgeId = new Map(labelPlacements.map((placement) => [placement.edgeId, placement]));
-  const ePreviewLinesByEdgeId = new Map(
-    svgModel.edges.flatMap((edge) => {
+  const ePreviewLinesByEdgeId = useMemo(() => {
+    if (!isEPreviewVisible) {
+      return new Map();
+    }
+
+    return new Map(
+      svgModel.edges.flatMap((edge) => {
+        const assignment = edgeAssignments[edge.id];
+        const connection = assignment ? connections[assignment.connectionId] : undefined;
+
+        if (!assignment || connection?.prefix !== 'E') {
+          return [];
+        }
+
+        return [[
+          edge.id,
+          getInwardOffsetPreviewLine(edge, svgModel.edges, connection.properties.materialThicknessMm),
+        ] as const];
+      }),
+    );
+  }, [connections, edgeAssignments, isEPreviewVisible, svgModel.edges]);
+
+  useEffect(() => {
+    if (!isEPreviewVisible) {
+      return;
+    }
+
+    console.table(svgModel.edges.flatMap((edge) => {
       const assignment = edgeAssignments[edge.id];
       const connection = assignment ? connections[assignment.connectionId] : undefined;
 
@@ -818,12 +844,22 @@ function App() {
         return [];
       }
 
-      return [[
-        edge.id,
-        getInwardOffsetPreviewLine(edge, svgModel.edges, connection.properties.materialThicknessMm),
-      ] as const];
-    }),
-  );
+      const previewLine = ePreviewLinesByEdgeId.get(edge.id);
+
+      return [{
+        edgeId: edge.id,
+        label: getEdgeAssignmentDisplayLabel(assignment),
+        start: edge.start,
+        end: edge.end,
+        panelBounds: edge.panelBounds,
+        materialThicknessMm: connection.properties.materialThicknessMm,
+        detectedSide: getPanelEdgeSide(edge, edge.panelBounds),
+        direction: getInwardEdgeDirection(edge, edge.panelBounds),
+        previewStart: previewLine?.start,
+        previewEnd: previewLine?.end,
+      }];
+    }));
+  }, [connections, ePreviewLinesByEdgeId, edgeAssignments, isEPreviewVisible, svgModel.edges]);
 
   return (
     <main className="app-shell">
