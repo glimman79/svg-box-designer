@@ -542,24 +542,118 @@ export const getInwardEdgeDirection = (
   return { x: 1, y: 0 };
 };
 
-export type EdgePreviewLine = {
+
+export type EdgePreviewPath = {
+  d: string;
   start: Point;
   end: Point;
+  innerStart: Point;
+  innerEnd: Point;
 };
 
-export const getInwardOffsetPreviewLine = (
-  edge: SvgEdge,
-  _edges: SvgEdge[],
-  offsetMm: number,
-): EdgePreviewLine => {
-  const offset = Math.max(0, offsetMm);
-  const direction = getInwardEdgeDirection(edge, edge.panelBounds);
-  const dx = direction.x * offset;
-  const dy = direction.y * offset;
+const pointToPathCommand = (command: 'M' | 'L', point: Point) => (
+  `${command} ${point.x} ${point.y}`
+);
+
+const clampPointToBounds = (point: Point, bounds: SourceBounds | undefined): Point => {
+  if (!bounds) {
+    return point;
+  }
 
   return {
-    start: { x: edge.start.x + dx, y: edge.start.y + dy },
-    end: { x: edge.end.x + dx, y: edge.end.y + dy },
+    x: Math.min(bounds.maxX, Math.max(bounds.minX, point.x)),
+    y: Math.min(bounds.maxY, Math.max(bounds.minY, point.y)),
+  };
+};
+
+const interpolateEdgePoint = (edge: SvgEdge, distanceAlongEdge: number, edgeLength: number): Point => {
+  if (edgeLength <= 0) {
+    return edge.start;
+  }
+
+  const ratio = distanceAlongEdge / edgeLength;
+
+  return {
+    x: edge.start.x + (edge.end.x - edge.start.x) * ratio,
+    y: edge.start.y + (edge.end.y - edge.start.y) * ratio,
+  };
+};
+
+const getEPreviewSegmentLengths = (edgeLength: number, fingerWidthMm: number) => {
+  const safeEdgeLength = Math.max(0, edgeLength);
+  const safeFingerWidth = Math.max(0, fingerWidthMm);
+
+  if (safeEdgeLength === 0 || safeFingerWidth === 0 || safeFingerWidth >= safeEdgeLength) {
+    return [safeEdgeLength];
+  }
+
+  const segmentCount = Math.max(1, Math.floor(safeEdgeLength / safeFingerWidth));
+
+  if (segmentCount === 1) {
+    return [safeEdgeLength];
+  }
+
+  const extraLength = safeEdgeLength - segmentCount * safeFingerWidth;
+
+  return Array.from({ length: segmentCount }, (_, index) => {
+    if (index === 0 || index === segmentCount - 1) {
+      return safeFingerWidth + extraLength / 2;
+    }
+
+    return safeFingerWidth;
+  });
+};
+
+export const getEPreviewSteppedPath = (
+  edge: SvgEdge,
+  role: EdgeRole,
+  materialThicknessMm: number,
+  fingerWidthMm: number,
+): EdgePreviewPath => {
+  const edgeLength = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+  const direction = getInwardEdgeDirection(edge, edge.panelBounds);
+  const tabDepth = Math.max(0, materialThicknessMm);
+  const offset = { x: direction.x * tabDepth, y: direction.y * tabDepth };
+  const innerStart = clampPointToBounds({ x: edge.start.x + offset.x, y: edge.start.y + offset.y }, edge.panelBounds);
+  const innerEnd = clampPointToBounds({ x: edge.end.x + offset.x, y: edge.end.y + offset.y }, edge.panelBounds);
+  const commands = [pointToPathCommand('M', edge.start), pointToPathCommand('L', innerStart)];
+  const segmentLengths = getEPreviewSegmentLengths(edgeLength, fingerWidthMm);
+  let distanceAlongEdge = 0;
+  let isTabSegment = role === 'outer';
+
+  segmentLengths.forEach((segmentLength) => {
+    const originalSegmentStart = interpolateEdgePoint(edge, distanceAlongEdge, edgeLength);
+    const innerSegmentStart = clampPointToBounds({
+      x: originalSegmentStart.x + offset.x,
+      y: originalSegmentStart.y + offset.y,
+    }, edge.panelBounds);
+    distanceAlongEdge = Math.min(edgeLength, distanceAlongEdge + segmentLength);
+    const originalSegmentEnd = interpolateEdgePoint(edge, distanceAlongEdge, edgeLength);
+    const innerSegmentEnd = clampPointToBounds({
+      x: originalSegmentEnd.x + offset.x,
+      y: originalSegmentEnd.y + offset.y,
+    }, edge.panelBounds);
+
+    if (isTabSegment) {
+      commands.push(pointToPathCommand('L', originalSegmentStart));
+      commands.push(pointToPathCommand('L', originalSegmentEnd));
+      commands.push(pointToPathCommand('L', innerSegmentEnd));
+    } else {
+      commands.push(pointToPathCommand('L', innerSegmentStart));
+      commands.push(pointToPathCommand('L', innerSegmentEnd));
+    }
+
+    isTabSegment = !isTabSegment;
+  });
+
+  commands.push(pointToPathCommand('L', edge.end));
+
+  return {
+    d: commands.join(' '),
+    start: edge.start,
+    end: edge.end,
+    innerStart,
+    innerEnd,
   };
 };
 
