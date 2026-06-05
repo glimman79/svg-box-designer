@@ -1087,7 +1087,11 @@ function App() {
                           />
                           <path
                             className="edge-applied-highlight"
-                            d={appliedEPath.d}
+                            d={appliedEPath.cutBaselineD}
+                          />
+                          <path
+                            className="edge-applied-highlight"
+                            d={appliedEPath.tabPreviewD}
                           />
                         </>
                       )}
