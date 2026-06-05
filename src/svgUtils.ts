@@ -571,13 +571,23 @@ const labelBoxesOverlap = (
   && Math.abs(box.y - otherBox.y) < (box.height + otherBox.height) / 2 + 2
 );
 
+const getEdgeLabelDirection = (edge: SvgEdge): Point => {
+  const dx = Math.abs(edge.end.x - edge.start.x);
+  const dy = Math.abs(edge.end.y - edge.start.y);
+
+  if (dx >= dy) {
+    return { x: 0, y: -1 };
+  }
+
+  return { x: -1, y: 0 };
+};
+
 export const getEdgeLabelPlacements = (
   edges: SvgEdge[],
   edgeAssignments: Record<string, EdgeAssignment>,
   options: EdgeLabelPlacementOptions,
 ): EdgeLabelPlacement[] => {
   const labelScale = options.labelScale ?? 1;
-  const boundsBySource = getEdgesBySourceBounds(edges);
   const placedBoxes: { x: number; y: number; width: number; height: number }[] = [];
 
   return edges.flatMap((edge) => {
@@ -592,7 +602,7 @@ export const getEdgeLabelPlacements = (
     const height = options.fontSizePx + options.paddingYPx * 2;
     const renderedWidth = width * labelScale;
     const renderedHeight = height * labelScale;
-    const direction = getInwardEdgeDirection(edge, edge.panelBounds ?? boundsBySource[edge.source]);
+    const direction = getEdgeLabelDirection(edge);
     const halfSizeAlongDirection = Math.abs(direction.x) > 0 ? renderedWidth / 2 : renderedHeight / 2;
     const baseDistance = options.edgeOffsetPx + halfSizeAlongDirection;
     const center = midpoint(edge);
