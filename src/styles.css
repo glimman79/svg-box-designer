@@ -409,20 +409,16 @@ button:disabled {
   stroke-width: 1;
 }
 
-.edge-applied-mask {
-  fill: none;
-  stroke: #ffffff;
-  stroke-linecap: butt;
-  stroke-width: 4;
+.applied-panel-layer {
   pointer-events: none;
-  vector-effect: non-scaling-stroke;
 }
 
-.edge-applied-highlight {
+.applied-panel-path {
   fill: none;
   stroke: #000000;
   stroke-width: 1;
   stroke-linecap: butt;
+  stroke-linejoin: miter;
   pointer-events: none;
   vector-effect: non-scaling-stroke;
 }

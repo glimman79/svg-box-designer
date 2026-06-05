@@ -663,6 +663,40 @@ export const getEPreviewTabPath = (
   return commands.join(' ');
 };
 
+export const getEPreviewOutlinePoints = (
+  edge: SvgEdge,
+  role: EdgeRole,
+  materialThicknessMm: number,
+  fingerWidthMm: number,
+): Point[] => {
+  const edgeLength = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+  const { offset } = getEPreviewInwardCutBaseline(edge, materialThicknessMm);
+  const segmentLengths = getEPreviewSegmentLengths(edgeLength, fingerWidthMm);
+  const points: Point[] = [];
+  let distanceAlongEdge = 0;
+  let isTabSegment = role === 'outer';
+
+  segmentLengths.forEach((segmentLength) => {
+    const originalSegmentStart = interpolateEdgePoint(edge, distanceAlongEdge, edgeLength);
+    const innerSegmentStart = clampPointToBounds({
+      x: originalSegmentStart.x + offset.x,
+      y: originalSegmentStart.y + offset.y,
+    }, edge.panelBounds);
+    distanceAlongEdge = Math.min(edgeLength, distanceAlongEdge + segmentLength);
+    const originalSegmentEnd = interpolateEdgePoint(edge, distanceAlongEdge, edgeLength);
+    const innerSegmentEnd = clampPointToBounds({
+      x: originalSegmentEnd.x + offset.x,
+      y: originalSegmentEnd.y + offset.y,
+    }, edge.panelBounds);
+
+    points.push(isTabSegment ? originalSegmentStart : innerSegmentStart);
+    points.push(isTabSegment ? originalSegmentEnd : innerSegmentEnd);
+    isTabSegment = !isTabSegment;
+  });
+
+  return points;
+};
+
 export const getEPreviewSteppedPath = (
   edge: SvgEdge,
   role: EdgeRole,

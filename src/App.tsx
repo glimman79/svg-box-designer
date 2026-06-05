@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEPreviewSteppedPath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
-import type { EdgeAssignment, EdgePreviewPath, EdgeRole, SvgDocumentModel } from './svgUtils';
+import { exportLabeledSvg, getEPreviewOutlinePoints, getEPreviewSteppedPath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
+import type { EdgeAssignment, EdgePreviewPath, EdgeRole, Point, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
 
@@ -114,6 +114,158 @@ type PanState = {
   lastClientX: number;
   lastClientY: number;
   moved: boolean;
+};
+
+type AppliedEPanelPath = {
+  panelKey: string;
+  d: string;
+};
+
+type AssignedEEdge = {
+  assignment: EdgeAssignment;
+  connection: EdgeConnectionDefinition;
+};
+
+type PanelSide = NonNullable<ReturnType<typeof getPanelEdgeSide>>;
+
+const panelSideOrder: PanelSide[] = ['top', 'right', 'bottom', 'left'];
+
+const getPanelKey = (panelBounds: SourceBounds) => (
+  [panelBounds.minX, panelBounds.maxX, panelBounds.minY, panelBounds.maxY].map(formatNumber).join('|')
+);
+
+const getClockwisePanelEdge = (panelBounds: SourceBounds, side: PanelSide): SvgEdge => {
+  const sidePoints: Record<PanelSide, { start: Point; end: Point }> = {
+    top: {
+      start: { x: panelBounds.minX, y: panelBounds.minY },
+      end: { x: panelBounds.maxX, y: panelBounds.minY },
+    },
+    right: {
+      start: { x: panelBounds.maxX, y: panelBounds.minY },
+      end: { x: panelBounds.maxX, y: panelBounds.maxY },
+    },
+    bottom: {
+      start: { x: panelBounds.maxX, y: panelBounds.maxY },
+      end: { x: panelBounds.minX, y: panelBounds.maxY },
+    },
+    left: {
+      start: { x: panelBounds.minX, y: panelBounds.maxY },
+      end: { x: panelBounds.minX, y: panelBounds.minY },
+    },
+  };
+
+  return {
+    id: `panel-${getPanelKey(panelBounds)}-${side}`,
+    source: 'applied panel outline',
+    panelBounds,
+    ...sidePoints[side],
+  };
+};
+
+const pointsMatch = (point: Point, otherPoint: Point) => (
+  Math.abs(point.x - otherPoint.x) <= 0.001 && Math.abs(point.y - otherPoint.y) <= 0.001
+);
+
+const appendPathPoint = (points: Point[], point: Point) => {
+  const lastPoint = points[points.length - 1];
+
+  if (!lastPoint || !pointsMatch(lastPoint, point)) {
+    points.push(point);
+  }
+};
+
+const pointPathCommand = (command: 'M' | 'L', point: Point) => `${command} ${point.x} ${point.y}`;
+
+const pointsToClosedPath = (points: Point[]) => {
+  if (points.length === 0) {
+    return '';
+  }
+
+  const [firstPoint, ...remainingPoints] = points;
+  return [
+    pointPathCommand('M', firstPoint),
+    ...remainingPoints.map((point) => pointPathCommand('L', point)),
+    'Z',
+  ].join(' ');
+};
+
+const getAppliedPanelEdgePoints = (
+  panelBounds: SourceBounds,
+  side: PanelSide,
+  assignedEdge: AssignedEEdge | undefined,
+) => {
+  const clockwiseEdge = getClockwisePanelEdge(panelBounds, side);
+
+  if (!assignedEdge) {
+    return [clockwiseEdge.start, clockwiseEdge.end];
+  }
+
+  return getEPreviewOutlinePoints(
+    clockwiseEdge,
+    assignedEdge.assignment.edgeRole ?? 'outer',
+    assignedEdge.connection.properties.materialThicknessMm,
+    assignedEdge.connection.properties.fingerWidthMm,
+  );
+};
+
+const buildAppliedEPanelPaths = (
+  edges: SvgEdge[],
+  assignments: Record<string, EdgeAssignment>,
+  connectionMap: ConnectionMap,
+) => {
+  const panelGroups = new Map<string, { panelBounds: SourceBounds; edgesBySide: Map<PanelSide, AssignedEEdge> }>();
+  const skippedEdgeIds: string[] = [];
+
+  edges.forEach((edge) => {
+    const assignment = assignments[edge.id];
+    const connection = assignment ? connectionMap[assignment.connectionId] : undefined;
+
+    if (!assignment || connection?.prefix !== 'E') {
+      return;
+    }
+
+    if (!edge.panelBounds) {
+      skippedEdgeIds.push(edge.id);
+      return;
+    }
+
+    const side = getPanelEdgeSide(edge, edge.panelBounds);
+
+    if (!side) {
+      skippedEdgeIds.push(edge.id);
+      return;
+    }
+
+    const panelKey = getPanelKey(edge.panelBounds);
+    const panelGroup = panelGroups.get(panelKey) ?? {
+      panelBounds: edge.panelBounds,
+      edgesBySide: new Map<PanelSide, AssignedEEdge>(),
+    };
+    panelGroup.edgesBySide.set(side, { assignment, connection });
+    panelGroups.set(panelKey, panelGroup);
+  });
+
+  if (skippedEdgeIds.length > 0) {
+    console.warn('Skipped assigned E edges without panel bounds or a detected panel side.', { edgeIds: skippedEdgeIds });
+  }
+
+  return Array.from(panelGroups.entries()).map(([panelKey, panelGroup]) => {
+    const panelPoints: Point[] = [];
+
+    panelSideOrder.forEach((side) => {
+      const edgePoints = getAppliedPanelEdgePoints(
+        panelGroup.panelBounds,
+        side,
+        panelGroup.edgesBySide.get(side),
+      );
+      edgePoints.forEach((point) => appendPathPoint(panelPoints, point));
+    });
+
+    return {
+      panelKey,
+      d: pointsToClosedPath(panelPoints),
+    };
+  });
 };
 
 const labelGroups: LabelGroup[] = [
@@ -333,7 +485,7 @@ function App() {
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isEPreviewVisible, setIsEPreviewVisible] = useState(false);
-  const [appliedEPathsByEdgeId, setAppliedEPathsByEdgeId] = useState<Record<string, EdgePreviewPath>>({});
+  const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -374,7 +526,7 @@ function App() {
     setSvgModel(parsedSvg);
     setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
     setEdgeAssignments({});
-    setAppliedEPathsByEdgeId({});
+    setAppliedEPanelPaths([]);
     setSelectedEdgeId(null);
     setIsEPreviewVisible(false);
     setErrorMessage('');
@@ -403,15 +555,7 @@ function App() {
       delete nextAssignments[edgeId];
       return nextAssignments;
     });
-    setAppliedEPathsByEdgeId((currentPaths) => {
-      if (!currentPaths[edgeId]) {
-        return currentPaths;
-      }
-
-      const nextPaths = { ...currentPaths };
-      delete nextPaths[edgeId];
-      return nextPaths;
-    });
+    setAppliedEPanelPaths([]);
     setErrorMessage('');
   };
 
@@ -438,17 +582,7 @@ function App() {
     };
     setEdgeAssignments(nextAssignments);
 
-    if (connection.prefix !== 'E') {
-      setAppliedEPathsByEdgeId((currentPaths) => {
-        if (!currentPaths[edgeId]) {
-          return currentPaths;
-        }
-
-        const nextPaths = { ...currentPaths };
-        delete nextPaths[edgeId];
-        return nextPaths;
-      });
-    }
+    setAppliedEPanelPaths([]);
 
     const selectedLabelAssignmentCount = Object.values(nextAssignments)
       .filter((assignment) => assignment.connectionId === selectedLabelId).length;
@@ -893,7 +1027,8 @@ function App() {
   const ePreviewPathsByEdgeId = isEPreviewVisible ? currentEPreviewPathsByEdgeId : new Map<string, EdgePreviewPath>();
 
   const applyEPreviewPaths = () => {
-    setAppliedEPathsByEdgeId(Object.fromEntries(currentEPreviewPathsByEdgeId));
+    setAppliedEPanelPaths(buildAppliedEPanelPaths(svgModel.edges, edgeAssignments, connections));
+    setIsEPreviewVisible(false);
     setErrorMessage('');
   };
 
@@ -1063,39 +1198,28 @@ function App() {
               onPointerLeave={handleCanvasPointerLeave}
             >
               <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
+              <g className="applied-panel-layer">
+                {appliedEPanelPaths.map((panelPath) => (
+                  <path
+                    key={panelPath.panelKey}
+                    className="applied-panel-path"
+                    d={panelPath.d}
+                  />
+                ))}
+              </g>
               <g className="edge-overlays">
                   {svgModel.edges.map((edge) => {
                   const assignment = edgeAssignments[edge.id];
                   const label = getEdgeAssignmentDisplayLabel(assignment);
                   const selected = selectedEdgeId === edge.id;
                   const ePreviewPath = ePreviewPathsByEdgeId.get(edge.id);
-                  const appliedEPath = appliedEPathsByEdgeId[edge.id];
                   const labelPlacement = labelPlacementsByEdgeId.get(edge.id);
                   const labelWidth = labelPlacement?.width ?? 0;
                   const labelHeight = labelPlacement?.height ?? 0;
 
                   return (
                     <g key={edge.id}>
-                      {appliedEPath && (
-                        <>
-                          <line
-                            className="edge-applied-mask"
-                            x1={edge.start.x}
-                            y1={edge.start.y}
-                            x2={edge.end.x}
-                            y2={edge.end.y}
-                          />
-                          <path
-                            className="edge-applied-highlight"
-                            d={appliedEPath.cutBaselineD}
-                          />
-                          <path
-                            className="edge-applied-highlight"
-                            d={appliedEPath.tabPreviewD}
-                          />
-                        </>
-                      )}
-                      {(label || selected) && !appliedEPath && (
+                      {(label || selected) && (
                         <line
                           className={`edge-highlight${label ? ' labeled' : ''}${selected ? ' selected' : ''}`}
                           x1={edge.start.x}
