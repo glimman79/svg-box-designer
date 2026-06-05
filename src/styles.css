@@ -409,6 +409,24 @@ button:disabled {
   stroke-width: 1;
 }
 
+.edge-applied-mask {
+  fill: none;
+  stroke: #ffffff;
+  stroke-linecap: butt;
+  stroke-width: 4;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.edge-applied-highlight {
+  fill: none;
+  stroke: #000000;
+  stroke-width: 1;
+  stroke-linecap: butt;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
 .edge-preview-highlight {
   fill: none;
   stroke: #2563eb;
