@@ -403,8 +403,9 @@ function App() {
   const updateAssignedEdgeRole = (edgeId: string, edgeRole: EdgeRole) => {
     setEdgeAssignments((currentAssignments) => {
       const assignment = currentAssignments[edgeId];
+      const connection = assignment ? connections[assignment.connectionId] : undefined;
 
-      if (!assignment) {
+      if (!assignment || connection?.prefix !== 'E') {
         return currentAssignments;
       }
 
