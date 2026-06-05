@@ -412,9 +412,9 @@ button:disabled {
 .edge-preview-highlight {
   fill: none;
   stroke: #2563eb;
-  stroke-dasharray: 8 5;
-  stroke-linecap: round;
-  stroke-width: 2;
+  stroke-width: 1;
+  stroke-dasharray: 5 4;
+  stroke-linecap: butt;
   pointer-events: none;
   vector-effect: non-scaling-stroke;
 }
