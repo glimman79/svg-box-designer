@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getInwardOffsetPreviewLine, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgeRole, SvgDocumentModel } from './svgUtils';
@@ -194,6 +194,18 @@ const parseViewBox = (viewBox: string): CanvasViewBox => {
 };
 
 const formatViewBox = ({ x, y, width, height }: CanvasViewBox) => `${x} ${y} ${width} ${height}`;
+
+const formatNumber = (value: number) => Number.isInteger(value) ? value.toString() : Number(value.toFixed(3)).toString();
+
+const formatPoint = (point: { x: number; y: number }) => `${formatNumber(point.x)} / ${formatNumber(point.y)}`;
+
+const formatPanelBounds = (panelBounds: SvgDocumentModel['edges'][number]['panelBounds']) => {
+  if (!panelBounds) {
+    return 'unknown';
+  }
+
+  return [panelBounds.minX, panelBounds.maxX, panelBounds.minY, panelBounds.maxY].map(formatNumber).join(' / ');
+};
 
 const zoomViewBox = (
   viewBox: CanvasViewBox,
@@ -831,20 +843,19 @@ function App() {
     );
   }, [connections, edgeAssignments, isEPreviewVisible, svgModel.edges]);
 
-  useEffect(() => {
+  const ePreviewDebugRows = useMemo(() => {
     if (!isEPreviewVisible) {
-      return;
+      return [];
     }
 
-    console.table(svgModel.edges.flatMap((edge) => {
+    return svgModel.edges.flatMap((edge) => {
       const assignment = edgeAssignments[edge.id];
       const connection = assignment ? connections[assignment.connectionId] : undefined;
+      const previewLine = ePreviewLinesByEdgeId.get(edge.id);
 
-      if (!assignment || connection?.prefix !== 'E') {
+      if (!assignment || connection?.prefix !== 'E' || !previewLine) {
         return [];
       }
-
-      const previewLine = ePreviewLinesByEdgeId.get(edge.id);
 
       return [{
         edgeId: edge.id,
@@ -852,13 +863,13 @@ function App() {
         start: edge.start,
         end: edge.end,
         panelBounds: edge.panelBounds,
-        materialThicknessMm: connection.properties.materialThicknessMm,
         detectedSide: getPanelEdgeSide(edge, edge.panelBounds),
         direction: getInwardEdgeDirection(edge, edge.panelBounds),
-        previewStart: previewLine?.start,
-        previewEnd: previewLine?.end,
+        materialThicknessMm: connection.properties.materialThicknessMm,
+        previewStart: previewLine.start,
+        previewEnd: previewLine.end,
       }];
-    }));
+    });
   }, [connections, ePreviewLinesByEdgeId, edgeAssignments, isEPreviewVisible, svgModel.edges]);
 
   return (
@@ -1073,6 +1084,50 @@ function App() {
                 </g>
             </svg>
           </div>
+
+          {isEPreviewVisible && (
+            <div className="e-preview-debug-panel" aria-label="E preview debug values">
+              <h3>E preview debug</h3>
+              {ePreviewDebugRows.length > 0 ? (
+                <div className="e-preview-debug-table-wrap">
+                  <table className="e-preview-debug-table">
+                    <thead>
+                      <tr>
+                        <th>label</th>
+                        <th>edgeId</th>
+                        <th>start x/y</th>
+                        <th>end x/y</th>
+                        <th>panelBounds minX/maxX/minY/maxY</th>
+                        <th>detectedSide</th>
+                        <th>direction x/y</th>
+                        <th>materialThicknessMm</th>
+                        <th>preview start x/y</th>
+                        <th>preview end x/y</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ePreviewDebugRows.map((row) => (
+                        <tr key={row.edgeId}>
+                          <td>{row.label}</td>
+                          <td>{row.edgeId}</td>
+                          <td>{formatPoint(row.start)}</td>
+                          <td>{formatPoint(row.end)}</td>
+                          <td>{formatPanelBounds(row.panelBounds)}</td>
+                          <td>{row.detectedSide ?? 'unknown'}</td>
+                          <td>{formatPoint(row.direction)}</td>
+                          <td>{formatNumber(row.materialThicknessMm)}</td>
+                          <td>{formatPoint(row.previewStart)}</td>
+                          <td>{formatPoint(row.previewEnd)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="muted">No assigned E edges to preview.</p>
+              )}
+            </div>
+          )}
         </section>
       </section>
     </main>
