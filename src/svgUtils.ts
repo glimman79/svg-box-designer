@@ -366,31 +366,35 @@ export const getPanelEdgeSide = (
   edge: SvgEdge,
   panelBounds: SourceBounds | undefined,
 ): PanelEdgeSide | undefined => {
-  if (!panelBounds) {
-    return undefined;
+  const edgeCenter = midpoint(edge);
+  let detectedSide: PanelEdgeSide | undefined;
+
+  if (panelBounds) {
+    const tolerance = 0.1;
+    const edgeCenterY = (edge.start.y + edge.end.y) / 2;
+    const edgeCenterX = (edge.start.x + edge.end.x) / 2;
+    const isHorizontal = Math.abs(edge.start.y - edge.end.y) <= tolerance;
+    const isVertical = Math.abs(edge.start.x - edge.end.x) <= tolerance;
+
+    if (isHorizontal && Math.abs(edgeCenterY - panelBounds.minY) <= tolerance) {
+      detectedSide = 'top';
+    } else if (isHorizontal && Math.abs(edgeCenterY - panelBounds.maxY) <= tolerance) {
+      detectedSide = 'bottom';
+    } else if (isVertical && Math.abs(edgeCenterX - panelBounds.minX) <= tolerance) {
+      detectedSide = 'left';
+    } else if (isVertical && Math.abs(edgeCenterX - panelBounds.maxX) <= tolerance) {
+      detectedSide = 'right';
+    }
   }
 
-  const tolerance = 0.001;
-  const isHorizontal = Math.abs(edge.start.y - edge.end.y) <= tolerance;
-  const isVertical = Math.abs(edge.start.x - edge.end.x) <= tolerance;
+  console.table([{
+    edgeId: edge.id,
+    edgeCenter,
+    panelBounds,
+    detectedSide,
+  }]);
 
-  if (isHorizontal && Math.abs(edge.start.y - panelBounds.minY) <= tolerance) {
-    return 'top';
-  }
-
-  if (isHorizontal && Math.abs(edge.start.y - panelBounds.maxY) <= tolerance) {
-    return 'bottom';
-  }
-
-  if (isVertical && Math.abs(edge.start.x - panelBounds.minX) <= tolerance) {
-    return 'left';
-  }
-
-  if (isVertical && Math.abs(edge.start.x - panelBounds.maxX) <= tolerance) {
-    return 'right';
-  }
-
-  return undefined;
+  return detectedSide;
 };
 
 export const getInwardEdgeDirection = (
@@ -430,19 +434,8 @@ export const getInwardOffsetPreviewLine = (
 ): EdgePreviewLine => {
   const offset = Math.max(0, offsetMm);
   const direction = getInwardEdgeDirection(edge, edge.panelBounds);
-  const edgeId = edge.id;
-  const side = getPanelEdgeSide(edge, edge.panelBounds);
-  const panelBounds = edge.panelBounds;
-  const chosenDirection = direction;
   const dx = direction.x * offset;
   const dy = direction.y * offset;
-
-  console.table([
-    edgeId,
-    side,
-    panelBounds,
-    chosenDirection,
-  ]);
 
   return {
     start: { x: edge.start.x + dx, y: edge.start.y + dy },
