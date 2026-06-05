@@ -545,6 +545,8 @@ export const getInwardEdgeDirection = (
 
 export type EdgePreviewPath = {
   d: string;
+  cutBaselineD: string;
+  tabPreviewD: string;
   start: Point;
   end: Point;
   innerStart: Point;
@@ -604,20 +606,34 @@ const getEPreviewSegmentLengths = (edgeLength: number, fingerWidthMm: number) =>
   });
 };
 
-export const getEPreviewSteppedPath = (
+export const getEPreviewInwardCutBaseline = (
   edge: SvgEdge,
-  role: EdgeRole,
   materialThicknessMm: number,
-  fingerWidthMm: number,
-): EdgePreviewPath => {
-  const edgeLength = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+) => {
   const direction = getInwardEdgeDirection(edge, edge.panelBounds);
   const tabDepth = Math.max(0, materialThicknessMm);
   const offset = { x: direction.x * tabDepth, y: direction.y * tabDepth };
   const innerStart = clampPointToBounds({ x: edge.start.x + offset.x, y: edge.start.y + offset.y }, edge.panelBounds);
   const innerEnd = clampPointToBounds({ x: edge.end.x + offset.x, y: edge.end.y + offset.y }, edge.panelBounds);
-  const commands = [pointToPathCommand('M', edge.start), pointToPathCommand('L', innerStart)];
+
+  return {
+    d: [pointToPathCommand('M', innerStart), pointToPathCommand('L', innerEnd)].join(' '),
+    innerStart,
+    innerEnd,
+    offset,
+  };
+};
+
+export const getEPreviewTabPath = (
+  edge: SvgEdge,
+  role: EdgeRole,
+  materialThicknessMm: number,
+  fingerWidthMm: number,
+) => {
+  const edgeLength = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+  const { offset } = getEPreviewInwardCutBaseline(edge, materialThicknessMm);
   const segmentLengths = getEPreviewSegmentLengths(edgeLength, fingerWidthMm);
+  const commands: string[] = [];
   let distanceAlongEdge = 0;
   let isTabSegment = role === 'outer';
 
@@ -635,25 +651,35 @@ export const getEPreviewSteppedPath = (
     }, edge.panelBounds);
 
     if (isTabSegment) {
+      commands.push(pointToPathCommand('M', innerSegmentStart));
       commands.push(pointToPathCommand('L', originalSegmentStart));
       commands.push(pointToPathCommand('L', originalSegmentEnd));
-      commands.push(pointToPathCommand('L', innerSegmentEnd));
-    } else {
-      commands.push(pointToPathCommand('L', innerSegmentStart));
       commands.push(pointToPathCommand('L', innerSegmentEnd));
     }
 
     isTabSegment = !isTabSegment;
   });
 
-  commands.push(pointToPathCommand('L', edge.end));
+  return commands.join(' ');
+};
+
+export const getEPreviewSteppedPath = (
+  edge: SvgEdge,
+  role: EdgeRole,
+  materialThicknessMm: number,
+  fingerWidthMm: number,
+): EdgePreviewPath => {
+  const cutBaseline = getEPreviewInwardCutBaseline(edge, materialThicknessMm);
+  const tabPreviewD = getEPreviewTabPath(edge, role, materialThicknessMm, fingerWidthMm);
 
   return {
-    d: commands.join(' '),
+    d: tabPreviewD,
+    cutBaselineD: cutBaseline.d,
+    tabPreviewD,
     start: edge.start,
     end: edge.end,
-    innerStart,
-    innerEnd,
+    innerStart: cutBaseline.innerStart,
+    innerEnd: cutBaseline.innerEnd,
   };
 };
 
