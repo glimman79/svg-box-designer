@@ -357,31 +357,72 @@ const getEdgesBySourceBounds = (edges: SvgEdge[]) => {
   }, {});
 };
 
+type PanelEdgeSide = 'top' | 'bottom' | 'left' | 'right';
+
+export const getPanelEdgeSide = (
+  edge: SvgEdge,
+  panelBounds: SourceBounds | undefined,
+): PanelEdgeSide | undefined => {
+  if (!panelBounds) {
+    return undefined;
+  }
+
+  const tolerance = 0.001;
+  const edgeMinX = Math.min(edge.start.x, edge.end.x);
+  const edgeMaxX = Math.max(edge.start.x, edge.end.x);
+  const edgeMinY = Math.min(edge.start.y, edge.end.y);
+  const edgeMaxY = Math.max(edge.start.y, edge.end.y);
+  const isHorizontal = Math.abs(edge.start.y - edge.end.y) <= tolerance;
+  const isVertical = Math.abs(edge.start.x - edge.end.x) <= tolerance;
+
+  if (isHorizontal && Math.abs(edgeMinY - panelBounds.minY) <= tolerance && Math.abs(edgeMaxY - panelBounds.minY) <= tolerance) {
+    return 'top';
+  }
+
+  if (isHorizontal && Math.abs(edgeMinY - panelBounds.maxY) <= tolerance && Math.abs(edgeMaxY - panelBounds.maxY) <= tolerance) {
+    return 'bottom';
+  }
+
+  if (isVertical && Math.abs(edgeMinX - panelBounds.minX) <= tolerance && Math.abs(edgeMaxX - panelBounds.minX) <= tolerance) {
+    return 'left';
+  }
+
+  if (isVertical && Math.abs(edgeMinX - panelBounds.maxX) <= tolerance && Math.abs(edgeMaxX - panelBounds.maxX) <= tolerance) {
+    return 'right';
+  }
+
+  return undefined;
+};
+
 const getInwardEdgeDirection = (
   edge: SvgEdge,
   bounds: SourceBounds | undefined,
 ): Point => {
-  const center = midpoint(edge);
-  const dx = edge.end.x - edge.start.x;
-  const dy = edge.end.y - edge.start.y;
+  const side = getPanelEdgeSide(edge, bounds);
+
+  if (side === 'top') {
+    return { x: 0, y: 1 };
+  }
+
+  if (side === 'bottom') {
+    return { x: 0, y: -1 };
+  }
+
+  if (side === 'left') {
+    return { x: 1, y: 0 };
+  }
+
+  if (side === 'right') {
+    return { x: -1, y: 0 };
+  }
+
   const fallbackNormal = getEdgeNormal(edge);
-  const epsilon = 0.0001;
 
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    if (!bounds || Math.abs(bounds.maxY - bounds.minY) <= epsilon) {
-      return Math.abs(fallbackNormal.y) > epsilon ? { x: 0, y: Math.sign(fallbackNormal.y) } : { x: 0, y: 1 };
-    }
-
-    const sourceCenterY = (bounds.minY + bounds.maxY) / 2;
-    return { x: 0, y: center.y <= sourceCenterY ? 1 : -1 };
+  if (Math.abs(fallbackNormal.x) >= Math.abs(fallbackNormal.y)) {
+    return fallbackNormal.x === 0 ? { x: 1, y: 0 } : { x: Math.sign(fallbackNormal.x), y: 0 };
   }
 
-  if (!bounds || Math.abs(bounds.maxX - bounds.minX) <= epsilon) {
-    return Math.abs(fallbackNormal.x) > epsilon ? { x: Math.sign(fallbackNormal.x), y: 0 } : { x: 1, y: 0 };
-  }
-
-  const sourceCenterX = (bounds.minX + bounds.maxX) / 2;
-  return { x: center.x <= sourceCenterX ? 1 : -1, y: 0 };
+  return fallbackNormal.y === 0 ? { x: 0, y: 1 } : { x: 0, y: Math.sign(fallbackNormal.y) };
 };
 
 
