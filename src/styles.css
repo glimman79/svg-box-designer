@@ -409,6 +409,16 @@ button:disabled {
   stroke-width: 1;
 }
 
+.edge-preview-highlight {
+  fill: none;
+  stroke: #2563eb;
+  stroke-dasharray: 8 5;
+  stroke-linecap: round;
+  stroke-width: 2;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
 .edge-label {
   pointer-events: none;
 }

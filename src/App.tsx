@@ -310,6 +310,7 @@ function App() {
   const [connections, setConnections] = useState<ConnectionMap>({});
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [isEPreviewVisible, setIsEPreviewVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -335,6 +336,10 @@ function App() {
     }));
   }, [availableLabels]);
 
+  const hasAssignedEEdges = useMemo(() => {
+    return Object.values(edgeAssignments).some((assignment) => assignment.connectionId.startsWith('E'));
+  }, [edgeAssignments]);
+
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -347,6 +352,7 @@ function App() {
     setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
     setEdgeAssignments({});
     setSelectedEdgeId(null);
+    setIsEPreviewVisible(false);
     setErrorMessage('');
     event.target.value = '';
   };
@@ -920,6 +926,8 @@ function App() {
               <button type="button" onClick={() => zoomCanvas(1 / buttonZoomFactor)}>Zoom out</button>
               <button type="button" onClick={resetCanvasView}>Reset view</button>
               <button type="button" onClick={resetCanvasView}>Fit to screen</button>
+              <button type="button" onClick={() => setIsEPreviewVisible(true)} disabled={!hasAssignedEEdges}>Preview</button>
+              <button type="button" onClick={() => setIsEPreviewVisible(false)} disabled={!isEPreviewVisible}>Clear Preview</button>
             </div>
           </div>
 
@@ -943,6 +951,7 @@ function App() {
                   const assignment = edgeAssignments[edge.id];
                   const label = getEdgeAssignmentDisplayLabel(assignment);
                   const selected = selectedEdgeId === edge.id;
+                  const isEPreviewEdge = isEPreviewVisible && assignment?.connectionId.startsWith('E');
                   const labelPlacement = labelPlacementsByEdgeId.get(edge.id);
                   const labelWidth = labelPlacement?.width ?? 0;
                   const labelHeight = labelPlacement?.height ?? 0;
@@ -952,6 +961,15 @@ function App() {
                       {(label || selected) && (
                         <line
                           className={`edge-highlight${label ? ' labeled' : ''}${selected ? ' selected' : ''}`}
+                          x1={edge.start.x}
+                          y1={edge.start.y}
+                          x2={edge.end.x}
+                          y2={edge.end.y}
+                        />
+                      )}
+                      {isEPreviewEdge && (
+                        <line
+                          className="edge-preview-highlight"
                           x1={edge.start.x}
                           y1={edge.start.y}
                           x2={edge.end.x}
