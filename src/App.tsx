@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getInwardOffsetPreviewDebugInfo, getInwardOffsetPreviewLine, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardOffsetPreviewLine, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgeRole, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -339,43 +339,6 @@ function App() {
   const hasAssignedEEdges = useMemo(() => {
     return Object.values(edgeAssignments).some((assignment) => assignment.connectionId.startsWith('E'));
   }, [edgeAssignments]);
-
-  useEffect(() => {
-    if (!isEPreviewVisible) {
-      return;
-    }
-
-    const rows = svgModel.edges.flatMap((edge) => {
-      const assignment = edgeAssignments[edge.id];
-      const connection = assignment ? connections[assignment.connectionId] : undefined;
-
-      if (!assignment || connection?.prefix !== 'E') {
-        return [];
-      }
-
-      const label = getEdgeAssignmentDisplayLabel(assignment);
-      const side = getPanelEdgeSide(edge, edge.panelBounds);
-      const inwardDirection = getInwardEdgeDirection(edge, edge.panelBounds, connection.properties.materialThicknessMm);
-      const previewDebugInfo = getInwardOffsetPreviewDebugInfo(
-        edge,
-        svgModel.edges,
-        connection.properties.materialThicknessMm,
-        label,
-      );
-
-      return [{
-        ...previewDebugInfo,
-        start: edge.start,
-        end: edge.end,
-        detectedSide: side,
-        inwardDirection,
-      }];
-    });
-
-    if (rows.length > 0) {
-      console.table(rows);
-    }
-  }, [connections, edgeAssignments, isEPreviewVisible, svgModel.edges]);
 
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
