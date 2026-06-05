@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardOffsetPreviewLine, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgeRole, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -809,6 +809,21 @@ function App() {
     labelScale,
   });
   const labelPlacementsByEdgeId = new Map(labelPlacements.map((placement) => [placement.edgeId, placement]));
+  const ePreviewLinesByEdgeId = new Map(
+    svgModel.edges.flatMap((edge) => {
+      const assignment = edgeAssignments[edge.id];
+      const connection = assignment ? connections[assignment.connectionId] : undefined;
+
+      if (!assignment || connection?.prefix !== 'E') {
+        return [];
+      }
+
+      return [[
+        edge.id,
+        getInwardOffsetPreviewLine(edge, svgModel.edges, connection.properties.materialThicknessMm),
+      ] as const];
+    }),
+  );
 
   return (
     <main className="app-shell">
@@ -951,7 +966,7 @@ function App() {
                   const assignment = edgeAssignments[edge.id];
                   const label = getEdgeAssignmentDisplayLabel(assignment);
                   const selected = selectedEdgeId === edge.id;
-                  const isEPreviewEdge = isEPreviewVisible && assignment?.connectionId.startsWith('E');
+                  const ePreviewLine = isEPreviewVisible ? ePreviewLinesByEdgeId.get(edge.id) : undefined;
                   const labelPlacement = labelPlacementsByEdgeId.get(edge.id);
                   const labelWidth = labelPlacement?.width ?? 0;
                   const labelHeight = labelPlacement?.height ?? 0;
@@ -967,13 +982,13 @@ function App() {
                           y2={edge.end.y}
                         />
                       )}
-                      {isEPreviewEdge && (
+                      {ePreviewLine && (
                         <line
                           className="edge-preview-highlight"
-                          x1={edge.start.x}
-                          y1={edge.start.y}
-                          x2={edge.end.x}
-                          y2={edge.end.y}
+                          x1={ePreviewLine.start.x}
+                          y1={ePreviewLine.start.y}
+                          x2={ePreviewLine.end.x}
+                          y2={ePreviewLine.end.y}
                         />
                       )}
                       <line

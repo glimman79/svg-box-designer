@@ -311,7 +311,7 @@ const getEdgesBySourceBounds = (edges: SvgEdge[]) => {
   }, {});
 };
 
-const getInwardLabelDirection = (
+const getInwardEdgeDirection = (
   edge: SvgEdge,
   bounds: SourceBounds | undefined,
 ): Point => {
@@ -336,6 +336,29 @@ const getInwardLabelDirection = (
 
   const sourceCenterX = (bounds.minX + bounds.maxX) / 2;
   return { x: center.x <= sourceCenterX ? 1 : -1, y: 0 };
+};
+
+
+export type EdgePreviewLine = {
+  start: Point;
+  end: Point;
+};
+
+export const getInwardOffsetPreviewLine = (
+  edge: SvgEdge,
+  edges: SvgEdge[],
+  offsetMm: number,
+): EdgePreviewLine => {
+  const boundsBySource = getEdgesBySourceBounds(edges);
+  const direction = getInwardEdgeDirection(edge, boundsBySource[edge.source]);
+  const offset = Math.max(0, offsetMm);
+  const dx = direction.x * offset;
+  const dy = direction.y * offset;
+
+  return {
+    start: { x: edge.start.x + dx, y: edge.start.y + dy },
+    end: { x: edge.end.x + dx, y: edge.end.y + dy },
+  };
 };
 
 const labelBoxesOverlap = (
@@ -367,7 +390,7 @@ export const getEdgeLabelPlacements = (
     const height = options.fontSizePx + options.paddingYPx * 2;
     const renderedWidth = width * labelScale;
     const renderedHeight = height * labelScale;
-    const direction = getInwardLabelDirection(edge, boundsBySource[edge.source]);
+    const direction = getInwardEdgeDirection(edge, boundsBySource[edge.source]);
     const halfSizeAlongDirection = Math.abs(direction.x) > 0 ? renderedWidth / 2 : renderedHeight / 2;
     const baseDistance = options.edgeOffsetPx + halfSizeAlongDirection;
     const center = midpoint(edge);
