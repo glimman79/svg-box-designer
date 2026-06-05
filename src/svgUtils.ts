@@ -601,6 +601,34 @@ const getEdgeLabelPlacementDirection = (edge: SvgEdge): Point => {
   return { x: 1, y: 0 };
 };
 
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
+const clampLabelCenterToPanelBounds = (
+  x: number,
+  y: number,
+  renderedWidth: number,
+  renderedHeight: number,
+  paddingX: number,
+  paddingY: number,
+  panelBounds: SourceBounds | undefined,
+): Point => {
+  if (!panelBounds) {
+    return { x, y };
+  }
+
+  const minCenterX = panelBounds.minX + renderedWidth / 2 + paddingX;
+  const maxCenterX = panelBounds.maxX - renderedWidth / 2 - paddingX;
+  const minCenterY = panelBounds.minY + renderedHeight / 2 + paddingY;
+  const maxCenterY = panelBounds.maxY - renderedHeight / 2 - paddingY;
+  const fallbackX = clamp((panelBounds.minX + panelBounds.maxX) / 2, panelBounds.minX, panelBounds.maxX);
+  const fallbackY = clamp((panelBounds.minY + panelBounds.maxY) / 2, panelBounds.minY, panelBounds.maxY);
+
+  return {
+    x: minCenterX <= maxCenterX ? clamp(x, minCenterX, maxCenterX) : fallbackX,
+    y: minCenterY <= maxCenterY ? clamp(y, minCenterY, maxCenterY) : fallbackY,
+  };
+};
+
 export const getEdgeLabelPlacements = (
   edges: SvgEdge[],
   edgeAssignments: Record<string, EdgeAssignment>,
@@ -626,8 +654,21 @@ export const getEdgeLabelPlacements = (
     const baseDistance = options.edgeOffsetPx + halfSizeAlongDirection;
     const center = midpoint(edge);
     const stackStep = (Math.abs(direction.x) > 0 ? renderedWidth : renderedHeight) + 4 * labelScale;
+    const paddingX = options.paddingXPx * labelScale;
+    const paddingY = options.paddingYPx * labelScale;
     let x = center.x + direction.x * baseDistance;
     let y = center.y + direction.y * baseDistance;
+    let clampedCenter = clampLabelCenterToPanelBounds(
+      x,
+      y,
+      renderedWidth,
+      renderedHeight,
+      paddingX,
+      paddingY,
+      edge.panelBounds,
+    );
+    x = clampedCenter.x;
+    y = clampedCenter.y;
     let renderedBox = { x, y, width: renderedWidth, height: renderedHeight };
     let stackIndex = 0;
 
@@ -635,6 +676,17 @@ export const getEdgeLabelPlacements = (
       stackIndex += 1;
       x = center.x + direction.x * (baseDistance + stackStep * stackIndex);
       y = center.y + direction.y * (baseDistance + stackStep * stackIndex);
+      clampedCenter = clampLabelCenterToPanelBounds(
+        x,
+        y,
+        renderedWidth,
+        renderedHeight,
+        paddingX,
+        paddingY,
+        edge.panelBounds,
+      );
+      x = clampedCenter.x;
+      y = clampedCenter.y;
       renderedBox = { x, y, width: renderedWidth, height: renderedHeight };
     }
 
