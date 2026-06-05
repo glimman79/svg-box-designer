@@ -129,6 +129,111 @@ const getPanelFigureBounds = (points: Point[]): SourceBounds | undefined => {
   return hasArea && uniquePoints.size >= 3 ? bounds : undefined;
 };
 
+const closedLoopTolerance = 0.1;
+
+const nearlyEqual = (first: number, second: number, tolerance = closedLoopTolerance) => (
+  Math.abs(first - second) <= tolerance
+);
+
+type CandidatePanelEdge = {
+  edge: SvgEdge;
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+};
+
+const getCandidatePanelEdge = (edge: SvgEdge): CandidatePanelEdge | undefined => {
+  if (edge.panelBounds) {
+    return undefined;
+  }
+
+  const minX = Math.min(edge.start.x, edge.end.x);
+  const maxX = Math.max(edge.start.x, edge.end.x);
+  const minY = Math.min(edge.start.y, edge.end.y);
+  const maxY = Math.max(edge.start.y, edge.end.y);
+  const isHorizontal = nearlyEqual(edge.start.y, edge.end.y);
+  const isVertical = nearlyEqual(edge.start.x, edge.end.x);
+
+  if (!isHorizontal && !isVertical) {
+    return undefined;
+  }
+
+  return { edge, minX, maxX, minY, maxY };
+};
+
+const getRectangleBounds = (
+  firstHorizontal: CandidatePanelEdge,
+  secondHorizontal: CandidatePanelEdge,
+  firstVertical: CandidatePanelEdge,
+  secondVertical: CandidatePanelEdge,
+): SourceBounds => ({
+  minX: Math.min(firstHorizontal.minX, secondHorizontal.minX, firstVertical.minX, secondVertical.minX),
+  maxX: Math.max(firstHorizontal.maxX, secondHorizontal.maxX, firstVertical.maxX, secondVertical.maxX),
+  minY: Math.min(firstHorizontal.minY, secondHorizontal.minY, firstVertical.minY, secondVertical.minY),
+  maxY: Math.max(firstHorizontal.maxY, secondHorizontal.maxY, firstVertical.maxY, secondVertical.maxY),
+});
+
+const hasPositiveArea = (bounds: SourceBounds) => (
+  bounds.maxX - bounds.minX > closedLoopTolerance && bounds.maxY - bounds.minY > closedLoopTolerance
+);
+
+const getMatchingVerticalSide = (
+  verticalEdges: CandidatePanelEdge[],
+  x: number,
+  minY: number,
+  maxY: number,
+  excludedEdge?: SvgEdge,
+) => verticalEdges.find((vertical) => (
+  vertical.edge !== excludedEdge
+  && nearlyEqual(vertical.minX, x)
+  && nearlyEqual(vertical.maxX, x)
+  && nearlyEqual(vertical.minY, minY)
+  && nearlyEqual(vertical.maxY, maxY)
+));
+
+export const assignPanelBoundsFromClosedLoops = (edges: SvgEdge[]) => {
+  const candidateEdges = edges.map(getCandidatePanelEdge).filter((edge): edge is CandidatePanelEdge => Boolean(edge));
+  const horizontalEdges = candidateEdges.filter((edge) => nearlyEqual(edge.minY, edge.maxY));
+  const verticalEdges = candidateEdges.filter((edge) => nearlyEqual(edge.minX, edge.maxX));
+
+  horizontalEdges.forEach((firstHorizontal, firstIndex) => {
+    horizontalEdges.slice(firstIndex + 1).forEach((secondHorizontal) => {
+      if (
+        !nearlyEqual(firstHorizontal.minX, secondHorizontal.minX)
+        || !nearlyEqual(firstHorizontal.maxX, secondHorizontal.maxX)
+        || nearlyEqual(firstHorizontal.minY, secondHorizontal.minY)
+      ) {
+        return;
+      }
+
+      const minX = Math.min(firstHorizontal.minX, secondHorizontal.minX);
+      const maxX = Math.max(firstHorizontal.maxX, secondHorizontal.maxX);
+      const minY = Math.min(firstHorizontal.minY, secondHorizontal.minY);
+      const maxY = Math.max(firstHorizontal.maxY, secondHorizontal.maxY);
+
+      if (!hasPositiveArea({ minX, maxX, minY, maxY })) {
+        return;
+      }
+
+      const firstVertical = getMatchingVerticalSide(verticalEdges, minX, minY, maxY);
+      const secondVertical = getMatchingVerticalSide(verticalEdges, maxX, minY, maxY, firstVertical?.edge);
+
+      if (!firstVertical || !secondVertical) {
+        return;
+      }
+
+      const panelBounds = getRectangleBounds(firstHorizontal, secondHorizontal, firstVertical, secondVertical);
+
+      [firstHorizontal, secondHorizontal, firstVertical, secondVertical].forEach(({ edge }) => {
+        if (!edge.panelBounds) {
+          edge.panelBounds = panelBounds;
+        }
+      });
+    });
+  });
+};
+
 const addEdge = (
   edges: SvgEdge[],
   source: string,
@@ -325,6 +430,8 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
   svgElement.querySelectorAll('path').forEach((path, elementIndex) => {
     parsePathSegments(path.getAttribute('d'), `path ${elementIndex + 1}`, edges);
   });
+
+  assignPanelBoundsFromClosedLoops(edges);
 
   return {
     content: new XMLSerializer().serializeToString(svgElement),
