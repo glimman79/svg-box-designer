@@ -366,36 +366,33 @@ export const getPanelEdgeSide = (
   edge: SvgEdge,
   panelBounds: SourceBounds | undefined,
 ): PanelEdgeSide | undefined => {
-  const edgeCenter = midpoint(edge);
-  let detectedSide: PanelEdgeSide | undefined;
-
-  if (panelBounds) {
-    const tolerance = 0.1;
-    const edgeCenterY = (edge.start.y + edge.end.y) / 2;
-    const edgeCenterX = (edge.start.x + edge.end.x) / 2;
-    const isHorizontal = Math.abs(edge.start.y - edge.end.y) <= tolerance;
-    const isVertical = Math.abs(edge.start.x - edge.end.x) <= tolerance;
-
-    if (isHorizontal && Math.abs(edgeCenterY - panelBounds.minY) <= tolerance) {
-      detectedSide = 'top';
-    } else if (isHorizontal && Math.abs(edgeCenterY - panelBounds.maxY) <= tolerance) {
-      detectedSide = 'bottom';
-    } else if (isVertical && Math.abs(edgeCenterX - panelBounds.minX) <= tolerance) {
-      detectedSide = 'left';
-    } else if (isVertical && Math.abs(edgeCenterX - panelBounds.maxX) <= tolerance) {
-      detectedSide = 'right';
-    }
+  if (!panelBounds) {
+    return undefined;
   }
 
-  console.table([{
-    edgeId: edge.id,
-    edgeCenter,
-    panelBounds,
-    detectedSide,
-  }]);
+  const tolerance = 0.1;
+  const edgeCenter = midpoint(edge);
 
-  return detectedSide;
+  if (Math.abs(edgeCenter.y - panelBounds.minY) <= tolerance) {
+    return 'top';
+  }
+
+  if (Math.abs(edgeCenter.y - panelBounds.maxY) <= tolerance) {
+    return 'bottom';
+  }
+
+  if (Math.abs(edgeCenter.x - panelBounds.minX) <= tolerance) {
+    return 'left';
+  }
+
+  if (Math.abs(edgeCenter.x - panelBounds.maxX) <= tolerance) {
+    return 'right';
+  }
+
+  return undefined;
 };
+
+const inwardDirectionWarningEdgeIds = new Set<string>();
 
 export const getInwardEdgeDirection = (
   edge: SvgEdge,
@@ -419,7 +416,23 @@ export const getInwardEdgeDirection = (
     return { x: -1, y: 0 };
   }
 
-  return { x: 0, y: 0 };
+  if (!inwardDirectionWarningEdgeIds.has(edge.id)) {
+    inwardDirectionWarningEdgeIds.add(edge.id);
+    console.warn('Unable to detect panel edge side for inward direction.', {
+      edgeId: edge.id,
+      panelBounds,
+    });
+  }
+
+  const tolerance = 0.1;
+  const isHorizontal = Math.abs(edge.start.y - edge.end.y) <= tolerance;
+  const isVertical = Math.abs(edge.start.x - edge.end.x) <= tolerance;
+
+  if (isHorizontal || !isVertical) {
+    return { x: 0, y: 1 };
+  }
+
+  return { x: 1, y: 0 };
 };
 
 export type EdgePreviewLine = {
