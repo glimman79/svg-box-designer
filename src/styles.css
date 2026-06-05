@@ -593,3 +593,46 @@ button:disabled {
   font-weight: 900;
   text-align: right;
 }
+
+.e-preview-debug-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 18px 18px;
+  padding: 12px;
+  color: #0f172a;
+  background: #f8fafc;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+}
+
+.e-preview-debug-panel h3,
+.e-preview-debug-panel p {
+  margin: 0;
+}
+
+.e-preview-debug-panel h3 {
+  font-size: 0.9rem;
+}
+
+.e-preview-debug-table-wrap {
+  overflow-x: auto;
+}
+
+.e-preview-debug-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.e-preview-debug-table th,
+.e-preview-debug-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.e-preview-debug-table th {
+  color: #1e40af;
+  font-weight: 900;
+}
