@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getInwardOffsetPreviewLine, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getInwardOffsetPreviewDebugInfo, getInwardOffsetPreviewLine, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgeRole, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -353,20 +353,22 @@ function App() {
         return [];
       }
 
+      const label = getEdgeAssignmentDisplayLabel(assignment);
       const side = getPanelEdgeSide(edge, edge.panelBounds);
-      const inwardDirection = getInwardEdgeDirection(edge, edge.panelBounds);
-      const previewLine = getInwardOffsetPreviewLine(edge, svgModel.edges, connection.properties.materialThicknessMm);
+      const inwardDirection = getInwardEdgeDirection(edge, edge.panelBounds, connection.properties.materialThicknessMm);
+      const previewDebugInfo = getInwardOffsetPreviewDebugInfo(
+        edge,
+        svgModel.edges,
+        connection.properties.materialThicknessMm,
+        label,
+      );
 
       return [{
-        edgeId: edge.id,
-        label: getEdgeAssignmentDisplayLabel(assignment),
+        ...previewDebugInfo,
         start: edge.start,
         end: edge.end,
-        panelBounds: edge.panelBounds,
         detectedSide: side,
         inwardDirection,
-        previewStart: previewLine.start,
-        previewEnd: previewLine.end,
       }];
     });
 
