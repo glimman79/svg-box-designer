@@ -575,19 +575,19 @@ const getEdgeLabelPlacementDirection = (edge: SvgEdge): Point => {
   const side = getPanelEdgeSide(edge, edge.panelBounds);
 
   if (side === 'top') {
-    return { x: 0, y: -1 };
-  }
-
-  if (side === 'bottom') {
     return { x: 0, y: 1 };
   }
 
+  if (side === 'bottom') {
+    return { x: 0, y: -1 };
+  }
+
   if (side === 'left') {
-    return { x: -1, y: 0 };
+    return { x: 1, y: 0 };
   }
 
   if (side === 'right') {
-    return { x: 1, y: 0 };
+    return { x: -1, y: 0 };
   }
 
   const tolerance = 0.1;
@@ -595,10 +595,10 @@ const getEdgeLabelPlacementDirection = (edge: SvgEdge): Point => {
   const isVertical = Math.abs(edge.end.x - edge.start.x) <= tolerance;
 
   if (isHorizontal || !isVertical) {
-    return { x: 0, y: -1 };
+    return { x: 0, y: 1 };
   }
 
-  return { x: -1, y: 0 };
+  return { x: 1, y: 0 };
 };
 
 export const getEdgeLabelPlacements = (
