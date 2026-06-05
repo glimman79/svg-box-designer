@@ -172,6 +172,16 @@ const getNextLabel = (prefix: LabelPrefix, labels: string[]) => {
   return `${prefix}${usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1}`;
 };
 
+const getFollowingEdgeLabel = (label: string) => {
+  const labelNumber = Number.parseInt(label.slice(1), 10);
+
+  if (getLabelPrefix(label) !== 'E' || !Number.isFinite(labelNumber)) {
+    return null;
+  }
+
+  return `E${labelNumber + 1}`;
+};
+
 const minZoom = 0.1;
 const maxZoom = 20;
 const buttonZoomFactor = 1.25;
@@ -408,13 +418,33 @@ function App() {
       return;
     }
 
-    setEdgeAssignments((currentAssignments) => ({
-      ...currentAssignments,
+    const nextAssignments = {
+      ...edgeAssignments,
       [edgeId]: {
         connectionId: selectedLabelId,
-        ...(connection.prefix === 'E' ? { edgeRole: getDefaultEdgeRole(currentAssignments, selectedLabelId) } : {}),
+        ...(connection.prefix === 'E' ? { edgeRole: getDefaultEdgeRole(edgeAssignments, selectedLabelId) } : {}),
       },
-    }));
+    };
+    setEdgeAssignments(nextAssignments);
+
+    const selectedLabelAssignmentCount = Object.values(nextAssignments)
+      .filter((assignment) => assignment.connectionId === selectedLabelId).length;
+    const nextEdgeLabel = selectedLabelAssignmentCount === 2 ? getFollowingEdgeLabel(selectedLabelId) : null;
+
+    if (connection.prefix === 'E' && nextEdgeLabel) {
+      setConnections((currentConnections) => {
+        if (currentConnections[nextEdgeLabel]) {
+          return currentConnections;
+        }
+
+        return {
+          ...currentConnections,
+          [nextEdgeLabel]: createConnectionDefinition(nextEdgeLabel, 'E'),
+        };
+      });
+      setSelectedLabelId(nextEdgeLabel);
+    }
+
     setErrorMessage('');
   };
 
