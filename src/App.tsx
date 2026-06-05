@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEPreviewSteppedPath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
-import type { EdgeAssignment, EdgeRole, SvgDocumentModel } from './svgUtils';
+import type { EdgeAssignment, EdgePreviewPath, EdgeRole, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
 
@@ -333,6 +333,7 @@ function App() {
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isEPreviewVisible, setIsEPreviewVisible] = useState(false);
+  const [appliedEPathsByEdgeId, setAppliedEPathsByEdgeId] = useState<Record<string, EdgePreviewPath>>({});
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -373,6 +374,7 @@ function App() {
     setSvgModel(parsedSvg);
     setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
     setEdgeAssignments({});
+    setAppliedEPathsByEdgeId({});
     setSelectedEdgeId(null);
     setIsEPreviewVisible(false);
     setErrorMessage('');
@@ -401,6 +403,15 @@ function App() {
       delete nextAssignments[edgeId];
       return nextAssignments;
     });
+    setAppliedEPathsByEdgeId((currentPaths) => {
+      if (!currentPaths[edgeId]) {
+        return currentPaths;
+      }
+
+      const nextPaths = { ...currentPaths };
+      delete nextPaths[edgeId];
+      return nextPaths;
+    });
     setErrorMessage('');
   };
 
@@ -426,6 +437,18 @@ function App() {
       },
     };
     setEdgeAssignments(nextAssignments);
+
+    if (connection.prefix !== 'E') {
+      setAppliedEPathsByEdgeId((currentPaths) => {
+        if (!currentPaths[edgeId]) {
+          return currentPaths;
+        }
+
+        const nextPaths = { ...currentPaths };
+        delete nextPaths[edgeId];
+        return nextPaths;
+      });
+    }
 
     const selectedLabelAssignmentCount = Object.values(nextAssignments)
       .filter((assignment) => assignment.connectionId === selectedLabelId).length;
@@ -851,27 +874,28 @@ function App() {
     labelScale,
   });
   const labelPlacementsByEdgeId = new Map(labelPlacements.map((placement) => [placement.edgeId, placement]));
-  const ePreviewPathsByEdgeId = useMemo(() => {
-    if (!isEPreviewVisible) {
-      return new Map();
-    }
+  const currentEPreviewPathsByEdgeId = useMemo(() => new Map(
+    svgModel.edges.flatMap((edge) => {
+      const assignment = edgeAssignments[edge.id];
+      const connection = assignment ? connections[assignment.connectionId] : undefined;
 
-    return new Map(
-      svgModel.edges.flatMap((edge) => {
-        const assignment = edgeAssignments[edge.id];
-        const connection = assignment ? connections[assignment.connectionId] : undefined;
+      if (!assignment || connection?.prefix !== 'E') {
+        return [];
+      }
 
-        if (!assignment || connection?.prefix !== 'E') {
-          return [];
-        }
+      return [[
+        edge.id,
+        getEPreviewSteppedPath(edge, assignment.edgeRole ?? 'outer', connection.properties.materialThicknessMm, connection.properties.fingerWidthMm),
+      ] as const];
+    }),
+  ), [connections, edgeAssignments, svgModel.edges]);
 
-        return [[
-          edge.id,
-          getEPreviewSteppedPath(edge, assignment.edgeRole ?? 'outer', connection.properties.materialThicknessMm, connection.properties.fingerWidthMm),
-        ] as const];
-      }),
-    );
-  }, [connections, edgeAssignments, isEPreviewVisible, svgModel.edges]);
+  const ePreviewPathsByEdgeId = isEPreviewVisible ? currentEPreviewPathsByEdgeId : new Map<string, EdgePreviewPath>();
+
+  const applyEPreviewPaths = () => {
+    setAppliedEPathsByEdgeId(Object.fromEntries(currentEPreviewPathsByEdgeId));
+    setErrorMessage('');
+  };
 
   const ePreviewDebugRows = useMemo(() => {
     if (!isEPreviewVisible) {
@@ -1019,6 +1043,7 @@ function App() {
               <button type="button" onClick={resetCanvasView}>Reset view</button>
               <button type="button" onClick={resetCanvasView}>Fit to screen</button>
               <button type="button" onClick={() => setIsEPreviewVisible(true)} disabled={!hasAssignedEEdges}>Preview</button>
+              <button type="button" onClick={applyEPreviewPaths} disabled={currentEPreviewPathsByEdgeId.size === 0}>Apply</button>
               <button type="button" onClick={() => setIsEPreviewVisible(false)} disabled={!isEPreviewVisible}>Clear Preview</button>
             </div>
           </div>
@@ -1043,14 +1068,30 @@ function App() {
                   const assignment = edgeAssignments[edge.id];
                   const label = getEdgeAssignmentDisplayLabel(assignment);
                   const selected = selectedEdgeId === edge.id;
-                  const ePreviewPath = isEPreviewVisible ? ePreviewPathsByEdgeId.get(edge.id) : undefined;
+                  const ePreviewPath = ePreviewPathsByEdgeId.get(edge.id);
+                  const appliedEPath = appliedEPathsByEdgeId[edge.id];
                   const labelPlacement = labelPlacementsByEdgeId.get(edge.id);
                   const labelWidth = labelPlacement?.width ?? 0;
                   const labelHeight = labelPlacement?.height ?? 0;
 
                   return (
                     <g key={edge.id}>
-                      {(label || selected) && (
+                      {appliedEPath && (
+                        <>
+                          <line
+                            className="edge-applied-mask"
+                            x1={edge.start.x}
+                            y1={edge.start.y}
+                            x2={edge.end.x}
+                            y2={edge.end.y}
+                          />
+                          <path
+                            className="edge-applied-highlight"
+                            d={appliedEPath.d}
+                          />
+                        </>
+                      )}
+                      {(label || selected) && !appliedEPath && (
                         <line
                           className={`edge-highlight${label ? ' labeled' : ''}${selected ? ' selected' : ''}`}
                           x1={edge.start.x}
