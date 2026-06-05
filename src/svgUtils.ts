@@ -3,7 +3,7 @@ export type Point = {
   y: number;
 };
 
-type SourceBounds = { minX: number; maxX: number; minY: number; maxY: number };
+export type SourceBounds = { minX: number; maxX: number; minY: number; maxY: number };
 
 export type SvgEdge = {
   id: string;
@@ -115,6 +115,20 @@ const getPointsBounds = (points: Point[]): SourceBounds | undefined => {
   });
 };
 
+const getPanelFigureBounds = (points: Point[]): SourceBounds | undefined => {
+  const bounds = getPointsBounds(points);
+
+  if (!bounds) {
+    return undefined;
+  }
+
+  const tolerance = 0.001;
+  const hasArea = bounds.maxX - bounds.minX > tolerance && bounds.maxY - bounds.minY > tolerance;
+  const uniquePoints = new Set(points.map((point) => `${point.x},${point.y}`));
+
+  return hasArea && uniquePoints.size >= 3 ? bounds : undefined;
+};
+
 const addEdge = (
   edges: SvgEdge[],
   source: string,
@@ -157,7 +171,9 @@ const parsePathSegments = (pathData: string | null, source: string, edges: SvgEd
     subpathEdges.push({ start, end });
     subpathPoints.push(start, end);
   };
-  const flushSubpathEdges = (panelBounds?: SourceBounds) => {
+  const flushSubpathEdges = () => {
+    const panelBounds = getPanelFigureBounds(subpathPoints);
+
     subpathEdges.forEach((edge) => {
       addEdge(edges, source, edge.start, edge.end, panelBounds);
     });
@@ -206,7 +222,7 @@ const parsePathSegments = (pathData: string | null, source: string, edges: SvgEd
     } else if (upperCommand === 'Z') {
       addPathEdge(current, subpathStart);
       current = subpathStart;
-      flushSubpathEdges(getPointsBounds(subpathPoints));
+      flushSubpathEdges();
     } else {
       // Curves and arcs are intentionally ignored in v1; this app labels straight edges only.
       while (index < tokens.length && !isCommand(tokens[index])) {
@@ -277,7 +293,7 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
     const isClosedPolyline = points.length > 2
       && points[0].x === points[points.length - 1].x
       && points[0].y === points[points.length - 1].y;
-    const panelBounds = isPolygon || isClosedPolyline ? getPointsBounds(points) : undefined;
+    const panelBounds = isPolygon || isClosedPolyline ? getPanelFigureBounds(points) : undefined;
 
     points.slice(1).forEach((point, pointIndex) => {
       addEdge(edges, source, points[pointIndex], point, panelBounds);
@@ -394,11 +410,11 @@ export const getPanelEdgeSide = (
   return undefined;
 };
 
-const getInwardEdgeDirection = (
+export const getInwardEdgeDirection = (
   edge: SvgEdge,
-  bounds: SourceBounds | undefined,
+  panelBounds: SourceBounds | undefined,
 ): Point => {
-  const side = getPanelEdgeSide(edge, bounds);
+  const side = getPanelEdgeSide(edge, panelBounds);
 
   if (side === 'top') {
     return { x: 0, y: 1 };
@@ -433,11 +449,10 @@ export type EdgePreviewLine = {
 
 export const getInwardOffsetPreviewLine = (
   edge: SvgEdge,
-  edges: SvgEdge[],
+  _edges: SvgEdge[],
   offsetMm: number,
 ): EdgePreviewLine => {
-  const boundsBySource = edge.panelBounds ? undefined : getEdgesBySourceBounds(edges);
-  const direction = getInwardEdgeDirection(edge, edge.panelBounds ?? boundsBySource?.[edge.source]);
+  const direction = getInwardEdgeDirection(edge, edge.panelBounds);
   const offset = Math.max(0, offsetMm);
   const dx = direction.x * offset;
   const dy = direction.y * offset;
