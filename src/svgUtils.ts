@@ -339,19 +339,6 @@ const midpoint = (edge: SvgEdge): Point => ({
   y: (edge.start.y + edge.end.y) / 2,
 });
 
-const getEdgeNormal = (edge: SvgEdge): Point => {
-  const length = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
-
-  if (length === 0) {
-    return { x: 0, y: -1 };
-  }
-
-  return {
-    x: -(edge.end.y - edge.start.y) / length,
-    y: (edge.end.x - edge.start.x) / length,
-  };
-};
-
 const getEdgesBySourceBounds = (edges: SvgEdge[]) => {
   return edges.reduce<Record<string, SourceBounds>>((boundsBySource, edge) => {
     const existing = boundsBySource[edge.source];
@@ -375,47 +362,6 @@ const getEdgesBySourceBounds = (edges: SvgEdge[]) => {
 
 type PanelEdgeSide = 'top' | 'bottom' | 'left' | 'right';
 
-type DirectionCandidate = {
-  direction: Point;
-  midpoint: Point;
-  inside: boolean;
-};
-
-type InwardDirectionResult = {
-  direction: Point;
-  originalMidpoint: Point;
-  candidates: DirectionCandidate[];
-};
-
-export type InwardOffsetPreviewDebugInfo = {
-  edgeId: string;
-  label: string | undefined;
-  panelBounds: SourceBounds | undefined;
-  originalMidpoint: Point;
-  candidateAMidpoint: Point | undefined;
-  candidateAInside: boolean | undefined;
-  candidateBMidpoint: Point | undefined;
-  candidateBInside: boolean | undefined;
-  chosenDirection: Point;
-  previewStart: Point;
-  previewEnd: Point;
-};
-
-export const isPointInsideBounds = (
-  point: Point,
-  bounds: SourceBounds | undefined,
-  tolerance = 0.001,
-): boolean => {
-  if (!bounds) {
-    return false;
-  }
-
-  return point.x >= bounds.minX - tolerance
-    && point.x <= bounds.maxX + tolerance
-    && point.y >= bounds.minY - tolerance
-    && point.y <= bounds.maxY + tolerance;
-};
-
 export const getPanelEdgeSide = (
   edge: SvgEdge,
   panelBounds: SourceBounds | undefined,
@@ -425,33 +371,29 @@ export const getPanelEdgeSide = (
   }
 
   const tolerance = 0.001;
-  const edgeMinX = Math.min(edge.start.x, edge.end.x);
-  const edgeMaxX = Math.max(edge.start.x, edge.end.x);
-  const edgeMinY = Math.min(edge.start.y, edge.end.y);
-  const edgeMaxY = Math.max(edge.start.y, edge.end.y);
   const isHorizontal = Math.abs(edge.start.y - edge.end.y) <= tolerance;
   const isVertical = Math.abs(edge.start.x - edge.end.x) <= tolerance;
 
-  if (isHorizontal && Math.abs(edgeMinY - panelBounds.minY) <= tolerance && Math.abs(edgeMaxY - panelBounds.minY) <= tolerance) {
+  if (isHorizontal && Math.abs(edge.start.y - panelBounds.minY) <= tolerance) {
     return 'top';
   }
 
-  if (isHorizontal && Math.abs(edgeMinY - panelBounds.maxY) <= tolerance && Math.abs(edgeMaxY - panelBounds.maxY) <= tolerance) {
+  if (isHorizontal && Math.abs(edge.start.y - panelBounds.maxY) <= tolerance) {
     return 'bottom';
   }
 
-  if (isVertical && Math.abs(edgeMinX - panelBounds.minX) <= tolerance && Math.abs(edgeMaxX - panelBounds.minX) <= tolerance) {
+  if (isVertical && Math.abs(edge.start.x - panelBounds.minX) <= tolerance) {
     return 'left';
   }
 
-  if (isVertical && Math.abs(edgeMinX - panelBounds.maxX) <= tolerance && Math.abs(edgeMaxX - panelBounds.maxX) <= tolerance) {
+  if (isVertical && Math.abs(edge.start.x - panelBounds.maxX) <= tolerance) {
     return 'right';
   }
 
   return undefined;
 };
 
-const getSideDetectedInwardDirection = (
+export const getInwardEdgeDirection = (
   edge: SvgEdge,
   panelBounds: SourceBounds | undefined,
 ): Point => {
@@ -473,81 +415,7 @@ const getSideDetectedInwardDirection = (
     return { x: -1, y: 0 };
   }
 
-  const fallbackNormal = getEdgeNormal(edge);
-
-  if (Math.abs(fallbackNormal.x) >= Math.abs(fallbackNormal.y)) {
-    return fallbackNormal.x === 0 ? { x: 1, y: 0 } : { x: Math.sign(fallbackNormal.x), y: 0 };
-  }
-
-  return fallbackNormal.y === 0 ? { x: 0, y: 1 } : { x: 0, y: Math.sign(fallbackNormal.y) };
-};
-
-const getPerpendicularDirections = (edge: SvgEdge): Point[] => {
-  const tolerance = 0.001;
-  const isHorizontal = Math.abs(edge.start.y - edge.end.y) <= tolerance;
-  const isVertical = Math.abs(edge.start.x - edge.end.x) <= tolerance;
-
-  if (isHorizontal) {
-    return [{ x: 0, y: 1 }, { x: 0, y: -1 }];
-  }
-
-  if (isVertical) {
-    return [{ x: 1, y: 0 }, { x: -1, y: 0 }];
-  }
-
-  return [];
-};
-
-const getInwardDirectionResult = (
-  edge: SvgEdge,
-  panelBounds: SourceBounds | undefined,
-  offsetMm: number,
-  warnOnFallback: boolean,
-): InwardDirectionResult => {
-  const offset = Math.max(0, offsetMm);
-  const originalMidpoint = midpoint(edge);
-  const candidates = getPerpendicularDirections(edge).map((direction) => {
-    const candidateMidpoint = {
-      x: originalMidpoint.x + direction.x * offset,
-      y: originalMidpoint.y + direction.y * offset,
-    };
-
-    return {
-      direction,
-      midpoint: candidateMidpoint,
-      inside: isPointInsideBounds(candidateMidpoint, panelBounds),
-    };
-  });
-  const insideCandidates = candidates.filter((candidate) => candidate.inside);
-
-  if (insideCandidates.length === 1) {
-    return { direction: insideCandidates[0].direction, originalMidpoint, candidates };
-  }
-
-  const fallbackDirection = getSideDetectedInwardDirection(edge, panelBounds);
-
-  if (warnOnFallback) {
-    console.warn('E preview inward direction fell back to side detection.', {
-      edgeId: edge.id,
-      panelBounds,
-      candidates,
-      chosenDirection: fallbackDirection,
-    });
-  }
-
-  return { direction: fallbackDirection, originalMidpoint, candidates };
-};
-
-export const getInwardEdgeDirection = (
-  edge: SvgEdge,
-  panelBounds: SourceBounds | undefined,
-  offsetMm?: number,
-): Point => {
-  if (offsetMm !== undefined) {
-    return getInwardDirectionResult(edge, panelBounds, offsetMm, true).direction;
-  }
-
-  return getSideDetectedInwardDirection(edge, panelBounds);
+  return { x: 0, y: 0 };
 };
 
 export type EdgePreviewLine = {
@@ -561,43 +429,24 @@ export const getInwardOffsetPreviewLine = (
   offsetMm: number,
 ): EdgePreviewLine => {
   const offset = Math.max(0, offsetMm);
-  const direction = getInwardDirectionResult(edge, edge.panelBounds, offset, true).direction;
+  const direction = getInwardEdgeDirection(edge, edge.panelBounds);
+  const edgeId = edge.id;
+  const side = getPanelEdgeSide(edge, edge.panelBounds);
+  const panelBounds = edge.panelBounds;
+  const chosenDirection = direction;
   const dx = direction.x * offset;
   const dy = direction.y * offset;
+
+  console.table([
+    edgeId,
+    side,
+    panelBounds,
+    chosenDirection,
+  ]);
 
   return {
     start: { x: edge.start.x + dx, y: edge.start.y + dy },
     end: { x: edge.end.x + dx, y: edge.end.y + dy },
-  };
-};
-
-export const getInwardOffsetPreviewDebugInfo = (
-  edge: SvgEdge,
-  _edges: SvgEdge[],
-  offsetMm: number,
-  label?: string,
-): InwardOffsetPreviewDebugInfo => {
-  const offset = Math.max(0, offsetMm);
-  const directionResult = getInwardDirectionResult(edge, edge.panelBounds, offset, false);
-  const direction = directionResult.direction;
-  const dx = direction.x * offset;
-  const dy = direction.y * offset;
-  const previewStart = { x: edge.start.x + dx, y: edge.start.y + dy };
-  const previewEnd = { x: edge.end.x + dx, y: edge.end.y + dy };
-  const [candidateA, candidateB] = directionResult.candidates;
-
-  return {
-    edgeId: edge.id,
-    label,
-    panelBounds: edge.panelBounds,
-    originalMidpoint: directionResult.originalMidpoint,
-    candidateAMidpoint: candidateA?.midpoint,
-    candidateAInside: candidateA?.inside,
-    candidateBMidpoint: candidateB?.midpoint,
-    candidateBInside: candidateB?.inside,
-    chosenDirection: direction,
-    previewStart,
-    previewEnd,
   };
 };
 
