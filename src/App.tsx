@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getInwardOffsetPreviewLine, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, getEPreviewSteppedPath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgeRole, SvgDocumentModel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -851,7 +851,7 @@ function App() {
     labelScale,
   });
   const labelPlacementsByEdgeId = new Map(labelPlacements.map((placement) => [placement.edgeId, placement]));
-  const ePreviewLinesByEdgeId = useMemo(() => {
+  const ePreviewPathsByEdgeId = useMemo(() => {
     if (!isEPreviewVisible) {
       return new Map();
     }
@@ -867,7 +867,7 @@ function App() {
 
         return [[
           edge.id,
-          getInwardOffsetPreviewLine(edge, svgModel.edges, connection.properties.materialThicknessMm),
+          getEPreviewSteppedPath(edge, assignment.edgeRole ?? 'outer', connection.properties.materialThicknessMm, connection.properties.fingerWidthMm),
         ] as const];
       }),
     );
@@ -881,9 +881,9 @@ function App() {
     return svgModel.edges.flatMap((edge) => {
       const assignment = edgeAssignments[edge.id];
       const connection = assignment ? connections[assignment.connectionId] : undefined;
-      const previewLine = ePreviewLinesByEdgeId.get(edge.id);
+      const previewPath = ePreviewPathsByEdgeId.get(edge.id);
 
-      if (!assignment || connection?.prefix !== 'E' || !previewLine) {
+      if (!assignment || connection?.prefix !== 'E' || !previewPath) {
         return [];
       }
 
@@ -896,11 +896,11 @@ function App() {
         detectedSide: getPanelEdgeSide(edge, edge.panelBounds),
         direction: getInwardEdgeDirection(edge, edge.panelBounds),
         materialThicknessMm: connection.properties.materialThicknessMm,
-        previewStart: previewLine.start,
-        previewEnd: previewLine.end,
+        previewStart: previewPath.innerStart,
+        previewEnd: previewPath.innerEnd,
       }];
     });
-  }, [connections, ePreviewLinesByEdgeId, edgeAssignments, isEPreviewVisible, svgModel.edges]);
+  }, [connections, ePreviewPathsByEdgeId, edgeAssignments, isEPreviewVisible, svgModel.edges]);
 
   return (
     <main className="app-shell">
@@ -1043,7 +1043,7 @@ function App() {
                   const assignment = edgeAssignments[edge.id];
                   const label = getEdgeAssignmentDisplayLabel(assignment);
                   const selected = selectedEdgeId === edge.id;
-                  const ePreviewLine = isEPreviewVisible ? ePreviewLinesByEdgeId.get(edge.id) : undefined;
+                  const ePreviewPath = isEPreviewVisible ? ePreviewPathsByEdgeId.get(edge.id) : undefined;
                   const labelPlacement = labelPlacementsByEdgeId.get(edge.id);
                   const labelWidth = labelPlacement?.width ?? 0;
                   const labelHeight = labelPlacement?.height ?? 0;
@@ -1059,13 +1059,10 @@ function App() {
                           y2={edge.end.y}
                         />
                       )}
-                      {ePreviewLine && (
-                        <line
+                      {ePreviewPath && (
+                        <path
                           className="edge-preview-highlight"
-                          x1={ePreviewLine.start.x}
-                          y1={ePreviewLine.start.y}
-                          x2={ePreviewLine.end.x}
-                          y2={ePreviewLine.end.y}
+                          d={ePreviewPath.d}
                         />
                       )}
                       <line
