@@ -427,14 +427,22 @@ button:disabled {
   vector-effect: non-scaling-stroke;
 }
 
-.edge-preview-highlight {
+.edge-preview-cut-baseline,
+.edge-preview-tabs {
   fill: none;
-  stroke: #2563eb;
   stroke-width: 1;
-  stroke-dasharray: 5 4;
   stroke-linecap: butt;
   pointer-events: none;
   vector-effect: non-scaling-stroke;
+}
+
+.edge-preview-cut-baseline {
+  stroke: #dc2626;
+}
+
+.edge-preview-tabs {
+  stroke: #2563eb;
+  stroke-dasharray: 5 4;
 }
 
 .edge-label {

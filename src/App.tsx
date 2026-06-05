@@ -1101,10 +1101,16 @@ function App() {
                         />
                       )}
                       {ePreviewPath && (
-                        <path
-                          className="edge-preview-highlight"
-                          d={ePreviewPath.d}
-                        />
+                        <>
+                          <path
+                            className="edge-preview-cut-baseline"
+                            d={ePreviewPath.cutBaselineD}
+                          />
+                          <path
+                            className="edge-preview-tabs"
+                            d={ePreviewPath.tabPreviewD}
+                          />
+                        </>
                       )}
                       <line
                         className="edge-hitbox"
