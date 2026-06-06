@@ -1361,6 +1361,12 @@ function App() {
   const finalPanelPreviewPaths = useMemo(() => (
     isEPreviewVisible ? buildFinalPanelPreviewPaths(orderedEPreviewEdges) : []
   ), [isEPreviewVisible, orderedEPreviewEdges]);
+  const appliedEPanelKeys = useMemo(() => new Set(
+    appliedEPanelPaths.map((panelPath) => panelPath.panelKey),
+  ), [appliedEPanelPaths]);
+  const appliedEPanelMasks = useMemo(() => (
+    appliedEPanelPaths.filter((panelPath) => appliedEPanelKeys.has(panelPath.panelKey))
+  ), [appliedEPanelKeys, appliedEPanelPaths]);
 
   const ePreviewDebugRows = useMemo(() => {
     if (!isEPreviewVisible) {
@@ -1533,6 +1539,16 @@ function App() {
             >
               <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
               <g className="applied-e-panel-layer">
+                {appliedEPanelMasks.map((panelPath) => (
+                  <rect
+                    key={`${panelPath.panelKey}-mask`}
+                    className="applied-e-panel-mask"
+                    x={panelPath.panelBounds.minX - 0.5}
+                    y={panelPath.panelBounds.minY - 0.5}
+                    width={panelPath.panelBounds.maxX - panelPath.panelBounds.minX + 1}
+                    height={panelPath.panelBounds.maxY - panelPath.panelBounds.minY + 1}
+                  />
+                ))}
                 {appliedEPanelPaths.map((panelPath) => (
                   <path
                     key={panelPath.panelKey}
