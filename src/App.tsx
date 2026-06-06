@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEPreviewInwardCutBaseline, getEPreviewSteppedPath, getEPreviewTabPath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, getEPreviewInwardCutBaseline, getEPreviewSegmentDebug, getEPreviewSteppedPath, getEPreviewTabPath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgePreviewPath, EdgeRole, Point, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -358,9 +358,8 @@ const buildFinalPanelPreviewPaths = (orderedEdges: OrderedEPreviewEdges) => {
         return;
       }
 
-      const clockwiseEdge = getClockwisePanelEdge(edge.panelBounds, side);
       tabCommands.push(getEPreviewTabPath(
-        clockwiseEdge,
+        edge,
         assignment.edgeRole ?? stage.role,
         connection.properties.materialThicknessMm,
         connection.properties.fingerWidthMm,
@@ -1165,6 +1164,9 @@ function App() {
         return [];
       }
 
+      const originalEdgeLength = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+      const segmentDebug = getEPreviewSegmentDebug(originalEdgeLength, connection.properties.fingerWidthMm);
+
       return [{
         edgeId: edge.id,
         label: getEdgeAssignmentDisplayLabel(assignment),
@@ -1176,6 +1178,7 @@ function App() {
         materialThicknessMm: connection.properties.materialThicknessMm,
         previewStart: previewPath.innerStart,
         previewEnd: previewPath.innerEnd,
+        ...segmentDebug,
       }];
     });
   }, [connections, ePreviewPathsByEdgeId, edgeAssignments, isEPreviewVisible, svgModel.edges]);
@@ -1408,6 +1411,12 @@ function App() {
                         <th>detectedSide</th>
                         <th>direction x/y</th>
                         <th>materialThicknessMm</th>
+                        <th>original edge length</th>
+                        <th>fingerWidthMm</th>
+                        <th>segment count</th>
+                        <th>first segment length</th>
+                        <th>middle segment length</th>
+                        <th>last segment length</th>
                         <th>preview start x/y</th>
                         <th>preview end x/y</th>
                       </tr>
@@ -1423,6 +1432,12 @@ function App() {
                           <td>{row.detectedSide ?? 'unknown'}</td>
                           <td>{formatPoint(row.direction)}</td>
                           <td>{formatNumber(row.materialThicknessMm)}</td>
+                          <td>{formatNumber(row.originalEdgeLength)}</td>
+                          <td>{formatNumber(row.fingerWidthMm)}</td>
+                          <td>{row.segmentCount}</td>
+                          <td>{formatNumber(row.firstSegmentLength)}</td>
+                          <td>{formatNumber(row.middleSegmentLength)}</td>
+                          <td>{formatNumber(row.lastSegmentLength)}</td>
                           <td>{formatPoint(row.previewStart)}</td>
                           <td>{formatPoint(row.previewEnd)}</td>
                         </tr>

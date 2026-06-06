@@ -581,29 +581,44 @@ const interpolateEdgePoint = (edge: SvgEdge, distanceAlongEdge: number, edgeLeng
   };
 };
 
-const getEPreviewSegmentLengths = (edgeLength: number, fingerWidthMm: number) => {
-  const safeEdgeLength = Math.max(0, edgeLength);
+export const getEPreviewSegmentLengths = (originalEdgeLength: number, fingerWidthMm: number) => {
+  const safeOriginalEdgeLength = Math.max(0, originalEdgeLength);
   const safeFingerWidth = Math.max(0, fingerWidthMm);
 
-  if (safeEdgeLength === 0 || safeFingerWidth === 0 || safeFingerWidth >= safeEdgeLength) {
-    return [safeEdgeLength];
+  if (safeOriginalEdgeLength === 0 || safeFingerWidth === 0 || safeOriginalEdgeLength < safeFingerWidth) {
+    return [safeOriginalEdgeLength];
   }
 
-  const segmentCount = Math.max(1, Math.floor(safeEdgeLength / safeFingerWidth));
+  const segmentCount = Math.max(1, Math.floor(safeOriginalEdgeLength / safeFingerWidth));
 
   if (segmentCount === 1) {
-    return [safeEdgeLength];
+    return [safeOriginalEdgeLength];
   }
 
-  const extraLength = safeEdgeLength - segmentCount * safeFingerWidth;
+  const remainingLength = safeOriginalEdgeLength - segmentCount * safeFingerWidth;
+  const endSegmentLength = safeFingerWidth + remainingLength / 2;
 
   return Array.from({ length: segmentCount }, (_, index) => {
     if (index === 0 || index === segmentCount - 1) {
-      return safeFingerWidth + extraLength / 2;
+      return endSegmentLength;
     }
 
     return safeFingerWidth;
   });
+};
+
+export const getEPreviewSegmentDebug = (originalEdgeLength: number, fingerWidthMm: number) => {
+  const segmentLengths = getEPreviewSegmentLengths(originalEdgeLength, fingerWidthMm);
+  const middleSegmentLength = segmentLengths.length > 2 ? segmentLengths[1] : segmentLengths[0] ?? 0;
+
+  return {
+    originalEdgeLength: Math.max(0, originalEdgeLength),
+    fingerWidthMm: Math.max(0, fingerWidthMm),
+    segmentCount: segmentLengths.length,
+    firstSegmentLength: segmentLengths[0] ?? 0,
+    middleSegmentLength,
+    lastSegmentLength: segmentLengths[segmentLengths.length - 1] ?? 0,
+  };
 };
 
 export const getEPreviewInwardCutBaseline = (
