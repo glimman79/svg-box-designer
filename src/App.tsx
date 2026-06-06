@@ -116,11 +116,21 @@ type PanState = {
   moved: boolean;
 };
 
+type OrderedEGenerationStageId = 'outer-cut' | 'outer-make-solid' | 'outer-tabs' | 'inner-cut' | 'inner-make-solid' | 'inner-tabs';
+
+type OrderedEGenerationOperation = 'cut' | 'make-solid' | 'tabs';
+
+type OrderedEGenerationStage = {
+  id: OrderedEGenerationStageId;
+  role: EdgeRole;
+  operation: OrderedEGenerationOperation;
+};
+
 type FinalPanelPreviewPath = {
   panelKey: string;
   panelBounds: SourceBounds;
   d: string;
-  stage: 'outer-cut-baselines' | 'outer-tabs' | 'inner-cut-baselines' | 'inner-tabs';
+  stage: OrderedEGenerationStageId;
 };
 
 type AssignedEEdge = {
@@ -132,11 +142,34 @@ type AssignedEEdge = {
 type OrderedEPreviewEdges = {
   outerEdges: AssignedEEdge[];
   innerEdges: AssignedEEdge[];
+  stages: OrderedEGenerationStage[];
 };
 
 type PanelSide = NonNullable<ReturnType<typeof getPanelEdgeSide>>;
 
 const panelSideOrder: PanelSide[] = ['top', 'right', 'bottom', 'left'];
+
+const pointsToClosedPathD = (points: Point[]) => {
+  if (points.length === 0) {
+    return '';
+  }
+
+  const [firstPoint, ...remainingPoints] = points;
+  const commands = [`M ${firstPoint.x} ${firstPoint.y}`];
+  remainingPoints.forEach((point) => commands.push(`L ${point.x} ${point.y}`));
+  commands.push('Z');
+
+  return commands.join(' ');
+};
+
+const orderedEGenerationStages: OrderedEGenerationStage[] = [
+  { id: 'outer-cut', role: 'outer', operation: 'cut' },
+  { id: 'outer-make-solid', role: 'outer', operation: 'make-solid' },
+  { id: 'outer-tabs', role: 'outer', operation: 'tabs' },
+  { id: 'inner-cut', role: 'inner', operation: 'cut' },
+  { id: 'inner-make-solid', role: 'inner', operation: 'make-solid' },
+  { id: 'inner-tabs', role: 'inner', operation: 'tabs' },
+];
 
 const getPanelKey = (panelBounds: SourceBounds) => (
   [panelBounds.minX, panelBounds.maxX, panelBounds.minY, panelBounds.maxY].map(formatNumber).join('|')
@@ -196,27 +229,86 @@ const getOrderedEPreviewEdges = (
     outerEdges.push(orderedEdge);
   });
 
-  return { outerEdges, innerEdges };
+  return { outerEdges, innerEdges, stages: orderedEGenerationStages };
 };
 
-const buildFinalPanelPreviewPaths = ({ outerEdges, innerEdges }: OrderedEPreviewEdges) => {
-  const skippedEdgeIds: string[] = [];
+const getEdgesForGenerationRole = (orderedEdges: OrderedEPreviewEdges, role: EdgeRole) => (
+  role === 'outer' ? orderedEdges.outerEdges : orderedEdges.innerEdges
+);
+
+const getAssignedEdgesByPanelSide = (edges: AssignedEEdge[]) => {
+  const edgesByPanelSide = new Map<string, AssignedEEdge>();
+
+  edges.forEach((assignedEdge) => {
+    const { edge } = assignedEdge;
+
+    if (!edge.panelBounds) {
+      return;
+    }
+
+    const side = getPanelEdgeSide(edge, edge.panelBounds);
+
+    if (!side) {
+      return;
+    }
+
+    edgesByPanelSide.set(`${getPanelKey(edge.panelBounds)}|${side}`, assignedEdge);
+  });
+
+  return edgesByPanelSide;
+};
+
+const getAffectedPanels = (edges: AssignedEEdge[]) => {
+  const panelsByKey = new Map<string, SourceBounds>();
+
+  edges.forEach(({ edge }) => {
+    if (edge.panelBounds) {
+      panelsByKey.set(getPanelKey(edge.panelBounds), edge.panelBounds);
+    }
+  });
+
+  return [...panelsByKey.entries()];
+};
+
+const buildMakeSolidPanelPath = (panelBounds: SourceBounds, edgesByPanelSide: Map<string, AssignedEEdge>) => {
+  const outlinePoints: Point[] = [];
+
+  panelSideOrder.forEach((side) => {
+    const assignedEdge = edgesByPanelSide.get(`${getPanelKey(panelBounds)}|${side}`);
+    const clockwiseEdge = getClockwisePanelEdge(panelBounds, side);
+
+    if (assignedEdge) {
+      const cutBaseline = getEPreviewInwardCutBaseline(
+        clockwiseEdge,
+        assignedEdge.connection.properties.materialThicknessMm,
+      );
+      outlinePoints.push(cutBaseline.innerStart, cutBaseline.innerEnd);
+      return;
+    }
+
+    outlinePoints.push(clockwiseEdge.start, clockwiseEdge.end);
+  });
+
+  return pointsToClosedPathD(outlinePoints);
+};
+
+const buildFinalPanelPreviewPaths = (orderedEdges: OrderedEPreviewEdges) => {
+  const skippedEdgeIds = new Set<string>();
   const finalPanelPreviewPaths: FinalPanelPreviewPath[] = [];
 
-  const appendPreviewPaths = (edges: AssignedEEdge[], role: EdgeRole) => {
+  const appendCutPreviewPath = (stage: OrderedEGenerationStage, edges: AssignedEEdge[]) => {
     const cutBaselineCommands: string[] = [];
-    const tabCommands: string[] = [];
 
-    edges.forEach(({ edge, assignment, connection }) => {
+    edges.forEach(({ edge, connection }) => {
       if (!edge.panelBounds) {
-        skippedEdgeIds.push(edge.id);
+        skippedEdgeIds.add(edge.id);
         return;
       }
 
       const side = getPanelEdgeSide(edge, edge.panelBounds);
 
       if (!side) {
-        skippedEdgeIds.push(edge.id);
+        skippedEdgeIds.add(edge.id);
         return;
       }
 
@@ -225,38 +317,84 @@ const buildFinalPanelPreviewPaths = ({ outerEdges, innerEdges }: OrderedEPreview
         clockwiseEdge,
         connection.properties.materialThicknessMm,
       ).d);
+    });
+
+    if (cutBaselineCommands.length > 0) {
+      finalPanelPreviewPaths.push({
+        panelKey: stage.id,
+        panelBounds: edges[0].edge.panelBounds ?? { minX: 0, maxX: 0, minY: 0, maxY: 0 },
+        d: cutBaselineCommands.join(' '),
+        stage: stage.id,
+      });
+    }
+  };
+
+  const appendMakeSolidPreviewPaths = (stage: OrderedEGenerationStage, edges: AssignedEEdge[]) => {
+    const edgesByPanelSide = getAssignedEdgesByPanelSide(edges);
+
+    getAffectedPanels(edges).forEach(([panelKey, panelBounds]) => {
+      finalPanelPreviewPaths.push({
+        panelKey: `${stage.id}-${panelKey}`,
+        panelBounds,
+        d: buildMakeSolidPanelPath(panelBounds, edgesByPanelSide),
+        stage: stage.id,
+      });
+    });
+  };
+
+  const appendTabsPreviewPath = (stage: OrderedEGenerationStage, edges: AssignedEEdge[]) => {
+    const tabCommands: string[] = [];
+
+    edges.forEach(({ edge, assignment, connection }) => {
+      if (!edge.panelBounds) {
+        skippedEdgeIds.add(edge.id);
+        return;
+      }
+
+      const side = getPanelEdgeSide(edge, edge.panelBounds);
+
+      if (!side) {
+        skippedEdgeIds.add(edge.id);
+        return;
+      }
+
+      const clockwiseEdge = getClockwisePanelEdge(edge.panelBounds, side);
       tabCommands.push(getEPreviewTabPath(
         clockwiseEdge,
-        assignment.edgeRole ?? role,
+        assignment.edgeRole ?? stage.role,
         connection.properties.materialThicknessMm,
         connection.properties.fingerWidthMm,
       ));
     });
 
-    if (cutBaselineCommands.length > 0) {
-      finalPanelPreviewPaths.push({
-        panelKey: `${role}-cut-baselines`,
-        panelBounds: edges[0].edge.panelBounds ?? { minX: 0, maxX: 0, minY: 0, maxY: 0 },
-        d: cutBaselineCommands.join(' '),
-        stage: `${role}-cut-baselines`,
-      });
-    }
-
     if (tabCommands.length > 0) {
       finalPanelPreviewPaths.push({
-        panelKey: `${role}-tabs`,
+        panelKey: stage.id,
         panelBounds: edges[0].edge.panelBounds ?? { minX: 0, maxX: 0, minY: 0, maxY: 0 },
         d: tabCommands.join(' '),
-        stage: `${role}-tabs`,
+        stage: stage.id,
       });
     }
   };
 
-  appendPreviewPaths(outerEdges, 'outer');
-  appendPreviewPaths(innerEdges, 'inner');
+  orderedEdges.stages.forEach((stage) => {
+    const edges = getEdgesForGenerationRole(orderedEdges, stage.role);
 
-  if (skippedEdgeIds.length > 0) {
-    console.warn('Skipped assigned E edges without panel bounds or a detected panel side.', { edgeIds: skippedEdgeIds });
+    if (stage.operation === 'cut') {
+      appendCutPreviewPath(stage, edges);
+      return;
+    }
+
+    if (stage.operation === 'make-solid') {
+      appendMakeSolidPreviewPaths(stage, edges);
+      return;
+    }
+
+    appendTabsPreviewPath(stage, edges);
+  });
+
+  if (skippedEdgeIds.size > 0) {
+    console.warn('Skipped assigned E edges without panel bounds or a detected panel side.', { edgeIds: [...skippedEdgeIds] });
   }
 
   return finalPanelPreviewPaths;
@@ -1009,8 +1147,6 @@ function App() {
   ), [orderedEPreviewEdges]);
 
   const ePreviewPathsByEdgeId = isEPreviewVisible ? currentEPreviewPathsByEdgeId : new Map<string, EdgePreviewPath>();
-  const visibleOrderedEPreviewEdges = isEPreviewVisible ? orderedEPreviewEdges : { outerEdges: [], innerEdges: [] };
-
   const finalPanelPreviewPaths = useMemo(() => (
     isEPreviewVisible ? buildFinalPanelPreviewPaths(orderedEPreviewEdges) : []
   ), [isEPreviewVisible, orderedEPreviewEdges]);
@@ -1184,52 +1320,10 @@ function App() {
                 {finalPanelPreviewPaths.map((panelPath) => (
                   <path
                     key={panelPath.panelKey}
-                    className={panelPath.stage.endsWith('cut-baselines') ? 'edge-preview-cut-baseline' : 'edge-preview-tabs'}
+                    className={panelPath.stage.endsWith('make-solid') ? 'final-panel-preview-path' : panelPath.stage.endsWith('cut') ? 'edge-preview-cut-baseline' : 'edge-preview-tabs'}
                     d={panelPath.d}
                   />
                 ))}
-              </g>
-              <g className="edge-preview-overlay-layer">
-                {visibleOrderedEPreviewEdges.outerEdges.map(({ edge }) => {
-                  const ePreviewPath = ePreviewPathsByEdgeId.get(edge.id);
-                  return ePreviewPath ? (
-                    <path
-                      key={`${edge.id}-outer-cut-baseline`}
-                      className="edge-preview-cut-baseline"
-                      d={ePreviewPath.cutBaselineD}
-                    />
-                  ) : null;
-                })}
-                {visibleOrderedEPreviewEdges.outerEdges.map(({ edge }) => {
-                  const ePreviewPath = ePreviewPathsByEdgeId.get(edge.id);
-                  return ePreviewPath ? (
-                    <path
-                      key={`${edge.id}-outer-tabs`}
-                      className="edge-preview-tabs"
-                      d={ePreviewPath.tabPreviewD}
-                    />
-                  ) : null;
-                })}
-                {visibleOrderedEPreviewEdges.innerEdges.map(({ edge }) => {
-                  const ePreviewPath = ePreviewPathsByEdgeId.get(edge.id);
-                  return ePreviewPath ? (
-                    <path
-                      key={`${edge.id}-inner-cut-baseline`}
-                      className="edge-preview-cut-baseline"
-                      d={ePreviewPath.cutBaselineD}
-                    />
-                  ) : null;
-                })}
-                {visibleOrderedEPreviewEdges.innerEdges.map(({ edge }) => {
-                  const ePreviewPath = ePreviewPathsByEdgeId.get(edge.id);
-                  return ePreviewPath ? (
-                    <path
-                      key={`${edge.id}-inner-tabs`}
-                      className="edge-preview-tabs"
-                      d={ePreviewPath.tabPreviewD}
-                    />
-                  ) : null;
-                })}
               </g>
               <g className="edge-overlays">
                   {svgModel.edges.map((edge) => {
