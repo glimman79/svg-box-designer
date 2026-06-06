@@ -414,6 +414,11 @@ button:disabled {
   pointer-events: none;
 }
 
+.applied-e-panel-mask {
+  fill: #ffffff;
+  stroke: none;
+}
+
 .applied-e-panel-path {
   fill: none;
   stroke: #000000;
