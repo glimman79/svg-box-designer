@@ -409,14 +409,15 @@ button:disabled {
   stroke-width: 1;
 }
 
-.applied-panel-layer {
+.final-panel-preview-layer {
   pointer-events: none;
 }
 
-.applied-panel-path {
+.final-panel-preview-path {
   fill: none;
-  stroke: #000000;
-  stroke-width: 1;
+  stroke: #7c3aed;
+  stroke-width: 1.25;
+  stroke-dasharray: 7 4;
   stroke-linecap: butt;
   stroke-linejoin: miter;
   pointer-events: none;
