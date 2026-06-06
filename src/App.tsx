@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEPreviewInwardCutBaseline, getEPreviewSegmentDebug, getEPreviewSteppedPath, getEPreviewTabPath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, getEPreviewSegmentDebug, getEPreviewSteppedPath, getEReplacementEdgePath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgePreviewPath, EdgeRole, Point, SvgDocumentModel, SvgEdge } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -118,8 +118,7 @@ type PanState = {
 
 type AppliedEEdge = {
   edgeId: string;
-  cutBaselineD: string;
-  tabPathD: string;
+  replacementPathD: string;
   materialThicknessMm: number;
   maskLine: {
     start: Point;
@@ -170,11 +169,7 @@ const getOrderedEPreviewEdges = (
 const buildAppliedEEdges = (orderedEdges: OrderedEPreviewEdges): AppliedEEdge[] => (
   [...orderedEdges.outerEdges, ...orderedEdges.innerEdges].map(({ edge, assignment, connection }) => ({
     edgeId: edge.id,
-    cutBaselineD: getEPreviewInwardCutBaseline(
-      edge,
-      connection.properties.materialThicknessMm,
-    ).d,
-    tabPathD: getEPreviewTabPath(
+    replacementPathD: getEReplacementEdgePath(
       edge,
       assignment.edgeRole ?? 'outer',
       connection.properties.materialThicknessMm,
@@ -1127,11 +1122,7 @@ function App() {
                     />
                     <path
                       className="applied-e-edge-path"
-                      d={appliedEdge.cutBaselineD}
-                    />
-                    <path
-                      className="applied-e-edge-path"
-                      d={appliedEdge.tabPathD}
+                      d={appliedEdge.replacementPathD}
                     />
                   </g>
                 ))}
