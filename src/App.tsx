@@ -116,7 +116,7 @@ type PanState = {
   moved: boolean;
 };
 
-type AppliedEPanelPath = {
+type FinalPanelPreviewPath = {
   panelKey: string;
   panelBounds: SourceBounds;
   d: string;
@@ -157,7 +157,7 @@ const getClockwisePanelEdge = (panelBounds: SourceBounds, side: PanelSide): SvgE
 
   return {
     id: `panel-${getPanelKey(panelBounds)}-${side}`,
-    source: 'applied panel outline',
+    source: 'final panel outline preview',
     panelBounds,
     ...sidePoints[side],
   };
@@ -190,7 +190,7 @@ const pointsToClosedPath = (points: Point[]) => {
   ].join(' ');
 };
 
-const getAppliedPanelEdgePoints = (
+const getFinalPanelPreviewEdgePoints = (
   panelBounds: SourceBounds,
   side: PanelSide,
   assignedEdge: AssignedEEdge | undefined,
@@ -209,7 +209,7 @@ const getAppliedPanelEdgePoints = (
   );
 };
 
-const buildAppliedEPanelPaths = (
+const buildFinalPanelPreviewPaths = (
   edges: SvgEdge[],
   assignments: Record<string, EdgeAssignment>,
   connectionMap: ConnectionMap,
@@ -254,7 +254,7 @@ const buildAppliedEPanelPaths = (
     const panelPoints: Point[] = [];
 
     panelSideOrder.forEach((side) => {
-      const edgePoints = getAppliedPanelEdgePoints(
+      const edgePoints = getFinalPanelPreviewEdgePoints(
         panelGroup.panelBounds,
         side,
         panelGroup.edgesBySide.get(side),
@@ -487,7 +487,6 @@ function App() {
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isEPreviewVisible, setIsEPreviewVisible] = useState(false);
-  const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -528,7 +527,6 @@ function App() {
     setSvgModel(parsedSvg);
     setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
     setEdgeAssignments({});
-    setAppliedEPanelPaths([]);
     setSelectedEdgeId(null);
     setIsEPreviewVisible(false);
     setErrorMessage('');
@@ -557,7 +555,6 @@ function App() {
       delete nextAssignments[edgeId];
       return nextAssignments;
     });
-    setAppliedEPanelPaths([]);
     setErrorMessage('');
   };
 
@@ -584,7 +581,6 @@ function App() {
     };
     setEdgeAssignments(nextAssignments);
 
-    setAppliedEPanelPaths([]);
 
     const selectedLabelAssignmentCount = Object.values(nextAssignments)
       .filter((assignment) => assignment.connectionId === selectedLabelId).length;
@@ -1028,11 +1024,9 @@ function App() {
 
   const ePreviewPathsByEdgeId = isEPreviewVisible ? currentEPreviewPathsByEdgeId : new Map<string, EdgePreviewPath>();
 
-  const applyEPreviewPaths = () => {
-    setAppliedEPanelPaths(buildAppliedEPanelPaths(svgModel.edges, edgeAssignments, connections));
-    setIsEPreviewVisible(false);
-    setErrorMessage('');
-  };
+  const finalPanelPreviewPaths = useMemo(() => (
+    isEPreviewVisible ? buildFinalPanelPreviewPaths(svgModel.edges, edgeAssignments, connections) : []
+  ), [connections, edgeAssignments, isEPreviewVisible, svgModel.edges]);
 
   const ePreviewDebugRows = useMemo(() => {
     if (!isEPreviewVisible) {
@@ -1180,7 +1174,6 @@ function App() {
               <button type="button" onClick={resetCanvasView}>Reset view</button>
               <button type="button" onClick={resetCanvasView}>Fit to screen</button>
               <button type="button" onClick={() => setIsEPreviewVisible(true)} disabled={!hasAssignedEEdges}>Preview</button>
-              <button type="button" onClick={applyEPreviewPaths} disabled={currentEPreviewPathsByEdgeId.size === 0}>Apply</button>
               <button type="button" onClick={() => setIsEPreviewVisible(false)} disabled={!isEPreviewVisible}>Clear Preview</button>
             </div>
           </div>
@@ -1200,22 +1193,13 @@ function App() {
               onPointerLeave={handleCanvasPointerLeave}
             >
               <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
-              <g className="applied-panel-layer">
-                {appliedEPanelPaths.map((panelPath) => (
-                  <g key={panelPath.panelKey}>
-                    <rect
-                      x={panelPath.panelBounds.minX - 1}
-                      y={panelPath.panelBounds.minY - 1}
-                      width={panelPath.panelBounds.maxX - panelPath.panelBounds.minX + 2}
-                      height={panelPath.panelBounds.maxY - panelPath.panelBounds.minY + 2}
-                      fill="white"
-                      stroke="none"
-                    />
-                    <path
-                      className="applied-panel-path"
-                      d={panelPath.d}
-                    />
-                  </g>
+              <g className="final-panel-preview-layer">
+                {finalPanelPreviewPaths.map((panelPath) => (
+                  <path
+                    key={panelPath.panelKey}
+                    className="final-panel-preview-path"
+                    d={panelPath.d}
+                  />
                 ))}
               </g>
               <g className="edge-overlays">
