@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEPreviewOutlinePoints, getEPreviewSteppedPath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, getEPreviewInwardCutBaseline, getEPreviewSteppedPath, getEPreviewTabPath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgePreviewPath, EdgeRole, Point, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -120,11 +120,18 @@ type FinalPanelPreviewPath = {
   panelKey: string;
   panelBounds: SourceBounds;
   d: string;
+  stage: 'outer-cut-baselines' | 'outer-tabs' | 'inner-cut-baselines' | 'inner-tabs';
 };
 
 type AssignedEEdge = {
+  edge: SvgEdge;
   assignment: EdgeAssignment;
   connection: EdgeConnectionDefinition;
+};
+
+type OrderedEPreviewEdges = {
+  outerEdges: AssignedEEdge[];
+  innerEdges: AssignedEEdge[];
 };
 
 type PanelSide = NonNullable<ReturnType<typeof getPanelEdgeSide>>;
@@ -163,59 +170,13 @@ const getClockwisePanelEdge = (panelBounds: SourceBounds, side: PanelSide): SvgE
   };
 };
 
-const pointsMatch = (point: Point, otherPoint: Point) => (
-  Math.abs(point.x - otherPoint.x) <= 0.001 && Math.abs(point.y - otherPoint.y) <= 0.001
-);
-
-const appendPathPoint = (points: Point[], point: Point) => {
-  const lastPoint = points[points.length - 1];
-
-  if (!lastPoint || !pointsMatch(lastPoint, point)) {
-    points.push(point);
-  }
-};
-
-const pointPathCommand = (command: 'M' | 'L', point: Point) => `${command} ${point.x} ${point.y}`;
-
-const pointsToClosedPath = (points: Point[]) => {
-  if (points.length === 0) {
-    return '';
-  }
-
-  const [firstPoint, ...remainingPoints] = points;
-  return [
-    pointPathCommand('M', firstPoint),
-    ...remainingPoints.map((point) => pointPathCommand('L', point)),
-    'Z',
-  ].join(' ');
-};
-
-const getFinalPanelPreviewEdgePoints = (
-  panelBounds: SourceBounds,
-  side: PanelSide,
-  assignedEdge: AssignedEEdge | undefined,
-) => {
-  const clockwiseEdge = getClockwisePanelEdge(panelBounds, side);
-
-  if (!assignedEdge) {
-    return [clockwiseEdge.start, clockwiseEdge.end];
-  }
-
-  return getEPreviewOutlinePoints(
-    clockwiseEdge,
-    assignedEdge.assignment.edgeRole ?? 'outer',
-    assignedEdge.connection.properties.materialThicknessMm,
-    assignedEdge.connection.properties.fingerWidthMm,
-  );
-};
-
-const buildFinalPanelPreviewPaths = (
+const getOrderedEPreviewEdges = (
   edges: SvgEdge[],
   assignments: Record<string, EdgeAssignment>,
   connectionMap: ConnectionMap,
-) => {
-  const panelGroups = new Map<string, { panelBounds: SourceBounds; edgesBySide: Map<PanelSide, AssignedEEdge> }>();
-  const skippedEdgeIds: string[] = [];
+): OrderedEPreviewEdges => {
+  const outerEdges: AssignedEEdge[] = [];
+  const innerEdges: AssignedEEdge[] = [];
 
   edges.forEach((edge) => {
     const assignment = assignments[edge.id];
@@ -225,49 +186,80 @@ const buildFinalPanelPreviewPaths = (
       return;
     }
 
-    if (!edge.panelBounds) {
-      skippedEdgeIds.push(edge.id);
+    const orderedEdge = { edge, assignment, connection };
+
+    if (assignment.edgeRole === 'inner') {
+      innerEdges.push(orderedEdge);
       return;
     }
 
-    const side = getPanelEdgeSide(edge, edge.panelBounds);
-
-    if (!side) {
-      skippedEdgeIds.push(edge.id);
-      return;
-    }
-
-    const panelKey = getPanelKey(edge.panelBounds);
-    const panelGroup = panelGroups.get(panelKey) ?? {
-      panelBounds: edge.panelBounds,
-      edgesBySide: new Map<PanelSide, AssignedEEdge>(),
-    };
-    panelGroup.edgesBySide.set(side, { assignment, connection });
-    panelGroups.set(panelKey, panelGroup);
+    outerEdges.push(orderedEdge);
   });
+
+  return { outerEdges, innerEdges };
+};
+
+const buildFinalPanelPreviewPaths = ({ outerEdges, innerEdges }: OrderedEPreviewEdges) => {
+  const skippedEdgeIds: string[] = [];
+  const finalPanelPreviewPaths: FinalPanelPreviewPath[] = [];
+
+  const appendPreviewPaths = (edges: AssignedEEdge[], role: EdgeRole) => {
+    const cutBaselineCommands: string[] = [];
+    const tabCommands: string[] = [];
+
+    edges.forEach(({ edge, assignment, connection }) => {
+      if (!edge.panelBounds) {
+        skippedEdgeIds.push(edge.id);
+        return;
+      }
+
+      const side = getPanelEdgeSide(edge, edge.panelBounds);
+
+      if (!side) {
+        skippedEdgeIds.push(edge.id);
+        return;
+      }
+
+      const clockwiseEdge = getClockwisePanelEdge(edge.panelBounds, side);
+      cutBaselineCommands.push(getEPreviewInwardCutBaseline(
+        clockwiseEdge,
+        connection.properties.materialThicknessMm,
+      ).d);
+      tabCommands.push(getEPreviewTabPath(
+        clockwiseEdge,
+        assignment.edgeRole ?? role,
+        connection.properties.materialThicknessMm,
+        connection.properties.fingerWidthMm,
+      ));
+    });
+
+    if (cutBaselineCommands.length > 0) {
+      finalPanelPreviewPaths.push({
+        panelKey: `${role}-cut-baselines`,
+        panelBounds: edges[0].edge.panelBounds ?? { minX: 0, maxX: 0, minY: 0, maxY: 0 },
+        d: cutBaselineCommands.join(' '),
+        stage: `${role}-cut-baselines`,
+      });
+    }
+
+    if (tabCommands.length > 0) {
+      finalPanelPreviewPaths.push({
+        panelKey: `${role}-tabs`,
+        panelBounds: edges[0].edge.panelBounds ?? { minX: 0, maxX: 0, minY: 0, maxY: 0 },
+        d: tabCommands.join(' '),
+        stage: `${role}-tabs`,
+      });
+    }
+  };
+
+  appendPreviewPaths(outerEdges, 'outer');
+  appendPreviewPaths(innerEdges, 'inner');
 
   if (skippedEdgeIds.length > 0) {
     console.warn('Skipped assigned E edges without panel bounds or a detected panel side.', { edgeIds: skippedEdgeIds });
   }
 
-  return Array.from(panelGroups.entries()).map(([panelKey, panelGroup]) => {
-    const panelPoints: Point[] = [];
-
-    panelSideOrder.forEach((side) => {
-      const edgePoints = getFinalPanelPreviewEdgePoints(
-        panelGroup.panelBounds,
-        side,
-        panelGroup.edgesBySide.get(side),
-      );
-      edgePoints.forEach((point) => appendPathPoint(panelPoints, point));
-    });
-
-    return {
-      panelKey,
-      panelBounds: panelGroup.panelBounds,
-      d: pointsToClosedPath(panelPoints),
-    };
-  });
+  return finalPanelPreviewPaths;
 };
 
 const labelGroups: LabelGroup[] = [
@@ -1006,27 +998,22 @@ function App() {
     labelScale,
   });
   const labelPlacementsByEdgeId = new Map(labelPlacements.map((placement) => [placement.edgeId, placement]));
-  const currentEPreviewPathsByEdgeId = useMemo(() => new Map(
-    svgModel.edges.flatMap((edge) => {
-      const assignment = edgeAssignments[edge.id];
-      const connection = assignment ? connections[assignment.connectionId] : undefined;
-
-      if (!assignment || connection?.prefix !== 'E') {
-        return [];
-      }
-
-      return [[
-        edge.id,
-        getEPreviewSteppedPath(edge, assignment.edgeRole ?? 'outer', connection.properties.materialThicknessMm, connection.properties.fingerWidthMm),
-      ] as const];
-    }),
+  const orderedEPreviewEdges = useMemo(() => (
+    getOrderedEPreviewEdges(svgModel.edges, edgeAssignments, connections)
   ), [connections, edgeAssignments, svgModel.edges]);
+  const currentEPreviewPathsByEdgeId = useMemo(() => new Map(
+    [...orderedEPreviewEdges.outerEdges, ...orderedEPreviewEdges.innerEdges].map(({ edge, assignment, connection }) => [
+      edge.id,
+      getEPreviewSteppedPath(edge, assignment.edgeRole ?? 'outer', connection.properties.materialThicknessMm, connection.properties.fingerWidthMm),
+    ] as const),
+  ), [orderedEPreviewEdges]);
 
   const ePreviewPathsByEdgeId = isEPreviewVisible ? currentEPreviewPathsByEdgeId : new Map<string, EdgePreviewPath>();
+  const visibleOrderedEPreviewEdges = isEPreviewVisible ? orderedEPreviewEdges : { outerEdges: [], innerEdges: [] };
 
   const finalPanelPreviewPaths = useMemo(() => (
-    isEPreviewVisible ? buildFinalPanelPreviewPaths(svgModel.edges, edgeAssignments, connections) : []
-  ), [connections, edgeAssignments, isEPreviewVisible, svgModel.edges]);
+    isEPreviewVisible ? buildFinalPanelPreviewPaths(orderedEPreviewEdges) : []
+  ), [isEPreviewVisible, orderedEPreviewEdges]);
 
   const ePreviewDebugRows = useMemo(() => {
     if (!isEPreviewVisible) {
@@ -1197,17 +1184,58 @@ function App() {
                 {finalPanelPreviewPaths.map((panelPath) => (
                   <path
                     key={panelPath.panelKey}
-                    className="final-panel-preview-path"
+                    className={panelPath.stage.endsWith('cut-baselines') ? 'edge-preview-cut-baseline' : 'edge-preview-tabs'}
                     d={panelPath.d}
                   />
                 ))}
+              </g>
+              <g className="edge-preview-overlay-layer">
+                {visibleOrderedEPreviewEdges.outerEdges.map(({ edge }) => {
+                  const ePreviewPath = ePreviewPathsByEdgeId.get(edge.id);
+                  return ePreviewPath ? (
+                    <path
+                      key={`${edge.id}-outer-cut-baseline`}
+                      className="edge-preview-cut-baseline"
+                      d={ePreviewPath.cutBaselineD}
+                    />
+                  ) : null;
+                })}
+                {visibleOrderedEPreviewEdges.outerEdges.map(({ edge }) => {
+                  const ePreviewPath = ePreviewPathsByEdgeId.get(edge.id);
+                  return ePreviewPath ? (
+                    <path
+                      key={`${edge.id}-outer-tabs`}
+                      className="edge-preview-tabs"
+                      d={ePreviewPath.tabPreviewD}
+                    />
+                  ) : null;
+                })}
+                {visibleOrderedEPreviewEdges.innerEdges.map(({ edge }) => {
+                  const ePreviewPath = ePreviewPathsByEdgeId.get(edge.id);
+                  return ePreviewPath ? (
+                    <path
+                      key={`${edge.id}-inner-cut-baseline`}
+                      className="edge-preview-cut-baseline"
+                      d={ePreviewPath.cutBaselineD}
+                    />
+                  ) : null;
+                })}
+                {visibleOrderedEPreviewEdges.innerEdges.map(({ edge }) => {
+                  const ePreviewPath = ePreviewPathsByEdgeId.get(edge.id);
+                  return ePreviewPath ? (
+                    <path
+                      key={`${edge.id}-inner-tabs`}
+                      className="edge-preview-tabs"
+                      d={ePreviewPath.tabPreviewD}
+                    />
+                  ) : null;
+                })}
               </g>
               <g className="edge-overlays">
                   {svgModel.edges.map((edge) => {
                   const assignment = edgeAssignments[edge.id];
                   const label = getEdgeAssignmentDisplayLabel(assignment);
                   const selected = selectedEdgeId === edge.id;
-                  const ePreviewPath = ePreviewPathsByEdgeId.get(edge.id);
                   const labelPlacement = labelPlacementsByEdgeId.get(edge.id);
                   const labelWidth = labelPlacement?.width ?? 0;
                   const labelHeight = labelPlacement?.height ?? 0;
@@ -1222,18 +1250,6 @@ function App() {
                           x2={edge.end.x}
                           y2={edge.end.y}
                         />
-                      )}
-                      {ePreviewPath && (
-                        <>
-                          <path
-                            className="edge-preview-cut-baseline"
-                            d={ePreviewPath.cutBaselineD}
-                          />
-                          <path
-                            className="edge-preview-tabs"
-                            d={ePreviewPath.tabPreviewD}
-                          />
-                        </>
                       )}
                       <line
                         className="edge-hitbox"
