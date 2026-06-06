@@ -414,12 +414,13 @@ button:disabled {
   pointer-events: none;
 }
 
-.applied-e-panel-mask {
-  fill: #ffffff;
-  stroke: none;
+.applied-e-edge-mask {
+  stroke: #ffffff;
+  stroke-linecap: butt;
+  pointer-events: none;
 }
 
-.applied-e-panel-path {
+.applied-e-edge-path {
   fill: none;
   stroke: #000000;
   stroke-width: 1.25;

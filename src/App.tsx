@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEPreviewInwardCutBaseline, getEPreviewSegmentDebug, getEPreviewSegmentLengths, getEPreviewSteppedPath, getEPreviewTabPath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, getEPreviewInwardCutBaseline, getEPreviewSegmentDebug, getEPreviewSteppedPath, getEPreviewTabPath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgePreviewPath, EdgeRole, Point, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -133,10 +133,15 @@ type FinalPanelPreviewPath = {
   stage: OrderedEGenerationStageId;
 };
 
-type AppliedEPanelPath = {
-  panelKey: string;
-  panelBounds: SourceBounds;
-  d: string;
+type AppliedEEdge = {
+  edgeId: string;
+  cutBaselineD: string;
+  tabPathD: string;
+  materialThicknessMm: number;
+  maskLine: {
+    start: Point;
+    end: Point;
+  };
 };
 
 type AssignedEEdge = {
@@ -405,227 +410,26 @@ const buildFinalPanelPreviewPaths = (orderedEdges: OrderedEPreviewEdges) => {
   return finalPanelPreviewPaths;
 };
 
-const getPanelBoundaryEdge = (panelBounds: SourceBounds, side: PanelSide): SvgEdge => {
-  const sidePoints: Record<PanelSide, { start: Point; end: Point }> = {
-    top: {
-      start: { x: panelBounds.minX, y: panelBounds.minY },
-      end: { x: panelBounds.maxX, y: panelBounds.minY },
+const buildAppliedEEdges = (orderedEdges: OrderedEPreviewEdges): AppliedEEdge[] => (
+  [...orderedEdges.outerEdges, ...orderedEdges.innerEdges].map(({ edge, assignment, connection }) => ({
+    edgeId: edge.id,
+    cutBaselineD: getEPreviewInwardCutBaseline(
+      edge,
+      connection.properties.materialThicknessMm,
+    ).d,
+    tabPathD: getEPreviewTabPath(
+      edge,
+      assignment.edgeRole ?? 'outer',
+      connection.properties.materialThicknessMm,
+      connection.properties.fingerWidthMm,
+    ),
+    materialThicknessMm: connection.properties.materialThicknessMm,
+    maskLine: {
+      start: edge.start,
+      end: edge.end,
     },
-    right: {
-      start: { x: panelBounds.maxX, y: panelBounds.minY },
-      end: { x: panelBounds.maxX, y: panelBounds.maxY },
-    },
-    bottom: {
-      start: { x: panelBounds.maxX, y: panelBounds.maxY },
-      end: { x: panelBounds.minX, y: panelBounds.maxY },
-    },
-    left: {
-      start: { x: panelBounds.minX, y: panelBounds.maxY },
-      end: { x: panelBounds.minX, y: panelBounds.minY },
-    },
-  };
-
-  return {
-    id: `panel-${getPanelKey(panelBounds)}-${side}-applied`,
-    source: 'applied panel edge',
-    panelBounds,
-    ...sidePoints[side],
-  };
-};
-
-const getPointAlongEdge = (edge: SvgEdge, distanceAlongEdge: number, edgeLength: number): Point => {
-  if (edgeLength <= 0) {
-    return edge.start;
-  }
-
-  const progress = distanceAlongEdge / edgeLength;
-
-  return {
-    x: edge.start.x + (edge.end.x - edge.start.x) * progress,
-    y: edge.start.y + (edge.end.y - edge.start.y) * progress,
-  };
-};
-
-const pointsMatch = (point: Point, otherPoint: Point) => (
-  Math.hypot(point.x - otherPoint.x, point.y - otherPoint.y) <= 0.000001
+  }))
 );
-
-const appendPathPoint = (points: Point[], point: Point) => {
-  const previousPoint = points[points.length - 1];
-
-  if (!previousPoint || !pointsMatch(previousPoint, point)) {
-    points.push(point);
-  }
-};
-
-const offsetPoint = (point: Point, offset: Point): Point => ({
-  x: point.x + offset.x,
-  y: point.y + offset.y,
-});
-
-const buildAppliedESidePoints = (
-  originalEdge: SvgEdge,
-  role: EdgeRole,
-  materialThicknessMm: number,
-  fingerWidthMm: number,
-): Point[] => {
-  const originalEdgeLength = Math.hypot(
-    originalEdge.end.x - originalEdge.start.x,
-    originalEdge.end.y - originalEdge.start.y,
-  );
-
-  if (originalEdgeLength <= 0) {
-    return [originalEdge.start, originalEdge.end];
-  }
-
-  const direction = {
-    x: (originalEdge.end.x - originalEdge.start.x) / originalEdgeLength,
-    y: (originalEdge.end.y - originalEdge.start.y) / originalEdgeLength,
-  };
-  const inwardNormal = getInwardEdgeDirection(originalEdge, originalEdge.panelBounds);
-  const t = Math.max(0, materialThicknessMm);
-  const inwardOffset = { x: inwardNormal.x * t, y: inwardNormal.y * t };
-  const directionOffset = { x: direction.x * t, y: direction.y * t };
-  const innerStart = offsetPoint(originalEdge.start, inwardOffset);
-  const shortenedInsetStart = offsetPoint(innerStart, directionOffset);
-  const innerEnd = offsetPoint(originalEdge.end, inwardOffset);
-  const shortenedInsetEnd = offsetPoint(innerEnd, { x: -directionOffset.x, y: -directionOffset.y });
-  const shortenedStartDistance = t;
-  const shortenedEndDistance = originalEdgeLength - t;
-  const segmentLengths = getEPreviewSegmentLengths(originalEdgeLength, fingerWidthMm);
-  const points: Point[] = [];
-  let distanceAlongEdge = 0;
-  let isTabSegment = role === 'outer';
-
-  appendPathPoint(points, originalEdge.start);
-  appendPathPoint(points, innerStart);
-  appendPathPoint(points, shortenedInsetStart);
-
-  segmentLengths.forEach((segmentLength) => {
-    const segmentStartDistance = distanceAlongEdge;
-    distanceAlongEdge = Math.min(originalEdgeLength, distanceAlongEdge + segmentLength);
-    const segmentEndDistance = distanceAlongEdge;
-    const clippedStartDistance = Math.max(shortenedStartDistance, segmentStartDistance);
-    const clippedEndDistance = Math.min(shortenedEndDistance, segmentEndDistance);
-
-    if (clippedEndDistance > clippedStartDistance) {
-      const insetSegmentStart = offsetPoint(
-        getPointAlongEdge(originalEdge, clippedStartDistance, originalEdgeLength),
-        inwardOffset,
-      );
-      const insetSegmentEnd = offsetPoint(
-        getPointAlongEdge(originalEdge, clippedEndDistance, originalEdgeLength),
-        inwardOffset,
-      );
-
-      if (isTabSegment) {
-        appendPathPoint(points, insetSegmentStart);
-        appendPathPoint(points, getPointAlongEdge(originalEdge, clippedStartDistance, originalEdgeLength));
-        appendPathPoint(points, getPointAlongEdge(originalEdge, clippedEndDistance, originalEdgeLength));
-      }
-
-      appendPathPoint(points, insetSegmentEnd);
-    }
-
-    isTabSegment = !isTabSegment;
-  });
-
-  appendPathPoint(points, shortenedInsetEnd);
-  appendPathPoint(points, innerEnd);
-  appendPathPoint(points, originalEdge.end);
-
-  return points;
-};
-
-const getCornerGapDistance = (points: Point[], nextPoints: Point[]) => {
-  const endPoint = points[points.length - 1];
-  const nextStartPoint = nextPoints[0];
-
-  if (!endPoint || !nextStartPoint) {
-    return 0;
-  }
-
-  return Math.hypot(endPoint.x - nextStartPoint.x, endPoint.y - nextStartPoint.y);
-};
-
-const buildAppliedEPanelPaths = (orderedEdges: OrderedEPreviewEdges): AppliedEPanelPath[] => {
-  const skippedEdgeIds = new Set<string>();
-  const assignedEdgesByPanelSide = new Map<string, AssignedEEdge>();
-  const affectedPanels = new Map<string, SourceBounds>();
-
-  [...orderedEdges.outerEdges, ...orderedEdges.innerEdges].forEach((assignedEdge) => {
-    const { edge } = assignedEdge;
-
-    if (!edge.panelBounds) {
-      skippedEdgeIds.add(edge.id);
-      return;
-    }
-
-    const side = getPanelEdgeSide(edge, edge.panelBounds);
-
-    if (!side) {
-      skippedEdgeIds.add(edge.id);
-      return;
-    }
-
-    const panelKey = getPanelKey(edge.panelBounds);
-    affectedPanels.set(panelKey, edge.panelBounds);
-    assignedEdgesByPanelSide.set(`${panelKey}|${side}`, assignedEdge);
-  });
-
-  const appliedPanelPaths = [...affectedPanels.entries()].flatMap(([panelKey, panelBounds]) => {
-    const panelSidePoints = panelSideOrder.map((side) => {
-      const outerBoundaryEdge = getPanelBoundaryEdge(panelBounds, side);
-      const assignedEdge = assignedEdgesByPanelSide.get(`${panelKey}|${side}`);
-
-      if (!assignedEdge) {
-        return { side, points: [outerBoundaryEdge.start, outerBoundaryEdge.end] };
-      }
-
-      return {
-        side,
-        points: buildAppliedESidePoints(
-          outerBoundaryEdge,
-          assignedEdge.assignment.edgeRole ?? 'outer',
-          assignedEdge.connection.properties.materialThicknessMm,
-          assignedEdge.connection.properties.fingerWidthMm,
-        ),
-      };
-    });
-
-    panelSidePoints.forEach(({ side, points }, index) => {
-      const nextSidePoints = panelSidePoints[(index + 1) % panelSidePoints.length];
-      const cornerGapDistance = getCornerGapDistance(points, nextSidePoints.points);
-
-      if (cornerGapDistance > 0.001) {
-        console.warn('Applied E panel side continuity gap is greater than 0.001.', {
-          panelKey,
-          side,
-          nextSide: nextSidePoints.side,
-          distance: cornerGapDistance,
-        });
-      }
-    });
-
-    const panelPoints: Point[] = [];
-    panelSidePoints.forEach(({ points }) => {
-      points.forEach((point) => appendPathPoint(panelPoints, point));
-    });
-
-    if (panelPoints.length === 0) {
-      console.warn('Skipped E panel apply because the panel edge paths could not be generated.', { panelKey, panelBounds });
-      return [];
-    }
-
-    return [{ panelKey, panelBounds, d: pointsToClosedPathD(panelPoints) }];
-  });
-
-  if (skippedEdgeIds.size > 0) {
-    console.warn('Skipped assigned E edges during apply because they lacked panel bounds or a detected panel side.', { edgeIds: [...skippedEdgeIds] });
-  }
-
-  return appliedPanelPaths;
-};
 
 const labelGroups: LabelGroup[] = [
   { prefix: 'E', name: 'Edge connections', description: 'Reusable edge connection IDs' },
@@ -844,7 +648,7 @@ function App() {
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isEPreviewVisible, setIsEPreviewVisible] = useState(false);
-  const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
+  const [appliedEEdges, setAppliedEEdges] = useState<AppliedEEdge[]>([]);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -887,7 +691,7 @@ function App() {
     setEdgeAssignments({});
     setSelectedEdgeId(null);
     setIsEPreviewVisible(false);
-    setAppliedEPanelPaths([]);
+    setAppliedEEdges([]);
     setErrorMessage('');
     event.target.value = '';
   };
@@ -991,8 +795,8 @@ function App() {
   };
 
   const applyEPreview = () => {
-    const nextAppliedEPanelPaths = buildAppliedEPanelPaths(orderedEPreviewEdges);
-    setAppliedEPanelPaths(nextAppliedEPanelPaths);
+    const nextAppliedEEdges = buildAppliedEEdges(orderedEPreviewEdges);
+    setAppliedEEdges(nextAppliedEEdges);
     setIsEPreviewVisible(false);
     setErrorMessage('');
   };
@@ -1386,13 +1190,6 @@ function App() {
   const finalPanelPreviewPaths = useMemo(() => (
     isEPreviewVisible ? buildFinalPanelPreviewPaths(orderedEPreviewEdges) : []
   ), [isEPreviewVisible, orderedEPreviewEdges]);
-  const appliedEPanelKeys = useMemo(() => new Set(
-    appliedEPanelPaths.map((panelPath) => panelPath.panelKey),
-  ), [appliedEPanelPaths]);
-  const appliedEPanelMasks = useMemo(() => (
-    appliedEPanelPaths.filter((panelPath) => appliedEPanelKeys.has(panelPath.panelKey))
-  ), [appliedEPanelKeys, appliedEPanelPaths]);
-
   const ePreviewDebugRows = useMemo(() => {
     if (!isEPreviewVisible) {
       return [];
@@ -1564,22 +1361,25 @@ function App() {
             >
               <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
               <g className="applied-e-panel-layer">
-                {appliedEPanelMasks.map((panelPath) => (
-                  <rect
-                    key={`${panelPath.panelKey}-mask`}
-                    className="applied-e-panel-mask"
-                    x={panelPath.panelBounds.minX - 0.5}
-                    y={panelPath.panelBounds.minY - 0.5}
-                    width={panelPath.panelBounds.maxX - panelPath.panelBounds.minX + 1}
-                    height={panelPath.panelBounds.maxY - panelPath.panelBounds.minY + 1}
-                  />
-                ))}
-                {appliedEPanelPaths.map((panelPath) => (
-                  <path
-                    key={panelPath.panelKey}
-                    className="applied-e-panel-path"
-                    d={panelPath.d}
-                  />
+                {appliedEEdges.map((appliedEdge) => (
+                  <g key={appliedEdge.edgeId}>
+                    <line
+                      className="applied-e-edge-mask"
+                      x1={appliedEdge.maskLine.start.x}
+                      y1={appliedEdge.maskLine.start.y}
+                      x2={appliedEdge.maskLine.end.x}
+                      y2={appliedEdge.maskLine.end.y}
+                      strokeWidth={appliedEdge.materialThicknessMm + 2}
+                    />
+                    <path
+                      className="applied-e-edge-path"
+                      d={appliedEdge.cutBaselineD}
+                    />
+                    <path
+                      className="applied-e-edge-path"
+                      d={appliedEdge.tabPathD}
+                    />
+                  </g>
                 ))}
               </g>
               <g className="final-panel-preview-layer">
