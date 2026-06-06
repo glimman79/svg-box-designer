@@ -692,6 +692,10 @@ export const getEReplacementEdgePath = (
   let distanceAlongEdge = 0;
   let isTabSegment = role === 'outer';
 
+  const appendLineTo = (point: Point) => {
+    commands.push(pointToPathCommand('L', point));
+  };
+
   segmentLengths.forEach((segmentLength) => {
     const originalSegmentStart = interpolateEdgePoint(edge, distanceAlongEdge, edgeLength);
     const innerSegmentStart = clampPointToBounds({
@@ -706,17 +710,17 @@ export const getEReplacementEdgePath = (
     }, edge.panelBounds);
 
     if (isTabSegment) {
-      commands.push(pointToPathCommand('L', originalSegmentEnd));
+      appendLineTo(originalSegmentStart);
+      appendLineTo(originalSegmentEnd);
     } else {
-      commands.push(pointToPathCommand('L', innerSegmentStart));
-      commands.push(pointToPathCommand('L', innerSegmentEnd));
-      commands.push(pointToPathCommand('L', originalSegmentEnd));
+      appendLineTo(originalSegmentStart);
+      appendLineTo(innerSegmentStart);
+      appendLineTo(innerSegmentEnd);
+      appendLineTo(originalSegmentEnd);
     }
 
     isTabSegment = !isTabSegment;
   });
-
-  commands.push(pointToPathCommand('L', edge.end));
 
   return commands.join(' ');
 };
