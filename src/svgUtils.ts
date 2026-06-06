@@ -686,47 +686,42 @@ export const getEReplacementEdgePath = (
   fingerWidthMm: number,
 ): string => {
   const edgeLength = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
-  const { offset } = getEPreviewInwardCutBaseline(edge, materialThicknessMm);
+  const direction = getInwardEdgeDirection(edge, edge.panelBounds);
+  const tabDepth = Math.max(0, materialThicknessMm);
+  const offset = { x: direction.x * tabDepth, y: direction.y * tabDepth };
   const segmentLengths = getEPreviewSegmentLengths(edgeLength, fingerWidthMm);
-  const commands: string[] = [pointToPathCommand('M', edge.start)];
-  let currentPoint = edge.start;
+  const commands: string[] = [];
   let distanceAlongEdge = 0;
   let isTabSegment = role === 'outer';
 
-  const appendLineTo = (point: Point) => {
-    if (point.x === currentPoint.x && point.y === currentPoint.y) {
-      return;
-    }
-
-    commands.push(pointToPathCommand('L', point));
-    currentPoint = point;
-  };
-
   segmentLengths.forEach((segmentLength) => {
     const originalSegmentStart = interpolateEdgePoint(edge, distanceAlongEdge, edgeLength);
-    const innerSegmentStart = clampPointToBounds({
+    const innerSegmentStart = {
       x: originalSegmentStart.x + offset.x,
       y: originalSegmentStart.y + offset.y,
-    }, edge.panelBounds);
+    };
+
     distanceAlongEdge = Math.min(edgeLength, distanceAlongEdge + segmentLength);
+
     const originalSegmentEnd = interpolateEdgePoint(edge, distanceAlongEdge, edgeLength);
-    const innerSegmentEnd = clampPointToBounds({
+    const innerSegmentEnd = {
       x: originalSegmentEnd.x + offset.x,
       y: originalSegmentEnd.y + offset.y,
-    }, edge.panelBounds);
+    };
 
     if (isTabSegment) {
-      appendLineTo(originalSegmentEnd);
+      commands.push(pointToPathCommand('M', originalSegmentStart));
+      commands.push(pointToPathCommand('L', originalSegmentEnd));
+      commands.push(pointToPathCommand('L', innerSegmentEnd));
+      commands.push(pointToPathCommand('L', innerSegmentStart));
+      commands.push(pointToPathCommand('L', originalSegmentStart));
     } else {
-      appendLineTo(innerSegmentStart);
-      appendLineTo(innerSegmentEnd);
-      appendLineTo(originalSegmentEnd);
+      commands.push(pointToPathCommand('M', innerSegmentStart));
+      commands.push(pointToPathCommand('L', innerSegmentEnd));
     }
 
     isTabSegment = !isTabSegment;
   });
-
-  appendLineTo(edge.end);
 
   return commands.join(' ');
 };
