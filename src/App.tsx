@@ -405,6 +405,88 @@ const buildFinalPanelPreviewPaths = (orderedEdges: OrderedEPreviewEdges) => {
   return finalPanelPreviewPaths;
 };
 
+const distanceBetweenPoints = (firstPoint: Point, secondPoint: Point) => (
+  Math.hypot(firstPoint.x - secondPoint.x, firstPoint.y - secondPoint.y)
+);
+
+const getPointOnPolyline = (points: Point[], progress: number) => {
+  if (points.length === 0) {
+    return { x: 0, y: 0 };
+  }
+
+  if (points.length === 1) {
+    return points[0];
+  }
+
+  const segmentLengths = points.slice(0, -1).map((point, index) => (
+    distanceBetweenPoints(point, points[index + 1])
+  ));
+  const totalLength = segmentLengths.reduce((sum, segmentLength) => sum + segmentLength, 0);
+
+  if (totalLength <= 0) {
+    return points[0];
+  }
+
+  let remainingLength = totalLength * Math.min(1, Math.max(0, progress));
+
+  for (let index = 0; index < segmentLengths.length; index += 1) {
+    const segmentLength = segmentLengths[index];
+
+    if (remainingLength <= segmentLength) {
+      const start = points[index];
+      const end = points[index + 1];
+      const segmentProgress = segmentLength <= 0 ? 0 : remainingLength / segmentLength;
+
+      return {
+        x: start.x + (end.x - start.x) * segmentProgress,
+        y: start.y + (end.y - start.y) * segmentProgress,
+      };
+    }
+
+    remainingLength -= segmentLength;
+  }
+
+  return points[points.length - 1];
+};
+
+const getBaselineProgress = (point: Point, baselineStart: Point, baselineEnd: Point) => {
+  const baselineX = baselineEnd.x - baselineStart.x;
+  const baselineY = baselineEnd.y - baselineStart.y;
+  const baselineLengthSquared = baselineX * baselineX + baselineY * baselineY;
+
+  if (baselineLengthSquared <= 0) {
+    return null;
+  }
+
+  const pointX = point.x - baselineStart.x;
+  const pointY = point.y - baselineStart.y;
+  const unclampedProgress = (pointX * baselineX + pointY * baselineY) / baselineLengthSquared;
+  const progress = Math.min(1, Math.max(0, unclampedProgress));
+  const projectedPoint = {
+    x: baselineStart.x + baselineX * progress,
+    y: baselineStart.y + baselineY * progress,
+  };
+  const tolerance = 0.001;
+
+  if (distanceBetweenPoints(point, projectedPoint) > tolerance || unclampedProgress < -tolerance || unclampedProgress > 1 + tolerance) {
+    return null;
+  }
+
+  return progress;
+};
+
+const mergeEPreviewTabGeometryIntoSide = (sidePoints: Point[], tabOutlinePoints: Point[], baselineStart: Point, baselineEnd: Point) => (
+  tabOutlinePoints.map((tabPoint) => {
+    const baselineProgress = getBaselineProgress(tabPoint, baselineStart, baselineEnd);
+
+    if (baselineProgress === null) {
+      return tabPoint;
+    }
+
+    return getPointOnPolyline(sidePoints, baselineProgress);
+  })
+);
+
 const buildAppliedEPanelPaths = (orderedEdges: OrderedEPreviewEdges): AppliedEPanelPath[] => {
   type AppliedPanelDraft = {
     panelBounds: SourceBounds;
@@ -479,12 +561,25 @@ const buildAppliedEPanelPaths = (orderedEdges: OrderedEPreviewEdges): AppliedEPa
         return;
       }
 
-      panelDraft.sides.set(rebuildableEdge.side, getEPreviewOutlinePoints(
+      const currentSideGeometry = panelDraft.sides.get(rebuildableEdge.side) ?? [];
+      const cutBaseline = getEPreviewInwardCutBaseline(
+        rebuildableEdge.clockwiseEdge,
+        assignedEdge.connection.properties.materialThicknessMm,
+      );
+      const tabOutlinePoints = getEPreviewOutlinePoints(
         rebuildableEdge.clockwiseEdge,
         assignedEdge.assignment.edgeRole ?? stage.role,
         assignedEdge.connection.properties.materialThicknessMm,
         assignedEdge.connection.properties.fingerWidthMm,
-      ));
+      );
+      const mergedSideGeometry = mergeEPreviewTabGeometryIntoSide(
+        currentSideGeometry,
+        tabOutlinePoints,
+        cutBaseline.innerStart,
+        cutBaseline.innerEnd,
+      );
+
+      panelDraft.sides.set(rebuildableEdge.side, mergedSideGeometry);
     });
   });
 
