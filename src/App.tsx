@@ -433,39 +433,6 @@ const getPanelBoundaryEdge = (panelBounds: SourceBounds, side: PanelSide): SvgEd
   };
 };
 
-const getInsetShortenedPanelEdge = (
-  panelBounds: SourceBounds,
-  side: PanelSide,
-  materialThicknessMm: number,
-): SvgEdge => {
-  const t = Math.max(0, materialThicknessMm);
-  const sidePoints: Record<PanelSide, { start: Point; end: Point }> = {
-    top: {
-      start: { x: panelBounds.minX + t, y: panelBounds.minY + t },
-      end: { x: panelBounds.maxX - t, y: panelBounds.minY + t },
-    },
-    right: {
-      start: { x: panelBounds.maxX - t, y: panelBounds.minY + t },
-      end: { x: panelBounds.maxX - t, y: panelBounds.maxY - t },
-    },
-    bottom: {
-      start: { x: panelBounds.maxX - t, y: panelBounds.maxY - t },
-      end: { x: panelBounds.minX + t, y: panelBounds.maxY - t },
-    },
-    left: {
-      start: { x: panelBounds.minX + t, y: panelBounds.maxY - t },
-      end: { x: panelBounds.minX + t, y: panelBounds.minY + t },
-    },
-  };
-
-  return {
-    id: `panel-${getPanelKey(panelBounds)}-${side}-applied-inset-shortened`,
-    source: 'applied inset shortened panel edge',
-    panelBounds,
-    ...sidePoints[side],
-  };
-};
-
 const getPointAlongEdge = (edge: SvgEdge, distanceAlongEdge: number, edgeLength: number): Point => {
   if (edgeLength <= 0) {
     return edge.start;
@@ -491,52 +458,70 @@ const appendPathPoint = (points: Point[], point: Point) => {
   }
 };
 
-const getAppliedEEdgeOutlinePoints = (
-  outerEdge: SvgEdge,
-  insetShortenedEdge: SvgEdge,
+const offsetPoint = (point: Point, offset: Point): Point => ({
+  x: point.x + offset.x,
+  y: point.y + offset.y,
+});
+
+const buildAppliedESidePoints = (
+  originalEdge: SvgEdge,
   role: EdgeRole,
   materialThicknessMm: number,
   fingerWidthMm: number,
-) => {
-  const outerEdgeLength = Math.hypot(outerEdge.end.x - outerEdge.start.x, outerEdge.end.y - outerEdge.start.y);
+): Point[] => {
+  const originalEdgeLength = Math.hypot(
+    originalEdge.end.x - originalEdge.start.x,
+    originalEdge.end.y - originalEdge.start.y,
+  );
 
-  if (outerEdgeLength <= 0) {
-    return [];
+  if (originalEdgeLength <= 0) {
+    return [originalEdge.start, originalEdge.end];
   }
 
-  const insetDistance = Math.max(0, materialThicknessMm);
-  const shortenedStartDistance = insetDistance;
-  const shortenedEndDistance = outerEdgeLength - insetDistance;
-  const segmentLengths = getEPreviewSegmentLengths(outerEdgeLength, fingerWidthMm);
+  const direction = {
+    x: (originalEdge.end.x - originalEdge.start.x) / originalEdgeLength,
+    y: (originalEdge.end.y - originalEdge.start.y) / originalEdgeLength,
+  };
+  const inwardNormal = getInwardEdgeDirection(originalEdge, originalEdge.panelBounds);
+  const t = Math.max(0, materialThicknessMm);
+  const inwardOffset = { x: inwardNormal.x * t, y: inwardNormal.y * t };
+  const directionOffset = { x: direction.x * t, y: direction.y * t };
+  const innerStart = offsetPoint(originalEdge.start, inwardOffset);
+  const shortenedInsetStart = offsetPoint(innerStart, directionOffset);
+  const innerEnd = offsetPoint(originalEdge.end, inwardOffset);
+  const shortenedInsetEnd = offsetPoint(innerEnd, { x: -directionOffset.x, y: -directionOffset.y });
+  const shortenedStartDistance = t;
+  const shortenedEndDistance = originalEdgeLength - t;
+  const segmentLengths = getEPreviewSegmentLengths(originalEdgeLength, fingerWidthMm);
   const points: Point[] = [];
   let distanceAlongEdge = 0;
   let isTabSegment = role === 'outer';
 
-  appendPathPoint(points, insetShortenedEdge.start);
+  appendPathPoint(points, originalEdge.start);
+  appendPathPoint(points, innerStart);
+  appendPathPoint(points, shortenedInsetStart);
 
   segmentLengths.forEach((segmentLength) => {
     const segmentStartDistance = distanceAlongEdge;
-    distanceAlongEdge = Math.min(outerEdgeLength, distanceAlongEdge + segmentLength);
+    distanceAlongEdge = Math.min(originalEdgeLength, distanceAlongEdge + segmentLength);
     const segmentEndDistance = distanceAlongEdge;
     const clippedStartDistance = Math.max(shortenedStartDistance, segmentStartDistance);
     const clippedEndDistance = Math.min(shortenedEndDistance, segmentEndDistance);
 
     if (clippedEndDistance > clippedStartDistance) {
-      const insetSegmentStart = getPointAlongEdge(
-        insetShortenedEdge,
-        clippedStartDistance - shortenedStartDistance,
-        shortenedEndDistance - shortenedStartDistance,
+      const insetSegmentStart = offsetPoint(
+        getPointAlongEdge(originalEdge, clippedStartDistance, originalEdgeLength),
+        inwardOffset,
       );
-      const insetSegmentEnd = getPointAlongEdge(
-        insetShortenedEdge,
-        clippedEndDistance - shortenedStartDistance,
-        shortenedEndDistance - shortenedStartDistance,
+      const insetSegmentEnd = offsetPoint(
+        getPointAlongEdge(originalEdge, clippedEndDistance, originalEdgeLength),
+        inwardOffset,
       );
 
       if (isTabSegment) {
         appendPathPoint(points, insetSegmentStart);
-        appendPathPoint(points, getPointAlongEdge(outerEdge, clippedStartDistance, outerEdgeLength));
-        appendPathPoint(points, getPointAlongEdge(outerEdge, clippedEndDistance, outerEdgeLength));
+        appendPathPoint(points, getPointAlongEdge(originalEdge, clippedStartDistance, originalEdgeLength));
+        appendPathPoint(points, getPointAlongEdge(originalEdge, clippedEndDistance, originalEdgeLength));
       }
 
       appendPathPoint(points, insetSegmentEnd);
@@ -545,7 +530,9 @@ const getAppliedEEdgeOutlinePoints = (
     isTabSegment = !isTabSegment;
   });
 
-  appendPathPoint(points, insetShortenedEdge.end);
+  appendPathPoint(points, shortenedInsetEnd);
+  appendPathPoint(points, innerEnd);
+  appendPathPoint(points, originalEdge.end);
 
   return points;
 };
@@ -595,17 +582,10 @@ const buildAppliedEPanelPaths = (orderedEdges: OrderedEPreviewEdges): AppliedEPa
         return { side, points: [outerBoundaryEdge.start, outerBoundaryEdge.end] };
       }
 
-      const insetShortenedEdge = getInsetShortenedPanelEdge(
-        panelBounds,
-        side,
-        assignedEdge.connection.properties.materialThicknessMm,
-      );
-
       return {
         side,
-        points: getAppliedEEdgeOutlinePoints(
+        points: buildAppliedESidePoints(
           outerBoundaryEdge,
-          insetShortenedEdge,
           assignedEdge.assignment.edgeRole ?? 'outer',
           assignedEdge.connection.properties.materialThicknessMm,
           assignedEdge.connection.properties.fingerWidthMm,
@@ -617,12 +597,12 @@ const buildAppliedEPanelPaths = (orderedEdges: OrderedEPreviewEdges): AppliedEPa
       const nextSidePoints = panelSidePoints[(index + 1) % panelSidePoints.length];
       const cornerGapDistance = getCornerGapDistance(points, nextSidePoints.points);
 
-      if (cornerGapDistance > 0.01) {
-        console.warn('Applied E panel corner gap is greater than 0.01.', {
+      if (cornerGapDistance > 0.001) {
+        console.warn('Applied E panel side continuity gap is greater than 0.001.', {
           panelKey,
           side,
           nextSide: nextSidePoints.side,
-          cornerGapDistance,
+          distance: cornerGapDistance,
         });
       }
     });
@@ -633,7 +613,7 @@ const buildAppliedEPanelPaths = (orderedEdges: OrderedEPreviewEdges): AppliedEPa
     });
 
     if (panelPoints.length === 0) {
-      console.warn('Skipped E panel apply because the inset panel edge paths could not be generated.', { panelKey, panelBounds });
+      console.warn('Skipped E panel apply because the panel edge paths could not be generated.', { panelKey, panelBounds });
       return [];
     }
 
