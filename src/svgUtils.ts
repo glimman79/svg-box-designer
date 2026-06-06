@@ -689,11 +689,17 @@ export const getEReplacementEdgePath = (
   const { offset } = getEPreviewInwardCutBaseline(edge, materialThicknessMm);
   const segmentLengths = getEPreviewSegmentLengths(edgeLength, fingerWidthMm);
   const commands: string[] = [pointToPathCommand('M', edge.start)];
+  let currentPoint = edge.start;
   let distanceAlongEdge = 0;
   let isTabSegment = role === 'outer';
 
   const appendLineTo = (point: Point) => {
+    if (point.x === currentPoint.x && point.y === currentPoint.y) {
+      return;
+    }
+
     commands.push(pointToPathCommand('L', point));
+    currentPoint = point;
   };
 
   segmentLengths.forEach((segmentLength) => {
@@ -710,10 +716,8 @@ export const getEReplacementEdgePath = (
     }, edge.panelBounds);
 
     if (isTabSegment) {
-      appendLineTo(originalSegmentStart);
       appendLineTo(originalSegmentEnd);
     } else {
-      appendLineTo(originalSegmentStart);
       appendLineTo(innerSegmentStart);
       appendLineTo(innerSegmentEnd);
       appendLineTo(originalSegmentEnd);
@@ -721,6 +725,8 @@ export const getEReplacementEdgePath = (
 
     isTabSegment = !isTabSegment;
   });
+
+  appendLineTo(edge.end);
 
   return commands.join(' ');
 };
