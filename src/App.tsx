@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEPreviewInwardCutBaseline, getEPreviewSegmentDebug, getEPreviewSteppedPath, getEPreviewTabPath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, getEPreviewInwardCutBaseline, getEPreviewOutlinePoints, getEPreviewSegmentDebug, getEPreviewSteppedPath, getEPreviewTabPath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgePreviewPath, EdgeRole, Point, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -131,6 +131,12 @@ type FinalPanelPreviewPath = {
   panelBounds: SourceBounds;
   d: string;
   stage: OrderedEGenerationStageId;
+};
+
+type AppliedEPanelPath = {
+  panelKey: string;
+  panelBounds: SourceBounds;
+  d: string;
 };
 
 type AssignedEEdge = {
@@ -399,6 +405,108 @@ const buildFinalPanelPreviewPaths = (orderedEdges: OrderedEPreviewEdges) => {
   return finalPanelPreviewPaths;
 };
 
+const buildAppliedEPanelPaths = (orderedEdges: OrderedEPreviewEdges): AppliedEPanelPath[] => {
+  type AppliedPanelDraft = {
+    panelBounds: SourceBounds;
+    sides: Map<PanelSide, Point[]>;
+  };
+
+  const skippedEdgeIds = new Set<string>();
+  const panelDrafts = new Map<string, AppliedPanelDraft>();
+
+  const getOrCreatePanelDraft = (panelBounds: SourceBounds) => {
+    const panelKey = getPanelKey(panelBounds);
+    const existingDraft = panelDrafts.get(panelKey);
+
+    if (existingDraft) {
+      return existingDraft;
+    }
+
+    const nextDraft: AppliedPanelDraft = {
+      panelBounds,
+      sides: new Map(panelSideOrder.map((side) => {
+        const clockwiseEdge = getClockwisePanelEdge(panelBounds, side);
+        return [side, [clockwiseEdge.start, clockwiseEdge.end]] as const;
+      })),
+    };
+    panelDrafts.set(panelKey, nextDraft);
+
+    return nextDraft;
+  };
+
+  const getRebuildableEdge = ({ edge }: AssignedEEdge) => {
+    if (!edge.panelBounds) {
+      skippedEdgeIds.add(edge.id);
+      return null;
+    }
+
+    const side = getPanelEdgeSide(edge, edge.panelBounds);
+
+    if (!side) {
+      skippedEdgeIds.add(edge.id);
+      return null;
+    }
+
+    return {
+      panelBounds: edge.panelBounds,
+      side,
+      clockwiseEdge: getClockwisePanelEdge(edge.panelBounds, side),
+    };
+  };
+
+  orderedEdges.stages.forEach((stage) => {
+    const edges = getEdgesForGenerationRole(orderedEdges, stage.role);
+
+    edges.forEach((assignedEdge) => {
+      const rebuildableEdge = getRebuildableEdge(assignedEdge);
+
+      if (!rebuildableEdge) {
+        return;
+      }
+
+      const panelDraft = getOrCreatePanelDraft(rebuildableEdge.panelBounds);
+
+      if (stage.operation === 'cut') {
+        return;
+      }
+
+      if (stage.operation === 'make-solid') {
+        const cutBaseline = getEPreviewInwardCutBaseline(
+          rebuildableEdge.clockwiseEdge,
+          assignedEdge.connection.properties.materialThicknessMm,
+        );
+        panelDraft.sides.set(rebuildableEdge.side, [cutBaseline.innerStart, cutBaseline.innerEnd]);
+        return;
+      }
+
+      panelDraft.sides.set(rebuildableEdge.side, getEPreviewOutlinePoints(
+        rebuildableEdge.clockwiseEdge,
+        assignedEdge.assignment.edgeRole ?? stage.role,
+        assignedEdge.connection.properties.materialThicknessMm,
+        assignedEdge.connection.properties.fingerWidthMm,
+      ));
+    });
+  });
+
+  const appliedPanelPaths = [...panelDrafts.entries()].flatMap(([panelKey, panelDraft]) => {
+    const outlinePoints = panelSideOrder.flatMap((side) => panelDraft.sides.get(side) ?? []);
+    const d = pointsToClosedPathD(outlinePoints);
+
+    if (!d) {
+      console.warn('Skipped E panel apply because the panel could not be rebuilt.', { panelKey, panelBounds: panelDraft.panelBounds });
+      return [];
+    }
+
+    return [{ panelKey, panelBounds: panelDraft.panelBounds, d }];
+  });
+
+  if (skippedEdgeIds.size > 0) {
+    console.warn('Skipped assigned E edges during apply because they lacked panel bounds or a detected panel side.', { edgeIds: [...skippedEdgeIds] });
+  }
+
+  return appliedPanelPaths;
+};
+
 const labelGroups: LabelGroup[] = [
   { prefix: 'E', name: 'Edge connections', description: 'Reusable edge connection IDs' },
   { prefix: 'S', name: 'Slot connections', description: 'Reusable slot connection IDs' },
@@ -616,6 +724,7 @@ function App() {
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isEPreviewVisible, setIsEPreviewVisible] = useState(false);
+  const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -658,6 +767,7 @@ function App() {
     setEdgeAssignments({});
     setSelectedEdgeId(null);
     setIsEPreviewVisible(false);
+    setAppliedEPanelPaths([]);
     setErrorMessage('');
     event.target.value = '';
   };
@@ -758,6 +868,13 @@ function App() {
     }
 
     clearEdgeLabel(selectedEdgeId);
+  };
+
+  const applyEPreview = () => {
+    const nextAppliedEPanelPaths = buildAppliedEPanelPaths(orderedEPreviewEdges);
+    setAppliedEPanelPaths(nextAppliedEPanelPaths);
+    setIsEPreviewVisible(false);
+    setErrorMessage('');
   };
 
   const updateEdgeProperties = (updates: Partial<EdgeConnectionProperties>) => {
@@ -1300,6 +1417,7 @@ function App() {
               <button type="button" onClick={resetCanvasView}>Reset view</button>
               <button type="button" onClick={resetCanvasView}>Fit to screen</button>
               <button type="button" onClick={() => setIsEPreviewVisible(true)} disabled={!hasAssignedEEdges}>Preview</button>
+              <button type="button" onClick={applyEPreview} disabled={!hasAssignedEEdges}>Apply</button>
               <button type="button" onClick={() => setIsEPreviewVisible(false)} disabled={!isEPreviewVisible}>Clear Preview</button>
             </div>
           </div>
@@ -1319,6 +1437,15 @@ function App() {
               onPointerLeave={handleCanvasPointerLeave}
             >
               <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
+              <g className="applied-e-panel-layer">
+                {appliedEPanelPaths.map((panelPath) => (
+                  <path
+                    key={panelPath.panelKey}
+                    className="applied-e-panel-path"
+                    d={panelPath.d}
+                  />
+                ))}
+              </g>
               <g className="final-panel-preview-layer">
                 {finalPanelPreviewPaths.map((panelPath) => (
                   <path
