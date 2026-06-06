@@ -678,6 +678,49 @@ export const getEPreviewTabPath = (
   return commands.join(' ');
 };
 
+
+export const getEReplacementEdgePath = (
+  edge: SvgEdge,
+  role: EdgeRole,
+  materialThicknessMm: number,
+  fingerWidthMm: number,
+): string => {
+  const edgeLength = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+  const { offset } = getEPreviewInwardCutBaseline(edge, materialThicknessMm);
+  const segmentLengths = getEPreviewSegmentLengths(edgeLength, fingerWidthMm);
+  const commands: string[] = [pointToPathCommand('M', edge.start)];
+  let distanceAlongEdge = 0;
+  let isTabSegment = role === 'outer';
+
+  segmentLengths.forEach((segmentLength) => {
+    const originalSegmentStart = interpolateEdgePoint(edge, distanceAlongEdge, edgeLength);
+    const innerSegmentStart = clampPointToBounds({
+      x: originalSegmentStart.x + offset.x,
+      y: originalSegmentStart.y + offset.y,
+    }, edge.panelBounds);
+    distanceAlongEdge = Math.min(edgeLength, distanceAlongEdge + segmentLength);
+    const originalSegmentEnd = interpolateEdgePoint(edge, distanceAlongEdge, edgeLength);
+    const innerSegmentEnd = clampPointToBounds({
+      x: originalSegmentEnd.x + offset.x,
+      y: originalSegmentEnd.y + offset.y,
+    }, edge.panelBounds);
+
+    if (isTabSegment) {
+      commands.push(pointToPathCommand('L', originalSegmentEnd));
+    } else {
+      commands.push(pointToPathCommand('L', innerSegmentStart));
+      commands.push(pointToPathCommand('L', innerSegmentEnd));
+      commands.push(pointToPathCommand('L', originalSegmentEnd));
+    }
+
+    isTabSegment = !isTabSegment;
+  });
+
+  commands.push(pointToPathCommand('L', edge.end));
+
+  return commands.join(' ');
+};
+
 export const getEPreviewOutlinePoints = (
   edge: SvgEdge,
   role: EdgeRole,
@@ -719,12 +762,12 @@ export const getEPreviewSteppedPath = (
   fingerWidthMm: number,
 ): EdgePreviewPath => {
   const cutBaseline = getEPreviewInwardCutBaseline(edge, materialThicknessMm);
-  const tabPreviewD = getEPreviewTabPath(edge, role, materialThicknessMm, fingerWidthMm);
+  const replacementPathD = getEReplacementEdgePath(edge, role, materialThicknessMm, fingerWidthMm);
 
   return {
-    d: tabPreviewD,
+    d: replacementPathD,
     cutBaselineD: cutBaseline.d,
-    tabPreviewD,
+    tabPreviewD: replacementPathD,
     start: edge.start,
     end: edge.end,
     innerStart: cutBaseline.innerStart,
