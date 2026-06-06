@@ -409,8 +409,19 @@ button:disabled {
   stroke-width: 1;
 }
 
-.final-panel-preview-layer {
+.final-panel-preview-layer,
+.applied-e-panel-layer {
   pointer-events: none;
+}
+
+.applied-e-panel-path {
+  fill: none;
+  stroke: #000000;
+  stroke-width: 1.25;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
 }
 
 .final-panel-preview-path {
