@@ -690,9 +690,20 @@ export const getEReplacementEdgePath = (
   const tabDepth = Math.max(0, materialThicknessMm);
   const offset = { x: direction.x * tabDepth, y: direction.y * tabDepth };
   const segmentLengths = getEPreviewSegmentLengths(edgeLength, fingerWidthMm);
-  const commands: string[] = [pointToPathCommand('M', edge.start)];
+  const innerStart = { x: edge.start.x + offset.x, y: edge.start.y + offset.y };
+  const innerEnd = { x: edge.end.x + offset.x, y: edge.end.y + offset.y };
+  const points: Point[] = [role === 'outer' ? edge.start : innerStart];
   let distanceAlongEdge = 0;
   let isTabSegment = role === 'outer';
+
+  const appendPoint = (point: Point) => {
+    const previousPoint = points[points.length - 1];
+    if (previousPoint && previousPoint.x === point.x && previousPoint.y === point.y) {
+      return;
+    }
+
+    points.push(point);
+  };
 
   segmentLengths.forEach((segmentLength) => {
     const originalSegmentStart = interpolateEdgePoint(edge, distanceAlongEdge, edgeLength);
@@ -711,15 +722,17 @@ export const getEReplacementEdgePath = (
     const segmentStart = isTabSegment ? originalSegmentStart : innerSegmentStart;
     const segmentEnd = isTabSegment ? originalSegmentEnd : innerSegmentEnd;
 
-    commands.push(pointToPathCommand('L', segmentStart));
-    commands.push(pointToPathCommand('L', segmentEnd));
+    appendPoint(segmentStart);
+    appendPoint(segmentEnd);
 
     isTabSegment = !isTabSegment;
   });
 
-  commands.push(pointToPathCommand('L', edge.end));
+  appendPoint(role === 'outer' ? edge.end : innerEnd);
 
-  return commands.join(' ');
+  return points
+    .map((point, index) => pointToPathCommand(index === 0 ? 'M' : 'L', point))
+    .join(' ');
 };
 
 export const getEPreviewOutlinePoints = (
