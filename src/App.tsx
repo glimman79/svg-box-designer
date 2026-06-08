@@ -126,8 +126,14 @@ type AppliedEEdge = {
     end: Point;
   };
   cornerMasks?: {
-    start: { start: Point; end: Point };
-    end: { start: Point; end: Point };
+    inward: {
+      start: { start: Point; end: Point };
+      end: { start: Point; end: Point };
+    };
+    outward: {
+      start: { start: Point; end: Point };
+      end: { start: Point; end: Point };
+    };
   };
 };
 
@@ -175,24 +181,38 @@ const buildAppliedEEdges = (orderedEdges: OrderedEPreviewEdges): AppliedEEdge[] 
   [...orderedEdges.outerEdges, ...orderedEdges.innerEdges].map(({ edge, assignment, connection }) => {
     const edgeRole = assignment.edgeRole ?? 'outer';
     const materialThicknessMm = connection.properties.materialThicknessMm;
+    const edgeVector = {
+      x: edge.end.x - edge.start.x,
+      y: edge.end.y - edge.start.y,
+    };
+    const edgeLength = Math.hypot(edgeVector.x, edgeVector.y);
+    const edgeDirection = edgeLength > 0
+      ? { x: edgeVector.x / edgeLength, y: edgeVector.y / edgeLength }
+      : { x: 0, y: 0 };
+    const maskLineExtension = materialThicknessMm / 2;
     const cornerMasks = edgeRole === 'inner'
       ? (() => {
         const inwardDirection = getInwardEdgeDirection(edge, edge.panelBounds);
+        const outwardDirection = {
+          x: -inwardDirection.x,
+          y: -inwardDirection.y,
+        };
+        const buildCornerMask = (point: Point, direction: Point) => ({
+          start: point,
+          end: {
+            x: point.x + direction.x * materialThicknessMm,
+            y: point.y + direction.y * materialThicknessMm,
+          },
+        });
 
         return {
-          start: {
-            start: edge.start,
-            end: {
-              x: edge.start.x + inwardDirection.x * materialThicknessMm,
-              y: edge.start.y + inwardDirection.y * materialThicknessMm,
-            },
+          inward: {
+            start: buildCornerMask(edge.start, inwardDirection),
+            end: buildCornerMask(edge.end, inwardDirection),
           },
-          end: {
-            start: edge.end,
-            end: {
-              x: edge.end.x + inwardDirection.x * materialThicknessMm,
-              y: edge.end.y + inwardDirection.y * materialThicknessMm,
-            },
+          outward: {
+            start: buildCornerMask(edge.start, outwardDirection),
+            end: buildCornerMask(edge.end, outwardDirection),
           },
         };
       })()
@@ -209,8 +229,14 @@ const buildAppliedEEdges = (orderedEdges: OrderedEPreviewEdges): AppliedEEdge[] 
       ),
       materialThicknessMm,
       maskLine: {
-        start: edge.start,
-        end: edge.end,
+        start: {
+          x: edge.start.x - edgeDirection.x * maskLineExtension,
+          y: edge.start.y - edgeDirection.y * maskLineExtension,
+        },
+        end: {
+          x: edge.end.x + edgeDirection.x * maskLineExtension,
+          y: edge.end.y + edgeDirection.y * maskLineExtension,
+        },
       },
       ...(cornerMasks ? { cornerMasks } : {}),
     };
@@ -1158,24 +1184,28 @@ function App() {
                     />
                     {appliedEdge.edgeRole === 'inner' && appliedEdge.cornerMasks && (
                       <>
-                        <line
-                          className="applied-e-edge-mask"
-                          x1={appliedEdge.cornerMasks.start.start.x}
-                          y1={appliedEdge.cornerMasks.start.start.y}
-                          x2={appliedEdge.cornerMasks.start.end.x}
-                          y2={appliedEdge.cornerMasks.start.end.y}
-                          strokeWidth={appliedEdge.materialThicknessMm + 2}
-                          strokeLinecap="butt"
-                        />
-                        <line
-                          className="applied-e-edge-mask"
-                          x1={appliedEdge.cornerMasks.end.start.x}
-                          y1={appliedEdge.cornerMasks.end.start.y}
-                          x2={appliedEdge.cornerMasks.end.end.x}
-                          y2={appliedEdge.cornerMasks.end.end.y}
-                          strokeWidth={appliedEdge.materialThicknessMm + 2}
-                          strokeLinecap="butt"
-                        />
+                        {Object.values(appliedEdge.cornerMasks).flatMap((cornerMaskSet) => [
+                          <line
+                            key={`${appliedEdge.edgeId}-corner-mask-${cornerMaskSet.start.end.x}-${cornerMaskSet.start.end.y}`}
+                            className="applied-e-edge-mask"
+                            x1={cornerMaskSet.start.start.x}
+                            y1={cornerMaskSet.start.start.y}
+                            x2={cornerMaskSet.start.end.x}
+                            y2={cornerMaskSet.start.end.y}
+                            strokeWidth={appliedEdge.materialThicknessMm + 2}
+                            strokeLinecap="butt"
+                          />,
+                          <line
+                            key={`${appliedEdge.edgeId}-corner-mask-${cornerMaskSet.end.end.x}-${cornerMaskSet.end.end.y}`}
+                            className="applied-e-edge-mask"
+                            x1={cornerMaskSet.end.start.x}
+                            y1={cornerMaskSet.end.start.y}
+                            x2={cornerMaskSet.end.end.x}
+                            y2={cornerMaskSet.end.end.y}
+                            strokeWidth={appliedEdge.materialThicknessMm + 2}
+                            strokeLinecap="butt"
+                          />,
+                        ])}
                       </>
                     )}
                     <path
