@@ -116,8 +116,9 @@ type PanState = {
   moved: boolean;
 };
 
-type AppliedECornerErase = {
+type AppliedECornerCleanup = {
   id: string;
+  type: 'I_I' | 'I_O' | 'O_O' | 'I_NONE' | 'O_NONE';
   x: number;
   y: number;
   width: number;
@@ -129,6 +130,9 @@ type AppliedEEdge = {
   edgeRole: EdgeRole;
   replacementPathD: string;
   materialThicknessMm: number;
+  start: Point;
+  end: Point;
+  panelBounds?: SourceBounds;
   maskLine: {
     start: Point;
     end: Point;
@@ -199,7 +203,7 @@ const isPointAtCorner = (point: Point, corner: Point) => (
   && Math.abs(point.y - corner.y) <= cornerTouchTolerance
 );
 
-const edgeTouchesCorner = (edge: SvgEdge, corner: Point) => (
+const appliedEdgeTouchesCorner = (edge: AppliedEEdge, corner: Point) => (
   isPointAtCorner(edge.start, corner) || isPointAtCorner(edge.end, corner)
 );
 
@@ -210,45 +214,91 @@ const getPanelCorners = (panelBounds: SourceBounds) => [
   { id: 'bottom-left', point: { x: panelBounds.minX, y: panelBounds.maxY } },
 ] as const;
 
-const buildAppliedInnerCornerErases = (orderedEdges: OrderedEPreviewEdges): AppliedECornerErase[] => {
-  const innerEdgesByPanelBounds = new Map<string, { panelBounds: SourceBounds; edges: AssignedEEdge[] }>();
+const getAppliedECornerCleanupSize = (type: AppliedECornerCleanup['type'], materialThicknessMm: number) => {
+  if (type === 'I_I') {
+    return materialThicknessMm * 2 + 3;
+  }
 
-  orderedEdges.innerEdges.forEach((innerEdge) => {
-    const { panelBounds } = innerEdge.edge;
+  if (type === 'I_O') {
+    return materialThicknessMm + 3;
+  }
+
+  if (type === 'O_NONE') {
+    return materialThicknessMm + 1;
+  }
+
+  return 0;
+};
+
+const getAppliedECornerType = (touchingEdges: AppliedEEdge[]): AppliedECornerCleanup['type'] => {
+  const innerCount = touchingEdges.filter((edge) => edge.edgeRole === 'inner').length;
+  const outerCount = touchingEdges.filter((edge) => edge.edgeRole === 'outer').length;
+
+  if (innerCount >= 2) {
+    return 'I_I';
+  }
+
+  if (innerCount >= 1 && outerCount >= 1) {
+    return 'I_O';
+  }
+
+  if (outerCount >= 2) {
+    return 'O_O';
+  }
+
+  if (innerCount === 1) {
+    return 'I_NONE';
+  }
+
+  return 'O_NONE';
+};
+
+const buildAppliedECornerCleanups = (appliedEEdges: AppliedEEdge[]): AppliedECornerCleanup[] => {
+  const appliedEdgesByPanelBounds = new Map<string, { panelBounds: SourceBounds; edges: AppliedEEdge[] }>();
+
+  appliedEEdges.forEach((appliedEdge) => {
+    const { panelBounds } = appliedEdge;
 
     if (!panelBounds) {
       return;
     }
 
     const panelBoundsKey = getPanelBoundsKey(panelBounds);
-    const panelGroup = innerEdgesByPanelBounds.get(panelBoundsKey);
+    const panelGroup = appliedEdgesByPanelBounds.get(panelBoundsKey);
 
     if (panelGroup) {
-      panelGroup.edges.push(innerEdge);
+      panelGroup.edges.push(appliedEdge);
       return;
     }
 
-    innerEdgesByPanelBounds.set(panelBoundsKey, { panelBounds, edges: [innerEdge] });
+    appliedEdgesByPanelBounds.set(panelBoundsKey, { panelBounds, edges: [appliedEdge] });
   });
 
-  return [...innerEdgesByPanelBounds.values()].flatMap(({ panelBounds, edges }) => (
+  return [...appliedEdgesByPanelBounds.values()].flatMap(({ panelBounds, edges }) => (
     getPanelCorners(panelBounds).flatMap(({ id: cornerId, point }) => {
-      const touchingEdges = edges.filter(({ edge }) => edgeTouchesCorner(edge, point));
+      const touchingEdges = edges.filter((edge) => appliedEdgeTouchesCorner(edge, point));
 
-      if (touchingEdges.length < 2) {
+      if (touchingEdges.length === 0) {
         return [];
       }
 
-      const eraseSize = Math.max(
-        ...touchingEdges.map(({ connection }) => connection.properties.materialThicknessMm),
-      ) + 3;
+      const cleanupType = getAppliedECornerType(touchingEdges);
+      const materialThicknessMm = Math.max(
+        ...touchingEdges.map((edge) => edge.materialThicknessMm),
+      );
+      const cleanupSize = getAppliedECornerCleanupSize(cleanupType, materialThicknessMm);
+
+      if (cleanupSize <= 0) {
+        return [];
+      }
 
       return [{
-        id: `${getPanelBoundsKey(panelBounds)}-${cornerId}-inner-corner-erase`,
-        x: point.x - eraseSize / 2,
-        y: point.y - eraseSize / 2,
-        width: eraseSize,
-        height: eraseSize,
+        id: `${getPanelBoundsKey(panelBounds)}-${cornerId}-${cleanupType}-corner-cleanup`,
+        type: cleanupType,
+        x: point.x - cleanupSize / 2,
+        y: point.y - cleanupSize / 2,
+        width: cleanupSize,
+        height: cleanupSize,
       }];
     })
   ));
@@ -305,6 +355,9 @@ const buildAppliedEEdges = (orderedEdges: OrderedEPreviewEdges): AppliedEEdge[] 
         connection.properties.fingerWidthMm,
       ),
       materialThicknessMm,
+      start: edge.start,
+      end: edge.end,
+      ...(edge.panelBounds ? { panelBounds: edge.panelBounds } : {}),
       maskLine: {
         start: {
           x: edge.start.x - edgeDirection.x * maskLineExtension,
@@ -538,7 +591,7 @@ function App() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isEPreviewVisible, setIsEPreviewVisible] = useState(false);
   const [appliedEEdges, setAppliedEEdges] = useState<AppliedEEdge[]>([]);
-  const [appliedECornerErases, setAppliedECornerErases] = useState<AppliedECornerErase[]>([]);
+  const [appliedECornerCleanups, setAppliedECornerCleanups] = useState<AppliedECornerCleanup[]>([]);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -582,7 +635,7 @@ function App() {
     setSelectedEdgeId(null);
     setIsEPreviewVisible(false);
     setAppliedEEdges([]);
-    setAppliedECornerErases([]);
+    setAppliedECornerCleanups([]);
     setErrorMessage('');
     event.target.value = '';
   };
@@ -687,9 +740,9 @@ function App() {
 
   const applyEPreview = () => {
     const nextAppliedEEdges = buildAppliedEEdges(orderedEPreviewEdges);
-    const nextAppliedECornerErases = buildAppliedInnerCornerErases(orderedEPreviewEdges);
+    const nextAppliedECornerCleanups = buildAppliedECornerCleanups(nextAppliedEEdges);
     setAppliedEEdges(nextAppliedEEdges);
-    setAppliedECornerErases(nextAppliedECornerErases);
+    setAppliedECornerCleanups(nextAppliedECornerCleanups);
     setIsEPreviewVisible(false);
     setErrorMessage('');
   };
@@ -1291,14 +1344,14 @@ function App() {
                     )}
                   </g>
                 ))}
-                {appliedECornerErases.map((cornerErase) => (
+                {appliedECornerCleanups.map((cornerCleanup) => (
                   <rect
-                    key={cornerErase.id}
+                    key={cornerCleanup.id}
                     className="applied-e-corner-erase"
-                    x={cornerErase.x}
-                    y={cornerErase.y}
-                    width={cornerErase.width}
-                    height={cornerErase.height}
+                    x={cornerCleanup.x}
+                    y={cornerCleanup.y}
+                    width={cornerCleanup.width}
+                    height={cornerCleanup.height}
                   />
                 ))}
                 {appliedEEdges.map((appliedEdge) => (
