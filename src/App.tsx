@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEPreviewSegmentDebug, getEPreviewSteppedPath, getEReplacementEdgePath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
-import type { EdgeAssignment, EdgePreviewPath, EdgeRole, Point, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
+import type { EdgeAssignment, EdgePreviewPath, EdgeRole, Point, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
 
@@ -123,6 +123,13 @@ type AppliedECornerCleanup = {
   y: number;
   width: number;
   height: number;
+};
+
+type AppliedEPanelPath = {
+  panelId: string;
+  eraseRect: SourceBounds;
+  pathD: string;
+  edgeIds: string[];
 };
 
 type AppliedEEdge = {
@@ -302,6 +309,75 @@ const buildAppliedECornerCleanups = (appliedEEdges: AppliedEEdge[]): AppliedECor
       }];
     })
   ));
+};
+
+
+const getContourEdgePoints = (panel: SvgPanel, contourIndex: number) => ({
+  start: panel.contour[contourIndex],
+  end: panel.contour[(contourIndex + 1) % panel.contour.length],
+});
+
+const pointsMatch = (first: Point, second: Point) => (
+  Math.abs(first.x - second.x) <= cornerTouchTolerance
+  && Math.abs(first.y - second.y) <= cornerTouchTolerance
+);
+
+const edgeMatchesContourSide = (edge: SvgEdge, start: Point, end: Point) => (
+  pointsMatch(edge.start, start) && pointsMatch(edge.end, end)
+);
+
+const appendEdgePathD = (commands: string[], edgePathD: string, isFirstEdge: boolean) => {
+  const continuationPathD = isFirstEdge ? edgePathD : edgePathD.replace(/^M\s+/, 'L ');
+  commands.push(continuationPathD);
+};
+
+const buildAppliedEPanelPaths = (
+  svgModel: SvgDocumentModel,
+  assignments: Record<string, EdgeAssignment>,
+  connectionMap: ConnectionMap,
+): AppliedEPanelPath[] => {
+  const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
+
+  return svgModel.panels.flatMap((panel) => {
+    if (panel.contour.length !== 4 || panel.edgeIds.length !== panel.contour.length) {
+      return [];
+    }
+
+    const pathCommands: string[] = [];
+    const panelEdges: SvgEdge[] = [];
+
+    for (let contourIndex = 0; contourIndex < panel.contour.length; contourIndex += 1) {
+      const edgeId = panel.edgeIds[contourIndex];
+      const edge = edgesById.get(edgeId);
+      const assignment = assignments[edgeId];
+      const connection = assignment ? connectionMap[assignment.connectionId] : undefined;
+      const { start, end } = getContourEdgePoints(panel, contourIndex);
+
+      if (!edge || !edgeMatchesContourSide(edge, start, end) || !assignment || connection?.prefix !== 'E') {
+        return [];
+      }
+
+      const panelEdge = { ...edge, start, end, panelBounds: panel.bounds };
+      panelEdges.push(panelEdge);
+      appendEdgePathD(
+        pathCommands,
+        getEReplacementEdgePath(
+          panelEdge,
+          assignment.edgeRole ?? 'outer',
+          connection.properties.materialThicknessMm,
+          connection.properties.fingerWidthMm,
+        ),
+        contourIndex === 0,
+      );
+    }
+
+    return [{
+      panelId: panel.id,
+      eraseRect: panel.bounds,
+      pathD: `${pathCommands.join(' ')} Z`,
+      edgeIds: panelEdges.map((edge) => edge.id),
+    }];
+  });
 };
 
 const buildAppliedEEdges = (orderedEdges: OrderedEPreviewEdges): AppliedEEdge[] => (
@@ -591,6 +667,7 @@ function App() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isEPreviewVisible, setIsEPreviewVisible] = useState(false);
   const [appliedEEdges, setAppliedEEdges] = useState<AppliedEEdge[]>([]);
+  const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
   const [appliedECornerCleanups, setAppliedECornerCleanups] = useState<AppliedECornerCleanup[]>([]);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
@@ -739,8 +816,12 @@ function App() {
   };
 
   const applyEPreview = () => {
-    const nextAppliedEEdges = buildAppliedEEdges(orderedEPreviewEdges);
+    const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, edgeAssignments, connections);
+    const handledPanelEdgeIds = new Set(nextAppliedEPanelPaths.flatMap((panelPath) => panelPath.edgeIds));
+    const nextAppliedEEdges = buildAppliedEEdges(orderedEPreviewEdges)
+      .filter((appliedEdge) => !handledPanelEdgeIds.has(appliedEdge.edgeId));
     const nextAppliedECornerCleanups = buildAppliedECornerCleanups(nextAppliedEEdges);
+    setAppliedEPanelPaths(nextAppliedEPanelPaths);
     setAppliedEEdges(nextAppliedEEdges);
     setAppliedECornerCleanups(nextAppliedECornerCleanups);
     setIsEPreviewVisible(false);
@@ -1122,7 +1203,11 @@ function App() {
     labelScale,
   });
   const labelPlacementsByEdgeId = new Map(labelPlacements.map((placement) => [placement.edgeId, placement]));
-  const appliedEEdgeIds = useMemo(() => new Set(appliedEEdges.map((appliedEdge) => appliedEdge.edgeId)), [appliedEEdges]);
+  const appliedEPanelEdgeIds = useMemo(() => new Set(appliedEPanelPaths.flatMap((panelPath) => panelPath.edgeIds)), [appliedEPanelPaths]);
+  const appliedEEdgeIds = useMemo(() => new Set([
+    ...appliedEEdges.map((appliedEdge) => appliedEdge.edgeId),
+    ...appliedEPanelEdgeIds,
+  ]), [appliedEEdges, appliedEPanelEdgeIds]);
   const orderedEPreviewEdges = useMemo(() => (
     getOrderedEPreviewEdges(svgModel.edges, edgeAssignments, connections)
   ), [connections, edgeAssignments, svgModel.edges]);
@@ -1305,6 +1390,21 @@ function App() {
             >
               <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
               <g className="applied-e-panel-layer">
+                {appliedEPanelPaths.map((panelPath) => (
+                  <g key={panelPath.panelId}>
+                    <rect
+                      className="applied-e-panel-erase"
+                      x={panelPath.eraseRect.minX}
+                      y={panelPath.eraseRect.minY}
+                      width={panelPath.eraseRect.maxX - panelPath.eraseRect.minX}
+                      height={panelPath.eraseRect.maxY - panelPath.eraseRect.minY}
+                    />
+                    <path
+                      className="applied-e-panel-path"
+                      d={panelPath.pathD}
+                    />
+                  </g>
+                ))}
                 {appliedEEdges.map((appliedEdge) => (
                   <g key={`${appliedEdge.edgeId}-masks`}>
                     <line
