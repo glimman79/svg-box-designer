@@ -118,13 +118,14 @@ type PanState = {
 
 type AppliedEEdge = {
   edgeId: string;
+  edgeRole: EdgeRole;
   replacementPathD: string;
   materialThicknessMm: number;
   maskLine: {
     start: Point;
     end: Point;
   };
-  cornerMasks: {
+  cornerMasks?: {
     start: { start: Point; end: Point };
     end: { start: Point; end: Point };
   };
@@ -172,14 +173,37 @@ const getOrderedEPreviewEdges = (
 
 const buildAppliedEEdges = (orderedEdges: OrderedEPreviewEdges): AppliedEEdge[] => (
   [...orderedEdges.outerEdges, ...orderedEdges.innerEdges].map(({ edge, assignment, connection }) => {
-    const inwardDirection = getInwardEdgeDirection(edge, edge.panelBounds);
+    const edgeRole = assignment.edgeRole ?? 'outer';
     const materialThicknessMm = connection.properties.materialThicknessMm;
+    const cornerMasks = edgeRole === 'inner'
+      ? (() => {
+        const inwardDirection = getInwardEdgeDirection(edge, edge.panelBounds);
+
+        return {
+          start: {
+            start: edge.start,
+            end: {
+              x: edge.start.x + inwardDirection.x * materialThicknessMm,
+              y: edge.start.y + inwardDirection.y * materialThicknessMm,
+            },
+          },
+          end: {
+            start: edge.end,
+            end: {
+              x: edge.end.x + inwardDirection.x * materialThicknessMm,
+              y: edge.end.y + inwardDirection.y * materialThicknessMm,
+            },
+          },
+        };
+      })()
+      : undefined;
 
     return {
       edgeId: edge.id,
+      edgeRole,
       replacementPathD: getEReplacementEdgePath(
         edge,
-        assignment.edgeRole ?? 'outer',
+        edgeRole,
         materialThicknessMm,
         connection.properties.fingerWidthMm,
       ),
@@ -188,22 +212,7 @@ const buildAppliedEEdges = (orderedEdges: OrderedEPreviewEdges): AppliedEEdge[] 
         start: edge.start,
         end: edge.end,
       },
-      cornerMasks: {
-        start: {
-          start: edge.start,
-          end: {
-            x: edge.start.x + inwardDirection.x * materialThicknessMm,
-            y: edge.start.y + inwardDirection.y * materialThicknessMm,
-          },
-        },
-        end: {
-          start: edge.end,
-          end: {
-            x: edge.end.x + inwardDirection.x * materialThicknessMm,
-            y: edge.end.y + inwardDirection.y * materialThicknessMm,
-          },
-        },
-      },
+      ...(cornerMasks ? { cornerMasks } : {}),
     };
   })
 );
@@ -953,6 +962,7 @@ function App() {
     labelScale,
   });
   const labelPlacementsByEdgeId = new Map(labelPlacements.map((placement) => [placement.edgeId, placement]));
+  const appliedEEdgeIds = useMemo(() => new Set(appliedEEdges.map((appliedEdge) => appliedEdge.edgeId)), [appliedEEdges]);
   const orderedEPreviewEdges = useMemo(() => (
     getOrderedEPreviewEdges(svgModel.edges, edgeAssignments, connections)
   ), [connections, edgeAssignments, svgModel.edges]);
@@ -1146,24 +1156,28 @@ function App() {
                       strokeWidth={appliedEdge.materialThicknessMm + 2}
                       strokeLinecap="butt"
                     />
-                    <line
-                      className="applied-e-edge-mask"
-                      x1={appliedEdge.cornerMasks.start.start.x}
-                      y1={appliedEdge.cornerMasks.start.start.y}
-                      x2={appliedEdge.cornerMasks.start.end.x}
-                      y2={appliedEdge.cornerMasks.start.end.y}
-                      strokeWidth={appliedEdge.materialThicknessMm + 2}
-                      strokeLinecap="butt"
-                    />
-                    <line
-                      className="applied-e-edge-mask"
-                      x1={appliedEdge.cornerMasks.end.start.x}
-                      y1={appliedEdge.cornerMasks.end.start.y}
-                      x2={appliedEdge.cornerMasks.end.end.x}
-                      y2={appliedEdge.cornerMasks.end.end.y}
-                      strokeWidth={appliedEdge.materialThicknessMm + 2}
-                      strokeLinecap="butt"
-                    />
+                    {appliedEdge.edgeRole === 'inner' && appliedEdge.cornerMasks && (
+                      <>
+                        <line
+                          className="applied-e-edge-mask"
+                          x1={appliedEdge.cornerMasks.start.start.x}
+                          y1={appliedEdge.cornerMasks.start.start.y}
+                          x2={appliedEdge.cornerMasks.start.end.x}
+                          y2={appliedEdge.cornerMasks.start.end.y}
+                          strokeWidth={appliedEdge.materialThicknessMm + 2}
+                          strokeLinecap="butt"
+                        />
+                        <line
+                          className="applied-e-edge-mask"
+                          x1={appliedEdge.cornerMasks.end.start.x}
+                          y1={appliedEdge.cornerMasks.end.start.y}
+                          x2={appliedEdge.cornerMasks.end.end.x}
+                          y2={appliedEdge.cornerMasks.end.end.y}
+                          strokeWidth={appliedEdge.materialThicknessMm + 2}
+                          strokeLinecap="butt"
+                        />
+                      </>
+                    )}
                     <path
                       className="applied-e-edge-path"
                       d={appliedEdge.replacementPathD}
@@ -1195,10 +1209,11 @@ function App() {
                   const labelPlacement = labelPlacementsByEdgeId.get(edge.id);
                   const labelWidth = labelPlacement?.width ?? 0;
                   const labelHeight = labelPlacement?.height ?? 0;
+                  const showHighlight = (label || selected) && !appliedEEdgeIds.has(edge.id);
 
                   return (
                     <g key={edge.id}>
-                      {(label || selected) && (
+                      {showHighlight && (
                         <line
                           className={`edge-highlight${label ? ' labeled' : ''}${selected ? ' selected' : ''}`}
                           x1={edge.start.x}
