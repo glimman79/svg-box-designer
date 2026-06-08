@@ -420,6 +420,11 @@ button:disabled {
   pointer-events: none;
 }
 
+.applied-e-corner-erase {
+  fill: #ffffff;
+  pointer-events: none;
+}
+
 .applied-e-edge-path {
   fill: none;
   stroke: #000000;
