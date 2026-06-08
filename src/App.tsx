@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEPreviewSegmentDebug, getEPreviewSteppedPath, getEReplacementEdgePath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
-import type { EdgeAssignment, EdgePreviewPath, EdgeRole, Point, SvgDocumentModel, SvgEdge } from './svgUtils';
+import type { EdgeAssignment, EdgePreviewPath, EdgeRole, Point, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
 
@@ -116,6 +116,14 @@ type PanState = {
   moved: boolean;
 };
 
+type AppliedECornerErase = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 type AppliedEEdge = {
   edgeId: string;
   edgeRole: EdgeRole;
@@ -175,6 +183,75 @@ const getOrderedEPreviewEdges = (
   });
 
   return { outerEdges, innerEdges };
+};
+
+
+const cornerTouchTolerance = 0.01;
+
+const getPanelBoundsKey = (panelBounds: SourceBounds) => (
+  [panelBounds.minX, panelBounds.maxX, panelBounds.minY, panelBounds.maxY]
+    .map((value) => value.toFixed(3))
+    .join(':')
+);
+
+const isPointAtCorner = (point: Point, corner: Point) => (
+  Math.abs(point.x - corner.x) <= cornerTouchTolerance
+  && Math.abs(point.y - corner.y) <= cornerTouchTolerance
+);
+
+const edgeTouchesCorner = (edge: SvgEdge, corner: Point) => (
+  isPointAtCorner(edge.start, corner) || isPointAtCorner(edge.end, corner)
+);
+
+const getPanelCorners = (panelBounds: SourceBounds) => [
+  { id: 'top-left', point: { x: panelBounds.minX, y: panelBounds.minY } },
+  { id: 'top-right', point: { x: panelBounds.maxX, y: panelBounds.minY } },
+  { id: 'bottom-right', point: { x: panelBounds.maxX, y: panelBounds.maxY } },
+  { id: 'bottom-left', point: { x: panelBounds.minX, y: panelBounds.maxY } },
+] as const;
+
+const buildAppliedInnerCornerErases = (orderedEdges: OrderedEPreviewEdges): AppliedECornerErase[] => {
+  const innerEdgesByPanelBounds = new Map<string, { panelBounds: SourceBounds; edges: AssignedEEdge[] }>();
+
+  orderedEdges.innerEdges.forEach((innerEdge) => {
+    const { panelBounds } = innerEdge.edge;
+
+    if (!panelBounds) {
+      return;
+    }
+
+    const panelBoundsKey = getPanelBoundsKey(panelBounds);
+    const panelGroup = innerEdgesByPanelBounds.get(panelBoundsKey);
+
+    if (panelGroup) {
+      panelGroup.edges.push(innerEdge);
+      return;
+    }
+
+    innerEdgesByPanelBounds.set(panelBoundsKey, { panelBounds, edges: [innerEdge] });
+  });
+
+  return [...innerEdgesByPanelBounds.values()].flatMap(({ panelBounds, edges }) => (
+    getPanelCorners(panelBounds).flatMap(({ id: cornerId, point }) => {
+      const touchingEdges = edges.filter(({ edge }) => edgeTouchesCorner(edge, point));
+
+      if (touchingEdges.length < 2) {
+        return [];
+      }
+
+      const eraseSize = Math.max(
+        ...touchingEdges.map(({ connection }) => connection.properties.materialThicknessMm),
+      ) + 3;
+
+      return [{
+        id: `${getPanelBoundsKey(panelBounds)}-${cornerId}-inner-corner-erase`,
+        x: point.x - eraseSize / 2,
+        y: point.y - eraseSize / 2,
+        width: eraseSize,
+        height: eraseSize,
+      }];
+    })
+  ));
 };
 
 const buildAppliedEEdges = (orderedEdges: OrderedEPreviewEdges): AppliedEEdge[] => (
@@ -461,6 +538,7 @@ function App() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isEPreviewVisible, setIsEPreviewVisible] = useState(false);
   const [appliedEEdges, setAppliedEEdges] = useState<AppliedEEdge[]>([]);
+  const [appliedECornerErases, setAppliedECornerErases] = useState<AppliedECornerErase[]>([]);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -504,6 +582,7 @@ function App() {
     setSelectedEdgeId(null);
     setIsEPreviewVisible(false);
     setAppliedEEdges([]);
+    setAppliedECornerErases([]);
     setErrorMessage('');
     event.target.value = '';
   };
@@ -608,7 +687,9 @@ function App() {
 
   const applyEPreview = () => {
     const nextAppliedEEdges = buildAppliedEEdges(orderedEPreviewEdges);
+    const nextAppliedECornerErases = buildAppliedInnerCornerErases(orderedEPreviewEdges);
     setAppliedEEdges(nextAppliedEEdges);
+    setAppliedECornerErases(nextAppliedECornerErases);
     setIsEPreviewVisible(false);
     setErrorMessage('');
   };
@@ -1172,7 +1253,7 @@ function App() {
               <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
               <g className="applied-e-panel-layer">
                 {appliedEEdges.map((appliedEdge) => (
-                  <g key={appliedEdge.edgeId}>
+                  <g key={`${appliedEdge.edgeId}-masks`}>
                     <line
                       className="applied-e-edge-mask"
                       x1={appliedEdge.maskLine.start.x}
@@ -1208,11 +1289,24 @@ function App() {
                         ])}
                       </>
                     )}
-                    <path
-                      className="applied-e-edge-path"
-                      d={appliedEdge.replacementPathD}
-                    />
                   </g>
+                ))}
+                {appliedECornerErases.map((cornerErase) => (
+                  <rect
+                    key={cornerErase.id}
+                    className="applied-e-corner-erase"
+                    x={cornerErase.x}
+                    y={cornerErase.y}
+                    width={cornerErase.width}
+                    height={cornerErase.height}
+                  />
+                ))}
+                {appliedEEdges.map((appliedEdge) => (
+                  <path
+                    key={appliedEdge.edgeId}
+                    className="applied-e-edge-path"
+                    d={appliedEdge.replacementPathD}
+                  />
                 ))}
               </g>
               {isEPreviewVisible && (
