@@ -331,6 +331,10 @@ const appendEdgePathD = (commands: string[], edgePathD: string, isFirstEdge: boo
   commands.push(continuationPathD);
 };
 
+const appendStraightContourSegmentPathD = (commands: string[], start: Point, end: Point, isFirstEdge: boolean) => {
+  commands.push(isFirstEdge ? `M ${start.x} ${start.y} L ${end.x} ${end.y}` : `L ${end.x} ${end.y}`);
+};
+
 const buildAppliedEPanelPaths = (
   svgModel: SvgDocumentModel,
   assignments: Record<string, EdgeAssignment>,
@@ -345,6 +349,7 @@ const buildAppliedEPanelPaths = (
 
     const pathCommands: string[] = [];
     const panelEdges: SvgEdge[] = [];
+    let hasEAssignment = false;
 
     for (let contourIndex = 0; contourIndex < panel.contour.length; contourIndex += 1) {
       const edgeId = panel.edgeIds[contourIndex];
@@ -353,22 +358,32 @@ const buildAppliedEPanelPaths = (
       const connection = assignment ? connectionMap[assignment.connectionId] : undefined;
       const { start, end } = getContourEdgePoints(panel, contourIndex);
 
-      if (!edge || !edgeMatchesContourSide(edge, start, end) || !assignment || connection?.prefix !== 'E') {
+      if (!edge || !edgeMatchesContourSide(edge, start, end)) {
         return [];
       }
 
       const panelEdge = { ...edge, start, end, panelBounds: panel.bounds };
       panelEdges.push(panelEdge);
-      appendEdgePathD(
-        pathCommands,
-        getEReplacementEdgePath(
-          panelEdge,
-          assignment.edgeRole ?? 'outer',
-          connection.properties.materialThicknessMm,
-          connection.properties.fingerWidthMm,
-        ),
-        contourIndex === 0,
-      );
+
+      if (assignment && connection?.prefix === 'E') {
+        hasEAssignment = true;
+        appendEdgePathD(
+          pathCommands,
+          getEReplacementEdgePath(
+            panelEdge,
+            assignment.edgeRole ?? 'outer',
+            connection.properties.materialThicknessMm,
+            connection.properties.fingerWidthMm,
+          ),
+          contourIndex === 0,
+        );
+      } else {
+        appendStraightContourSegmentPathD(pathCommands, start, end, contourIndex === 0);
+      }
+    }
+
+    if (!hasEAssignment) {
+      return [];
     }
 
     return [{
@@ -817,6 +832,7 @@ function App() {
 
   const applyEPreview = () => {
     const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, edgeAssignments, connections);
+    console.info(`AppliedEPanelPaths created = ${nextAppliedEPanelPaths.length}`);
     const handledPanelEdgeIds = new Set(nextAppliedEPanelPaths.flatMap((panelPath) => panelPath.edgeIds));
     const nextAppliedEEdges = buildAppliedEEdges(orderedEPreviewEdges)
       .filter((appliedEdge) => !handledPanelEdgeIds.has(appliedEdge.edgeId));
