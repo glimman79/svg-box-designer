@@ -13,6 +13,13 @@ export type SvgEdge = {
   panelBounds?: SourceBounds;
 };
 
+export type SvgPanel = {
+  id: string;
+  contour: Point[];
+  bounds: SourceBounds;
+  edgeIds: string[];
+};
+
 export type EdgeRole = 'outer' | 'inner';
 
 export type EdgeAssignment = {
@@ -39,6 +46,7 @@ export type SvgDocumentModel = {
   width: number;
   height: number;
   edges: SvgEdge[];
+  panels: SvgPanel[];
 };
 
 export type EdgeLabelPlacement = {
@@ -240,21 +248,57 @@ const addEdge = (
   start: Point,
   end: Point,
   panelBounds?: SourceBounds,
-) => {
+): SvgEdge | undefined => {
   if (start.x === end.x && start.y === end.y) {
-    return;
+    return undefined;
   }
 
-  edges.push({
+  const edge = {
     id: `edge-${edges.length + 1}`,
     source,
     start,
     end,
     panelBounds,
+  };
+
+  edges.push(edge);
+
+  return edge;
+};
+
+const addPanel = (
+  panels: SvgPanel[],
+  contour: Point[],
+  bounds: SourceBounds | undefined,
+  edgeIds: string[],
+): SvgPanel | undefined => {
+  if (!bounds) {
+    return undefined;
+  }
+
+  const panel = {
+    id: `panel-${panels.length + 1}`,
+    contour,
+    bounds,
+    edgeIds,
+  };
+
+  panels.push(panel);
+
+  return panel;
+};
+
+const logPanelDebug = (panels: SvgPanel[]) => {
+  console.debug('SVG import panels', {
+    panelCount: panels.length,
+    panels: panels.map((panel) => ({
+      id: panel.id,
+      contourPointCount: panel.contour.length,
+    })),
   });
 };
 
-const parsePathSegments = (pathData: string | null, source: string, edges: SvgEdge[]) => {
+const parsePathSegments = (pathData: string | null, source: string, edges: SvgEdge[], panels: SvgPanel[]) => {
   if (!pathData) {
     return;
   }
@@ -266,6 +310,8 @@ const parsePathSegments = (pathData: string | null, source: string, edges: SvgEd
   let subpathStart: Point = { x: 0, y: 0 };
   let subpathEdges: { start: Point; end: Point }[] = [];
   let subpathPoints: Point[] = [];
+  let subpathContour: Point[] = [];
+  let isSubpathClosed = false;
   const isCommand = (token: string) => /^[a-zA-Z]$/.test(token);
   const readNumber = () => Number.parseFloat(tokens[index++]);
   const addPathEdge = (start: Point, end: Point) => {
@@ -278,12 +324,24 @@ const parsePathSegments = (pathData: string | null, source: string, edges: SvgEd
   };
   const flushSubpathEdges = () => {
     const panelBounds = getPanelFigureBounds(subpathPoints);
+    const edgeIds: string[] = [];
 
     subpathEdges.forEach((edge) => {
-      addEdge(edges, source, edge.start, edge.end, panelBounds);
+      const addedEdge = addEdge(edges, source, edge.start, edge.end, panelBounds);
+
+      if (addedEdge) {
+        edgeIds.push(addedEdge.id);
+      }
     });
+
+    if (isSubpathClosed) {
+      addPanel(panels, subpathContour, panelBounds, edgeIds);
+    }
+
     subpathEdges = [];
     subpathPoints = [];
+    subpathContour = [];
+    isSubpathClosed = false;
   };
 
   while (index < tokens.length) {
@@ -304,6 +362,7 @@ const parsePathSegments = (pathData: string | null, source: string, edges: SvgEd
       };
       subpathStart = current;
       subpathPoints = [current];
+      subpathContour = [current];
       command = relative ? 'l' : 'L';
     } else if (upperCommand === 'L') {
       const x = readNumber();
@@ -314,19 +373,23 @@ const parsePathSegments = (pathData: string | null, source: string, edges: SvgEd
       };
       addPathEdge(current, next);
       current = next;
+      subpathContour.push(current);
     } else if (upperCommand === 'H') {
       const x = readNumber();
       const next = { x: relative ? current.x + x : x, y: current.y };
       addPathEdge(current, next);
       current = next;
+      subpathContour.push(current);
     } else if (upperCommand === 'V') {
       const y = readNumber();
       const next = { x: current.x, y: relative ? current.y + y : y };
       addPathEdge(current, next);
       current = next;
+      subpathContour.push(current);
     } else if (upperCommand === 'Z') {
       addPathEdge(current, subpathStart);
       current = subpathStart;
+      isSubpathClosed = true;
       flushSubpathEdges();
     } else {
       // Curves and arcs are intentionally ignored in v1; this app labels straight edges only.
@@ -384,6 +447,7 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
 
   sanitizeSvg(svgElement);
   const edges: SvgEdge[] = [];
+  const panels: SvgPanel[] = [];
 
   svgElement.querySelectorAll('line').forEach((line, elementIndex) => {
     const start = { x: svgNumber(line.getAttribute('x1')), y: svgNumber(line.getAttribute('y1')) };
@@ -399,13 +463,26 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
       && points[0].x === points[points.length - 1].x
       && points[0].y === points[points.length - 1].y;
     const panelBounds = isPolygon || isClosedPolyline ? getPanelFigureBounds(points) : undefined;
+    const edgeIds: string[] = [];
 
     points.slice(1).forEach((point, pointIndex) => {
-      addEdge(edges, source, points[pointIndex], point, panelBounds);
+      const edge = addEdge(edges, source, points[pointIndex], point, panelBounds);
+
+      if (edge) {
+        edgeIds.push(edge.id);
+      }
     });
 
     if (isPolygon && points.length > 2) {
-      addEdge(edges, source, points[points.length - 1], points[0], panelBounds);
+      const edge = addEdge(edges, source, points[points.length - 1], points[0], panelBounds);
+
+      if (edge) {
+        edgeIds.push(edge.id);
+      }
+    }
+
+    if (isPolygon || isClosedPolyline) {
+      addPanel(panels, points, panelBounds, edgeIds);
     }
   });
 
@@ -422,22 +499,32 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
     ];
     const panelBounds = { minX: x, maxX: x + width, minY: y, maxY: y + height };
 
+    const edgeIds: string[] = [];
+
     corners.forEach((corner, cornerIndex) => {
-      addEdge(edges, `rect ${elementIndex + 1}`, corner, corners[(cornerIndex + 1) % corners.length], panelBounds);
+      const edge = addEdge(edges, `rect ${elementIndex + 1}`, corner, corners[(cornerIndex + 1) % corners.length], panelBounds);
+
+      if (edge) {
+        edgeIds.push(edge.id);
+      }
     });
+
+    addPanel(panels, corners, getPanelFigureBounds(corners), edgeIds);
   });
 
   svgElement.querySelectorAll('path').forEach((path, elementIndex) => {
-    parsePathSegments(path.getAttribute('d'), `path ${elementIndex + 1}`, edges);
+    parsePathSegments(path.getAttribute('d'), `path ${elementIndex + 1}`, edges, panels);
   });
 
   assignPanelBoundsFromClosedLoops(edges);
+  logPanelDebug(panels);
 
   return {
     content: new XMLSerializer().serializeToString(svgElement),
     innerMarkup: svgElement.innerHTML,
     ...getCanvasMetrics(svgElement),
     edges,
+    panels,
   };
 };
 
