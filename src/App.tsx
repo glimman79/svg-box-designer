@@ -322,9 +322,15 @@ const pointsMatch = (first: Point, second: Point) => (
   && Math.abs(first.y - second.y) <= cornerTouchTolerance
 );
 
-const edgeMatchesContourSide = (edge: SvgEdge, start: Point, end: Point) => (
-  pointsMatch(edge.start, start) && pointsMatch(edge.end, end)
-);
+const edgeMatchesContourSide = (edge: SvgEdge, start: Point, end: Point) => {
+  const normalMatch = pointsMatch(edge.start, start) && pointsMatch(edge.end, end);
+  const reversedMatch = pointsMatch(edge.start, end) && pointsMatch(edge.end, start);
+
+  return {
+    matches: normalMatch || reversedMatch,
+    reversedMatch,
+  };
+};
 
 const pathDToPoints = (pathD: string): Point[] => {
   const tokens = pathD.match(/[a-zA-Z]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
@@ -449,8 +455,18 @@ const buildAppliedEPanelPaths = (
       const connection = assignment ? connectionMap[assignment.connectionId] : undefined;
       const { start, end } = getContourEdgePoints(panel, contourIndex);
 
-      if (!edge || !edgeMatchesContourSide(edge, start, end)) {
+      if (!edge) {
         return [];
+      }
+
+      const contourSideMatch = edgeMatchesContourSide(edge, start, end);
+
+      if (!contourSideMatch.matches) {
+        return [];
+      }
+
+      if (contourSideMatch.reversedMatch) {
+        console.info('panel edge reversed', panel.id, edgeId, contourIndex);
       }
 
       const panelEdge = { ...edge, start, end, panelBounds: panel.bounds };
