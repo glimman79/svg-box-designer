@@ -123,6 +123,22 @@ type AppliedEPanelPath = {
   edgeIds: string[];
 };
 
+type PanelPoint = Point;
+
+type PanelContour = PanelPoint[];
+
+type PanelEdgeOperation = {
+  edgeId: string;
+  connectionId: string;
+  role: EdgeRole;
+  materialThicknessMm: number;
+  fingerWidthMm: number;
+};
+
+type PanelGeometryBuildResult =
+  | { ok: true; contour: PanelContour }
+  | { ok: false; reason: string };
+
 type PanelValidationResult =
   | { valid: true }
   | { valid: false; reason: string };
@@ -154,6 +170,49 @@ const pointsToClosedPathD = (points: Point[]) => (
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
     .join(' ')} Z`
 );
+
+const clonePanelContour = (panel: SvgPanel): PanelContour => (
+  panel.contour.map((point) => ({ x: point.x, y: point.y }))
+);
+
+const getPanelEdgeOperations = (
+  panel: SvgPanel,
+  assignments: Record<string, EdgeAssignment>,
+  connectionMap: ConnectionMap,
+): PanelEdgeOperation[] => (
+  panel.edgeIds.flatMap((edgeId) => {
+    const assignment = assignments[edgeId];
+    const connection = assignment ? connectionMap[assignment.connectionId] : undefined;
+
+    if (!assignment || connection?.prefix !== 'E') {
+      return [];
+    }
+
+    return [{
+      edgeId,
+      connectionId: assignment.connectionId,
+      role: assignment.edgeRole ?? 'A',
+      materialThicknessMm: connection.properties.materialThicknessMm,
+      fingerWidthMm: connection.properties.fingerWidthMm,
+    }];
+  })
+);
+
+const buildPanelGeometry = (
+  panel: SvgPanel,
+  operations: PanelEdgeOperation[],
+): PanelGeometryBuildResult => {
+  const contour = clonePanelContour(panel);
+
+  if (operations.length === 0) {
+    return { ok: true, contour };
+  }
+
+  // Placeholder only.
+  // Future steps will apply A operations first, validate,
+  // then B operations, validate.
+  return { ok: true, contour };
+};
 
 const validateClosedPanel = (
   panel: SvgPanel,
@@ -218,21 +277,23 @@ const buildAppliedEPanelPaths = (
       return [];
     }
 
-    const hasEAssignment = panel.edgeIds.some((edgeId) => {
-      const assignment = assignments[edgeId];
-      const connection = assignment ? connectionMap[assignment.connectionId] : undefined;
+    const operations = getPanelEdgeOperations(panel, assignments, connectionMap);
 
-      return connection?.prefix === 'E';
-    });
+    if (operations.length === 0) {
+      return [];
+    }
 
-    if (!hasEAssignment) {
+    const result = buildPanelGeometry(panel, operations);
+
+    if (!result.ok) {
+      console.warn('Skipping applied E panel path', panel.id, result.reason);
       return [];
     }
 
     return [{
       panelId: panel.id,
       eraseRect: panel.bounds,
-      pathD: pointsToClosedPathD(panel.contour),
+      pathD: pointsToClosedPathD(result.contour),
       edgeIds: panel.edgeIds,
     }];
   });
