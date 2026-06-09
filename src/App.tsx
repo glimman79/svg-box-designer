@@ -288,7 +288,7 @@ const buildAppliedEPanelPaths = (
       const sidePoints = assignment && connection?.prefix === 'E'
         ? pathDToPoints(getEReplacementEdgePath(
           panelEdge,
-          assignment.edgeRole ?? 'outer',
+          assignment.edgeRole ?? 'A',
           connection.properties.materialThicknessMm,
           connection.properties.fingerWidthMm,
         ))
@@ -466,23 +466,23 @@ const getDefaultEdgeRole = (assignments: Record<string, EdgeAssignment>, connect
   const assignedRoles = Object.values(assignments)
     .filter((assignment) => assignment.connectionId === connectionId)
     .map((assignment) => assignment.edgeRole);
-  const hasOuter = assignedRoles.includes('outer');
-  const hasInner = assignedRoles.includes('inner');
+  const hasOuter = assignedRoles.includes('A');
+  const hasInner = assignedRoles.includes('B');
 
   if (hasOuter && !hasInner) {
-    return 'inner';
+    return 'B';
   }
 
-  return 'outer';
+  return 'A';
 };
 
 const formatEdgeRoleLabel = (role: EdgeRole | undefined) => {
-  if (role === 'outer') {
-    return 'Outer';
+  if (role === 'A') {
+    return 'A';
   }
 
-  if (role === 'inner') {
-    return 'Inner';
+  if (role === 'B') {
+    return 'B';
   }
 
   return 'No role';
@@ -529,7 +529,7 @@ const SelectField = ({ id, label, value, options, onChange }: SelectFieldProps) 
     <select id={id} value={value} onChange={(event) => onChange(event.target.value)}>
       {options.map((option) => (
         <option key={option} value={option}>
-          {option === 'outer' ? 'Outer' : option === 'inner' ? 'Inner' : option}
+          {option === 'A' ? 'A' : option === 'B' ? 'B' : option}
         </option>
       ))}
     </select>
@@ -958,8 +958,8 @@ function App() {
                     <SelectField
                       id={`${edge.id}-edge-role`}
                       label="Role"
-                      value={edgeAssignments[edge.id]?.edgeRole ?? 'outer'}
-                      options={['outer', 'inner']}
+                      value={edgeAssignments[edge.id]?.edgeRole ?? 'A'}
+                      options={['A', 'B']}
                       onChange={(edgeRole) => updateAssignedEdgeRole(edge.id, edgeRole as EdgeRole)}
                     />
                     <button type="button" onClick={() => clearEdgeLabel(edge.id)}>
@@ -1086,7 +1086,7 @@ function App() {
 
       return [[
         edge.id,
-        getEPreviewSteppedPath(edge, assignment.edgeRole ?? 'outer', connection.properties.materialThicknessMm, connection.properties.fingerWidthMm),
+        getEPreviewSteppedPath(edge, assignment.edgeRole ?? 'A', connection.properties.materialThicknessMm, connection.properties.fingerWidthMm),
       ] as const];
     }),
   ), [connections, edgeAssignments, svgModel.edges]);

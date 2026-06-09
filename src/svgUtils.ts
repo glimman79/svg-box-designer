@@ -20,7 +20,7 @@ export type SvgPanel = {
   edgeIds: string[];
 };
 
-export type EdgeRole = 'outer' | 'inner';
+export type EdgeRole = 'A' | 'B';
 
 export type EdgeAssignment = {
   connectionId: string;
@@ -33,7 +33,7 @@ export const getEdgeAssignmentDisplayLabel = (assignment: EdgeAssignment | undef
   }
 
   if (assignment.connectionId.startsWith('E') && assignment.edgeRole) {
-    return `${assignment.connectionId}-${assignment.edgeRole === 'outer' ? 'O' : 'I'}`;
+    return `${assignment.connectionId}-${assignment.edgeRole === 'A' ? 'A' : 'B'}`;
   }
 
   return assignment.connectionId;
@@ -737,7 +737,7 @@ export const getEPreviewTabPath = (
   const segmentLengths = getEPreviewSegmentLengths(edgeLength, fingerWidthMm);
   const commands: string[] = [];
   let distanceAlongEdge = 0;
-  let isTabSegment = role === 'outer';
+  let isTabSegment = role === 'A';
 
   segmentLengths.forEach((segmentLength) => {
     const originalSegmentStart = interpolateEdgePoint(edge, distanceAlongEdge, edgeLength);
@@ -779,9 +779,9 @@ export const getEReplacementEdgePath = (
   const segmentLengths = getEPreviewSegmentLengths(edgeLength, fingerWidthMm);
   const innerStart = { x: edge.start.x + offset.x, y: edge.start.y + offset.y };
   const innerEnd = { x: edge.end.x + offset.x, y: edge.end.y + offset.y };
-  const points: Point[] = [role === 'outer' ? edge.start : innerStart];
+  const points: Point[] = [role === 'A' ? edge.start : innerStart];
   let distanceAlongEdge = 0;
-  let isTabSegment = role === 'outer';
+  let isTabSegment = role === 'A';
 
   const appendPoint = (point: Point) => {
     const previousPoint = points[points.length - 1];
@@ -815,7 +815,7 @@ export const getEReplacementEdgePath = (
     isTabSegment = !isTabSegment;
   });
 
-  appendPoint(role === 'outer' ? edge.end : innerEnd);
+  appendPoint(role === 'A' ? edge.end : innerEnd);
 
   return points
     .map((point, index) => pointToPathCommand(index === 0 ? 'M' : 'L', point))
@@ -833,7 +833,7 @@ export const getEPreviewOutlinePoints = (
   const segmentLengths = getEPreviewSegmentLengths(edgeLength, fingerWidthMm);
   const points: Point[] = [];
   let distanceAlongEdge = 0;
-  let isTabSegment = role === 'outer';
+  let isTabSegment = role === 'A';
 
   segmentLengths.forEach((segmentLength) => {
     const originalSegmentStart = interpolateEdgePoint(edge, distanceAlongEdge, edgeLength);
