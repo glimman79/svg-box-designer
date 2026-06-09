@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEPreviewSegmentDebug, getEPreviewSteppedPath, getEReplacementEdgePath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, getEPreviewSegmentDebug, getEPreviewSteppedPath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgePreviewPath, EdgeRole, Point, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -122,6 +122,10 @@ type AppliedEPanelPath = {
   pathD: string;
   edgeIds: string[];
 };
+
+type PanelValidationResult =
+  | { valid: true }
+  | { valid: false; reason: string };
 
 const cornerTouchTolerance = 0.01;
 
@@ -245,6 +249,54 @@ const pointsToClosedPathD = (points: Point[]) => (
 
 const getStraightContourSegmentPoints = (start: Point, end: Point) => [start, end];
 
+const validateClosedPanel = (
+  panel: SvgPanel,
+  edgesById: Map<string, SvgEdge>,
+): PanelValidationResult => {
+  if (panel.contour.length < 3) {
+    return { valid: false, reason: 'Panel contour must contain at least 3 points.' };
+  }
+
+  if (panel.edgeIds.length !== panel.contour.length) {
+    return { valid: false, reason: 'Panel edge count must match contour point count.' };
+  }
+
+  for (let contourIndex = 0; contourIndex < panel.contour.length; contourIndex += 1) {
+    const point = panel.contour[contourIndex];
+
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      return { valid: false, reason: `Panel contour point ${contourIndex} must have finite coordinates.` };
+    }
+  }
+
+  for (let contourIndex = 0; contourIndex < panel.edgeIds.length; contourIndex += 1) {
+    const edgeId = panel.edgeIds[contourIndex];
+    const edge = edgesById.get(edgeId);
+
+    if (!edge) {
+      return { valid: false, reason: `Panel edge ${edgeId} does not exist.` };
+    }
+
+    const { start, end } = getContourEdgePoints(panel, contourIndex);
+    const contourSideMatch = edgeMatchesContourSide(edge, start, end);
+
+    if (!contourSideMatch.matches) {
+      return { valid: false, reason: `Panel edge ${edgeId} does not match contour side ${contourIndex}.` };
+    }
+  }
+
+  const finalEdgeId = panel.edgeIds[panel.edgeIds.length - 1];
+  const finalEdge = edgesById.get(finalEdgeId);
+  const finalStart = panel.contour[panel.contour.length - 1];
+  const finalEnd = panel.contour[0];
+
+  if (!finalEdge || !edgeMatchesContourSide(finalEdge, finalStart, finalEnd).matches) {
+    return { valid: false, reason: 'Panel final contour segment must close from last point to first point.' };
+  }
+
+  return { valid: true };
+};
+
 const buildAppliedEPanelPaths = (
   svgModel: SvgDocumentModel,
   assignments: Record<string, EdgeAssignment>,
@@ -253,75 +305,29 @@ const buildAppliedEPanelPaths = (
   const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
 
   return svgModel.panels.flatMap((panel) => {
-    if (panel.contour.length !== 4 || panel.edgeIds.length !== panel.contour.length) {
+    const validation = validateClosedPanel(panel, edgesById);
+
+    if (!validation.valid) {
+      console.warn('Skipping applied E panel path', panel.id, validation.reason);
       return [];
     }
 
-    const contourPoints: Point[] = [];
-    const panelEdges: SvgEdge[] = [];
-    let hasEAssignment = false;
-
-    for (let contourIndex = 0; contourIndex < panel.contour.length; contourIndex += 1) {
-      const edgeId = panel.edgeIds[contourIndex];
-      const edge = edgesById.get(edgeId);
+    const hasEAssignment = panel.edgeIds.some((edgeId) => {
       const assignment = assignments[edgeId];
       const connection = assignment ? connectionMap[assignment.connectionId] : undefined;
-      const { start, end } = getContourEdgePoints(panel, contourIndex);
 
-      if (!edge) {
-        return [];
-      }
+      return connection?.prefix === 'E';
+    });
 
-      const contourSideMatch = edgeMatchesContourSide(edge, start, end);
-
-      if (!contourSideMatch.matches) {
-        return [];
-      }
-
-      if (contourSideMatch.reversedMatch) {
-        console.info('panel edge reversed', panel.id, edgeId, contourIndex);
-      }
-
-      const panelEdge = { ...edge, start, end, panelBounds: panel.bounds };
-      panelEdges.push(panelEdge);
-
-      const sidePoints = assignment && connection?.prefix === 'E'
-        ? pathDToPoints(getEReplacementEdgePath(
-          panelEdge,
-          assignment.edgeRole ?? 'A',
-          connection.properties.materialThicknessMm,
-          connection.properties.fingerWidthMm,
-        ))
-        : getStraightContourSegmentPoints(start, end);
-
-      if (sidePoints.length === 0) {
-        return [];
-      }
-
-      if (assignment && connection?.prefix === 'E') {
-        hasEAssignment = true;
-      }
-
-      if (contourPoints.length === 0) {
-        sidePoints.forEach((point) => appendPointIfDistinct(contourPoints, point));
-        continue;
-      }
-
-      appendOrthogonalCornerJoin(contourPoints, sidePoints[0], panel.bounds);
-      sidePoints.slice(1).forEach((point) => appendPointIfDistinct(contourPoints, point));
-    }
-
-    if (!hasEAssignment || contourPoints.length === 0) {
+    if (!hasEAssignment) {
       return [];
     }
-
-    appendOrthogonalCornerJoin(contourPoints, contourPoints[0], panel.bounds);
 
     return [{
       panelId: panel.id,
       eraseRect: panel.bounds,
-      pathD: pointsToClosedPathD(contourPoints),
-      edgeIds: panelEdges.map((edge) => edge.id),
+      pathD: pointsToClosedPathD(panel.contour),
+      edgeIds: panel.edgeIds,
     }];
   });
 };
