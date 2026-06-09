@@ -116,15 +116,6 @@ type PanState = {
   moved: boolean;
 };
 
-type AppliedECornerCleanup = {
-  id: string;
-  type: 'I_I' | 'I_O' | 'O_O' | 'I_NONE' | 'O_NONE';
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
-
 type AppliedEPanelPath = {
   panelId: string;
   eraseRect: SourceBounds;
@@ -132,185 +123,7 @@ type AppliedEPanelPath = {
   edgeIds: string[];
 };
 
-type AppliedEEdge = {
-  edgeId: string;
-  edgeRole: EdgeRole;
-  replacementPathD: string;
-  materialThicknessMm: number;
-  start: Point;
-  end: Point;
-  panelBounds?: SourceBounds;
-  maskLine: {
-    start: Point;
-    end: Point;
-  };
-  cornerMasks?: {
-    inward: {
-      start: { start: Point; end: Point };
-      end: { start: Point; end: Point };
-    };
-    outward: {
-      start: { start: Point; end: Point };
-      end: { start: Point; end: Point };
-    };
-  };
-};
-
-type AssignedEEdge = {
-  edge: SvgEdge;
-  assignment: EdgeAssignment;
-  connection: EdgeConnectionDefinition;
-};
-
-type OrderedEPreviewEdges = {
-  outerEdges: AssignedEEdge[];
-  innerEdges: AssignedEEdge[];
-};
-
-const getOrderedEPreviewEdges = (
-  edges: SvgEdge[],
-  assignments: Record<string, EdgeAssignment>,
-  connectionMap: ConnectionMap,
-): OrderedEPreviewEdges => {
-  const outerEdges: AssignedEEdge[] = [];
-  const innerEdges: AssignedEEdge[] = [];
-
-  edges.forEach((edge) => {
-    const assignment = assignments[edge.id];
-    const connection = assignment ? connectionMap[assignment.connectionId] : undefined;
-
-    if (!assignment || connection?.prefix !== 'E') {
-      return;
-    }
-
-    const orderedEdge = { edge, assignment, connection };
-
-    if (assignment.edgeRole === 'inner') {
-      innerEdges.push(orderedEdge);
-      return;
-    }
-
-    outerEdges.push(orderedEdge);
-  });
-
-  return { outerEdges, innerEdges };
-};
-
-
 const cornerTouchTolerance = 0.01;
-
-const getPanelBoundsKey = (panelBounds: SourceBounds) => (
-  [panelBounds.minX, panelBounds.maxX, panelBounds.minY, panelBounds.maxY]
-    .map((value) => value.toFixed(3))
-    .join(':')
-);
-
-const isPointAtCorner = (point: Point, corner: Point) => (
-  Math.abs(point.x - corner.x) <= cornerTouchTolerance
-  && Math.abs(point.y - corner.y) <= cornerTouchTolerance
-);
-
-const appliedEdgeTouchesCorner = (edge: AppliedEEdge, corner: Point) => (
-  isPointAtCorner(edge.start, corner) || isPointAtCorner(edge.end, corner)
-);
-
-const getPanelCorners = (panelBounds: SourceBounds) => [
-  { id: 'top-left', point: { x: panelBounds.minX, y: panelBounds.minY } },
-  { id: 'top-right', point: { x: panelBounds.maxX, y: panelBounds.minY } },
-  { id: 'bottom-right', point: { x: panelBounds.maxX, y: panelBounds.maxY } },
-  { id: 'bottom-left', point: { x: panelBounds.minX, y: panelBounds.maxY } },
-] as const;
-
-const getAppliedECornerCleanupSize = (type: AppliedECornerCleanup['type'], materialThicknessMm: number) => {
-  if (type === 'I_I') {
-    return materialThicknessMm * 2 + 3;
-  }
-
-  if (type === 'I_O') {
-    return materialThicknessMm + 3;
-  }
-
-  if (type === 'O_NONE') {
-    return materialThicknessMm + 1;
-  }
-
-  return 0;
-};
-
-const getAppliedECornerType = (touchingEdges: AppliedEEdge[]): AppliedECornerCleanup['type'] => {
-  const innerCount = touchingEdges.filter((edge) => edge.edgeRole === 'inner').length;
-  const outerCount = touchingEdges.filter((edge) => edge.edgeRole === 'outer').length;
-
-  if (innerCount >= 2) {
-    return 'I_I';
-  }
-
-  if (innerCount >= 1 && outerCount >= 1) {
-    return 'I_O';
-  }
-
-  if (outerCount >= 2) {
-    return 'O_O';
-  }
-
-  if (innerCount === 1) {
-    return 'I_NONE';
-  }
-
-  return 'O_NONE';
-};
-
-const buildAppliedECornerCleanups = (appliedEEdges: AppliedEEdge[]): AppliedECornerCleanup[] => {
-  const appliedEdgesByPanelBounds = new Map<string, { panelBounds: SourceBounds; edges: AppliedEEdge[] }>();
-
-  appliedEEdges.forEach((appliedEdge) => {
-    const { panelBounds } = appliedEdge;
-
-    if (!panelBounds) {
-      return;
-    }
-
-    const panelBoundsKey = getPanelBoundsKey(panelBounds);
-    const panelGroup = appliedEdgesByPanelBounds.get(panelBoundsKey);
-
-    if (panelGroup) {
-      panelGroup.edges.push(appliedEdge);
-      return;
-    }
-
-    appliedEdgesByPanelBounds.set(panelBoundsKey, { panelBounds, edges: [appliedEdge] });
-  });
-
-  return [...appliedEdgesByPanelBounds.values()].flatMap(({ panelBounds, edges }) => (
-    getPanelCorners(panelBounds).flatMap(({ id: cornerId, point }) => {
-      const touchingEdges = edges.filter((edge) => appliedEdgeTouchesCorner(edge, point));
-
-      if (touchingEdges.length === 0) {
-        return [];
-      }
-
-      const cleanupType = getAppliedECornerType(touchingEdges);
-      const materialThicknessMm = Math.max(
-        ...touchingEdges.map((edge) => edge.materialThicknessMm),
-      );
-      const cleanupSize = getAppliedECornerCleanupSize(cleanupType, materialThicknessMm);
-
-      if (cleanupSize <= 0) {
-        return [];
-      }
-
-      return [{
-        id: `${getPanelBoundsKey(panelBounds)}-${cornerId}-${cleanupType}-corner-cleanup`,
-        type: cleanupType,
-        x: point.x - cleanupSize / 2,
-        y: point.y - cleanupSize / 2,
-        width: cleanupSize,
-        height: cleanupSize,
-      }];
-    })
-  ));
-};
-
 
 const getContourEdgePoints = (panel: SvgPanel, contourIndex: number) => ({
   start: panel.contour[contourIndex],
@@ -512,75 +325,6 @@ const buildAppliedEPanelPaths = (
     }];
   });
 };
-
-const buildAppliedEEdges = (orderedEdges: OrderedEPreviewEdges): AppliedEEdge[] => (
-  [...orderedEdges.outerEdges, ...orderedEdges.innerEdges].map(({ edge, assignment, connection }) => {
-    const edgeRole = assignment.edgeRole ?? 'outer';
-    const materialThicknessMm = connection.properties.materialThicknessMm;
-    const edgeVector = {
-      x: edge.end.x - edge.start.x,
-      y: edge.end.y - edge.start.y,
-    };
-    const edgeLength = Math.hypot(edgeVector.x, edgeVector.y);
-    const edgeDirection = edgeLength > 0
-      ? { x: edgeVector.x / edgeLength, y: edgeVector.y / edgeLength }
-      : { x: 0, y: 0 };
-    const maskLineExtension = materialThicknessMm / 2;
-    const cornerMasks = edgeRole === 'inner'
-      ? (() => {
-        const inwardDirection = getInwardEdgeDirection(edge, edge.panelBounds);
-        const outwardDirection = {
-          x: -inwardDirection.x,
-          y: -inwardDirection.y,
-        };
-        const buildCornerMask = (point: Point, direction: Point) => ({
-          start: point,
-          end: {
-            x: point.x + direction.x * materialThicknessMm,
-            y: point.y + direction.y * materialThicknessMm,
-          },
-        });
-
-        return {
-          inward: {
-            start: buildCornerMask(edge.start, inwardDirection),
-            end: buildCornerMask(edge.end, inwardDirection),
-          },
-          outward: {
-            start: buildCornerMask(edge.start, outwardDirection),
-            end: buildCornerMask(edge.end, outwardDirection),
-          },
-        };
-      })()
-      : undefined;
-
-    return {
-      edgeId: edge.id,
-      edgeRole,
-      replacementPathD: getEReplacementEdgePath(
-        edge,
-        edgeRole,
-        materialThicknessMm,
-        connection.properties.fingerWidthMm,
-      ),
-      materialThicknessMm,
-      start: edge.start,
-      end: edge.end,
-      ...(edge.panelBounds ? { panelBounds: edge.panelBounds } : {}),
-      maskLine: {
-        start: {
-          x: edge.start.x - edgeDirection.x * maskLineExtension,
-          y: edge.start.y - edgeDirection.y * maskLineExtension,
-        },
-        end: {
-          x: edge.end.x + edgeDirection.x * maskLineExtension,
-          y: edge.end.y + edgeDirection.y * maskLineExtension,
-        },
-      },
-      ...(cornerMasks ? { cornerMasks } : {}),
-    };
-  })
-);
 
 const labelGroups: LabelGroup[] = [
   { prefix: 'E', name: 'Edge connections', description: 'Reusable edge connection IDs' },
@@ -799,9 +543,7 @@ function App() {
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isEPreviewVisible, setIsEPreviewVisible] = useState(false);
-  const [appliedEEdges, setAppliedEEdges] = useState<AppliedEEdge[]>([]);
   const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
-  const [appliedECornerCleanups, setAppliedECornerCleanups] = useState<AppliedECornerCleanup[]>([]);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -844,8 +586,6 @@ function App() {
     setEdgeAssignments({});
     setSelectedEdgeId(null);
     setIsEPreviewVisible(false);
-    setAppliedEEdges([]);
-    setAppliedECornerCleanups([]);
     setErrorMessage('');
     event.target.value = '';
   };
@@ -1331,20 +1071,25 @@ function App() {
     labelScale,
   });
   const labelPlacementsByEdgeId = new Map(labelPlacements.map((placement) => [placement.edgeId, placement]));
-  const appliedEPanelEdgeIds = useMemo(() => new Set(appliedEPanelPaths.flatMap((panelPath) => panelPath.edgeIds)), [appliedEPanelPaths]);
-  const appliedEEdgeIds = useMemo(() => new Set([
-    ...appliedEEdges.map((appliedEdge) => appliedEdge.edgeId),
-    ...appliedEPanelEdgeIds,
-  ]), [appliedEEdges, appliedEPanelEdgeIds]);
-  const orderedEPreviewEdges = useMemo(() => (
-    getOrderedEPreviewEdges(svgModel.edges, edgeAssignments, connections)
-  ), [connections, edgeAssignments, svgModel.edges]);
+  const appliedEEdgeIds = useMemo(
+    () => new Set(appliedEPanelPaths.flatMap((panelPath) => panelPath.edgeIds)),
+    [appliedEPanelPaths],
+  );
   const currentEPreviewPathsByEdgeId = useMemo(() => new Map(
-    [...orderedEPreviewEdges.outerEdges, ...orderedEPreviewEdges.innerEdges].map(({ edge, assignment, connection }) => [
-      edge.id,
-      getEPreviewSteppedPath(edge, assignment.edgeRole ?? 'outer', connection.properties.materialThicknessMm, connection.properties.fingerWidthMm),
-    ] as const),
-  ), [orderedEPreviewEdges]);
+    svgModel.edges.flatMap((edge) => {
+      const assignment = edgeAssignments[edge.id];
+      const connection = assignment ? connections[assignment.connectionId] : undefined;
+
+      if (!assignment || connection?.prefix !== 'E') {
+        return [];
+      }
+
+      return [[
+        edge.id,
+        getEPreviewSteppedPath(edge, assignment.edgeRole ?? 'outer', connection.properties.materialThicknessMm, connection.properties.fingerWidthMm),
+      ] as const];
+    }),
+  ), [connections, edgeAssignments, svgModel.edges]);
 
   const ePreviewPathsByEdgeId = isEPreviewVisible ? currentEPreviewPathsByEdgeId : new Map<string, EdgePreviewPath>();
   const ePreviewDebugRows = useMemo(() => {
@@ -1532,62 +1277,6 @@ function App() {
                       d={panelPath.pathD}
                     />
                   </g>
-                ))}
-                {appliedEEdges.map((appliedEdge) => (
-                  <g key={`${appliedEdge.edgeId}-masks`}>
-                    <line
-                      className="applied-e-edge-mask"
-                      x1={appliedEdge.maskLine.start.x}
-                      y1={appliedEdge.maskLine.start.y}
-                      x2={appliedEdge.maskLine.end.x}
-                      y2={appliedEdge.maskLine.end.y}
-                      strokeWidth={appliedEdge.materialThicknessMm + 2}
-                      strokeLinecap="butt"
-                    />
-                    {appliedEdge.edgeRole === 'inner' && appliedEdge.cornerMasks && (
-                      <>
-                        {Object.values(appliedEdge.cornerMasks).flatMap((cornerMaskSet) => [
-                          <line
-                            key={`${appliedEdge.edgeId}-corner-mask-${cornerMaskSet.start.end.x}-${cornerMaskSet.start.end.y}`}
-                            className="applied-e-edge-mask"
-                            x1={cornerMaskSet.start.start.x}
-                            y1={cornerMaskSet.start.start.y}
-                            x2={cornerMaskSet.start.end.x}
-                            y2={cornerMaskSet.start.end.y}
-                            strokeWidth={appliedEdge.materialThicknessMm + 2}
-                            strokeLinecap="butt"
-                          />,
-                          <line
-                            key={`${appliedEdge.edgeId}-corner-mask-${cornerMaskSet.end.end.x}-${cornerMaskSet.end.end.y}`}
-                            className="applied-e-edge-mask"
-                            x1={cornerMaskSet.end.start.x}
-                            y1={cornerMaskSet.end.start.y}
-                            x2={cornerMaskSet.end.end.x}
-                            y2={cornerMaskSet.end.end.y}
-                            strokeWidth={appliedEdge.materialThicknessMm + 2}
-                            strokeLinecap="butt"
-                          />,
-                        ])}
-                      </>
-                    )}
-                  </g>
-                ))}
-                {appliedECornerCleanups.map((cornerCleanup) => (
-                  <rect
-                    key={cornerCleanup.id}
-                    className="applied-e-corner-erase"
-                    x={cornerCleanup.x}
-                    y={cornerCleanup.y}
-                    width={cornerCleanup.width}
-                    height={cornerCleanup.height}
-                  />
-                ))}
-                {appliedEEdges.map((appliedEdge) => (
-                  <path
-                    key={appliedEdge.edgeId}
-                    className="applied-e-edge-path"
-                    d={appliedEdge.replacementPathD}
-                  />
                 ))}
               </g>
               {isEPreviewVisible && (
