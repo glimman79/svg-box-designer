@@ -175,6 +175,101 @@ const clonePanelContour = (panel: SvgPanel): PanelContour => (
   panel.contour.map((point) => ({ x: point.x, y: point.y }))
 );
 
+const getContourSignedArea = (contour: PanelContour) => (
+  contour.reduce((area, point, index) => {
+    const nextPoint = contour[(index + 1) % contour.length];
+    return area + ((point.x * nextPoint.y) - (nextPoint.x * point.y));
+  }, 0) / 2
+);
+
+const getInwardContourSideDirection = (contour: PanelContour, contourIndex: number): Point | null => {
+  const start = contour[contourIndex];
+  const end = contour[(contourIndex + 1) % contour.length];
+
+  if (!start || !end) {
+    return null;
+  }
+
+  const edgeLength = Math.hypot(end.x - start.x, end.y - start.y);
+
+  if (edgeLength <= cornerTouchTolerance) {
+    return null;
+  }
+
+  const signedArea = getContourSignedArea(contour);
+  const directionSign = signedArea >= 0 ? 1 : -1;
+
+  return {
+    x: (-(end.y - start.y) / edgeLength) * directionSign,
+    y: ((end.x - start.x) / edgeLength) * directionSign,
+  };
+};
+
+const validatePanelContour = (contour: PanelContour): PanelGeometryBuildResult => {
+  if (contour.length < 3) {
+    return { ok: false, reason: 'Panel contour must contain at least 3 points.' };
+  }
+
+  for (let contourIndex = 0; contourIndex < contour.length; contourIndex += 1) {
+    const point = contour[contourIndex];
+
+    if (!point) {
+      return { ok: false, reason: `Panel contour point ${contourIndex} is undefined.` };
+    }
+
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      return { ok: false, reason: `Panel contour point ${contourIndex} must have finite coordinates.` };
+    }
+  }
+
+  const closingStart = contour[contour.length - 1];
+  const closingEnd = contour[0];
+
+  if (!closingStart || !closingEnd) {
+    return { ok: false, reason: 'Panel contour must have finite first and last points for path Z closure.' };
+  }
+
+  if (Math.hypot(closingEnd.x - closingStart.x, closingEnd.y - closingStart.y) <= cornerTouchTolerance) {
+    return { ok: false, reason: 'Panel contour path Z closure must span a visible final side.' };
+  }
+
+  return { ok: true, contour };
+};
+
+const insetPanelEdge = (
+  panel: SvgPanel,
+  contour: PanelContour,
+  operation: PanelEdgeOperation,
+): PanelGeometryBuildResult => {
+  const contourIndex = panel.edgeIds.indexOf(operation.edgeId);
+
+  if (contourIndex === -1) {
+    return { ok: false, reason: `Panel edge ${operation.edgeId} was not found in panel ${panel.id}.` };
+  }
+
+  const direction = getInwardContourSideDirection(contour, contourIndex);
+
+  if (!direction) {
+    return { ok: false, reason: `Panel edge ${operation.edgeId} cannot be inset because its contour side is invalid.` };
+  }
+
+  const nextContour = contour.map((point) => ({ x: point.x, y: point.y }));
+  const nextContourIndex = (contourIndex + 1) % nextContour.length;
+  const insetX = direction.x * operation.materialThicknessMm;
+  const insetY = direction.y * operation.materialThicknessMm;
+
+  nextContour[contourIndex] = {
+    x: nextContour[contourIndex].x + insetX,
+    y: nextContour[contourIndex].y + insetY,
+  };
+  nextContour[nextContourIndex] = {
+    x: nextContour[nextContourIndex].x + insetX,
+    y: nextContour[nextContourIndex].y + insetY,
+  };
+
+  return { ok: true, contour: nextContour };
+};
+
 const getPanelEdgeOperations = (
   panel: SvgPanel,
   assignments: Record<string, EdgeAssignment>,
@@ -202,15 +297,42 @@ const buildPanelGeometry = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
 ): PanelGeometryBuildResult => {
-  const contour = clonePanelContour(panel);
+  let contour = clonePanelContour(panel);
 
-  if (operations.length === 0) {
-    return { ok: true, contour };
+  const initialValidation = validatePanelContour(contour);
+
+  if (!initialValidation.ok) {
+    return initialValidation;
   }
 
-  // Placeholder only.
-  // Future steps will apply A operations first, validate,
-  // then B operations, validate.
+  const applyOperations = (role: EdgeRole): PanelGeometryBuildResult => {
+    const roleOperations = operations.filter((operation) => operation.role === role);
+
+    for (const operation of roleOperations) {
+      const result = insetPanelEdge(panel, contour, operation);
+
+      if (!result.ok) {
+        return result;
+      }
+
+      contour = result.contour;
+    }
+
+    return validatePanelContour(contour);
+  };
+
+  const aResult = applyOperations('A');
+
+  if (!aResult.ok) {
+    return aResult;
+  }
+
+  const bResult = applyOperations('B');
+
+  if (!bResult.ok) {
+    return bResult;
+  }
+
   return { ok: true, contour };
 };
 
