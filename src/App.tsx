@@ -951,13 +951,7 @@ function App() {
   const applyEPreview = () => {
     const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, edgeAssignments, connections);
     console.info(`AppliedEPanelPaths created = ${nextAppliedEPanelPaths.length}`);
-    const handledPanelEdgeIds = new Set(nextAppliedEPanelPaths.flatMap((panelPath) => panelPath.edgeIds));
-    const nextAppliedEEdges = buildAppliedEEdges(orderedEPreviewEdges)
-      .filter((appliedEdge) => !handledPanelEdgeIds.has(appliedEdge.edgeId));
-    const nextAppliedECornerCleanups = buildAppliedECornerCleanups(nextAppliedEEdges);
     setAppliedEPanelPaths(nextAppliedEPanelPaths);
-    setAppliedEEdges(nextAppliedEEdges);
-    setAppliedECornerCleanups(nextAppliedECornerCleanups);
     setIsEPreviewVisible(false);
     setErrorMessage('');
   };
