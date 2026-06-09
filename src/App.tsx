@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEPreviewSegmentDebug, getEPreviewSteppedPath, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
-import type { EdgeAssignment, EdgePreviewPath, EdgeRole, Point, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
+import { exportLabeledSvg, getEPreviewSegmentDebug, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
+import type { EdgeAssignment, EdgeRole, Point, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
 
@@ -1081,23 +1081,6 @@ function App() {
     () => new Set(appliedEPanelPaths.flatMap((panelPath) => panelPath.edgeIds)),
     [appliedEPanelPaths],
   );
-  const currentEPreviewPathsByEdgeId = useMemo(() => new Map(
-    svgModel.edges.flatMap((edge) => {
-      const assignment = edgeAssignments[edge.id];
-      const connection = assignment ? connections[assignment.connectionId] : undefined;
-
-      if (!assignment || connection?.prefix !== 'E') {
-        return [];
-      }
-
-      return [[
-        edge.id,
-        getEPreviewSteppedPath(edge, assignment.edgeRole ?? 'A', connection.properties.materialThicknessMm, connection.properties.fingerWidthMm),
-      ] as const];
-    }),
-  ), [connections, edgeAssignments, svgModel.edges]);
-
-  const ePreviewPathsByEdgeId = isEPreviewVisible ? currentEPreviewPathsByEdgeId : new Map<string, EdgePreviewPath>();
   const ePreviewDebugRows = useMemo(() => {
     if (!isEPreviewVisible) {
       return [];
@@ -1106,9 +1089,7 @@ function App() {
     return svgModel.edges.flatMap((edge) => {
       const assignment = edgeAssignments[edge.id];
       const connection = assignment ? connections[assignment.connectionId] : undefined;
-      const previewPath = ePreviewPathsByEdgeId.get(edge.id);
-
-      if (!assignment || connection?.prefix !== 'E' || !previewPath) {
+      if (!assignment || connection?.prefix !== 'E') {
         return [];
       }
 
@@ -1124,12 +1105,10 @@ function App() {
         detectedSide: getPanelEdgeSide(edge, edge.panelBounds),
         direction: getInwardEdgeDirection(edge, edge.panelBounds),
         materialThicknessMm: connection.properties.materialThicknessMm,
-        previewStart: previewPath.innerStart,
-        previewEnd: previewPath.innerEnd,
         ...segmentDebug,
       }];
     });
-  }, [connections, ePreviewPathsByEdgeId, edgeAssignments, isEPreviewVisible, svgModel.edges]);
+  }, [connections, edgeAssignments, isEPreviewVisible, svgModel.edges]);
 
   return (
     <main className="app-shell">
@@ -1285,22 +1264,6 @@ function App() {
                   </g>
                 ))}
               </g>
-              {isEPreviewVisible && (
-                <g className="edge-preview-layer">
-                  {[...currentEPreviewPathsByEdgeId.entries()].map(([edgeId, previewPath]) => (
-                    <g key={edgeId}>
-                      <path
-                        className="edge-preview-cut-baseline"
-                        d={previewPath.cutBaselineD}
-                      />
-                      <path
-                        className="edge-preview-tabs"
-                        d={previewPath.tabPreviewD}
-                      />
-                    </g>
-                  ))}
-                </g>
-              )}
               <g className="edge-overlays">
                   {svgModel.edges.map((edge) => {
                   const assignment = edgeAssignments[edge.id];
@@ -1391,8 +1354,6 @@ function App() {
                         <th>first segment length</th>
                         <th>middle segment length</th>
                         <th>last segment length</th>
-                        <th>preview start x/y</th>
-                        <th>preview end x/y</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1412,8 +1373,6 @@ function App() {
                           <td>{formatNumber(row.firstSegmentLength)}</td>
                           <td>{formatNumber(row.middleSegmentLength)}</td>
                           <td>{formatNumber(row.lastSegmentLength)}</td>
-                          <td>{formatPoint(row.previewStart)}</td>
-                          <td>{formatPoint(row.previewEnd)}</td>
                         </tr>
                       ))}
                     </tbody>
