@@ -149,105 +149,11 @@ const edgeMatchesContourSide = (edge: SvgEdge, start: Point, end: Point) => {
   };
 };
 
-const pathDToPoints = (pathD: string): Point[] => {
-  const tokens = pathD.match(/[a-zA-Z]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
-  const points: Point[] = [];
-  let index = 0;
-  let command = '';
-
-  while (index < tokens.length) {
-    const token = tokens[index];
-
-    if (/^[a-zA-Z]$/.test(token)) {
-      command = token.toUpperCase();
-      index += 1;
-
-      if (command === 'Z') {
-        continue;
-      }
-    }
-
-    if ((command !== 'M' && command !== 'L') || index + 1 >= tokens.length) {
-      break;
-    }
-
-    const x = Number.parseFloat(tokens[index]);
-    const y = Number.parseFloat(tokens[index + 1]);
-
-    if (Number.isFinite(x) && Number.isFinite(y)) {
-      points.push({ x, y });
-    }
-
-    index += 2;
-
-    if (command === 'M') {
-      command = 'L';
-    }
-  }
-
-  return points;
-};
-
-const appendPointIfDistinct = (points: Point[], point: Point) => {
-  const previousPoint = points[points.length - 1];
-
-  if (previousPoint && pointsMatch(previousPoint, point)) {
-    return;
-  }
-
-  points.push(point);
-};
-
-const isPointInsideBounds = (point: Point, bounds: SourceBounds, includeBoundary: boolean) => {
-  if (includeBoundary) {
-    return point.x >= bounds.minX - cornerTouchTolerance
-      && point.x <= bounds.maxX + cornerTouchTolerance
-      && point.y >= bounds.minY - cornerTouchTolerance
-      && point.y <= bounds.maxY + cornerTouchTolerance;
-  }
-
-  return point.x > bounds.minX + cornerTouchTolerance
-    && point.x < bounds.maxX - cornerTouchTolerance
-    && point.y > bounds.minY + cornerTouchTolerance
-    && point.y < bounds.maxY - cornerTouchTolerance;
-};
-
-const getOrthogonalCornerJoinPoint = (prevEnd: Point, nextStart: Point, panelBounds: SourceBounds) => {
-  const candidates = [
-    { x: nextStart.x, y: prevEnd.y },
-    { x: prevEnd.x, y: nextStart.y },
-  ];
-
-  return candidates.find((point) => isPointInsideBounds(point, panelBounds, false))
-    ?? candidates.find((point) => isPointInsideBounds(point, panelBounds, true))
-    ?? candidates[0];
-};
-
-const appendOrthogonalCornerJoin = (points: Point[], nextStart: Point, panelBounds: SourceBounds) => {
-  const prevEnd = points[points.length - 1];
-
-  if (!prevEnd || pointsMatch(prevEnd, nextStart)) {
-    appendPointIfDistinct(points, nextStart);
-    return;
-  }
-
-  if (Math.abs(prevEnd.x - nextStart.x) <= cornerTouchTolerance
-    || Math.abs(prevEnd.y - nextStart.y) <= cornerTouchTolerance) {
-    appendPointIfDistinct(points, nextStart);
-    return;
-  }
-
-  appendPointIfDistinct(points, getOrthogonalCornerJoinPoint(prevEnd, nextStart, panelBounds));
-  appendPointIfDistinct(points, nextStart);
-};
-
 const pointsToClosedPathD = (points: Point[]) => (
   `${points
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
     .join(' ')} Z`
 );
-
-const getStraightContourSegmentPoints = (start: Point, end: Point) => [start, end];
 
 const validateClosedPanel = (
   panel: SvgPanel,
