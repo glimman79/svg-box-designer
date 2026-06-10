@@ -369,7 +369,11 @@ const applyContourSideOffsetPlan = (
   return validatePanelContour(contourResult as PanelContour);
 };
 
-const createTabSegments = (edgeLength: number, fingerWidthMm: number): TabSegment[] => {
+const createTabSegments = (
+  edgeLength: number,
+  fingerWidthMm: number,
+  startWithTab: boolean,
+): TabSegment[] => {
   const safeEdgeLength = Math.max(0, edgeLength);
   const safeFingerWidth = Math.max(0, fingerWidthMm);
 
@@ -404,7 +408,10 @@ const createTabSegments = (edgeLength: number, fingerWidthMm: number): TabSegmen
 
   return segmentLengths.flatMap((segmentLength, segmentIndex) => {
     const endDistance = Math.min(safeEdgeLength, startDistance + segmentLength);
-    const segment = segmentIndex % 2 === 0 && endDistance - startDistance > cornerTouchTolerance
+    const isTabbedSegment = startWithTab
+      ? segmentIndex % 2 === 0
+      : segmentIndex % 2 === 1;
+    const segment = isTabbedSegment && endDistance - startDistance > cornerTouchTolerance
       ? [{ startDistance, endDistance }]
       : [];
 
@@ -434,7 +441,7 @@ const interpolateSidePoint = (side: ContourSide, distance: number): Point => {
   };
 };
 
-const buildATabOperations = (
+const buildTabOperations = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
   contour: PanelContour,
@@ -442,7 +449,7 @@ const buildATabOperations = (
   const contourSides = buildContourSides(contour);
 
   return operations.flatMap((operation) => {
-    if (operation.role !== 'A') {
+    if (operation.role !== 'A' && operation.role !== 'B') {
       return [];
     }
 
@@ -455,7 +462,7 @@ const buildATabOperations = (
 
     return [{
       ...operation,
-      segments: createTabSegments(getContourSideLength(side), operation.fingerWidthMm),
+      segments: createTabSegments(getContourSideLength(side), operation.fingerWidthMm, operation.role === 'A'),
     }];
   });
 };
@@ -473,7 +480,7 @@ const addContourPoint = (contour: PanelContour, point: Point) => {
   }
 };
 
-const applyATabsToContour = (
+const applyTabsToContour = (
   panel: SvgPanel,
   contour: PanelContour,
   tabOperations: PanelTabOperation[],
@@ -600,8 +607,8 @@ const buildPanelGeometry = (
     return bValidation;
   }
 
-  const tabOperations = buildATabOperations(panel, operations, contour);
-  const tabResult = applyATabsToContour(panel, contour, tabOperations);
+  const tabOperations = buildTabOperations(panel, operations, contour);
+  const tabResult = applyTabsToContour(panel, contour, tabOperations);
 
   if (!tabResult.ok) {
     return tabResult;
