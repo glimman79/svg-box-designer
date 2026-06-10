@@ -164,7 +164,6 @@ type PanelTabOperation = {
   role: EdgeRole;
   materialThicknessMm: number;
   fingerWidthMm: number;
-  reversed: boolean;
   insetLength: number;
   segments: TabSegment[];
 };
@@ -551,22 +550,18 @@ const interpolateSidePoint = (side: ContourSide, distance: number): Point => {
   };
 };
 
-const isOperationReversedAgainstContour = (
-  panel: SvgPanel,
-  operation: PanelEdgeOperation,
-  edgesById: Map<string, SvgEdge>,
-): boolean => {
-  const sideIndex = panel.edgeIds.findIndex((edgeId) => edgeId === operation.edgeId);
-  const edge = edgesById.get(operation.edgeId);
+const getContourSideCanonicalOrientation = (side: ContourSide): 'horizontal' | 'vertical' => {
+  const dx = side.end.x - side.start.x;
+  const dy = side.end.y - side.start.y;
 
-  if (sideIndex === -1 || !edge) {
-    return false;
-  }
-
-  const { start, end } = getContourEdgePoints(panel, sideIndex);
-
-  return pointsMatch(edge.start, end) && pointsMatch(edge.end, start);
+  return Math.abs(dx) >= Math.abs(dy) ? 'horizontal' : 'vertical';
 };
+
+const isContourSideReversedFromCanonical = (side: ContourSide): boolean => (
+  getContourSideCanonicalOrientation(side) === 'horizontal'
+    ? side.start.x > side.end.x
+    : side.start.y > side.end.y
+);
 
 const centerSegmentsOnSide = (
   segments: TabSegment[],
@@ -594,7 +589,6 @@ const buildTabOperations = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
   tabSegmentPlansByConnectionId: Map<string, TabSegmentPlan>,
-  edgesById: Map<string, SvgEdge>,
 ): PanelTabOperation[] => (
   operations.flatMap((operation) => {
     if (operation.role !== 'A' && operation.role !== 'B') {
@@ -613,7 +607,6 @@ const buildTabOperations = (
 
     return [{
       ...operation,
-      reversed: isOperationReversedAgainstContour(panel, operation, edgesById),
       insetLength: segmentPlan.insetLength,
       segments: getTabSegmentsForRole(segmentPlan.segments, operation.role),
     }];
@@ -672,7 +665,9 @@ const applyTabsToContour = (
     const currentSideLength = getContourSideLength(side);
     const centerOffset = Math.max(0, (currentSideLength - operation.insetLength) / 2);
     const centeredSegments = centerSegmentsOnSide(operation.segments, centerOffset);
-    const segments = operation.reversed
+    const canonicalOrientation = getContourSideCanonicalOrientation(side);
+    const reversedFromCanonical = isContourSideReversedFromCanonical(side);
+    const segments = reversedFromCanonical
       ? mirrorSegments(centeredSegments, currentSideLength)
       : centeredSegments;
 
@@ -681,10 +676,15 @@ const applyTabsToContour = (
         edgeId: operation.edgeId,
         connectionId: operation.connectionId,
         role: operation.role,
+        side: {
+          start: side.start,
+          end: side.end,
+        },
+        canonicalOrientation,
+        reversedFromCanonical,
         currentSideLength,
-        centerOffset,
-        reversed: operation.reversed,
-        finalSegmentDistances: segments.map((segment) => [segment.startDistance, segment.endDistance]),
+        centeredSegmentDistancesBeforeMirror: centeredSegments.map((segment) => [segment.startDistance, segment.endDistance]),
+        finalSegmentDistancesAfterMirror: segments.map((segment) => [segment.startDistance, segment.endDistance]),
       });
     }
 
@@ -783,10 +783,9 @@ const buildPanelGeometry = (
   operations: PanelEdgeOperation[],
   insetContour: PanelContour,
   tabSegmentPlansByConnectionId: Map<string, TabSegmentPlan>,
-  edgesById: Map<string, SvgEdge>,
   shouldDebugApply = false,
 ): PanelGeometryBuildResult => {
-  const tabOperations = buildTabOperations(panel, operations, tabSegmentPlansByConnectionId, edgesById);
+  const tabOperations = buildTabOperations(panel, operations, tabSegmentPlansByConnectionId);
   const tabResult = applyTabsToContour(panel, insetContour, tabOperations, shouldDebugApply);
 
   if (!tabResult.ok) {
@@ -908,7 +907,6 @@ const buildAppliedEPanelPaths = (
       operations,
       insetContour,
       tabSegmentPlansByConnectionId,
-      edgesById,
       shouldDebugApply,
     );
 
