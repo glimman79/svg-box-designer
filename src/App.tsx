@@ -146,6 +146,20 @@ type PanelEdgeOperation = {
   fingerWidthMm: number;
 };
 
+type TabSegment = {
+  startDistance: number;
+  endDistance: number;
+};
+
+type PanelTabOperation = {
+  edgeId: string;
+  connectionId: string;
+  role: EdgeRole;
+  materialThicknessMm: number;
+  fingerWidthMm: number;
+  segments: TabSegment[];
+};
+
 type PanelGeometryBuildResult =
   | { ok: true; contour: PanelContour }
   | { ok: false; reason: string };
@@ -355,6 +369,172 @@ const applyContourSideOffsetPlan = (
   return validatePanelContour(contourResult as PanelContour);
 };
 
+const createTabSegments = (edgeLength: number, fingerWidthMm: number): TabSegment[] => {
+  const safeEdgeLength = Math.max(0, edgeLength);
+  const safeFingerWidth = Math.max(0, fingerWidthMm);
+
+  if (safeEdgeLength === 0) {
+    return [];
+  }
+
+  const segmentLengths = (() => {
+    if (safeFingerWidth === 0 || safeEdgeLength < safeFingerWidth) {
+      return [safeEdgeLength];
+    }
+
+    const segmentCount = Math.max(1, Math.floor(safeEdgeLength / safeFingerWidth));
+
+    if (segmentCount === 1) {
+      return [safeEdgeLength];
+    }
+
+    const remainingLength = safeEdgeLength - segmentCount * safeFingerWidth;
+    const endSegmentLength = safeFingerWidth + remainingLength / 2;
+
+    return Array.from({ length: segmentCount }, (_, index) => {
+      if (index === 0 || index === segmentCount - 1) {
+        return endSegmentLength;
+      }
+
+      return safeFingerWidth;
+    });
+  })();
+
+  let startDistance = 0;
+
+  return segmentLengths.flatMap((segmentLength, segmentIndex) => {
+    const endDistance = Math.min(safeEdgeLength, startDistance + segmentLength);
+    const segment = segmentIndex % 2 === 0 && endDistance - startDistance > cornerTouchTolerance
+      ? [{ startDistance, endDistance }]
+      : [];
+
+    startDistance = endDistance;
+
+    return segment;
+  });
+};
+
+const getContourSideLength = (side: ContourSide) => (
+  Math.hypot(side.end.x - side.start.x, side.end.y - side.start.y)
+);
+
+const interpolateSidePoint = (side: ContourSide, distance: number): Point => {
+  const sideLength = getContourSideLength(side);
+
+  if (sideLength <= cornerTouchTolerance) {
+    return { x: side.start.x, y: side.start.y };
+  }
+
+  const clampedDistance = Math.min(sideLength, Math.max(0, distance));
+  const distanceRatio = clampedDistance / sideLength;
+
+  return {
+    x: side.start.x + (side.end.x - side.start.x) * distanceRatio,
+    y: side.start.y + (side.end.y - side.start.y) * distanceRatio,
+  };
+};
+
+const buildATabOperations = (
+  panel: SvgPanel,
+  operations: PanelEdgeOperation[],
+  contour: PanelContour,
+): PanelTabOperation[] => {
+  const contourSides = buildContourSides(contour);
+
+  return operations.flatMap((operation) => {
+    if (operation.role !== 'A') {
+      return [];
+    }
+
+    const sideIndex = panel.edgeIds.findIndex((edgeId) => edgeId === operation.edgeId);
+    const side = contourSides[sideIndex];
+
+    if (sideIndex === -1 || !side) {
+      return [];
+    }
+
+    return [{
+      ...operation,
+      segments: createTabSegments(getContourSideLength(side), operation.fingerWidthMm),
+    }];
+  });
+};
+
+const clampPointToPanelBounds = (point: Point, bounds: SourceBounds): Point => ({
+  x: Math.min(bounds.maxX, Math.max(bounds.minX, point.x)),
+  y: Math.min(bounds.maxY, Math.max(bounds.minY, point.y)),
+});
+
+const addContourPoint = (contour: PanelContour, point: Point) => {
+  const previousPoint = contour[contour.length - 1];
+
+  if (!previousPoint || !pointsMatch(previousPoint, point)) {
+    contour.push(point);
+  }
+};
+
+const applyATabsToContour = (
+  panel: SvgPanel,
+  contour: PanelContour,
+  tabOperations: PanelTabOperation[],
+): PanelGeometryBuildResult => {
+  if (tabOperations.length === 0) {
+    return validatePanelContour(contour);
+  }
+
+  const contourSides = buildContourSides(contour);
+  const tabOperationsBySideIndex = new Map<number, PanelTabOperation>();
+
+  tabOperations.forEach((operation) => {
+    const sideIndex = panel.edgeIds.findIndex((edgeId) => edgeId === operation.edgeId);
+
+    if (sideIndex !== -1) {
+      tabOperationsBySideIndex.set(sideIndex, operation);
+    }
+  });
+
+  const contourWindingSign = getContourSignedArea(contour) >= 0 ? 1 : -1;
+  const tabbedContour: PanelContour = [];
+
+  contourSides.forEach((side, sideIndex) => {
+    const operation = tabOperationsBySideIndex.get(sideIndex);
+
+    addContourPoint(tabbedContour, clampPointToPanelBounds(side.start, panel.bounds));
+
+    if (!operation || operation.segments.length === 0) {
+      addContourPoint(tabbedContour, clampPointToPanelBounds(side.end, panel.bounds));
+      return;
+    }
+
+    const outwardSide = offsetContourSide(side, -operation.materialThicknessMm * contourWindingSign);
+
+    if (!outwardSide) {
+      addContourPoint(tabbedContour, clampPointToPanelBounds(side.end, panel.bounds));
+      return;
+    }
+
+    operation.segments.forEach((segment) => {
+      const baseStart = interpolateSidePoint(side, segment.startDistance);
+      const baseEnd = interpolateSidePoint(side, segment.endDistance);
+      const tabStart = interpolateSidePoint(outwardSide, segment.startDistance);
+      const tabEnd = interpolateSidePoint(outwardSide, segment.endDistance);
+
+      addContourPoint(tabbedContour, clampPointToPanelBounds(baseStart, panel.bounds));
+      addContourPoint(tabbedContour, clampPointToPanelBounds(tabStart, panel.bounds));
+      addContourPoint(tabbedContour, clampPointToPanelBounds(tabEnd, panel.bounds));
+      addContourPoint(tabbedContour, clampPointToPanelBounds(baseEnd, panel.bounds));
+    });
+
+    addContourPoint(tabbedContour, clampPointToPanelBounds(side.end, panel.bounds));
+  });
+
+  if (tabbedContour.length > 1 && pointsMatch(tabbedContour[0], tabbedContour[tabbedContour.length - 1])) {
+    tabbedContour.pop();
+  }
+
+  return validatePanelContour(tabbedContour);
+};
+
 const getPanelEdgeOperations = (
   panel: SvgPanel,
   assignments: Record<string, EdgeAssignment>,
@@ -418,6 +598,21 @@ const buildPanelGeometry = (
 
   if (!bValidation.ok) {
     return bValidation;
+  }
+
+  const tabOperations = buildATabOperations(panel, operations, contour);
+  const tabResult = applyATabsToContour(panel, contour, tabOperations);
+
+  if (!tabResult.ok) {
+    return tabResult;
+  }
+
+  contour = tabResult.contour;
+
+  const finalValidation = validatePanelContour(contour);
+
+  if (!finalValidation.ok) {
+    return finalValidation;
   }
 
   return { ok: true, contour };
