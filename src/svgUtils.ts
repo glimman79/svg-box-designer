@@ -200,7 +200,18 @@ const getMatchingVerticalSide = (
   && nearlyEqual(vertical.maxY, maxY)
 ));
 
-export const assignPanelBoundsFromClosedLoops = (edges: SvgEdge[]) => {
+const boundsMatch = (first: SourceBounds, second: SourceBounds) => (
+  nearlyEqual(first.minX, second.minX)
+  && nearlyEqual(first.maxX, second.maxX)
+  && nearlyEqual(first.minY, second.minY)
+  && nearlyEqual(first.maxY, second.maxY)
+);
+
+const hasPanelWithBounds = (panels: SvgPanel[], bounds: SourceBounds) => (
+  panels.some((panel) => boundsMatch(panel.bounds, bounds))
+);
+
+export const assignPanelBoundsFromClosedLoops = (edges: SvgEdge[], panels: SvgPanel[] = []) => {
   const candidateEdges = edges.map(getCandidatePanelEdge).filter((edge): edge is CandidatePanelEdge => Boolean(edge));
   const horizontalEdges = candidateEdges.filter((edge) => nearlyEqual(edge.minY, edge.maxY));
   const verticalEdges = candidateEdges.filter((edge) => nearlyEqual(edge.minX, edge.maxX));
@@ -224,20 +235,36 @@ export const assignPanelBoundsFromClosedLoops = (edges: SvgEdge[]) => {
         return;
       }
 
-      const firstVertical = getMatchingVerticalSide(verticalEdges, minX, minY, maxY);
-      const secondVertical = getMatchingVerticalSide(verticalEdges, maxX, minY, maxY, firstVertical?.edge);
+      const leftVertical = getMatchingVerticalSide(verticalEdges, minX, minY, maxY);
+      const rightVertical = getMatchingVerticalSide(verticalEdges, maxX, minY, maxY, leftVertical?.edge);
 
-      if (!firstVertical || !secondVertical) {
+      if (!leftVertical || !rightVertical) {
         return;
       }
 
-      const panelBounds = getRectangleBounds(firstHorizontal, secondHorizontal, firstVertical, secondVertical);
+      const topHorizontal = nearlyEqual(firstHorizontal.minY, minY) ? firstHorizontal : secondHorizontal;
+      const bottomHorizontal = topHorizontal === firstHorizontal ? secondHorizontal : firstHorizontal;
+      const panelBounds = getRectangleBounds(topHorizontal, bottomHorizontal, leftVertical, rightVertical);
 
-      [firstHorizontal, secondHorizontal, firstVertical, secondVertical].forEach(({ edge }) => {
+      [topHorizontal, rightVertical, bottomHorizontal, leftVertical].forEach(({ edge }) => {
         if (!edge.panelBounds) {
           edge.panelBounds = panelBounds;
         }
       });
+
+      if (!hasPanelWithBounds(panels, panelBounds)) {
+        addPanel(
+          panels,
+          [
+            { x: panelBounds.minX, y: panelBounds.minY },
+            { x: panelBounds.maxX, y: panelBounds.minY },
+            { x: panelBounds.maxX, y: panelBounds.maxY },
+            { x: panelBounds.minX, y: panelBounds.maxY },
+          ],
+          panelBounds,
+          [topHorizontal.edge.id, rightVertical.edge.id, bottomHorizontal.edge.id, leftVertical.edge.id],
+        );
+      }
     });
   });
 };
@@ -289,12 +316,13 @@ const addPanel = (
 };
 
 const logPanelDebug = (panels: SvgPanel[]) => {
-  console.debug('SVG import panels', {
-    panelCount: panels.length,
-    panels: panels.map((panel) => ({
+  console.log('svgModel.panels.length after import', panels.length);
+  panels.forEach((panel) => {
+    console.log('SVG import panel', {
       id: panel.id,
-      contourPointCount: panel.contour.length,
-    })),
+      contourLength: panel.contour.length,
+      edgeIds: panel.edgeIds,
+    });
   });
 };
 
@@ -516,7 +544,7 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
     parsePathSegments(path.getAttribute('d'), `path ${elementIndex + 1}`, edges, panels);
   });
 
-  assignPanelBoundsFromClosedLoops(edges);
+  assignPanelBoundsFromClosedLoops(edges, panels);
   logPanelDebug(panels);
 
   return {
