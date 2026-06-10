@@ -682,22 +682,26 @@ const buildAppliedEPanelPaths = (
 
   return svgModel.panels.flatMap((panel) => {
     const validation = validateClosedPanel(panel, edgesById);
+    console.log('validateClosedPanel result per panel', panel.id, validation);
 
     if (!validation.valid) {
-      console.warn('Skipping applied E panel path', panel.id, validation.reason);
+      console.warn('Panel skipped', panel.id, `reason: ${validation.reason}`);
       return [];
     }
 
     const operations = getPanelEdgeOperations(panel, assignments, connectionMap);
+    console.log('operations per panel', panel.id, operations);
 
     if (operations.length === 0) {
+      console.warn('Panel skipped', panel.id, 'reason: no E edge operations for panel');
       return [];
     }
 
     const result = buildPanelGeometry(panel, operations);
+    console.log('buildPanelGeometry result per panel', panel.id, result);
 
     if (!result.ok) {
-      console.warn('Skipping applied E panel path', panel.id, result.reason);
+      console.warn('Panel skipped', panel.id, `reason: ${result.reason}`);
       return [];
     }
 
@@ -1073,8 +1077,15 @@ function App() {
   };
 
   const applyEPreview = () => {
+    console.log('hasAssignedEEdges', hasAssignedEEdges);
+    console.log('Object.keys(edgeAssignments)', Object.keys(edgeAssignments));
+    console.log('edgeAssignments', edgeAssignments);
+    console.log('svgModel.panels.length', svgModel.panels.length);
+    console.log('svgModel.edges.length', svgModel.edges.length);
     const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, edgeAssignments, connections);
     console.info(`AppliedEPanelPaths created = ${nextAppliedEPanelPaths.length}`);
+    console.log('nextAppliedEPanelPaths.length', nextAppliedEPanelPaths.length);
+    console.log('nextAppliedEPanelPaths pathD', nextAppliedEPanelPaths.map((panelPath) => panelPath.pathD));
     setAppliedEPanelPaths(nextAppliedEPanelPaths);
     setIsEPreviewVisible(false);
     setErrorMessage('');
