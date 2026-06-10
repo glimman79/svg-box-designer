@@ -165,6 +165,7 @@ type PanelTabOperation = {
   materialThicknessMm: number;
   fingerWidthMm: number;
   reversed: boolean;
+  insetLength: number;
   segments: TabSegment[];
 };
 
@@ -378,53 +379,52 @@ const applyContourSideOffsetPlan = (
 };
 
 const createTabSegmentPlan = (
-  edgeLength: number,
+  insetLength: number,
   fingerWidthMm: number,
 ): TabSegment[] => {
-  const safeEdgeLength = Math.max(0, edgeLength);
+  const safeInsetLength = Math.max(0, insetLength);
   const safeFingerWidth = Math.max(0, fingerWidthMm);
 
-  if (safeEdgeLength === 0) {
+  if (safeInsetLength <= cornerTouchTolerance) {
     return [];
   }
 
-  const segmentLengths = (() => {
-    if (safeFingerWidth === 0 || safeEdgeLength < safeFingerWidth) {
-      return [safeEdgeLength];
+  if (safeFingerWidth <= cornerTouchTolerance || safeInsetLength < safeFingerWidth) {
+    return [{ startDistance: 0, endDistance: safeInsetLength }];
+  }
+
+  const maxFullFingerCount = Math.max(1, Math.floor(safeInsetLength / safeFingerWidth));
+  const segmentCount = maxFullFingerCount % 2 === 0
+    ? Math.max(1, maxFullFingerCount - 1)
+    : maxFullFingerCount;
+
+  if (segmentCount === 1) {
+    return [{ startDistance: 0, endDistance: safeInsetLength }];
+  }
+
+  const centerDistance = safeInsetLength / 2;
+  const middleSegmentCount = segmentCount - 2;
+  const middleSegmentsLength = middleSegmentCount * safeFingerWidth;
+  const middleStartDistance = centerDistance - (middleSegmentsLength / 2);
+  const middleEndDistance = centerDistance + (middleSegmentsLength / 2);
+  const boundaryDistances = [
+    0,
+    middleStartDistance,
+    ...Array.from({ length: Math.max(0, middleSegmentCount - 1) }, (_, index) => (
+      middleStartDistance + ((index + 1) * safeFingerWidth)
+    )),
+    middleEndDistance,
+    safeInsetLength,
+  ];
+
+  return boundaryDistances.flatMap((startDistance, index) => {
+    const endDistance = boundaryDistances[index + 1];
+
+    if (endDistance === undefined || endDistance - startDistance <= cornerTouchTolerance) {
+      return [];
     }
 
-    const evenOrOddSegmentCount = Math.max(1, Math.floor(safeEdgeLength / safeFingerWidth));
-    const segmentCount = evenOrOddSegmentCount % 2 === 0
-      ? Math.max(1, evenOrOddSegmentCount - 1)
-      : evenOrOddSegmentCount;
-
-    if (segmentCount === 1) {
-      return [safeEdgeLength];
-    }
-
-    const middleSegmentCount = segmentCount - 2;
-    const endSegmentLength = (safeEdgeLength - middleSegmentCount * safeFingerWidth) / 2;
-
-    return Array.from({ length: segmentCount }, (_, index) => {
-      if (index === 0 || index === segmentCount - 1) {
-        return endSegmentLength;
-      }
-
-      return safeFingerWidth;
-    });
-  })();
-
-  let startDistance = 0;
-
-  return segmentLengths.flatMap((segmentLength) => {
-    const endDistance = Math.min(safeEdgeLength, startDistance + segmentLength);
-    const segment = endDistance - startDistance > cornerTouchTolerance
-      ? [{ startDistance, endDistance }]
-      : [];
-
-    startDistance = endDistance;
-
-    return segment;
+    return [{ startDistance, endDistance }];
   });
 };
 
@@ -568,6 +568,16 @@ const isOperationReversedAgainstContour = (
   return pointsMatch(edge.start, end) && pointsMatch(edge.end, start);
 };
 
+const centerSegmentsOnSide = (
+  segments: TabSegment[],
+  centerOffset: number,
+): TabSegment[] => (
+  segments.map((segment) => ({
+    startDistance: segment.startDistance + centerOffset,
+    endDistance: segment.endDistance + centerOffset,
+  }))
+);
+
 const mirrorSegments = (
   segments: TabSegment[],
   sideLength: number,
@@ -604,6 +614,7 @@ const buildTabOperations = (
     return [{
       ...operation,
       reversed: isOperationReversedAgainstContour(panel, operation, edgesById),
+      insetLength: segmentPlan.insetLength,
       segments: getTabSegmentsForRole(segmentPlan.segments, operation.role),
     }];
   })
@@ -621,6 +632,7 @@ const applyTabsToContour = (
   panel: SvgPanel,
   contour: PanelContour,
   tabOperations: PanelTabOperation[],
+  shouldDebugApply = false,
 ): PanelGeometryBuildResult => {
   if (tabOperations.length === 0) {
     return validatePanelContour(contour);
@@ -658,9 +670,23 @@ const applyTabsToContour = (
     }
 
     const currentSideLength = getContourSideLength(side);
+    const centerOffset = Math.max(0, (currentSideLength - operation.insetLength) / 2);
+    const centeredSegments = centerSegmentsOnSide(operation.segments, centerOffset);
     const segments = operation.reversed
-      ? mirrorSegments(operation.segments, currentSideLength)
-      : operation.segments;
+      ? mirrorSegments(centeredSegments, currentSideLength)
+      : centeredSegments;
+
+    if (shouldDebugApply) {
+      console.log('E tab operation', {
+        edgeId: operation.edgeId,
+        connectionId: operation.connectionId,
+        role: operation.role,
+        currentSideLength,
+        centerOffset,
+        reversed: operation.reversed,
+        finalSegmentDistances: segments.map((segment) => [segment.startDistance, segment.endDistance]),
+      });
+    }
 
     segments.forEach((segment) => {
       const baseStart = interpolateSidePoint(side, segment.startDistance);
@@ -758,9 +784,10 @@ const buildPanelGeometry = (
   insetContour: PanelContour,
   tabSegmentPlansByConnectionId: Map<string, TabSegmentPlan>,
   edgesById: Map<string, SvgEdge>,
+  shouldDebugApply = false,
 ): PanelGeometryBuildResult => {
   const tabOperations = buildTabOperations(panel, operations, tabSegmentPlansByConnectionId, edgesById);
-  const tabResult = applyTabsToContour(panel, insetContour, tabOperations);
+  const tabResult = applyTabsToContour(panel, insetContour, tabOperations, shouldDebugApply);
 
   if (!tabResult.ok) {
     return tabResult;
@@ -827,6 +854,7 @@ const buildAppliedEPanelPaths = (
   svgModel: SvgDocumentModel,
   assignments: Record<string, EdgeAssignment>,
   connectionMap: ConnectionMap,
+  shouldDebugApply = false,
 ): AppliedEPanelPath[] => {
   const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
   const insetPanelOperations = svgModel.panels.flatMap((panel) => {
@@ -855,8 +883,34 @@ const buildAppliedEPanelPaths = (
     )),
   );
 
+  if (shouldDebugApply) {
+    tabSegmentPlansByConnectionId.forEach((plan, connectionId) => {
+      const segmentLengths = plan.segments.map((segment) => segment.endDistance - segment.startDistance);
+
+      console.log('E tab segment plan', {
+        connectionId,
+        insetLength: plan.insetLength,
+        fingerWidthMm: insetPanelOperations
+          .flatMap(({ operations }) => operations)
+          .find((operation) => operation.connectionId === connectionId)?.fingerWidthMm ?? 0,
+        segmentCount: plan.segments.length,
+        segmentLengths,
+        firstSegmentLength: segmentLengths[0] ?? 0,
+        lastSegmentLength: segmentLengths[segmentLengths.length - 1] ?? 0,
+        middleSegmentLengths: segmentLengths.slice(1, -1),
+      });
+    });
+  }
+
   return insetPanelOperations.flatMap(({ panel, operations, insetContour }) => {
-    const result = buildPanelGeometry(panel, operations, insetContour, tabSegmentPlansByConnectionId, edgesById);
+    const result = buildPanelGeometry(
+      panel,
+      operations,
+      insetContour,
+      tabSegmentPlansByConnectionId,
+      edgesById,
+      shouldDebugApply,
+    );
 
     if (!result.ok) {
       return [];
@@ -1235,7 +1289,7 @@ function App() {
   };
 
   const applyEPreview = () => {
-    const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, edgeAssignments, connections);
+    const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, edgeAssignments, connections, true);
     setAppliedEPanelPaths(nextAppliedEPanelPaths);
     setIsEPreviewVisible(false);
     setErrorMessage('');
