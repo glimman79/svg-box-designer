@@ -119,6 +119,7 @@ type PanState = {
 type AppliedEPanelPath = {
   panelId: string;
   eraseRect: SourceBounds;
+  erasePathD: string;
   pathD: string;
   edgeIds: string[];
 };
@@ -369,10 +370,9 @@ const applyContourSideOffsetPlan = (
   return validatePanelContour(contourResult as PanelContour);
 };
 
-const createTabSegments = (
+const createTabSegmentPlan = (
   edgeLength: number,
   fingerWidthMm: number,
-  startWithTab: boolean,
 ): TabSegment[] => {
   const safeEdgeLength = Math.max(0, edgeLength);
   const safeFingerWidth = Math.max(0, fingerWidthMm);
@@ -406,12 +406,9 @@ const createTabSegments = (
 
   let startDistance = 0;
 
-  return segmentLengths.flatMap((segmentLength, segmentIndex) => {
+  return segmentLengths.flatMap((segmentLength) => {
     const endDistance = Math.min(safeEdgeLength, startDistance + segmentLength);
-    const isTabbedSegment = startWithTab
-      ? segmentIndex % 2 === 0
-      : segmentIndex % 2 === 1;
-    const segment = isTabbedSegment && endDistance - startDistance > cornerTouchTolerance
+    const segment = endDistance - startDistance > cornerTouchTolerance
       ? [{ startDistance, endDistance }]
       : [];
 
@@ -420,6 +417,17 @@ const createTabSegments = (
     return segment;
   });
 };
+
+const getTabSegmentsForRole = (
+  segmentPlan: TabSegment[],
+  role: EdgeRole,
+): TabSegment[] => (
+  segmentPlan.filter((_, segmentIndex) => (
+    role === 'A'
+      ? segmentIndex % 2 === 0
+      : segmentIndex % 2 === 1
+  ))
+);
 
 const getContourSideLength = (side: ContourSide) => (
   Math.hypot(side.end.x - side.start.x, side.end.y - side.start.y)
@@ -445,6 +453,7 @@ const buildTabOperations = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
   contour: PanelContour,
+  tabSegmentPlansByConnectionId: Map<string, TabSegment[]>,
 ): PanelTabOperation[] => {
   const contourSides = buildContourSides(contour);
 
@@ -460,17 +469,22 @@ const buildTabOperations = (
       return [];
     }
 
+    const existingSegmentPlan = tabSegmentPlansByConnectionId.get(operation.connectionId);
+    const segmentPlan = existingSegmentPlan ?? createTabSegmentPlan(
+      getContourSideLength(side),
+      operation.fingerWidthMm,
+    );
+
+    if (!existingSegmentPlan) {
+      tabSegmentPlansByConnectionId.set(operation.connectionId, segmentPlan);
+    }
+
     return [{
       ...operation,
-      segments: createTabSegments(getContourSideLength(side), operation.fingerWidthMm, operation.role === 'A'),
+      segments: getTabSegmentsForRole(segmentPlan, operation.role),
     }];
   });
 };
-
-const clampPointToPanelBounds = (point: Point, bounds: SourceBounds): Point => ({
-  x: Math.min(bounds.maxX, Math.max(bounds.minX, point.x)),
-  y: Math.min(bounds.maxY, Math.max(bounds.minY, point.y)),
-});
 
 const addContourPoint = (contour: PanelContour, point: Point) => {
   const previousPoint = contour[contour.length - 1];
@@ -506,17 +520,17 @@ const applyTabsToContour = (
   contourSides.forEach((side, sideIndex) => {
     const operation = tabOperationsBySideIndex.get(sideIndex);
 
-    addContourPoint(tabbedContour, clampPointToPanelBounds(side.start, panel.bounds));
+    addContourPoint(tabbedContour, side.start);
 
     if (!operation || operation.segments.length === 0) {
-      addContourPoint(tabbedContour, clampPointToPanelBounds(side.end, panel.bounds));
+      addContourPoint(tabbedContour, side.end);
       return;
     }
 
     const outwardSide = offsetContourSide(side, -operation.materialThicknessMm * contourWindingSign);
 
     if (!outwardSide) {
-      addContourPoint(tabbedContour, clampPointToPanelBounds(side.end, panel.bounds));
+      addContourPoint(tabbedContour, side.end);
       return;
     }
 
@@ -526,13 +540,13 @@ const applyTabsToContour = (
       const tabStart = interpolateSidePoint(outwardSide, segment.startDistance);
       const tabEnd = interpolateSidePoint(outwardSide, segment.endDistance);
 
-      addContourPoint(tabbedContour, clampPointToPanelBounds(baseStart, panel.bounds));
-      addContourPoint(tabbedContour, clampPointToPanelBounds(tabStart, panel.bounds));
-      addContourPoint(tabbedContour, clampPointToPanelBounds(tabEnd, panel.bounds));
-      addContourPoint(tabbedContour, clampPointToPanelBounds(baseEnd, panel.bounds));
+      addContourPoint(tabbedContour, baseStart);
+      addContourPoint(tabbedContour, tabStart);
+      addContourPoint(tabbedContour, tabEnd);
+      addContourPoint(tabbedContour, baseEnd);
     });
 
-    addContourPoint(tabbedContour, clampPointToPanelBounds(side.end, panel.bounds));
+    addContourPoint(tabbedContour, side.end);
   });
 
   if (tabbedContour.length > 1 && pointsMatch(tabbedContour[0], tabbedContour[tabbedContour.length - 1])) {
@@ -568,6 +582,7 @@ const getPanelEdgeOperations = (
 const buildPanelGeometry = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
+  tabSegmentPlansByConnectionId: Map<string, TabSegment[]>,
 ): PanelGeometryBuildResult => {
   let contour = clonePanelContour(panel);
 
@@ -607,7 +622,7 @@ const buildPanelGeometry = (
     return bValidation;
   }
 
-  const tabOperations = buildTabOperations(panel, operations, contour);
+  const tabOperations = buildTabOperations(panel, operations, contour, tabSegmentPlansByConnectionId);
   const tabResult = applyTabsToContour(panel, contour, tabOperations);
 
   if (!tabResult.ok) {
@@ -679,6 +694,7 @@ const buildAppliedEPanelPaths = (
   connectionMap: ConnectionMap,
 ): AppliedEPanelPath[] => {
   const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
+  const tabSegmentPlansByConnectionId = new Map<string, TabSegment[]>();
 
   return svgModel.panels.flatMap((panel) => {
     const validation = validateClosedPanel(panel, edgesById);
@@ -697,7 +713,7 @@ const buildAppliedEPanelPaths = (
       return [];
     }
 
-    const result = buildPanelGeometry(panel, operations);
+    const result = buildPanelGeometry(panel, operations, tabSegmentPlansByConnectionId);
     console.log('buildPanelGeometry result per panel', panel.id, result);
 
     if (!result.ok) {
@@ -708,6 +724,7 @@ const buildAppliedEPanelPaths = (
     return [{
       panelId: panel.id,
       eraseRect: panel.bounds,
+      erasePathD: pointsToClosedPathD(panel.contour),
       pathD: pointsToClosedPathD(result.contour),
       edgeIds: panel.edgeIds,
     }];
@@ -1645,6 +1662,10 @@ function App() {
                       y={panelPath.eraseRect.minY}
                       width={panelPath.eraseRect.maxX - panelPath.eraseRect.minX}
                       height={panelPath.eraseRect.maxY - panelPath.eraseRect.minY}
+                    />
+                    <path
+                      className="applied-e-panel-erase-contour"
+                      d={panelPath.erasePathD}
                     />
                     <path
                       className="applied-e-panel-path"
