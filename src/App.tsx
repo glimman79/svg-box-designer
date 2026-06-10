@@ -127,6 +127,15 @@ type PanelPoint = Point;
 
 type PanelContour = PanelPoint[];
 
+type ContourSide = {
+  start: Point;
+  end: Point;
+};
+
+type InsetPanelEdgeResult =
+  | { ok: true; sides: ContourSide[] }
+  | { ok: false; reason: string };
+
 type PanelEdgeOperation = {
   edgeId: string;
   connectionId: string;
@@ -182,27 +191,79 @@ const getContourSignedArea = (contour: PanelContour) => (
   }, 0) / 2
 );
 
-const getInwardContourSideDirection = (contour: PanelContour, contourIndex: number): Point | null => {
-  const start = contour[contourIndex];
-  const end = contour[(contourIndex + 1) % contour.length];
+const buildContourSides = (contour: PanelContour): ContourSide[] => (
+  contour.map((point, index) => ({
+    start: { x: point.x, y: point.y },
+    end: {
+      x: contour[(index + 1) % contour.length].x,
+      y: contour[(index + 1) % contour.length].y,
+    },
+  }))
+);
 
-  if (!start || !end) {
+const offsetContourSide = (side: ContourSide, offsetDistance: number): ContourSide | null => {
+  const sideLength = Math.hypot(side.end.x - side.start.x, side.end.y - side.start.y);
+
+  if (sideLength <= cornerTouchTolerance) {
     return null;
   }
 
-  const edgeLength = Math.hypot(end.x - start.x, end.y - start.y);
-
-  if (edgeLength <= cornerTouchTolerance) {
-    return null;
-  }
-
-  const signedArea = getContourSignedArea(contour);
-  const directionSign = signedArea >= 0 ? 1 : -1;
+  const offsetX = (-(side.end.y - side.start.y) / sideLength) * offsetDistance;
+  const offsetY = ((side.end.x - side.start.x) / sideLength) * offsetDistance;
 
   return {
-    x: (-(end.y - start.y) / edgeLength) * directionSign,
-    y: ((end.x - start.x) / edgeLength) * directionSign,
+    start: {
+      x: side.start.x + offsetX,
+      y: side.start.y + offsetY,
+    },
+    end: {
+      x: side.end.x + offsetX,
+      y: side.end.y + offsetY,
+    },
   };
+};
+
+const lineIntersection = (firstSide: ContourSide, secondSide: ContourSide): Point | null => {
+  const firstDx = firstSide.end.x - firstSide.start.x;
+  const firstDy = firstSide.end.y - firstSide.start.y;
+  const secondDx = secondSide.end.x - secondSide.start.x;
+  const secondDy = secondSide.end.y - secondSide.start.y;
+  const denominator = (firstDx * secondDy) - (firstDy * secondDx);
+
+  if (Math.abs(denominator) <= cornerTouchTolerance) {
+    return null;
+  }
+
+  const startDx = secondSide.start.x - firstSide.start.x;
+  const startDy = secondSide.start.y - firstSide.start.y;
+  const firstScale = ((startDx * secondDy) - (startDy * secondDx)) / denominator;
+
+  return {
+    x: firstSide.start.x + (firstScale * firstDx),
+    y: firstSide.start.y + (firstScale * firstDy),
+  };
+};
+
+const rebuildOffsetContour = (offsetSides: ContourSide[]): PanelGeometryBuildResult => {
+  if (offsetSides.length < 3) {
+    return { ok: false, reason: 'Panel contour must contain at least 3 offset sides.' };
+  }
+
+  const contour = offsetSides.map((side, sideIndex) => {
+    const previousSide = offsetSides[(sideIndex + offsetSides.length - 1) % offsetSides.length];
+    return lineIntersection(previousSide, side);
+  });
+
+  const invalidIntersectionIndex = contour.findIndex((point) => !point);
+
+  if (invalidIntersectionIndex !== -1) {
+    return {
+      ok: false,
+      reason: `Panel contour side ${invalidIntersectionIndex} cannot be rebuilt because adjacent offset sides do not intersect.`,
+    };
+  }
+
+  return validatePanelContour(contour as PanelContour);
 };
 
 const validatePanelContour = (contour: PanelContour): PanelGeometryBuildResult => {
@@ -220,17 +281,26 @@ const validatePanelContour = (contour: PanelContour): PanelGeometryBuildResult =
     if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
       return { ok: false, reason: `Panel contour point ${contourIndex} must have finite coordinates.` };
     }
+
+    const nextPoint = contour[(contourIndex + 1) % contour.length];
+
+    if (!nextPoint) {
+      return { ok: false, reason: 'Panel contour closed path cannot be generated because a side endpoint is missing.' };
+    }
+
+    if (Math.hypot(nextPoint.x - point.x, nextPoint.y - point.y) <= cornerTouchTolerance) {
+      return { ok: false, reason: `Panel contour point ${contourIndex} duplicates the next consecutive point.` };
+    }
   }
 
-  const closingStart = contour[contour.length - 1];
-  const closingEnd = contour[0];
-
-  if (!closingStart || !closingEnd) {
-    return { ok: false, reason: 'Panel contour must have finite first and last points for path Z closure.' };
+  if (Math.abs(getContourSignedArea(contour)) <= cornerTouchTolerance) {
+    return { ok: false, reason: 'Panel contour polygon area must be greater than tolerance.' };
   }
 
-  if (Math.hypot(closingEnd.x - closingStart.x, closingEnd.y - closingStart.y) <= cornerTouchTolerance) {
-    return { ok: false, reason: 'Panel contour path Z closure must span a visible final side.' };
+  const closedPathD = pointsToClosedPathD(contour);
+
+  if (!closedPathD.endsWith(' Z')) {
+    return { ok: false, reason: 'Panel contour closed path cannot be generated.' };
   }
 
   return { ok: true, contour };
@@ -238,36 +308,39 @@ const validatePanelContour = (contour: PanelContour): PanelGeometryBuildResult =
 
 const insetPanelEdge = (
   panel: SvgPanel,
-  contour: PanelContour,
+  contourSides: ContourSide[],
   operation: PanelEdgeOperation,
-): PanelGeometryBuildResult => {
+  contourWindingSign: number,
+): InsetPanelEdgeResult => {
   const contourIndex = panel.edgeIds.indexOf(operation.edgeId);
 
   if (contourIndex === -1) {
     return { ok: false, reason: `Panel edge ${operation.edgeId} was not found in panel ${panel.id}.` };
   }
 
-  const direction = getInwardContourSideDirection(contour, contourIndex);
+  const side = contourSides[contourIndex];
 
-  if (!direction) {
+  if (!side) {
+    return { ok: false, reason: `Panel edge ${operation.edgeId} cannot be inset because its contour side is missing.` };
+  }
+
+  const offsetSide = offsetContourSide(side, operation.materialThicknessMm * contourWindingSign);
+
+  if (!offsetSide) {
     return { ok: false, reason: `Panel edge ${operation.edgeId} cannot be inset because its contour side is invalid.` };
   }
 
-  const nextContour = contour.map((point) => ({ x: point.x, y: point.y }));
-  const nextContourIndex = (contourIndex + 1) % nextContour.length;
-  const insetX = direction.x * operation.materialThicknessMm;
-  const insetY = direction.y * operation.materialThicknessMm;
-
-  nextContour[contourIndex] = {
-    x: nextContour[contourIndex].x + insetX,
-    y: nextContour[contourIndex].y + insetY,
+  return {
+    ok: true,
+    sides: contourSides.map((contourSide, sideIndex) => (
+      sideIndex === contourIndex
+        ? offsetSide
+        : {
+          start: { x: contourSide.start.x, y: contourSide.start.y },
+          end: { x: contourSide.end.x, y: contourSide.end.y },
+        }
+    )),
   };
-  nextContour[nextContourIndex] = {
-    x: nextContour[nextContourIndex].x + insetX,
-    y: nextContour[nextContourIndex].y + insetY,
-  };
-
-  return { ok: true, contour: nextContour };
 };
 
 const getPanelEdgeOperations = (
@@ -305,29 +378,64 @@ const buildPanelGeometry = (
     return initialValidation;
   }
 
-  const applyOperations = (role: EdgeRole): PanelGeometryBuildResult => {
+  let contourSides = buildContourSides(contour);
+
+  const applyOffsets = (role: EdgeRole): InsetPanelEdgeResult => {
     const roleOperations = operations.filter((operation) => operation.role === role);
+    const contourWindingSign = getContourSignedArea(contour) >= 0 ? 1 : -1;
 
     for (const operation of roleOperations) {
-      const result = insetPanelEdge(panel, contour, operation);
+      const result = insetPanelEdge(panel, contourSides, operation, contourWindingSign);
 
       if (!result.ok) {
         return result;
       }
 
-      contour = result.contour;
+      contourSides = result.sides;
     }
 
-    return validatePanelContour(contour);
+    return { ok: true, sides: contourSides };
   };
 
-  const aResult = applyOperations('A');
+  const rebuildAndValidate = (): PanelGeometryBuildResult => {
+    const rebuildResult = rebuildOffsetContour(contourSides);
+
+    if (!rebuildResult.ok) {
+      return rebuildResult;
+    }
+
+    contour = rebuildResult.contour;
+
+    const validationResult = validatePanelContour(contour);
+
+    if (!validationResult.ok) {
+      return validationResult;
+    }
+
+    contourSides = buildContourSides(contour);
+
+    return validationResult;
+  };
+
+  const aOffsetResult = applyOffsets('A');
+
+  if (!aOffsetResult.ok) {
+    return aOffsetResult;
+  }
+
+  const aResult = rebuildAndValidate();
 
   if (!aResult.ok) {
     return aResult;
   }
 
-  const bResult = applyOperations('B');
+  const bOffsetResult = applyOffsets('B');
+
+  if (!bOffsetResult.ok) {
+    return bOffsetResult;
+  }
+
+  const bResult = rebuildAndValidate();
 
   if (!bResult.ok) {
     return bResult;
