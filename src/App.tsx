@@ -152,12 +152,19 @@ type TabSegment = {
   endDistance: number;
 };
 
+type TabSegmentPlan = {
+  connectionId: string;
+  originalLength: number;
+  segments: TabSegment[];
+};
+
 type PanelTabOperation = {
   edgeId: string;
   connectionId: string;
   role: EdgeRole;
   materialThicknessMm: number;
   fingerWidthMm: number;
+  originalLength: number;
   segments: TabSegment[];
 };
 
@@ -429,7 +436,7 @@ const buildTabSegmentPlansByConnectionId = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
   edgesById: Map<string, SvgEdge>,
-): Map<string, TabSegment[]> => {
+): Map<string, TabSegmentPlan> => {
   const operationsByConnectionId = new Map<string, PanelEdgeOperation[]>();
 
   void panel;
@@ -440,7 +447,7 @@ const buildTabSegmentPlansByConnectionId = (
     operationsByConnectionId.set(operation.connectionId, groupedOperations);
   });
 
-  const plansByConnectionId = new Map<string, TabSegment[]>();
+  const plansByConnectionId = new Map<string, TabSegmentPlan>();
 
   operationsByConnectionId.forEach((groupedOperations, connectionId) => {
     const lengths = groupedOperations.flatMap((operation) => {
@@ -463,20 +470,21 @@ const buildTabSegmentPlansByConnectionId = (
       });
     }
 
-    plansByConnectionId.set(
+    plansByConnectionId.set(connectionId, {
       connectionId,
-      createTabSegmentPlan(shortestLength, groupedOperations[0]?.fingerWidthMm ?? 0),
-    );
+      originalLength: shortestLength,
+      segments: createTabSegmentPlan(shortestLength, groupedOperations[0]?.fingerWidthMm ?? 0),
+    });
   });
 
   return plansByConnectionId;
 };
 
 const getTabSegmentsForRole = (
-  segmentPlan: TabSegment[],
+  segments: TabSegment[],
   role: EdgeRole,
 ): TabSegment[] => (
-  segmentPlan.filter((_, segmentIndex) => (
+  segments.filter((_, segmentIndex) => (
     role === 'B'
       ? segmentIndex % 2 === 0
       : segmentIndex % 2 === 1
@@ -506,7 +514,7 @@ const interpolateSidePoint = (side: ContourSide, distance: number): Point => {
 const buildTabOperations = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
-  tabSegmentPlansByConnectionId: Map<string, TabSegment[]>,
+  tabSegmentPlansByConnectionId: Map<string, TabSegmentPlan>,
 ): PanelTabOperation[] => (
   operations.flatMap((operation) => {
     if (operation.role !== 'A' && operation.role !== 'B') {
@@ -525,10 +533,30 @@ const buildTabOperations = (
 
     return [{
       ...operation,
-      segments: getTabSegmentsForRole(segmentPlan, operation.role),
+      originalLength: segmentPlan.originalLength,
+      segments: getTabSegmentsForRole(segmentPlan.segments, operation.role),
     }];
   })
 );
+
+const mapSegmentToCurrentSide = (
+  segment: TabSegment,
+  originalLength: number,
+  currentSideLength: number,
+): TabSegment => {
+  if (originalLength <= 0) {
+    return { startDistance: 0, endDistance: 0 };
+  }
+
+  const clampToCurrentSide = (distance: number) => Math.min(currentSideLength, Math.max(0, distance));
+  const startRatio = segment.startDistance / originalLength;
+  const endRatio = segment.endDistance / originalLength;
+
+  return {
+    startDistance: clampToCurrentSide(startRatio * currentSideLength),
+    endDistance: clampToCurrentSide(endRatio * currentSideLength),
+  };
+};
 
 const addContourPoint = (contour: PanelContour, point: Point) => {
   const previousPoint = contour[contour.length - 1];
@@ -578,7 +606,12 @@ const applyTabsToContour = (
       return;
     }
 
-    operation.segments.forEach((segment) => {
+    const currentSideLength = getContourSideLength(side);
+    const mappedSegments = operation.segments.map((segment) => (
+      mapSegmentToCurrentSide(segment, operation.originalLength, currentSideLength)
+    ));
+
+    mappedSegments.forEach((segment) => {
       const baseStart = interpolateSidePoint(side, segment.startDistance);
       const baseEnd = interpolateSidePoint(side, segment.endDistance);
       const tabStart = interpolateSidePoint(outwardSide, segment.startDistance);
@@ -626,7 +659,7 @@ const getPanelEdgeOperations = (
 const buildPanelGeometry = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
-  tabSegmentPlansByConnectionId: Map<string, TabSegment[]>,
+  tabSegmentPlansByConnectionId: Map<string, TabSegmentPlan>,
 ): PanelGeometryBuildResult => {
   let contour = clonePanelContour(panel);
 
@@ -745,7 +778,7 @@ const buildAppliedEPanelPaths = (
   const allOperations = panelOperations.flatMap(({ operations }) => operations);
   const tabSegmentPlansByConnectionId = svgModel.panels[0]
     ? buildTabSegmentPlansByConnectionId(svgModel.panels[0], allOperations, edgesById)
-    : new Map<string, TabSegment[]>();
+    : new Map<string, TabSegmentPlan>();
 
   return panelOperations.flatMap(({ panel, operations }) => {
     const validation = validateClosedPanel(panel, edgesById);
