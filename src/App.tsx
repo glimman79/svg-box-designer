@@ -386,14 +386,17 @@ const createTabSegmentPlan = (
       return [safeEdgeLength];
     }
 
-    const segmentCount = Math.max(1, Math.floor(safeEdgeLength / safeFingerWidth));
+    const evenOrOddSegmentCount = Math.max(1, Math.floor(safeEdgeLength / safeFingerWidth));
+    const segmentCount = evenOrOddSegmentCount % 2 === 0
+      ? Math.max(1, evenOrOddSegmentCount - 1)
+      : evenOrOddSegmentCount;
 
     if (segmentCount === 1) {
       return [safeEdgeLength];
     }
 
-    const remainingLength = safeEdgeLength - segmentCount * safeFingerWidth;
-    const endSegmentLength = safeFingerWidth + remainingLength / 2;
+    const middleSegmentCount = segmentCount - 2;
+    const endSegmentLength = (safeEdgeLength - middleSegmentCount * safeFingerWidth) / 2;
 
     return Array.from({ length: segmentCount }, (_, index) => {
       if (index === 0 || index === segmentCount - 1) {
@@ -418,12 +421,63 @@ const createTabSegmentPlan = (
   });
 };
 
+const getSvgEdgeLength = (edge: SvgEdge) => (
+  Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y)
+);
+
+const buildTabSegmentPlansByConnectionId = (
+  panel: SvgPanel,
+  operations: PanelEdgeOperation[],
+  edgesById: Map<string, SvgEdge>,
+): Map<string, TabSegment[]> => {
+  const operationsByConnectionId = new Map<string, PanelEdgeOperation[]>();
+
+  void panel;
+
+  operations.forEach((operation) => {
+    const groupedOperations = operationsByConnectionId.get(operation.connectionId) ?? [];
+    groupedOperations.push(operation);
+    operationsByConnectionId.set(operation.connectionId, groupedOperations);
+  });
+
+  const plansByConnectionId = new Map<string, TabSegment[]>();
+
+  operationsByConnectionId.forEach((groupedOperations, connectionId) => {
+    const lengths = groupedOperations.flatMap((operation) => {
+      const edge = edgesById.get(operation.edgeId);
+
+      return edge ? [getSvgEdgeLength(edge)] : [];
+    });
+
+    if (lengths.length === 0) {
+      return;
+    }
+
+    const shortestLength = Math.min(...lengths);
+    const longestLength = Math.max(...lengths);
+
+    if (longestLength - shortestLength > cornerTouchTolerance) {
+      console.warn(`E connection ${connectionId} original edge lengths differ; using shortest length.`, {
+        connectionId,
+        lengths,
+      });
+    }
+
+    plansByConnectionId.set(
+      connectionId,
+      createTabSegmentPlan(shortestLength, groupedOperations[0]?.fingerWidthMm ?? 0),
+    );
+  });
+
+  return plansByConnectionId;
+};
+
 const getTabSegmentsForRole = (
   segmentPlan: TabSegment[],
   role: EdgeRole,
 ): TabSegment[] => (
   segmentPlan.filter((_, segmentIndex) => (
-    role === 'A'
+    role === 'B'
       ? segmentIndex % 2 === 0
       : segmentIndex % 2 === 1
   ))
@@ -452,39 +506,29 @@ const interpolateSidePoint = (side: ContourSide, distance: number): Point => {
 const buildTabOperations = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
-  contour: PanelContour,
   tabSegmentPlansByConnectionId: Map<string, TabSegment[]>,
-): PanelTabOperation[] => {
-  const contourSides = buildContourSides(contour);
-
-  return operations.flatMap((operation) => {
+): PanelTabOperation[] => (
+  operations.flatMap((operation) => {
     if (operation.role !== 'A' && operation.role !== 'B') {
       return [];
     }
 
-    const sideIndex = panel.edgeIds.findIndex((edgeId) => edgeId === operation.edgeId);
-    const side = contourSides[sideIndex];
-
-    if (sideIndex === -1 || !side) {
+    if (!panel.edgeIds.includes(operation.edgeId)) {
       return [];
     }
 
-    const existingSegmentPlan = tabSegmentPlansByConnectionId.get(operation.connectionId);
-    const segmentPlan = existingSegmentPlan ?? createTabSegmentPlan(
-      getContourSideLength(side),
-      operation.fingerWidthMm,
-    );
+    const segmentPlan = tabSegmentPlansByConnectionId.get(operation.connectionId);
 
-    if (!existingSegmentPlan) {
-      tabSegmentPlansByConnectionId.set(operation.connectionId, segmentPlan);
+    if (!segmentPlan) {
+      return [];
     }
 
     return [{
       ...operation,
       segments: getTabSegmentsForRole(segmentPlan, operation.role),
     }];
-  });
-};
+  })
+);
 
 const addContourPoint = (contour: PanelContour, point: Point) => {
   const previousPoint = contour[contour.length - 1];
@@ -622,7 +666,7 @@ const buildPanelGeometry = (
     return bValidation;
   }
 
-  const tabOperations = buildTabOperations(panel, operations, contour, tabSegmentPlansByConnectionId);
+  const tabOperations = buildTabOperations(panel, operations, tabSegmentPlansByConnectionId);
   const tabResult = applyTabsToContour(panel, contour, tabOperations);
 
   if (!tabResult.ok) {
@@ -694,30 +738,25 @@ const buildAppliedEPanelPaths = (
   connectionMap: ConnectionMap,
 ): AppliedEPanelPath[] => {
   const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
-  const tabSegmentPlansByConnectionId = new Map<string, TabSegment[]>();
+  const panelOperations = svgModel.panels.map((panel) => ({
+    panel,
+    operations: getPanelEdgeOperations(panel, assignments, connectionMap),
+  }));
+  const allOperations = panelOperations.flatMap(({ operations }) => operations);
+  const tabSegmentPlansByConnectionId = svgModel.panels[0]
+    ? buildTabSegmentPlansByConnectionId(svgModel.panels[0], allOperations, edgesById)
+    : new Map<string, TabSegment[]>();
 
-  return svgModel.panels.flatMap((panel) => {
+  return panelOperations.flatMap(({ panel, operations }) => {
     const validation = validateClosedPanel(panel, edgesById);
-    console.log('validateClosedPanel result per panel', panel.id, validation);
 
-    if (!validation.valid) {
-      console.warn('Panel skipped', panel.id, `reason: ${validation.reason}`);
-      return [];
-    }
-
-    const operations = getPanelEdgeOperations(panel, assignments, connectionMap);
-    console.log('operations per panel', panel.id, operations);
-
-    if (operations.length === 0) {
-      console.warn('Panel skipped', panel.id, 'reason: no E edge operations for panel');
+    if (!validation.valid || operations.length === 0) {
       return [];
     }
 
     const result = buildPanelGeometry(panel, operations, tabSegmentPlansByConnectionId);
-    console.log('buildPanelGeometry result per panel', panel.id, result);
 
     if (!result.ok) {
-      console.warn('Panel skipped', panel.id, `reason: ${result.reason}`);
       return [];
     }
 
@@ -1094,15 +1133,7 @@ function App() {
   };
 
   const applyEPreview = () => {
-    console.log('hasAssignedEEdges', hasAssignedEEdges);
-    console.log('Object.keys(edgeAssignments)', Object.keys(edgeAssignments));
-    console.log('edgeAssignments', edgeAssignments);
-    console.log('svgModel.panels.length', svgModel.panels.length);
-    console.log('svgModel.edges.length', svgModel.edges.length);
     const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, edgeAssignments, connections);
-    console.info(`AppliedEPanelPaths created = ${nextAppliedEPanelPaths.length}`);
-    console.log('nextAppliedEPanelPaths.length', nextAppliedEPanelPaths.length);
-    console.log('nextAppliedEPanelPaths pathD', nextAppliedEPanelPaths.map((panelPath) => panelPath.pathD));
     setAppliedEPanelPaths(nextAppliedEPanelPaths);
     setIsEPreviewVisible(false);
     setErrorMessage('');
