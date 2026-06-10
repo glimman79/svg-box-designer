@@ -418,6 +418,16 @@ button:disabled {
   pointer-events: none;
 }
 
+.applied-e-panel-erase-contour {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 4;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}
+
 .applied-e-panel-path {
   fill: none;
   stroke: #000000;
