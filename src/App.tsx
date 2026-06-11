@@ -392,39 +392,40 @@ const createTabSegmentPlan = (
     return [{ startDistance: 0, endDistance: safeInsetLength }];
   }
 
-  const maxFullFingerCount = Math.max(1, Math.floor(safeInsetLength / safeFingerWidth));
-  const segmentCount = maxFullFingerCount % 2 === 0
-    ? Math.max(1, maxFullFingerCount - 1)
-    : maxFullFingerCount;
+  const maxInteriorSegmentCount = Math.floor((safeInsetLength - (2 * safeFingerWidth)) / safeFingerWidth);
+  let interiorSegmentCount = maxInteriorSegmentCount % 2 === 0
+    ? maxInteriorSegmentCount - 1
+    : maxInteriorSegmentCount;
 
-  if (segmentCount === 1) {
-    return [{ startDistance: 0, endDistance: safeInsetLength }];
-  }
+  while (interiorSegmentCount >= 1) {
+    const outerLength = (safeInsetLength - (interiorSegmentCount * safeFingerWidth)) / 2;
 
-  const centerDistance = safeInsetLength / 2;
-  const middleSegmentCount = segmentCount - 2;
-  const middleSegmentsLength = middleSegmentCount * safeFingerWidth;
-  const middleStartDistance = centerDistance - (middleSegmentsLength / 2);
-  const middleEndDistance = centerDistance + (middleSegmentsLength / 2);
-  const boundaryDistances = [
-    0,
-    middleStartDistance,
-    ...Array.from({ length: Math.max(0, middleSegmentCount - 1) }, (_, index) => (
-      middleStartDistance + ((index + 1) * safeFingerWidth)
-    )),
-    middleEndDistance,
-    safeInsetLength,
-  ];
+    if (outerLength + cornerTouchTolerance >= safeFingerWidth) {
+      const segments: TabSegment[] = [
+        { startDistance: 0, endDistance: outerLength },
+      ];
 
-  return boundaryDistances.flatMap((startDistance, index) => {
-    const endDistance = boundaryDistances[index + 1];
+      for (let index = 0; index < interiorSegmentCount; index += 1) {
+        const startDistance = outerLength + (index * safeFingerWidth);
 
-    if (endDistance === undefined || endDistance - startDistance <= cornerTouchTolerance) {
-      return [];
+        segments.push({
+          startDistance,
+          endDistance: startDistance + safeFingerWidth,
+        });
+      }
+
+      segments.push({
+        startDistance: safeInsetLength - outerLength,
+        endDistance: safeInsetLength,
+      });
+
+      return segments;
     }
 
-    return [{ startDistance, endDistance }];
-  });
+    interiorSegmentCount -= 2;
+  }
+
+  return [{ startDistance: 0, endDistance: safeInsetLength }];
 };
 
 const getContourSideLength = (side: ContourSide) => (
