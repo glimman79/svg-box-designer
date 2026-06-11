@@ -155,6 +155,7 @@ type TabSegment = {
 type TabSegmentPlan = {
   connectionId: string;
   insetLength: number;
+  originalSideLengths: number[];
   segments: TabSegment[];
 };
 
@@ -435,20 +436,18 @@ const getContourSideLength = (side: ContourSide) => (
 const buildTabSegmentPlansByConnectionId = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
-  contour: PanelContour,
 ): Map<string, TabSegmentPlan> => {
-  const contourSides = buildContourSides(contour);
   const lengthsByConnectionId = new Map<string, number[]>();
   const fingerWidthByConnectionId = new Map<string, number>();
 
   operations.forEach((operation) => {
     const sideIndex = panel.edgeIds.findIndex((edgeId) => edgeId === operation.edgeId);
-    const side = sideIndex === -1 ? undefined : contourSides[sideIndex];
 
-    if (!side) {
+    if (sideIndex === -1) {
       return;
     }
 
+    const side = getContourEdgePoints(panel, sideIndex);
     const lengths = lengthsByConnectionId.get(operation.connectionId) ?? [];
     lengths.push(getContourSideLength(side));
     lengthsByConnectionId.set(operation.connectionId, lengths);
@@ -466,7 +465,7 @@ const buildTabSegmentPlansByConnectionId = (
     const longestLength = Math.max(...lengths);
 
     if (longestLength - shortestLength > cornerTouchTolerance) {
-      console.warn(`E connection ${connectionId} current inset side lengths differ (${lengths.join(', ')}); using shortest length.`, {
+      console.warn(`E connection ${connectionId} original side lengths differ (${lengths.join(', ')}); using shortest length.`, {
         connectionId,
         lengths,
       });
@@ -475,6 +474,7 @@ const buildTabSegmentPlansByConnectionId = (
     plansByConnectionId.set(connectionId, {
       connectionId,
       insetLength: shortestLength,
+      originalSideLengths: lengths,
       segments: createTabSegmentPlan(shortestLength, fingerWidthByConnectionId.get(connectionId) ?? 0),
     });
   });
@@ -485,15 +485,17 @@ const buildTabSegmentPlansByConnectionId = (
 const mergeTabSegmentPlansByConnectionId = (
   panelPlans: Map<string, TabSegmentPlan>[],
 ): Map<string, TabSegmentPlan> => {
-  const plansByConnectionId = new Map<string, { insetLengths: number[]; segments: TabSegment[] }>();
+  const plansByConnectionId = new Map<string, { insetLengths: number[]; originalSideLengths: number[]; segments: TabSegment[] }>();
 
   panelPlans.forEach((plans) => {
     plans.forEach((plan) => {
       const groupedPlan = plansByConnectionId.get(plan.connectionId) ?? {
         insetLengths: [],
+        originalSideLengths: [],
         segments: plan.segments,
       };
       groupedPlan.insetLengths.push(plan.insetLength);
+      groupedPlan.originalSideLengths.push(...plan.originalSideLengths);
       plansByConnectionId.set(plan.connectionId, groupedPlan);
     });
   });
@@ -505,7 +507,7 @@ const mergeTabSegmentPlansByConnectionId = (
     const longestLength = Math.max(...groupedPlan.insetLengths);
 
     if (longestLength - shortestLength > cornerTouchTolerance) {
-      console.warn(`E connection ${connectionId} current inset side lengths differ (${groupedPlan.insetLengths.join(', ')}); using shortest length.`, {
+      console.warn(`E connection ${connectionId} original side lengths differ (${groupedPlan.insetLengths.join(', ')}); using shortest length.`, {
         connectionId,
         lengths: groupedPlan.insetLengths,
       });
@@ -518,6 +520,7 @@ const mergeTabSegmentPlansByConnectionId = (
     mergedPlansByConnectionId.set(connectionId, {
       connectionId,
       insetLength: shortestLength,
+      originalSideLengths: groupedPlan.originalSideLengths,
       segments: sourcePlan?.segments ?? groupedPlan.segments,
     });
   });
@@ -684,6 +687,7 @@ const applyTabsToContour = (
         canonicalOrientation,
         reversedFromCanonical,
         currentSideLength,
+        planLength: operation.insetLength,
         centeredSegmentDistancesBeforeMirror: centeredSegments.map((segment) => [segment.startDistance, segment.endDistance]),
         finalSegmentDistancesAfterMirror: segments.map((segment) => [segment.startDistance, segment.endDistance]),
       });
@@ -878,8 +882,8 @@ const buildAppliedEPanelPaths = (
     }];
   });
   const tabSegmentPlansByConnectionId = mergeTabSegmentPlansByConnectionId(
-    insetPanelOperations.map(({ panel, operations, insetContour }) => (
-      buildTabSegmentPlansByConnectionId(panel, operations, insetContour)
+    insetPanelOperations.map(({ panel, operations }) => (
+      buildTabSegmentPlansByConnectionId(panel, operations)
     )),
   );
 
@@ -889,6 +893,7 @@ const buildAppliedEPanelPaths = (
 
       console.log('E tab segment plan', {
         connectionId,
+        originalSideLengthsUsed: plan.originalSideLengths,
         insetLength: plan.insetLength,
         fingerWidthMm: insetPanelOperations
           .flatMap(({ operations }) => operations)
