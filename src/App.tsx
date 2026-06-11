@@ -716,8 +716,13 @@ const applyTabsToContour = (
 
   contourSides.forEach((side, sideIndex) => {
     const operation = tabOperationsBySideIndex.get(sideIndex);
+    const joinedFromBBCorner = isBBCorner(
+      sideIndex,
+      contourSides.length,
+      tabOperationsBySideIndex,
+    );
 
-    if (isBBCorner(sideIndex, contourSides.length, tabOperationsBySideIndex)) {
+    if (joinedFromBBCorner) {
       const previousSide = contourSides[(sideIndex + contourSides.length - 1) % contourSides.length];
       const currentOperation = tabOperationsBySideIndex.get(sideIndex);
 
@@ -758,13 +763,19 @@ const applyTabsToContour = (
     const roleSegments = getTabSegmentsForRole(orientedSegments, operation.role);
     const segments = clipOriginalSegmentsToInsetSide(originalSide, side, roleSegments);
 
-    segments.forEach((segment) => {
+    segments.forEach((segment, segmentIndex) => {
       const baseStart = interpolateSidePoint(side, segment.startDistance);
       const baseEnd = interpolateSidePoint(side, segment.endDistance);
       const tabStart = interpolateSidePoint(outwardSide, segment.startDistance);
       const tabEnd = interpolateSidePoint(outwardSide, segment.endDistance);
+      const shouldSkipBaseStartAfterBBCorner = joinedFromBBCorner
+        && segmentIndex === 0
+        && pointsMatch(baseStart, side.start);
 
-      addContourPoint(tabbedContour, baseStart);
+      if (!shouldSkipBaseStartAfterBBCorner) {
+        addContourPoint(tabbedContour, baseStart);
+      }
+
       addContourPoint(tabbedContour, tabStart);
       addContourPoint(tabbedContour, tabEnd);
       addContourPoint(tabbedContour, baseEnd);
