@@ -651,6 +651,48 @@ const addContourPoint = (contour: PanelContour, point: Point) => {
   }
 };
 
+const isBBCorner = (
+  sideIndex: number,
+  sideCount: number,
+  tabOperationsBySideIndex: Map<number, PanelTabOperation>,
+): boolean => {
+  const previousSideIndex = (sideIndex + sideCount - 1) % sideCount;
+  const previousOperation = tabOperationsBySideIndex.get(previousSideIndex);
+  const currentOperation = tabOperationsBySideIndex.get(sideIndex);
+
+  return previousOperation?.role === 'B' && currentOperation?.role === 'B';
+};
+
+const addBBCornerJoin = (
+  tabbedContour: PanelContour,
+  insetCorner: Point,
+  previousInsetSide: ContourSide,
+  currentInsetSide: ContourSide,
+  materialThicknessMm: number,
+  contourWindingSign: number,
+): void => {
+  const previousOutwardSide = offsetContourSide(previousInsetSide, -materialThicknessMm * contourWindingSign);
+  const currentOutwardSide = offsetContourSide(currentInsetSide, -materialThicknessMm * contourWindingSign);
+
+  if (!previousOutwardSide || !currentOutwardSide) {
+    addContourPoint(tabbedContour, insetCorner);
+    return;
+  }
+
+  const outwardCorner = lineIntersection(previousOutwardSide, currentOutwardSide);
+
+  if (!outwardCorner) {
+    addContourPoint(tabbedContour, insetCorner);
+    return;
+  }
+
+  addContourPoint(tabbedContour, insetCorner);
+  addContourPoint(tabbedContour, previousOutwardSide.end);
+  addContourPoint(tabbedContour, outwardCorner);
+  addContourPoint(tabbedContour, currentOutwardSide.start);
+  addContourPoint(tabbedContour, insetCorner);
+};
+
 const applyTabsToContour = (
   panel: SvgPanel,
   contour: PanelContour,
@@ -678,7 +720,25 @@ const applyTabsToContour = (
   contourSides.forEach((side, sideIndex) => {
     const operation = tabOperationsBySideIndex.get(sideIndex);
 
-    addContourPoint(tabbedContour, side.start);
+    if (isBBCorner(sideIndex, contourSides.length, tabOperationsBySideIndex)) {
+      const previousSide = contourSides[(sideIndex + contourSides.length - 1) % contourSides.length];
+      const currentOperation = tabOperationsBySideIndex.get(sideIndex);
+
+      if (currentOperation) {
+        addBBCornerJoin(
+          tabbedContour,
+          side.start,
+          previousSide,
+          side,
+          currentOperation.materialThicknessMm,
+          contourWindingSign,
+        );
+      } else {
+        addContourPoint(tabbedContour, side.start);
+      }
+    } else {
+      addContourPoint(tabbedContour, side.start);
+    }
 
     if (!operation || operation.segments.length === 0) {
       addContourPoint(tabbedContour, side.end);
