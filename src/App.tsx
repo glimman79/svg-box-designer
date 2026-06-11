@@ -687,10 +687,7 @@ const addBBCornerJoin = (
   }
 
   addContourPoint(tabbedContour, insetCorner);
-  addContourPoint(tabbedContour, previousOutwardSide.end);
   addContourPoint(tabbedContour, outwardCorner);
-  addContourPoint(tabbedContour, currentOutwardSide.start);
-  addContourPoint(tabbedContour, insetCorner);
 };
 
 const applyTabsToContour = (
