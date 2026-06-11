@@ -638,7 +638,7 @@ const buildTabOperations = (
     return [{
       ...operation,
       insetLength: segmentPlan.insetLength,
-      segments: getTabSegmentsForRole(segmentPlan.segments, operation.role),
+      segments: segmentPlan.segments,
     }];
   })
 );
@@ -695,10 +695,11 @@ const applyTabsToContour = (
     const originalSide = getContourEdgePoints(panel, sideIndex);
     const originalSideLength = getContourSideLength(originalSide);
     const reversedFromCanonical = isContourSideReversedFromCanonical(originalSide);
-    const originalSegments = reversedFromCanonical
+    const orientedSegments = reversedFromCanonical
       ? mirrorSegments(operation.segments, originalSideLength)
       : operation.segments;
-    const segments = clipOriginalSegmentsToInsetSide(originalSide, side, originalSegments);
+    const roleSegments = getTabSegmentsForRole(orientedSegments, operation.role);
+    const segments = clipOriginalSegmentsToInsetSide(originalSide, side, roleSegments);
 
     segments.forEach((segment) => {
       const baseStart = interpolateSidePoint(side, segment.startDistance);
