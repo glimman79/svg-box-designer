@@ -571,44 +571,21 @@ const clipOriginalSegmentsToInsetSide = (
   originalSide: ContourSide,
   insetSide: ContourSide,
   segments: TabSegment[],
-  role: EdgeRole,
-  preserveBEndpointClipping = false,
 ): TabSegment[] => {
   const trimStart = projectPointDistanceOnSide(originalSide, insetSide.start);
   const trimEnd = projectPointDistanceOnSide(originalSide, insetSide.end);
-  const originalSideLength = getContourSideLength(originalSide);
-  const insetSideLength = getContourSideLength(insetSide);
 
   return segments.flatMap((segment) => {
-    const touchesOriginalStart = segment.startDistance <= cornerTouchTolerance;
-    const touchesOriginalEnd = Math.abs(segment.endDistance - originalSideLength) <= cornerTouchTolerance;
-    const isClippedByTrimStart = segment.startDistance < trimStart - cornerTouchTolerance;
-    const isClippedByTrimEnd = segment.endDistance > trimEnd + cornerTouchTolerance;
-    const preserveStartContact = preserveBEndpointClipping
-      && role === 'B'
-      && touchesOriginalStart
-      && isClippedByTrimStart;
-    const preserveEndContact = preserveBEndpointClipping
-      && role === 'B'
-      && touchesOriginalEnd
-      && isClippedByTrimEnd;
     const clippedStart = Math.max(segment.startDistance, trimStart);
     const clippedEnd = Math.min(segment.endDistance, trimEnd);
-    const segmentLength = segment.endDistance - segment.startDistance;
-    const localStart = preserveEndContact
-      ? Math.max(0, insetSideLength - segmentLength)
-      : clippedStart - trimStart;
-    const localEnd = preserveStartContact
-      ? Math.min(insetSideLength, segmentLength)
-      : clippedEnd - trimStart;
 
-    if (localEnd <= localStart) {
+    if (clippedEnd <= clippedStart) {
       return [];
     }
 
     return [{
-      startDistance: localStart,
-      endDistance: localEnd,
+      startDistance: clippedStart - trimStart,
+      endDistance: clippedEnd - trimStart,
     }];
   });
 };
@@ -721,16 +698,7 @@ const applyTabsToContour = (
     const originalSegments = reversedFromCanonical
       ? mirrorSegments(operation.segments, originalSideLength)
       : operation.segments;
-    const preserveBEndpointClipping = operation.role === 'B'
-      && tabOperations.length === contourSides.length
-      && tabOperations.every((tabOperation) => tabOperation.role === 'B');
-    const segments = clipOriginalSegmentsToInsetSide(
-      originalSide,
-      side,
-      originalSegments,
-      operation.role,
-      preserveBEndpointClipping,
-    );
+    const segments = clipOriginalSegmentsToInsetSide(originalSide, side, originalSegments);
 
     segments.forEach((segment) => {
       const baseStart = interpolateSidePoint(side, segment.startDistance);
