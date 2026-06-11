@@ -554,6 +554,42 @@ const interpolateSidePoint = (side: ContourSide, distance: number): Point => {
   };
 };
 
+const projectPointDistanceOnSide = (side: ContourSide, point: Point): number => {
+  const sideLength = getContourSideLength(side);
+
+  if (sideLength <= cornerTouchTolerance) {
+    return 0;
+  }
+
+  const sideUnitX = (side.end.x - side.start.x) / sideLength;
+  const sideUnitY = (side.end.y - side.start.y) / sideLength;
+
+  return ((point.x - side.start.x) * sideUnitX) + ((point.y - side.start.y) * sideUnitY);
+};
+
+const clipOriginalSegmentsToInsetSide = (
+  originalSide: ContourSide,
+  insetSide: ContourSide,
+  segments: TabSegment[],
+): TabSegment[] => {
+  const trimStart = projectPointDistanceOnSide(originalSide, insetSide.start);
+  const trimEnd = projectPointDistanceOnSide(originalSide, insetSide.end);
+
+  return segments.flatMap((segment) => {
+    const clippedStart = Math.max(segment.startDistance, trimStart);
+    const clippedEnd = Math.min(segment.endDistance, trimEnd);
+
+    if (clippedEnd <= clippedStart) {
+      return [];
+    }
+
+    return [{
+      startDistance: clippedStart - trimStart,
+      endDistance: clippedEnd - trimStart,
+    }];
+  });
+};
+
 const getContourSideCanonicalOrientation = (side: ContourSide): 'horizontal' | 'vertical' => {
   const dx = side.end.x - side.start.x;
   const dy = side.end.y - side.start.y;
@@ -565,16 +601,6 @@ const isContourSideReversedFromCanonical = (side: ContourSide): boolean => (
   getContourSideCanonicalOrientation(side) === 'horizontal'
     ? side.start.x > side.end.x
     : side.start.y > side.end.y
-);
-
-const centerSegmentsOnSide = (
-  segments: TabSegment[],
-  centerOffset: number,
-): TabSegment[] => (
-  segments.map((segment) => ({
-    startDistance: segment.startDistance + centerOffset,
-    endDistance: segment.endDistance + centerOffset,
-  }))
 );
 
 const mirrorSegments = (
@@ -666,30 +692,36 @@ const applyTabsToContour = (
       return;
     }
 
-    const currentSideLength = getContourSideLength(side);
-    const centerOffset = Math.max(0, (currentSideLength - operation.insetLength) / 2);
-    const centeredSegments = centerSegmentsOnSide(operation.segments, centerOffset);
-    const canonicalOrientation = getContourSideCanonicalOrientation(side);
-    const reversedFromCanonical = isContourSideReversedFromCanonical(side);
-    const segments = reversedFromCanonical
-      ? mirrorSegments(centeredSegments, currentSideLength)
-      : centeredSegments;
+    const originalSide = getContourEdgePoints(panel, sideIndex);
+    const originalSideLength = getContourSideLength(originalSide);
+    const trimStart = projectPointDistanceOnSide(originalSide, side.start);
+    const trimEnd = projectPointDistanceOnSide(originalSide, side.end);
+    const canonicalOrientation = getContourSideCanonicalOrientation(originalSide);
+    const reversedFromCanonical = isContourSideReversedFromCanonical(originalSide);
+    const originalSegments = reversedFromCanonical
+      ? mirrorSegments(operation.segments, originalSideLength)
+      : operation.segments;
+    const segments = clipOriginalSegmentsToInsetSide(originalSide, side, originalSegments);
 
     if (shouldDebugApply) {
       console.log('E tab operation', {
         edgeId: operation.edgeId,
         connectionId: operation.connectionId,
         role: operation.role,
-        side: {
+        originalSide: {
+          start: originalSide.start,
+          end: originalSide.end,
+        },
+        insetSide: {
           start: side.start,
           end: side.end,
         },
+        trimStart,
+        trimEnd,
         canonicalOrientation,
         reversedFromCanonical,
-        currentSideLength,
-        planLength: operation.insetLength,
-        centeredSegmentDistancesBeforeMirror: centeredSegments.map((segment) => [segment.startDistance, segment.endDistance]),
-        finalSegmentDistancesAfterMirror: segments.map((segment) => [segment.startDistance, segment.endDistance]),
+        originalSegmentDistances: originalSegments.map((segment) => [segment.startDistance, segment.endDistance]),
+        clippedLocalSegmentDistances: segments.map((segment) => [segment.startDistance, segment.endDistance]),
       });
     }
 
