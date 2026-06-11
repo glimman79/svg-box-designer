@@ -694,36 +694,11 @@ const applyTabsToContour = (
 
     const originalSide = getContourEdgePoints(panel, sideIndex);
     const originalSideLength = getContourSideLength(originalSide);
-    const trimStart = projectPointDistanceOnSide(originalSide, side.start);
-    const trimEnd = projectPointDistanceOnSide(originalSide, side.end);
-    const canonicalOrientation = getContourSideCanonicalOrientation(originalSide);
     const reversedFromCanonical = isContourSideReversedFromCanonical(originalSide);
     const originalSegments = reversedFromCanonical
       ? mirrorSegments(operation.segments, originalSideLength)
       : operation.segments;
     const segments = clipOriginalSegmentsToInsetSide(originalSide, side, originalSegments);
-
-    if (shouldDebugApply) {
-      console.log('E tab operation', {
-        edgeId: operation.edgeId,
-        connectionId: operation.connectionId,
-        role: operation.role,
-        originalSide: {
-          start: originalSide.start,
-          end: originalSide.end,
-        },
-        insetSide: {
-          start: side.start,
-          end: side.end,
-        },
-        trimStart,
-        trimEnd,
-        canonicalOrientation,
-        reversedFromCanonical,
-        originalSegmentDistances: originalSegments.map((segment) => [segment.startDistance, segment.endDistance]),
-        clippedLocalSegmentDistances: segments.map((segment) => [segment.startDistance, segment.endDistance]),
-      });
-    }
 
     segments.forEach((segment) => {
       const baseStart = interpolateSidePoint(side, segment.startDistance);
@@ -919,25 +894,6 @@ const buildAppliedEPanelPaths = (
     )),
   );
 
-  if (shouldDebugApply) {
-    tabSegmentPlansByConnectionId.forEach((plan, connectionId) => {
-      const segmentLengths = plan.segments.map((segment) => segment.endDistance - segment.startDistance);
-
-      console.log('E tab segment plan', {
-        connectionId,
-        originalSideLengthsUsed: plan.originalSideLengths,
-        insetLength: plan.insetLength,
-        fingerWidthMm: insetPanelOperations
-          .flatMap(({ operations }) => operations)
-          .find((operation) => operation.connectionId === connectionId)?.fingerWidthMm ?? 0,
-        segmentCount: plan.segments.length,
-        segmentLengths,
-        firstSegmentLength: segmentLengths[0] ?? 0,
-        lastSegmentLength: segmentLengths[segmentLengths.length - 1] ?? 0,
-        middleSegmentLengths: segmentLengths.slice(1, -1),
-      });
-    });
-  }
 
   return insetPanelOperations.flatMap(({ panel, operations, insetContour }) => {
     const result = buildPanelGeometry(
@@ -1769,7 +1725,7 @@ function App() {
         <aside className="panel">
           <h2>Connection manager</h2>
           <p className="muted">
-            Create a connection, select it, tune its parameters, then click edges from your custom SVG. This app assigns and exports labels without generating or replacing SVG geometry.
+            Create a connection, select it, tune its parameters, then click edges from your custom SVG. This app assigns reusable labels and can apply E finger-joint geometry to closed panel outlines.
           </p>
 
           <div className="active-label-card" aria-live="polite">
