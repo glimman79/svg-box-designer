@@ -157,9 +157,12 @@ export const exportAppliedSvg = (
     svgModel.width ? `width="${escapeSvgAttribute(svgModel.width)}"` : '',
     svgModel.height ? `height="${escapeSvgAttribute(svgModel.height)}"` : '',
   ].filter(Boolean).join(' ');
-  const pathElements = appliedEPanelPaths.map((panelPath) => (
-    `  <path d="${escapeSvgAttribute(panelPath.pathD)}" fill="none" stroke="#000000" stroke-width="1" vector-effect="non-scaling-stroke"/>`
-  ));
+  const appliedByPanelId = new Map(appliedEPanelPaths.map((panelPath) => [panelPath.panelId, panelPath]));
+  const pathElements = svgModel.panels.map((panel) => {
+    const d = appliedByPanelId.get(panel.id)?.pathD ?? pointsToClosedPathD(panel.contour);
+
+    return `  <path d="${escapeSvgAttribute(d)}" fill="none" stroke="#000000" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+  });
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${escapeSvgAttribute(svgModel.viewBox)}"${sizeAttributes ? ` ${sizeAttributes}` : ''}>`,
