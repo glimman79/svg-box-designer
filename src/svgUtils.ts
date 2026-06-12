@@ -315,16 +315,6 @@ const addPanel = (
   return panel;
 };
 
-const logPanelDebug = (panels: SvgPanel[]) => {
-  console.log('svgModel.panels.length after import', panels.length);
-  panels.forEach((panel) => {
-    console.log('SVG import panel', {
-      id: panel.id,
-      contourLength: panel.contour.length,
-      edgeIds: panel.edgeIds,
-    });
-  });
-};
 
 const parsePathSegments = (pathData: string | null, source: string, edges: SvgEdge[], panels: SvgPanel[]) => {
   if (!pathData) {
@@ -545,7 +535,6 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
   });
 
   assignPanelBoundsFromClosedLoops(edges, panels);
-  logPanelDebug(panels);
 
   return {
     content: new XMLSerializer().serializeToString(svgElement),
