@@ -712,6 +712,17 @@ const removeInteriorBacktrackSpurs = (contour: PanelContour): PanelContour => {
   while (removedClosedSpur && cleanedContour.length >= 3) {
     removedClosedSpur = false;
 
+    if (
+      cleanedContour.length >= 4
+      && pointsMatch(cleanedContour[cleanedContour.length - 2], cleanedContour[1])
+      && pointsMatch(cleanedContour[cleanedContour.length - 1], cleanedContour[0])
+    ) {
+      cleanedContour.pop();
+      cleanedContour.shift();
+      removedClosedSpur = true;
+      continue;
+    }
+
     if (pointsMatch(cleanedContour[cleanedContour.length - 1], cleanedContour[1])) {
       cleanedContour.shift();
       removedClosedSpur = true;
