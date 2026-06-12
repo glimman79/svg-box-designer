@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEPreviewSegmentDebug, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, getInwardEdgeDirection, getPanelEdgeSide, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgeRole, Point, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -122,6 +122,16 @@ type AppliedEPanelPath = {
   erasePathD: string;
   pathD: string;
   edgeIds: string[];
+};
+
+const emptySvgModel: SvgDocumentModel = {
+  content: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"></svg>',
+  innerMarkup: '',
+  viewBox: '0 0 800 600',
+  width: 800,
+  height: 600,
+  edges: [],
+  panels: [],
 };
 
 type PanelPoint = Point;
@@ -1118,18 +1128,6 @@ const parseViewBox = (viewBox: string): CanvasViewBox => {
 
 const formatViewBox = ({ x, y, width, height }: CanvasViewBox) => `${x} ${y} ${width} ${height}`;
 
-const formatNumber = (value: number) => Number.isInteger(value) ? value.toString() : Number(value.toFixed(3)).toString();
-
-const formatPoint = (point: { x: number; y: number }) => `${formatNumber(point.x)} / ${formatNumber(point.y)}`;
-
-const formatPanelBounds = (panelBounds: SvgDocumentModel['edges'][number]['panelBounds']) => {
-  if (!panelBounds) {
-    return 'unknown';
-  }
-
-  return [panelBounds.minX, panelBounds.maxX, panelBounds.minY, panelBounds.maxY].map(formatNumber).join(' / ');
-};
-
 const zoomViewBox = (
   viewBox: CanvasViewBox,
   factor: number,
@@ -1245,7 +1243,6 @@ function App() {
   const [connections, setConnections] = useState<ConnectionMap>({});
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [isEPreviewVisible, setIsEPreviewVisible] = useState(false);
   const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
@@ -1253,6 +1250,7 @@ function App() {
   const panStateRef = useRef<PanState | null>(null);
   const suppressEdgeClickRef = useRef(false);
   const [canvasViewBox, setCanvasViewBox] = useState<CanvasViewBox>(() => parseViewBox(svgModel.viewBox));
+  const [undoEdgeAssignments, setUndoEdgeAssignments] = useState<Record<string, EdgeAssignment> | null>(null);
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
@@ -1288,7 +1286,8 @@ function App() {
     setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
     setEdgeAssignments({});
     setSelectedEdgeId(null);
-    setIsEPreviewVisible(false);
+    setAppliedEPanelPaths([]);
+    setUndoEdgeAssignments(null);
     setErrorMessage('');
     event.target.value = '';
   };
@@ -1331,6 +1330,8 @@ function App() {
       setErrorMessage('Select a valid connection before clicking an edge.');
       return;
     }
+
+    setUndoEdgeAssignments(edgeAssignments);
 
     const nextAssignments = {
       ...edgeAssignments,
@@ -1391,11 +1392,33 @@ function App() {
     clearEdgeLabel(selectedEdgeId);
   };
 
-  const applyEPreview = () => {
+  const applyEPanelPaths = () => {
     const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, edgeAssignments, connections, true);
     setAppliedEPanelPaths(nextAppliedEPanelPaths);
-    setIsEPreviewVisible(false);
     setErrorMessage('');
+  };
+
+  const undoLastEdgeAssignment = () => {
+    if (!undoEdgeAssignments) {
+      return;
+    }
+
+    setEdgeAssignments(undoEdgeAssignments);
+    setAppliedEPanelPaths([]);
+    setUndoEdgeAssignments(null);
+    setErrorMessage('');
+  };
+
+  const deleteDrawing = () => {
+    setSvgModel(emptySvgModel);
+    setEdgeAssignments({});
+    setConnections({});
+    setSelectedLabelId(null);
+    setSelectedEdgeId(null);
+    setAppliedEPanelPaths([]);
+    setErrorMessage('');
+    setUndoEdgeAssignments(null);
+    setCanvasViewBox(parseViewBox(emptySvgModel.viewBox));
   };
 
   const updateEdgeProperties = (updates: Partial<EdgeConnectionProperties>) => {
@@ -1545,7 +1568,79 @@ function App() {
     setCanvasViewBox(parseViewBox(svgModel.viewBox));
   };
 
+  const fitCanvasToScreen = () => {
+    const fallbackViewBox = parseViewBox(svgModel.viewBox);
+    let contentBounds: SourceBounds | null = null;
+    const includePointInBounds = (point: Point) => {
+      if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+        return;
+      }
+
+      contentBounds = contentBounds
+        ? {
+          minX: Math.min(contentBounds.minX, point.x),
+          maxX: Math.max(contentBounds.maxX, point.x),
+          minY: Math.min(contentBounds.minY, point.y),
+          maxY: Math.max(contentBounds.maxY, point.y),
+        }
+        : { minX: point.x, maxX: point.x, minY: point.y, maxY: point.y };
+    };
+    const includeBounds = (bounds: SourceBounds) => {
+      includePointInBounds({ x: bounds.minX, y: bounds.minY });
+      includePointInBounds({ x: bounds.maxX, y: bounds.maxY });
+    };
+
+    svgModel.edges.forEach((edge) => {
+      includePointInBounds(edge.start);
+      includePointInBounds(edge.end);
+    });
+    svgModel.panels.forEach((panel) => {
+      includeBounds(panel.bounds);
+    });
+    appliedEPanelPaths.forEach((panelPath) => {
+      includeBounds(panelPath.eraseRect);
+    });
+
+    if (!contentBounds) {
+      setCanvasViewBox(fallbackViewBox);
+      return;
+    }
+
+    const fittedContentBounds = contentBounds as SourceBounds;
+    const contentWidth = Math.max(fittedContentBounds.maxX - fittedContentBounds.minX, fallbackViewBox.width * 0.01, 1);
+    const contentHeight = Math.max(fittedContentBounds.maxY - fittedContentBounds.minY, fallbackViewBox.height * 0.01, 1);
+    const paddedWidth = contentWidth * 1.2;
+    const paddedHeight = contentHeight * 1.2;
+    const svgElement = svgRef.current;
+    const canvasAspectRatio = svgElement && svgElement.clientWidth > 0 && svgElement.clientHeight > 0
+      ? svgElement.clientWidth / svgElement.clientHeight
+      : fallbackViewBox.width / fallbackViewBox.height;
+    const safeCanvasAspectRatio = Number.isFinite(canvasAspectRatio) && canvasAspectRatio > 0
+      ? canvasAspectRatio
+      : 1;
+    const contentAspectRatio = paddedWidth / paddedHeight;
+    const fittedWidth = contentAspectRatio > safeCanvasAspectRatio
+      ? paddedWidth
+      : paddedHeight * safeCanvasAspectRatio;
+    const fittedHeight = contentAspectRatio > safeCanvasAspectRatio
+      ? paddedWidth / safeCanvasAspectRatio
+      : paddedHeight;
+    const centerX = (fittedContentBounds.minX + fittedContentBounds.maxX) / 2;
+    const centerY = (fittedContentBounds.minY + fittedContentBounds.maxY) / 2;
+
+    setCanvasViewBox({
+      x: centerX - fittedWidth / 2,
+      y: centerY - fittedHeight / 2,
+      width: Math.max(fittedWidth, 1),
+      height: Math.max(fittedHeight, 1),
+    });
+  };
+
   const handleCanvasWheel = (event: WheelEvent<SVGSVGElement>) => {
+    if (!event.ctrlKey) {
+      return;
+    }
+
     event.preventDefault();
     const center = getSvgPointFromClient(event.clientX, event.clientY);
     zoomCanvas(Math.exp(-event.deltaY * wheelZoomSensitivity), center);
@@ -1777,34 +1872,7 @@ function App() {
     () => new Set(appliedEPanelPaths.flatMap((panelPath) => panelPath.edgeIds)),
     [appliedEPanelPaths],
   );
-  const ePreviewDebugRows = useMemo(() => {
-    if (!isEPreviewVisible) {
-      return [];
-    }
 
-    return svgModel.edges.flatMap((edge) => {
-      const assignment = edgeAssignments[edge.id];
-      const connection = assignment ? connections[assignment.connectionId] : undefined;
-      if (!assignment || connection?.prefix !== 'E') {
-        return [];
-      }
-
-      const originalEdgeLength = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
-      const segmentDebug = getEPreviewSegmentDebug(originalEdgeLength, connection.properties.fingerWidthMm);
-
-      return [{
-        edgeId: edge.id,
-        label: getEdgeAssignmentDisplayLabel(assignment),
-        start: edge.start,
-        end: edge.end,
-        panelBounds: edge.panelBounds,
-        detectedSide: getPanelEdgeSide(edge, edge.panelBounds),
-        direction: getInwardEdgeDirection(edge, edge.panelBounds),
-        materialThicknessMm: connection.properties.materialThicknessMm,
-        ...segmentDebug,
-      }];
-    });
-  }, [connections, edgeAssignments, isEPreviewVisible, svgModel.edges]);
 
   return (
     <main className="app-shell">
@@ -1823,6 +1891,12 @@ function App() {
           </label>
           <button className="button" type="button" onClick={exportSvg} disabled={Object.keys(edgeAssignments).length === 0}>
             Export SVG
+          </button>
+          <button className="button" type="button" onClick={undoLastEdgeAssignment} disabled={!undoEdgeAssignments}>
+            Undo
+          </button>
+          <button className="button destructive" type="button" onClick={deleteDrawing}>
+            Delete Drawing
           </button>
           <a ref={downloadRef} className="visually-hidden" aria-hidden="true">
             download
@@ -1918,17 +1992,17 @@ function App() {
               <p>{svgModel.edges.length} selectable straight edges detected.</p>
             </div>
             <div className="view-controls" aria-label="Drawing view controls">
-              <button type="button" onClick={() => zoomCanvas(buttonZoomFactor)}>Zoom in</button>
-              <button type="button" onClick={() => zoomCanvas(1 / buttonZoomFactor)}>Zoom out</button>
               <button type="button" onClick={resetCanvasView}>Reset view</button>
-              <button type="button" onClick={resetCanvasView}>Fit to screen</button>
-              <button type="button" onClick={() => setIsEPreviewVisible(true)} disabled={!hasAssignedEEdges}>Preview</button>
-              <button type="button" onClick={applyEPreview} disabled={!hasAssignedEEdges}>Apply</button>
-              <button type="button" onClick={() => setIsEPreviewVisible(false)} disabled={!isEPreviewVisible}>Clear Preview</button>
+              <button type="button" onClick={fitCanvasToScreen}>Fit to screen</button>
+              <button type="button" onClick={applyEPanelPaths} disabled={!hasAssignedEEdges}>Apply</button>
             </div>
           </div>
 
           <div className="canvas-frame">
+            <div className="canvas-zoom-controls" aria-label="Canvas zoom controls">
+              <button type="button" onClick={() => zoomCanvas(buttonZoomFactor)} aria-label="Zoom in">+</button>
+              <button type="button" onClick={() => zoomCanvas(1 / buttonZoomFactor)} aria-label="Zoom out">−</button>
+            </div>
             <svg
               ref={svgRef}
               className={`design-svg${isCanvasPanning ? ' is-panning' : ''}`}
@@ -2031,58 +2105,6 @@ function App() {
                 </g>
             </svg>
           </div>
-
-          {isEPreviewVisible && (
-            <div className="e-preview-debug-panel" aria-label="E preview debug values">
-              <h3>E preview debug</h3>
-              {ePreviewDebugRows.length > 0 ? (
-                <div className="e-preview-debug-table-wrap">
-                  <table className="e-preview-debug-table">
-                    <thead>
-                      <tr>
-                        <th>label</th>
-                        <th>edgeId</th>
-                        <th>start x/y</th>
-                        <th>end x/y</th>
-                        <th>panelBounds minX/maxX/minY/maxY</th>
-                        <th>detectedSide</th>
-                        <th>direction x/y</th>
-                        <th>materialThicknessMm</th>
-                        <th>original edge length</th>
-                        <th>fingerWidthMm</th>
-                        <th>segment count</th>
-                        <th>first segment length</th>
-                        <th>middle segment length</th>
-                        <th>last segment length</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ePreviewDebugRows.map((row) => (
-                        <tr key={row.edgeId}>
-                          <td>{row.label}</td>
-                          <td>{row.edgeId}</td>
-                          <td>{formatPoint(row.start)}</td>
-                          <td>{formatPoint(row.end)}</td>
-                          <td>{formatPanelBounds(row.panelBounds)}</td>
-                          <td>{row.detectedSide ?? 'unknown'}</td>
-                          <td>{formatPoint(row.direction)}</td>
-                          <td>{formatNumber(row.materialThicknessMm)}</td>
-                          <td>{formatNumber(row.originalEdgeLength)}</td>
-                          <td>{formatNumber(row.fingerWidthMm)}</td>
-                          <td>{row.segmentCount}</td>
-                          <td>{formatNumber(row.firstSegmentLength)}</td>
-                          <td>{formatNumber(row.middleSegmentLength)}</td>
-                          <td>{formatNumber(row.lastSegmentLength)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="muted">No assigned E edges to preview.</p>
-              )}
-            </div>
-          )}
         </section>
       </section>
     </main>
