@@ -142,6 +142,32 @@ type AppliedEPanelPath = {
   edgeIds: string[];
 };
 
+
+const escapeSvgAttribute = (value: string | number) => String(value)
+  .replace(/&/g, '&amp;')
+  .replace(/"/g, '&quot;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;');
+
+export const exportAppliedSvg = (
+  svgModel: SvgDocumentModel,
+  appliedEPanelPaths: AppliedEPanelPath[],
+): string => {
+  const sizeAttributes = [
+    svgModel.width ? `width="${escapeSvgAttribute(svgModel.width)}"` : '',
+    svgModel.height ? `height="${escapeSvgAttribute(svgModel.height)}"` : '',
+  ].filter(Boolean).join(' ');
+  const pathElements = appliedEPanelPaths.map((panelPath) => (
+    `  <path d="${escapeSvgAttribute(panelPath.pathD)}" fill="none" stroke="#000000" stroke-width="1" vector-effect="non-scaling-stroke"/>`
+  ));
+
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${escapeSvgAttribute(svgModel.viewBox)}"${sizeAttributes ? ` ${sizeAttributes}` : ''}>`,
+    ...pathElements,
+    '</svg>',
+  ].join('\n');
+};
+
 const emptySvgModel: SvgDocumentModel = {
   content: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"></svg>',
   innerMarkup: '',
@@ -1629,13 +1655,18 @@ function App() {
   };
 
   const exportSvg = () => {
-    const output = exportLabeledSvg(svgModel.content, edgeAssignments, svgModel.edges);
+    // Export after Apply is clean laser geometry; export before Apply remains label/reference export.
+    const output = appliedEPanelPaths.length > 0
+      ? exportAppliedSvg(svgModel, appliedEPanelPaths)
+      : exportLabeledSvg(svgModel.content, edgeAssignments, svgModel.edges);
     const blob = new Blob([output], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
 
     if (downloadRef.current) {
       downloadRef.current.href = url;
-      downloadRef.current.download = 'svg-box-designer-labeled.svg';
+      downloadRef.current.download = appliedEPanelPaths.length > 0
+        ? 'svg-box-designer-applied.svg'
+        : 'svg-box-designer-labeled.svg';
       downloadRef.current.click();
     }
 
