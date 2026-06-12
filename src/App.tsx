@@ -663,6 +663,8 @@ const isBBCorner = (
   return previousOperation?.role === 'B' && currentOperation?.role === 'B';
 };
 
+// B-B corners need an explicit outward join because both adjacent B sides are inset before tabs are drawn.
+// Do not remove this as dead code; it preserves the outside corner when two B sides meet on the same panel.
 const addBBCornerJoin = (
   tabbedContour: PanelContour,
   insetCorner: Point,
@@ -693,6 +695,8 @@ const addBBCornerJoin = (
   addContourPoint(tabbedContour, insetCorner);
 };
 
+// Cleans zero-area A-B-A backtracks, including seam backtracks across the implicit SVG close path.
+// This protects B-B corner joins from leaving interior spur lines.
 const removeInteriorBacktrackSpurs = (contour: PanelContour): PanelContour => {
   const cleanedContour: PanelContour = [];
 
