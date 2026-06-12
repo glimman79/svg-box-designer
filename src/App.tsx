@@ -1212,9 +1212,13 @@ const cloneDefaultProperties = <P extends LabelPrefix>(prefix: P): ConnectionPro
   ...defaultConnectionProperties[prefix],
 });
 
-const createConnectionDefinition = (id: string, prefix: LabelPrefix): ConnectionDefinition => {
+const createConnectionDefinition = (
+  id: string,
+  prefix: LabelPrefix,
+  edgeProperties?: EdgeConnectionProperties,
+): ConnectionDefinition => {
   if (prefix === 'E') {
-    return { id, prefix, properties: cloneDefaultProperties(prefix) };
+    return { id, prefix, properties: edgeProperties ? { ...edgeProperties } : cloneDefaultProperties(prefix) };
   }
 
   if (prefix === 'S') {
@@ -1226,6 +1230,14 @@ const createConnectionDefinition = (id: string, prefix: LabelPrefix): Connection
   }
 
   return { id, prefix, properties: cloneDefaultProperties(prefix) };
+};
+
+const getSharedEdgeProperties = (connections: ConnectionMap): EdgeConnectionProperties => {
+  const sharedConnection = Object.values(connections).find(
+    (connection): connection is EdgeConnectionDefinition => connection.prefix === 'E',
+  );
+
+  return sharedConnection ? { ...sharedConnection.properties } : cloneDefaultProperties('E');
 };
 
 const NumericField = ({ id, label, value, min, step = 0.1, onChange }: NumericFieldProps) => (
@@ -1346,7 +1358,11 @@ function App() {
     pushUndoState();
     setConnections((currentConnections) => ({
       ...currentConnections,
-      [nextLabel]: createConnectionDefinition(nextLabel, prefix),
+      [nextLabel]: createConnectionDefinition(
+        nextLabel,
+        prefix,
+        prefix === 'E' ? getSharedEdgeProperties(currentConnections) : undefined,
+      ),
     }));
     setSelectedLabelId(nextLabel);
     setErrorMessage('');
@@ -1404,7 +1420,11 @@ function App() {
 
         return {
           ...currentConnections,
-          [nextEdgeLabel]: createConnectionDefinition(nextEdgeLabel, 'E'),
+          [nextEdgeLabel]: createConnectionDefinition(
+            nextEdgeLabel,
+            'E',
+            getSharedEdgeProperties(currentConnections),
+          ),
         };
       });
       setSelectedLabelId(nextEdgeLabel);
@@ -1490,28 +1510,44 @@ function App() {
       return;
     }
 
-    const nextProperties: EdgeConnectionProperties = {
-      ...selectedConnection.properties,
-      ...updates,
-    };
-
-    if (updates.materialThicknessMm !== undefined && !selectedConnection.properties.isFingerWidthManual) {
-      nextProperties.fingerWidthMm = updates.materialThicknessMm * 3;
-    }
-
-    if (updates.fingerWidthMm !== undefined) {
-      nextProperties.isFingerWidthManual = true;
-    }
-
-    const nextConnection: EdgeConnectionDefinition = {
-      ...selectedConnection,
-      properties: nextProperties,
-    };
     pushUndoState();
-    setConnections((currentConnections) => ({
-      ...currentConnections,
-      [nextConnection.id]: nextConnection,
-    }));
+    setConnections((currentConnections) => {
+      const currentSelectedConnection = currentConnections[selectedConnection.id];
+
+      if (!currentSelectedConnection || currentSelectedConnection.prefix !== 'E') {
+        return currentConnections;
+      }
+
+      const nextProperties: EdgeConnectionProperties = {
+        ...currentSelectedConnection.properties,
+        ...updates,
+      };
+
+      if (updates.materialThicknessMm !== undefined && !currentSelectedConnection.properties.isFingerWidthManual) {
+        nextProperties.fingerWidthMm = updates.materialThicknessMm * 3;
+      }
+
+      if (updates.fingerWidthMm !== undefined) {
+        nextProperties.isFingerWidthManual = true;
+      }
+
+      return Object.fromEntries(
+        Object.entries(currentConnections).map(([connectionId, connection]) => [
+          connectionId,
+          connection.prefix === 'E'
+            ? {
+                ...connection,
+                properties: {
+                  ...connection.properties,
+                  fingerWidthMm: nextProperties.fingerWidthMm,
+                  materialThicknessMm: nextProperties.materialThicknessMm,
+                  isFingerWidthManual: nextProperties.isFingerWidthManual,
+                },
+              }
+            : connection,
+        ]),
+      );
+    });
   };
 
   const updateSlotProperties = (updates: Partial<SlotConnectionProperties>) => {
@@ -1844,6 +1880,7 @@ function App() {
               <NumericField id="edge-finger-width" label="Tab size (mm)" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
               <NumericField id="edge-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateEdgeProperties({ materialThicknessMm })} />
             </div>
+            <p className="muted">Edge settings are shared across all E connections.</p>
           </section>
 
         </div>
