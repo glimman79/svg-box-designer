@@ -687,7 +687,43 @@ const addBBCornerJoin = (
   }
 
   addContourPoint(tabbedContour, insetCorner);
+  addContourPoint(tabbedContour, previousOutwardSide.end);
   addContourPoint(tabbedContour, outwardCorner);
+  addContourPoint(tabbedContour, currentOutwardSide.start);
+  addContourPoint(tabbedContour, insetCorner);
+};
+
+const removeInteriorBacktrackSpurs = (contour: PanelContour): PanelContour => {
+  const cleanedContour: PanelContour = [];
+
+  contour.forEach((point) => {
+    addContourPoint(cleanedContour, point);
+
+    while (
+      cleanedContour.length >= 3
+      && pointsMatch(cleanedContour[cleanedContour.length - 3], cleanedContour[cleanedContour.length - 1])
+    ) {
+      cleanedContour.splice(cleanedContour.length - 2, 2);
+    }
+  });
+
+  let removedClosedSpur = true;
+
+  while (removedClosedSpur && cleanedContour.length >= 3) {
+    removedClosedSpur = false;
+
+    if (pointsMatch(cleanedContour[cleanedContour.length - 1], cleanedContour[1])) {
+      cleanedContour.shift();
+      removedClosedSpur = true;
+    }
+
+    if (cleanedContour.length >= 3 && pointsMatch(cleanedContour[cleanedContour.length - 2], cleanedContour[0])) {
+      cleanedContour.pop();
+      removedClosedSpur = true;
+    }
+  }
+
+  return cleanedContour;
 };
 
 const applyTabsToContour = (
@@ -716,13 +752,8 @@ const applyTabsToContour = (
 
   contourSides.forEach((side, sideIndex) => {
     const operation = tabOperationsBySideIndex.get(sideIndex);
-    const joinedFromBBCorner = isBBCorner(
-      sideIndex,
-      contourSides.length,
-      tabOperationsBySideIndex,
-    );
 
-    if (joinedFromBBCorner) {
+    if (isBBCorner(sideIndex, contourSides.length, tabOperationsBySideIndex)) {
       const previousSide = contourSides[(sideIndex + contourSides.length - 1) % contourSides.length];
       const currentOperation = tabOperationsBySideIndex.get(sideIndex);
 
@@ -763,19 +794,13 @@ const applyTabsToContour = (
     const roleSegments = getTabSegmentsForRole(orientedSegments, operation.role);
     const segments = clipOriginalSegmentsToInsetSide(originalSide, side, roleSegments);
 
-    segments.forEach((segment, segmentIndex) => {
+    segments.forEach((segment) => {
       const baseStart = interpolateSidePoint(side, segment.startDistance);
       const baseEnd = interpolateSidePoint(side, segment.endDistance);
       const tabStart = interpolateSidePoint(outwardSide, segment.startDistance);
       const tabEnd = interpolateSidePoint(outwardSide, segment.endDistance);
-      const shouldSkipBaseStartAfterBBCorner = joinedFromBBCorner
-        && segmentIndex === 0
-        && pointsMatch(baseStart, side.start);
 
-      if (!shouldSkipBaseStartAfterBBCorner) {
-        addContourPoint(tabbedContour, baseStart);
-      }
-
+      addContourPoint(tabbedContour, baseStart);
       addContourPoint(tabbedContour, tabStart);
       addContourPoint(tabbedContour, tabEnd);
       addContourPoint(tabbedContour, baseEnd);
@@ -784,11 +809,13 @@ const applyTabsToContour = (
     addContourPoint(tabbedContour, side.end);
   });
 
-  if (tabbedContour.length > 1 && pointsMatch(tabbedContour[0], tabbedContour[tabbedContour.length - 1])) {
-    tabbedContour.pop();
+  const cleanedTabbedContour = removeInteriorBacktrackSpurs(tabbedContour);
+
+  if (cleanedTabbedContour.length > 1 && pointsMatch(cleanedTabbedContour[0], cleanedTabbedContour[cleanedTabbedContour.length - 1])) {
+    cleanedTabbedContour.pop();
   }
 
-  return validatePanelContour(tabbedContour);
+  return validatePanelContour(cleanedTabbedContour);
 };
 
 const getPanelEdgeOperations = (
