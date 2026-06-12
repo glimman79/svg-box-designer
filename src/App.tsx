@@ -84,6 +84,24 @@ type ConnectionDefinition =
 
 type ConnectionMap = Record<string, ConnectionDefinition>;
 
+type HistoryState = {
+  edgeAssignments: Record<string, EdgeAssignment>;
+  connections: ConnectionMap;
+  selectedLabelId: string | null;
+  selectedEdgeId: string | null;
+  appliedEPanelPaths?: AppliedEPanelPath[];
+};
+
+const maxHistoryEntries = 10;
+
+const cloneHistoryState = (state: HistoryState): HistoryState => ({
+  edgeAssignments: structuredClone(state.edgeAssignments),
+  connections: structuredClone(state.connections),
+  selectedLabelId: state.selectedLabelId,
+  selectedEdgeId: state.selectedEdgeId,
+  ...(state.appliedEPanelPaths ? { appliedEPanelPaths: structuredClone(state.appliedEPanelPaths) } : {}),
+});
+
 type NumericFieldProps = {
   id: string;
   label: string;
@@ -1250,7 +1268,8 @@ function App() {
   const panStateRef = useRef<PanState | null>(null);
   const suppressEdgeClickRef = useRef(false);
   const [canvasViewBox, setCanvasViewBox] = useState<CanvasViewBox>(() => parseViewBox(svgModel.viewBox));
-  const [undoEdgeAssignments, setUndoEdgeAssignments] = useState<Record<string, EdgeAssignment> | null>(null);
+  const [undoStack, setUndoStack] = useState<HistoryState[]>([]);
+  const [redoStack, setRedoStack] = useState<HistoryState[]>([]);
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
@@ -1274,6 +1293,29 @@ function App() {
     return Object.values(edgeAssignments).some((assignment) => assignment.connectionId.startsWith('E'));
   }, [edgeAssignments]);
 
+  const getCurrentHistoryState = (): HistoryState => cloneHistoryState({
+    edgeAssignments,
+    connections,
+    selectedLabelId,
+    selectedEdgeId,
+    appliedEPanelPaths,
+  });
+
+  const restoreHistoryState = (state: HistoryState) => {
+    const snapshot = cloneHistoryState(state);
+    setEdgeAssignments(snapshot.edgeAssignments);
+    setConnections(snapshot.connections);
+    setSelectedLabelId(snapshot.selectedLabelId);
+    setSelectedEdgeId(snapshot.selectedEdgeId);
+    setAppliedEPanelPaths(snapshot.appliedEPanelPaths ?? []);
+  };
+
+  const pushUndoState = () => {
+    const snapshot = getCurrentHistoryState();
+    setUndoStack((currentStack) => [...currentStack, snapshot].slice(-maxHistoryEntries));
+    setRedoStack([]);
+  };
+
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) {
@@ -1287,7 +1329,8 @@ function App() {
     setEdgeAssignments({});
     setSelectedEdgeId(null);
     setAppliedEPanelPaths([]);
-    setUndoEdgeAssignments(null);
+    setUndoStack([]);
+    setRedoStack([]);
     setErrorMessage('');
     event.target.value = '';
   };
@@ -1300,6 +1343,7 @@ function App() {
 
   const createLabel = (prefix: LabelPrefix) => {
     const nextLabel = getNextLabel(prefix, availableLabels);
+    pushUndoState();
     setConnections((currentConnections) => ({
       ...currentConnections,
       [nextLabel]: createConnectionDefinition(nextLabel, prefix),
@@ -1309,6 +1353,11 @@ function App() {
   };
 
   const clearEdgeLabel = (edgeId: string) => {
+    if (!edgeAssignments[edgeId]) {
+      return;
+    }
+
+    pushUndoState();
     setEdgeAssignments((currentAssignments) => {
       const nextAssignments = { ...currentAssignments };
       delete nextAssignments[edgeId];
@@ -1331,7 +1380,7 @@ function App() {
       return;
     }
 
-    setUndoEdgeAssignments(edgeAssignments);
+    pushUndoState();
 
     const nextAssignments = {
       ...edgeAssignments,
@@ -1365,22 +1414,21 @@ function App() {
   };
 
   const updateAssignedEdgeRole = (edgeId: string, edgeRole: EdgeRole) => {
-    setEdgeAssignments((currentAssignments) => {
-      const assignment = currentAssignments[edgeId];
-      const connection = assignment ? connections[assignment.connectionId] : undefined;
+    const assignment = edgeAssignments[edgeId];
+    const connection = assignment ? connections[assignment.connectionId] : undefined;
 
-      if (!assignment || connection?.prefix !== 'E') {
-        return currentAssignments;
-      }
+    if (!assignment || connection?.prefix !== 'E' || assignment.edgeRole === edgeRole) {
+      return;
+    }
 
-      return {
-        ...currentAssignments,
-        [edgeId]: {
-          ...assignment,
-          edgeRole,
-        },
-      };
-    });
+    pushUndoState();
+    setEdgeAssignments((currentAssignments) => ({
+      ...currentAssignments,
+      [edgeId]: {
+        ...assignment,
+        edgeRole,
+      },
+    }));
     setErrorMessage('');
   };
 
@@ -1398,14 +1446,29 @@ function App() {
     setErrorMessage('');
   };
 
-  const undoLastEdgeAssignment = () => {
-    if (!undoEdgeAssignments) {
+  const undoLastEdit = () => {
+    const previousState = undoStack[undoStack.length - 1];
+
+    if (!previousState) {
       return;
     }
 
-    setEdgeAssignments(undoEdgeAssignments);
-    setAppliedEPanelPaths([]);
-    setUndoEdgeAssignments(null);
+    setRedoStack((currentStack) => [...currentStack, getCurrentHistoryState()].slice(-maxHistoryEntries));
+    setUndoStack((currentStack) => currentStack.slice(0, -1));
+    restoreHistoryState(previousState);
+    setErrorMessage('');
+  };
+
+  const redoLastEdit = () => {
+    const nextState = redoStack[redoStack.length - 1];
+
+    if (!nextState) {
+      return;
+    }
+
+    setUndoStack((currentStack) => [...currentStack, getCurrentHistoryState()].slice(-maxHistoryEntries));
+    setRedoStack((currentStack) => currentStack.slice(0, -1));
+    restoreHistoryState(nextState);
     setErrorMessage('');
   };
 
@@ -1417,7 +1480,8 @@ function App() {
     setSelectedEdgeId(null);
     setAppliedEPanelPaths([]);
     setErrorMessage('');
-    setUndoEdgeAssignments(null);
+    setUndoStack([]);
+    setRedoStack([]);
     setCanvasViewBox(parseViewBox(emptySvgModel.viewBox));
   };
 
@@ -1443,6 +1507,7 @@ function App() {
       ...selectedConnection,
       properties: nextProperties,
     };
+    pushUndoState();
     setConnections((currentConnections) => ({
       ...currentConnections,
       [nextConnection.id]: nextConnection,
@@ -1475,6 +1540,7 @@ function App() {
       ...selectedConnection,
       properties: nextProperties,
     };
+    pushUndoState();
     setConnections((currentConnections) => ({
       ...currentConnections,
       [nextConnection.id]: nextConnection,
@@ -1503,6 +1569,7 @@ function App() {
       ...selectedConnection,
       properties: nextProperties,
     };
+    pushUndoState();
     setConnections((currentConnections) => ({
       ...currentConnections,
       [nextConnection.id]: nextConnection,
@@ -1518,6 +1585,7 @@ function App() {
       ...selectedConnection,
       properties: { ...selectedConnection.properties, ...updates },
     };
+    pushUndoState();
     setConnections((currentConnections) => ({
       ...currentConnections,
       [nextConnection.id]: nextConnection,
@@ -1892,9 +1960,6 @@ function App() {
           <button className="button" type="button" onClick={exportSvg} disabled={Object.keys(edgeAssignments).length === 0}>
             Export SVG
           </button>
-          <button className="button" type="button" onClick={undoLastEdgeAssignment} disabled={!undoEdgeAssignments}>
-            Undo
-          </button>
           <button className="button destructive" type="button" onClick={deleteDrawing}>
             Delete Drawing
           </button>
@@ -1999,6 +2064,10 @@ function App() {
           </div>
 
           <div className="canvas-frame">
+            <div className="canvas-history-controls" aria-label="Canvas history controls">
+              <button type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo">↶</button>
+              <button type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo">↷</button>
+            </div>
             <div className="canvas-zoom-controls" aria-label="Canvas zoom controls">
               <button type="button" onClick={() => zoomCanvas(buttonZoomFactor)} aria-label="Zoom in">+</button>
               <button type="button" onClick={() => zoomCanvas(1 / buttonZoomFactor)} aria-label="Zoom out">−</button>
