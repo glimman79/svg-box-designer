@@ -146,6 +146,42 @@ assert.throws(
   /S-A panel conflicts/,
   'S-A panel conflicts with E-applied geometry on same panel',
 );
+
+const multiSConnections = {
+  S1: sConnection('S1'),
+  S2: sConnection('S2'),
+  S3: sConnection('S3'),
+};
+const multiSAssignments = {
+  'sPanel-left': { connectionId: 'S1', slotRole: 'A' },
+  'receiver-left': { connectionId: 'S1', slotRole: 'B' },
+  'sPanel-top': { connectionId: 'S2', slotRole: 'A' },
+  'receiver-top': { connectionId: 'S2', slotRole: 'B' },
+  'sPanel-right': { connectionId: 'S3', slotRole: 'A' },
+  'receiver-right': { connectionId: 'S3', slotRole: 'B' },
+};
+const mergedSResult = buildAppliedSGeometry(sModel, multiSAssignments, multiSConnections, 5);
+const mergedPanelPaths = mergedSResult.flatMap((geometry) => geometry.panelPaths);
+const mergedSlotPaths = mergedSResult.flatMap((geometry) => geometry.slotPaths);
+assert.equal(mergedPanelPaths.length, 1, 'three S-A edges on same panel produce one replacement contour');
+assert.equal(new Set(mergedPanelPaths.map((panelPath) => panelPath.panelId)).size, 1, 'one panel replacement path per panelId');
+assert.equal(mergedPanelPaths[0].panelId, 'sPanel', 'merged S replacement belongs to the S-A panel');
+const mergedNumbers = pathNumbers(mergedPanelPaths[0].pathD);
+assert.ok(mergedNumbers.includes(13), 'merged contour contains left/top inset sides');
+assert.ok(mergedNumbers.includes(107), 'merged contour contains right inset side');
+const expectedMultiSlotCount = ['sPanel-left', 'sPanel-top', 'sPanel-right'].reduce((count, edgeId) => {
+  const sideIndex = sPanel.edgeIds.indexOf(edgeId);
+  const sideStart = sPanel.contour[sideIndex];
+  const sideEnd = sPanel.contour[(sideIndex + 1) % sPanel.contour.length];
+  const sideLength = Math.hypot(sideEnd.x - sideStart.x, sideEnd.y - sideStart.y);
+  return count + createTabSegmentPlan(sideLength, 9).filter((_, segmentIndex) => segmentIndex % 2 === 1).length;
+}, 0);
+assert.equal(mergedSlotPaths.length, expectedMultiSlotCount, 'slot paths are still generated per S connection');
+const reorderedSResult = buildAppliedSGeometry(sModel, multiSAssignments, { S3: multiSConnections.S3, S1: multiSConnections.S1, S2: multiSConnections.S2 }, 5);
+assert.equal(reorderedSResult.flatMap((geometry) => geometry.panelPaths)[0].pathD, mergedPanelPaths[0].pathD, 'reordering S connections produces identical panel geometry');
+assert.equal(reorderedSResult.flatMap((geometry) => geometry.slotPaths).length, mergedSlotPaths.length, 'reordering S connections preserves slot generation');
+console.log('S panel merge tests passed');
+
 const eOnly = buildAppliedEPanelPaths(sModel, sAssignments, { S1: sConnection('S1') });
 assert.equal(eOnly.length, 0, 'S assignments do not enter E geometry functions');
 console.log('S geometry v1 tests passed');
