@@ -42,6 +42,11 @@ export const getEdgeAssignmentDisplayLabel = (assignment: EdgeAssignment | undef
 export type SvgDocumentModel = {
   content: string;
   innerMarkup: string;
+  rootAttributes: {
+    width: string | null;
+    height: string | null;
+    viewBox: string | null;
+  };
   viewBox: string;
   width: number;
   height: number;
@@ -464,6 +469,11 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
   }
 
   sanitizeSvg(svgElement);
+  const rootAttributes = {
+    width: svgElement.getAttribute('width'),
+    height: svgElement.getAttribute('height'),
+    viewBox: svgElement.getAttribute('viewBox'),
+  };
   const edges: SvgEdge[] = [];
   const panels: SvgPanel[] = [];
 
@@ -539,6 +549,7 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
   return {
     content: new XMLSerializer().serializeToString(svgElement),
     innerMarkup: svgElement.innerHTML,
+    rootAttributes,
     ...getCanvasMetrics(svgElement),
     edges,
     panels,
