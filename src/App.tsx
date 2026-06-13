@@ -153,9 +153,12 @@ export const exportAppliedSvg = (
   svgModel: SvgDocumentModel,
   appliedEPanelPaths: AppliedEPanelPath[],
 ): string => {
+  const rootViewBox = svgModel.rootAttributes.viewBox ?? svgModel.viewBox;
+  const rootWidth = svgModel.rootAttributes.width;
+  const rootHeight = svgModel.rootAttributes.height;
   const sizeAttributes = [
-    svgModel.width ? `width="${escapeSvgAttribute(svgModel.width)}"` : '',
-    svgModel.height ? `height="${escapeSvgAttribute(svgModel.height)}"` : '',
+    rootWidth !== null ? `width="${escapeSvgAttribute(rootWidth)}"` : '',
+    rootHeight !== null ? `height="${escapeSvgAttribute(rootHeight)}"` : '',
   ].filter(Boolean).join(' ');
   const appliedByPanelId = new Map(appliedEPanelPaths.map((panelPath) => [panelPath.panelId, panelPath]));
   const pathElements = svgModel.panels.map((panel) => {
@@ -165,7 +168,7 @@ export const exportAppliedSvg = (
   });
 
   return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${escapeSvgAttribute(svgModel.viewBox)}"${sizeAttributes ? ` ${sizeAttributes}` : ''}>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${escapeSvgAttribute(rootViewBox)}"${sizeAttributes ? ` ${sizeAttributes}` : ''}>`,
     ...pathElements,
     '</svg>',
   ].join('\n');
@@ -174,6 +177,11 @@ export const exportAppliedSvg = (
 const emptySvgModel: SvgDocumentModel = {
   content: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"></svg>',
   innerMarkup: '',
+  rootAttributes: {
+    width: null,
+    height: null,
+    viewBox: '0 0 800 600',
+  },
   viewBox: '0 0 800 600',
   width: 800,
   height: 600,
