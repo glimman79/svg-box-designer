@@ -21,10 +21,12 @@ export type SvgPanel = {
 };
 
 export type EdgeRole = 'A' | 'B';
+export type SlotRole = 'A' | 'B';
 
 export type EdgeAssignment = {
   connectionId: string;
   edgeRole?: EdgeRole;
+  slotRole?: SlotRole;
 };
 
 export const getEdgeAssignmentDisplayLabel = (assignment: EdgeAssignment | undefined) => {
@@ -34,6 +36,10 @@ export const getEdgeAssignmentDisplayLabel = (assignment: EdgeAssignment | undef
 
   if (assignment.connectionId.startsWith('E') && assignment.edgeRole) {
     return `${assignment.connectionId}-${assignment.edgeRole === 'A' ? 'A' : 'B'}`;
+  }
+
+  if (assignment.connectionId.startsWith('S') && assignment.slotRole) {
+    return `${assignment.connectionId}-${assignment.slotRole === 'A' ? 'A' : 'B'}`;
   }
 
   return assignment.connectionId;
