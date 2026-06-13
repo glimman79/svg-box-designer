@@ -671,3 +671,17 @@ button:disabled {
   font-weight: 900;
   text-align: right;
 }
+
+.applied-s-geometry-layer {
+  pointer-events: none;
+}
+
+.applied-s-slot-path {
+  fill: none;
+  stroke: #000000;
+  stroke-width: 1.25;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+  pointer-events: none;
+  vector-effect: non-scaling-stroke;
+}

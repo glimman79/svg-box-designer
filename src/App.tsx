@@ -90,6 +90,7 @@ type HistoryState = {
   selectedLabelId: string | null;
   selectedEdgeId: string | null;
   appliedEPanelPaths?: AppliedEPanelPath[];
+  appliedSGeometry?: AppliedSGeometry[];
   sharedSlotOffsetMm: number;
 };
 
@@ -101,6 +102,7 @@ const cloneHistoryState = (state: HistoryState): HistoryState => ({
   selectedLabelId: state.selectedLabelId,
   selectedEdgeId: state.selectedEdgeId,
   ...(state.appliedEPanelPaths ? { appliedEPanelPaths: structuredClone(state.appliedEPanelPaths) } : {}),
+  ...(state.appliedSGeometry ? { appliedSGeometry: structuredClone(state.appliedSGeometry) } : {}),
   sharedSlotOffsetMm: state.sharedSlotOffsetMm,
 });
 
@@ -144,6 +146,32 @@ export type AppliedEPanelPath = {
   edgeIds: string[];
 };
 
+export type AppliedSPanelPath = {
+  panelId: string;
+  sourceEdgeId: string;
+  eraseRect: SourceBounds;
+  erasePathD: string;
+  pathD: string;
+  edgeIds: string[];
+};
+
+export type AppliedSSlotPath = {
+  connectionId: string;
+  sourceAEdgeId: string;
+  sourceBEdgeId: string;
+  pathD: string;
+  startDistance: number;
+  endDistance: number;
+  widthMm: number;
+};
+
+export type AppliedSGeometry = {
+  connectionId: string;
+  panelPaths: AppliedSPanelPath[];
+  slotPaths: AppliedSSlotPath[];
+  edgeIds: string[];
+};
+
 
 const escapeSvgAttribute = (value: string | number) => String(value)
   .replace(/&/g, '&amp;')
@@ -154,6 +182,7 @@ const escapeSvgAttribute = (value: string | number) => String(value)
 export const exportAppliedSvg = (
   svgModel: SvgDocumentModel,
   appliedEPanelPaths: AppliedEPanelPath[],
+  appliedSGeometry: AppliedSGeometry[] = [],
 ): string => {
   const rootViewBox = svgModel.rootAttributes.viewBox ?? svgModel.viewBox;
   const rootWidth = svgModel.rootAttributes.width;
@@ -162,16 +191,25 @@ export const exportAppliedSvg = (
     rootWidth !== null ? `width="${escapeSvgAttribute(rootWidth)}"` : '',
     rootHeight !== null ? `height="${escapeSvgAttribute(rootHeight)}"` : '',
   ].filter(Boolean).join(' ');
-  const appliedByPanelId = new Map(appliedEPanelPaths.map((panelPath) => [panelPath.panelId, panelPath]));
+  const appliedByPanelId = new Map<string, { pathD: string }>(appliedEPanelPaths.map((panelPath) => [panelPath.panelId, panelPath]));
+  appliedSGeometry.flatMap((geometry) => geometry.panelPaths).forEach((panelPath) => {
+    if (!appliedByPanelId.has(panelPath.panelId)) {
+      appliedByPanelId.set(panelPath.panelId, panelPath);
+    }
+  });
   const pathElements = svgModel.panels.map((panel) => {
     const d = appliedByPanelId.get(panel.id)?.pathD ?? pointsToClosedPathD(panel.contour);
 
     return `  <path d="${escapeSvgAttribute(d)}" fill="none" stroke="#000000" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
   });
+  const slotElements = appliedSGeometry.flatMap((geometry) => geometry.slotPaths).map((slotPath) => (
+    `  <path d="${escapeSvgAttribute(slotPath.pathD)}" fill="none" stroke="#000000" stroke-width="1" vector-effect="non-scaling-stroke"/>`
+  ));
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${escapeSvgAttribute(rootViewBox)}"${sizeAttributes ? ` ${sizeAttributes}` : ''}>`,
     ...pathElements,
+    ...slotElements,
     '</svg>',
   ].join('\n');
 };
@@ -1096,6 +1134,192 @@ export const buildAppliedEPanelPaths = (
   });
 };
 
+
+const buildSPanelContour = (
+  panel: SvgPanel,
+  sourceEdgeId: string,
+  materialThicknessMm: number,
+  segments: TabSegment[],
+): PanelGeometryBuildResult => {
+  const validation = validatePanelContour(clonePanelContour(panel));
+
+  if (!validation.ok) {
+    return validation;
+  }
+
+  const sideIndex = panel.edgeIds.findIndex((edgeId) => edgeId === sourceEdgeId);
+
+  if (sideIndex === -1) {
+    return { ok: false, reason: `S-A edge ${sourceEdgeId} is not part of its panel contour.` };
+  }
+
+  const contourSides = buildContourSides(panel.contour);
+  const originalSide = contourSides[sideIndex];
+  const contourWindingSign = getContourSignedArea(panel.contour) >= 0 ? 1 : -1;
+  const insetSide = offsetContourSide(originalSide, materialThicknessMm * contourWindingSign);
+
+  if (!insetSide) {
+    return { ok: false, reason: `S-A edge ${sourceEdgeId} cannot be offset because its contour side is invalid.` };
+  }
+
+  const rebuiltContour: PanelContour = [];
+
+  contourSides.forEach((side, index) => {
+    addContourPoint(rebuiltContour, side.start);
+
+    if (index !== sideIndex) {
+      addContourPoint(rebuiltContour, side.end);
+      return;
+    }
+
+    addContourPoint(rebuiltContour, insetSide.start);
+    segments.forEach((segment) => {
+      const baseStart = interpolateSidePoint(insetSide, segment.startDistance);
+      const baseEnd = interpolateSidePoint(insetSide, segment.endDistance);
+      const tabStart = interpolateSidePoint(originalSide, segment.startDistance);
+      const tabEnd = interpolateSidePoint(originalSide, segment.endDistance);
+
+      addContourPoint(rebuiltContour, baseStart);
+      addContourPoint(rebuiltContour, tabStart);
+      addContourPoint(rebuiltContour, tabEnd);
+      addContourPoint(rebuiltContour, baseEnd);
+    });
+    addContourPoint(rebuiltContour, insetSide.end);
+    addContourPoint(rebuiltContour, side.end);
+  });
+
+  if (rebuiltContour.length > 1 && pointsMatch(rebuiltContour[0], rebuiltContour[rebuiltContour.length - 1])) {
+    rebuiltContour.pop();
+  }
+
+  return validatePanelContour(rebuiltContour);
+};
+
+const findPanelContainingEdge = (svgModel: SvgDocumentModel, edgeId: string) => (
+  svgModel.panels.find((panel) => panel.edgeIds.includes(edgeId)) ?? null
+);
+
+const buildSlotPathD = (edge: SvgEdge, startDistance: number, endDistance: number, widthMm: number): string | null => {
+  const edgeLength = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+
+  if (edgeLength <= cornerTouchTolerance) {
+    return null;
+  }
+
+  const ux = (edge.end.x - edge.start.x) / edgeLength;
+  const uy = (edge.end.y - edge.start.y) / edgeLength;
+  const nx = -uy;
+  const ny = ux;
+  const halfWidth = widthMm / 2;
+  const p0 = { x: edge.start.x + (ux * startDistance), y: edge.start.y + (uy * startDistance) };
+  const p1 = { x: edge.start.x + (ux * endDistance), y: edge.start.y + (uy * endDistance) };
+  const q0 = { x: p0.x + (nx * halfWidth), y: p0.y + (ny * halfWidth) };
+  const q1 = { x: p1.x + (nx * halfWidth), y: p1.y + (ny * halfWidth) };
+  const q2 = { x: p1.x - (nx * halfWidth), y: p1.y - (ny * halfWidth) };
+  const q3 = { x: p0.x - (nx * halfWidth), y: p0.y - (ny * halfWidth) };
+
+  return pointsToClosedPathD([q0, q1, q2, q3]);
+};
+
+export const buildAppliedSGeometry = (
+  svgModel: SvgDocumentModel,
+  assignments: Record<string, EdgeAssignment>,
+  connectionMap: ConnectionMap,
+  sharedSlotOffsetMm: number,
+): AppliedSGeometry[] => {
+  const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
+  const sConnections = Object.values(connectionMap).filter((connection): connection is SlotConnectionDefinition => connection.prefix === 'S');
+  const result: AppliedSGeometry[] = [];
+
+  sConnections.forEach((connection) => {
+    const assignedEdges = Object.entries(assignments).filter(([, assignment]) => assignment.connectionId === connection.id);
+    if (assignedEdges.length === 0) {
+      return;
+    }
+
+    const aEdges = assignedEdges.filter(([, assignment]) => assignment.slotRole === 'A');
+    const bEdges = assignedEdges.filter(([, assignment]) => assignment.slotRole === 'B');
+
+    if (aEdges.length !== 1 || bEdges.length !== 1) {
+      throw new Error(`${connection.id} must have exactly one S-A edge and one S-B edge.`);
+    }
+
+    const [sourceAEdgeId] = aEdges[0];
+    const [sourceBEdgeId] = bEdges[0];
+    const sourceAEdge = edgesById.get(sourceAEdgeId);
+    const sourceBEdge = edgesById.get(sourceBEdgeId);
+    const panel = findPanelContainingEdge(svgModel, sourceAEdgeId);
+
+    if (!sourceAEdge || !sourceBEdge || !panel) {
+      throw new Error(`${connection.id} S-A edge must be part of a valid closed panel.`);
+    }
+
+    const validation = validateClosedPanel(panel, edgesById);
+    if (!validation.valid) {
+      throw new Error(`${connection.id} S-A edge is not part of a valid closed panel: ${validation.reason}`);
+    }
+
+    if (panel.edgeIds.some((edgeId) => connectionMap[assignments[edgeId]?.connectionId]?.prefix === 'E')) {
+      throw new Error(`${connection.id} S-A panel conflicts with existing E-applied geometry on the same panel.`);
+    }
+
+    const sideIndex = panel.edgeIds.findIndex((edgeId) => edgeId === sourceAEdgeId);
+    const originalSide = getContourEdgePoints(panel, sideIndex);
+    const sideLength = getContourSideLength(originalSide);
+    const materialThicknessMm = connection.properties.materialThicknessMm;
+    const planSegments = createTabSegmentPlan(sideLength, materialThicknessMm * 3);
+    const aSegments = getTabSegmentsForRole(planSegments, 'A');
+    const bLength = Math.hypot(sourceBEdge.end.x - sourceBEdge.start.x, sourceBEdge.end.y - sourceBEdge.start.y);
+
+    aSegments.forEach((segment) => {
+      if (sharedSlotOffsetMm + segment.startDistance < -cornerTouchTolerance || sharedSlotOffsetMm + segment.endDistance > bLength + cornerTouchTolerance) {
+        throw new Error(`${connection.id} S-B slot pattern extends outside the S-B edge.`);
+      }
+    });
+
+    const panelResult = buildSPanelContour(panel, sourceAEdgeId, materialThicknessMm, aSegments);
+    if (!panelResult.ok) {
+      throw new Error(`${connection.id} S-A geometry failed: ${panelResult.reason}`);
+    }
+
+    const slotPaths = aSegments.map((segment) => {
+      const startDistance = sharedSlotOffsetMm + segment.startDistance;
+      const endDistance = sharedSlotOffsetMm + segment.endDistance;
+      const pathD = buildSlotPathD(sourceBEdge, startDistance, endDistance, materialThicknessMm);
+
+      if (!pathD) {
+        throw new Error(`${connection.id} S-B edge cannot receive slots because its length is invalid.`);
+      }
+
+      return {
+        connectionId: connection.id,
+        sourceAEdgeId,
+        sourceBEdgeId,
+        pathD,
+        startDistance,
+        endDistance,
+        widthMm: materialThicknessMm,
+      };
+    });
+
+    result.push({
+      connectionId: connection.id,
+      panelPaths: [{
+        panelId: panel.id,
+        sourceEdgeId: sourceAEdgeId,
+        eraseRect: panel.bounds,
+        erasePathD: pointsToClosedPathD(panel.contour),
+        pathD: pointsToClosedPathD(panelResult.contour),
+        edgeIds: panel.edgeIds,
+      }],
+      slotPaths,
+      edgeIds: [sourceAEdgeId, sourceBEdgeId],
+    });
+  });
+
+  return result;
+};
+
 const labelGroups: LabelGroup[] = [
   { prefix: 'E', name: 'Edge connections', description: 'Reusable edge connection IDs' },
   { prefix: 'S', name: 'Slot connections', description: 'Reusable slot connection IDs' },
@@ -1331,6 +1555,7 @@ function App() {
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
+  const [appliedSGeometry, setAppliedSGeometry] = useState<AppliedSGeometry[]>([]);
   const [sharedSlotOffsetMm, setSharedSlotOffsetMm] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
@@ -1369,6 +1594,7 @@ function App() {
     selectedLabelId,
     selectedEdgeId,
     appliedEPanelPaths,
+    appliedSGeometry,
     sharedSlotOffsetMm,
   });
 
@@ -1379,6 +1605,7 @@ function App() {
     setSelectedLabelId(snapshot.selectedLabelId);
     setSelectedEdgeId(snapshot.selectedEdgeId);
     setAppliedEPanelPaths(snapshot.appliedEPanelPaths ?? []);
+    setAppliedSGeometry(snapshot.appliedSGeometry ?? []);
     setSharedSlotOffsetMm(snapshot.sharedSlotOffsetMm);
   };
 
@@ -1401,6 +1628,7 @@ function App() {
     setEdgeAssignments({});
     setSelectedEdgeId(null);
     setAppliedEPanelPaths([]);
+    setAppliedSGeometry([]);
     setSharedSlotOffsetMm(0);
     setUndoStack([]);
     setRedoStack([]);
@@ -1567,10 +1795,16 @@ function App() {
     clearEdgeLabel(selectedEdgeId);
   };
 
-  const applyEPanelPaths = () => {
-    const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, edgeAssignments, connections, true);
-    setAppliedEPanelPaths(nextAppliedEPanelPaths);
-    setErrorMessage('');
+  const applyPanelPaths = () => {
+    try {
+      const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, edgeAssignments, connections, true);
+      const nextAppliedSGeometry = buildAppliedSGeometry(svgModel, edgeAssignments, connections, sharedSlotOffsetMm);
+      setAppliedEPanelPaths(nextAppliedEPanelPaths);
+      setAppliedSGeometry(nextAppliedSGeometry);
+      setErrorMessage('');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to apply geometry.');
+    }
   };
 
   const undoLastEdit = () => {
@@ -1606,6 +1840,7 @@ function App() {
     setSelectedLabelId(null);
     setSelectedEdgeId(null);
     setAppliedEPanelPaths([]);
+    setAppliedSGeometry([]);
     setSharedSlotOffsetMm(0);
     setErrorMessage('');
     setUndoStack([]);
@@ -1738,15 +1973,16 @@ function App() {
 
   const exportSvg = () => {
     // Export after Apply is clean laser geometry; export before Apply remains label/reference export.
-    const output = appliedEPanelPaths.length > 0
-      ? exportAppliedSvg(svgModel, appliedEPanelPaths)
+    const hasAppliedGeometry = appliedEPanelPaths.length > 0 || appliedSGeometry.length > 0;
+    const output = hasAppliedGeometry
+      ? exportAppliedSvg(svgModel, appliedEPanelPaths, appliedSGeometry)
       : exportLabeledSvg(svgModel.content, edgeAssignments, svgModel.edges);
     const blob = new Blob([output], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
 
     if (downloadRef.current) {
       downloadRef.current.href = url;
-      downloadRef.current.download = appliedEPanelPaths.length > 0
+      downloadRef.current.download = hasAppliedGeometry
         ? 'svg-box-designer-applied.svg'
         : 'svg-box-designer-labeled.svg';
       downloadRef.current.click();
@@ -2131,6 +2367,10 @@ function App() {
     () => new Set(appliedEPanelPaths.flatMap((panelPath) => panelPath.edgeIds)),
     [appliedEPanelPaths],
   );
+  const appliedSPanelEdgeIds = useMemo(
+    () => new Set(appliedSGeometry.flatMap((geometry) => geometry.panelPaths.flatMap((panelPath) => panelPath.edgeIds))),
+    [appliedSGeometry],
+  );
 
 
   return (
@@ -2250,7 +2490,7 @@ function App() {
             <div className="view-controls" aria-label="Drawing view controls">
               <button type="button" onClick={resetCanvasView}>Reset view</button>
               <button type="button" onClick={fitCanvasToScreen}>Fit to screen</button>
-              <button type="button" onClick={applyEPanelPaths} disabled={!hasAssignedEEdges}>Apply</button>
+              <button type="button" onClick={applyPanelPaths} disabled={Object.keys(edgeAssignments).length === 0}>Apply</button>
             </div>
           </div>
 
@@ -2298,6 +2538,32 @@ function App() {
                   </g>
                 ))}
               </g>
+              <g className="applied-s-geometry-layer">
+                {appliedSGeometry.map((geometry) => (
+                  <g key={geometry.connectionId}>
+                    {geometry.panelPaths.map((panelPath) => (
+                      <g key={panelPath.sourceEdgeId}>
+                        <rect
+                          className="applied-e-panel-erase"
+                          x={panelPath.eraseRect.minX}
+                          y={panelPath.eraseRect.minY}
+                          width={panelPath.eraseRect.maxX - panelPath.eraseRect.minX}
+                          height={panelPath.eraseRect.maxY - panelPath.eraseRect.minY}
+                        />
+                        <path className="applied-e-panel-erase-contour" d={panelPath.erasePathD} />
+                        <path className="applied-e-panel-path" d={panelPath.pathD} />
+                      </g>
+                    ))}
+                    {geometry.slotPaths.map((slotPath) => (
+                      <path
+                        key={`${slotPath.connectionId}-${slotPath.startDistance}-${slotPath.endDistance}`}
+                        className="applied-s-slot-path"
+                        d={slotPath.pathD}
+                      />
+                    ))}
+                  </g>
+                ))}
+              </g>
               <g className="edge-overlays">
                   {svgModel.edges.map((edge) => {
                   const assignment = edgeAssignments[edge.id];
@@ -2306,7 +2572,7 @@ function App() {
                   const labelPlacement = labelPlacementsByEdgeId.get(edge.id);
                   const labelWidth = labelPlacement?.width ?? 0;
                   const labelHeight = labelPlacement?.height ?? 0;
-                  const showHighlight = (label || selected) && !appliedEEdgeIds.has(edge.id);
+                  const showHighlight = (label || selected) && !appliedEEdgeIds.has(edge.id) && !appliedSPanelEdgeIds.has(edge.id);
 
                   return (
                     <g key={edge.id}>

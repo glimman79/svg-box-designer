@@ -90,3 +90,44 @@ runCase('Mixed E1/E2/E3/E4 assignments', [single, mixed], {
   'p2-top': { connectionId: 'E1', edgeRole: 'B' }, 'p2-right': { connectionId: 'E2', edgeRole: 'A' }, 'p2-bottom': { connectionId: 'E3', edgeRole: 'B' }, 'p2-left': { connectionId: 'E4', edgeRole: 'A' },
 }, { E1: connection('E1'), E2: connection('E2'), E3: connection('E3'), E4: connection('E4') });
 console.log('E-system baseline tests passed');
+
+const { buildAppliedSGeometry, createTabSegmentPlan } = module.exports;
+const sConnection = (id) => ({ id, prefix: 'S', properties: { slotOffsetMm: 0, slotWidthMm: 3, slotLengthMm: 9, isSlotLengthManual: false, materialThicknessMm: 3, kerfMm: 0.15, playMm: 0 } });
+
+const sPanel = panel('sPanel', 10, 10, 100, 50);
+const receiver = panel('receiver', 10, 100, 140, 40);
+const sModel = modelForPanels([sPanel, receiver], { width: 200, height: 180 });
+const sAssignments = {
+  'sPanel-top': { connectionId: 'S1', slotRole: 'A' },
+  'receiver-top': { connectionId: 'S1', slotRole: 'B' },
+};
+const sResult = buildAppliedSGeometry(sModel, sAssignments, { S1: sConnection('S1') }, 5);
+assert.equal(sResult.length, 1, 'S1-A/S1-B complete pair generates one S geometry record');
+assert.equal(sResult[0].panelPaths.length, 1, 'S-A produces one panel replacement');
+const expectedASegments = createTabSegmentPlan(100, 9).filter((_, segmentIndex) => segmentIndex % 2 === 1);
+assert.equal(expectedASegments[0].endDistance - expectedASegments[0].startDistance, 9, 'S-A default tab size is materialThicknessMm × 3');
+assert.equal(sResult[0].slotPaths.length, expectedASegments.length, 'S-B slot count equals S-A tab count');
+sResult[0].slotPaths.forEach((slotPath, index) => {
+  const segment = expectedASegments[index];
+  assert.equal(slotPath.startDistance, 5 + segment.startDistance, 'sharedSlotOffsetMm shifts slot start');
+  assert.equal(slotPath.endDistance, 5 + segment.endDistance, 'sharedSlotOffsetMm shifts slot end');
+  assert.equal(slotPath.endDistance - slotPath.startDistance, segment.endDistance - segment.startDistance, 'S-B slot length equals S-A tab length');
+});
+const sBounds = pathBounds(sResult[0].panelPaths[0].pathD);
+assert.equal(sBounds.minX, sPanel.bounds.minX, 'S-A does not protrude outside minX panel bounds');
+assert.equal(sBounds.maxX, sPanel.bounds.maxX, 'S-A does not protrude outside maxX panel bounds');
+assert.equal(sBounds.minY, sPanel.bounds.minY, 'S-A outer tab faces remain on original edge line');
+assert.equal(sBounds.maxY, sPanel.bounds.maxY, 'S-A does not protrude outside maxY panel bounds');
+assert.throws(
+  () => buildAppliedSGeometry(sModel, sAssignments, { S1: sConnection('S1') }, 200),
+  /S-B slot pattern extends outside the S-B edge/,
+  'out-of-bounds S-B slots throw a clear error',
+);
+assert.throws(
+  () => buildAppliedSGeometry(sModel, { ...sAssignments, 'sPanel-right': { connectionId: 'E1', edgeRole: 'A' } }, { S1: sConnection('S1'), E1: connection('E1') }, 0),
+  /S-A panel conflicts/,
+  'S-A panel conflicts with E-applied geometry on same panel',
+);
+const eOnly = buildAppliedEPanelPaths(sModel, sAssignments, { S1: sConnection('S1') });
+assert.equal(eOnly.length, 0, 'S assignments do not enter E geometry functions');
+console.log('S geometry v1 tests passed');
