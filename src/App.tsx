@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
-import type { EdgeAssignment, EdgeRole, Point, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
+import type { EdgeAssignment, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
 
@@ -90,6 +90,7 @@ type HistoryState = {
   selectedLabelId: string | null;
   selectedEdgeId: string | null;
   appliedEPanelPaths?: AppliedEPanelPath[];
+  sharedSlotOffsetMm: number;
 };
 
 const maxHistoryEntries = 10;
@@ -100,6 +101,7 @@ const cloneHistoryState = (state: HistoryState): HistoryState => ({
   selectedLabelId: state.selectedLabelId,
   selectedEdgeId: state.selectedEdgeId,
   ...(state.appliedEPanelPaths ? { appliedEPanelPaths: structuredClone(state.appliedEPanelPaths) } : {}),
+  sharedSlotOffsetMm: state.sharedSlotOffsetMm,
 });
 
 type NumericFieldProps = {
@@ -1232,6 +1234,24 @@ const getDefaultEdgeRole = (assignments: Record<string, EdgeAssignment>, connect
   return 'A';
 };
 
+const getDefaultSlotRole = (assignments: Record<string, EdgeAssignment>, connectionId: string): SlotRole => {
+  const assignedRoles = Object.values(assignments)
+    .filter((assignment) => assignment.connectionId === connectionId)
+    .map((assignment) => assignment.slotRole);
+
+  return assignedRoles.includes('A') && !assignedRoles.includes('B') ? 'B' : 'A';
+};
+
+const getFollowingSlotLabel = (label: string) => {
+  const labelNumber = Number.parseInt(label.slice(1), 10);
+
+  if (getLabelPrefix(label) !== 'S' || !Number.isFinite(labelNumber)) {
+    return null;
+  }
+
+  return `S${labelNumber + 1}`;
+};
+
 const formatEdgeRoleLabel = (role: EdgeRole | undefined) => {
   if (role === 'A') {
     return 'A';
@@ -1311,6 +1331,7 @@ function App() {
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
+  const [sharedSlotOffsetMm, setSharedSlotOffsetMm] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -1348,6 +1369,7 @@ function App() {
     selectedLabelId,
     selectedEdgeId,
     appliedEPanelPaths,
+    sharedSlotOffsetMm,
   });
 
   const restoreHistoryState = (state: HistoryState) => {
@@ -1357,6 +1379,7 @@ function App() {
     setSelectedLabelId(snapshot.selectedLabelId);
     setSelectedEdgeId(snapshot.selectedEdgeId);
     setAppliedEPanelPaths(snapshot.appliedEPanelPaths ?? []);
+    setSharedSlotOffsetMm(snapshot.sharedSlotOffsetMm);
   };
 
   const pushUndoState = () => {
@@ -1378,6 +1401,7 @@ function App() {
     setEdgeAssignments({});
     setSelectedEdgeId(null);
     setAppliedEPanelPaths([]);
+    setSharedSlotOffsetMm(0);
     setUndoStack([]);
     setRedoStack([]);
     setErrorMessage('');
@@ -1440,6 +1464,7 @@ function App() {
       [edgeId]: {
         connectionId: selectedLabelId,
         ...(connection.prefix === 'E' ? { edgeRole: getDefaultEdgeRole(edgeAssignments, selectedLabelId) } : {}),
+        ...(connection.prefix === 'S' ? { slotRole: getDefaultSlotRole(edgeAssignments, selectedLabelId) } : {}),
       },
     };
     setEdgeAssignments(nextAssignments);
@@ -1467,6 +1492,27 @@ function App() {
       setSelectedLabelId(nextEdgeLabel);
     }
 
+    const selectedSlotRoles = Object.values(nextAssignments)
+      .filter((assignment) => assignment.connectionId === selectedLabelId)
+      .map((assignment) => assignment.slotRole);
+    const nextSlotLabel = selectedSlotRoles.includes('A') && selectedSlotRoles.includes('B')
+      ? getFollowingSlotLabel(selectedLabelId)
+      : null;
+
+    if (connection.prefix === 'S' && nextSlotLabel) {
+      setConnections((currentConnections) => {
+        if (currentConnections[nextSlotLabel]) {
+          return currentConnections;
+        }
+
+        return {
+          ...currentConnections,
+          [nextSlotLabel]: createConnectionDefinition(nextSlotLabel, 'S'),
+        };
+      });
+      setSelectedLabelId(nextSlotLabel);
+    }
+
     setErrorMessage('');
   };
 
@@ -1487,6 +1533,30 @@ function App() {
       },
     }));
     setErrorMessage('');
+  };
+
+  const updateAssignedSlotRole = (edgeId: string, slotRole: SlotRole) => {
+    const assignment = edgeAssignments[edgeId];
+    const connection = assignment ? connections[assignment.connectionId] : undefined;
+
+    if (!assignment || connection?.prefix !== 'S' || assignment.slotRole === slotRole) {
+      return;
+    }
+
+    pushUndoState();
+    setEdgeAssignments((currentAssignments) => ({
+      ...currentAssignments,
+      [edgeId]: {
+        ...assignment,
+        slotRole,
+      },
+    }));
+    setErrorMessage('');
+  };
+
+  const updateSharedSlotOffset = (nextSharedSlotOffsetMm: number) => {
+    pushUndoState();
+    setSharedSlotOffsetMm(nextSharedSlotOffsetMm);
   };
 
   const clearSelectedLabel = () => {
@@ -1536,6 +1606,7 @@ function App() {
     setSelectedLabelId(null);
     setSelectedEdgeId(null);
     setAppliedEPanelPaths([]);
+    setSharedSlotOffsetMm(0);
     setErrorMessage('');
     setUndoStack([]);
     setRedoStack([]);
@@ -1931,16 +2002,58 @@ function App() {
 
     if (selectedConnection.prefix === 'S') {
       const properties = selectedConnection.properties;
+      const assignedSEdges = svgModel.edges.filter((edge) => edgeAssignments[edge.id]?.connectionId === selectedConnection.id);
 
       return (
         <div className="property-sections">
+          <section className="property-section" aria-labelledby="slot-assigned-edges">
+            <h4 id="slot-assigned-edges">Assigned edges</h4>
+            {assignedSEdges.length > 0 ? (
+              <ul className="calculated-edge-list">
+                {assignedSEdges.map((edge) => (
+                  <li key={edge.id}>
+                    <strong>{edge.id}</strong>
+                    <dl>
+                      <div>
+                        <dt>Source</dt>
+                        <dd>{edge.source}</dd>
+                      </div>
+                      <div>
+                        <dt>Edge length</dt>
+                        <dd>{formatCalculatedMm(Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y))}</dd>
+                      </div>
+                      <div>
+                        <dt>Current role</dt>
+                        <dd>{formatEdgeRoleLabel(edgeAssignments[edge.id]?.slotRole)}</dd>
+                      </div>
+                    </dl>
+                    <SelectField
+                      id={`${edge.id}-slot-role`}
+                      label="Role"
+                      value={edgeAssignments[edge.id]?.slotRole ?? 'A'}
+                      options={['A', 'B']}
+                      onChange={(slotRole) => updateAssignedSlotRole(edge.id, slotRole as SlotRole)}
+                    />
+                    <button type="button" onClick={() => clearEdgeLabel(edge.id)}>
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">No edges assigned to this S label yet. Select this label, then click the S-A and S-B edges in the drawing.</p>
+            )}
+          </section>
+
           <section className="property-section" aria-labelledby="slot-basic-properties">
             <h4 id="slot-basic-properties">Basic</h4>
             <div className="property-grid">
+              <NumericField id="slot-shared-offset" label="Slot offset from selected S-B edge start (mm)" value={sharedSlotOffsetMm} onChange={updateSharedSlotOffset} />
               <NumericField id="slot-offset" label="Slot offset from edge (mm)" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
               <NumericField id="slot-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateSlotProperties({ materialThicknessMm })} />
               <NumericField id="slot-length" label="Slot length (mm)" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
             </div>
+            <p className="muted">Slot offset from selected S-B edge start is shared across all S connections.</p>
           </section>
 
           <section className="property-section" aria-labelledby="slot-advanced-properties">
