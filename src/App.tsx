@@ -11,7 +11,7 @@ type LabelGroup = {
   description: string;
 };
 
-type EdgeConnectionProperties = {
+export type EdgeConnectionProperties = {
   materialThicknessMm: number;
   fingerWidthMm: number;
   isFingerWidthManual: boolean;
@@ -52,7 +52,7 @@ type ConnectionPropertiesByPrefix = {
   P: PatternConnectionProperties;
 };
 
-type EdgeConnectionDefinition = {
+export type EdgeConnectionDefinition = {
   id: string;
   prefix: 'E';
   properties: EdgeConnectionProperties;
@@ -76,13 +76,13 @@ type PatternConnectionDefinition = {
   properties: PatternConnectionProperties;
 };
 
-type ConnectionDefinition =
+export type ConnectionDefinition =
   | EdgeConnectionDefinition
   | SlotConnectionDefinition
   | CornerConnectionDefinition
   | PatternConnectionDefinition;
 
-type ConnectionMap = Record<string, ConnectionDefinition>;
+export type ConnectionMap = Record<string, ConnectionDefinition>;
 
 type HistoryState = {
   edgeAssignments: Record<string, EdgeAssignment>;
@@ -134,7 +134,7 @@ type PanState = {
   moved: boolean;
 };
 
-type AppliedEPanelPath = {
+export type AppliedEPanelPath = {
   panelId: string;
   eraseRect: SourceBounds;
   erasePathD: string;
@@ -264,7 +264,7 @@ const edgeMatchesContourSide = (edge: SvgEdge, start: Point, end: Point) => {
   };
 };
 
-const pointsToClosedPathD = (points: Point[]) => (
+export const pointsToClosedPathD = (points: Point[]) => (
   `${points
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
     .join(' ')} Z`
@@ -443,7 +443,7 @@ const applyContourSideOffsetPlan = (
   return validatePanelContour(contourResult as PanelContour);
 };
 
-const createTabSegmentPlan = (
+export const createTabSegmentPlan = (
   insetLength: number,
   fingerWidthMm: number,
 ): TabSegment[] => {
@@ -498,7 +498,7 @@ const getContourSideLength = (side: ContourSide) => (
   Math.hypot(side.end.x - side.start.x, side.end.y - side.start.y)
 );
 
-const buildTabSegmentPlansByConnectionId = (
+export const buildTabSegmentPlansByConnectionId = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
 ): Map<string, TabSegmentPlan> => {
@@ -806,7 +806,7 @@ const removeInteriorBacktrackSpurs = (contour: PanelContour): PanelContour => {
   return cleanedContour;
 };
 
-const applyTabsToContour = (
+export const applyTabsToContour = (
   panel: SvgPanel,
   contour: PanelContour,
   tabOperations: PanelTabOperation[],
@@ -898,7 +898,7 @@ const applyTabsToContour = (
   return validatePanelContour(cleanedTabbedContour);
 };
 
-const getPanelEdgeOperations = (
+export const getPanelEdgeOperations = (
   panel: SvgPanel,
   assignments: Record<string, EdgeAssignment>,
   connectionMap: ConnectionMap,
@@ -921,7 +921,7 @@ const getPanelEdgeOperations = (
   })
 );
 
-const buildInsetPanelContour = (
+export const buildInsetPanelContour = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
 ): PanelGeometryBuildResult => {
@@ -966,7 +966,7 @@ const buildInsetPanelContour = (
   return { ok: true, contour };
 };
 
-const buildPanelGeometry = (
+export const buildPanelGeometry = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
   insetContour: PanelContour,
@@ -1037,7 +1037,7 @@ const validateClosedPanel = (
   return { valid: true };
 };
 
-const buildAppliedEPanelPaths = (
+export const buildAppliedEPanelPaths = (
   svgModel: SvgDocumentModel,
   assignments: Record<string, EdgeAssignment>,
   connectionMap: ConnectionMap,
@@ -1101,7 +1101,7 @@ const labelGroups: LabelGroup[] = [
   { prefix: 'P', name: 'Pattern connections', description: 'Reusable pattern connection IDs' },
 ];
 
-const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
+export const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
   E: {
     materialThicknessMm: 3,
     fingerWidthMm: 9,
