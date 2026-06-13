@@ -274,6 +274,13 @@ type PanelTabOperation = {
   segments: TabSegment[];
 };
 
+type SPanelOperation = {
+  connectionId: string;
+  sourceAEdgeId: string;
+  materialThicknessMm: number;
+  aSegments: TabSegment[];
+};
+
 type PanelGeometryBuildResult =
   | { ok: true; contour: PanelContour }
   | { ok: false; reason: string };
@@ -1137,9 +1144,7 @@ export const buildAppliedEPanelPaths = (
 
 const buildSPanelContour = (
   panel: SvgPanel,
-  sourceEdgeId: string,
-  materialThicknessMm: number,
-  segments: TabSegment[],
+  operations: SPanelOperation[],
 ): PanelGeometryBuildResult => {
   const validation = validatePanelContour(clonePanelContour(panel));
 
@@ -1147,37 +1152,49 @@ const buildSPanelContour = (
     return validation;
   }
 
-  const sideIndex = panel.edgeIds.findIndex((edgeId) => edgeId === sourceEdgeId);
-
-  if (sideIndex === -1) {
-    return { ok: false, reason: `S-A edge ${sourceEdgeId} is not part of its panel contour.` };
-  }
-
   const contourSides = buildContourSides(panel.contour);
-  const originalSide = contourSides[sideIndex];
   const contourWindingSign = getContourSignedArea(panel.contour) >= 0 ? 1 : -1;
-  const insetSide = offsetContourSide(originalSide, materialThicknessMm * contourWindingSign);
+  const operationsBySideIndex = new Map<number, { operation: SPanelOperation; insetSide: ContourSide }>();
 
-  if (!insetSide) {
-    return { ok: false, reason: `S-A edge ${sourceEdgeId} cannot be offset because its contour side is invalid.` };
+  for (const operation of operations) {
+    const sideIndex = panel.edgeIds.findIndex((edgeId) => edgeId === operation.sourceAEdgeId);
+
+    if (sideIndex === -1) {
+      return { ok: false, reason: `S-A edge ${operation.sourceAEdgeId} is not part of its panel contour.` };
+    }
+
+    if (operationsBySideIndex.has(sideIndex)) {
+      return { ok: false, reason: `S-A edge ${operation.sourceAEdgeId} has more than one operation on the same panel edge.` };
+    }
+
+    const originalSide = contourSides[sideIndex];
+    const insetSide = offsetContourSide(originalSide, operation.materialThicknessMm * contourWindingSign);
+
+    if (!insetSide) {
+      return { ok: false, reason: `S-A edge ${operation.sourceAEdgeId} cannot be offset because its contour side is invalid.` };
+    }
+
+    operationsBySideIndex.set(sideIndex, { operation, insetSide });
   }
 
   const rebuiltContour: PanelContour = [];
 
   contourSides.forEach((side, index) => {
+    const sideOperation = operationsBySideIndex.get(index);
     addContourPoint(rebuiltContour, side.start);
 
-    if (index !== sideIndex) {
+    if (!sideOperation) {
       addContourPoint(rebuiltContour, side.end);
       return;
     }
 
+    const { operation, insetSide } = sideOperation;
     addContourPoint(rebuiltContour, insetSide.start);
-    segments.forEach((segment) => {
+    operation.aSegments.forEach((segment) => {
       const baseStart = interpolateSidePoint(insetSide, segment.startDistance);
       const baseEnd = interpolateSidePoint(insetSide, segment.endDistance);
-      const tabStart = interpolateSidePoint(originalSide, segment.startDistance);
-      const tabEnd = interpolateSidePoint(originalSide, segment.endDistance);
+      const tabStart = interpolateSidePoint(side, segment.startDistance);
+      const tabEnd = interpolateSidePoint(side, segment.endDistance);
 
       addContourPoint(rebuiltContour, baseStart);
       addContourPoint(rebuiltContour, tabStart);
@@ -1256,6 +1273,7 @@ export const buildAppliedSGeometry = (
   const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
   const sConnections = Object.values(connectionMap).filter((connection): connection is SlotConnectionDefinition => connection.prefix === 'S');
   const result: AppliedSGeometry[] = [];
+  const operationsByPanelId = new Map<string, { panel: SvgPanel; operations: SPanelOperation[] }>();
 
   sConnections.forEach((connection) => {
     const assignedEdges = Object.entries(assignments).filter(([, assignment]) => assignment.connectionId === connection.id);
@@ -1320,10 +1338,14 @@ export const buildAppliedSGeometry = (
       }
     });
 
-    const panelResult = buildSPanelContour(panel, sourceAEdgeId, materialThicknessMm, aSegments);
-    if (!panelResult.ok) {
-      throw new Error(`${connection.id} S-A geometry failed: ${panelResult.reason}`);
-    }
+    const panelOperations = operationsByPanelId.get(panel.id) ?? { panel, operations: [] };
+    panelOperations.operations.push({
+      connectionId: connection.id,
+      sourceAEdgeId,
+      materialThicknessMm,
+      aSegments,
+    });
+    operationsByPanelId.set(panel.id, panelOperations);
 
     const slotPaths = aSegments.map((segment) => {
       const startDistance = segment.startDistance;
@@ -1347,16 +1369,37 @@ export const buildAppliedSGeometry = (
 
     result.push({
       connectionId: connection.id,
-      panelPaths: [{
-        panelId: panel.id,
-        sourceEdgeId: sourceAEdgeId,
-        eraseRect: panel.bounds,
-        erasePathD: pointsToClosedPathD(panel.contour),
-        pathD: pointsToClosedPathD(panelResult.contour),
-        edgeIds: panel.edgeIds,
-      }],
+      panelPaths: [],
       slotPaths,
       edgeIds: [sourceAEdgeId, sourceBEdgeId],
+    });
+  });
+
+  operationsByPanelId.forEach(({ panel, operations }) => {
+    const panelResult = buildSPanelContour(panel, operations);
+    if (!panelResult.ok) {
+      throw new Error(`${operations.map((operation) => operation.connectionId).join(', ')} S-A geometry failed: ${panelResult.reason}`);
+    }
+
+    const ownerConnectionId = operations
+      .map((operation) => operation.connectionId)
+      .sort((first, second) => first.localeCompare(second))[0];
+    const ownerResult = result.find((geometry) => geometry.connectionId === ownerConnectionId);
+
+    if (!ownerResult) {
+      return;
+    }
+
+    ownerResult.panelPaths.push({
+      panelId: panel.id,
+      sourceEdgeId: operations
+        .map((operation) => operation.sourceAEdgeId)
+        .sort((first, second) => first.localeCompare(second))
+        .join(' '),
+      eraseRect: panel.bounds,
+      erasePathD: pointsToClosedPathD(panel.contour),
+      pathD: pointsToClosedPathD(panelResult.contour),
+      edgeIds: panel.edgeIds,
     });
   });
 
