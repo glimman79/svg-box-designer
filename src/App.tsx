@@ -1199,7 +1199,29 @@ const findPanelContainingEdge = (svgModel: SvgDocumentModel, edgeId: string) => 
   svgModel.panels.find((panel) => panel.edgeIds.includes(edgeId)) ?? null
 );
 
-const buildSlotPathD = (edge: SvgEdge, startDistance: number, endDistance: number, widthMm: number): string | null => {
+const getContourSideInwardNormal = (side: ContourSide, contour: PanelContour): Point | null => {
+  const sideLength = Math.hypot(side.end.x - side.start.x, side.end.y - side.start.y);
+
+  if (sideLength <= cornerTouchTolerance) {
+    return null;
+  }
+
+  const contourWindingSign = getContourSignedArea(contour) >= 0 ? 1 : -1;
+
+  return {
+    x: (-(side.end.y - side.start.y) / sideLength) * contourWindingSign,
+    y: ((side.end.x - side.start.x) / sideLength) * contourWindingSign,
+  };
+};
+
+const buildSlotPathD = (
+  edge: SvgEdge,
+  startDistance: number,
+  endDistance: number,
+  widthMm: number,
+  offsetNormal: Point,
+  offsetDistance: number,
+): string | null => {
   const edgeLength = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
 
   if (edgeLength <= cornerTouchTolerance) {
@@ -1211,8 +1233,12 @@ const buildSlotPathD = (edge: SvgEdge, startDistance: number, endDistance: numbe
   const nx = -uy;
   const ny = ux;
   const halfWidth = widthMm / 2;
-  const p0 = { x: edge.start.x + (ux * startDistance), y: edge.start.y + (uy * startDistance) };
-  const p1 = { x: edge.start.x + (ux * endDistance), y: edge.start.y + (uy * endDistance) };
+  const baselineStart = {
+    x: edge.start.x + (offsetNormal.x * offsetDistance),
+    y: edge.start.y + (offsetNormal.y * offsetDistance),
+  };
+  const p0 = { x: baselineStart.x + (ux * startDistance), y: baselineStart.y + (uy * startDistance) };
+  const p1 = { x: baselineStart.x + (ux * endDistance), y: baselineStart.y + (uy * endDistance) };
   const q0 = { x: p0.x + (nx * halfWidth), y: p0.y + (ny * halfWidth) };
   const q1 = { x: p1.x + (nx * halfWidth), y: p1.y + (ny * halfWidth) };
   const q2 = { x: p1.x - (nx * halfWidth), y: p1.y - (ny * halfWidth) };
@@ -1249,14 +1275,24 @@ export const buildAppliedSGeometry = (
     const sourceAEdge = edgesById.get(sourceAEdgeId);
     const sourceBEdge = edgesById.get(sourceBEdgeId);
     const panel = findPanelContainingEdge(svgModel, sourceAEdgeId);
+    const bPanel = findPanelContainingEdge(svgModel, sourceBEdgeId);
 
     if (!sourceAEdge || !sourceBEdge || !panel) {
       throw new Error(`${connection.id} S-A edge must be part of a valid closed panel.`);
     }
 
+    if (!bPanel) {
+      throw new Error(`${connection.id} S-B edge must be part of a valid closed panel so slot offset direction can be determined.`);
+    }
+
     const validation = validateClosedPanel(panel, edgesById);
     if (!validation.valid) {
       throw new Error(`${connection.id} S-A edge is not part of a valid closed panel: ${validation.reason}`);
+    }
+
+    const bValidation = validateClosedPanel(bPanel, edgesById);
+    if (!bValidation.valid) {
+      throw new Error(`${connection.id} S-B edge must be part of a valid closed panel so slot offset direction can be determined.`);
     }
 
     if (panel.edgeIds.some((edgeId) => connectionMap[assignments[edgeId]?.connectionId]?.prefix === 'E')) {
@@ -1270,9 +1306,16 @@ export const buildAppliedSGeometry = (
     const planSegments = createTabSegmentPlan(sideLength, materialThicknessMm * 3);
     const aSegments = getTabSegmentsForRole(planSegments, 'A');
     const bLength = Math.hypot(sourceBEdge.end.x - sourceBEdge.start.x, sourceBEdge.end.y - sourceBEdge.start.y);
+    const bSideIndex = bPanel.edgeIds.findIndex((edgeId) => edgeId === sourceBEdgeId);
+    const bOriginalSide = getContourEdgePoints(bPanel, bSideIndex);
+    const bInwardNormal = getContourSideInwardNormal(bOriginalSide, bPanel.contour);
+
+    if (!bInwardNormal) {
+      throw new Error(`${connection.id} S-B edge must be part of a valid closed panel so slot offset direction can be determined.`);
+    }
 
     aSegments.forEach((segment) => {
-      if (sharedSlotOffsetMm + segment.startDistance < -cornerTouchTolerance || sharedSlotOffsetMm + segment.endDistance > bLength + cornerTouchTolerance) {
+      if (segment.startDistance < -cornerTouchTolerance || segment.endDistance > bLength + cornerTouchTolerance || segment.endDistance <= segment.startDistance + cornerTouchTolerance) {
         throw new Error(`${connection.id} S-B slot pattern extends outside the S-B edge.`);
       }
     });
@@ -1283,9 +1326,9 @@ export const buildAppliedSGeometry = (
     }
 
     const slotPaths = aSegments.map((segment) => {
-      const startDistance = sharedSlotOffsetMm + segment.startDistance;
-      const endDistance = sharedSlotOffsetMm + segment.endDistance;
-      const pathD = buildSlotPathD(sourceBEdge, startDistance, endDistance, materialThicknessMm);
+      const startDistance = segment.startDistance;
+      const endDistance = segment.endDistance;
+      const pathD = buildSlotPathD(sourceBEdge, startDistance, endDistance, materialThicknessMm, bInwardNormal, sharedSlotOffsetMm);
 
       if (!pathD) {
         throw new Error(`${connection.id} S-B edge cannot receive slots because its length is invalid.`);
@@ -2284,11 +2327,11 @@ function App() {
           <section className="property-section" aria-labelledby="slot-basic-properties">
             <h4 id="slot-basic-properties">Basic</h4>
             <div className="property-grid">
-              <NumericField id="slot-shared-offset" label="Slot offset from selected S-B edge start (mm)" value={sharedSlotOffsetMm} onChange={updateSharedSlotOffset} />
+              <NumericField id="slot-shared-offset" label="Slot offset inward from selected S-B edge (mm)" value={sharedSlotOffsetMm} onChange={updateSharedSlotOffset} />
               <NumericField id="slot-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateSlotProperties({ materialThicknessMm })} />
               <NumericField id="slot-length" label="Slot length (mm)" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
             </div>
-            <p className="muted">Slot offset from selected S-B edge start is shared across all S connections.</p>
+            <p className="muted">Slot offset inward from the selected S-B edge is shared across all S connections.</p>
           </section>
 
           <section className="property-section" aria-labelledby="slot-advanced-properties">

@@ -109,19 +109,37 @@ assert.equal(expectedASegments[0].endDistance - expectedASegments[0].startDistan
 assert.equal(sResult[0].slotPaths.length, expectedASegments.length, 'S-B slot count equals S-A tab count');
 sResult[0].slotPaths.forEach((slotPath, index) => {
   const segment = expectedASegments[index];
-  assert.equal(slotPath.startDistance, 5 + segment.startDistance, 'sharedSlotOffsetMm shifts slot start');
-  assert.equal(slotPath.endDistance, 5 + segment.endDistance, 'sharedSlotOffsetMm shifts slot end');
+  assert.equal(slotPath.startDistance, segment.startDistance, 'sharedSlotOffsetMm does not shift slot start distance');
+  assert.equal(slotPath.endDistance, segment.endDistance, 'sharedSlotOffsetMm does not shift slot end distance');
   assert.equal(slotPath.endDistance - slotPath.startDistance, segment.endDistance - segment.startDistance, 'S-B slot length equals S-A tab length');
 });
+const sResultNoOffset = buildAppliedSGeometry(sModel, sAssignments, { S1: sConnection('S1') }, 0);
+const firstSlotNoOffsetNumbers = pathNumbers(sResultNoOffset[0].slotPaths[0].pathD);
+const firstSlotOffsetNumbers = pathNumbers(sResult[0].slotPaths[0].pathD);
+for (let index = 0; index < firstSlotNoOffsetNumbers.length; index += 2) {
+  assert.equal(firstSlotOffsetNumbers[index], firstSlotNoOffsetNumbers[index], 'sharedSlotOffsetMm does not move slot coordinates along S-B');
+  assert.equal(firstSlotOffsetNumbers[index + 1], firstSlotNoOffsetNumbers[index + 1] + 5, 'sharedSlotOffsetMm moves slot coordinates inward perpendicular to S-B');
+}
 const sBounds = pathBounds(sResult[0].panelPaths[0].pathD);
 assert.equal(sBounds.minX, sPanel.bounds.minX, 'S-A does not protrude outside minX panel bounds');
 assert.equal(sBounds.maxX, sPanel.bounds.maxX, 'S-A does not protrude outside maxX panel bounds');
 assert.equal(sBounds.minY, sPanel.bounds.minY, 'S-A outer tab faces remain on original edge line');
 assert.equal(sBounds.maxY, sPanel.bounds.maxY, 'S-A does not protrude outside maxY panel bounds');
-assert.throws(
+const shortReceiver = panel('shortReceiver', 10, 100, 10, 40);
+const shortSModel = modelForPanels([sPanel, shortReceiver], { width: 200, height: 180 });
+assert.doesNotThrow(
   () => buildAppliedSGeometry(sModel, sAssignments, { S1: sConnection('S1') }, 200),
+  'sharedSlotOffsetMm does not reduce available S-B length',
+);
+assert.throws(
+  () => buildAppliedSGeometry(shortSModel, { 'sPanel-top': { connectionId: 'S1', slotRole: 'A' }, 'shortReceiver-top': { connectionId: 'S1', slotRole: 'B' } }, { S1: sConnection('S1') }, 0),
   /S-B slot pattern extends outside the S-B edge/,
-  'out-of-bounds S-B slots throw a clear error',
+  'out-of-bounds S-B slots validate tab distances only',
+);
+assert.throws(
+  () => buildAppliedSGeometry({ ...sModel, panels: [sPanel] }, sAssignments, { S1: sConnection('S1') }, 5),
+  /S-B edge must be part of a valid closed panel so slot offset direction can be determined/,
+  'S-B edge must belong to a valid closed panel',
 );
 assert.throws(
   () => buildAppliedSGeometry(sModel, { ...sAssignments, 'sPanel-right': { connectionId: 'E1', edgeRole: 'A' } }, { S1: sConnection('S1'), E1: connection('E1') }, 0),
