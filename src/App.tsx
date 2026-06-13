@@ -2049,7 +2049,6 @@ function App() {
             <h4 id="slot-basic-properties">Basic</h4>
             <div className="property-grid">
               <NumericField id="slot-shared-offset" label="Slot offset from selected S-B edge start (mm)" value={sharedSlotOffsetMm} onChange={updateSharedSlotOffset} />
-              <NumericField id="slot-offset" label="Slot offset from edge (mm)" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
               <NumericField id="slot-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateSlotProperties({ materialThicknessMm })} />
               <NumericField id="slot-length" label="Slot length (mm)" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
             </div>
