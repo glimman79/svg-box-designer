@@ -21,7 +21,7 @@ const mockRequire = (id) => {
 };
 vm.runInNewContext(compiled, { require: mockRequire, module, exports: module.exports, console, structuredClone, URL, Blob }, { filename: 'App.cjs' });
 
-const { buildAppliedEPanelPaths, exportAppliedSvg } = module.exports;
+const { buildAppliedEPanelPaths, buildAppliedSGeometry, createTabSegmentPlan, exportAppliedSvg } = module.exports;
 
 const edge = (id, start, end) => ({ id, source: id, start, end });
 const panel = (id, x, y, width, height) => {
@@ -51,12 +51,21 @@ const pathBounds = (pathD) => {
   const ys = nums.filter((_, i) => i % 2 === 1);
   return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
 };
-const assertNoInteriorSpur = (pathD) => {
+const pathPoints = (pathD) => {
   const nums = pathNumbers(pathD);
   const pts = [];
-  for (let i = 0; i < nums.length; i += 2) pts.push(`${nums[i]},${nums[i + 1]}`);
+  for (let i = 0; i < nums.length; i += 2) pts.push({ x: nums[i], y: nums[i + 1] });
+  return pts;
+};
+const assertNoInteriorSpur = (pathD) => {
+  const pts = pathPoints(pathD).map((point) => `${point.x},${point.y}`);
   for (let i = 0; i < pts.length - 2; i += 1) assert.notEqual(pts[i], pts[i + 2], `interior backtrack spur at ${pts[i]}`);
 };
+const assertClosedPath = (pathD, message) => assert.match(pathD.trim(), /Z$/, message);
+const assertNoLabelsOrUiArtifacts = (svg) => {
+  assert.doesNotMatch(svg, /<text\b|data-edge-label|label|handle|overlay|button/i, 'export contains no labels or UI artifacts');
+};
+const segmentDistances = (segments) => JSON.parse(JSON.stringify(segments.map((segment) => [Number(segment.startDistance.toFixed(6)), Number(segment.endDistance.toFixed(6))])));
 const runCase = (name, panels, assignments, connections) => {
   const svgModel = modelForPanels(panels);
   const result = buildAppliedEPanelPaths(svgModel, assignments, connections);
@@ -69,21 +78,26 @@ const runCase = (name, panels, assignments, connections) => {
     assert.equal(bounds.minY, panels[i].bounds.minY, `${name}: minY preserved`);
     assert.equal(bounds.maxY, panels[i].bounds.maxY, `${name}: maxY preserved`);
     assertNoInteriorSpur(applied.pathD);
+    assertClosedPath(applied.pathD, `${name}: contour is closed`);
   });
   const exported = exportAppliedSvg(svgModel, result);
   assert.match(exported, /viewBox="0 0 320 240"/, `${name}: exported viewBox preserved`);
   assert.match(exported, /width="320"/, `${name}: exported width preserved`);
   assert.match(exported, /height="240"/, `${name}: exported height preserved`);
+  assertNoLabelsOrUiArtifacts(exported);
   return result;
 };
 
 const single = panel('p1', 20, 20, 100, 80);
+const eTabPlan = createTabSegmentPlan(94, 9);
+assert.deepEqual(segmentDistances(eTabPlan), [[0, 15.5], [15.5, 24.5], [24.5, 33.5], [33.5, 42.5], [42.5, 51.5], [51.5, 60.5], [60.5, 69.5], [69.5, 78.5], [78.5, 94]], 'E tab spacing baseline remains stable');
 runCase('A-B', [single], { 'p1-top': { connectionId: 'E1', edgeRole: 'A' }, 'p1-right': { connectionId: 'E1', edgeRole: 'B' } }, { E1: connection('E1') });
 runCase('B-A', [single], { 'p1-top': { connectionId: 'E1', edgeRole: 'B' }, 'p1-right': { connectionId: 'E1', edgeRole: 'A' } }, { E1: connection('E1') });
 runCase('A-B B-A alternating box', [single], { 'p1-top': { connectionId: 'E1', edgeRole: 'A' }, 'p1-right': { connectionId: 'E1', edgeRole: 'B' }, 'p1-bottom': { connectionId: 'E1', edgeRole: 'B' }, 'p1-left': { connectionId: 'E1', edgeRole: 'A' } }, { E1: connection('E1') });
 runCase('All A', [single], Object.fromEntries(single.edgeIds.map((id) => [id, { connectionId: 'E1', edgeRole: 'A' }])), { E1: connection('E1') });
 const allB = runCase('All B', [single], Object.fromEntries(single.edgeIds.map((id) => [id, { connectionId: 'E1', edgeRole: 'B' }])), { E1: connection('E1') });
 assert.match(allB[0].pathD, /20 20/, 'B-B corner remains closed at the original corner');
+assert.doesNotMatch(allB[0].pathD, /23 23 L 20 20 L 23 23/, 'E B-B corner does not backtrack through the original corner');
 const mixed = panel('p2', 140, 30, 120, 90);
 runCase('Mixed E1/E2/E3/E4 assignments', [single, mixed], {
   'p1-top': { connectionId: 'E1', edgeRole: 'A' }, 'p1-right': { connectionId: 'E2', edgeRole: 'B' }, 'p1-bottom': { connectionId: 'E3', edgeRole: 'A' }, 'p1-left': { connectionId: 'E4', edgeRole: 'B' },
@@ -91,7 +105,6 @@ runCase('Mixed E1/E2/E3/E4 assignments', [single, mixed], {
 }, { E1: connection('E1'), E2: connection('E2'), E3: connection('E3'), E4: connection('E4') });
 console.log('E-system baseline tests passed');
 
-const { buildAppliedSGeometry, createTabSegmentPlan } = module.exports;
 const sConnection = (id) => ({ id, prefix: 'S', properties: { slotOffsetMm: 0, slotWidthMm: 3, slotLengthMm: 9, isSlotLengthManual: false, materialThicknessMm: 3, kerfMm: 0.15, playMm: 0 } });
 
 const sPanel = panel('sPanel', 10, 10, 100, 50);
@@ -106,13 +119,16 @@ assert.equal(sResult.length, 1, 'S1-A/S1-B complete pair generates one S geometr
 assert.equal(sResult[0].panelPaths.length, 1, 'S-A produces one panel replacement');
 const expectedASegments = createTabSegmentPlan(100, 9).filter((_, segmentIndex) => segmentIndex % 2 === 1);
 assert.equal(expectedASegments[0].endDistance - expectedASegments[0].startDistance, 9, 'S-A default tab size is materialThicknessMm × 3');
+assert.deepEqual(segmentDistances(expectedASegments), [[9.5, 18.5], [27.5, 36.5], [45.5, 54.5], [63.5, 72.5], [81.5, 90.5]], 'S tab spacing baseline remains stable');
 assert.equal(sResult[0].slotPaths.length, expectedASegments.length, 'S-B slot count equals S-A tab count');
 sResult[0].slotPaths.forEach((slotPath, index) => {
   const segment = expectedASegments[index];
   assert.equal(slotPath.startDistance, segment.startDistance, 'sharedSlotOffsetMm does not shift slot start distance');
   assert.equal(slotPath.endDistance, segment.endDistance, 'sharedSlotOffsetMm does not shift slot end distance');
   assert.equal(slotPath.endDistance - slotPath.startDistance, segment.endDistance - segment.startDistance, 'S-B slot length equals S-A tab length');
+  assertClosedPath(slotPath.pathD, 'S-B slot contour is closed');
 });
+assert.deepEqual(segmentDistances(sResult[0].slotPaths), [[9.5, 18.5], [27.5, 36.5], [45.5, 54.5], [63.5, 72.5], [81.5, 90.5]], 'S slot spacing baseline remains stable');
 const sResultNoOffset = buildAppliedSGeometry(sModel, sAssignments, { S1: sConnection('S1') }, 0);
 const firstSlotNoOffsetNumbers = pathNumbers(sResultNoOffset[0].slotPaths[0].pathD);
 const firstSlotOffsetNumbers = pathNumbers(sResult[0].slotPaths[0].pathD);
@@ -125,6 +141,8 @@ assert.equal(sBounds.minX, sPanel.bounds.minX, 'S-A does not protrude outside mi
 assert.equal(sBounds.maxX, sPanel.bounds.maxX, 'S-A does not protrude outside maxX panel bounds');
 assert.equal(sBounds.minY, sPanel.bounds.minY, 'S-A outer tab faces remain on original edge line');
 assert.equal(sBounds.maxY, sPanel.bounds.maxY, 'S-A does not protrude outside maxY panel bounds');
+assertClosedPath(sResult[0].panelPaths[0].pathD, 'S-A replacement contour is closed');
+assertNoInteriorSpur(sResult[0].panelPaths[0].pathD);
 const shortReceiver = panel('shortReceiver', 10, 100, 10, 40);
 const shortSModel = modelForPanels([sPanel, shortReceiver], { width: 200, height: 180 });
 assert.doesNotThrow(
@@ -169,6 +187,7 @@ assert.equal(mergedPanelPaths[0].panelId, 'sPanel', 'merged S replacement belong
 const mergedNumbers = pathNumbers(mergedPanelPaths[0].pathD);
 assert.ok(mergedNumbers.includes(13), 'merged contour contains left/top inset sides');
 assert.ok(mergedNumbers.includes(107), 'merged contour contains right inset side');
+assert.deepEqual(pathBounds(mergedPanelPaths[0].pathD), { minX: 10, maxX: 110, minY: 10, maxY: 60 }, 'merged S contour preserves original panel bounds and removes original-corner artifacts');
 const expectedMultiSlotCount = ['sPanel-left', 'sPanel-top', 'sPanel-right'].reduce((count, edgeId) => {
   const sideIndex = sPanel.edgeIds.indexOf(edgeId);
   const sideStart = sPanel.contour[sideIndex];
@@ -184,4 +203,14 @@ console.log('S panel merge tests passed');
 
 const eOnly = buildAppliedEPanelPaths(sModel, sAssignments, { S1: sConnection('S1') });
 assert.equal(eOnly.length, 0, 'S assignments do not enter E geometry functions');
-console.log('S geometry v1 tests passed');
+
+const exportModel = modelForPanels([sPanel, receiver, panel('untouched', 160, 100, 20, 20)], { width: 200, height: 180 });
+const exportSGeometry = buildAppliedSGeometry(exportModel, sAssignments, { S1: sConnection('S1') }, 5);
+const exportedS = exportAppliedSvg(exportModel, [], exportSGeometry);
+assert.match(exportedS, /viewBox="0 0 200 180"/, 'S export viewBox equals source dimensions');
+assert.match(exportedS, /width="200"/, 'S export width equals source dimensions');
+assert.match(exportedS, /height="180"/, 'S export height equals source dimensions');
+assert.equal([...exportedS.matchAll(/<path/g)].length, exportModel.panels.length + exportSGeometry.flatMap((geometry) => geometry.slotPaths).length, 'export contains all modified panels, unmodified panels, and S slots');
+assert.match(exportedS, /M 160 100 L 180 100 L 180 120 L 160 120 Z/, 'export contains unmodified panel contour');
+assertNoLabelsOrUiArtifacts(exportedS);
+console.log('S geometry and export baseline tests passed');
