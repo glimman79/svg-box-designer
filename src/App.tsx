@@ -1142,19 +1142,18 @@ export const buildAppliedEPanelPaths = (
 };
 
 
-const buildSPanelContour = (
+const buildSInsetPanelContour = (
   panel: SvgPanel,
   operations: SPanelOperation[],
 ): PanelGeometryBuildResult => {
-  const validation = validatePanelContour(clonePanelContour(panel));
+  const contour = clonePanelContour(panel);
+  const validation = validatePanelContour(contour);
 
   if (!validation.ok) {
     return validation;
   }
 
-  const contourSides = buildContourSides(panel.contour);
-  const contourWindingSign = getContourSignedArea(panel.contour) >= 0 ? 1 : -1;
-  const operationsBySideIndex = new Map<number, { operation: SPanelOperation; insetSide: ContourSide }>();
+  const operationsBySideIndex = new Map<number, SPanelOperation>();
 
   for (const operation of operations) {
     const sideIndex = panel.edgeIds.findIndex((edgeId) => edgeId === operation.sourceAEdgeId);
@@ -1167,49 +1166,129 @@ const buildSPanelContour = (
       return { ok: false, reason: `S-A edge ${operation.sourceAEdgeId} has more than one operation on the same panel edge.` };
     }
 
-    const originalSide = contourSides[sideIndex];
-    const insetSide = offsetContourSide(originalSide, operation.materialThicknessMm * contourWindingSign);
-
-    if (!insetSide) {
-      return { ok: false, reason: `S-A edge ${operation.sourceAEdgeId} cannot be offset because its contour side is invalid.` };
-    }
-
-    operationsBySideIndex.set(sideIndex, { operation, insetSide });
+    operationsBySideIndex.set(sideIndex, operation);
   }
 
-  const rebuiltContour: PanelContour = [];
+  const contourSides = buildContourSides(contour);
+  const contourWindingSign = getContourSignedArea(contour) >= 0 ? 1 : -1;
+  const offsetSides = contourSides.map((side, sideIndex) => {
+    const operation = operationsBySideIndex.get(sideIndex);
+    const offsetDistance = operation?.materialThicknessMm ?? 0;
 
-  contourSides.forEach((side, index) => {
-    const sideOperation = operationsBySideIndex.get(index);
-    addContourPoint(rebuiltContour, side.start);
+    return offsetContourSide(side, offsetDistance * contourWindingSign);
+  });
+  const invalidOffsetSideIndex = offsetSides.findIndex((side) => !side);
 
-    if (!sideOperation) {
-      addContourPoint(rebuiltContour, side.end);
+  if (invalidOffsetSideIndex !== -1) {
+    const edgeId = panel.edgeIds[invalidOffsetSideIndex];
+    return { ok: false, reason: `Panel edge ${edgeId ?? invalidOffsetSideIndex} cannot be offset because its contour side is invalid.` };
+  }
+
+  const insetContour = (offsetSides as ContourSide[]).map((side, sideIndex, sides) => {
+    const previousSide = sides[(sideIndex + sides.length - 1) % sides.length];
+    return lineIntersection(previousSide, side);
+  });
+  const invalidIntersectionIndex = insetContour.findIndex((point) => !point);
+
+  if (invalidIntersectionIndex !== -1) {
+    return {
+      ok: false,
+      reason: `S-A panel contour side ${invalidIntersectionIndex} cannot be rebuilt because adjacent offset sides do not intersect.`,
+    };
+  }
+
+  return validatePanelContour(insetContour as PanelContour);
+};
+
+const applySTabsToContour = (
+  panel: SvgPanel,
+  originalContour: PanelContour,
+  insetContour: PanelContour,
+  operations: SPanelOperation[],
+): PanelGeometryBuildResult => {
+  if (operations.length === 0) {
+    return validatePanelContour(insetContour);
+  }
+
+  const originalSides = buildContourSides(originalContour);
+  const insetSides = buildContourSides(insetContour);
+
+  if (originalSides.length !== insetSides.length) {
+    return { ok: false, reason: 'S-A original and inset contours must have matching side counts.' };
+  }
+
+  const operationsBySideIndex = new Map<number, SPanelOperation>();
+
+  operations.forEach((operation) => {
+    const sideIndex = panel.edgeIds.findIndex((edgeId) => edgeId === operation.sourceAEdgeId);
+
+    if (sideIndex !== -1) {
+      operationsBySideIndex.set(sideIndex, operation);
+    }
+  });
+
+  const contourWindingSign = getContourSignedArea(originalContour) >= 0 ? 1 : -1;
+  const tabbedContour: PanelContour = [];
+
+  insetSides.forEach((insetSide, sideIndex) => {
+    const operation = operationsBySideIndex.get(sideIndex);
+    addContourPoint(tabbedContour, insetSide.start);
+
+    if (!operation || operation.aSegments.length === 0) {
+      addContourPoint(tabbedContour, insetSide.end);
       return;
     }
 
-    const { operation, insetSide } = sideOperation;
-    addContourPoint(rebuiltContour, insetSide.start);
-    operation.aSegments.forEach((segment) => {
+    const outwardSide = offsetContourSide(insetSide, -operation.materialThicknessMm * contourWindingSign);
+
+    if (!outwardSide) {
+      addContourPoint(tabbedContour, insetSide.end);
+      return;
+    }
+
+    const originalSide = originalSides[sideIndex];
+    const originalSideLength = getContourSideLength(originalSide);
+    const reversedFromCanonical = isContourSideReversedFromCanonical(originalSide);
+    const orientedSegments = reversedFromCanonical
+      ? mirrorSegments(operation.aSegments, originalSideLength)
+      : operation.aSegments;
+    const segments = clipOriginalSegmentsToInsetSide(originalSide, insetSide, orientedSegments);
+
+    segments.forEach((segment) => {
       const baseStart = interpolateSidePoint(insetSide, segment.startDistance);
       const baseEnd = interpolateSidePoint(insetSide, segment.endDistance);
-      const tabStart = interpolateSidePoint(side, segment.startDistance);
-      const tabEnd = interpolateSidePoint(side, segment.endDistance);
+      const tabStart = interpolateSidePoint(outwardSide, segment.startDistance);
+      const tabEnd = interpolateSidePoint(outwardSide, segment.endDistance);
 
-      addContourPoint(rebuiltContour, baseStart);
-      addContourPoint(rebuiltContour, tabStart);
-      addContourPoint(rebuiltContour, tabEnd);
-      addContourPoint(rebuiltContour, baseEnd);
+      addContourPoint(tabbedContour, baseStart);
+      addContourPoint(tabbedContour, tabStart);
+      addContourPoint(tabbedContour, tabEnd);
+      addContourPoint(tabbedContour, baseEnd);
     });
-    addContourPoint(rebuiltContour, insetSide.end);
-    addContourPoint(rebuiltContour, side.end);
+
+    addContourPoint(tabbedContour, insetSide.end);
   });
 
-  if (rebuiltContour.length > 1 && pointsMatch(rebuiltContour[0], rebuiltContour[rebuiltContour.length - 1])) {
-    rebuiltContour.pop();
+  const cleanedTabbedContour = removeInteriorBacktrackSpurs(tabbedContour);
+
+  if (cleanedTabbedContour.length > 1 && pointsMatch(cleanedTabbedContour[0], cleanedTabbedContour[cleanedTabbedContour.length - 1])) {
+    cleanedTabbedContour.pop();
   }
 
-  return validatePanelContour(rebuiltContour);
+  return validatePanelContour(cleanedTabbedContour);
+};
+
+const buildSPanelContour = (
+  panel: SvgPanel,
+  operations: SPanelOperation[],
+): PanelGeometryBuildResult => {
+  const insetResult = buildSInsetPanelContour(panel, operations);
+
+  if (!insetResult.ok) {
+    return insetResult;
+  }
+
+  return applySTabsToContour(panel, panel.contour, insetResult.contour, operations);
 };
 
 const findPanelContainingEdge = (svgModel: SvgDocumentModel, edgeId: string) => (
