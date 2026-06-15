@@ -112,7 +112,7 @@ runCase('Mixed E1/E2/E3/E4 assignments', [single, mixed], {
 }, { E1: connection('E1'), E2: connection('E2'), E3: connection('E3'), E4: connection('E4') });
 console.log('E-system baseline tests passed');
 
-const sConnection = (id) => ({ id, prefix: 'S', properties: { slotOffsetMm: 0, slotWidthMm: 3, slotLengthMm: 9, isSlotLengthManual: false, materialThicknessMm: 3, kerfMm: 0.15, playMm: 0 } });
+const sConnection = (id, slotOffsetMm = 0) => ({ id, prefix: 'S', properties: { slotOffsetMm, slotWidthMm: 3, slotLengthMm: 9, isSlotLengthManual: false, materialThicknessMm: 3, kerfMm: 0.15, playMm: 0 } });
 
 const sPanel = panel('sPanel', 10, 10, 100, 50);
 const receiver = panel('receiver', 10, 100, 140, 40);
@@ -121,7 +121,7 @@ const sAssignments = {
   'sPanel-top': { connectionId: 'S1', slotRole: 'A' },
   'receiver-top': { connectionId: 'S1', slotRole: 'B' },
 };
-const sResult = buildAppliedSGeometry(sModel, sAssignments, { S1: sConnection('S1') }, 5);
+const sResult = buildAppliedSGeometry(sModel, sAssignments, { S1: sConnection('S1', 5) });
 assert.equal(sResult.length, 1, 'S1-A/S1-B complete pair generates one S geometry record');
 assert.equal(sResult[0].panelPaths.length, 1, 'S-A produces one panel replacement');
 const expectedASegments = createTabSegmentPlan(100, 9).filter((_, segmentIndex) => segmentIndex % 2 === 1);
@@ -130,19 +130,44 @@ assert.deepEqual(segmentDistances(expectedASegments), [[9.5, 18.5], [27.5, 36.5]
 assert.equal(sResult[0].slotPaths.length, expectedASegments.length, 'S-B slot count equals S-A tab count');
 sResult[0].slotPaths.forEach((slotPath, index) => {
   const segment = expectedASegments[index];
-  assert.equal(slotPath.startDistance, segment.startDistance, 'sharedSlotOffsetMm does not shift slot start distance');
-  assert.equal(slotPath.endDistance, segment.endDistance, 'sharedSlotOffsetMm does not shift slot end distance');
+  assert.equal(slotPath.startDistance, segment.startDistance, 'slotOffsetMm does not shift slot start distance');
+  assert.equal(slotPath.endDistance, segment.endDistance, 'slotOffsetMm does not shift slot end distance');
   assert.equal(slotPath.endDistance - slotPath.startDistance, segment.endDistance - segment.startDistance, 'S-B slot length equals S-A tab length');
   assertClosedPath(slotPath.pathD, 'S-B slot contour is closed');
 });
 assert.deepEqual(segmentDistances(sResult[0].slotPaths), [[9.5, 18.5], [27.5, 36.5], [45.5, 54.5], [63.5, 72.5], [81.5, 90.5]], 'S slot spacing baseline remains stable');
-const sResultNoOffset = buildAppliedSGeometry(sModel, sAssignments, { S1: sConnection('S1') }, 0);
+const sResultNoOffset = buildAppliedSGeometry(sModel, sAssignments, { S1: sConnection('S1') });
 const firstSlotNoOffsetNumbers = pathNumbers(sResultNoOffset[0].slotPaths[0].pathD);
 const firstSlotOffsetNumbers = pathNumbers(sResult[0].slotPaths[0].pathD);
 for (let index = 0; index < firstSlotNoOffsetNumbers.length; index += 2) {
-  assert.equal(firstSlotOffsetNumbers[index], firstSlotNoOffsetNumbers[index], 'sharedSlotOffsetMm does not move slot coordinates along S-B');
-  assert.equal(firstSlotOffsetNumbers[index + 1], firstSlotNoOffsetNumbers[index + 1] + 5, 'sharedSlotOffsetMm moves slot coordinates inward perpendicular to S-B');
+  assert.equal(firstSlotOffsetNumbers[index], firstSlotNoOffsetNumbers[index], 'slotOffsetMm does not move slot coordinates along S-B');
+  assert.equal(firstSlotOffsetNumbers[index + 1], firstSlotNoOffsetNumbers[index + 1] + 5, 'slotOffsetMm moves slot coordinates inward perpendicular to S-B');
 }
+
+const offsetCloneReceiver = panel('offsetReceiver', 10, 100, 140, 40);
+const offsetModel = modelForPanels([sPanel, receiver, offsetCloneReceiver], { width: 200, height: 180 });
+const perConnectionOffsetConnections = { S1: sConnection('S1', 0), S2: sConnection('S2', 20) };
+const perConnectionOffsetAssignments = {
+  'sPanel-top': { connectionId: 'S1', slotRole: 'A' },
+  'receiver-top': { connectionId: 'S1', slotRole: 'B' },
+  'sPanel-bottom': { connectionId: 'S2', slotRole: 'A' },
+  'offsetReceiver-top': { connectionId: 'S2', slotRole: 'B' },
+};
+const perConnectionOffsetResult = buildAppliedSGeometry(offsetModel, perConnectionOffsetAssignments, perConnectionOffsetConnections);
+const s1OffsetSlotNumbers = pathNumbers(perConnectionOffsetResult.find((geometry) => geometry.connectionId === 'S1').slotPaths[0].pathD);
+const s2OffsetSlotNumbers = pathNumbers(perConnectionOffsetResult.find((geometry) => geometry.connectionId === 'S2').slotPaths[0].pathD);
+for (let index = 0; index < s1OffsetSlotNumbers.length; index += 2) {
+  assert.equal(s2OffsetSlotNumbers[index], s1OffsetSlotNumbers[index], 'per-connection slotOffsetMm does not move slot coordinates along S-B');
+  assert.equal(s2OffsetSlotNumbers[index + 1], s1OffsetSlotNumbers[index + 1] + 20, 'per-connection slotOffsetMm moves only that S connection inward perpendicular to S-B');
+}
+const editedOffsetConnections = {
+  ...perConnectionOffsetConnections,
+  S2: { ...perConnectionOffsetConnections.S2, properties: { ...perConnectionOffsetConnections.S2.properties, slotOffsetMm: 7 } },
+};
+assert.equal(editedOffsetConnections.S1.properties.slotOffsetMm, 0, 'editing one S connection offset leaves another S connection property unchanged');
+assert.equal(editedOffsetConnections.S2.properties.slotOffsetMm, 7, 'editing one S connection offset updates only the selected S connection property');
+console.log('S per-connection offset tests passed');
+
 const sBounds = pathBounds(sResult[0].panelPaths[0].pathD);
 assert.equal(sBounds.minX, sPanel.bounds.minX, 'S-A does not protrude outside minX panel bounds');
 assert.equal(sBounds.maxX, sPanel.bounds.maxX, 'S-A does not protrude outside maxX panel bounds');
@@ -153,21 +178,21 @@ assertNoInteriorSpur(sResult[0].panelPaths[0].pathD);
 const shortReceiver = panel('shortReceiver', 10, 100, 10, 40);
 const shortSModel = modelForPanels([sPanel, shortReceiver], { width: 200, height: 180 });
 assert.doesNotThrow(
-  () => buildAppliedSGeometry(sModel, sAssignments, { S1: sConnection('S1') }, 200),
-  'sharedSlotOffsetMm does not reduce available S-B length',
+  () => buildAppliedSGeometry(sModel, sAssignments, { S1: sConnection('S1', 200) }),
+  'slotOffsetMm does not reduce available S-B length',
 );
 assert.throws(
-  () => buildAppliedSGeometry(shortSModel, { 'sPanel-top': { connectionId: 'S1', slotRole: 'A' }, 'shortReceiver-top': { connectionId: 'S1', slotRole: 'B' } }, { S1: sConnection('S1') }, 0),
+  () => buildAppliedSGeometry(shortSModel, { 'sPanel-top': { connectionId: 'S1', slotRole: 'A' }, 'shortReceiver-top': { connectionId: 'S1', slotRole: 'B' } }, { S1: sConnection('S1') }),
   /S-B slot pattern extends outside the S-B edge/,
   'out-of-bounds S-B slots validate tab distances only',
 );
 assert.throws(
-  () => buildAppliedSGeometry({ ...sModel, panels: [sPanel] }, sAssignments, { S1: sConnection('S1') }, 5),
+  () => buildAppliedSGeometry({ ...sModel, panels: [sPanel] }, sAssignments, { S1: sConnection('S1', 5) }),
   /S-B edge must be part of a valid closed panel so slot offset direction can be determined/,
   'S-B edge must belong to a valid closed panel',
 );
 assert.throws(
-  () => buildAppliedSGeometry(sModel, { ...sAssignments, 'sPanel-right': { connectionId: 'E1', edgeRole: 'A' } }, { S1: sConnection('S1'), E1: connection('E1') }, 0),
+  () => buildAppliedSGeometry(sModel, { ...sAssignments, 'sPanel-right': { connectionId: 'E1', edgeRole: 'A' } }, { S1: sConnection('S1'), E1: connection('E1') }),
   /S-A panel conflicts/,
   'S-A panel conflicts with E-applied geometry on same panel',
 );
@@ -185,7 +210,7 @@ const multiSAssignments = {
   'sPanel-right': { connectionId: 'S3', slotRole: 'A' },
   'receiver-right': { connectionId: 'S3', slotRole: 'B' },
 };
-const mergedSResult = buildAppliedSGeometry(sModel, multiSAssignments, multiSConnections, 5);
+const mergedSResult = buildAppliedSGeometry(sModel, multiSAssignments, multiSConnections);
 const mergedPanelPaths = mergedSResult.flatMap((geometry) => geometry.panelPaths);
 const mergedSlotPaths = mergedSResult.flatMap((geometry) => geometry.slotPaths);
 assert.equal(mergedPanelPaths.length, 1, 'three S-A edges on same panel produce one replacement contour');
@@ -203,7 +228,7 @@ const expectedMultiSlotCount = ['sPanel-left', 'sPanel-top', 'sPanel-right'].red
   return count + createTabSegmentPlan(sideLength, 9).filter((_, segmentIndex) => segmentIndex % 2 === 1).length;
 }, 0);
 assert.equal(mergedSlotPaths.length, expectedMultiSlotCount, 'slot paths are still generated per S connection');
-const reorderedSResult = buildAppliedSGeometry(sModel, multiSAssignments, { S3: multiSConnections.S3, S1: multiSConnections.S1, S2: multiSConnections.S2 }, 5);
+const reorderedSResult = buildAppliedSGeometry(sModel, multiSAssignments, { S3: multiSConnections.S3, S1: multiSConnections.S1, S2: multiSConnections.S2 });
 assert.equal(reorderedSResult.flatMap((geometry) => geometry.panelPaths)[0].pathD, mergedPanelPaths[0].pathD, 'reordering S connections produces identical panel geometry');
 assert.equal(reorderedSResult.flatMap((geometry) => geometry.slotPaths).length, mergedSlotPaths.length, 'reordering S connections preserves slot generation');
 console.log('S panel merge tests passed');
@@ -212,7 +237,7 @@ const eOnly = buildAppliedEPanelPaths(sModel, sAssignments, { S1: sConnection('S
 assert.equal(eOnly.length, 0, 'S assignments do not enter E geometry functions');
 
 const exportModel = modelForPanels([sPanel, receiver, panel('untouched', 160, 100, 20, 20)], { width: 200, height: 180 });
-const exportSGeometry = buildAppliedSGeometry(exportModel, sAssignments, { S1: sConnection('S1') }, 5);
+const exportSGeometry = buildAppliedSGeometry(exportModel, sAssignments, { S1: sConnection('S1', 5) });
 const exportedS = exportAppliedSvg(exportModel, [], exportSGeometry);
 assert.match(exportedS, /viewBox="0 0 200 180"/, 'S export viewBox equals source dimensions');
 assert.match(exportedS, /width="200"/, 'S export width equals source dimensions');
@@ -232,7 +257,7 @@ const sharedBucketAssignments = {
 };
 const sharedBucketConnections = { E3: connection('E3'), S2: sConnection('S2') };
 const sharedBucketEGeometry = buildAppliedEPanelPaths(sModel, sharedBucketAssignments, sharedBucketConnections);
-const sharedBucketSGeometry = buildAppliedSGeometry(sModel, sharedBucketAssignments, sharedBucketConnections, 5);
+const sharedBucketSGeometry = buildAppliedSGeometry(sModel, sharedBucketAssignments, sharedBucketConnections);
 assert.equal(sharedBucketEGeometry.length, 1, 'E3-B remains present when S2-B shares the same physical edge');
 assert.ok(sharedBucketEGeometry[0].pathD.length > 0, 'shared edge bucket preserves E geometry path data');
 assert.equal(sharedBucketSGeometry.length, 1, 'S2 geometry remains present when S2-B shares an edge with E3-B');

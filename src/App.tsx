@@ -130,7 +130,6 @@ type HistoryState = {
   selectedEdgeId: string | null;
   appliedEPanelPaths?: AppliedEPanelPath[];
   appliedSGeometry?: AppliedSGeometry[];
-  sharedSlotOffsetMm: number;
   activeSGroup: ActiveSGroup | null;
 };
 
@@ -143,7 +142,6 @@ const cloneHistoryState = (state: HistoryState): HistoryState => ({
   selectedEdgeId: state.selectedEdgeId,
   ...(state.appliedEPanelPaths ? { appliedEPanelPaths: structuredClone(state.appliedEPanelPaths) } : {}),
   ...(state.appliedSGeometry ? { appliedSGeometry: structuredClone(state.appliedSGeometry) } : {}),
-  sharedSlotOffsetMm: state.sharedSlotOffsetMm,
   activeSGroup: state.activeSGroup ? structuredClone(state.activeSGroup) : null,
 });
 
@@ -1388,7 +1386,6 @@ export const buildAppliedSGeometry = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
-  sharedSlotOffsetMm: number,
 ): AppliedSGeometry[] => {
   const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
   const sConnections = Object.values(connectionMap).filter((connection): connection is SlotConnectionDefinition => connection.prefix === 'S');
@@ -1477,7 +1474,8 @@ export const buildAppliedSGeometry = (
     const slotPaths = aSegments.map((segment) => {
       const startDistance = segment.startDistance;
       const endDistance = segment.endDistance;
-      const pathD = buildSlotPathD(sourceBEdge, startDistance, endDistance, materialThicknessMm, bInwardNormal, sharedSlotOffsetMm);
+      const slotOffsetMm = connection.properties.slotOffsetMm ?? 0;
+      const pathD = buildSlotPathD(sourceBEdge, startDistance, endDistance, materialThicknessMm, bInwardNormal, slotOffsetMm);
 
       if (!pathD) {
         throw new Error(`${connection.id} S-B edge cannot receive slots because its length is invalid.`);
@@ -1869,7 +1867,6 @@ function App() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
   const [appliedSGeometry, setAppliedSGeometry] = useState<AppliedSGeometry[]>([]);
-  const [sharedSlotOffsetMm, setSharedSlotOffsetMm] = useState(0);
   const [activeSGroup, setActiveSGroup] = useState<ActiveSGroup | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
@@ -1913,7 +1910,6 @@ function App() {
     selectedEdgeId,
     appliedEPanelPaths,
     appliedSGeometry,
-    sharedSlotOffsetMm,
     activeSGroup,
   });
 
@@ -1925,7 +1921,6 @@ function App() {
     setSelectedEdgeId(snapshot.selectedEdgeId);
     setAppliedEPanelPaths(snapshot.appliedEPanelPaths ?? []);
     setAppliedSGeometry(snapshot.appliedSGeometry ?? []);
-    setSharedSlotOffsetMm(snapshot.sharedSlotOffsetMm);
     setActiveSGroup(snapshot.activeSGroup);
   };
 
@@ -1949,7 +1944,6 @@ function App() {
     setSelectedEdgeId(null);
     setAppliedEPanelPaths([]);
     setAppliedSGeometry([]);
-    setSharedSlotOffsetMm(0);
     setActiveSGroup(null);
     setUndoStack([]);
     setRedoStack([]);
@@ -2176,11 +2170,6 @@ function App() {
     setErrorMessage('');
   };
 
-  const updateSharedSlotOffset = (nextSharedSlotOffsetMm: number) => {
-    pushUndoState();
-    setSharedSlotOffsetMm(nextSharedSlotOffsetMm);
-  };
-
   const clearSelectedLabel = () => {
     if (!selectedEdgeId) {
       return;
@@ -2192,7 +2181,7 @@ function App() {
   const applyPanelPaths = () => {
     try {
       const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, edgeAssignments, connections, true);
-      const nextAppliedSGeometry = buildAppliedSGeometry(svgModel, edgeAssignments, connections, sharedSlotOffsetMm);
+      const nextAppliedSGeometry = buildAppliedSGeometry(svgModel, edgeAssignments, connections);
       setAppliedEPanelPaths(nextAppliedEPanelPaths);
       setAppliedSGeometry(nextAppliedSGeometry);
       setErrorMessage('');
@@ -2235,7 +2224,6 @@ function App() {
     setSelectedEdgeId(null);
     setAppliedEPanelPaths([]);
     setAppliedSGeometry([]);
-    setSharedSlotOffsetMm(0);
     setActiveSGroup(null);
     setErrorMessage('');
     setUndoStack([]);
@@ -2679,11 +2667,10 @@ function App() {
           <section className="property-section" aria-labelledby="slot-basic-properties">
             <h4 id="slot-basic-properties">Basic</h4>
             <div className="property-grid">
-              <NumericField id="slot-shared-offset" label="Slot offset inward from selected S-B edge (mm)" value={sharedSlotOffsetMm} onChange={updateSharedSlotOffset} />
+              <NumericField id="slot-offset" label="Slot offset inward from selected S-B edge (mm)" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
               <NumericField id="slot-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateSlotProperties({ materialThicknessMm })} />
               <NumericField id="slot-length" label="Slot length (mm)" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
             </div>
-            <p className="muted">Slot offset inward from the selected S-B edge is shared across all S connections.</p>
           </section>
 
           <section className="property-section" aria-labelledby="slot-advanced-properties">
