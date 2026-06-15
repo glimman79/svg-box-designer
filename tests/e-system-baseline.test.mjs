@@ -29,6 +29,7 @@ const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
 const { buildAppliedEPanelPaths, buildAppliedSGeometry, createTabSegmentPlan, exportAppliedSvg } = module.exports;
+const { applyActiveSGroupSlotPropertyUpdates } = module.exports;
 
 const edge = (id, start, end) => ({ id, source: id, start, end });
 const panel = (id, x, y, width, height) => {
@@ -338,3 +339,29 @@ workflow = manualAddSWorkflow(workflowConnections, workflowGroup);
 assert.equal(workflow.selectedLabelId, 'S5', 'manual Add S creates next standalone S');
 assert.equal(workflow.connections.S5.properties.slotOffsetMm, 0, 'manual Add S starts offset 0');
 assert.equal(workflow.activeSGroup.isActive, false, 'manual Add S leaves previous active group inactive');
+
+workflowConnections = {};
+workflowGroup = null;
+workflow = startSGroupWorkflow(workflowConnections);
+workflowConnections = workflow.connections;
+workflowGroup = workflow.activeSGroup;
+for (const completedId of ['S1', 'S2']) {
+  workflow = maybeAutoCreateNextSInGroup(workflowConnections, workflowAssign(completedId), workflowGroup, completedId);
+  workflowConnections = workflow.connections;
+  workflowGroup = workflow.activeSGroup;
+}
+workflowConnections = applyActiveSGroupSlotPropertyUpdates(workflowConnections, workflowGroup, { slotOffsetMm: 50 });
+assert.equal(workflowConnections.S1.properties.slotOffsetMm, 50, 'active group offset update applies to S1');
+assert.equal(workflowConnections.S2.properties.slotOffsetMm, 50, 'active group offset update applies to S2');
+assert.equal(workflowConnections.S3.properties.slotOffsetMm, 50, 'active group offset update applies to S3');
+workflowGroup = finishSGroupWorkflow(workflowGroup);
+workflow = startSGroupWorkflow(workflowConnections);
+workflowConnections = workflow.connections;
+const secondWorkflowGroup = workflow.activeSGroup;
+assert.equal(workflowConnections.S4.properties.slotOffsetMm, 0, 'new S group starts with offset 0');
+workflowConnections = applyActiveSGroupSlotPropertyUpdates(workflowConnections, secondWorkflowGroup, { slotOffsetMm: 20 });
+assert.equal(workflowConnections.S1.properties.slotOffsetMm, 50, 'group 2 offset update leaves group 1 S1 unchanged');
+assert.equal(workflowConnections.S2.properties.slotOffsetMm, 50, 'group 2 offset update leaves group 1 S2 unchanged');
+assert.equal(workflowConnections.S3.properties.slotOffsetMm, 50, 'group 2 offset update leaves group 1 S3 unchanged');
+assert.equal(workflowConnections.S4.properties.slotOffsetMm, 20, 'group 2 offset update applies to first group 2 connection');
+console.log('Active S group compact offset update tests passed');

@@ -376,6 +376,7 @@ button:disabled {
 .canvas-history-controls {
   top: 24px;
   flex-direction: row;
+  align-items: flex-start;
 }
 
 .canvas-zoom-controls {
@@ -410,6 +411,35 @@ button:disabled {
   box-shadow: 0 8px 18px rgb(15 23 42 / 10%);
   cursor: not-allowed;
   opacity: 0.68;
+}
+
+.compact-property-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: min(620px, calc(100vw - 220px));
+  padding: 8px;
+  background: rgb(255 255 255 / 92%);
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  box-shadow: 0 12px 26px rgb(15 23 42 / 14%);
+  pointer-events: auto;
+}
+
+.compact-property-controls .property-field {
+  min-width: 112px;
+  gap: 4px;
+}
+
+.compact-property-controls .property-field span {
+  font-size: 0.72rem;
+  line-height: 1.1;
+}
+
+.compact-property-controls .property-field input {
+  min-height: 34px;
+  padding: 0 8px;
+  border-radius: 10px;
 }
 
 .design-svg {
