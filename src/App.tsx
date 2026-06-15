@@ -1578,6 +1578,21 @@ const starterSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 260
 
 const getLabelPrefix = (label: string) => label.charAt(0) as LabelPrefix;
 
+const getLabelNumber = (label: string) => Number.parseInt(label.slice(1), 10);
+
+const getSGroupDisplayName = (groupIndex: number) => `S Group ${groupIndex + 1}`;
+
+const getSGroupActionNumber = (connections: ConnectionMap, activeSGroup: ActiveSGroup | null) => {
+  if (activeSGroup?.isActive) {
+    const firstActiveNumber = getLabelNumber(activeSGroup.connectionIds[0] ?? 'S1');
+    const previousSLabels = Object.keys(connections).filter((label) => getLabelPrefix(label) === 'S' && getLabelNumber(label) < firstActiveNumber);
+
+    return previousSLabels.length > 0 ? 2 : 1;
+  }
+
+  return Object.keys(connections).some((label) => getLabelPrefix(label) === 'S') ? 2 : 1;
+};
+
 const getNextLabel = (prefix: LabelPrefix, labels: string[]) => {
   const usedNumbers = labels
     .filter((label) => getLabelPrefix(label) === prefix)
@@ -1925,6 +1940,7 @@ function App() {
   const [undoStack, setUndoStack] = useState<HistoryState[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryState[]>([]);
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
+  const [expandedSGroups, setExpandedSGroups] = useState<Record<string, boolean>>({});
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
   const selectedConnection = selectedLabelId ? connections[selectedLabelId] ?? null : null;
@@ -1946,6 +1962,42 @@ function App() {
       labels: availableLabels.filter((label) => getLabelPrefix(label) === group.prefix),
     }));
   }, [availableLabels]);
+
+  const sLabelGroups = useMemo(() => {
+    const sLabels = availableLabels
+      .filter((label) => getLabelPrefix(label) === 'S')
+      .sort((first, second) => getLabelNumber(first) - getLabelNumber(second));
+
+    if (sLabels.length === 0) {
+      return [];
+    }
+
+    const groups: { id: string; labels: string[]; isActive: boolean }[] = [];
+    const activeIds = activeSGroup?.connectionIds ?? [];
+    const firstActiveId = activeIds[0];
+    const firstActiveNumber = firstActiveId ? getLabelNumber(firstActiveId) : Number.POSITIVE_INFINITY;
+    const previousLabels = sLabels.filter((label) => getLabelNumber(label) < firstActiveNumber);
+    const activeLabels = activeIds.filter((label) => sLabels.includes(label));
+    const laterLabels = sLabels.filter((label) => getLabelNumber(label) > getLabelNumber(activeIds.at(-1) ?? 'S0'));
+
+    if (previousLabels.length > 0) {
+      groups.push({ id: `s-group-${previousLabels[0]}`, labels: previousLabels, isActive: false });
+    }
+
+    if (activeLabels.length > 0) {
+      groups.push({ id: activeSGroup?.groupId ?? `s-group-${activeLabels[0]}`, labels: activeLabels, isActive: activeSGroup?.isActive ?? false });
+    } else if (previousLabels.length === 0) {
+      groups.push({ id: `s-group-${sLabels[0]}`, labels: sLabels, isActive: activeSGroup?.isActive ?? false });
+    }
+
+    if (laterLabels.length > 0 && activeLabels.length > 0) {
+      groups.push({ id: `s-group-${laterLabels[0]}`, labels: laterLabels, isActive: false });
+    }
+
+    return groups;
+  }, [activeSGroup, availableLabels]);
+
+  const sGroupActionNumber = getSGroupActionNumber(connections, activeSGroup);
 
   const hasAssignedEEdges = useMemo(() => {
     return Object.values(edgeAssignments).some((assignment) => getBucketEdgeAssignment(assignment)?.connectionId.startsWith('E'));
@@ -2776,8 +2828,8 @@ function App() {
 
       return (
         <div className="compact-property-controls" aria-label="Compact E controls">
-          <NumericField id="compact-edge-material-thickness" label="Material thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateEdgeProperties({ materialThicknessMm })} />
-          <NumericField id="compact-edge-tab-size" label="Tab size" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
+          <NumericField id="compact-edge-material-thickness" label="Thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateEdgeProperties({ materialThicknessMm })} />
+          <NumericField id="compact-edge-tab-size" label="Tab" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
         </div>
       );
     }
@@ -2790,9 +2842,9 @@ function App() {
 
       return (
         <div className="compact-property-controls" aria-label={controlsLabel}>
-          <NumericField id="compact-slot-material-thickness" label="Material thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateSlotProperties({ materialThicknessMm })} />
-          <NumericField id="compact-slot-tab-size" label="Tab size" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
-          <NumericField id="compact-slot-offset" label="Slot offset from edge" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
+          <NumericField id="compact-slot-material-thickness" label="Thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateSlotProperties({ materialThicknessMm })} />
+          <NumericField id="compact-slot-tab-size" label="Tab" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
+          <NumericField id="compact-slot-offset" label="Offset" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
         </div>
       );
     }
@@ -2878,8 +2930,8 @@ function App() {
                   <div className="label-actions">
                     {prefix === 'S' ? (
                       <>
-                        <button type="button" onClick={startSGroup}>Start S Group</button>
-                        <button type="button" onClick={finishSGroup} disabled={!activeSGroup?.isActive}>Finish S Group</button>
+                        <button type="button" onClick={startSGroup}>Start S Group {sGroupActionNumber}</button>
+                        <button type="button" onClick={finishSGroup} disabled={!activeSGroup?.isActive}>Finish S Group {sGroupActionNumber}</button>
                       </>
                     ) : (
                       <button type="button" onClick={() => createLabel(prefix)}>
@@ -2890,23 +2942,66 @@ function App() {
                 </div>
 
                 {groupLabels.length > 0 ? (
-                  <ul className="label-list">
-                    {groupLabels.map((label) => (
-                      <li key={label}>
-                        <button
-                          type="button"
-                          className={selectedLabelId === label ? 'selected-label' : ''}
-                          onClick={() => {
-                            setSelectedLabelId(label);
-                            setErrorMessage('');
-                          }}
-                        >
-                          <strong>{label}</strong>
-                          <span>{labelCounts[label] ?? 0} {(labelCounts[label] ?? 0) === 1 ? 'edge' : 'edges'}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  prefix === 'S' ? (
+                    <ul className="label-list s-group-list">
+                      {sLabelGroups.map((sGroup, groupIndex) => {
+                        const isExpanded = sGroup.isActive || expandedSGroups[sGroup.id] === true;
+                        const groupName = getSGroupDisplayName(groupIndex);
+                        const groupCount = sGroup.labels.length;
+
+                        return (
+                          <li key={sGroup.id}>
+                            <button
+                              type="button"
+                              className={`s-group-toggle${sGroup.labels.includes(selectedLabelId ?? '') ? ' selected-label' : ''}`}
+                              aria-expanded={isExpanded}
+                              onClick={() => setExpandedSGroups((currentGroups) => ({ ...currentGroups, [sGroup.id]: !isExpanded }))}
+                            >
+                              <strong>{groupName} ({groupCount})</strong>
+                              <span>{isExpanded ? 'Hide' : 'Show'}</span>
+                            </button>
+                            {isExpanded && (
+                              <ul className="s-group-connection-list">
+                                {sGroup.labels.map((label) => (
+                                  <li key={label}>
+                                    <button
+                                      type="button"
+                                      className={selectedLabelId === label ? 'selected-label' : ''}
+                                      onClick={() => {
+                                        setSelectedLabelId(label);
+                                        setErrorMessage('');
+                                      }}
+                                    >
+                                      <strong>{label}</strong>
+                                      <span>{labelCounts[label] ?? 0} {(labelCounts[label] ?? 0) === 1 ? 'edge' : 'edges'}</span>
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <ul className="label-list">
+                      {groupLabels.map((label) => (
+                        <li key={label}>
+                          <button
+                            type="button"
+                            className={selectedLabelId === label ? 'selected-label' : ''}
+                            onClick={() => {
+                              setSelectedLabelId(label);
+                              setErrorMessage('');
+                            }}
+                          >
+                            <strong>{label}</strong>
+                            <span>{labelCounts[label] ?? 0} {(labelCounts[label] ?? 0) === 1 ? 'edge' : 'edges'}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )
                 ) : (
                   <p className="empty-labels">No {prefix} connections yet.</p>
                 )}

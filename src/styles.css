@@ -276,6 +276,37 @@ button:disabled {
   font-weight: 800;
 }
 
+.s-group-list {
+  gap: 10px;
+}
+
+.s-group-list > li {
+  display: grid;
+  gap: 8px;
+}
+
+.label-list button.s-group-toggle strong {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.s-group-connection-list {
+  display: grid;
+  gap: 6px;
+  padding: 0 0 0 14px;
+  margin: 0;
+  list-style: none;
+}
+
+.s-group-connection-list .label-list button,
+.s-group-connection-list button {
+  padding: 10px;
+}
+
+.s-group-connection-list strong {
+  font-size: 1rem;
+}
+
 .selection-card {
   margin-top: 18px;
   padding-top: 18px;
@@ -375,8 +406,10 @@ button:disabled {
 
 .canvas-history-controls {
   top: 24px;
+  right: 24px;
   flex-direction: row;
-  align-items: flex-start;
+  align-items: center;
+  overflow-x: auto;
 }
 
 .canvas-zoom-controls {
@@ -415,31 +448,34 @@ button:disabled {
 
 .compact-property-controls {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  max-width: min(620px, calc(100vw - 220px));
-  padding: 8px;
-  background: rgb(255 255 255 / 92%);
-  border: 1px solid #cbd5e1;
-  border-radius: 14px;
-  box-shadow: 0 12px 26px rgb(15 23 42 / 14%);
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
   pointer-events: auto;
 }
 
 .compact-property-controls .property-field {
-  min-width: 112px;
-  gap: 4px;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .compact-property-controls .property-field span {
-  font-size: 0.72rem;
-  line-height: 1.1;
+  color: #0f172a;
+  font-size: 0.78rem;
+  line-height: 1;
 }
 
 .compact-property-controls .property-field input {
-  min-height: 34px;
-  padding: 0 8px;
-  border-radius: 10px;
+  width: 54px;
+  min-height: 42px;
+  padding: 0 6px;
+  border-radius: 12px;
+  box-shadow: 0 12px 26px rgb(15 23 42 / 18%);
 }
 
 .design-svg {
