@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
@@ -1678,13 +1678,20 @@ const getDefaultEdgeRole = (assignments: EdgeAssignmentRecord, connectionId: str
   return 'A';
 };
 
-const getDefaultSlotRole = (assignments: EdgeAssignmentRecord, connectionId: string): SlotRole => {
+export const getDefaultSlotRole = (assignments: EdgeAssignmentRecord, connectionId: string): SlotRole | null => {
   const assignedRoles = Object.values(assignments)
     .flatMap((assignment) => getBucketSlotAssignments(assignment))
     .filter((assignment) => assignment.connectionId === connectionId)
     .map((assignment) => assignment.slotRole);
 
-  return assignedRoles.includes('A') && !assignedRoles.includes('B') ? 'B' : 'A';
+  const hasA = assignedRoles.includes('A');
+  const hasB = assignedRoles.includes('B');
+
+  if (hasA && hasB) {
+    return null;
+  }
+
+  return hasA ? 'B' : 'A';
 };
 
 const getFollowingSlotLabel = (label: string) => {
@@ -2029,13 +2036,29 @@ function App() {
       return;
     }
 
+    const nextSlotRole = connection.prefix === 'S' ? getDefaultSlotRole(edgeAssignments, selectedLabelId) : null;
+
+    if (connection.prefix === 'S' && !nextSlotRole) {
+      if (activeSGroup?.isActive && activeSGroup.connectionIds.includes(selectedLabelId)) {
+        const nextWorkflow = maybeAutoCreateNextSInGroup(connections, edgeAssignments, activeSGroup, selectedLabelId);
+        setConnections(nextWorkflow.connections);
+        setSelectedLabelId(nextWorkflow.selectedLabelId);
+        setActiveSGroup(nextWorkflow.activeSGroup);
+        setErrorMessage(`${selectedLabelId} is complete. Select the next S connection before assigning another edge.`);
+        return;
+      }
+
+      setErrorMessage(`${selectedLabelId} is complete. Start S Group or select another S connection before assigning another edge.`);
+      return;
+    }
+
     pushUndoState();
 
     const currentBucket = toEdgeAssignmentBucket(edgeAssignments[edgeId]) ?? {};
     const nextAssignment: EdgeAssignment = {
       connectionId: selectedLabelId,
       ...(connection.prefix === 'E' ? { edgeRole: getDefaultEdgeRole(edgeAssignments, selectedLabelId) } : {}),
-      ...(connection.prefix === 'S' ? { slotRole: getDefaultSlotRole(edgeAssignments, selectedLabelId) } : {}),
+      ...(connection.prefix === 'S' && nextSlotRole ? { slotRole: nextSlotRole } : {}),
     };
 
     if (connection.prefix === 'E') {
@@ -2734,7 +2757,10 @@ function App() {
     edgeOffsetPx: labelEdgeOffset,
     labelScale,
   });
-  const labelPlacementsByEdgeId = new Map(labelPlacements.map((placement) => [placement.edgeId, placement]));
+  const labelPlacementsByEdgeId = labelPlacements.reduce((placementsByEdgeId, placement) => {
+    placementsByEdgeId.set(placement.edgeId, [...(placementsByEdgeId.get(placement.edgeId) ?? []), placement]);
+    return placementsByEdgeId;
+  }, new Map<string, typeof labelPlacements>());
   const appliedEEdgeIds = useMemo(
     () => new Set(appliedEPanelPaths.flatMap((panelPath) => panelPath.edgeIds)),
     [appliedEPanelPaths],
@@ -2795,14 +2821,15 @@ function App() {
                     <p>{description}</p>
                   </div>
                   <div className="label-actions">
-                    <button type="button" onClick={() => createLabel(prefix)}>
-                      Add {getNextLabel(prefix, availableLabels)}
-                    </button>
-                    {prefix === 'S' && (
+                    {prefix === 'S' ? (
                       <>
                         <button type="button" onClick={startSGroup}>Start S Group</button>
                         <button type="button" onClick={finishSGroup} disabled={!activeSGroup?.isActive}>Finish S Group</button>
                       </>
+                    ) : (
+                      <button type="button" onClick={() => createLabel(prefix)}>
+                        Add {getNextLabel(prefix, availableLabels)}
+                      </button>
                     )}
                   </div>
                 </div>
@@ -2947,11 +2974,10 @@ function App() {
               <g className="edge-overlays">
                   {svgModel.edges.map((edge) => {
                   const assignment = edgeAssignments[edge.id];
-                  const label = getEdgeAssignmentDisplayLabel(assignment);
+                  const labels = getEdgeAssignmentDisplayLabels(assignment);
+                  const label = labels[0];
                   const selected = selectedEdgeId === edge.id;
-                  const labelPlacement = labelPlacementsByEdgeId.get(edge.id);
-                  const labelWidth = labelPlacement?.width ?? 0;
-                  const labelHeight = labelPlacement?.height ?? 0;
+                  const edgeLabelPlacements = labelPlacementsByEdgeId.get(edge.id) ?? [];
                   const showHighlight = (label || selected) && !appliedEEdgeIds.has(edge.id) && !appliedSPanelEdgeIds.has(edge.id);
 
                   return (
@@ -2983,17 +3009,18 @@ function App() {
                           assignSelectedLabelToEdge(edge.id);
                         }}
                       />
-                      {label && labelPlacement && (
+                      {edgeLabelPlacements.map((labelPlacement) => (
                         <g
                           className="edge-label"
+                          key={`${edge.id}-${labelPlacement.label}`}
                           transform={`translate(${labelPlacement.x} ${labelPlacement.y}) scale(${labelScale})`}
                         >
                           <rect
                             className="edge-label-background"
-                            x={-labelWidth / 2}
-                            y={-labelHeight / 2}
-                            width={labelWidth}
-                            height={labelHeight}
+                            x={-labelPlacement.width / 2}
+                            y={-labelPlacement.height / 2}
+                            width={labelPlacement.width}
+                            height={labelPlacement.height}
                             rx={5}
                           />
                           <text
@@ -3001,10 +3028,18 @@ function App() {
                             textAnchor="middle"
                             dominantBaseline="middle"
                           >
-                            {label}
+                            {labelPlacement.label.split('\n').map((displayLabel, index, allLabels) => (
+                              <tspan
+                                key={displayLabel}
+                                x={0}
+                                dy={index === 0 ? `${-0.5 * (allLabels.length - 1)}em` : '1em'}
+                              >
+                                {displayLabel}
+                              </tspan>
+                            ))}
                           </text>
                         </g>
-                      )}
+                      ))}
                     </g>
                   );
                   })}

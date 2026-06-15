@@ -21,6 +21,13 @@ const mockRequire = (id) => {
 };
 vm.runInNewContext(compiled, { require: mockRequire, module, exports: module.exports, console, structuredClone, URL, Blob }, { filename: 'App.cjs' });
 
+const svgUtilsSource = readFileSync(resolve(root, 'src/svgUtils.ts'), 'utf8');
+const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const svgUtilsModule = { exports: {} };
+vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
+
 const { buildAppliedEPanelPaths, buildAppliedSGeometry, createTabSegmentPlan, exportAppliedSvg } = module.exports;
 
 const edge = (id, start, end) => ({ id, source: id, start, end });
@@ -238,12 +245,32 @@ const {
   manualAddSWorkflow,
   maybeAutoCreateNextSInGroup,
   finishSGroupWorkflow,
+  getDefaultSlotRole,
 } = module.exports;
 
 const workflowAssign = (connectionId, roles = ['A', 'B']) => Object.fromEntries(roles.map((role, index) => [
   `${connectionId}-${role}-${index}`,
   { slotAssignments: [{ connectionId, slotRole: role }] },
 ]));
+
+assert.equal(getDefaultSlotRole(workflowAssign('S1', ['A']), 'S1'), 'B', 'S1 gets B after A is assigned');
+assert.equal(getDefaultSlotRole(workflowAssign('S1'), 'S1'), null, 'S1 cannot receive a third assigned edge after A and B');
+const completeS1 = workflowAssign('S1');
+assert.equal(getDefaultSlotRole(completeS1, 'S1'), null, 'S1 cannot have 3 assigned edges');
+assert.equal(getDefaultSlotRole(completeS1, 'S1'), null, 'S1 cannot have 4 or 5 assigned edges');
+
+const { getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements } = svgUtilsModule.exports;
+const sharedLabelsBucket = {
+  edgeAssignment: { connectionId: 'E3', edgeRole: 'B' },
+  slotAssignments: [{ connectionId: 'S2', slotRole: 'B' }],
+};
+assert.deepEqual(JSON.parse(JSON.stringify(getEdgeAssignmentDisplayLabels(sharedLabelsBucket))), ['E3-B', 'S2-B'], 'shared E/S edge bucket returns both display labels');
+const sharedLabelPlacements = getEdgeLabelPlacements([
+  { id: 'shared-edge', source: 'shared-edge', start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, panelBounds: { minX: 0, maxX: 100, minY: 0, maxY: 40 } },
+], { 'shared-edge': sharedLabelsBucket }, { fontSizePx: 12, paddingXPx: 4, paddingYPx: 2, edgeOffsetPx: 6 });
+assert.equal(sharedLabelPlacements.length, 1, 'shared E/S edge bucket creates one stacked label chip');
+assert.equal(sharedLabelPlacements[0].label, 'E3-B\nS2-B', 'stacked label chip includes E and S labels');
+console.log('S group workflow and stacked label display tests passed');
 
 let workflowConnections = {};
 let workflowGroup = null;

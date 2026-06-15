@@ -68,27 +68,33 @@ export const getBucketSlotAssignments = (assignment: EdgeAssignment | EdgeAssign
   toEdgeAssignmentBucket(assignment)?.slotAssignments ?? []
 );
 
-export const getEdgeAssignmentDisplayLabel = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined) => {
-  if (!assignment) {
-    return undefined;
+const getAssignmentDisplayLabel = (assignment: EdgeAssignment) => {
+  if (assignment.connectionId.startsWith('E') && assignment.edgeRole) {
+    return `${assignment.connectionId}-${assignment.edgeRole === 'A' ? 'A' : 'B'}`;
   }
 
-  const displayAssignment = getBucketEdgeAssignment(assignment) ?? getBucketSlotAssignments(assignment)[0];
-
-  if (!displayAssignment) {
-    return undefined;
+  if (assignment.connectionId.startsWith('S') && assignment.slotRole) {
+    return `${assignment.connectionId}-${assignment.slotRole === 'A' ? 'A' : 'B'}`;
   }
 
-  if (displayAssignment.connectionId.startsWith('E') && displayAssignment.edgeRole) {
-    return `${displayAssignment.connectionId}-${displayAssignment.edgeRole === 'A' ? 'A' : 'B'}`;
-  }
-
-  if (displayAssignment.connectionId.startsWith('S') && displayAssignment.slotRole) {
-    return `${displayAssignment.connectionId}-${displayAssignment.slotRole === 'A' ? 'A' : 'B'}`;
-  }
-
-  return displayAssignment.connectionId;
+  return assignment.connectionId;
 };
+
+export const getEdgeAssignmentDisplayLabels = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined) => {
+  const bucket = toEdgeAssignmentBucket(assignment);
+
+  if (!bucket) {
+    return [];
+  }
+
+  return [bucket.edgeAssignment, ...(bucket.slotAssignments ?? [])]
+    .filter((bucketAssignment): bucketAssignment is EdgeAssignment => !!bucketAssignment)
+    .map(getAssignmentDisplayLabel);
+};
+
+export const getEdgeAssignmentDisplayLabel = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined) => (
+  getEdgeAssignmentDisplayLabels(assignment)[0]
+);
 
 export type SvgDocumentModel = {
   content: string;
@@ -826,14 +832,16 @@ export const getEdgeLabelPlacements = (
 
   return edges.flatMap((edge) => {
     const assignment = edgeAssignments[edge.id];
-    const label = getEdgeAssignmentDisplayLabel(assignment);
+    const labels = getEdgeAssignmentDisplayLabels(assignment);
 
-    if (!label) {
+    if (labels.length === 0) {
       return [];
     }
 
-    const width = label.length * options.fontSizePx * 0.68 + options.paddingXPx * 2;
-    const height = options.fontSizePx + options.paddingYPx * 2;
+    const label = labels.join('\n');
+    const maxLabelLength = Math.max(...labels.map((displayLabel) => displayLabel.length));
+    const width = maxLabelLength * options.fontSizePx * 0.68 + options.paddingXPx * 2;
+    const height = labels.length * options.fontSizePx + options.paddingYPx * 2;
     const renderedWidth = width * labelScale;
     const renderedHeight = height * labelScale;
     const direction = getEdgeLabelPlacementDirection(edge);
