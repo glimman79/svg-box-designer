@@ -117,6 +117,12 @@ export type ConnectionDefinition =
 
 export type ConnectionMap = Record<string, ConnectionDefinition>;
 
+export type ActiveSGroup = {
+  groupId: string;
+  connectionIds: string[];
+  isActive: boolean;
+};
+
 type HistoryState = {
   edgeAssignments: Record<string, EdgeAssignmentBucket>;
   connections: ConnectionMap;
@@ -125,6 +131,7 @@ type HistoryState = {
   appliedEPanelPaths?: AppliedEPanelPath[];
   appliedSGeometry?: AppliedSGeometry[];
   sharedSlotOffsetMm: number;
+  activeSGroup: ActiveSGroup | null;
 };
 
 const maxHistoryEntries = 10;
@@ -137,6 +144,7 @@ const cloneHistoryState = (state: HistoryState): HistoryState => ({
   ...(state.appliedEPanelPaths ? { appliedEPanelPaths: structuredClone(state.appliedEPanelPaths) } : {}),
   ...(state.appliedSGeometry ? { appliedSGeometry: structuredClone(state.appliedSGeometry) } : {}),
   sharedSlotOffsetMm: state.sharedSlotOffsetMm,
+  activeSGroup: state.activeSGroup ? structuredClone(state.activeSGroup) : null,
 });
 
 type NumericFieldProps = {
@@ -1689,6 +1697,91 @@ const getFollowingSlotLabel = (label: string) => {
   return `S${labelNumber + 1}`;
 };
 
+
+export const isCompleteSConnection = (assignments: EdgeAssignmentRecord, connectionId: string) => {
+  const roles = Object.values(assignments)
+    .flatMap((assignment) => getBucketSlotAssignments(assignment))
+    .filter((assignment) => assignment.connectionId === connectionId)
+    .map((assignment) => assignment.slotRole);
+
+  return roles.filter((role) => role === 'A').length === 1 && roles.filter((role) => role === 'B').length === 1;
+};
+
+export const createStandaloneSConnection = (id: string): SlotConnectionDefinition => ({
+  ...(createConnectionDefinition(id, 'S') as SlotConnectionDefinition),
+  properties: {
+    ...(createConnectionDefinition(id, 'S') as SlotConnectionDefinition).properties,
+    slotOffsetMm: 0,
+  },
+});
+
+export const createCopiedSConnection = (id: string, previousConnection: SlotConnectionDefinition): SlotConnectionDefinition => ({
+  id,
+  prefix: 'S',
+  properties: {
+    ...cloneDefaultProperties('S'),
+    materialThicknessMm: previousConnection.properties.materialThicknessMm,
+    slotWidthMm: previousConnection.properties.slotWidthMm,
+    slotLengthMm: previousConnection.properties.slotLengthMm,
+    isSlotLengthManual: previousConnection.properties.isSlotLengthManual,
+    slotOffsetMm: previousConnection.properties.slotOffsetMm,
+  },
+});
+
+export const startSGroupWorkflow = (connections: ConnectionMap) => {
+  const connectionId = getNextLabel('S', Object.keys(connections));
+  const connection = createStandaloneSConnection(connectionId);
+
+  return {
+    connections: { ...connections, [connectionId]: connection },
+    selectedLabelId: connectionId,
+    activeSGroup: { groupId: `s-group-${connectionId}`, connectionIds: [connectionId], isActive: true } satisfies ActiveSGroup,
+  };
+};
+
+export const finishSGroupWorkflow = (activeSGroup: ActiveSGroup | null): ActiveSGroup | null => (
+  activeSGroup ? { ...activeSGroup, isActive: false } : null
+);
+
+export const manualAddSWorkflow = (connections: ConnectionMap, activeSGroup: ActiveSGroup | null) => {
+  const connectionId = getNextLabel('S', Object.keys(connections));
+
+  return {
+    connections: { ...connections, [connectionId]: createStandaloneSConnection(connectionId) },
+    selectedLabelId: connectionId,
+    activeSGroup: finishSGroupWorkflow(activeSGroup),
+  };
+};
+
+export const maybeAutoCreateNextSInGroup = (
+  connections: ConnectionMap,
+  assignments: EdgeAssignmentRecord,
+  activeSGroup: ActiveSGroup | null,
+  completedConnectionId: string,
+) => {
+  if (!activeSGroup?.isActive || !activeSGroup.connectionIds.includes(completedConnectionId) || !isCompleteSConnection(assignments, completedConnectionId)) {
+    return { connections, selectedLabelId: completedConnectionId, activeSGroup };
+  }
+
+  const previousConnection = connections[completedConnectionId];
+
+  if (!previousConnection || previousConnection.prefix !== 'S') {
+    return { connections, selectedLabelId: completedConnectionId, activeSGroup };
+  }
+
+  const connectionId = getNextLabel('S', Object.keys(connections));
+
+  if (connections[connectionId]) {
+    return { connections, selectedLabelId: completedConnectionId, activeSGroup };
+  }
+
+  return {
+    connections: { ...connections, [connectionId]: createCopiedSConnection(connectionId, previousConnection) },
+    selectedLabelId: connectionId,
+    activeSGroup: { ...activeSGroup, connectionIds: [...activeSGroup.connectionIds, connectionId] },
+  };
+};
+
 const formatEdgeRoleLabel = (role: EdgeRole | undefined) => {
   if (role === 'A') {
     return 'A';
@@ -1770,6 +1863,7 @@ function App() {
   const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
   const [appliedSGeometry, setAppliedSGeometry] = useState<AppliedSGeometry[]>([]);
   const [sharedSlotOffsetMm, setSharedSlotOffsetMm] = useState(0);
+  const [activeSGroup, setActiveSGroup] = useState<ActiveSGroup | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -1813,6 +1907,7 @@ function App() {
     appliedEPanelPaths,
     appliedSGeometry,
     sharedSlotOffsetMm,
+    activeSGroup,
   });
 
   const restoreHistoryState = (state: HistoryState) => {
@@ -1824,6 +1919,7 @@ function App() {
     setAppliedEPanelPaths(snapshot.appliedEPanelPaths ?? []);
     setAppliedSGeometry(snapshot.appliedSGeometry ?? []);
     setSharedSlotOffsetMm(snapshot.sharedSlotOffsetMm);
+    setActiveSGroup(snapshot.activeSGroup);
   };
 
   const pushUndoState = () => {
@@ -1847,6 +1943,7 @@ function App() {
     setAppliedEPanelPaths([]);
     setAppliedSGeometry([]);
     setSharedSlotOffsetMm(0);
+    setActiveSGroup(null);
     setUndoStack([]);
     setRedoStack([]);
     setErrorMessage('');
@@ -1860,8 +1957,18 @@ function App() {
   };
 
   const createLabel = (prefix: LabelPrefix) => {
-    const nextLabel = getNextLabel(prefix, availableLabels);
     pushUndoState();
+
+    if (prefix === 'S') {
+      const nextWorkflow = manualAddSWorkflow(connections, activeSGroup);
+      setConnections(nextWorkflow.connections);
+      setActiveSGroup(nextWorkflow.activeSGroup);
+      setSelectedLabelId(nextWorkflow.selectedLabelId);
+      setErrorMessage('');
+      return;
+    }
+
+    const nextLabel = getNextLabel(prefix, availableLabels);
     setConnections((currentConnections) => ({
       ...currentConnections,
       [nextLabel]: createConnectionDefinition(
@@ -1871,6 +1978,26 @@ function App() {
       ),
     }));
     setSelectedLabelId(nextLabel);
+    setErrorMessage('');
+  };
+
+  const startSGroup = () => {
+    pushUndoState();
+    const nextWorkflow = startSGroupWorkflow(connections);
+    setConnections(nextWorkflow.connections);
+    setSelectedLabelId(nextWorkflow.selectedLabelId);
+    setActiveSGroup(nextWorkflow.activeSGroup);
+    setErrorMessage('');
+  };
+
+  const finishSGroup = () => {
+    if (!activeSGroup?.isActive) {
+      return;
+    }
+
+    pushUndoState();
+    setActiveSGroup(finishSGroupWorkflow(activeSGroup));
+    setSelectedLabelId(null);
     setErrorMessage('');
   };
 
@@ -1971,17 +2098,10 @@ function App() {
       : null;
 
     if (connection.prefix === 'S' && nextSlotLabel) {
-      setConnections((currentConnections) => {
-        if (currentConnections[nextSlotLabel]) {
-          return currentConnections;
-        }
-
-        return {
-          ...currentConnections,
-          [nextSlotLabel]: createConnectionDefinition(nextSlotLabel, 'S'),
-        };
-      });
-      setSelectedLabelId(nextSlotLabel);
+      const nextWorkflow = maybeAutoCreateNextSInGroup(connections, nextAssignments, activeSGroup, selectedLabelId);
+      setConnections(nextWorkflow.connections);
+      setSelectedLabelId(nextWorkflow.selectedLabelId);
+      setActiveSGroup(nextWorkflow.activeSGroup);
     }
 
     setErrorMessage('');
@@ -2093,6 +2213,7 @@ function App() {
     setAppliedEPanelPaths([]);
     setAppliedSGeometry([]);
     setSharedSlotOffsetMm(0);
+    setActiveSGroup(null);
     setErrorMessage('');
     setUndoStack([]);
     setRedoStack([]);
@@ -2673,9 +2794,17 @@ function App() {
                     <h3>{prefix} = {name}</h3>
                     <p>{description}</p>
                   </div>
-                  <button type="button" onClick={() => createLabel(prefix)}>
-                    Add {getNextLabel(prefix, availableLabels)}
-                  </button>
+                  <div className="label-actions">
+                    <button type="button" onClick={() => createLabel(prefix)}>
+                      Add {getNextLabel(prefix, availableLabels)}
+                    </button>
+                    {prefix === 'S' && (
+                      <>
+                        <button type="button" onClick={startSGroup}>Start S Group</button>
+                        <button type="button" onClick={finishSGroup} disabled={!activeSGroup?.isActive}>Finish S Group</button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {groupLabels.length > 0 ? (
