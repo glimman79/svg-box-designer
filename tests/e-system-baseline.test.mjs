@@ -232,3 +232,57 @@ assert.equal(sharedBucketSGeometry.length, 1, 'S2 geometry remains present when 
 assert.ok(sharedBucketSGeometry[0].slotPaths.length > 0, 'shared edge bucket preserves S-B slot geometry');
 assert.equal(sharedBucketSGeometry[0].edgeIds[1], 'receiver-top', 'S2-B remains assigned to the shared physical edge');
 console.log('E + S-B shared edge bucket tests passed');
+
+const {
+  startSGroupWorkflow,
+  manualAddSWorkflow,
+  maybeAutoCreateNextSInGroup,
+  finishSGroupWorkflow,
+} = module.exports;
+
+const workflowAssign = (connectionId, roles = ['A', 'B']) => Object.fromEntries(roles.map((role, index) => [
+  `${connectionId}-${role}-${index}`,
+  { slotAssignments: [{ connectionId, slotRole: role }] },
+]));
+
+let workflowConnections = {};
+let workflowGroup = null;
+let workflow = startSGroupWorkflow(workflowConnections);
+workflowConnections = workflow.connections;
+workflowGroup = workflow.activeSGroup;
+assert.equal(workflow.selectedLabelId, 'S1', 'start group selects S1');
+assert.equal(workflowConnections.S1.properties.slotOffsetMm, 0, 'start group creates S1 with offset 0');
+assert.deepEqual(JSON.parse(JSON.stringify(workflowGroup.connectionIds)), ['S1'], 'start group records S1 in active group');
+
+workflowConnections.S1.properties.materialThicknessMm = 6;
+workflowConnections.S1.properties.slotWidthMm = 6;
+workflowConnections.S1.properties.slotLengthMm = 18;
+workflowConnections.S1.properties.slotOffsetMm = 4;
+workflowConnections.S1.properties.isSlotLengthManual = true;
+workflow = maybeAutoCreateNextSInGroup(workflowConnections, workflowAssign('S1'), workflowGroup, 'S1');
+workflowConnections = workflow.connections;
+workflowGroup = workflow.activeSGroup;
+assert.equal(workflow.selectedLabelId, 'S2', 'completing S1 auto-creates and selects S2');
+assert.equal(workflowConnections.S2.properties.materialThicknessMm, 6, 'S2 copies material thickness from S1');
+assert.equal(workflowConnections.S2.properties.slotWidthMm, 6, 'S2 copies tab size/slot width from S1');
+assert.equal(workflowConnections.S2.properties.slotOffsetMm, 4, 'S2 copies slot offset from S1');
+assert.equal(workflowConnections.S2.properties.slotLengthMm, 18, 'S2 copies slot length from S1');
+
+for (const completedId of ['S2', 'S3']) {
+  workflowConnections[completedId].properties.slotOffsetMm = workflowConnections[completedId === 'S2' ? 'S1' : 'S2'].properties.slotOffsetMm + 1;
+  workflow = maybeAutoCreateNextSInGroup(workflowConnections, workflowAssign(completedId), workflowGroup, completedId);
+  workflowConnections = workflow.connections;
+  workflowGroup = workflow.activeSGroup;
+}
+assert.deepEqual(JSON.parse(JSON.stringify(workflowGroup.connectionIds)), ['S1', 'S2', 'S3', 'S4'], 'active group can continue through S4');
+assert.equal(workflow.selectedLabelId, 'S4', 'S4 is selected after S3 completes');
+
+workflowGroup = finishSGroupWorkflow(workflowGroup);
+workflow = maybeAutoCreateNextSInGroup(workflowConnections, workflowAssign('S4'), workflowGroup, 'S4');
+assert.equal(workflow.selectedLabelId, 'S4', 'finish group stops auto-create selection changes');
+assert.equal(workflow.connections.S5, undefined, 'finish group stops auto-create connection creation');
+
+workflow = manualAddSWorkflow(workflowConnections, workflowGroup);
+assert.equal(workflow.selectedLabelId, 'S5', 'manual Add S creates next standalone S');
+assert.equal(workflow.connections.S5.properties.slotOffsetMm, 0, 'manual Add S starts offset 0');
+assert.equal(workflow.activeSGroup.isActive, false, 'manual Add S leaves previous active group inactive');
