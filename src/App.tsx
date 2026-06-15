@@ -1,9 +1,42 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabel, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
-import type { EdgeAssignment, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
+import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
+
+const isEdgeAssignmentBucket = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined): assignment is EdgeAssignmentBucket => (
+  !!assignment && ('edgeAssignment' in assignment || 'slotAssignments' in assignment)
+);
+
+const toEdgeAssignmentBucket = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined): EdgeAssignmentBucket | undefined => {
+  if (!assignment) {
+    return undefined;
+  }
+
+  if (isEdgeAssignmentBucket(assignment)) {
+    return assignment;
+  }
+
+  if (assignment.connectionId.startsWith('E')) {
+    return { edgeAssignment: assignment };
+  }
+
+  if (assignment.connectionId.startsWith('S')) {
+    return { slotAssignments: [assignment] };
+  }
+
+  return { edgeAssignment: assignment };
+};
+
+const getBucketEdgeAssignment = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined) => (
+  toEdgeAssignmentBucket(assignment)?.edgeAssignment
+);
+
+const getBucketSlotAssignments = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined) => (
+  toEdgeAssignmentBucket(assignment)?.slotAssignments ?? []
+);
+
 
 type LabelGroup = {
   prefix: LabelPrefix;
@@ -85,7 +118,7 @@ export type ConnectionDefinition =
 export type ConnectionMap = Record<string, ConnectionDefinition>;
 
 type HistoryState = {
-  edgeAssignments: Record<string, EdgeAssignment>;
+  edgeAssignments: Record<string, EdgeAssignmentBucket>;
   connections: ConnectionMap;
   selectedLabelId: string | null;
   selectedEdgeId: string | null;
@@ -947,11 +980,11 @@ export const applyTabsToContour = (
 
 export const getPanelEdgeOperations = (
   panel: SvgPanel,
-  assignments: Record<string, EdgeAssignment>,
+  assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
 ): PanelEdgeOperation[] => (
   panel.edgeIds.flatMap((edgeId) => {
-    const assignment = assignments[edgeId];
+    const assignment = getBucketEdgeAssignment(assignments[edgeId]);
     const connection = assignment ? connectionMap[assignment.connectionId] : undefined;
 
     if (!assignment || connection?.prefix !== 'E') {
@@ -1086,7 +1119,7 @@ const validateClosedPanel = (
 
 export const buildAppliedEPanelPaths = (
   svgModel: SvgDocumentModel,
-  assignments: Record<string, EdgeAssignment>,
+  assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
   shouldDebugApply = false,
 ): AppliedEPanelPath[] => {
@@ -1345,7 +1378,7 @@ const buildSlotPathD = (
 
 export const buildAppliedSGeometry = (
   svgModel: SvgDocumentModel,
-  assignments: Record<string, EdgeAssignment>,
+  assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
   sharedSlotOffsetMm: number,
 ): AppliedSGeometry[] => {
@@ -1355,7 +1388,11 @@ export const buildAppliedSGeometry = (
   const operationsByPanelId = new Map<string, { panel: SvgPanel; operations: SPanelOperation[] }>();
 
   sConnections.forEach((connection) => {
-    const assignedEdges = Object.entries(assignments).filter(([, assignment]) => assignment.connectionId === connection.id);
+    const assignedEdges = Object.entries(assignments).flatMap(([edgeId, assignment]) => (
+      getBucketSlotAssignments(assignment)
+        .filter((slotAssignment) => slotAssignment.connectionId === connection.id)
+        .map((slotAssignment) => [edgeId, slotAssignment] as const)
+    ));
     if (assignedEdges.length === 0) {
       return;
     }
@@ -1392,7 +1429,10 @@ export const buildAppliedSGeometry = (
       throw new Error(`${connection.id} S-B edge must be part of a valid closed panel so slot offset direction can be determined.`);
     }
 
-    if (panel.edgeIds.some((edgeId) => connectionMap[assignments[edgeId]?.connectionId]?.prefix === 'E')) {
+    if (panel.edgeIds.some((edgeId) => {
+      const edgeConnectionId = getBucketEdgeAssignment(assignments[edgeId])?.connectionId;
+      return edgeConnectionId ? connectionMap[edgeConnectionId]?.prefix === 'E' : false;
+    })) {
       throw new Error(`${connection.id} S-A panel conflicts with existing E-applied geometry on the same panel.`);
     }
 
@@ -1607,11 +1647,18 @@ function getDefaultCornerDepth(materialThicknessMm: number) {
   return materialThicknessMm * 3;
 }
 
-const getAssignedConnectionId = (assignment: EdgeAssignment | undefined) => assignment?.connectionId;
+const getAssignedConnectionId = (assignment: EdgeAssignmentBucket | undefined) => {
+  const edgeAssignment = getBucketEdgeAssignment(assignment);
+  const slotAssignment = getBucketSlotAssignments(assignment)[0];
+  return edgeAssignment && slotAssignment
+    ? `${edgeAssignment.connectionId}, ${slotAssignment.connectionId}`
+    : edgeAssignment?.connectionId ?? slotAssignment?.connectionId;
+};
 
-const getDefaultEdgeRole = (assignments: Record<string, EdgeAssignment>, connectionId: string): EdgeRole => {
+const getDefaultEdgeRole = (assignments: EdgeAssignmentRecord, connectionId: string): EdgeRole => {
   const assignedRoles = Object.values(assignments)
-    .filter((assignment) => assignment.connectionId === connectionId)
+    .map((assignment) => getBucketEdgeAssignment(assignment))
+    .filter((assignment): assignment is EdgeAssignment => assignment?.connectionId === connectionId)
     .map((assignment) => assignment.edgeRole);
   const hasOuter = assignedRoles.includes('A');
   const hasInner = assignedRoles.includes('B');
@@ -1623,8 +1670,9 @@ const getDefaultEdgeRole = (assignments: Record<string, EdgeAssignment>, connect
   return 'A';
 };
 
-const getDefaultSlotRole = (assignments: Record<string, EdgeAssignment>, connectionId: string): SlotRole => {
+const getDefaultSlotRole = (assignments: EdgeAssignmentRecord, connectionId: string): SlotRole => {
   const assignedRoles = Object.values(assignments)
+    .flatMap((assignment) => getBucketSlotAssignments(assignment))
     .filter((assignment) => assignment.connectionId === connectionId)
     .map((assignment) => assignment.slotRole);
 
@@ -1715,7 +1763,7 @@ const SelectField = ({ id, label, value, options, onChange }: SelectFieldProps) 
 
 function App() {
   const [svgModel, setSvgModel] = useState<SvgDocumentModel>(() => parseSvgDocument(starterSvg));
-  const [edgeAssignments, setEdgeAssignments] = useState<Record<string, EdgeAssignment>>({});
+  const [edgeAssignments, setEdgeAssignments] = useState<Record<string, EdgeAssignmentBucket>>({});
   const [connections, setConnections] = useState<ConnectionMap>({});
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
@@ -1737,7 +1785,11 @@ function App() {
   const selectedEdge = svgModel.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
   const labelCounts = useMemo(() => {
     return availableLabels.reduce<Record<string, number>>((counts, label) => {
-      counts[label] = Object.values(edgeAssignments).filter((assignment) => assignment.connectionId === label).length;
+      counts[label] = Object.values(edgeAssignments).reduce((count, assignment) => (
+        count
+        + (getBucketEdgeAssignment(assignment)?.connectionId === label ? 1 : 0)
+        + getBucketSlotAssignments(assignment).filter((slotAssignment) => slotAssignment.connectionId === label).length
+      ), 0);
       return counts;
     }, {});
   }, [availableLabels, edgeAssignments]);
@@ -1750,7 +1802,7 @@ function App() {
   }, [availableLabels]);
 
   const hasAssignedEEdges = useMemo(() => {
-    return Object.values(edgeAssignments).some((assignment) => assignment.connectionId.startsWith('E'));
+    return Object.values(edgeAssignments).some((assignment) => getBucketEdgeAssignment(assignment)?.connectionId.startsWith('E'));
   }, [edgeAssignments]);
 
   const getCurrentHistoryState = (): HistoryState => cloneHistoryState({
@@ -1765,7 +1817,7 @@ function App() {
 
   const restoreHistoryState = (state: HistoryState) => {
     const snapshot = cloneHistoryState(state);
-    setEdgeAssignments(snapshot.edgeAssignments);
+    setEdgeAssignments(Object.fromEntries(Object.entries(snapshot.edgeAssignments).map(([edgeId, assignment]) => [edgeId, toEdgeAssignmentBucket(assignment) ?? {}])));
     setConnections(snapshot.connections);
     setSelectedLabelId(snapshot.selectedLabelId);
     setSelectedEdgeId(snapshot.selectedEdgeId);
@@ -1852,19 +1904,44 @@ function App() {
 
     pushUndoState();
 
+    const currentBucket = toEdgeAssignmentBucket(edgeAssignments[edgeId]) ?? {};
+    const nextAssignment: EdgeAssignment = {
+      connectionId: selectedLabelId,
+      ...(connection.prefix === 'E' ? { edgeRole: getDefaultEdgeRole(edgeAssignments, selectedLabelId) } : {}),
+      ...(connection.prefix === 'S' ? { slotRole: getDefaultSlotRole(edgeAssignments, selectedLabelId) } : {}),
+    };
+
+    if (connection.prefix === 'E') {
+      if (currentBucket.edgeAssignment) {
+        setErrorMessage('This edge already has an E assignment.');
+        return;
+      }
+    } else if (connection.prefix === 'S') {
+      if (nextAssignment.slotRole === 'A' && (currentBucket.edgeAssignment || (currentBucket.slotAssignments?.length ?? 0) > 0)) {
+        setErrorMessage('S-A cannot share an edge with another assignment.');
+        return;
+      }
+
+      if (nextAssignment.slotRole === 'B' && (currentBucket.slotAssignments?.length ?? 0) > 0) {
+        setErrorMessage('This edge already has an S assignment.');
+        return;
+      }
+    }
+
     const nextAssignments = {
       ...edgeAssignments,
-      [edgeId]: {
-        connectionId: selectedLabelId,
-        ...(connection.prefix === 'E' ? { edgeRole: getDefaultEdgeRole(edgeAssignments, selectedLabelId) } : {}),
-        ...(connection.prefix === 'S' ? { slotRole: getDefaultSlotRole(edgeAssignments, selectedLabelId) } : {}),
-      },
+      [edgeId]: connection.prefix === 'E'
+        ? { ...currentBucket, edgeAssignment: nextAssignment }
+        : { ...currentBucket, slotAssignments: [...(currentBucket.slotAssignments ?? []), nextAssignment] },
     };
     setEdgeAssignments(nextAssignments);
 
 
-    const selectedLabelAssignmentCount = Object.values(nextAssignments)
-      .filter((assignment) => assignment.connectionId === selectedLabelId).length;
+    const selectedLabelAssignmentCount = Object.values(nextAssignments).reduce((count, assignment) => (
+      count
+      + (getBucketEdgeAssignment(assignment)?.connectionId === selectedLabelId ? 1 : 0)
+      + getBucketSlotAssignments(assignment).filter((slotAssignment) => slotAssignment.connectionId === selectedLabelId).length
+    ), 0);
     const nextEdgeLabel = selectedLabelAssignmentCount === 2 ? getFollowingEdgeLabel(selectedLabelId) : null;
 
     if (connection.prefix === 'E' && nextEdgeLabel) {
@@ -1886,6 +1963,7 @@ function App() {
     }
 
     const selectedSlotRoles = Object.values(nextAssignments)
+      .flatMap((assignment) => getBucketSlotAssignments(assignment))
       .filter((assignment) => assignment.connectionId === selectedLabelId)
       .map((assignment) => assignment.slotRole);
     const nextSlotLabel = selectedSlotRoles.includes('A') && selectedSlotRoles.includes('B')
@@ -1910,10 +1988,11 @@ function App() {
   };
 
   const updateAssignedEdgeRole = (edgeId: string, edgeRole: EdgeRole) => {
-    const assignment = edgeAssignments[edgeId];
+    const bucket = toEdgeAssignmentBucket(edgeAssignments[edgeId]);
+    const assignment = bucket?.edgeAssignment;
     const connection = assignment ? connections[assignment.connectionId] : undefined;
 
-    if (!assignment || connection?.prefix !== 'E' || assignment.edgeRole === edgeRole) {
+    if (!bucket || !assignment || connection?.prefix !== 'E' || assignment.edgeRole === edgeRole) {
       return;
     }
 
@@ -1921,18 +2000,22 @@ function App() {
     setEdgeAssignments((currentAssignments) => ({
       ...currentAssignments,
       [edgeId]: {
-        ...assignment,
-        edgeRole,
+        ...bucket,
+        edgeAssignment: {
+          ...assignment,
+          edgeRole,
+        },
       },
     }));
     setErrorMessage('');
   };
 
   const updateAssignedSlotRole = (edgeId: string, slotRole: SlotRole) => {
-    const assignment = edgeAssignments[edgeId];
+    const bucket = toEdgeAssignmentBucket(edgeAssignments[edgeId]);
+    const assignment = bucket?.slotAssignments?.[0];
     const connection = assignment ? connections[assignment.connectionId] : undefined;
 
-    if (!assignment || connection?.prefix !== 'S' || assignment.slotRole === slotRole) {
+    if (!bucket || !assignment || connection?.prefix !== 'S' || assignment.slotRole === slotRole) {
       return;
     }
 
@@ -1940,8 +2023,11 @@ function App() {
     setEdgeAssignments((currentAssignments) => ({
       ...currentAssignments,
       [edgeId]: {
-        ...assignment,
-        slotRole,
+        ...bucket,
+        slotAssignments: [{
+          ...assignment,
+          slotRole,
+        }],
       },
     }));
     setErrorMessage('');
@@ -2346,7 +2432,7 @@ function App() {
 
     if (selectedConnection.prefix === 'E') {
       const properties = selectedConnection.properties;
-      const assignedEEdges = svgModel.edges.filter((edge) => edgeAssignments[edge.id]?.connectionId === selectedConnection.id);
+      const assignedEEdges = svgModel.edges.filter((edge) => getBucketEdgeAssignment(edgeAssignments[edge.id])?.connectionId === selectedConnection.id);
       return (
         <div className="property-sections">
           <section className="property-section" aria-labelledby="edge-assigned-edges">
@@ -2367,13 +2453,13 @@ function App() {
                       </div>
                       <div>
                         <dt>Current role</dt>
-                        <dd>{formatEdgeRoleLabel(edgeAssignments[edge.id]?.edgeRole)}</dd>
+                        <dd>{formatEdgeRoleLabel(getBucketEdgeAssignment(edgeAssignments[edge.id])?.edgeRole)}</dd>
                       </div>
                     </dl>
                     <SelectField
                       id={`${edge.id}-edge-role`}
                       label="Role"
-                      value={edgeAssignments[edge.id]?.edgeRole ?? 'A'}
+                      value={getBucketEdgeAssignment(edgeAssignments[edge.id])?.edgeRole ?? 'A'}
                       options={['A', 'B']}
                       onChange={(edgeRole) => updateAssignedEdgeRole(edge.id, edgeRole as EdgeRole)}
                     />
@@ -2403,7 +2489,7 @@ function App() {
 
     if (selectedConnection.prefix === 'S') {
       const properties = selectedConnection.properties;
-      const assignedSEdges = svgModel.edges.filter((edge) => edgeAssignments[edge.id]?.connectionId === selectedConnection.id);
+      const assignedSEdges = svgModel.edges.filter((edge) => getBucketSlotAssignments(edgeAssignments[edge.id]).some((assignment) => assignment.connectionId === selectedConnection.id));
 
       return (
         <div className="property-sections">
@@ -2425,13 +2511,13 @@ function App() {
                       </div>
                       <div>
                         <dt>Current role</dt>
-                        <dd>{formatEdgeRoleLabel(edgeAssignments[edge.id]?.slotRole)}</dd>
+                        <dd>{formatEdgeRoleLabel(getBucketSlotAssignments(edgeAssignments[edge.id]).find((assignment) => assignment.connectionId === selectedConnection.id)?.slotRole)}</dd>
                       </div>
                     </dl>
                     <SelectField
                       id={`${edge.id}-slot-role`}
                       label="Role"
-                      value={edgeAssignments[edge.id]?.slotRole ?? 'A'}
+                      value={getBucketSlotAssignments(edgeAssignments[edge.id]).find((assignment) => assignment.connectionId === selectedConnection.id)?.slotRole ?? 'A'}
                       options={['A', 'B']}
                       onChange={(slotRole) => updateAssignedSlotRole(edge.id, slotRole as SlotRole)}
                     />

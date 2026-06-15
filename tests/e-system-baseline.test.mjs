@@ -214,3 +214,21 @@ assert.equal([...exportedS.matchAll(/<path/g)].length, exportModel.panels.length
 assert.match(exportedS, /M 160 100 L 180 100 L 180 120 L 160 120 Z/, 'export contains unmodified panel contour');
 assertNoLabelsOrUiArtifacts(exportedS);
 console.log('S geometry and export baseline tests passed');
+
+const sharedBucketAssignments = {
+  'receiver-right': { connectionId: 'E3', edgeRole: 'A' },
+  'sPanel-top': { connectionId: 'S2', slotRole: 'A' },
+  'receiver-top': {
+    edgeAssignment: { connectionId: 'E3', edgeRole: 'B' },
+    slotAssignments: [{ connectionId: 'S2', slotRole: 'B' }],
+  },
+};
+const sharedBucketConnections = { E3: connection('E3'), S2: sConnection('S2') };
+const sharedBucketEGeometry = buildAppliedEPanelPaths(sModel, sharedBucketAssignments, sharedBucketConnections);
+const sharedBucketSGeometry = buildAppliedSGeometry(sModel, sharedBucketAssignments, sharedBucketConnections, 5);
+assert.equal(sharedBucketEGeometry.length, 1, 'E3-B remains present when S2-B shares the same physical edge');
+assert.ok(sharedBucketEGeometry[0].pathD.length > 0, 'shared edge bucket preserves E geometry path data');
+assert.equal(sharedBucketSGeometry.length, 1, 'S2 geometry remains present when S2-B shares an edge with E3-B');
+assert.ok(sharedBucketSGeometry[0].slotPaths.length > 0, 'shared edge bucket preserves S-B slot geometry');
+assert.equal(sharedBucketSGeometry[0].edgeIds[1], 'receiver-top', 'S2-B remains assigned to the shared physical edge');
+console.log('E + S-B shared edge bucket tests passed');

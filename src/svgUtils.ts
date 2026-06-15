@@ -29,20 +29,65 @@ export type EdgeAssignment = {
   slotRole?: SlotRole;
 };
 
-export const getEdgeAssignmentDisplayLabel = (assignment: EdgeAssignment | undefined) => {
+export type EdgeAssignmentBucket = {
+  edgeAssignment?: EdgeAssignment;
+  slotAssignments?: EdgeAssignment[];
+};
+
+export type EdgeAssignmentRecord = Record<string, EdgeAssignment | EdgeAssignmentBucket>;
+
+export const isEdgeAssignmentBucket = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined): assignment is EdgeAssignmentBucket => (
+  !!assignment && ('edgeAssignment' in assignment || 'slotAssignments' in assignment)
+);
+
+export const toEdgeAssignmentBucket = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined): EdgeAssignmentBucket | undefined => {
   if (!assignment) {
     return undefined;
   }
 
-  if (assignment.connectionId.startsWith('E') && assignment.edgeRole) {
-    return `${assignment.connectionId}-${assignment.edgeRole === 'A' ? 'A' : 'B'}`;
+  if (isEdgeAssignmentBucket(assignment)) {
+    return assignment;
   }
 
-  if (assignment.connectionId.startsWith('S') && assignment.slotRole) {
-    return `${assignment.connectionId}-${assignment.slotRole === 'A' ? 'A' : 'B'}`;
+  if (assignment.connectionId.startsWith('E')) {
+    return { edgeAssignment: assignment };
   }
 
-  return assignment.connectionId;
+  if (assignment.connectionId.startsWith('S')) {
+    return { slotAssignments: [assignment] };
+  }
+
+  return { edgeAssignment: assignment };
+};
+
+export const getBucketEdgeAssignment = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined) => (
+  toEdgeAssignmentBucket(assignment)?.edgeAssignment
+);
+
+export const getBucketSlotAssignments = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined) => (
+  toEdgeAssignmentBucket(assignment)?.slotAssignments ?? []
+);
+
+export const getEdgeAssignmentDisplayLabel = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined) => {
+  if (!assignment) {
+    return undefined;
+  }
+
+  const displayAssignment = getBucketEdgeAssignment(assignment) ?? getBucketSlotAssignments(assignment)[0];
+
+  if (!displayAssignment) {
+    return undefined;
+  }
+
+  if (displayAssignment.connectionId.startsWith('E') && displayAssignment.edgeRole) {
+    return `${displayAssignment.connectionId}-${displayAssignment.edgeRole === 'A' ? 'A' : 'B'}`;
+  }
+
+  if (displayAssignment.connectionId.startsWith('S') && displayAssignment.slotRole) {
+    return `${displayAssignment.connectionId}-${displayAssignment.slotRole === 'A' ? 'A' : 'B'}`;
+  }
+
+  return displayAssignment.connectionId;
 };
 
 export type SvgDocumentModel = {
@@ -773,7 +818,7 @@ const clampLabelCenterToPanelBounds = (
 
 export const getEdgeLabelPlacements = (
   edges: SvgEdge[],
-  edgeAssignments: Record<string, EdgeAssignment>,
+  edgeAssignments: EdgeAssignmentRecord,
   options: EdgeLabelPlacementOptions,
 ): EdgeLabelPlacement[] => {
   const labelScale = options.labelScale ?? 1;
@@ -838,7 +883,7 @@ export const getEdgeLabelPlacements = (
   });
 };
 
-export const exportLabeledSvg = (svgContent: string, edgeAssignments: Record<string, EdgeAssignment>, edges: SvgEdge[]) => {
+export const exportLabeledSvg = (svgContent: string, edgeAssignments: EdgeAssignmentRecord, edges: SvgEdge[]) => {
   const document = new DOMParser().parseFromString(svgContent, 'image/svg+xml');
   const svgElement = document.querySelector('svg');
 
@@ -863,7 +908,7 @@ export const exportLabeledSvg = (svgContent: string, edgeAssignments: Record<str
   labelGroup.setAttribute('fill', '#0f172a');
 
   edges.forEach((edge) => {
-    const assignment = edgeAssignments[edge.id];
+    const assignment = getBucketEdgeAssignment(edgeAssignments[edge.id]) ?? getBucketSlotAssignments(edgeAssignments[edge.id])[0];
     if (!assignment) {
       return;
     }
