@@ -1733,6 +1733,54 @@ export const createCopiedSConnection = (id: string, previousConnection: SlotConn
   },
 });
 
+export const applySlotPropertyUpdates = (
+  connection: SlotConnectionDefinition,
+  updates: Partial<SlotConnectionProperties>,
+): SlotConnectionDefinition => {
+  const nextProperties: SlotConnectionProperties = {
+    ...connection.properties,
+    ...updates,
+  };
+
+  if (updates.materialThicknessMm !== undefined) {
+    nextProperties.slotWidthMm = getDefaultSlotWidth(updates.materialThicknessMm);
+
+    if (!connection.properties.isSlotLengthManual) {
+      nextProperties.slotLengthMm = getDefaultSlotLength(updates.materialThicknessMm);
+    }
+  }
+
+  if (updates.slotLengthMm !== undefined) {
+    nextProperties.isSlotLengthManual = true;
+  }
+
+  return {
+    ...connection,
+    properties: nextProperties,
+  };
+};
+
+export const applyActiveSGroupSlotPropertyUpdates = (
+  connections: ConnectionMap,
+  activeSGroup: ActiveSGroup | null,
+  updates: Partial<SlotConnectionProperties>,
+): ConnectionMap => {
+  if (!activeSGroup?.isActive) {
+    return connections;
+  }
+
+  const activeConnectionIds = new Set(activeSGroup.connectionIds);
+
+  return Object.fromEntries(
+    Object.entries(connections).map(([connectionId, connection]) => [
+      connectionId,
+      activeConnectionIds.has(connectionId) && connection.prefix === 'S'
+        ? applySlotPropertyUpdates(connection, updates)
+        : connection,
+    ]),
+  );
+};
+
 export const startSGroupWorkflow = (connections: ConnectionMap) => {
   const connectionId = getNextLabel('S', Object.keys(connections));
   const connection = createStandaloneSConnection(connectionId);
@@ -2280,33 +2328,23 @@ function App() {
     if (!selectedConnection || selectedConnection.prefix !== 'S') {
       return;
     }
-
-    const nextProperties: SlotConnectionProperties = {
-      ...selectedConnection.properties,
-      ...updates,
-    };
-
-    if (updates.materialThicknessMm !== undefined) {
-      nextProperties.slotWidthMm = getDefaultSlotWidth(updates.materialThicknessMm);
-
-      if (!selectedConnection.properties.isSlotLengthManual) {
-        nextProperties.slotLengthMm = getDefaultSlotLength(updates.materialThicknessMm);
-      }
-    }
-
-    if (updates.slotLengthMm !== undefined) {
-      nextProperties.isSlotLengthManual = true;
-    }
-
-    const nextConnection: SlotConnectionDefinition = {
-      ...selectedConnection,
-      properties: nextProperties,
-    };
     pushUndoState();
-    setConnections((currentConnections) => ({
-      ...currentConnections,
-      [nextConnection.id]: nextConnection,
-    }));
+    setConnections((currentConnections) => {
+      if (activeSGroup?.isActive && activeSGroup.connectionIds.includes(selectedConnection.id)) {
+        return applyActiveSGroupSlotPropertyUpdates(currentConnections, activeSGroup, updates);
+      }
+
+      const currentSelectedConnection = currentConnections[selectedConnection.id];
+
+      if (!currentSelectedConnection || currentSelectedConnection.prefix !== 'S') {
+        return currentConnections;
+      }
+
+      return {
+        ...currentConnections,
+        [currentSelectedConnection.id]: applySlotPropertyUpdates(currentSelectedConnection, updates),
+      };
+    });
   };
 
   const updateCornerProperties = (updates: Partial<CornerConnectionProperties>) => {
@@ -2732,6 +2770,36 @@ function App() {
     );
   };
 
+  const renderCompactControls = () => {
+    if (selectedConnection?.prefix === 'E') {
+      const properties = selectedConnection.properties;
+
+      return (
+        <div className="compact-property-controls" aria-label="Compact E controls">
+          <NumericField id="compact-edge-material-thickness" label="Material thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateEdgeProperties({ materialThicknessMm })} />
+          <NumericField id="compact-edge-tab-size" label="Tab size" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
+        </div>
+      );
+    }
+
+    if (selectedConnection?.prefix === 'S' && (activeSGroup?.isActive || selectedConnection)) {
+      const properties = selectedConnection.properties;
+      const controlsLabel = activeSGroup?.isActive && activeSGroup.connectionIds.includes(selectedConnection.id)
+        ? 'Compact active S group controls'
+        : 'Compact selected S controls';
+
+      return (
+        <div className="compact-property-controls" aria-label={controlsLabel}>
+          <NumericField id="compact-slot-material-thickness" label="Material thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateSlotProperties({ materialThicknessMm })} />
+          <NumericField id="compact-slot-tab-size" label="Tab size" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
+          <NumericField id="compact-slot-offset" label="Slot offset from edge" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   const baseViewBox = parseViewBox(svgModel.viewBox);
   const labelZoom = Math.max(minZoom, baseViewBox.width / canvasViewBox.width);
   const labelScreenFontSize = Math.max(minLabelFontSizePx, labelFontSizePx);
@@ -2892,6 +2960,7 @@ function App() {
             <div className="canvas-history-controls" aria-label="Canvas history controls">
               <button type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo">↶</button>
               <button type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo">↷</button>
+              {renderCompactControls()}
             </div>
             <div className="canvas-zoom-controls" aria-label="Canvas zoom controls">
               <button type="button" onClick={() => zoomCanvas(buttonZoomFactor)} aria-label="Zoom in">+</button>
