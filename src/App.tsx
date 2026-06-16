@@ -60,11 +60,26 @@ type SlotConnectionProperties = {
   playMm: number;
 };
 
+export type WallPatternType = 'UNIFORM' | 'ALTERNATING';
+
+export type WallReference = {
+  edgeId: string;
+  connectionId: string;
+  role: EdgeRole | SlotRole;
+  sourceType: 'E' | 'S';
+};
+
 type WallConnectionProperties = {
   wallHeightMm: number;
   materialThicknessMm: number;
+  fingerWidthMm: number;
   kerfMm: number;
   playMm: number;
+  selectedEdgeIds: string[];
+  references: WallReference[];
+  referencePatternType: WallPatternType | null;
+  generatedPatternType: WallPatternType | null;
+  generatedConnectionIds: string[];
 };
 
 type CornerConnectionProperties = {
@@ -138,6 +153,12 @@ export type ActiveSGroup = {
   isActive: boolean;
 };
 
+export type ActiveWGroup = {
+  groupId: string;
+  connectionId: string;
+  isActive: boolean;
+};
+
 type HistoryState = {
   edgeAssignments: Record<string, EdgeAssignmentBucket>;
   connections: ConnectionMap;
@@ -146,6 +167,7 @@ type HistoryState = {
   appliedEPanelPaths?: AppliedEPanelPath[];
   appliedSGeometry?: AppliedSGeometry[];
   activeSGroup: ActiveSGroup | null;
+  activeWGroup: ActiveWGroup | null;
 };
 
 const maxHistoryEntries = 10;
@@ -158,6 +180,7 @@ const cloneHistoryState = (state: HistoryState): HistoryState => ({
   ...(state.appliedEPanelPaths ? { appliedEPanelPaths: structuredClone(state.appliedEPanelPaths) } : {}),
   ...(state.appliedSGeometry ? { appliedSGeometry: structuredClone(state.appliedSGeometry) } : {}),
   activeSGroup: state.activeSGroup ? structuredClone(state.activeSGroup) : null,
+  activeWGroup: state.activeWGroup ? structuredClone(state.activeWGroup) : null,
 });
 
 type NumericFieldProps = {
@@ -1572,8 +1595,14 @@ export const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
   W: {
     wallHeightMm: 30,
     materialThicknessMm: 3,
+    fingerWidthMm: 9,
     kerfMm: 0.15,
     playMm: 0,
+    selectedEdgeIds: [],
+    references: [],
+    referencePatternType: null,
+    generatedPatternType: null,
+    generatedConnectionIds: [],
   },
   C: {
     cornerDepthMm: getDefaultCornerDepth(3),
@@ -1872,6 +1901,153 @@ export const maybeAutoCreateNextSInGroup = (
   };
 };
 
+
+export const getWGroupActionNumber = (connections: ConnectionMap, activeWGroup: ActiveWGroup | null) => {
+  if (activeWGroup?.isActive) {
+    return getLabelNumber(activeWGroup.connectionId);
+  }
+
+  const wNumbers = Object.keys(connections)
+    .filter((label) => getLabelPrefix(label) === 'W')
+    .map(getLabelNumber)
+    .filter((value) => Number.isFinite(value));
+
+  return wNumbers.length > 0 ? Math.max(...wNumbers) + 1 : 1;
+};
+
+const createStandaloneWConnection = (id: string): WallConnectionDefinition => ({
+  id,
+  prefix: 'W',
+  properties: cloneDefaultProperties('W'),
+});
+
+export const startWGroupWorkflow = (connections: ConnectionMap) => {
+  const connectionId = getNextLabel('W', Object.keys(connections));
+
+  return {
+    connections: { ...connections, [connectionId]: createStandaloneWConnection(connectionId) },
+    selectedLabelId: connectionId,
+    activeWGroup: { groupId: `w-group-${connectionId}`, connectionId, isActive: true } satisfies ActiveWGroup,
+  };
+};
+
+export const collectWReferences = (
+  selectedEdgeIds: string[],
+  assignments: EdgeAssignmentRecord,
+): WallReference[] => selectedEdgeIds.flatMap((edgeId) => {
+  const bucket = toEdgeAssignmentBucket(assignments[edgeId]);
+  if (!bucket) {
+    return [];
+  }
+
+  const edgeReference = bucket.edgeAssignment?.connectionId.startsWith('E') && bucket.edgeAssignment.edgeRole
+    ? [{ edgeId, connectionId: bucket.edgeAssignment.connectionId, role: bucket.edgeAssignment.edgeRole, sourceType: 'E' as const }]
+    : [];
+  const slotReferences = getBucketSlotAssignments(bucket)
+    .filter((assignment) => assignment.connectionId.startsWith('S') && !!assignment.slotRole)
+    .map((assignment) => ({ edgeId, connectionId: assignment.connectionId, role: assignment.slotRole as SlotRole, sourceType: 'S' as const }));
+
+  return [...edgeReference, ...slotReferences];
+});
+
+export const classifyWReferencePattern = (references: WallReference[]): WallPatternType | null => {
+  if (references.length === 0) {
+    return null;
+  }
+
+  const roles = references.map((reference) => reference.role);
+  const allSame = roles.every((role) => role === roles[0]);
+  if (allSame) {
+    return 'UNIFORM';
+  }
+
+  const alternating = roles.length > 1 && roles.every((role, index) => index === 0 || role !== roles[index - 1]);
+  return alternating ? 'ALTERNATING' : null;
+};
+
+export const invertWPatternType = (patternType: WallPatternType): WallPatternType => (
+  patternType === 'UNIFORM' ? 'ALTERNATING' : 'UNIFORM'
+);
+
+export const generateWEdgeRoles = (edgeIds: string[], generatedPatternType: WallPatternType): EdgeRole[] => (
+  edgeIds.map((_, index) => (generatedPatternType === 'ALTERNATING' && index % 2 === 1 ? 'B' : 'A'))
+);
+
+export const finishWGroupWorkflow = (
+  connections: ConnectionMap,
+  assignments: EdgeAssignmentRecord,
+  activeWGroup: ActiveWGroup | null,
+): { connections: ConnectionMap; assignments: EdgeAssignmentRecord; selectedLabelId: string | null; activeWGroup: ActiveWGroup | null } => {
+  if (!activeWGroup?.isActive) {
+    return { connections, assignments, selectedLabelId: null, activeWGroup };
+  }
+
+  const wConnection = connections[activeWGroup.connectionId];
+  if (!wConnection || wConnection.prefix !== 'W') {
+    throw new Error('Active W group is missing its W connection metadata.');
+  }
+
+  const selectedEdgeIds = wConnection.properties.selectedEdgeIds;
+  if (selectedEdgeIds.length === 0) {
+    throw new Error(`${activeWGroup.connectionId} has no selected wall edges.`);
+  }
+
+  const references = collectWReferences(selectedEdgeIds, assignments);
+  if (references.length !== selectedEdgeIds.length) {
+    throw new Error(`${activeWGroup.connectionId} references could not be determined for every selected wall edge.`);
+  }
+
+  const referencePatternType = classifyWReferencePattern(references);
+  if (!referencePatternType) {
+    throw new Error(`${activeWGroup.connectionId} references are neither uniform nor alternating across the complete W group.`);
+  }
+
+  const generatedPatternType = invertWPatternType(referencePatternType);
+  const generatedConnectionId = getNextLabel('E', Object.keys(connections));
+  const generatedRoles = generateWEdgeRoles(selectedEdgeIds, generatedPatternType);
+  const generatedConnection: EdgeConnectionDefinition = {
+    id: generatedConnectionId,
+    prefix: 'E',
+    properties: {
+      materialThicknessMm: wConnection.properties.materialThicknessMm,
+      fingerWidthMm: wConnection.properties.fingerWidthMm,
+      isFingerWidthManual: true,
+    },
+  };
+
+  const nextAssignments = { ...assignments };
+  selectedEdgeIds.forEach((edgeId, index) => {
+    const currentBucket = toEdgeAssignmentBucket(nextAssignments[edgeId]) ?? {};
+    nextAssignments[edgeId] = {
+      ...currentBucket,
+      edgeAssignment: {
+        connectionId: generatedConnectionId,
+        edgeRole: generatedRoles[index],
+      },
+    };
+  });
+
+  return {
+    connections: {
+      ...connections,
+      [generatedConnectionId]: generatedConnection,
+      [wConnection.id]: {
+        ...wConnection,
+        properties: {
+          ...wConnection.properties,
+          references,
+          referencePatternType,
+          generatedPatternType,
+          generatedConnectionIds: [generatedConnectionId],
+        },
+      },
+    },
+    assignments: nextAssignments,
+    selectedLabelId: generatedConnectionId,
+    activeWGroup: { ...activeWGroup, isActive: false },
+  };
+};
+
 const formatEdgeRoleLabel = (role: EdgeRole | undefined) => {
   if (role === 'A') {
     return 'A';
@@ -1957,6 +2133,7 @@ function App() {
   const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
   const [appliedSGeometry, setAppliedSGeometry] = useState<AppliedSGeometry[]>([]);
   const [activeSGroup, setActiveSGroup] = useState<ActiveSGroup | null>(null);
+  const [activeWGroup, setActiveWGroup] = useState<ActiveWGroup | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -1967,6 +2144,7 @@ function App() {
   const [redoStack, setRedoStack] = useState<HistoryState[]>([]);
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
   const [expandedSGroups, setExpandedSGroups] = useState<Record<string, boolean>>({});
+  const [expandedWGroups, setExpandedWGroups] = useState<Record<string, boolean>>({});
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
   const selectedConnection = selectedLabelId ? connections[selectedLabelId] ?? null : null;
@@ -1988,6 +2166,18 @@ function App() {
       labels: availableLabels.filter((label) => getLabelPrefix(label) === group.prefix),
     }));
   }, [availableLabels]);
+
+  const wLabelGroups = useMemo(() => {
+    const wLabels = availableLabels
+      .filter((label) => getLabelPrefix(label) === 'W')
+      .sort((first, second) => getLabelNumber(first) - getLabelNumber(second));
+
+    return wLabels.map((label) => ({
+      id: `w-group-${label}`,
+      labels: [label],
+      isActive: activeWGroup?.connectionId === label && activeWGroup.isActive,
+    }));
+  }, [activeWGroup, availableLabels]);
 
   const sLabelGroups = useMemo(() => {
     const sLabels = availableLabels
@@ -2024,6 +2214,7 @@ function App() {
   }, [activeSGroup, availableLabels]);
 
   const sGroupActionNumber = getSGroupActionNumber(connections, activeSGroup);
+  const wGroupActionNumber = getWGroupActionNumber(connections, activeWGroup);
 
   const hasAssignedEEdges = useMemo(() => {
     return Object.values(edgeAssignments).some((assignment) => getBucketEdgeAssignment(assignment)?.connectionId.startsWith('E'));
@@ -2037,6 +2228,7 @@ function App() {
     appliedEPanelPaths,
     appliedSGeometry,
     activeSGroup,
+    activeWGroup,
   });
 
   const restoreHistoryState = (state: HistoryState) => {
@@ -2048,6 +2240,7 @@ function App() {
     setAppliedEPanelPaths(snapshot.appliedEPanelPaths ?? []);
     setAppliedSGeometry(snapshot.appliedSGeometry ?? []);
     setActiveSGroup(snapshot.activeSGroup);
+    setActiveWGroup(snapshot.activeWGroup);
   };
 
   const pushUndoState = () => {
@@ -2071,6 +2264,7 @@ function App() {
     setAppliedEPanelPaths([]);
     setAppliedSGeometry([]);
     setActiveSGroup(null);
+    setActiveWGroup(null);
     setUndoStack([]);
     setRedoStack([]);
     setErrorMessage('');
@@ -2117,6 +2311,35 @@ function App() {
     setErrorMessage('');
   };
 
+  const startWGroup = () => {
+    pushUndoState();
+    const nextWorkflow = startWGroupWorkflow(connections);
+    setConnections(nextWorkflow.connections);
+    setSelectedLabelId(nextWorkflow.selectedLabelId);
+    setActiveWGroup(nextWorkflow.activeWGroup);
+    setExpandedWGroups((currentGroups) => ({ ...currentGroups, [nextWorkflow.activeWGroup.groupId]: true }));
+    setErrorMessage('');
+  };
+
+  const finishWGroup = () => {
+    if (!activeWGroup?.isActive) {
+      return;
+    }
+
+    try {
+      pushUndoState();
+      const nextWorkflow = finishWGroupWorkflow(connections, edgeAssignments, activeWGroup);
+      setConnections(nextWorkflow.connections);
+      setEdgeAssignments(nextWorkflow.assignments as Record<string, EdgeAssignmentBucket>);
+      setSelectedLabelId(nextWorkflow.selectedLabelId);
+      setActiveWGroup(nextWorkflow.activeWGroup);
+      setExpandedWGroups((currentGroups) => ({ ...currentGroups, [activeWGroup.groupId]: false }));
+      setErrorMessage('');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to finish W group.');
+    }
+  };
+
   const finishSGroup = () => {
     if (!activeSGroup?.isActive) {
       return;
@@ -2153,6 +2376,36 @@ function App() {
     const connection = connections[selectedLabelId];
     if (!connection) {
       setErrorMessage('Select a valid connection before clicking an edge.');
+      return;
+    }
+
+    if (connection.prefix === 'W') {
+      if (!activeWGroup?.isActive || activeWGroup.connectionId !== connection.id) {
+        setErrorMessage('Start a W group before selecting wall edges.');
+        return;
+      }
+
+      pushUndoState();
+      setConnections((currentConnections) => {
+        const currentConnection = currentConnections[connection.id];
+        if (!currentConnection || currentConnection.prefix !== 'W') {
+          return currentConnections;
+        }
+        const selectedEdgeIds = currentConnection.properties.selectedEdgeIds.includes(edgeId)
+          ? currentConnection.properties.selectedEdgeIds.filter((selectedEdgeId) => selectedEdgeId !== edgeId)
+          : [...currentConnection.properties.selectedEdgeIds, edgeId];
+        return {
+          ...currentConnections,
+          [connection.id]: {
+            ...currentConnection,
+            properties: {
+              ...currentConnection.properties,
+              selectedEdgeIds,
+            },
+          },
+        };
+      });
+      setErrorMessage('');
       return;
     }
 
@@ -2351,6 +2604,7 @@ function App() {
     setAppliedEPanelPaths([]);
     setAppliedSGeometry([]);
     setActiveSGroup(null);
+    setActiveWGroup(null);
     setErrorMessage('');
     setUndoStack([]);
     setRedoStack([]);
@@ -2820,22 +3074,44 @@ function App() {
 
     if (selectedConnection.prefix === 'W') {
       const properties = selectedConnection.properties;
+      const selectedEdges = svgModel.edges.filter((edge) => properties.selectedEdgeIds.includes(edge.id));
       return (
         <div className="property-sections">
+          <section className="property-section" aria-labelledby="wall-assigned-edges">
+            <h4 id="wall-assigned-edges">W group metadata</h4>
+            {selectedEdges.length > 0 ? (
+              <ul className="calculated-edge-list">
+                {selectedEdges.map((edge) => (
+                  <li key={edge.id}>
+                    <strong>{edge.id}</strong>
+                    <dl>
+                      <div>
+                        <dt>Source</dt>
+                        <dd>{edge.source}</dd>
+                      </div>
+                      <div>
+                        <dt>References</dt>
+                        <dd>{getEdgeAssignmentDisplayLabels(edgeAssignments[edge.id]).join(', ') || 'None'}</dd>
+                      </div>
+                    </dl>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">Start this W group, then click wall edges that already carry E or S references.</p>
+            )}
+            {properties.referencePatternType && properties.generatedPatternType && (
+              <p className="muted">Reference pattern: {properties.referencePatternType}; generated E pattern: {properties.generatedPatternType}; generated labels: {properties.generatedConnectionIds.join(', ')}.</p>
+            )}
+          </section>
+
           <section className="property-section" aria-labelledby="wall-basic-properties">
             <h4 id="wall-basic-properties">Basic</h4>
             <div className="property-grid">
-              <NumericField id="wall-height" label="Wall height (mm)" min={0} value={properties.wallHeightMm} onChange={(wallHeightMm) => updateWallProperties({ wallHeightMm })} />
               <NumericField id="wall-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateWallProperties({ materialThicknessMm })} />
+              <NumericField id="wall-tab-size" label="Tab size (mm)" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateWallProperties({ fingerWidthMm })} />
             </div>
-          </section>
-
-          <section className="property-section" aria-labelledby="wall-advanced-properties">
-            <h4 id="wall-advanced-properties">Advanced</h4>
-            <div className="property-grid">
-              <NumericField id="wall-kerf" label="Kerf (mm)" min={0} value={properties.kerfMm} onChange={(kerfMm) => updateWallProperties({ kerfMm })} />
-              <NumericField id="wall-play" label="Play (mm)" min={0} value={properties.playMm} onChange={(playMm) => updateWallProperties({ playMm })} />
-            </div>
+            <p className="muted">W stores metadata only and creates ordinary E assignments on finish.</p>
           </section>
         </div>
       );
@@ -3000,6 +3276,11 @@ function App() {
                         <button type="button" onClick={startSGroup}>Start S Group {sGroupActionNumber}</button>
                         <button type="button" onClick={finishSGroup} disabled={!activeSGroup?.isActive}>Finish S Group {sGroupActionNumber}</button>
                       </>
+                    ) : prefix === 'W' ? (
+                      <>
+                        <button type="button" onClick={startWGroup}>Start W Group {wGroupActionNumber}</button>
+                        <button type="button" onClick={finishWGroup} disabled={!activeWGroup?.isActive}>Finish W Group {wGroupActionNumber}</button>
+                      </>
                     ) : (
                       <button type="button" onClick={() => createLabel(prefix)}>
                         Add {getNextLabel(prefix, availableLabels)}
@@ -3044,6 +3325,45 @@ function App() {
                                     </button>
                                   </li>
                                 ))}
+                              </ul>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : prefix === 'W' ? (
+                    <ul className="label-list s-group-list">
+                      {wLabelGroups.map((wGroup, groupIndex) => {
+                        const label = wGroup.labels[0];
+                        const isExpanded = wGroup.isActive || expandedWGroups[wGroup.id] === true;
+                        const connection = connections[label];
+                        const selectedCount = connection?.prefix === 'W' ? connection.properties.selectedEdgeIds.length : 0;
+                        return (
+                          <li key={wGroup.id}>
+                            <button
+                              type="button"
+                              className={`s-group-toggle${selectedLabelId === label ? ' selected-label' : ''}`}
+                              aria-expanded={isExpanded}
+                              onClick={() => setExpandedWGroups((currentGroups) => ({ ...currentGroups, [wGroup.id]: !isExpanded }))}
+                            >
+                              <strong>W Group {groupIndex + 1} ({selectedCount})</strong>
+                              <span>{isExpanded ? 'Hide' : 'Show'}</span>
+                            </button>
+                            {isExpanded && (
+                              <ul className="s-group-connection-list">
+                                <li>
+                                  <button
+                                    type="button"
+                                    className={selectedLabelId === label ? 'selected-label' : ''}
+                                    onClick={() => {
+                                      setSelectedLabelId(label);
+                                      setErrorMessage('');
+                                    }}
+                                  >
+                                    <strong>{label}</strong>
+                                    <span>{selectedCount} {selectedCount === 1 ? 'wall edge' : 'wall edges'}</span>
+                                  </button>
+                                </li>
                               </ul>
                             )}
                           </li>
