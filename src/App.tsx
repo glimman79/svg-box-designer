@@ -3,7 +3,7 @@ import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
 
-type LabelPrefix = 'E' | 'S' | 'C' | 'P';
+type LabelPrefix = 'E' | 'S' | 'W' | 'C' | 'P';
 
 const isEdgeAssignmentBucket = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined): assignment is EdgeAssignmentBucket => (
   !!assignment && ('edgeAssignment' in assignment || 'slotAssignments' in assignment)
@@ -60,6 +60,13 @@ type SlotConnectionProperties = {
   playMm: number;
 };
 
+type WallConnectionProperties = {
+  wallHeightMm: number;
+  materialThicknessMm: number;
+  kerfMm: number;
+  playMm: number;
+};
+
 type CornerConnectionProperties = {
   cornerDepthMm: number;
   isCornerDepthManual: boolean;
@@ -81,6 +88,7 @@ type PatternConnectionProperties = {
 type ConnectionPropertiesByPrefix = {
   E: EdgeConnectionProperties;
   S: SlotConnectionProperties;
+  W: WallConnectionProperties;
   C: CornerConnectionProperties;
   P: PatternConnectionProperties;
 };
@@ -95,6 +103,12 @@ type SlotConnectionDefinition = {
   id: string;
   prefix: 'S';
   properties: SlotConnectionProperties;
+};
+
+type WallConnectionDefinition = {
+  id: string;
+  prefix: 'W';
+  properties: WallConnectionProperties;
 };
 
 type CornerConnectionDefinition = {
@@ -112,6 +126,7 @@ type PatternConnectionDefinition = {
 export type ConnectionDefinition =
   | EdgeConnectionDefinition
   | SlotConnectionDefinition
+  | WallConnectionDefinition
   | CornerConnectionDefinition
   | PatternConnectionDefinition;
 
@@ -1534,6 +1549,7 @@ export const buildAppliedSGeometry = (
 const labelGroups: LabelGroup[] = [
   { prefix: 'E', name: 'Edge connections', description: 'Reusable edge connection IDs' },
   { prefix: 'S', name: 'Slot connections', description: 'Reusable slot connection IDs' },
+  { prefix: 'W', name: 'Wall connections', description: 'Reusable wall connection IDs' },
   { prefix: 'C', name: 'Corner connections', description: 'Reusable corner connection IDs' },
   { prefix: 'P', name: 'Pattern connections', description: 'Reusable pattern connection IDs' },
 ];
@@ -1549,6 +1565,12 @@ export const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
     slotWidthMm: getDefaultSlotWidth(3),
     slotLengthMm: getDefaultSlotLength(3),
     isSlotLengthManual: false,
+    materialThicknessMm: 3,
+    kerfMm: 0.15,
+    playMm: 0,
+  },
+  W: {
+    wallHeightMm: 30,
     materialThicknessMm: 3,
     kerfMm: 0.15,
     playMm: 0,
@@ -1877,6 +1899,10 @@ const createConnectionDefinition = (
   }
 
   if (prefix === 'S') {
+    return { id, prefix, properties: cloneDefaultProperties(prefix) };
+  }
+
+  if (prefix === 'W') {
     return { id, prefix, properties: cloneDefaultProperties(prefix) };
   }
 
@@ -2399,6 +2425,24 @@ function App() {
     });
   };
 
+  const updateWallProperties = (updates: Partial<WallConnectionProperties>) => {
+    if (!selectedConnection || selectedConnection.prefix !== 'W') {
+      return;
+    }
+
+    pushUndoState();
+    setConnections((currentConnections) => ({
+      ...currentConnections,
+      [selectedConnection.id]: {
+        ...selectedConnection,
+        properties: {
+          ...selectedConnection.properties,
+          ...updates,
+        },
+      },
+    }));
+  };
+
   const updateCornerProperties = (updates: Partial<CornerConnectionProperties>) => {
     if (!selectedConnection || selectedConnection.prefix !== 'C') {
       return;
@@ -2649,7 +2693,7 @@ function App() {
 
   const renderPropertiesPanel = () => {
     if (!selectedConnection) {
-      return <p className="muted">Select E1, S1, C1, or P1 to edit its saved connection properties.</p>;
+      return <p className="muted">Select E1, S1, W1, C1, or P1 to edit its saved connection properties.</p>;
     }
 
     if (selectedConnection.prefix === 'E') {
@@ -2768,6 +2812,29 @@ function App() {
             <div className="property-grid">
               <NumericField id="slot-kerf" label="Kerf (mm)" min={0} value={properties.kerfMm} onChange={(kerfMm) => updateSlotProperties({ kerfMm })} />
               <NumericField id="slot-play" label="Play (mm)" min={0} value={properties.playMm} onChange={(playMm) => updateSlotProperties({ playMm })} />
+            </div>
+          </section>
+        </div>
+      );
+    }
+
+    if (selectedConnection.prefix === 'W') {
+      const properties = selectedConnection.properties;
+      return (
+        <div className="property-sections">
+          <section className="property-section" aria-labelledby="wall-basic-properties">
+            <h4 id="wall-basic-properties">Basic</h4>
+            <div className="property-grid">
+              <NumericField id="wall-height" label="Wall height (mm)" min={0} value={properties.wallHeightMm} onChange={(wallHeightMm) => updateWallProperties({ wallHeightMm })} />
+              <NumericField id="wall-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateWallProperties({ materialThicknessMm })} />
+            </div>
+          </section>
+
+          <section className="property-section" aria-labelledby="wall-advanced-properties">
+            <h4 id="wall-advanced-properties">Advanced</h4>
+            <div className="property-grid">
+              <NumericField id="wall-kerf" label="Kerf (mm)" min={0} value={properties.kerfMm} onChange={(kerfMm) => updateWallProperties({ kerfMm })} />
+              <NumericField id="wall-play" label="Play (mm)" min={0} value={properties.playMm} onChange={(playMm) => updateWallProperties({ playMm })} />
             </div>
           </section>
         </div>

@@ -29,7 +29,7 @@ const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
 const { buildAppliedEPanelPaths, buildAppliedSGeometry, createTabSegmentPlan, exportAppliedSvg } = module.exports;
-const { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates } = module.exports;
+const { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, defaultConnectionProperties } = module.exports;
 
 const edge = (id, start, end) => ({ id, source: id, start, end });
 const panel = (id, x, y, width, height) => {
@@ -406,4 +406,9 @@ assert.equal(updatedCompactEConnections.E1.properties.fingerWidthMm, 15, 'compac
 assert.equal(updatedCompactEConnections.E2.properties.fingerWidthMm, 15, 'compact E Tab update applies fingerWidthMm to E2');
 assert.equal(updatedCompactEConnections.E1.properties.isFingerWidthManual, true, 'compact E Tab marks finger width manual');
 
+assert.equal(defaultConnectionProperties.W.wallHeightMm, 30, 'W defaults include wall height');
+assert.equal(defaultConnectionProperties.W.materialThicknessMm, 3, 'W defaults include material thickness');
+assert.equal(defaultConnectionProperties.W.kerfMm, 0.15, 'W defaults include kerf');
+assert.equal(defaultConnectionProperties.W.playMm, 0, 'W defaults include play');
 console.log('Active S group compact offset update tests passed');
+console.log('W placeholder defaults tests passed');
