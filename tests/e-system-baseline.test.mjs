@@ -415,39 +415,41 @@ console.log('Active S group compact offset update tests passed');
 console.log('W placeholder defaults tests passed');
 
 
-const wAssignmentsUniformE = {
-  'p1-top': { edgeAssignment: { connectionId: 'E1', edgeRole: 'A' } },
-  'p1-right': { edgeAssignment: { connectionId: 'E2', edgeRole: 'A' } },
-  'p1-bottom': { edgeAssignment: { connectionId: 'E3', edgeRole: 'A' } },
-  'p1-left': { edgeAssignment: { connectionId: 'E4', edgeRole: 'A' } },
-};
-const wUniformRefs = collectWReferences(single.edgeIds, wAssignmentsUniformE);
-assert.equal(wUniformRefs.length, 4, 'W can read E references from every selected edge');
-assert.deepEqual(wUniformRefs.map((ref) => ref.connectionId), ['E1', 'E2', 'E3', 'E4'], 'W stores references as a collection');
+const wallPanels = [
+  panel('w1', 20, 20, 100, 80),
+  panel('w2', 140, 20, 100, 80),
+  panel('w3', 20, 120, 100, 80),
+  panel('w4', 140, 120, 100, 80),
+];
+const wallModel = modelForPanels(wallPanels);
+const selectedWallEdges = wallPanels.map((p) => `${p.id}-top`);
+const wAssignmentsUniformE = Object.fromEntries(wallPanels.map((p, index) => [
+  `${p.id}-right`,
+  { edgeAssignment: { connectionId: `E${index + 1}`, edgeRole: 'A' } },
+]));
+const wUniformRefs = collectWReferences(selectedWallEdges, wAssignmentsUniformE, wallModel);
+assert.equal(wUniformRefs.length, 4, 'W can read same-panel E references when selected W edges are unassigned');
+assert.deepEqual(wUniformRefs.map((ref) => ref.connectionId), ['E1', 'E2', 'E3', 'E4'], 'W stores local panel references as a collection');
 assert.equal(classifyWReferencePattern(wUniformRefs), 'UNIFORM', 'W classification uses complete group uniform reference set');
 assert.equal(invertWPatternType('UNIFORM'), 'ALTERNATING', 'uniform references invert to alternating W pattern');
-assert.deepEqual(generateWEdgeRoles(single.edgeIds, 'ALTERNATING'), ['A', 'B', 'A', 'B'], 'alternating W generation assigns ordinary E roles');
+assert.deepEqual(generateWEdgeRoles(selectedWallEdges, 'ALTERNATING'), ['A', 'B', 'A', 'B'], 'alternating W generation assigns ordinary E roles');
 
-const wAssignmentsAlternatingE = {
-  'p1-top': { edgeAssignment: { connectionId: 'E1', edgeRole: 'A' } },
-  'p1-right': { edgeAssignment: { connectionId: 'E2', edgeRole: 'B' } },
-  'p1-bottom': { edgeAssignment: { connectionId: 'E3', edgeRole: 'A' } },
-  'p1-left': { edgeAssignment: { connectionId: 'E4', edgeRole: 'B' } },
-};
-const wAlternatingRefs = collectWReferences(single.edgeIds, wAssignmentsAlternatingE);
+const wAssignmentsAlternatingE = Object.fromEntries(wallPanels.map((p, index) => [
+  `${p.id}-right`,
+  { edgeAssignment: { connectionId: `E${index + 1}`, edgeRole: index % 2 === 1 ? 'B' : 'A' } },
+]));
+const wAlternatingRefs = collectWReferences(selectedWallEdges, wAssignmentsAlternatingE, wallModel);
 assert.equal(classifyWReferencePattern(wAlternatingRefs), 'ALTERNATING', 'W classification uses complete group alternating reference set');
 assert.equal(invertWPatternType('ALTERNATING'), 'UNIFORM', 'alternating references invert to uniform W pattern');
-assert.deepEqual(generateWEdgeRoles(single.edgeIds, 'UNIFORM'), ['A', 'A', 'A', 'A'], 'uniform W generation assigns ordinary E roles');
+assert.deepEqual(generateWEdgeRoles(selectedWallEdges, 'UNIFORM'), ['A', 'A', 'A', 'A'], 'uniform W generation assigns ordinary E roles');
 assert.equal(classifyWReferencePattern([wAlternatingRefs[0]]), 'UNIFORM', 'single-edge classification would differ, proving tests cover complete-group behavior');
 
-const wAssignmentsS = {
-  'p1-top': { slotAssignments: [{ connectionId: 'S1', slotRole: 'B' }] },
-  'p1-right': { slotAssignments: [{ connectionId: 'S2', slotRole: 'B' }] },
-  'p1-bottom': { slotAssignments: [{ connectionId: 'S3', slotRole: 'B' }] },
-  'p1-left': { slotAssignments: [{ connectionId: 'S4', slotRole: 'B' }] },
-};
-const wSRefs = collectWReferences(single.edgeIds, wAssignmentsS);
-assert.equal(wSRefs.length, 4, 'W can read S references');
+const wAssignmentsS = Object.fromEntries(wallPanels.map((p, index) => [
+  `${p.id}-right`,
+  { slotAssignments: [{ connectionId: `S${index + 1}`, slotRole: 'B' }] },
+]));
+const wSRefs = collectWReferences(selectedWallEdges, wAssignmentsS, wallModel);
+assert.equal(wSRefs.length, 4, 'W can read same-panel S references when selected W edges are unassigned');
 assert.equal(classifyWReferencePattern(wSRefs), 'UNIFORM', 'S-B/S-B/S-B/S-B is a uniform W reference pattern');
 
 const wConnections = {
@@ -457,7 +459,7 @@ const wConnections = {
     properties: {
       materialThicknessMm: 4,
       fingerWidthMm: 11,
-      selectedEdgeIds: single.edgeIds,
+      selectedEdgeIds: selectedWallEdges,
       references: [],
       referencePatternType: null,
       generatedPatternType: null,
@@ -465,20 +467,20 @@ const wConnections = {
     },
   },
 };
-const finishedW = finishWGroupWorkflow(wConnections, wAssignmentsUniformE, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true });
+const finishedW = finishWGroupWorkflow(wConnections, wAssignmentsUniformE, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true }, wallModel);
 assert.equal(finishedW.connections.E1.properties.materialThicknessMm, 4, 'W material thickness is independent from E/S settings');
 assert.equal(finishedW.connections.E1.properties.fingerWidthMm, 11, 'W tab size is independent from E/S tab size');
 assert.equal(finishedW.connections.W1.properties.generatedConnectionIds.length, 1, 'W stores generated E labels as a collection');
-assert.deepEqual(single.edgeIds.map((edgeId) => finishedW.assignments[edgeId].edgeAssignment.edgeRole), ['A', 'B', 'A', 'B'], 'W generated assignments are ordinary E-compatible assignments');
-const manualEquivalentAssignments = Object.fromEntries(single.edgeIds.map((edgeId, index) => [edgeId, { connectionId: 'E1', edgeRole: index % 2 === 1 ? 'B' : 'A' }]));
-const generatedAssignments = Object.fromEntries(single.edgeIds.map((edgeId) => [edgeId, finishedW.assignments[edgeId].edgeAssignment]));
-const generatedPaths = buildAppliedEPanelPaths(modelForPanels([single]), generatedAssignments, finishedW.connections);
-const manualPaths = buildAppliedEPanelPaths(modelForPanels([single]), manualEquivalentAssignments, { E1: { id: 'E1', prefix: 'E', properties: { materialThicknessMm: 4, fingerWidthMm: 11, isFingerWidthManual: true } } });
+assert.deepEqual(selectedWallEdges.map((edgeId) => finishedW.assignments[edgeId].edgeAssignment.edgeRole), ['A', 'B', 'A', 'B'], 'W generated assignments are ordinary E-compatible assignments');
+const manualEquivalentAssignments = Object.fromEntries(selectedWallEdges.map((edgeId, index) => [edgeId, { connectionId: 'E1', edgeRole: index % 2 === 1 ? 'B' : 'A' }]));
+const generatedAssignments = Object.fromEntries(selectedWallEdges.map((edgeId) => [edgeId, finishedW.assignments[edgeId].edgeAssignment]));
+const generatedPaths = buildAppliedEPanelPaths(wallModel, generatedAssignments, finishedW.connections);
+const manualPaths = buildAppliedEPanelPaths(wallModel, manualEquivalentAssignments, { E1: { id: 'E1', prefix: 'E', properties: { materialThicknessMm: 4, fingerWidthMm: 11, isFingerWidthManual: true } } });
 assert.deepEqual(generatedPaths.map((path) => path.pathD), manualPaths.map((path) => path.pathD), 'Generated W assignments pass through existing E geometry like equivalent manual E setup');
-assert.equal(exportAppliedSvg(modelForPanels([single]), generatedPaths), exportAppliedSvg(modelForPanels([single]), manualPaths), 'Export matches equivalent manual E setup');
+assert.equal(exportAppliedSvg(wallModel, generatedPaths), exportAppliedSvg(wallModel, manualPaths), 'Export matches equivalent manual E setup');
 assert.throws(
-  () => finishWGroupWorkflow(wConnections, { 'p1-top': { edgeAssignment: { connectionId: 'E1', edgeRole: 'A' } } }, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true }),
-  /references could not be determined/,
+  () => finishWGroupWorkflow(wConnections, {}, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true }, wallModel),
+  /could not find E\/S reference labels/,
   'W validation does not guess missing references',
 );
 console.log('W group V1 tests passed');

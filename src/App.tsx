@@ -1931,10 +1931,7 @@ export const startWGroupWorkflow = (connections: ConnectionMap) => {
   };
 };
 
-export const collectWReferences = (
-  selectedEdgeIds: string[],
-  assignments: EdgeAssignmentRecord,
-): WallReference[] => selectedEdgeIds.flatMap((edgeId) => {
+const collectEdgeReferenceLabels = (edgeId: string, assignments: EdgeAssignmentRecord): WallReference[] => {
   const bucket = toEdgeAssignmentBucket(assignments[edgeId]);
   if (!bucket) {
     return [];
@@ -1948,6 +1945,21 @@ export const collectWReferences = (
     .map((assignment) => ({ edgeId, connectionId: assignment.connectionId, role: assignment.slotRole as SlotRole, sourceType: 'S' as const }));
 
   return [...edgeReference, ...slotReferences];
+};
+
+export const collectWReferences = (
+  selectedEdgeIds: string[],
+  assignments: EdgeAssignmentRecord,
+  svgModel: SvgDocumentModel,
+): WallReference[] => selectedEdgeIds.flatMap((selectedEdgeId) => {
+  const panel = findPanelContainingEdge(svgModel, selectedEdgeId);
+  if (!panel) {
+    return [];
+  }
+
+  return panel.edgeIds
+    .filter((panelEdgeId) => panelEdgeId !== selectedEdgeId)
+    .flatMap((panelEdgeId) => collectEdgeReferenceLabels(panelEdgeId, assignments));
 });
 
 export const classifyWReferencePattern = (references: WallReference[]): WallPatternType | null => {
@@ -1977,6 +1989,7 @@ export const finishWGroupWorkflow = (
   connections: ConnectionMap,
   assignments: EdgeAssignmentRecord,
   activeWGroup: ActiveWGroup | null,
+  svgModel: SvgDocumentModel,
 ): { connections: ConnectionMap; assignments: EdgeAssignmentRecord; selectedLabelId: string | null; activeWGroup: ActiveWGroup | null } => {
   if (!activeWGroup?.isActive) {
     return { connections, assignments, selectedLabelId: null, activeWGroup };
@@ -1992,9 +2005,15 @@ export const finishWGroupWorkflow = (
     throw new Error(`${activeWGroup.connectionId} has no selected wall edges.`);
   }
 
-  const references = collectWReferences(selectedEdgeIds, assignments);
-  if (references.length !== selectedEdgeIds.length) {
-    throw new Error(`${activeWGroup.connectionId} references could not be determined for every selected wall edge.`);
+  const references = collectWReferences(selectedEdgeIds, assignments, svgModel);
+  const everySelectedPanelHasReference = selectedEdgeIds.every((edgeId) => {
+    const panel = findPanelContainingEdge(svgModel, edgeId);
+    return !!panel && panel.edgeIds
+      .filter((panelEdgeId) => panelEdgeId !== edgeId)
+      .some((panelEdgeId) => collectEdgeReferenceLabels(panelEdgeId, assignments).length > 0);
+  });
+  if (!everySelectedPanelHasReference) {
+    throw new Error(`${activeWGroup.connectionId} could not find E/S reference labels on every selected wall panel.`);
   }
 
   const referencePatternType = classifyWReferencePattern(references);
@@ -2328,7 +2347,7 @@ function App() {
 
     try {
       pushUndoState();
-      const nextWorkflow = finishWGroupWorkflow(connections, edgeAssignments, activeWGroup);
+      const nextWorkflow = finishWGroupWorkflow(connections, edgeAssignments, activeWGroup, svgModel);
       setConnections(nextWorkflow.connections);
       setEdgeAssignments(nextWorkflow.assignments as Record<string, EdgeAssignmentBucket>);
       setSelectedLabelId(nextWorkflow.selectedLabelId);
