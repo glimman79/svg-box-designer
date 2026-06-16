@@ -1951,16 +1951,57 @@ export const collectWReferences = (
   selectedEdgeIds: string[],
   assignments: EdgeAssignmentRecord,
   svgModel: SvgDocumentModel,
-): WallReference[] => selectedEdgeIds.flatMap((selectedEdgeId) => {
+  wallConnectionId = 'W group',
+): WallReference[] => selectedEdgeIds.map((selectedEdgeId) => {
   const panel = findPanelContainingEdge(svgModel, selectedEdgeId);
   if (!panel) {
-    return [];
+    throw new Error(`${wallConnectionId} selected wall edge ${selectedEdgeId} is not part of a valid panel.`);
   }
 
-  return panel.edgeIds
+  const references = panel.edgeIds
     .filter((panelEdgeId) => panelEdgeId !== selectedEdgeId)
     .flatMap((panelEdgeId) => collectEdgeReferenceLabels(panelEdgeId, assignments));
+
+  if (references.length === 0) {
+    throw new Error(`${wallConnectionId} selected panel ${panel.id} for edge ${selectedEdgeId} has 0 E/S reference labels.`);
+  }
+
+  if (references.length > 1) {
+    throw new Error(`${wallConnectionId} selected panel ${panel.id} for edge ${selectedEdgeId} has multiple E/S reference labels.`);
+  }
+
+  return references[0];
 });
+
+export const buildActiveWDisplayAssignments = (
+  assignments: EdgeAssignmentRecord,
+  connections: ConnectionMap,
+  activeWGroup: ActiveWGroup | null,
+): EdgeAssignmentRecord => {
+  if (!activeWGroup?.isActive) {
+    return assignments;
+  }
+
+  const wConnection = connections[activeWGroup.connectionId];
+  if (!wConnection || wConnection.prefix !== 'W') {
+    return assignments;
+  }
+
+  const displayAssignments: EdgeAssignmentRecord = { ...assignments };
+  wConnection.properties.selectedEdgeIds.forEach((edgeId) => {
+    const currentBucket = toEdgeAssignmentBucket(displayAssignments[edgeId]) ?? {};
+    if (currentBucket.edgeAssignment) {
+      return;
+    }
+
+    displayAssignments[edgeId] = {
+      ...currentBucket,
+      edgeAssignment: { connectionId: wConnection.id, edgeRole: 'A' },
+    };
+  });
+
+  return displayAssignments;
+};
 
 export const classifyWReferencePattern = (references: WallReference[]): WallPatternType | null => {
   if (references.length === 0) {
@@ -2005,16 +2046,7 @@ export const finishWGroupWorkflow = (
     throw new Error(`${activeWGroup.connectionId} has no selected wall edges.`);
   }
 
-  const references = collectWReferences(selectedEdgeIds, assignments, svgModel);
-  const everySelectedPanelHasReference = selectedEdgeIds.every((edgeId) => {
-    const panel = findPanelContainingEdge(svgModel, edgeId);
-    return !!panel && panel.edgeIds
-      .filter((panelEdgeId) => panelEdgeId !== edgeId)
-      .some((panelEdgeId) => collectEdgeReferenceLabels(panelEdgeId, assignments).length > 0);
-  });
-  if (!everySelectedPanelHasReference) {
-    throw new Error(`${activeWGroup.connectionId} could not find E/S reference labels on every selected wall panel.`);
-  }
+  const references = collectWReferences(selectedEdgeIds, assignments, svgModel, activeWGroup.connectionId);
 
   const referencePatternType = classifyWReferencePattern(references);
   if (!referencePatternType) {
@@ -3219,7 +3251,11 @@ function App() {
   const labelScreenFontSize = Math.max(minLabelFontSizePx, labelFontSizePx);
   const labelScale = labelScreenFontSize / labelZoom / labelFontSizePx;
   const labelEdgeOffset = labelEdgeOffsetPx / labelZoom;
-  const labelPlacements = getEdgeLabelPlacements(svgModel.edges, edgeAssignments, {
+  const displayEdgeAssignments = useMemo(
+    () => buildActiveWDisplayAssignments(edgeAssignments, connections, activeWGroup),
+    [activeWGroup, connections, edgeAssignments],
+  );
+  const labelPlacements = getEdgeLabelPlacements(svgModel.edges, displayEdgeAssignments, {
     fontSizePx: labelFontSizePx,
     paddingXPx: labelPaddingXPx,
     paddingYPx: labelPaddingYPx,
@@ -3530,7 +3566,7 @@ function App() {
               </g>
               <g className="edge-overlays">
                   {svgModel.edges.map((edge) => {
-                  const assignment = edgeAssignments[edge.id];
+                  const assignment = displayEdgeAssignments[edge.id];
                   const labels = getEdgeAssignmentDisplayLabels(assignment);
                   const label = labels[0];
                   const selected = selectedEdgeId === edge.id;
