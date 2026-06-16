@@ -30,7 +30,7 @@ vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtils
 
 const { buildAppliedEPanelPaths, buildAppliedSGeometry, createTabSegmentPlan, exportAppliedSvg } = module.exports;
 const { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, defaultConnectionProperties } = module.exports;
-const { collectWReferences, classifyWReferencePattern, invertWPatternType, generateWEdgeRoles, finishWGroupWorkflow, buildAppliedEPanelPaths: buildE } = module.exports;
+const { collectWReferences, classifyWReferencePattern, invertWPatternType, generateWEdgeRoles, finishWGroupWorkflow, buildActiveWDisplayAssignments, buildAppliedEPanelPaths: buildE } = module.exports;
 
 const edge = (id, start, end) => ({ id, source: id, start, end });
 const panel = (id, x, y, width, height) => {
@@ -480,7 +480,22 @@ assert.deepEqual(generatedPaths.map((path) => path.pathD), manualPaths.map((path
 assert.equal(exportAppliedSvg(wallModel, generatedPaths), exportAppliedSvg(wallModel, manualPaths), 'Export matches equivalent manual E setup');
 assert.throws(
   () => finishWGroupWorkflow(wConnections, {}, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true }, wallModel),
-  /could not find E\/S reference labels/,
-  'W validation does not guess missing references',
+  /has 0 E\/S reference labels/,
+  '0 references on a selected W panel fails',
 );
+assert.throws(
+  () => collectWReferences(['w1-top'], {
+    'w1-right': { edgeAssignment: { connectionId: 'E1', edgeRole: 'A' } },
+    'w1-bottom': { slotAssignments: [{ connectionId: 'S1', slotRole: 'B' }] },
+  }, wallModel, 'W1'),
+  /multiple E\/S reference labels/,
+  'multiple references on the same selected W panel fails',
+);
+const wDisplayAssignments = buildActiveWDisplayAssignments({}, wConnections, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true });
+assert.equal(wDisplayAssignments['w1-top'].edgeAssignment.connectionId, 'W1', 'temporary W label is visible during active W group');
+assert.equal(wDisplayAssignments['w1-top'].edgeAssignment.edgeRole, 'A', 'temporary W display label renders as W1');
+assert.equal(wConnections.W1.properties.selectedEdgeIds.includes('w1-top'), true, 'temporary W display label uses selected W edges from connection state');
+assert.equal({}['w1-top'], undefined, 'temporary W labels are not written to edgeAssignments');
+const inactiveWDisplayAssignments = buildActiveWDisplayAssignments({}, wConnections, { groupId: 'w-group-W1', connectionId: 'W1', isActive: false });
+assert.equal(inactiveWDisplayAssignments['w1-top'], undefined, 'temporary W labels disappear after W group is inactive');
 console.log('W group V1 tests passed');
