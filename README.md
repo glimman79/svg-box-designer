@@ -17,6 +17,7 @@ The app is not intended to generate a standard parametric box like boxes.py. Ins
 - Assign labels directly to selected straight edges:
   - `E1`, `E2`, `E3`...
   - `S1`, `S2`, `S3`...
+  - `W1`, `W2`, `W3`...
   - `C1`, `C2`, `C3`...
   - `P1`, `P2`, `P3`...
 - Show labels directly on the drawing, including `E` and `S` side roles such as `E1-T`, `E1-S`, `S1-T`, and `S1-S`.
@@ -31,7 +32,7 @@ The app is not intended to generate a standard parametric box like boxes.py. Ins
 - Slots are not implemented yet.
 - Patterns are not implemented yet.
 
-The `C` and `P` labels are available as future-facing placeholders only.
+The `W`, `C`, and `P` labels are available as future-facing placeholders only.
 
 ## Getting started
 
