@@ -29,7 +29,7 @@ const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
 const { buildAppliedEPanelPaths, buildAppliedSGeometry, createTabSegmentPlan, exportAppliedSvg } = module.exports;
-const { applyActiveSGroupSlotPropertyUpdates } = module.exports;
+const { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates } = module.exports;
 
 const edge = (id, start, end) => ({ id, source: id, start, end });
 const panel = (id, x, y, width, height) => {
@@ -364,4 +364,46 @@ assert.equal(workflowConnections.S1.properties.slotOffsetMm, 50, 'group 2 offset
 assert.equal(workflowConnections.S2.properties.slotOffsetMm, 50, 'group 2 offset update leaves group 1 S2 unchanged');
 assert.equal(workflowConnections.S3.properties.slotOffsetMm, 50, 'group 2 offset update leaves group 1 S3 unchanged');
 assert.equal(workflowConnections.S4.properties.slotOffsetMm, 20, 'group 2 offset update applies to first group 2 connection');
+
+
+let compactSConnections = {
+  S1: sConnection('S1'),
+  S2: sConnection('S2'),
+  S3: sConnection('S3'),
+};
+const compactSGroup = { groupId: 's-group-S1', connectionIds: ['S1', 'S2', 'S3'], isActive: true };
+compactSConnections = applyActiveSGroupSlotPropertyUpdates(compactSConnections, compactSGroup, { slotLengthMm: 15 });
+assert.equal(compactSConnections.S1.properties.slotLengthMm, 15, 'compact S Tab update applies slotLengthMm to active group S1');
+assert.equal(compactSConnections.S2.properties.slotLengthMm, 15, 'compact S Tab update applies slotLengthMm to active group S2');
+assert.equal(compactSConnections.S3.properties.slotLengthMm, 15, 'compact S Tab update applies slotLengthMm to active group S3');
+assert.equal(compactSConnections.S1.properties.isSlotLengthManual, true, 'compact S Tab marks slot length manual');
+
+const compactSelectedS = applySlotPropertyUpdates(sConnection('S4'), { slotLengthMm: 15 });
+assert.equal(compactSelectedS.properties.slotLengthMm, 15, 'compact S Tab update applies slotLengthMm to selected S connection only');
+assert.equal(compactSelectedS.properties.isSlotLengthManual, true, 'selected compact S Tab marks slot length manual');
+
+const sTabNineGeometry = buildAppliedSGeometry(sModel, sAssignments, { S1: sConnection('S1') });
+const sTabFifteenConnection = sConnection('S1');
+sTabFifteenConnection.properties.slotLengthMm = 15;
+const sTabFifteenGeometry = buildAppliedSGeometry(sModel, sAssignments, { S1: sTabFifteenConnection });
+const sTabNineFirstSlot = sTabNineGeometry[0].slotPaths[0]?.startDistance;
+const sTabFifteenFirstSlot = sTabFifteenGeometry[0].slotPaths[0]?.startDistance;
+assert.equal(sTabNineFirstSlot, 9.5, 'S apply uses default slotLengthMm 9 for tab plan');
+assert.equal(sTabFifteenFirstSlot, 27.5, 'S apply uses updated slotLengthMm 15 for tab plan');
+
+const compactEConnections = {
+  E1: connection('E1'),
+  E2: connection('E2'),
+};
+const nextEdgeProperties = { ...compactEConnections.E1.properties, fingerWidthMm: 15, isFingerWidthManual: true };
+const updatedCompactEConnections = Object.fromEntries(Object.entries(compactEConnections).map(([connectionId, item]) => [
+  connectionId,
+  item.prefix === 'E'
+    ? { ...item, properties: { ...item.properties, fingerWidthMm: nextEdgeProperties.fingerWidthMm, materialThicknessMm: nextEdgeProperties.materialThicknessMm, isFingerWidthManual: nextEdgeProperties.isFingerWidthManual } }
+    : item,
+]));
+assert.equal(updatedCompactEConnections.E1.properties.fingerWidthMm, 15, 'compact E Tab update applies fingerWidthMm to E1');
+assert.equal(updatedCompactEConnections.E2.properties.fingerWidthMm, 15, 'compact E Tab update applies fingerWidthMm to E2');
+assert.equal(updatedCompactEConnections.E1.properties.isFingerWidthManual, true, 'compact E Tab marks finger width manual');
+
 console.log('Active S group compact offset update tests passed');

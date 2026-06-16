@@ -1445,7 +1445,7 @@ export const buildAppliedSGeometry = (
     const originalSide = getContourEdgePoints(panel, sideIndex);
     const sideLength = getContourSideLength(originalSide);
     const materialThicknessMm = connection.properties.materialThicknessMm;
-    const planSegments = createTabSegmentPlan(sideLength, materialThicknessMm * 3);
+    const planSegments = createTabSegmentPlan(sideLength, connection.properties.slotLengthMm);
     const aSegments = getTabSegmentsForRole(planSegments, 'A');
     const bLength = Math.hypot(sourceBEdge.end.x - sourceBEdge.start.x, sourceBEdge.end.y - sourceBEdge.start.y);
     const bSideIndex = bPanel.edgeIds.findIndex((edgeId) => edgeId === sourceBEdgeId);
