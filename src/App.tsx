@@ -2,8 +2,11 @@ import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
+import { buildContourSides, cornerTouchTolerance, createTabSegmentPlan, getContourSideLength, getContourSignedArea, interpolateSidePoint, isContourSideReversedFromCanonical, lineIntersection, mirrorSegments, offsetContourSide, pointsMatch, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
+import type { ContourSide, TabSegment } from './app/sharedGeometry';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
 import type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, EdgeConnectionDefinition, EdgeConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties, WallConnectionDefinition, WallConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
+export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
 export type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
 
 type LabelPrefix = 'E' | 'S' | 'W' | 'C' | 'P';
@@ -133,11 +136,6 @@ type PanelPoint = Point;
 
 type PanelContour = PanelPoint[];
 
-type ContourSide = {
-  start: Point;
-  end: Point;
-};
-
 type ContourSideOffsetPlan = {
   sideIndex: number;
   edgeId: string;
@@ -150,11 +148,6 @@ type PanelEdgeOperation = {
   role: EdgeRole;
   materialThicknessMm: number;
   fingerWidthMm: number;
-};
-
-type TabSegment = {
-  startDistance: number;
-  endDistance: number;
 };
 
 type TabSegmentPlan = {
@@ -189,17 +182,10 @@ type PanelValidationResult =
   | { valid: true }
   | { valid: false; reason: string };
 
-const cornerTouchTolerance = 0.01;
-
 const getContourEdgePoints = (panel: SvgPanel, contourIndex: number) => ({
   start: panel.contour[contourIndex],
   end: panel.contour[(contourIndex + 1) % panel.contour.length],
 });
-
-const pointsMatch = (first: Point, second: Point) => (
-  Math.abs(first.x - second.x) <= cornerTouchTolerance
-  && Math.abs(first.y - second.y) <= cornerTouchTolerance
-);
 
 const edgeMatchesContourSide = (edge: SvgEdge, start: Point, end: Point) => {
   const normalMatch = pointsMatch(edge.start, start) && pointsMatch(edge.end, end);
@@ -211,75 +197,10 @@ const edgeMatchesContourSide = (edge: SvgEdge, start: Point, end: Point) => {
   };
 };
 
-export const pointsToClosedPathD = (points: Point[]) => (
-  `${points
-    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
-    .join(' ')} Z`
-);
-
 const clonePanelContour = (panel: SvgPanel): PanelContour => (
   panel.contour.map((point) => ({ x: point.x, y: point.y }))
 );
 
-const getContourSignedArea = (contour: PanelContour) => (
-  contour.reduce((area, point, index) => {
-    const nextPoint = contour[(index + 1) % contour.length];
-    return area + ((point.x * nextPoint.y) - (nextPoint.x * point.y));
-  }, 0) / 2
-);
-
-const buildContourSides = (contour: PanelContour): ContourSide[] => (
-  contour.map((point, index) => ({
-    start: { x: point.x, y: point.y },
-    end: {
-      x: contour[(index + 1) % contour.length].x,
-      y: contour[(index + 1) % contour.length].y,
-    },
-  }))
-);
-
-const offsetContourSide = (side: ContourSide, offsetDistance: number): ContourSide | null => {
-  const sideLength = Math.hypot(side.end.x - side.start.x, side.end.y - side.start.y);
-
-  if (sideLength <= cornerTouchTolerance) {
-    return null;
-  }
-
-  const offsetX = (-(side.end.y - side.start.y) / sideLength) * offsetDistance;
-  const offsetY = ((side.end.x - side.start.x) / sideLength) * offsetDistance;
-
-  return {
-    start: {
-      x: side.start.x + offsetX,
-      y: side.start.y + offsetY,
-    },
-    end: {
-      x: side.end.x + offsetX,
-      y: side.end.y + offsetY,
-    },
-  };
-};
-
-const lineIntersection = (firstSide: ContourSide, secondSide: ContourSide): Point | null => {
-  const firstDx = firstSide.end.x - firstSide.start.x;
-  const firstDy = firstSide.end.y - firstSide.start.y;
-  const secondDx = secondSide.end.x - secondSide.start.x;
-  const secondDy = secondSide.end.y - secondSide.start.y;
-  const denominator = (firstDx * secondDy) - (firstDy * secondDx);
-
-  if (Math.abs(denominator) <= cornerTouchTolerance) {
-    return null;
-  }
-
-  const startDx = secondSide.start.x - firstSide.start.x;
-  const startDy = secondSide.start.y - firstSide.start.y;
-  const firstScale = ((startDx * secondDy) - (startDy * secondDx)) / denominator;
-
-  return {
-    x: firstSide.start.x + (firstScale * firstDx),
-    y: firstSide.start.y + (firstScale * firstDy),
-  };
-};
 
 const validatePanelContour = (contour: PanelContour): PanelGeometryBuildResult => {
   if (contour.length < 3) {
@@ -390,61 +311,6 @@ const applyContourSideOffsetPlan = (
   return validatePanelContour(contourResult as PanelContour);
 };
 
-export const createTabSegmentPlan = (
-  insetLength: number,
-  fingerWidthMm: number,
-): TabSegment[] => {
-  const safeInsetLength = Math.max(0, insetLength);
-  const safeFingerWidth = Math.max(0, fingerWidthMm);
-
-  if (safeInsetLength <= cornerTouchTolerance) {
-    return [];
-  }
-
-  if (safeFingerWidth <= cornerTouchTolerance || safeInsetLength < safeFingerWidth) {
-    return [{ startDistance: 0, endDistance: safeInsetLength }];
-  }
-
-  const maxInteriorSegmentCount = Math.floor((safeInsetLength - (2 * safeFingerWidth)) / safeFingerWidth);
-  let interiorSegmentCount = maxInteriorSegmentCount % 2 === 0
-    ? maxInteriorSegmentCount - 1
-    : maxInteriorSegmentCount;
-
-  while (interiorSegmentCount >= 1) {
-    const outerLength = (safeInsetLength - (interiorSegmentCount * safeFingerWidth)) / 2;
-
-    if (outerLength + cornerTouchTolerance >= safeFingerWidth) {
-      const segments: TabSegment[] = [
-        { startDistance: 0, endDistance: outerLength },
-      ];
-
-      for (let index = 0; index < interiorSegmentCount; index += 1) {
-        const startDistance = outerLength + (index * safeFingerWidth);
-
-        segments.push({
-          startDistance,
-          endDistance: startDistance + safeFingerWidth,
-        });
-      }
-
-      segments.push({
-        startDistance: safeInsetLength - outerLength,
-        endDistance: safeInsetLength,
-      });
-
-      return segments;
-    }
-
-    interiorSegmentCount -= 2;
-  }
-
-  return [{ startDistance: 0, endDistance: safeInsetLength }];
-};
-
-const getContourSideLength = (side: ContourSide) => (
-  Math.hypot(side.end.x - side.start.x, side.end.y - side.start.y)
-);
-
 export const buildTabSegmentPlansByConnectionId = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
@@ -551,34 +417,6 @@ const getTabSegmentsForRole = (
   ))
 );
 
-const interpolateSidePoint = (side: ContourSide, distance: number): Point => {
-  const sideLength = getContourSideLength(side);
-
-  if (sideLength <= cornerTouchTolerance) {
-    return { x: side.start.x, y: side.start.y };
-  }
-
-  const distanceRatio = distance / sideLength;
-
-  return {
-    x: side.start.x + (side.end.x - side.start.x) * distanceRatio,
-    y: side.start.y + (side.end.y - side.start.y) * distanceRatio,
-  };
-};
-
-const projectPointDistanceOnSide = (side: ContourSide, point: Point): number => {
-  const sideLength = getContourSideLength(side);
-
-  if (sideLength <= cornerTouchTolerance) {
-    return 0;
-  }
-
-  const sideUnitX = (side.end.x - side.start.x) / sideLength;
-  const sideUnitY = (side.end.y - side.start.y) / sideLength;
-
-  return ((point.x - side.start.x) * sideUnitX) + ((point.y - side.start.y) * sideUnitY);
-};
-
 const clipOriginalSegmentsToInsetSide = (
   originalSide: ContourSide,
   insetSide: ContourSide,
@@ -601,31 +439,6 @@ const clipOriginalSegmentsToInsetSide = (
     }];
   });
 };
-
-const getContourSideCanonicalOrientation = (side: ContourSide): 'horizontal' | 'vertical' => {
-  const dx = side.end.x - side.start.x;
-  const dy = side.end.y - side.start.y;
-
-  return Math.abs(dx) >= Math.abs(dy) ? 'horizontal' : 'vertical';
-};
-
-const isContourSideReversedFromCanonical = (side: ContourSide): boolean => (
-  getContourSideCanonicalOrientation(side) === 'horizontal'
-    ? side.start.x > side.end.x
-    : side.start.y > side.end.y
-);
-
-const mirrorSegments = (
-  segments: TabSegment[],
-  sideLength: number,
-): TabSegment[] => (
-  segments
-    .map((segment) => ({
-      startDistance: sideLength - segment.endDistance,
-      endDistance: sideLength - segment.startDistance,
-    }))
-    .sort((first, second) => first.startDistance - second.startDistance)
-);
 
 const buildTabOperations = (
   panel: SvgPanel,
