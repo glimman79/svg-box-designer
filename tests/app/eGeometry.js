@@ -11,6 +11,7 @@ const compiled = ts.transpileModule(source, {
 const moduleShim = { exports: {} };
 const mockRequire = (id) => {
   if (id === './sharedGeometry') return require('./sharedGeometry');
+  if (id === './assignmentBuckets') return require('../../src/app/assignmentBuckets.ts');
   if (id === '../svgUtils') return {};
   return require(id);
 };
