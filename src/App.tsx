@@ -3,7 +3,7 @@ import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
 import { exportAppliedSvg } from './app/exportAppliedSvg';
-import { addContourPoint, applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, clipOriginalSegmentsToInsetSide, clonePanelContour, mergeTabSegmentPlansByConnectionId, removeInteriorBacktrackSpurs, validatePanelContour } from './app/eGeometry';
+import { addContourPoint, applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, clipOriginalSegmentsToInsetSide, clonePanelContour, getPanelEdgeOperations, mergeTabSegmentPlansByConnectionId, removeInteriorBacktrackSpurs, validatePanelContour } from './app/eGeometry';
 import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 import { buildContourSides, cornerTouchTolerance, createTabSegmentPlan, getContourSideLength, getContourSignedArea, interpolateSidePoint, isContourSideReversedFromCanonical, lineIntersection, mirrorSegments, offsetContourSide, pointsMatch, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
 import type { ContourSide, TabSegment } from './app/sharedGeometry';
@@ -11,7 +11,7 @@ import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRo
 import type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, EdgeConnectionDefinition, EdgeConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties, WallConnectionDefinition, WallConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
 export { exportAppliedSvg } from './app/exportAppliedSvg';
-export { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId } from './app/eGeometry';
+export { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 export type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
 
@@ -113,29 +113,6 @@ const getTabSegmentsForRole = (
       ? segmentIndex % 2 === 0
       : segmentIndex % 2 === 1
   ))
-);
-
-export const getPanelEdgeOperations = (
-  panel: SvgPanel,
-  assignments: EdgeAssignmentRecord,
-  connectionMap: ConnectionMap,
-): PanelEdgeOperation[] => (
-  panel.edgeIds.flatMap((edgeId) => {
-    const assignment = getBucketEdgeAssignment(assignments[edgeId]);
-    const connection = assignment ? connectionMap[assignment.connectionId] : undefined;
-
-    if (!assignment || (connection?.prefix !== 'E' && connection?.prefix !== 'W') || !assignment.edgeRole) {
-      return [];
-    }
-
-    return [{
-      edgeId,
-      connectionId: assignment.connectionId,
-      role: assignment.edgeRole,
-      materialThicknessMm: connection.properties.materialThicknessMm,
-      fingerWidthMm: connection.properties.fingerWidthMm,
-    }];
-  })
 );
 
 type PanelValidationResult =

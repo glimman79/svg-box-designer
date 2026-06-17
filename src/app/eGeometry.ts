@@ -1,4 +1,6 @@
-import type { EdgeRole, Point, SvgPanel } from '../svgUtils';
+import type { ConnectionMap } from './connectionTypes';
+import { getBucketEdgeAssignment } from './assignmentBuckets';
+import type { EdgeAssignmentRecord, EdgeRole, Point, SvgPanel } from '../svgUtils';
 import {
   buildContourSides,
   cornerTouchTolerance,
@@ -71,6 +73,30 @@ export type PanelTabOperation = {
 export type PanelGeometryBuildResult =
   | { ok: true; contour: PanelContour }
   | { ok: false; reason: string };
+
+
+export const getPanelEdgeOperations = (
+  panel: SvgPanel,
+  assignments: EdgeAssignmentRecord,
+  connectionMap: ConnectionMap,
+): PanelEdgeOperation[] => (
+  panel.edgeIds.flatMap((edgeId) => {
+    const assignment = getBucketEdgeAssignment(assignments[edgeId]);
+    const connection = assignment ? connectionMap[assignment.connectionId] : undefined;
+
+    if (!assignment || (connection?.prefix !== 'E' && connection?.prefix !== 'W') || !assignment.edgeRole) {
+      return [];
+    }
+
+    return [{
+      edgeId,
+      connectionId: assignment.connectionId,
+      role: assignment.edgeRole,
+      materialThicknessMm: connection.properties.materialThicknessMm,
+      fingerWidthMm: connection.properties.fingerWidthMm,
+    }];
+  })
+);
 
 export const clonePanelContour = (panel: SvgPanel): PanelContour => (
   panel.contour.map((point) => ({ x: point.x, y: point.y }))
