@@ -1031,14 +1031,14 @@ export const getPanelEdgeOperations = (
     const assignment = getBucketEdgeAssignment(assignments[edgeId]);
     const connection = assignment ? connectionMap[assignment.connectionId] : undefined;
 
-    if (!assignment || connection?.prefix !== 'E') {
+    if (!assignment || (connection?.prefix !== 'E' && connection?.prefix !== 'W') || !assignment.edgeRole) {
       return [];
     }
 
     return [{
       edgeId,
       connectionId: assignment.connectionId,
-      role: assignment.edgeRole ?? 'A',
+      role: assignment.edgeRole,
       materialThicknessMm: connection.properties.materialThicknessMm,
       fingerWidthMm: connection.properties.fingerWidthMm,
     }];
@@ -2004,7 +2004,7 @@ export const buildActiveWDisplayAssignments = (
 
     displayAssignments[edgeId] = {
       ...currentBucket,
-      edgeAssignment: { connectionId: wConnection.id, edgeRole: 'A' },
+      edgeAssignment: { connectionId: wConnection.id },
     };
   });
 
@@ -2062,17 +2062,7 @@ export const finishWGroupWorkflow = (
   }
 
   const generatedPatternType = invertWPatternType(referencePatternType);
-  const generatedConnectionId = getNextLabel('E', Object.keys(connections));
   const generatedRoles = generateWEdgeRoles(selectedEdgeIds, generatedPatternType);
-  const generatedConnection: EdgeConnectionDefinition = {
-    id: generatedConnectionId,
-    prefix: 'E',
-    properties: {
-      materialThicknessMm: wConnection.properties.materialThicknessMm,
-      fingerWidthMm: wConnection.properties.fingerWidthMm,
-      isFingerWidthManual: true,
-    },
-  };
 
   const nextAssignments = { ...assignments };
   selectedEdgeIds.forEach((edgeId, index) => {
@@ -2080,7 +2070,7 @@ export const finishWGroupWorkflow = (
     nextAssignments[edgeId] = {
       ...currentBucket,
       edgeAssignment: {
-        connectionId: generatedConnectionId,
+        connectionId: wConnection.id,
         edgeRole: generatedRoles[index],
       },
     };
@@ -2089,7 +2079,6 @@ export const finishWGroupWorkflow = (
   return {
     connections: {
       ...connections,
-      [generatedConnectionId]: generatedConnection,
       [wConnection.id]: {
         ...wConnection,
         properties: {
@@ -2097,12 +2086,12 @@ export const finishWGroupWorkflow = (
           references,
           referencePatternType,
           generatedPatternType,
-          generatedConnectionIds: [generatedConnectionId],
+          generatedConnectionIds: [],
         },
       },
     },
     assignments: nextAssignments,
-    selectedLabelId: generatedConnectionId,
+    selectedLabelId: wConnection.id,
     activeWGroup: { ...activeWGroup, isActive: false },
   };
 };
@@ -3160,7 +3149,7 @@ function App() {
               <p className="muted">Start this W group, then click wall edges that already carry E or S references.</p>
             )}
             {properties.referencePatternType && properties.generatedPatternType && (
-              <p className="muted">Reference pattern: {properties.referencePatternType}; generated E pattern: {properties.generatedPatternType}; generated labels: {properties.generatedConnectionIds.join(', ')}.</p>
+              <p className="muted">Reference pattern: {properties.referencePatternType}; W role pattern: {properties.generatedPatternType}.</p>
             )}
           </section>
 
@@ -3170,7 +3159,7 @@ function App() {
               <NumericField id="wall-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateWallProperties({ materialThicknessMm })} />
               <NumericField id="wall-tab-size" label="Tab size (mm)" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateWallProperties({ fingerWidthMm })} />
             </div>
-            <p className="muted">W stores metadata only and creates ordinary E assignments on finish.</p>
+            <p className="muted">W stores its own finished edge assignments and uses W material thickness and tab size.</p>
           </section>
         </div>
       );
