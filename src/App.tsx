@@ -1,43 +1,12 @@
 import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
+import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
 import type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, EdgeConnectionDefinition, EdgeConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties, WallConnectionDefinition, WallConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
 export type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
 
 type LabelPrefix = 'E' | 'S' | 'W' | 'C' | 'P';
-
-const isEdgeAssignmentBucket = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined): assignment is EdgeAssignmentBucket => (
-  !!assignment && ('edgeAssignment' in assignment || 'slotAssignments' in assignment)
-);
-
-const toEdgeAssignmentBucket = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined): EdgeAssignmentBucket | undefined => {
-  if (!assignment) {
-    return undefined;
-  }
-
-  if (isEdgeAssignmentBucket(assignment)) {
-    return assignment;
-  }
-
-  if (assignment.connectionId.startsWith('E')) {
-    return { edgeAssignment: assignment };
-  }
-
-  if (assignment.connectionId.startsWith('S')) {
-    return { slotAssignments: [assignment] };
-  }
-
-  return { edgeAssignment: assignment };
-};
-
-const getBucketEdgeAssignment = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined) => (
-  toEdgeAssignmentBucket(assignment)?.edgeAssignment
-);
-
-const getBucketSlotAssignments = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined) => (
-  toEdgeAssignmentBucket(assignment)?.slotAssignments ?? []
-);
 
 
 type LabelGroup = {
