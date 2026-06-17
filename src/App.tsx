@@ -3,7 +3,7 @@ import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
 import { exportAppliedSvg } from './app/exportAppliedSvg';
-import { addContourPoint, applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, clipOriginalSegmentsToInsetSide, clonePanelContour, getPanelEdgeOperations, mergeTabSegmentPlansByConnectionId, removeInteriorBacktrackSpurs, validatePanelContour } from './app/eGeometry';
+import { addContourPoint, applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, clipOriginalSegmentsToInsetSide, clonePanelContour, getPanelEdgeOperations, mergeTabSegmentPlansByConnectionId, removeInteriorBacktrackSpurs, validatePanelContour, buildAppliedEPanelPaths } from './app/eGeometry';
 import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 import { buildContourSides, cornerTouchTolerance, createTabSegmentPlan, getContourSideLength, getContourSignedArea, interpolateSidePoint, isContourSideReversedFromCanonical, lineIntersection, mirrorSegments, offsetContourSide, pointsMatch, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
 import type { ContourSide, TabSegment } from './app/sharedGeometry';
@@ -14,7 +14,7 @@ export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry'
 export { edgeMatchesContourSide, getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './app/sharedPanelGeometry';
 export type { PanelValidationResult } from './app/sharedPanelGeometry';
 export { exportAppliedSvg } from './app/exportAppliedSvg';
-export { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations } from './app/eGeometry';
+export { applyTabsToContour, buildAppliedEPanelPaths, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 export type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
 
@@ -106,64 +106,6 @@ type SPanelOperation = {
   materialThicknessMm: number;
   aSegments: TabSegment[];
 };
-
-export const buildAppliedEPanelPaths = (
-  svgModel: SvgDocumentModel,
-  assignments: EdgeAssignmentRecord,
-  connectionMap: ConnectionMap,
-  shouldDebugApply = false,
-): AppliedEPanelPath[] => {
-  const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
-  const insetPanelOperations = svgModel.panels.flatMap((panel) => {
-    const operations = getPanelEdgeOperations(panel, assignments, connectionMap);
-    const validation = validateClosedPanel(panel, edgesById);
-
-    if (!validation.valid || operations.length === 0) {
-      return [];
-    }
-
-    const insetResult = buildInsetPanelContour(panel, operations);
-
-    if (!insetResult.ok) {
-      return [];
-    }
-
-    return [{
-      panel,
-      operations,
-      insetContour: insetResult.contour,
-    }];
-  });
-  const tabSegmentPlansByConnectionId = mergeTabSegmentPlansByConnectionId(
-    insetPanelOperations.map(({ panel, operations }) => (
-      buildTabSegmentPlansByConnectionId(panel, operations)
-    )),
-  );
-
-
-  return insetPanelOperations.flatMap(({ panel, operations, insetContour }) => {
-    const result = buildPanelGeometry(
-      panel,
-      operations,
-      insetContour,
-      tabSegmentPlansByConnectionId,
-      shouldDebugApply,
-    );
-
-    if (!result.ok) {
-      return [];
-    }
-
-    return [{
-      panelId: panel.id,
-      eraseRect: panel.bounds,
-      erasePathD: pointsToClosedPathD(panel.contour),
-      pathD: pointsToClosedPathD(result.contour),
-      edgeIds: panel.edgeIds,
-    }];
-  });
-};
-
 
 const buildSInsetPanelContour = (
   panel: SvgPanel,
