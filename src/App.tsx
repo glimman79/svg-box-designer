@@ -2,11 +2,13 @@ import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
+import { exportAppliedSvg } from './app/exportAppliedSvg';
 import { buildContourSides, cornerTouchTolerance, createTabSegmentPlan, getContourSideLength, getContourSignedArea, interpolateSidePoint, isContourSideReversedFromCanonical, lineIntersection, mirrorSegments, offsetContourSide, pointsMatch, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
 import type { ContourSide, TabSegment } from './app/sharedGeometry';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
 import type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, EdgeConnectionDefinition, EdgeConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties, WallConnectionDefinition, WallConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
+export { exportAppliedSvg } from './app/exportAppliedSvg';
 export type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
 
 type LabelPrefix = 'E' | 'S' | 'W' | 'C' | 'P';
@@ -75,47 +77,6 @@ type PanState = {
 };
 
 
-
-const escapeSvgAttribute = (value: string | number) => String(value)
-  .replace(/&/g, '&amp;')
-  .replace(/"/g, '&quot;')
-  .replace(/</g, '&lt;')
-  .replace(/>/g, '&gt;');
-
-export const exportAppliedSvg = (
-  svgModel: SvgDocumentModel,
-  appliedEPanelPaths: AppliedEPanelPath[],
-  appliedSGeometry: AppliedSGeometry[] = [],
-): string => {
-  const rootViewBox = svgModel.rootAttributes.viewBox ?? svgModel.viewBox;
-  const rootWidth = svgModel.rootAttributes.width;
-  const rootHeight = svgModel.rootAttributes.height;
-  const sizeAttributes = [
-    rootWidth !== null ? `width="${escapeSvgAttribute(rootWidth)}"` : '',
-    rootHeight !== null ? `height="${escapeSvgAttribute(rootHeight)}"` : '',
-  ].filter(Boolean).join(' ');
-  const appliedByPanelId = new Map<string, { pathD: string }>(appliedEPanelPaths.map((panelPath) => [panelPath.panelId, panelPath]));
-  appliedSGeometry.flatMap((geometry) => geometry.panelPaths).forEach((panelPath) => {
-    if (!appliedByPanelId.has(panelPath.panelId)) {
-      appliedByPanelId.set(panelPath.panelId, panelPath);
-    }
-  });
-  const pathElements = svgModel.panels.map((panel) => {
-    const d = appliedByPanelId.get(panel.id)?.pathD ?? pointsToClosedPathD(panel.contour);
-
-    return `  <path d="${escapeSvgAttribute(d)}" fill="none" stroke="#000000" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
-  });
-  const slotElements = appliedSGeometry.flatMap((geometry) => geometry.slotPaths).map((slotPath) => (
-    `  <path d="${escapeSvgAttribute(slotPath.pathD)}" fill="none" stroke="#000000" stroke-width="1" vector-effect="non-scaling-stroke"/>`
-  ));
-
-  return [
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${escapeSvgAttribute(rootViewBox)}"${sizeAttributes ? ` ${sizeAttributes}` : ''}>`,
-    ...pathElements,
-    ...slotElements,
-    '</svg>',
-  ].join('\n');
-};
 
 const emptySvgModel: SvgDocumentModel = {
   content: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"></svg>',
