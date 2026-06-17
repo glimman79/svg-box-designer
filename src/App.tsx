@@ -2,6 +2,8 @@ import { useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
+import type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, EdgeConnectionDefinition, EdgeConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties, WallConnectionDefinition, WallConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
+export type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
 
 type LabelPrefix = 'E' | 'S' | 'W' | 'C' | 'P';
 
@@ -42,121 +44,6 @@ type LabelGroup = {
   prefix: LabelPrefix;
   name: string;
   description: string;
-};
-
-export type EdgeConnectionProperties = {
-  materialThicknessMm: number;
-  fingerWidthMm: number;
-  isFingerWidthManual: boolean;
-};
-
-type SlotConnectionProperties = {
-  slotOffsetMm: number;
-  slotWidthMm: number;
-  slotLengthMm: number;
-  isSlotLengthManual: boolean;
-  materialThicknessMm: number;
-  kerfMm: number;
-  playMm: number;
-};
-
-export type WallPatternType = 'UNIFORM' | 'ALTERNATING';
-
-export type WallReference = {
-  edgeId: string;
-  connectionId: string;
-  role: EdgeRole | SlotRole;
-  sourceType: 'E' | 'S';
-};
-
-type WallConnectionProperties = {
-  wallHeightMm: number;
-  materialThicknessMm: number;
-  fingerWidthMm: number;
-  kerfMm: number;
-  playMm: number;
-  selectedEdgeIds: string[];
-  references: WallReference[];
-  referencePatternType: WallPatternType | null;
-  generatedPatternType: WallPatternType | null;
-  generatedConnectionIds: string[];
-};
-
-type CornerConnectionProperties = {
-  cornerDepthMm: number;
-  isCornerDepthManual: boolean;
-  materialThicknessMm: number;
-  kerfMm: number;
-  playMm: number;
-  cornerType: string;
-};
-
-type PatternConnectionProperties = {
-  patternType: string;
-  patternWidthMm: number;
-  materialThicknessMm: number;
-  lineSpacingMm: number;
-  rowOffsetMm: number;
-  marginMm: number;
-};
-
-type ConnectionPropertiesByPrefix = {
-  E: EdgeConnectionProperties;
-  S: SlotConnectionProperties;
-  W: WallConnectionProperties;
-  C: CornerConnectionProperties;
-  P: PatternConnectionProperties;
-};
-
-export type EdgeConnectionDefinition = {
-  id: string;
-  prefix: 'E';
-  properties: EdgeConnectionProperties;
-};
-
-type SlotConnectionDefinition = {
-  id: string;
-  prefix: 'S';
-  properties: SlotConnectionProperties;
-};
-
-type WallConnectionDefinition = {
-  id: string;
-  prefix: 'W';
-  properties: WallConnectionProperties;
-};
-
-type CornerConnectionDefinition = {
-  id: string;
-  prefix: 'C';
-  properties: CornerConnectionProperties;
-};
-
-type PatternConnectionDefinition = {
-  id: string;
-  prefix: 'P';
-  properties: PatternConnectionProperties;
-};
-
-export type ConnectionDefinition =
-  | EdgeConnectionDefinition
-  | SlotConnectionDefinition
-  | WallConnectionDefinition
-  | CornerConnectionDefinition
-  | PatternConnectionDefinition;
-
-export type ConnectionMap = Record<string, ConnectionDefinition>;
-
-export type ActiveSGroup = {
-  groupId: string;
-  connectionIds: string[];
-  isActive: boolean;
-};
-
-export type ActiveWGroup = {
-  groupId: string;
-  connectionId: string;
-  isActive: boolean;
 };
 
 type HistoryState = {
@@ -215,39 +102,6 @@ type PanState = {
   moved: boolean;
 };
 
-export type AppliedEPanelPath = {
-  panelId: string;
-  eraseRect: SourceBounds;
-  erasePathD: string;
-  pathD: string;
-  edgeIds: string[];
-};
-
-export type AppliedSPanelPath = {
-  panelId: string;
-  sourceEdgeId: string;
-  eraseRect: SourceBounds;
-  erasePathD: string;
-  pathD: string;
-  edgeIds: string[];
-};
-
-export type AppliedSSlotPath = {
-  connectionId: string;
-  sourceAEdgeId: string;
-  sourceBEdgeId: string;
-  pathD: string;
-  startDistance: number;
-  endDistance: number;
-  widthMm: number;
-};
-
-export type AppliedSGeometry = {
-  connectionId: string;
-  panelPaths: AppliedSPanelPath[];
-  slotPaths: AppliedSSlotPath[];
-  edgeIds: string[];
-};
 
 
 const escapeSvgAttribute = (value: string | number) => String(value)
