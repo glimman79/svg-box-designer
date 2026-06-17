@@ -1952,26 +1952,34 @@ export const collectWReferences = (
   assignments: EdgeAssignmentRecord,
   svgModel: SvgDocumentModel,
   wallConnectionId = 'W group',
-): WallReference[] => selectedEdgeIds.map((selectedEdgeId) => {
-  const panel = findPanelContainingEdge(svgModel, selectedEdgeId);
-  if (!panel) {
-    throw new Error(`${wallConnectionId} selected wall edge ${selectedEdgeId} is not part of a valid panel.`);
-  }
+): WallReference[] => {
+  const selectedPanelIds = new Set<string>();
 
-  const references = panel.edgeIds
-    .filter((panelEdgeId) => panelEdgeId !== selectedEdgeId)
-    .flatMap((panelEdgeId) => collectEdgeReferenceLabels(panelEdgeId, assignments));
+  return selectedEdgeIds.reduce<WallReference[]>((panelReferences, selectedEdgeId) => {
+    const panel = findPanelContainingEdge(svgModel, selectedEdgeId);
+    if (!panel) {
+      throw new Error(`${wallConnectionId} selected wall edge ${selectedEdgeId} is not part of a valid panel.`);
+    }
 
-  if (references.length === 0) {
-    throw new Error(`${wallConnectionId} selected panel ${panel.id} for edge ${selectedEdgeId} has 0 E/S reference labels.`);
-  }
+    if (selectedPanelIds.has(panel.id)) {
+      return panelReferences;
+    }
+    selectedPanelIds.add(panel.id);
 
-  if (references.length > 1) {
-    throw new Error(`${wallConnectionId} selected panel ${panel.id} for edge ${selectedEdgeId} has multiple E/S reference labels.`);
-  }
+    const references = panel.edgeIds.flatMap((panelEdgeId) => collectEdgeReferenceLabels(panelEdgeId, assignments));
 
-  return references[0];
-});
+    if (references.length === 0) {
+      throw new Error(`${wallConnectionId} selected panel ${panel.id} has 0 E/S reference labels.`);
+    }
+
+    if (references.length > 1) {
+      throw new Error(`${wallConnectionId} selected panel ${panel.id} has multiple E/S reference labels.`);
+    }
+
+    panelReferences.push(references[0]);
+    return panelReferences;
+  }, []);
+};
 
 export const buildActiveWDisplayAssignments = (
   assignments: EdgeAssignmentRecord,
