@@ -17,6 +17,22 @@ const mockRequire = (id) => {
   if (id === 'react') return { useMemo: () => undefined, useRef: () => ({ current: null }), useState: (v) => [typeof v === 'function' ? v() : v, () => undefined] };
   if (id === 'react/jsx-runtime') return { jsx: () => ({}), jsxs: () => ({}), Fragment: Symbol('Fragment') };
   if (id === './svgUtils') return { exportLabeledSvg: () => '', getEdgeAssignmentDisplayLabel: () => '', getEdgeLabelPlacements: () => [], parseSvgDocument: () => ({ viewBox: '0 0 1 1', edges: [], panels: [], rootAttributes: { viewBox: '0 0 1 1', width: null, height: null }, width: 1, height: 1, content: '', innerMarkup: '' }) };
+  if (id === './app/assignmentBuckets') {
+    const isEdgeAssignmentBucket = (assignment) => !!assignment && ('edgeAssignment' in assignment || 'slotAssignments' in assignment);
+    const toEdgeAssignmentBucket = (assignment) => {
+      if (!assignment) return undefined;
+      if (isEdgeAssignmentBucket(assignment)) return assignment;
+      if (assignment.connectionId.startsWith('E')) return { edgeAssignment: assignment };
+      if (assignment.connectionId.startsWith('S')) return { slotAssignments: [assignment] };
+      return { edgeAssignment: assignment };
+    };
+    return {
+      isEdgeAssignmentBucket,
+      toEdgeAssignmentBucket,
+      getBucketEdgeAssignment: (assignment) => toEdgeAssignmentBucket(assignment)?.edgeAssignment,
+      getBucketSlotAssignments: (assignment) => toEdgeAssignmentBucket(assignment)?.slotAssignments ?? [],
+    };
+  }
   return require(id);
 };
 vm.runInNewContext(compiled, { require: mockRequire, module, exports: module.exports, console, structuredClone, URL, Blob }, { filename: 'App.cjs' });
