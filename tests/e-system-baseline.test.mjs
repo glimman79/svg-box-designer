@@ -423,13 +423,19 @@ const wallPanels = [
 ];
 const wallModel = modelForPanels(wallPanels);
 const selectedWallEdges = wallPanels.map((p) => `${p.id}-top`);
+const selectedWallPanelEdges = wallPanels.flatMap((p) => [`${p.id}-top`, `${p.id}-bottom`]);
 const wAssignmentsUniformE = Object.fromEntries(wallPanels.map((p, index) => [
   `${p.id}-right`,
   { edgeAssignment: { connectionId: `E${index + 1}`, edgeRole: 'A' } },
 ]));
 const wUniformRefs = collectWReferences(selectedWallEdges, wAssignmentsUniformE, wallModel);
 assert.equal(wUniformRefs.length, 4, 'W can read same-panel E references when selected W edges are unassigned');
-assert.deepEqual(wUniformRefs.map((ref) => ref.connectionId), ['E1', 'E2', 'E3', 'E4'], 'W stores local panel references as a collection');
+const samePanelWRefs = collectWReferences(['w1-top', 'w1-bottom'], wAssignmentsUniformE, wallModel);
+assert.equal(samePanelWRefs.length, 1, 'two selected W edges on the same panel count as one panel reference');
+assert.equal(samePanelWRefs[0].connectionId, 'E1', 'same-panel selected W edges share the panel reference');
+const multiEdgePanelWRefs = collectWReferences(selectedWallPanelEdges, wAssignmentsUniformE, wallModel);
+assert.equal(multiEdgePanelWRefs.length, 4, 'four panels with two selected W edges each collect one reference per selected panel');
+assert.deepEqual(Array.from(wUniformRefs, (ref) => ref.connectionId), ['E1', 'E2', 'E3', 'E4'], 'W stores local panel references as a collection');
 assert.equal(classifyWReferencePattern(wUniformRefs), 'UNIFORM', 'W classification uses complete group uniform reference set');
 assert.equal(invertWPatternType('UNIFORM'), 'ALTERNATING', 'uniform references invert to alternating W pattern');
 assert.deepEqual(generateWEdgeRoles(selectedWallEdges, 'ALTERNATING'), ['A', 'B', 'A', 'B'], 'alternating W generation assigns ordinary E roles');
@@ -472,6 +478,19 @@ assert.equal(finishedW.connections.E1.properties.materialThicknessMm, 4, 'W mate
 assert.equal(finishedW.connections.E1.properties.fingerWidthMm, 11, 'W tab size is independent from E/S tab size');
 assert.equal(finishedW.connections.W1.properties.generatedConnectionIds.length, 1, 'W stores generated E labels as a collection');
 assert.deepEqual(selectedWallEdges.map((edgeId) => finishedW.assignments[edgeId].edgeAssignment.edgeRole), ['A', 'B', 'A', 'B'], 'W generated assignments are ordinary E-compatible assignments');
+const multiEdgeWConnections = {
+  W1: {
+    ...wConnections.W1,
+    properties: {
+      ...wConnections.W1.properties,
+      selectedEdgeIds: selectedWallPanelEdges,
+    },
+  },
+};
+const finishedMultiEdgeW = finishWGroupWorkflow(multiEdgeWConnections, wAssignmentsUniformE, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true }, wallModel);
+assert.deepEqual(Array.from(finishedMultiEdgeW.connections.W1.properties.references, (ref) => ref.connectionId), ['E1', 'E2', 'E3', 'E4'], 'W finish stores one reference per selected panel when multiple W edges are selected per panel');
+assert.deepEqual(selectedWallPanelEdges.map((edgeId) => finishedMultiEdgeW.assignments[edgeId].edgeAssignment.connectionId), Array(selectedWallPanelEdges.length).fill('E1'), 'generated E assignments apply to all selected W edges');
+assert.deepEqual(selectedWallPanelEdges.map((edgeId) => finishedMultiEdgeW.assignments[edgeId].edgeAssignment.edgeRole), ['A', 'B', 'A', 'B', 'A', 'B', 'A', 'B'], 'generated E roles cover all selected W edges');
 const manualEquivalentAssignments = Object.fromEntries(selectedWallEdges.map((edgeId, index) => [edgeId, { connectionId: 'E1', edgeRole: index % 2 === 1 ? 'B' : 'A' }]));
 const generatedAssignments = Object.fromEntries(selectedWallEdges.map((edgeId) => [edgeId, finishedW.assignments[edgeId].edgeAssignment]));
 const generatedPaths = buildAppliedEPanelPaths(wallModel, generatedAssignments, finishedW.connections);
