@@ -7,9 +7,12 @@ import { addContourPoint, applyTabsToContour, buildInsetPanelContour, buildPanel
 import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 import { buildContourSides, cornerTouchTolerance, createTabSegmentPlan, getContourSideLength, getContourSignedArea, interpolateSidePoint, isContourSideReversedFromCanonical, lineIntersection, mirrorSegments, offsetContourSide, pointsMatch, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
 import type { ContourSide, TabSegment } from './app/sharedGeometry';
+import { getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './app/sharedPanelGeometry';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
 import type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, EdgeConnectionDefinition, EdgeConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties, WallConnectionDefinition, WallConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
+export { edgeMatchesContourSide, getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './app/sharedPanelGeometry';
+export type { PanelValidationResult } from './app/sharedPanelGeometry';
 export { exportAppliedSvg } from './app/exportAppliedSvg';
 export { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
@@ -102,84 +105,6 @@ type SPanelOperation = {
   sourceAEdgeId: string;
   materialThicknessMm: number;
   aSegments: TabSegment[];
-};
-
-const getTabSegmentsForRole = (
-  segments: TabSegment[],
-  role: EdgeRole,
-): TabSegment[] => (
-  segments.filter((_, segmentIndex) => (
-    role === 'B'
-      ? segmentIndex % 2 === 0
-      : segmentIndex % 2 === 1
-  ))
-);
-
-type PanelValidationResult =
-  | { valid: true }
-  | { valid: false; reason: string };
-
-const getContourEdgePoints = (panel: SvgPanel, contourIndex: number) => ({
-  start: panel.contour[contourIndex],
-  end: panel.contour[(contourIndex + 1) % panel.contour.length],
-});
-
-const edgeMatchesContourSide = (edge: SvgEdge, start: Point, end: Point) => {
-  const normalMatch = pointsMatch(edge.start, start) && pointsMatch(edge.end, end);
-  const reversedMatch = pointsMatch(edge.start, end) && pointsMatch(edge.end, start);
-
-  return {
-    matches: normalMatch || reversedMatch,
-    reversedMatch,
-  };
-};
-
-const validateClosedPanel = (
-  panel: SvgPanel,
-  edgesById: Map<string, SvgEdge>,
-): PanelValidationResult => {
-  if (panel.contour.length < 3) {
-    return { valid: false, reason: 'Panel contour must contain at least 3 points.' };
-  }
-
-  if (panel.edgeIds.length !== panel.contour.length) {
-    return { valid: false, reason: 'Panel edge count must match contour point count.' };
-  }
-
-  for (let contourIndex = 0; contourIndex < panel.contour.length; contourIndex += 1) {
-    const point = panel.contour[contourIndex];
-
-    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
-      return { valid: false, reason: `Panel contour point ${contourIndex} must have finite coordinates.` };
-    }
-  }
-
-  for (let contourIndex = 0; contourIndex < panel.edgeIds.length; contourIndex += 1) {
-    const edgeId = panel.edgeIds[contourIndex];
-    const edge = edgesById.get(edgeId);
-
-    if (!edge) {
-      return { valid: false, reason: `Panel edge ${edgeId} does not exist.` };
-    }
-
-    const { start, end } = getContourEdgePoints(panel, contourIndex);
-    const contourSideMatch = edgeMatchesContourSide(edge, start, end);
-
-    if (!contourSideMatch.matches) {
-      return { valid: false, reason: `Panel edge ${edgeId} does not match contour side ${contourIndex}.` };
-    }
-  }
-
-  const finalEdgeId = panel.edgeIds[panel.edgeIds.length - 1];
-  const finalEdge = edgesById.get(finalEdgeId);
-  const finalStart = panel.contour[panel.contour.length - 1];
-  const finalEnd = panel.contour[0];
-
-  if (!finalEdge || !edgeMatchesContourSide(finalEdge, finalStart, finalEnd).matches) {
-    return { valid: false, reason: 'Panel final contour segment must close from last point to first point.' };
-  }
-
-  return { valid: true };
 };
 
 export const buildAppliedEPanelPaths = (
