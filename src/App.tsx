@@ -2034,6 +2034,46 @@ export const generateWEdgeRoles = (edgeIds: string[], generatedPatternType: Wall
   edgeIds.map((_, index) => (generatedPatternType === 'ALTERNATING' && index % 2 === 1 ? 'B' : 'A'))
 );
 
+const shouldCopyMixedEReferenceRoles = (references: WallReference[], referencePatternType: WallPatternType): boolean => (
+  referencePatternType === 'ALTERNATING'
+  && references.every((reference) => reference.sourceType === 'E' && (reference.role === 'A' || reference.role === 'B'))
+);
+
+const buildPanelReferenceRoleMap = (references: WallReference[], svgModel: SvgDocumentModel, wallConnectionId: string) => (
+  references.reduce<Map<string, EdgeRole>>((roleByPanelId, reference) => {
+    const panel = findPanelContainingEdge(svgModel, reference.edgeId);
+    if (!panel) {
+      throw new Error(`${wallConnectionId} reference edge ${reference.edgeId} is not part of a valid panel.`);
+    }
+
+    roleByPanelId.set(panel.id, reference.role as EdgeRole);
+    return roleByPanelId;
+  }, new Map<string, EdgeRole>())
+);
+
+const copyMixedEReferenceRolesToWEdges = (
+  selectedEdgeIds: string[],
+  references: WallReference[],
+  svgModel: SvgDocumentModel,
+  wallConnectionId: string,
+): EdgeRole[] => {
+  const referenceRoleByPanelId = buildPanelReferenceRoleMap(references, svgModel, wallConnectionId);
+
+  return selectedEdgeIds.map((selectedEdgeId) => {
+    const selectedPanel = findPanelContainingEdge(svgModel, selectedEdgeId);
+    if (!selectedPanel) {
+      throw new Error(`${wallConnectionId} selected wall edge ${selectedEdgeId} is not part of a valid panel.`);
+    }
+
+    const referenceRole = referenceRoleByPanelId.get(selectedPanel.id);
+    if (!referenceRole) {
+      throw new Error(`${wallConnectionId} selected panel ${selectedPanel.id} has no matching E reference role.`);
+    }
+
+    return referenceRole;
+  });
+};
+
 export const finishWGroupWorkflow = (
   connections: ConnectionMap,
   assignments: EdgeAssignmentRecord,
@@ -2061,8 +2101,11 @@ export const finishWGroupWorkflow = (
     throw new Error(`${activeWGroup.connectionId} references are neither uniform nor alternating across the complete W group.`);
   }
 
-  const generatedPatternType = invertWPatternType(referencePatternType);
-  const generatedRoles = generateWEdgeRoles(selectedEdgeIds, generatedPatternType);
+  const copyMixedERoles = shouldCopyMixedEReferenceRoles(references, referencePatternType);
+  const generatedPatternType = copyMixedERoles ? referencePatternType : invertWPatternType(referencePatternType);
+  const generatedRoles = copyMixedERoles
+    ? copyMixedEReferenceRolesToWEdges(selectedEdgeIds, references, svgModel, activeWGroup.connectionId)
+    : generateWEdgeRoles(selectedEdgeIds, generatedPatternType);
 
   const nextAssignments = { ...assignments };
   selectedEdgeIds.forEach((edgeId, index) => {
