@@ -450,6 +450,13 @@ assert.equal(invertWPatternType('ALTERNATING'), 'UNIFORM', 'alternating referenc
 assert.deepEqual(generateWEdgeRoles(selectedWallEdges, 'UNIFORM'), ['A', 'A', 'A', 'A'], 'uniform W generation assigns W edge roles');
 assert.equal(classifyWReferencePattern([wAlternatingRefs[0]]), 'UNIFORM', 'single-edge classification would differ, proving tests cover complete-group behavior');
 
+const wAssignmentsAlternatingEStartingB = Object.fromEntries(wallPanels.map((p, index) => [
+  `${p.id}-right`,
+  { edgeAssignment: { connectionId: `E${index + 1}`, edgeRole: index % 2 === 1 ? 'A' : 'B' } },
+]));
+const wAlternatingRefsStartingB = collectWReferences(selectedWallEdges, wAssignmentsAlternatingEStartingB, wallModel);
+assert.equal(classifyWReferencePattern(wAlternatingRefsStartingB), 'ALTERNATING', 'W classification preserves mixed E references that start with B');
+
 const wAssignmentsS = Object.fromEntries(wallPanels.map((p, index) => [
   `${p.id}-right`,
   { slotAssignments: [{ connectionId: `S${index + 1}`, slotRole: 'B' }] },
@@ -481,6 +488,20 @@ assert.equal(finishedW.connections.W1.properties.generatedConnectionIds.length, 
 assert.deepEqual(selectedWallEdges.map((edgeId) => finishedW.assignments[edgeId].edgeAssignment.connectionId), Array(selectedWallEdges.length).fill('W1'), 'Finish W stores W-prefixed edge assignments');
 assert.deepEqual(selectedWallEdges.map((edgeId) => finishedW.assignments[edgeId].edgeAssignment.edgeRole), ['A', 'B', 'A', 'B'], 'W generated assignments are E-compatible W assignments');
 assert.deepEqual(selectedWallEdges.map((edgeId) => svgUtilsModule.exports.getEdgeAssignmentDisplayLabel(finishedW.assignments[edgeId])), ['W1-A', 'W1-B', 'W1-A', 'W1-B'], 'Final labels remain W-prefixed after Finish');
+
+const finishedMixedEW = finishWGroupWorkflow(wConnections, wAssignmentsAlternatingE, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true }, wallModel);
+assert.equal(finishedMixedEW.connections.E1, undefined, 'mixed E Finish W does not create a generated E connection');
+assert.deepEqual(selectedWallEdges.map((edgeId) => finishedMixedEW.assignments[edgeId].edgeAssignment.connectionId), Array(selectedWallEdges.length).fill('W1'), 'mixed E Finish W stores W-prefixed edge assignments');
+assert.deepEqual(selectedWallEdges.map((edgeId) => finishedMixedEW.assignments[edgeId].edgeAssignment.edgeRole), ['A', 'B', 'A', 'B'], 'mixed E references A/B/A/B generate copied W roles A/B/A/B');
+assert.deepEqual(selectedWallEdges.map((edgeId) => svgUtilsModule.exports.getEdgeAssignmentDisplayLabel(finishedMixedEW.assignments[edgeId])), ['W1-A', 'W1-B', 'W1-A', 'W1-B'], 'mixed E final labels remain W-prefixed');
+assert.equal(finishedMixedEW.connections.W1.properties.generatedConnectionIds.length, 0, 'mixed E Finish W does not store generated E labels');
+assert.equal(finishedMixedEW.connections.W1.properties.generatedPatternType, 'ALTERNATING', 'mixed E Finish W keeps copied role pattern instead of collapsing to uniform');
+
+const finishedMixedEStartingBW = finishWGroupWorkflow(wConnections, wAssignmentsAlternatingEStartingB, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true }, wallModel);
+assert.deepEqual(selectedWallEdges.map((edgeId) => finishedMixedEStartingBW.assignments[edgeId].edgeAssignment.edgeRole), ['B', 'A', 'B', 'A'], 'mixed E references B/A/B/A generate copied W roles B/A/B/A');
+assert.deepEqual(selectedWallEdges.map((edgeId) => svgUtilsModule.exports.getEdgeAssignmentDisplayLabel(finishedMixedEStartingBW.assignments[edgeId])), ['W1-B', 'W1-A', 'W1-B', 'W1-A'], 'mixed E labels remain W-prefixed when starting with B');
+assert.equal(finishedMixedEStartingBW.connections.E1, undefined, 'mixed E starting B Finish W does not create a generated E connection');
+
 const multiEdgeWConnections = {
   W1: {
     ...wConnections.W1,
@@ -494,6 +515,8 @@ const finishedMultiEdgeW = finishWGroupWorkflow(multiEdgeWConnections, wAssignme
 assert.deepEqual(Array.from(finishedMultiEdgeW.connections.W1.properties.references, (ref) => ref.connectionId), ['E1', 'E2', 'E3', 'E4'], 'W finish stores one reference per selected panel when multiple W edges are selected per panel');
 assert.deepEqual(selectedWallPanelEdges.map((edgeId) => finishedMultiEdgeW.assignments[edgeId].edgeAssignment.connectionId), Array(selectedWallPanelEdges.length).fill('W1'), 'W assignments apply to all selected W edges');
 assert.deepEqual(selectedWallPanelEdges.map((edgeId) => finishedMultiEdgeW.assignments[edgeId].edgeAssignment.edgeRole), ['A', 'B', 'A', 'B', 'A', 'B', 'A', 'B'], 'W roles cover all selected W edges');
+const finishedMultiEdgeMixedEW = finishWGroupWorkflow(multiEdgeWConnections, wAssignmentsAlternatingE, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true }, wallModel);
+assert.deepEqual(selectedWallPanelEdges.map((edgeId) => finishedMultiEdgeMixedEW.assignments[edgeId].edgeAssignment.edgeRole), ['A', 'A', 'B', 'B', 'A', 'A', 'B', 'B'], 'mixed E panel reference role applies to all selected W edges on that panel');
 const manualEquivalentAssignments = Object.fromEntries(selectedWallEdges.map((edgeId, index) => [edgeId, { connectionId: 'E1', edgeRole: index % 2 === 1 ? 'B' : 'A' }]));
 const generatedAssignments = Object.fromEntries(selectedWallEdges.map((edgeId) => [edgeId, finishedW.assignments[edgeId].edgeAssignment]));
 const generatedPaths = buildAppliedEPanelPaths(wallModel, generatedAssignments, finishedW.connections);
