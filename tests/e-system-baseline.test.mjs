@@ -8,6 +8,30 @@ import vm from 'node:vm';
 const require = createRequire(import.meta.url);
 const ts = require('typescript');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+const moduleCache = new Map();
+const loadSrcModule = (relativePath) => {
+  const absolutePath = resolve(root, relativePath);
+  if (moduleCache.has(absolutePath)) return moduleCache.get(absolutePath).exports;
+  const source = readFileSync(absolutePath, 'utf8');
+  const output = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const loadedModule = { exports: {} };
+  moduleCache.set(absolutePath, loadedModule);
+  const baseDir = dirname(absolutePath);
+  const localRequire = (id) => {
+    if (id.startsWith('./') || id.startsWith('../')) {
+      const resolvedPath = resolve(baseDir, id);
+      if (resolvedPath.startsWith(resolve(root, 'src'))) {
+        return loadSrcModule(`${resolvedPath.slice(resolve(root).length + 1)}.ts`);
+      }
+    }
+    return mockRequire(id);
+  };
+  vm.runInNewContext(output, { require: localRequire, module: loadedModule, exports: loadedModule.exports, console, structuredClone, URL, Blob }, { filename: `${relativePath}.cjs` });
+  return loadedModule.exports;
+};
 const appSource = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
 const compiled = ts.transpileModule(appSource, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
@@ -38,6 +62,7 @@ const mockRequire = (id) => {
       getBucketSlotAssignments: (assignment) => toEdgeAssignmentBucket(assignment)?.slotAssignments ?? [],
     };
   }
+  if (id.startsWith('./app/')) return loadSrcModule(`src/${id.slice(2)}.ts`);
   return require(id);
 };
 vm.runInNewContext(compiled, { require: mockRequire, module, exports: module.exports, console, structuredClone, URL, Blob }, { filename: 'App.cjs' });
