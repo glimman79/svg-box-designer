@@ -4,6 +4,7 @@ import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacement
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
 import { exportAppliedSvg } from './app/exportAppliedSvg';
 import { buildAppliedSGeometry } from './app/sGeometry';
+import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildAppliedEPanelPaths } from './app/eGeometry';
 import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 import { createTabSegmentPlan, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
@@ -16,6 +17,7 @@ export { edgeMatchesContourSide, getContourEdgePoints, getTabSegmentsForRole, va
 export type { PanelValidationResult } from './app/sharedPanelGeometry';
 export { exportAppliedSvg } from './app/exportAppliedSvg';
 export { buildAppliedSGeometry } from './app/sGeometry';
+export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 export { applyTabsToContour, buildAppliedEPanelPaths, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 export type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
@@ -252,6 +254,16 @@ function getDefaultCornerDepth(materialThicknessMm: number) {
   return materialThicknessMm * 3;
 }
 
+const getFollowingSlotLabel = (label: string) => {
+  const labelNumber = Number.parseInt(label.slice(1), 10);
+
+  if (getLabelPrefix(label) !== 'S' || !Number.isFinite(labelNumber)) {
+    return null;
+  }
+
+  return `S${labelNumber + 1}`;
+};
+
 const getAssignedConnectionId = (assignment: EdgeAssignmentBucket | undefined) => {
   const edgeAssignment = getBucketEdgeAssignment(assignment);
   const slotAssignment = getBucketSlotAssignments(assignment)[0];
@@ -274,166 +286,6 @@ const getDefaultEdgeRole = (assignments: EdgeAssignmentRecord, connectionId: str
 
   return 'A';
 };
-
-export const getDefaultSlotRole = (assignments: EdgeAssignmentRecord, connectionId: string): SlotRole | null => {
-  const assignedRoles = Object.values(assignments)
-    .flatMap((assignment) => getBucketSlotAssignments(assignment))
-    .filter((assignment) => assignment.connectionId === connectionId)
-    .map((assignment) => assignment.slotRole);
-
-  const hasA = assignedRoles.includes('A');
-  const hasB = assignedRoles.includes('B');
-
-  if (hasA && hasB) {
-    return null;
-  }
-
-  return hasA ? 'B' : 'A';
-};
-
-const getFollowingSlotLabel = (label: string) => {
-  const labelNumber = Number.parseInt(label.slice(1), 10);
-
-  if (getLabelPrefix(label) !== 'S' || !Number.isFinite(labelNumber)) {
-    return null;
-  }
-
-  return `S${labelNumber + 1}`;
-};
-
-
-export const isCompleteSConnection = (assignments: EdgeAssignmentRecord, connectionId: string) => {
-  const roles = Object.values(assignments)
-    .flatMap((assignment) => getBucketSlotAssignments(assignment))
-    .filter((assignment) => assignment.connectionId === connectionId)
-    .map((assignment) => assignment.slotRole);
-
-  return roles.filter((role) => role === 'A').length === 1 && roles.filter((role) => role === 'B').length === 1;
-};
-
-export const createStandaloneSConnection = (id: string): SlotConnectionDefinition => ({
-  ...(createConnectionDefinition(id, 'S') as SlotConnectionDefinition),
-  properties: {
-    ...(createConnectionDefinition(id, 'S') as SlotConnectionDefinition).properties,
-    slotOffsetMm: 0,
-  },
-});
-
-export const createCopiedSConnection = (id: string, previousConnection: SlotConnectionDefinition): SlotConnectionDefinition => ({
-  id,
-  prefix: 'S',
-  properties: {
-    ...cloneDefaultProperties('S'),
-    materialThicknessMm: previousConnection.properties.materialThicknessMm,
-    slotWidthMm: previousConnection.properties.slotWidthMm,
-    slotLengthMm: previousConnection.properties.slotLengthMm,
-    isSlotLengthManual: previousConnection.properties.isSlotLengthManual,
-    slotOffsetMm: previousConnection.properties.slotOffsetMm,
-  },
-});
-
-export const applySlotPropertyUpdates = (
-  connection: SlotConnectionDefinition,
-  updates: Partial<SlotConnectionProperties>,
-): SlotConnectionDefinition => {
-  const nextProperties: SlotConnectionProperties = {
-    ...connection.properties,
-    ...updates,
-  };
-
-  if (updates.materialThicknessMm !== undefined) {
-    nextProperties.slotWidthMm = getDefaultSlotWidth(updates.materialThicknessMm);
-
-    if (!connection.properties.isSlotLengthManual) {
-      nextProperties.slotLengthMm = getDefaultSlotLength(updates.materialThicknessMm);
-    }
-  }
-
-  if (updates.slotLengthMm !== undefined) {
-    nextProperties.isSlotLengthManual = true;
-  }
-
-  return {
-    ...connection,
-    properties: nextProperties,
-  };
-};
-
-export const applyActiveSGroupSlotPropertyUpdates = (
-  connections: ConnectionMap,
-  activeSGroup: ActiveSGroup | null,
-  updates: Partial<SlotConnectionProperties>,
-): ConnectionMap => {
-  if (!activeSGroup?.isActive) {
-    return connections;
-  }
-
-  const activeConnectionIds = new Set(activeSGroup.connectionIds);
-
-  return Object.fromEntries(
-    Object.entries(connections).map(([connectionId, connection]) => [
-      connectionId,
-      activeConnectionIds.has(connectionId) && connection.prefix === 'S'
-        ? applySlotPropertyUpdates(connection, updates)
-        : connection,
-    ]),
-  );
-};
-
-export const startSGroupWorkflow = (connections: ConnectionMap) => {
-  const connectionId = getNextLabel('S', Object.keys(connections));
-  const connection = createStandaloneSConnection(connectionId);
-
-  return {
-    connections: { ...connections, [connectionId]: connection },
-    selectedLabelId: connectionId,
-    activeSGroup: { groupId: `s-group-${connectionId}`, connectionIds: [connectionId], isActive: true } satisfies ActiveSGroup,
-  };
-};
-
-export const finishSGroupWorkflow = (activeSGroup: ActiveSGroup | null): ActiveSGroup | null => (
-  activeSGroup ? { ...activeSGroup, isActive: false } : null
-);
-
-export const manualAddSWorkflow = (connections: ConnectionMap, activeSGroup: ActiveSGroup | null) => {
-  const connectionId = getNextLabel('S', Object.keys(connections));
-
-  return {
-    connections: { ...connections, [connectionId]: createStandaloneSConnection(connectionId) },
-    selectedLabelId: connectionId,
-    activeSGroup: finishSGroupWorkflow(activeSGroup),
-  };
-};
-
-export const maybeAutoCreateNextSInGroup = (
-  connections: ConnectionMap,
-  assignments: EdgeAssignmentRecord,
-  activeSGroup: ActiveSGroup | null,
-  completedConnectionId: string,
-) => {
-  if (!activeSGroup?.isActive || !activeSGroup.connectionIds.includes(completedConnectionId) || !isCompleteSConnection(assignments, completedConnectionId)) {
-    return { connections, selectedLabelId: completedConnectionId, activeSGroup };
-  }
-
-  const previousConnection = connections[completedConnectionId];
-
-  if (!previousConnection || previousConnection.prefix !== 'S') {
-    return { connections, selectedLabelId: completedConnectionId, activeSGroup };
-  }
-
-  const connectionId = getNextLabel('S', Object.keys(connections));
-
-  if (connections[connectionId]) {
-    return { connections, selectedLabelId: completedConnectionId, activeSGroup };
-  }
-
-  return {
-    connections: { ...connections, [connectionId]: createCopiedSConnection(connectionId, previousConnection) },
-    selectedLabelId: connectionId,
-    activeSGroup: { ...activeSGroup, connectionIds: [...activeSGroup.connectionIds, connectionId] },
-  };
-};
-
 
 export const getWGroupActionNumber = (connections: ConnectionMap, activeWGroup: ActiveWGroup | null) => {
   if (activeWGroup?.isActive) {
