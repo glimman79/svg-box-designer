@@ -8,6 +8,7 @@ import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSeg
 import { buildContourSides, cornerTouchTolerance, createTabSegmentPlan, getContourSideLength, getContourSignedArea, interpolateSidePoint, isContourSideReversedFromCanonical, lineIntersection, mirrorSegments, offsetContourSide, pointsMatch, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
 import type { ContourSide, TabSegment } from './app/sharedGeometry';
 import { getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './app/sharedPanelGeometry';
+import { findPanelContainingEdge } from './app/panelLookup';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge, SvgPanel } from './svgUtils';
 import type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, EdgeConnectionDefinition, EdgeConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties, WallConnectionDefinition, WallConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
@@ -256,9 +257,6 @@ const buildSPanelContour = (
   return applySTabsToContour(panel, panel.contour, insetResult.contour, operations);
 };
 
-const findPanelContainingEdge = (svgModel: SvgDocumentModel, edgeId: string) => (
-  svgModel.panels.find((panel) => panel.edgeIds.includes(edgeId)) ?? null
-);
 
 const getContourSideInwardNormal = (side: ContourSide, contour: PanelContour): Point | null => {
   const sideLength = Math.hypot(side.end.x - side.start.x, side.end.y - side.start.y);
