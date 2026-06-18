@@ -1515,10 +1515,6 @@ function App() {
           <button className="toolbar-button" type="button" disabled title="Save placeholder">Save</button>
           <button className="toolbar-button" type="button" onClick={exportSvg} disabled={Object.keys(edgeAssignments).length === 0} title="Export SVG">Export</button>
           <button className="toolbar-button" type="button" onClick={applyPanelPaths} disabled={Object.keys(edgeAssignments).length === 0} title="Apply geometry">Apply</button>
-          <button className="toolbar-button" type="button" onClick={resetCanvasView} title="Reset view">Reset view</button>
-          <button className="toolbar-button" type="button" onClick={fitCanvasToScreen} title="Fit to screen">Fit to screen</button>
-          <button className="toolbar-button icon-button" type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo" title="Undo">↶</button>
-          <button className="toolbar-button icon-button" type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo" title="Redo">↷</button>
           <a ref={downloadRef} className="visually-hidden" aria-hidden="true">
             download
           </a>
@@ -1737,14 +1733,14 @@ function App() {
             <div className="view-controls" aria-label="Drawing view controls">
               <button type="button" onClick={resetCanvasView}>Reset view</button>
               <button type="button" onClick={fitCanvasToScreen}>Fit to screen</button>
+              <button type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo" title="Undo">↶</button>
+              <button type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo" title="Redo">↷</button>
               <button type="button" onClick={applyPanelPaths} disabled={Object.keys(edgeAssignments).length === 0}>Apply</button>
             </div>
           </div>
 
           <div className="canvas-frame">
-            <div className="canvas-history-controls" aria-label="Canvas history controls">
-              <button type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo">↶</button>
-              <button type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo">↷</button>
+            <div className="canvas-history-controls" aria-label="Canvas compact property controls">
               {renderCompactControls()}
             </div>
             <div className="canvas-zoom-controls" aria-label="Canvas zoom controls">
@@ -1889,9 +1885,24 @@ function App() {
           </div>
         </section>
         <aside className="workflow-history-panel panel" aria-label="Workflow history">
-          <p className="eyebrow">Workflow History</p>
-          <h2>Workflow History</h2>
-          <p className="muted">Coming soon</p>
+          <div className="workflow-history-header">
+            <p className="eyebrow">Workflow History</p>
+            <span className="muted">Coming soon</span>
+          </div>
+          <div className="workflow-history-items" aria-label="Future selectable workflow items">
+            <button type="button" className="workflow-history-item" aria-label="Future connection history item placeholder">
+              <span className="history-item-icon">E</span>
+              <span>Edge setup</span>
+            </button>
+            <button type="button" className="workflow-history-item" aria-label="Future connection history item placeholder">
+              <span className="history-item-icon">S</span>
+              <span>Slot group</span>
+            </button>
+            <button type="button" className="workflow-history-item" aria-label="Future connection history item placeholder">
+              <span className="history-item-icon">W</span>
+              <span>Wall group</span>
+            </button>
+          </div>
         </aside>
       </section>
     </main>
