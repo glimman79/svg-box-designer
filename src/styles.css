@@ -863,14 +863,16 @@ button:disabled {
 .workspace {
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr) minmax(280px, 330px);
-  grid-template-rows: minmax(0, 1fr) 104px;
+  grid-template-rows: minmax(0, 1fr) 74px;
   grid-template-areas:
     "tools canvas active"
     "tools history active";
   gap: 10px;
   min-height: 0;
+  height: 100%;
   padding: 10px;
   align-items: stretch;
+  overflow: hidden;
 }
 
 .tool-sidebar {
@@ -909,30 +911,53 @@ button:disabled {
 .canvas-card {
   grid-area: canvas;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(42px, auto) minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   border-radius: 16px;
 }
 
 .canvas-toolbar {
   align-items: center;
   flex-wrap: nowrap;
-  gap: 12px;
-  padding: 8px 12px;
+  gap: 10px;
+  min-height: 42px;
+  padding: 5px 10px;
+}
+
+.canvas-toolbar > div:first-child {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.canvas-toolbar h2 {
+  font-size: 1rem;
+  line-height: 1.1;
+}
+
+.canvas-toolbar p {
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .canvas-toolbar .view-controls {
   display: flex;
   flex-wrap: nowrap;
-  gap: 6px;
+  gap: 5px;
 }
 
 .canvas-toolbar .view-controls button {
-  min-height: 32px;
-  padding: 0 9px;
-  border-radius: 9px;
-  font-size: 0.78rem;
+  min-height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 0.76rem;
 }
 
 .canvas-frame {
@@ -984,8 +1009,9 @@ button:disabled {
 .workflow-history-panel {
   grid-area: history;
   min-height: 0;
+  max-height: 74px;
   overflow: hidden;
-  padding: 10px 12px;
+  padding: 7px 10px;
   border-radius: 14px;
 }
 
@@ -1006,8 +1032,8 @@ button:disabled {
 
 .workflow-history-items {
   display: flex;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 6px;
+  margin-top: 5px;
   overflow: hidden;
 }
 
@@ -1015,8 +1041,8 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 36px;
-  padding: 0 10px;
+  min-height: 30px;
+  padding: 0 9px;
   color: #334155;
   background: #f8fafc;
   border: 1px dashed #cbd5e1;
@@ -1028,8 +1054,8 @@ button:disabled {
 
 .history-item-icon {
   display: inline-grid;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   place-items: center;
   color: #022c22;
   background: #ccfbf1;
