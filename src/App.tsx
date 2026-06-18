@@ -32,6 +32,8 @@ type LabelGroup = {
   description: string;
 };
 
+type ActiveTool = 'select' | 'TB' | 'W' | 'S' | 'J' | 'P';
+
 type HistoryState = {
   edgeAssignments: Record<string, EdgeAssignmentBucket>;
   connections: ConnectionMap;
@@ -414,6 +416,7 @@ function App() {
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
   const [expandedSGroups, setExpandedSGroups] = useState<Record<string, boolean>>({});
   const [expandedWGroups, setExpandedWGroups] = useState<Record<string, boolean>>({});
+  const [activeTool, setActiveTool] = useState<ActiveTool>('select');
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
   const selectedConnection = selectedLabelId ? connections[selectedLabelId] ?? null : null;
@@ -1496,25 +1499,26 @@ function App() {
 
   return (
     <main className="app-shell">
-      <header className="hero">
-        <div>
-          <p className="eyebrow">Reusable connection definitions</p>
-          <h1>SVG Box Designer</h1>
-          <p>
-            Import your own SVG design, then define reusable edge labels for its existing straight edges.
-          </p>
+      <header className="top-toolbar" aria-label="Primary actions">
+        <div className="brand-lockup">
+          <span className="brand-mark">SBD</span>
+          <div>
+            <p className="eyebrow">SVG Box Designer</p>
+            <h1>LightBurn-style layout shell</h1>
+          </div>
         </div>
-        <div className="hero-actions">
-          <label className="button primary">
-            Import SVG
+        <div className="toolbar-actions">
+          <label className="toolbar-button primary" title="Import SVG">
+            Import
             <input type="file" accept=".svg,image/svg+xml" onChange={handleImportWithError} />
           </label>
-          <button className="button" type="button" onClick={exportSvg} disabled={Object.keys(edgeAssignments).length === 0}>
-            Export SVG
-          </button>
-          <button className="button destructive" type="button" onClick={deleteDrawing}>
-            Delete Drawing
-          </button>
+          <button className="toolbar-button" type="button" disabled title="Save placeholder">Save</button>
+          <button className="toolbar-button" type="button" onClick={exportSvg} disabled={Object.keys(edgeAssignments).length === 0} title="Export SVG">Export</button>
+          <button className="toolbar-button" type="button" onClick={applyPanelPaths} disabled={Object.keys(edgeAssignments).length === 0} title="Apply geometry">Apply</button>
+          <button className="toolbar-button" type="button" onClick={resetCanvasView} title="Reset view">Reset view</button>
+          <button className="toolbar-button" type="button" onClick={fitCanvasToScreen} title="Fit to screen">Fit to screen</button>
+          <button className="toolbar-button icon-button" type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo" title="Undo">↶</button>
+          <button className="toolbar-button icon-button" type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo" title="Redo">↷</button>
           <a ref={downloadRef} className="visually-hidden" aria-hidden="true">
             download
           </a>
@@ -1524,7 +1528,33 @@ function App() {
       {errorMessage && <div className="notice">{errorMessage}</div>}
 
       <section className="workspace" aria-label="SVG connection workspace">
-        <aside className="panel">
+        <aside className="tool-sidebar" aria-label="Tool sidebar">
+          {([
+            ['select', 'Select', 'Select and inspect existing edges'],
+            ['TB', 'TB', 'Tab/box edge tool alias for existing E connections'],
+            ['W', 'W', 'Wall connection workflow'],
+            ['S', 'S', 'Slot connection workflow'],
+            ['J', 'J', 'Future joint tool placeholder'],
+            ['P', 'P', 'Future pattern tool placeholder'],
+          ] as const).map(([tool, label, title]) => (
+            <button
+              key={tool}
+              type="button"
+              className={`tool-button${activeTool === tool ? ' active' : ''}`}
+              title={title}
+              aria-pressed={activeTool === tool}
+              onClick={() => setActiveTool(tool)}
+            >
+              {label}
+            </button>
+          ))}
+        </aside>
+
+        <aside className="active-tool-panel panel">
+          <div className="panel-heading">
+            <p className="eyebrow">Active tool</p>
+            <h2>{activeTool === 'TB' ? 'TB / existing E' : activeTool}</h2>
+          </div>
           <h2>Connection manager</h2>
           <p className="muted">
             Create a connection, select it, tune its parameters, then click edges from your custom SVG. This app assigns reusable labels and can apply E finger-joint geometry to closed panel outlines.
@@ -1858,6 +1888,11 @@ function App() {
             </svg>
           </div>
         </section>
+        <aside className="workflow-history-panel panel" aria-label="Workflow history">
+          <p className="eyebrow">Workflow History</p>
+          <h2>Workflow History</h2>
+          <p className="muted">Coming soon</p>
+        </aside>
       </section>
     </main>
   );
