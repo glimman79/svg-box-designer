@@ -1182,7 +1182,7 @@ button:disabled {
   flex: 1 1 auto;
   height: auto;
   min-height: 0;
-  grid-template-rows: minmax(0, 1fr) 38px;
+  grid-template-rows: minmax(0, 1fr) auto;
 }
 
 .canvas-card {
@@ -1194,7 +1194,7 @@ button:disabled {
 .canvas-frame {
   flex: 1 1 auto;
   min-height: 0;
-  height: 100%;
+  height: auto;
   overflow: hidden;
 }
 
