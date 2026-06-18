@@ -1507,6 +1507,19 @@ function App() {
             <h1>LightBurn-style layout shell</h1>
           </div>
         </div>
+        <div className="drawing-toolbar" aria-label="Drawing view controls">
+          <div className="drawing-toolbar-title">
+            <h2>Drawing</h2>
+            <p>{svgModel.edges.length} selectable straight edges detected.</p>
+          </div>
+          <div className="view-controls">
+            <button type="button" onClick={resetCanvasView}>Reset view</button>
+            <button type="button" onClick={fitCanvasToScreen}>Fit to screen</button>
+            <button type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo" title="Undo">↶</button>
+            <button type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo" title="Redo">↷</button>
+            <button type="button" onClick={applyPanelPaths} disabled={Object.keys(edgeAssignments).length === 0}>Apply</button>
+          </div>
+        </div>
         <div className="toolbar-actions">
           <label className="toolbar-button primary" title="Import SVG">
             Import
@@ -1514,7 +1527,6 @@ function App() {
           </label>
           <button className="toolbar-button" type="button" disabled title="Save placeholder">Save</button>
           <button className="toolbar-button" type="button" onClick={exportSvg} disabled={Object.keys(edgeAssignments).length === 0} title="Export SVG">Export</button>
-          <button className="toolbar-button" type="button" onClick={applyPanelPaths} disabled={Object.keys(edgeAssignments).length === 0} title="Apply geometry">Apply</button>
           <a ref={downloadRef} className="visually-hidden" aria-hidden="true">
             download
           </a>
@@ -1725,20 +1737,6 @@ function App() {
         </aside>
 
         <section className="canvas-card">
-          <div className="canvas-toolbar">
-            <div>
-              <h2>Drawing</h2>
-              <p>{svgModel.edges.length} selectable straight edges detected.</p>
-            </div>
-            <div className="view-controls" aria-label="Drawing view controls">
-              <button type="button" onClick={resetCanvasView}>Reset view</button>
-              <button type="button" onClick={fitCanvasToScreen}>Fit to screen</button>
-              <button type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo" title="Undo">↶</button>
-              <button type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo" title="Redo">↷</button>
-              <button type="button" onClick={applyPanelPaths} disabled={Object.keys(edgeAssignments).length === 0}>Apply</button>
-            </div>
-          </div>
-
           <div className="canvas-frame">
             <div className="canvas-history-controls" aria-label="Canvas compact property controls">
               {renderCompactControls()}
