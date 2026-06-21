@@ -408,6 +408,7 @@ function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const canvasFrameRef = useRef<HTMLDivElement>(null);
   const panStateRef = useRef<PanState | null>(null);
   const suppressEdgeClickRef = useRef(false);
   const [canvasViewBox, setCanvasViewBox] = useState<CanvasViewBox>(() => parseViewBox(svgModel.viewBox));
@@ -1108,8 +1109,20 @@ function App() {
     const paddedWidth = contentWidth * 1.2;
     const paddedHeight = contentHeight * 1.2;
     const svgElement = svgRef.current;
-    const canvasAspectRatio = svgElement && svgElement.clientWidth > 0 && svgElement.clientHeight > 0
-      ? svgElement.clientWidth / svgElement.clientHeight
+    const canvasFrameElement = canvasFrameRef.current;
+    let viewportWidth = svgElement?.clientWidth ?? 0;
+    let viewportHeight = svgElement?.clientHeight ?? 0;
+
+    if (canvasFrameElement) {
+      const frameStyles = window.getComputedStyle(canvasFrameElement);
+      const horizontalPadding = (parseFloat(frameStyles.paddingLeft) || 0) + (parseFloat(frameStyles.paddingRight) || 0);
+      const verticalPadding = (parseFloat(frameStyles.paddingTop) || 0) + (parseFloat(frameStyles.paddingBottom) || 0);
+      viewportWidth = Math.max(canvasFrameElement.clientWidth - horizontalPadding, 0);
+      viewportHeight = Math.max(canvasFrameElement.clientHeight - verticalPadding, 0);
+    }
+
+    const canvasAspectRatio = viewportWidth > 0 && viewportHeight > 0
+      ? viewportWidth / viewportHeight
       : fallbackViewBox.width / fallbackViewBox.height;
     const safeCanvasAspectRatio = Number.isFinite(canvasAspectRatio) && canvasAspectRatio > 0
       ? canvasAspectRatio
@@ -1737,7 +1750,7 @@ function App() {
         </aside>
 
         <section className="canvas-card">
-          <div className="canvas-frame">
+          <div className="canvas-frame" ref={canvasFrameRef}>
             <div className="canvas-history-controls" aria-label="Canvas compact property controls">
               {renderCompactControls()}
             </div>
