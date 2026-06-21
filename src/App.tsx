@@ -1146,10 +1146,6 @@ function App() {
     };
   };
 
-  const resetCanvasView = () => {
-    setCanvasViewBox(getFittedCanvasViewBox());
-  };
-
   const fitCanvasToScreen = () => {
     setCanvasViewBox(getFittedCanvasViewBox());
   };
@@ -1539,7 +1535,6 @@ function App() {
             <p>{svgModel.edges.length} selectable straight edges detected.</p>
           </div>
           <div className="view-controls">
-            <button type="button" onClick={resetCanvasView}>Reset view</button>
             <button type="button" onClick={fitCanvasToScreen}>Fit to screen</button>
             <button type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo" title="Undo">↶</button>
             <button type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo" title="Redo">↷</button>
