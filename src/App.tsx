@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
@@ -1061,11 +1061,27 @@ function App() {
     setCanvasViewBox((currentViewBox) => zoomViewBox(currentViewBox, factor, center, originalViewBox));
   };
 
-  const resetCanvasView = () => {
-    setCanvasViewBox(parseViewBox(svgModel.viewBox));
+  const getCanvasViewportSize = (fallbackViewBox: CanvasViewBox) => {
+    const svgElement = svgRef.current;
+    const canvasFrameElement = canvasFrameRef.current;
+    let viewportWidth = svgElement?.clientWidth ?? 0;
+    let viewportHeight = svgElement?.clientHeight ?? 0;
+
+    if (canvasFrameElement) {
+      const frameStyles = window.getComputedStyle(canvasFrameElement);
+      const horizontalPadding = (parseFloat(frameStyles.paddingLeft) || 0) + (parseFloat(frameStyles.paddingRight) || 0);
+      const verticalPadding = (parseFloat(frameStyles.paddingTop) || 0) + (parseFloat(frameStyles.paddingBottom) || 0);
+      viewportWidth = Math.max(canvasFrameElement.clientWidth - horizontalPadding, 0);
+      viewportHeight = Math.max(canvasFrameElement.clientHeight - verticalPadding, 0);
+    }
+
+    return {
+      width: viewportWidth > 0 ? viewportWidth : fallbackViewBox.width,
+      height: viewportHeight > 0 ? viewportHeight : fallbackViewBox.height,
+    };
   };
 
-  const fitCanvasToScreen = () => {
+  const getFittedCanvasViewBox = () => {
     const fallbackViewBox = parseViewBox(svgModel.viewBox);
     let contentBounds: SourceBounds | null = null;
     const includePointInBounds = (point: Point) => {
@@ -1099,8 +1115,7 @@ function App() {
     });
 
     if (!contentBounds) {
-      setCanvasViewBox(fallbackViewBox);
-      return;
+      return fallbackViewBox;
     }
 
     const fittedContentBounds = contentBounds as SourceBounds;
@@ -1108,22 +1123,8 @@ function App() {
     const contentHeight = Math.max(fittedContentBounds.maxY - fittedContentBounds.minY, fallbackViewBox.height * 0.01, 1);
     const paddedWidth = contentWidth * 1.2;
     const paddedHeight = contentHeight * 1.2;
-    const svgElement = svgRef.current;
-    const canvasFrameElement = canvasFrameRef.current;
-    let viewportWidth = svgElement?.clientWidth ?? 0;
-    let viewportHeight = svgElement?.clientHeight ?? 0;
-
-    if (canvasFrameElement) {
-      const frameStyles = window.getComputedStyle(canvasFrameElement);
-      const horizontalPadding = (parseFloat(frameStyles.paddingLeft) || 0) + (parseFloat(frameStyles.paddingRight) || 0);
-      const verticalPadding = (parseFloat(frameStyles.paddingTop) || 0) + (parseFloat(frameStyles.paddingBottom) || 0);
-      viewportWidth = Math.max(canvasFrameElement.clientWidth - horizontalPadding, 0);
-      viewportHeight = Math.max(canvasFrameElement.clientHeight - verticalPadding, 0);
-    }
-
-    const canvasAspectRatio = viewportWidth > 0 && viewportHeight > 0
-      ? viewportWidth / viewportHeight
-      : fallbackViewBox.width / fallbackViewBox.height;
+    const viewportSize = getCanvasViewportSize(fallbackViewBox);
+    const canvasAspectRatio = viewportSize.width / viewportSize.height;
     const safeCanvasAspectRatio = Number.isFinite(canvasAspectRatio) && canvasAspectRatio > 0
       ? canvasAspectRatio
       : 1;
@@ -1137,13 +1138,25 @@ function App() {
     const centerX = (fittedContentBounds.minX + fittedContentBounds.maxX) / 2;
     const centerY = (fittedContentBounds.minY + fittedContentBounds.maxY) / 2;
 
-    setCanvasViewBox({
+    return {
       x: centerX - fittedWidth / 2,
       y: centerY - fittedHeight / 2,
       width: Math.max(fittedWidth, 1),
       height: Math.max(fittedHeight, 1),
-    });
+    };
   };
+
+  const resetCanvasView = () => {
+    setCanvasViewBox(getFittedCanvasViewBox());
+  };
+
+  const fitCanvasToScreen = () => {
+    setCanvasViewBox(getFittedCanvasViewBox());
+  };
+
+  useLayoutEffect(() => {
+    setCanvasViewBox(getFittedCanvasViewBox());
+  }, [svgModel]);
 
   const handleCanvasWheel = (event: WheelEvent<SVGSVGElement>) => {
     if (!event.ctrlKey) {
