@@ -647,7 +647,7 @@ const workflowHistoryItems = buildWorkflowHistoryItems(
     W1: { id: 'W1', prefix: 'W', properties: { ...defaultConnectionProperties.W, selectedEdgeIds: ['p1-left', 'p1-right'] } },
   },
 );
-assert.equal(JSON.stringify(workflowHistoryItems.map((item) => item.name)), JSON.stringify(['TB Group 1', 'Slot Group 1', 'Wall Group 1']), 'Workflow History displays TB, Slot, and Wall groups in order');
+assert.equal(JSON.stringify(workflowHistoryItems.map((item) => item.name)), JSON.stringify(['TB Group 1', 'S Group 1', 'W Group 1']), 'Workflow History displays TB, S, and W groups in order');
 assert.equal(JSON.stringify(workflowHistoryItems.map((item) => item.childCount)), JSON.stringify([2, 2, 2]), 'Workflow History includes available child connection counts');
 assert.equal(workflowHistoryItems[1].isActive, true, 'Workflow History exposes active group state for navigation');
 
