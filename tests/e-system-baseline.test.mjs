@@ -656,21 +656,42 @@ assert.equal(JSON.stringify(tbConnections), JSON.stringify({
   E2: { id: 'E2', prefix: 'E', properties: tbStarted.connections.E1.properties },
 }), 'Finish TB group does not rename labels or mutate connections');
 
+const workflowHistoryConnections = {
+  ...tbConnections,
+  E3: { id: 'E3', prefix: 'E', properties: tbStarted.connections.E1.properties },
+  S1: { id: 'S1', prefix: 'S', properties: defaultConnectionProperties.S },
+  S2: { id: 'S2', prefix: 'S', properties: defaultConnectionProperties.S },
+  W1: { id: 'W1', prefix: 'W', properties: { ...defaultConnectionProperties.W, selectedEdgeIds: ['p1-left', 'p1-right'] } },
+};
 const workflowHistoryItems = buildWorkflowHistoryItems(
-  [{ id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: tbFinished.isActive }],
-  [{ id: 's-group-S1', labels: ['S1', 'S2'], isActive: true }],
-  [{ id: 'w-group-W1', labels: ['W1'], isActive: false }],
-  {
-    ...tbConnections,
-    S1: { id: 'S1', prefix: 'S', properties: defaultConnectionProperties.S },
-    S2: { id: 'S2', prefix: 'S', properties: defaultConnectionProperties.S },
-    W1: { id: 'W1', prefix: 'W', properties: { ...defaultConnectionProperties.W, selectedEdgeIds: ['p1-left', 'p1-right'] } },
-  },
+  [{ id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: tbFinished.isActive, orderIndex: 0 }],
+  [{ id: 's-group-S1', labels: ['S1', 'S2'], isActive: true, orderIndex: 2 }],
+  [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 1 }],
+  workflowHistoryConnections,
 );
-assert.equal(JSON.stringify(workflowHistoryItems.map((item) => item.name)), JSON.stringify(['TB Group 1', 'S Group 1', 'W Group 1']), 'Workflow History displays TB, S, and W groups in order');
+assert.equal(JSON.stringify(workflowHistoryItems.map((item) => item.name)), JSON.stringify(['TB Group 1', 'W Group 1', 'S Group 1']), 'Workflow History displays TB, W, and S groups by creation order');
 assert.equal(workflowHistoryItems.filter((item) => item.kind === 'TB').length, 1, 'Workflow History shows one TB group for one TB workflow, not one group per E label');
 assert.equal(JSON.stringify(workflowHistoryItems.map((item) => item.childCount)), JSON.stringify([2, 2, 2]), 'Workflow History includes available child connection counts');
-assert.equal(workflowHistoryItems[1].isActive, true, 'Workflow History exposes active group state for navigation');
+assert.equal(workflowHistoryItems[2].isActive, true, 'Workflow History exposes active group state for navigation');
+
+const workflowHistoryCreationOrderItems = buildWorkflowHistoryItems(
+  [
+    { id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: false, orderIndex: 0 },
+    { id: 'tb-group-E3', labels: ['E3'], isActive: true, orderIndex: 3 },
+  ],
+  [{ id: 's-group-S1', labels: ['S1'], isActive: false, orderIndex: 2 }],
+  [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 1 }],
+  workflowHistoryConnections,
+);
+assert.equal(JSON.stringify(workflowHistoryCreationOrderItems.map((item) => item.kind)), JSON.stringify(['TB', 'W', 'S', 'TB']), 'Workflow History preserves TB, W, S, TB creation order instead of sorting by type');
+
+const workflowHistoryFallbackItems = buildWorkflowHistoryItems(
+  [{ id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: false, orderIndex: 0 }],
+  [{ id: 's-group-S1', labels: ['S1'], isActive: false }],
+  [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 1 }],
+  workflowHistoryConnections,
+);
+assert.equal(JSON.stringify(workflowHistoryFallbackItems.map((item) => item.kind)), JSON.stringify(['TB', 'W', 'S']), 'Workflow History places old unordered groups after ordered groups');
 
 const cloneTBHistoryState = (state) => structuredClone(state);
 const tbHistoryState = {
