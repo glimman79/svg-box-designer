@@ -1009,8 +1009,8 @@ button:disabled {
 .workflow-history-panel {
   grid-area: history;
   min-height: 0;
-  max-height: 74px;
-  overflow: hidden;
+  max-height: 160px;
+  overflow: auto;
   padding: 7px 10px;
   border-radius: 14px;
 }
@@ -1032,9 +1032,9 @@ button:disabled {
 
 .workflow-history-items {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 5px;
-  overflow: hidden;
 }
 
 .workflow-history-item {
@@ -1045,11 +1045,40 @@ button:disabled {
   padding: 0 9px;
   color: #334155;
   background: #f8fafc;
-  border: 1px dashed #cbd5e1;
-  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
   font-size: 0.78rem;
   font-weight: 800;
-  cursor: default;
+  cursor: pointer;
+}
+
+.workflow-history-item:hover,
+.workflow-history-item:focus-visible,
+.workflow-history-item[aria-pressed="true"] {
+  border-color: #14b8a6;
+  background: #ecfeff;
+}
+
+.workflow-history-item.active {
+  border-color: #0f766e;
+  background: #ccfbf1;
+}
+
+.history-item-copy {
+  display: grid;
+  gap: 1px;
+  text-align: left;
+}
+
+.history-item-copy small {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.workflow-history-empty {
+  margin: 5px 0 0;
+  font-size: 0.78rem;
 }
 
 .history-item-icon {

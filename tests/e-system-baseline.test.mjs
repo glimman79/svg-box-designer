@@ -592,7 +592,7 @@ const inactiveWDisplayAssignments = buildActiveWDisplayAssignments({}, wConnecti
 assert.equal(inactiveWDisplayAssignments['w1-top'], undefined, 'temporary W labels disappear after W group is inactive');
 console.log('W group V1 tests passed');
 
-const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, finishTBGroupWorkflow } = module.exports;
+const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, finishTBGroupWorkflow, buildWorkflowHistoryItems } = module.exports;
 
 const tbStarted = startTBGroupWorkflow({}, defaultConnectionProperties.E);
 assert.equal(tbStarted.selectedLabelId, 'E1', 'Start TB group selects first internal E label');
@@ -635,6 +635,21 @@ assert.equal(JSON.stringify(tbConnections), JSON.stringify({
   E1: tbStarted.connections.E1,
   E2: { id: 'E2', prefix: 'E', properties: tbStarted.connections.E1.properties },
 }), 'Finish TB group does not rename labels or mutate connections');
+
+const workflowHistoryItems = buildWorkflowHistoryItems(
+  [{ id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: tbFinished.isActive }],
+  [{ id: 's-group-S1', labels: ['S1', 'S2'], isActive: true }],
+  [{ id: 'w-group-W1', labels: ['W1'], isActive: false }],
+  {
+    ...tbConnections,
+    S1: { id: 'S1', prefix: 'S', properties: defaultConnectionProperties.S },
+    S2: { id: 'S2', prefix: 'S', properties: defaultConnectionProperties.S },
+    W1: { id: 'W1', prefix: 'W', properties: { ...defaultConnectionProperties.W, selectedEdgeIds: ['p1-left', 'p1-right'] } },
+  },
+);
+assert.equal(JSON.stringify(workflowHistoryItems.map((item) => item.name)), JSON.stringify(['TB Group 1', 'Slot Group 1', 'Wall Group 1']), 'Workflow History displays TB, Slot, and Wall groups in order');
+assert.equal(JSON.stringify(workflowHistoryItems.map((item) => item.childCount)), JSON.stringify([2, 2, 2]), 'Workflow History includes available child connection counts');
+assert.equal(workflowHistoryItems[1].isActive, true, 'Workflow History exposes active group state for navigation');
 
 const cloneTBHistoryState = (state) => structuredClone(state);
 const tbHistoryState = {
