@@ -81,3 +81,11 @@ export const finishTBGroupWorkflow = (activeTBGroup: ActiveTBGroup): ActiveTBGro
   ...activeTBGroup,
   isActive: false,
 });
+
+
+export const buildTBCanvasLabelAliasMap = (tbGroups: { labels: string[] }[]) => Object.fromEntries(
+  tbGroups.flatMap((group, groupIndex) => group.labels.flatMap((connectionId) => [
+    [`${connectionId}-A`, `TB${groupIndex + 1}-A`],
+    [`${connectionId}-B`, `TB${groupIndex + 1}-B`],
+  ])),
+);

@@ -126,6 +126,7 @@ type EdgeLabelPlacementOptions = {
   paddingYPx: number;
   edgeOffsetPx: number;
   labelScale?: number;
+  formatDisplayLabel?: (label: string) => string;
 };
 
 const defaultCanvas = {
@@ -832,7 +833,7 @@ export const getEdgeLabelPlacements = (
 
   return edges.flatMap((edge) => {
     const assignment = edgeAssignments[edge.id];
-    const labels = getEdgeAssignmentDisplayLabels(assignment);
+    const labels = getEdgeAssignmentDisplayLabels(assignment).map((displayLabel) => options.formatDisplayLabel?.(displayLabel) ?? displayLabel);
 
     if (labels.length === 0) {
       return [];
