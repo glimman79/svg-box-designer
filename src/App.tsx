@@ -75,7 +75,7 @@ export const buildWorkflowHistoryItems = (
   ...sGroups.map((group, groupIndex) => ({
     id: group.id,
     kind: 'S' as const,
-    name: `Slot Group ${groupIndex + 1}`,
+    name: `S Group ${groupIndex + 1}`,
     labels: group.labels,
     isActive: group.isActive,
     childCount: group.labels.length,
@@ -88,7 +88,7 @@ export const buildWorkflowHistoryItems = (
     return {
       id: group.id,
       kind: 'W' as const,
-      name: `Wall Group ${groupIndex + 1}`,
+      name: `W Group ${groupIndex + 1}`,
       labels: group.labels,
       isActive: group.isActive,
       childCount: selectedEdgeCount,
@@ -567,6 +567,9 @@ function App() {
   const wGroupActionNumber = getWGroupActionNumber(connections, activeWGroup);
 
   const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections), [connections, sLabelGroups, tbLabelGroups, wLabelGroups]);
+  const activeWConnection = activeWGroup?.isActive ? connections[activeWGroup.connectionId] : undefined;
+  const hasApplyInputs = Object.keys(edgeAssignments).length > 0
+    || (activeWConnection?.prefix === 'W' && activeWConnection.properties.selectedEdgeIds.length > 0);
 
   const navigateToWorkflowHistoryItem = (item: WorkflowHistoryItem) => {
     const firstLabel = item.labels[0] ?? null;
@@ -960,8 +963,11 @@ function App() {
 
   const applyPanelPaths = () => {
     try {
-      const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, edgeAssignments, connections, true);
-      const nextAppliedSGeometry = buildAppliedSGeometry(svgModel, edgeAssignments, connections);
+      const applyInputs = activeWGroup?.isActive
+        ? finishWGroupWorkflow(connections, edgeAssignments, activeWGroup, svgModel)
+        : { connections, assignments: edgeAssignments };
+      const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, applyInputs.assignments, applyInputs.connections, true);
+      const nextAppliedSGeometry = buildAppliedSGeometry(svgModel, applyInputs.assignments, applyInputs.connections);
       setAppliedEPanelPaths(nextAppliedEPanelPaths);
       setAppliedSGeometry(nextAppliedSGeometry);
       setErrorMessage('');
@@ -1608,7 +1614,7 @@ function App() {
             <button type="button" onClick={fitCanvasToScreen}>Fit to screen</button>
             <button type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo" title="Undo">↶</button>
             <button type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo" title="Redo">↷</button>
-            <button type="button" onClick={applyPanelPaths} disabled={Object.keys(edgeAssignments).length === 0}>Apply</button>
+            <button type="button" onClick={applyPanelPaths} disabled={!hasApplyInputs}>Apply</button>
           </div>
         </div>
         <div className="toolbar-actions">
