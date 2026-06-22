@@ -1234,16 +1234,16 @@ button:disabled {
 }
 
 .workflow-history-panel {
-  max-height: 38px;
-  padding: 4px 8px;
+  max-height: 74px;
+  padding: 4px 8px 6px;
 }
 
 .workflow-history-header {
-  min-height: 28px;
+  min-height: 20px;
 }
 
 .workflow-history-items {
-  display: none;
+  display: flex;
 }
 
 @media (max-width: 1100px) {
