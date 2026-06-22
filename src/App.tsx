@@ -48,6 +48,54 @@ type HistoryState = {
   activeWGroup: ActiveWGroup | null;
 };
 
+
+type WorkflowHistoryItem = {
+  id: string;
+  kind: 'TB' | 'S' | 'W';
+  name: string;
+  labels: string[];
+  isActive: boolean;
+  childCount: number;
+};
+
+export const buildWorkflowHistoryItems = (
+  tbGroups: { id: string; labels: string[]; isActive: boolean }[],
+  sGroups: { id: string; labels: string[]; isActive: boolean }[],
+  wGroups: { id: string; labels: string[]; isActive: boolean }[],
+  connections: ConnectionMap,
+): WorkflowHistoryItem[] => ([
+  ...tbGroups.map((group, groupIndex) => ({
+    id: group.id,
+    kind: 'TB' as const,
+    name: `TB Group ${groupIndex + 1}`,
+    labels: group.labels,
+    isActive: group.isActive,
+    childCount: group.labels.length,
+  })),
+  ...sGroups.map((group, groupIndex) => ({
+    id: group.id,
+    kind: 'S' as const,
+    name: `Slot Group ${groupIndex + 1}`,
+    labels: group.labels,
+    isActive: group.isActive,
+    childCount: group.labels.length,
+  })),
+  ...wGroups.map((group, groupIndex) => {
+    const label = group.labels[0];
+    const connection = label ? connections[label] : undefined;
+    const selectedEdgeCount = connection?.prefix === 'W' ? connection.properties.selectedEdgeIds.length : group.labels.length;
+
+    return {
+      id: group.id,
+      kind: 'W' as const,
+      name: `Wall Group ${groupIndex + 1}`,
+      labels: group.labels,
+      isActive: group.isActive,
+      childCount: selectedEdgeCount,
+    };
+  }),
+]);
+
 const maxHistoryEntries = 10;
 
 const cloneHistoryState = (state: HistoryState): HistoryState => ({
@@ -517,6 +565,27 @@ function App() {
   const tbGroupActionNumber = activeTBGroup?.isActive ? getLabelNumber(activeTBGroup.connectionIds[0] ?? 'E1') : tbLabelGroups.length + 1;
   const sGroupActionNumber = getSGroupActionNumber(connections, activeSGroup);
   const wGroupActionNumber = getWGroupActionNumber(connections, activeWGroup);
+
+  const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections), [connections, sLabelGroups, tbLabelGroups, wLabelGroups]);
+
+  const navigateToWorkflowHistoryItem = (item: WorkflowHistoryItem) => {
+    const firstLabel = item.labels[0] ?? null;
+    setActiveTool(item.kind);
+    setSelectedLabelId(firstLabel);
+    setErrorMessage('');
+
+    if (item.kind === 'TB') {
+      setExpandedTBGroups((currentGroups) => ({ ...currentGroups, [item.id]: true }));
+      return;
+    }
+
+    if (item.kind === 'S') {
+      setExpandedSGroups((currentGroups) => ({ ...currentGroups, [item.id]: true }));
+      return;
+    }
+
+    setExpandedWGroups((currentGroups) => ({ ...currentGroups, [item.id]: true }));
+  };
 
   const hasAssignedEEdges = useMemo(() => {
     return Object.values(edgeAssignments).some((assignment) => getBucketEdgeAssignment(assignment)?.connectionId.startsWith('E'));
@@ -1961,21 +2030,27 @@ function App() {
         <aside className="workflow-history-panel panel" aria-label="Workflow history">
           <div className="workflow-history-header">
             <p className="eyebrow">Workflow History</p>
-            <span className="muted">Coming soon</span>
+            <span className="muted">Navigation only</span>
           </div>
-          <div className="workflow-history-items" aria-label="Future selectable workflow items">
-            <button type="button" className="workflow-history-item" aria-label="Future connection history item placeholder">
-              <span className="history-item-icon">E</span>
-              <span>Edge setup</span>
-            </button>
-            <button type="button" className="workflow-history-item" aria-label="Future connection history item placeholder">
-              <span className="history-item-icon">S</span>
-              <span>Slot group</span>
-            </button>
-            <button type="button" className="workflow-history-item" aria-label="Future connection history item placeholder">
-              <span className="history-item-icon">W</span>
-              <span>Wall group</span>
-            </button>
+          <div className="workflow-history-items" aria-label="Workflow groups">
+            {workflowHistoryItems.length > 0 ? workflowHistoryItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`workflow-history-item${item.isActive ? ' active' : ''}`}
+                aria-label={`${item.name}, ${item.isActive ? 'active' : 'inactive'}, ${item.childCount} ${item.childCount === 1 ? 'child connection' : 'child connections'}`}
+                aria-pressed={item.labels.includes(selectedLabelId ?? '')}
+                onClick={() => navigateToWorkflowHistoryItem(item)}
+              >
+                <span className="history-item-icon">{item.kind}</span>
+                <span className="history-item-copy">
+                  <strong>{item.name}</strong>
+                  <small>{item.isActive ? 'Active' : 'Inactive'} · {item.childCount} {item.childCount === 1 ? 'child' : 'children'}</small>
+                </span>
+              </button>
+            )) : (
+              <p className="workflow-history-empty muted">No workflow groups yet.</p>
+            )}
           </div>
         </aside>
       </section>
