@@ -974,29 +974,29 @@ button:disabled {
   grid-area: active;
   min-height: 0;
   overflow: auto;
-  padding: 14px;
-  border-radius: 14px;
-  font-size: 0.86rem;
+  padding: 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
 }
 
 .active-tool-panel h2 {
-  font-size: 1rem;
+  font-size: 0.92rem;
 }
 
 .active-tool-panel h3 {
-  font-size: 0.9rem;
+  font-size: 0.84rem;
 }
 
 .active-tool-panel .muted {
-  font-size: 0.82rem;
-  line-height: 1.35;
+  font-size: 0.76rem;
+  line-height: 1.25;
 }
 
 .panel-heading {
   display: grid;
   gap: 2px;
-  margin-bottom: 10px;
-  padding-bottom: 10px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
   border-bottom: 1px solid #e2e8f0;
 }
 
@@ -1237,4 +1237,96 @@ button:disabled {
   .workspace {
     grid-template-rows: minmax(460px, 1fr) auto 38px;
   }
+}
+
+/* UI Phase 1.4 active tool panel compaction. */
+.active-tool-panel .active-label-card {
+  margin: 8px 0;
+  padding: 8px;
+  border-radius: 12px;
+}
+
+.active-tool-panel .active-label-card strong {
+  font-size: 1.35rem;
+}
+
+.active-tool-panel .label-manager {
+  gap: 8px;
+}
+
+.active-tool-panel .label-group {
+  gap: 7px;
+  padding: 9px;
+  border-radius: 12px;
+}
+
+.active-tool-panel .label-group-header {
+  gap: 7px;
+}
+
+.active-tool-panel .label-group-header h3 {
+  font-size: 0.84rem;
+}
+
+.active-tool-panel .label-group-header p,
+.active-tool-panel .empty-labels {
+  font-size: 0.76rem;
+}
+
+.active-tool-panel .label-group-header button,
+.active-tool-panel .label-list button,
+.active-tool-panel .s-group-connection-list button {
+  padding: 7px 8px;
+  border-radius: 10px;
+}
+
+.active-tool-panel .label-actions {
+  gap: 5px;
+}
+
+.active-tool-panel .label-list {
+  gap: 5px;
+}
+
+.active-tool-panel .label-list strong,
+.active-tool-panel .label-list button.s-group-toggle strong,
+.active-tool-panel .s-group-connection-list strong {
+  font-size: 0.9rem;
+}
+
+.active-tool-panel .label-list span {
+  font-size: 0.74rem;
+}
+
+.active-tool-panel .properties-card,
+.active-tool-panel .selection-card,
+.active-tool-panel .active-tool-card {
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+.active-tool-panel .property-sections,
+.active-tool-panel .property-section {
+  gap: 8px;
+}
+
+.active-tool-panel .property-section {
+  padding: 8px;
+  border-radius: 12px;
+}
+
+.active-tool-panel .property-section h4 {
+  font-size: 0.8rem;
+}
+
+.active-tool-panel .property-grid {
+  gap: 8px;
+}
+
+.active-tool-panel .calculated-edge-list {
+  gap: 6px;
+}
+
+.active-tool-panel .calculated-edge-list li {
+  padding: 8px;
 }

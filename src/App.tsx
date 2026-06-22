@@ -1240,12 +1240,13 @@ function App() {
   };
 
   const renderPropertiesPanel = () => {
-    if (!selectedConnection) {
-      return <p className="muted">Select E1, S1, W1, C1, or P1 to edit its saved connection properties.</p>;
+    const activeConnectionPrefix = activeTool === 'TB' ? 'E' : activeTool;
+
+    if (!selectedConnection || selectedConnection.prefix !== activeConnectionPrefix) {
+      return <p className="muted">Select a {activeTool === 'TB' ? 'TB / Top Bottom' : activeTool} connection to inspect this tool.</p>;
     }
 
     if (selectedConnection.prefix === 'E') {
-      const properties = selectedConnection.properties;
       const assignedEEdges = svgModel.edges.filter((edge) => getBucketEdgeAssignment(edgeAssignments[edge.id])?.connectionId === selectedConnection.id);
       return (
         <div className="property-sections">
@@ -1284,19 +1285,9 @@ function App() {
                 ))}
               </ul>
             ) : (
-              <p className="muted">No edges assigned to this E label yet. Select this label, then click edges in the drawing.</p>
+              <p className="muted">No edges assigned to this TB / Top Bottom label yet. Select this label, then click edges in the drawing.</p>
             )}
           </section>
-
-          <section className="property-section" aria-labelledby="edge-basic-properties">
-            <h4 id="edge-basic-properties">Basic</h4>
-            <div className="property-grid">
-              <NumericField id="edge-finger-width" label="Tab size (mm)" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
-              <NumericField id="edge-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateEdgeProperties({ materialThicknessMm })} />
-            </div>
-            <p className="muted">Edge settings are shared across all E connections.</p>
-          </section>
-
         </div>
       );
     }
@@ -1350,7 +1341,6 @@ function App() {
             <h4 id="slot-basic-properties">Basic</h4>
             <div className="property-grid">
               <NumericField id="slot-offset" label="Slot offset inward from selected S-B edge (mm)" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
-              <NumericField id="slot-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateSlotProperties({ materialThicknessMm })} />
               <NumericField id="slot-length" label="Slot length (mm)" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
             </div>
           </section>
@@ -1398,65 +1388,13 @@ function App() {
               <p className="muted">Reference pattern: {properties.referencePatternType}; W role pattern: {properties.generatedPatternType}.</p>
             )}
           </section>
-
-          <section className="property-section" aria-labelledby="wall-basic-properties">
-            <h4 id="wall-basic-properties">Basic</h4>
-            <div className="property-grid">
-              <NumericField id="wall-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateWallProperties({ materialThicknessMm })} />
-              <NumericField id="wall-tab-size" label="Tab size (mm)" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateWallProperties({ fingerWidthMm })} />
-            </div>
-            <p className="muted">W stores its own finished edge assignments and uses W material thickness and tab size.</p>
-          </section>
         </div>
       );
     }
 
-    if (selectedConnection.prefix === 'C') {
-      const properties = selectedConnection.properties;
-      return (
-        <div className="property-sections">
-          <section className="property-section" aria-labelledby="corner-basic-properties">
-            <h4 id="corner-basic-properties">Basic</h4>
-            <div className="property-grid">
-              <NumericField id="corner-depth" label="Corner depth (mm)" min={0} value={properties.cornerDepthMm} onChange={(cornerDepthMm) => updateCornerProperties({ cornerDepthMm })} />
-              <NumericField id="corner-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateCornerProperties({ materialThicknessMm })} />
-            </div>
-          </section>
 
-          <section className="property-section" aria-labelledby="corner-advanced-properties">
-            <h4 id="corner-advanced-properties">Advanced</h4>
-            <div className="property-grid">
-              <NumericField id="corner-kerf" label="Kerf (mm)" min={0} value={properties.kerfMm} onChange={(kerfMm) => updateCornerProperties({ kerfMm })} />
-              <NumericField id="corner-play" label="Play (mm)" min={0} value={properties.playMm} onChange={(playMm) => updateCornerProperties({ playMm })} />
-              <SelectField id="corner-type" label="Corner type" value={properties.cornerType} options={['finger', 'miter', 'butt', 'rounded']} onChange={(cornerType) => updateCornerProperties({ cornerType })} />
-            </div>
-          </section>
-        </div>
-      );
-    }
+    return null;
 
-    const properties = selectedConnection.properties;
-    return (
-      <div className="property-sections">
-        <section className="property-section" aria-labelledby="pattern-basic-properties">
-          <h4 id="pattern-basic-properties">Basic</h4>
-          <div className="property-grid">
-            <SelectField id="pattern-type" label="Pattern type" value={properties.patternType} options={['line-fill', 'dash', 'perforation', 'hatch']} onChange={(patternType) => updatePatternProperties({ patternType })} />
-            <NumericField id="pattern-width" label="Pattern width (mm)" min={0} value={properties.patternWidthMm} onChange={(patternWidthMm) => updatePatternProperties({ patternWidthMm })} />
-            <NumericField id="pattern-material-thickness" label="Material thickness (mm)" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updatePatternProperties({ materialThicknessMm })} />
-          </div>
-        </section>
-
-        <section className="property-section" aria-labelledby="pattern-advanced-properties">
-          <h4 id="pattern-advanced-properties">Advanced</h4>
-          <div className="property-grid">
-            <NumericField id="pattern-line-spacing" label="Line spacing (mm)" min={0} value={properties.lineSpacingMm} onChange={(lineSpacingMm) => updatePatternProperties({ lineSpacingMm })} />
-            <NumericField id="pattern-row-offset" label="Row offset (mm)" value={properties.rowOffsetMm} onChange={(rowOffsetMm) => updatePatternProperties({ rowOffsetMm })} />
-            <NumericField id="pattern-margin" label="Margin (mm)" min={0} value={properties.marginMm} onChange={(marginMm) => updatePatternProperties({ marginMm })} />
-          </div>
-        </section>
-      </div>
-    );
   };
 
   const renderCompactControls = () => {
@@ -1582,25 +1520,51 @@ function App() {
         <aside className="active-tool-panel panel">
           <div className="panel-heading">
             <p className="eyebrow">Active tool</p>
-            <h2>{activeTool === 'TB' ? 'TB / existing E' : activeTool}</h2>
-          </div>
-          <h2>Connection manager</h2>
-          <p className="muted">
-            Create a connection, select it, tune its parameters, then click edges from your custom SVG. This app assigns reusable labels and can apply E finger-joint geometry to closed panel outlines.
-          </p>
-
-          <div className="active-label-card" aria-live="polite">
-            <span>Selected connection</span>
-            <strong>{selectedLabelId ?? 'None'}</strong>
+            <h2>{activeTool === 'TB' ? 'TB / Top Bottom' : activeTool}</h2>
           </div>
 
-          <div className="label-manager">
-            {labelsByGroup.map(({ prefix, name, description, labels: groupLabels }) => (
+          {activeTool === 'select' && (
+            <div className="selection-card active-tool-card">
+              <h3>Selection</h3>
+              <p className="muted">Inspect the selected edge and its assigned connection. Use the left toolbar to switch tools.</p>
+              {selectedEdge ? (
+                <dl>
+                  <dt>Edge</dt>
+                  <dd>{selectedEdge.id}</dd>
+                  <dt>Source</dt>
+                  <dd>{selectedEdge.source}</dd>
+                  <dt>Connection</dt>
+                  <dd>{getAssignedConnectionId(edgeAssignments[selectedEdge.id]) ?? 'Unassigned'}</dd>
+                </dl>
+              ) : (
+                <p className="muted">No edge selected.</p>
+              )}
+            </div>
+          )}
+
+          {(activeTool === 'J' || activeTool === 'P') && (
+            <div className="active-tool-card placeholder-card">
+              <h3>{activeTool === 'J' ? 'Join coming soon' : 'Pattern coming soon'}</h3>
+              <p className="muted">This tool is a placeholder and has no actions yet.</p>
+            </div>
+          )}
+
+          {(activeTool === 'TB' || activeTool === 'S' || activeTool === 'W') && (
+            <>
+              <div className="active-label-card" aria-live="polite">
+                <span>Selected connection</span>
+                <strong>{selectedLabelId ?? 'None'}</strong>
+              </div>
+
+              <div className="label-manager">
+                {labelsByGroup
+                  .filter(({ prefix }) => (activeTool === 'TB' ? prefix === 'E' : prefix === activeTool))
+                  .map(({ prefix, name, description, labels: groupLabels }) => (
               <section className="label-group" key={prefix} aria-label={name}>
                 <div className="label-group-header">
                   <div>
-                    <h3>{prefix} = {name}</h3>
-                    <p>{description}</p>
+                    <h3>{prefix === 'E' ? 'TB / Top Bottom' : `${prefix} = ${name}`}</h3>
+                    <p>{prefix === 'E' ? 'Existing E connections' : description}</p>
                   </div>
                   <div className="label-actions">
                     {prefix === 'S' ? (
@@ -1615,7 +1579,7 @@ function App() {
                       </>
                     ) : (
                       <button type="button" onClick={() => createLabel(prefix)}>
-                        Add {getNextLabel(prefix, availableLabels)}
+                        Add {prefix === 'E' ? getNextLabel(prefix, availableLabels).replace('E', 'TB') : getNextLabel(prefix, availableLabels)}
                       </button>
                     )}
                   </div>
@@ -1722,38 +1686,21 @@ function App() {
                     </ul>
                   )
                 ) : (
-                  <p className="empty-labels">No {prefix} connections yet.</p>
+                  <p className="empty-labels">No {prefix === 'E' ? 'TB / Top Bottom' : prefix} connections yet.</p>
                 )}
               </section>
             ))}
-          </div>
+              </div>
 
-          <div className="properties-card">
-            <div>
-              <p className="eyebrow">Properties</p>
-              <h3>{selectedConnection ? `${selectedConnection.id} parameters` : 'No connection selected'}</h3>
-            </div>
-            {renderPropertiesPanel()}
-          </div>
-
-          <div className="selection-card">
-            <h3>Selection</h3>
-            {selectedEdge ? (
-              <dl>
-                <dt>Edge</dt>
-                <dd>{selectedEdge.id}</dd>
-                <dt>Source</dt>
-                <dd>{selectedEdge.source}</dd>
-                <dt>Connection</dt>
-                <dd>{getAssignedConnectionId(edgeAssignments[selectedEdge.id]) ?? 'Unassigned'}</dd>
-              </dl>
-            ) : (
-              <p className="muted">No edge selected.</p>
-            )}
-            <button type="button" onClick={clearSelectedLabel} disabled={!selectedEdgeId || !edgeAssignments[selectedEdgeId]}>
-              Clear selected edge label
-            </button>
-          </div>
+              <div className="properties-card">
+                <div>
+                  <p className="eyebrow">Properties</p>
+                  <h3>{selectedConnection ? `${selectedConnection.id} details` : 'No connection selected'}</h3>
+                </div>
+                {renderPropertiesPanel()}
+              </div>
+            </>
+          )}
 
         </aside>
 
