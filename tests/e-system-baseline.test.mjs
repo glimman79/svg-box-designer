@@ -343,6 +343,16 @@ const sharedLabelPlacements = getEdgeLabelPlacements([
 ], { 'shared-edge': sharedLabelsBucket }, { fontSizePx: 12, paddingXPx: 4, paddingYPx: 2, edgeOffsetPx: 6 });
 assert.equal(sharedLabelPlacements.length, 1, 'shared E/S edge bucket creates one stacked label chip');
 assert.equal(sharedLabelPlacements[0].label, 'E3-B\nS2-B', 'stacked label chip includes E and S labels');
+const tbAliasPlacements = getEdgeLabelPlacements([
+  { id: 'tb-edge', source: 'tb-edge', start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, panelBounds: { minX: 0, maxX: 100, minY: 0, maxY: 40 } },
+], { 'tb-edge': { connectionId: 'E1', edgeRole: 'A' } }, {
+  fontSizePx: 12,
+  paddingXPx: 4,
+  paddingYPx: 2,
+  edgeOffsetPx: 6,
+  formatDisplayLabel: (label) => ({ 'E1-A': 'TB1-A' })[label] ?? label,
+});
+assert.equal(tbAliasPlacements[0].label, 'TB1-A', 'canvas display alias maps E1-A to TB1-A without changing assignments');
 console.log('S group workflow and stacked label display tests passed');
 
 let workflowConnections = {};
@@ -592,7 +602,7 @@ const inactiveWDisplayAssignments = buildActiveWDisplayAssignments({}, wConnecti
 assert.equal(inactiveWDisplayAssignments['w1-top'], undefined, 'temporary W labels disappear after W group is inactive');
 console.log('W group V1 tests passed');
 
-const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, finishTBGroupWorkflow, buildWorkflowHistoryItems } = module.exports;
+const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, buildWorkflowHistoryItems } = module.exports;
 
 const tbStarted = startTBGroupWorkflow({}, defaultConnectionProperties.E);
 assert.equal(tbStarted.selectedLabelId, 'E1', 'Start TB group selects first internal E label');
@@ -610,6 +620,14 @@ assert.equal(JSON.stringify(tbWithExisting.connections.E2.properties), JSON.stri
 const tbAppended = appendAutoCreatedEToTBGroup(tbStarted.activeTBGroup, 'E1', 'E2');
 assert.deepEqual([...tbAppended.connectionIds], ['E1', 'E2'], 'E auto-create after two assignments appends new E label to activeTBGroup');
 assert.strictEqual(appendAutoCreatedEToTBGroup(tbAppended, 'E9', 'E10'), tbAppended, 'E auto-create outside activeTBGroup leaves TB group unchanged');
+const tbFourChildGroup = appendAutoCreatedEToTBGroup(
+  appendAutoCreatedEToTBGroup(tbAppended, 'E2', 'E3'),
+  'E3',
+  'E4',
+);
+const tbFourChildFinished = finishTBGroupWorkflow(tbFourChildGroup);
+assert.deepEqual([...tbFourChildFinished.connectionIds], ['E1', 'E2', 'E3', 'E4'], 'Finished TB group retains all child E connections as one group');
+assert.deepEqual(Object.keys(buildTBCanvasLabelAliasMap([{ labels: tbFourChildFinished.connectionIds }])).slice(0, 4), ['E1-A', 'E1-B', 'E2-A', 'E2-B'], 'TB canvas alias map keeps internal E connection ids as alias inputs');
 
 const tbAssignments = {
   'p1-top': { edgeAssignment: { connectionId: 'E1', edgeRole: 'A' } },
@@ -631,6 +649,8 @@ assert.equal(tbFinished.groupId, 'tb-group-E1', 'Finish TB group keeps group id'
 assert.deepEqual([...tbFinished.connectionIds], ['E1', 'E2'], 'Finish TB group keeps grouped E labels');
 assert.equal(tbFinished.isActive, false, 'Finish TB group marks group inactive only');
 assert.equal(JSON.stringify(tbAssignments), JSON.stringify(tbAssignmentsBeforeFinish), 'Finish TB group does not change assignments');
+assert.equal(tbConnections.E1.id, 'E1', 'Internal TB connection ID remains E1');
+assert.equal(tbConnections.E2.id, 'E2', 'Internal TB connection ID remains E2');
 assert.equal(JSON.stringify(tbConnections), JSON.stringify({
   E1: tbStarted.connections.E1,
   E2: { id: 'E2', prefix: 'E', properties: tbStarted.connections.E1.properties },
@@ -648,6 +668,7 @@ const workflowHistoryItems = buildWorkflowHistoryItems(
   },
 );
 assert.equal(JSON.stringify(workflowHistoryItems.map((item) => item.name)), JSON.stringify(['TB Group 1', 'S Group 1', 'W Group 1']), 'Workflow History displays TB, S, and W groups in order');
+assert.equal(workflowHistoryItems.filter((item) => item.kind === 'TB').length, 1, 'Workflow History shows one TB group for one TB workflow, not one group per E label');
 assert.equal(JSON.stringify(workflowHistoryItems.map((item) => item.childCount)), JSON.stringify([2, 2, 2]), 'Workflow History includes available child connection counts');
 assert.equal(workflowHistoryItems[1].isActive, true, 'Workflow History exposes active group state for navigation');
 

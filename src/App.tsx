@@ -6,7 +6,7 @@ import { exportAppliedSvg } from './app/exportAppliedSvg';
 import { buildAppliedSGeometry } from './app/sGeometry';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
-import { appendAutoCreatedEToTBGroup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
+import { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
 import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildAppliedEPanelPaths } from './app/eGeometry';
 import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 import { createTabSegmentPlan, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
@@ -19,7 +19,7 @@ export type { PanelValidationResult } from './app/sharedPanelGeometry';
 export { exportAppliedSvg } from './app/exportAppliedSvg';
 export { buildAppliedSGeometry } from './app/sGeometry';
 export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
-export { appendAutoCreatedEToTBGroup, finishTBGroupWorkflow, getNextInternalELabel, startTBGroupWorkflow } from './app/tbWorkflow';
+export { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, getNextInternalELabel, startTBGroupWorkflow } from './app/tbWorkflow';
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
 export { applyTabsToContour, buildAppliedEPanelPaths, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
@@ -45,6 +45,7 @@ type HistoryState = {
   appliedSGeometry?: AppliedSGeometry[];
   activeSGroup: ActiveSGroup | null;
   activeTBGroup: ActiveTBGroup | null;
+  completedTBGroups: ActiveTBGroup[];
   activeWGroup: ActiveWGroup | null;
 };
 
@@ -107,6 +108,7 @@ const cloneHistoryState = (state: HistoryState): HistoryState => ({
   ...(state.appliedSGeometry ? { appliedSGeometry: structuredClone(state.appliedSGeometry) } : {}),
   activeSGroup: state.activeSGroup ? structuredClone(state.activeSGroup) : null,
   activeTBGroup: state.activeTBGroup ? structuredClone(state.activeTBGroup) : null,
+  completedTBGroups: structuredClone(state.completedTBGroups ?? []),
   activeWGroup: state.activeWGroup ? structuredClone(state.activeWGroup) : null,
 });
 
@@ -457,6 +459,7 @@ function App() {
   const [appliedSGeometry, setAppliedSGeometry] = useState<AppliedSGeometry[]>([]);
   const [activeSGroup, setActiveSGroup] = useState<ActiveSGroup | null>(null);
   const [activeTBGroup, setActiveTBGroup] = useState<ActiveTBGroup | null>(null);
+  const [completedTBGroups, setCompletedTBGroups] = useState<ActiveTBGroup[]>([]);
   const [activeWGroup, setActiveWGroup] = useState<ActiveWGroup | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
@@ -549,18 +552,27 @@ function App() {
       return [];
     }
 
-    const activeIds = activeTBGroup?.connectionIds ?? [];
+    const finishedGroups = completedTBGroups.map((group) => ({
+      id: group.groupId,
+      labels: group.connectionIds.filter((label) => eLabels.includes(label)),
+      isActive: false,
+    })).filter((group) => group.labels.length > 0);
+    const shouldUseActiveTBGroup = !!activeTBGroup && (activeTBGroup.isActive || !finishedGroups.some((group) => group.id === activeTBGroup.groupId));
+    const activeIds = shouldUseActiveTBGroup ? activeTBGroup.connectionIds : [];
     const activeLabels = activeIds.filter((label) => eLabels.includes(label));
-    const groupedActive = new Set(activeLabels);
+    const groupedActive = new Set([...finishedGroups.flatMap((group) => group.labels), ...activeLabels]);
     const standaloneLabels = eLabels.filter((label) => !groupedActive.has(label));
-    const groups = standaloneLabels.map((label) => ({ id: `tb-group-${label}`, labels: [label], isActive: false }));
+    const groups = [
+      ...finishedGroups,
+      ...standaloneLabels.map((label) => ({ id: `tb-group-${label}`, labels: [label], isActive: false })),
+    ];
 
     if (activeLabels.length > 0) {
       groups.push({ id: activeTBGroup?.groupId ?? `tb-group-${activeLabels[0]}`, labels: activeLabels, isActive: activeTBGroup?.isActive ?? false });
     }
 
     return groups.sort((first, second) => getLabelNumber(first.labels[0] ?? 'E0') - getLabelNumber(second.labels[0] ?? 'E0'));
-  }, [activeTBGroup, availableLabels]);
+  }, [activeTBGroup, availableLabels, completedTBGroups]);
 
   const tbGroupActionNumber = activeTBGroup?.isActive ? getLabelNumber(activeTBGroup.connectionIds[0] ?? 'E1') : tbLabelGroups.length + 1;
   const sGroupActionNumber = getSGroupActionNumber(connections, activeSGroup);
@@ -603,6 +615,7 @@ function App() {
     appliedSGeometry,
     activeSGroup,
     activeTBGroup,
+    completedTBGroups,
     activeWGroup,
   });
 
@@ -616,6 +629,7 @@ function App() {
     setAppliedSGeometry(snapshot.appliedSGeometry ?? []);
     setActiveSGroup(snapshot.activeSGroup);
     setActiveTBGroup(snapshot.activeTBGroup);
+    setCompletedTBGroups(snapshot.completedTBGroups);
     setActiveWGroup(snapshot.activeWGroup);
   };
 
@@ -641,6 +655,7 @@ function App() {
     setAppliedSGeometry([]);
     setActiveSGroup(null);
     setActiveTBGroup(null);
+    setCompletedTBGroups([]);
     setActiveWGroup(null);
     setUndoStack([]);
     setRedoStack([]);
@@ -699,7 +714,12 @@ function App() {
     }
 
     pushUndoState();
-    setActiveTBGroup(finishTBGroupWorkflow(activeTBGroup));
+    const finishedGroup = finishTBGroupWorkflow(activeTBGroup);
+    setActiveTBGroup(finishedGroup);
+    setCompletedTBGroups((currentGroups) => [
+      ...currentGroups.filter((group) => group.groupId !== finishedGroup.groupId),
+      finishedGroup,
+    ]);
     setSelectedLabelId(null);
     setErrorMessage('');
   };
@@ -1012,6 +1032,7 @@ function App() {
     setAppliedSGeometry([]);
     setActiveSGroup(null);
     setActiveTBGroup(null);
+    setCompletedTBGroups([]);
     setActiveWGroup(null);
     setErrorMessage('');
     setUndoStack([]);
@@ -1588,12 +1609,14 @@ function App() {
     () => buildActiveWDisplayAssignments(edgeAssignments, connections, activeWGroup),
     [activeWGroup, connections, edgeAssignments],
   );
+  const tbCanvasLabelAliases = useMemo(() => buildTBCanvasLabelAliasMap(tbLabelGroups), [tbLabelGroups]);
   const labelPlacements = getEdgeLabelPlacements(svgModel.edges, displayEdgeAssignments, {
     fontSizePx: labelFontSizePx,
     paddingXPx: labelPaddingXPx,
     paddingYPx: labelPaddingYPx,
     edgeOffsetPx: labelEdgeOffset,
     labelScale,
+    formatDisplayLabel: (label) => tbCanvasLabelAliases[label] ?? label,
   });
   const labelPlacementsByEdgeId = labelPlacements.reduce((placementsByEdgeId, placement) => {
     placementsByEdgeId.set(placement.edgeId, [...(placementsByEdgeId.get(placement.edgeId) ?? []), placement]);
