@@ -47,8 +47,11 @@ type HistoryState = {
   activeTBGroup: ActiveTBGroup | null;
   completedTBGroups: ActiveTBGroup[];
   activeWGroup: ActiveWGroup | null;
+  workflowGroupOrder: Record<string, number>;
 };
 
+
+type WorkflowHistoryGroup = { id: string; labels: string[]; isActive: boolean; orderIndex?: number };
 
 type WorkflowHistoryItem = {
   id: string;
@@ -60,44 +63,71 @@ type WorkflowHistoryItem = {
 };
 
 export const buildWorkflowHistoryItems = (
-  tbGroups: { id: string; labels: string[]; isActive: boolean }[],
-  sGroups: { id: string; labels: string[]; isActive: boolean }[],
-  wGroups: { id: string; labels: string[]; isActive: boolean }[],
+  tbGroups: WorkflowHistoryGroup[],
+  sGroups: WorkflowHistoryGroup[],
+  wGroups: WorkflowHistoryGroup[],
   connections: ConnectionMap,
-): WorkflowHistoryItem[] => ([
-  ...tbGroups.map((group, groupIndex) => ({
-    id: group.id,
-    kind: 'TB' as const,
-    name: `TB Group ${groupIndex + 1}`,
-    labels: group.labels,
-    isActive: group.isActive,
-    childCount: group.labels.length,
-  })),
-  ...sGroups.map((group, groupIndex) => ({
-    id: group.id,
-    kind: 'S' as const,
-    name: `S Group ${groupIndex + 1}`,
-    labels: group.labels,
-    isActive: group.isActive,
-    childCount: group.labels.length,
-  })),
-  ...wGroups.map((group, groupIndex) => {
-    const label = group.labels[0];
-    const connection = label ? connections[label] : undefined;
-    const selectedEdgeCount = connection?.prefix === 'W' ? connection.properties.selectedEdgeIds.length : group.labels.length;
-
-    return {
+): WorkflowHistoryItem[] => {
+  const orderedItems = [
+    ...tbGroups.map((group, groupIndex) => ({
       id: group.id,
-      kind: 'W' as const,
-      name: `W Group ${groupIndex + 1}`,
+      kind: 'TB' as const,
+      name: `TB Group ${groupIndex + 1}`,
       labels: group.labels,
       isActive: group.isActive,
-      childCount: selectedEdgeCount,
-    };
-  }),
-]);
+      childCount: group.labels.length,
+      orderIndex: group.orderIndex,
+    })),
+    ...sGroups.map((group, groupIndex) => ({
+      id: group.id,
+      kind: 'S' as const,
+      name: `S Group ${groupIndex + 1}`,
+      labels: group.labels,
+      isActive: group.isActive,
+      childCount: group.labels.length,
+      orderIndex: group.orderIndex,
+    })),
+    ...wGroups.map((group, groupIndex) => {
+      const label = group.labels[0];
+      const connection = label ? connections[label] : undefined;
+      const selectedEdgeCount = connection?.prefix === 'W' ? connection.properties.selectedEdgeIds.length : group.labels.length;
+
+      return {
+        id: group.id,
+        kind: 'W' as const,
+        name: `W Group ${groupIndex + 1}`,
+        labels: group.labels,
+        isActive: group.isActive,
+        childCount: selectedEdgeCount,
+        orderIndex: group.orderIndex,
+      };
+    }),
+  ];
+
+  return orderedItems
+    .map((item, fallbackIndex) => ({ item, fallbackIndex }))
+    .sort((first, second) => {
+      const firstOrder = first.item.orderIndex ?? Number.POSITIVE_INFINITY;
+      const secondOrder = second.item.orderIndex ?? Number.POSITIVE_INFINITY;
+
+      if (firstOrder !== secondOrder) {
+        return firstOrder - secondOrder;
+      }
+
+      return first.fallbackIndex - second.fallbackIndex;
+    })
+    .map(({ item }) => {
+      const { orderIndex: _orderIndex, ...historyItem } = item;
+      return historyItem;
+    });
+};
 
 const maxHistoryEntries = 10;
+
+const getNextWorkflowGroupOrderIndex = (workflowGroupOrder: Record<string, number>) => {
+  const orderIndexes = Object.values(workflowGroupOrder).filter((value) => Number.isFinite(value));
+  return orderIndexes.length > 0 ? Math.max(...orderIndexes) + 1 : 0;
+};
 
 const cloneHistoryState = (state: HistoryState): HistoryState => ({
   edgeAssignments: structuredClone(state.edgeAssignments),
@@ -110,6 +140,7 @@ const cloneHistoryState = (state: HistoryState): HistoryState => ({
   activeTBGroup: state.activeTBGroup ? structuredClone(state.activeTBGroup) : null,
   completedTBGroups: structuredClone(state.completedTBGroups ?? []),
   activeWGroup: state.activeWGroup ? structuredClone(state.activeWGroup) : null,
+  workflowGroupOrder: structuredClone(state.workflowGroupOrder ?? {}),
 });
 
 type NumericFieldProps = {
@@ -461,6 +492,7 @@ function App() {
   const [activeTBGroup, setActiveTBGroup] = useState<ActiveTBGroup | null>(null);
   const [completedTBGroups, setCompletedTBGroups] = useState<ActiveTBGroup[]>([]);
   const [activeWGroup, setActiveWGroup] = useState<ActiveWGroup | null>(null);
+  const [workflowGroupOrder, setWorkflowGroupOrder] = useState<Record<string, number>>({});
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -506,8 +538,9 @@ function App() {
       id: `w-group-${label}`,
       labels: [label],
       isActive: activeWGroup?.connectionId === label && activeWGroup.isActive,
+      orderIndex: workflowGroupOrder[`w-group-${label}`],
     }));
-  }, [activeWGroup, availableLabels]);
+  }, [activeWGroup, availableLabels, workflowGroupOrder]);
 
   const sLabelGroups = useMemo(() => {
     const sLabels = availableLabels
@@ -518,7 +551,7 @@ function App() {
       return [];
     }
 
-    const groups: { id: string; labels: string[]; isActive: boolean }[] = [];
+    const groups: WorkflowHistoryGroup[] = [];
     const activeIds = activeSGroup?.connectionIds ?? [];
     const firstActiveId = activeIds[0];
     const firstActiveNumber = firstActiveId ? getLabelNumber(firstActiveId) : Number.POSITIVE_INFINITY;
@@ -527,21 +560,22 @@ function App() {
     const laterLabels = sLabels.filter((label) => getLabelNumber(label) > getLabelNumber(activeIds.at(-1) ?? 'S0'));
 
     if (previousLabels.length > 0) {
-      groups.push({ id: `s-group-${previousLabels[0]}`, labels: previousLabels, isActive: false });
+      groups.push({ id: `s-group-${previousLabels[0]}`, labels: previousLabels, isActive: false, orderIndex: workflowGroupOrder[`s-group-${previousLabels[0]}`] });
     }
 
     if (activeLabels.length > 0) {
-      groups.push({ id: activeSGroup?.groupId ?? `s-group-${activeLabels[0]}`, labels: activeLabels, isActive: activeSGroup?.isActive ?? false });
+      const id = activeSGroup?.groupId ?? `s-group-${activeLabels[0]}`;
+      groups.push({ id, labels: activeLabels, isActive: activeSGroup?.isActive ?? false, orderIndex: workflowGroupOrder[id] });
     } else if (previousLabels.length === 0) {
-      groups.push({ id: `s-group-${sLabels[0]}`, labels: sLabels, isActive: activeSGroup?.isActive ?? false });
+      groups.push({ id: `s-group-${sLabels[0]}`, labels: sLabels, isActive: activeSGroup?.isActive ?? false, orderIndex: workflowGroupOrder[`s-group-${sLabels[0]}`] });
     }
 
     if (laterLabels.length > 0 && activeLabels.length > 0) {
-      groups.push({ id: `s-group-${laterLabels[0]}`, labels: laterLabels, isActive: false });
+      groups.push({ id: `s-group-${laterLabels[0]}`, labels: laterLabels, isActive: false, orderIndex: workflowGroupOrder[`s-group-${laterLabels[0]}`] });
     }
 
     return groups;
-  }, [activeSGroup, availableLabels]);
+  }, [activeSGroup, availableLabels, workflowGroupOrder]);
 
   const tbLabelGroups = useMemo(() => {
     const eLabels = availableLabels
@@ -556,6 +590,7 @@ function App() {
       id: group.groupId,
       labels: group.connectionIds.filter((label) => eLabels.includes(label)),
       isActive: false,
+      orderIndex: workflowGroupOrder[group.groupId],
     })).filter((group) => group.labels.length > 0);
     const shouldUseActiveTBGroup = !!activeTBGroup && (activeTBGroup.isActive || !finishedGroups.some((group) => group.id === activeTBGroup.groupId));
     const activeIds = shouldUseActiveTBGroup ? activeTBGroup.connectionIds : [];
@@ -564,15 +599,16 @@ function App() {
     const standaloneLabels = eLabels.filter((label) => !groupedActive.has(label));
     const groups = [
       ...finishedGroups,
-      ...standaloneLabels.map((label) => ({ id: `tb-group-${label}`, labels: [label], isActive: false })),
+      ...standaloneLabels.map((label) => ({ id: `tb-group-${label}`, labels: [label], isActive: false, orderIndex: workflowGroupOrder[`tb-group-${label}`] })),
     ];
 
     if (activeLabels.length > 0) {
-      groups.push({ id: activeTBGroup?.groupId ?? `tb-group-${activeLabels[0]}`, labels: activeLabels, isActive: activeTBGroup?.isActive ?? false });
+      const id = activeTBGroup?.groupId ?? `tb-group-${activeLabels[0]}`;
+      groups.push({ id, labels: activeLabels, isActive: activeTBGroup?.isActive ?? false, orderIndex: workflowGroupOrder[id] });
     }
 
     return groups.sort((first, second) => getLabelNumber(first.labels[0] ?? 'E0') - getLabelNumber(second.labels[0] ?? 'E0'));
-  }, [activeTBGroup, availableLabels, completedTBGroups]);
+  }, [activeTBGroup, availableLabels, completedTBGroups, workflowGroupOrder]);
 
   const tbGroupActionNumber = activeTBGroup?.isActive ? getLabelNumber(activeTBGroup.connectionIds[0] ?? 'E1') : tbLabelGroups.length + 1;
   const sGroupActionNumber = getSGroupActionNumber(connections, activeSGroup);
@@ -617,6 +653,7 @@ function App() {
     activeTBGroup,
     completedTBGroups,
     activeWGroup,
+    workflowGroupOrder,
   });
 
   const restoreHistoryState = (state: HistoryState) => {
@@ -631,6 +668,7 @@ function App() {
     setActiveTBGroup(snapshot.activeTBGroup);
     setCompletedTBGroups(snapshot.completedTBGroups);
     setActiveWGroup(snapshot.activeWGroup);
+    setWorkflowGroupOrder(snapshot.workflowGroupOrder);
   };
 
   const pushUndoState = () => {
@@ -657,6 +695,7 @@ function App() {
     setActiveTBGroup(null);
     setCompletedTBGroups([]);
     setActiveWGroup(null);
+    setWorkflowGroupOrder({});
     setUndoStack([]);
     setRedoStack([]);
     setExpandedTBGroups({});
@@ -704,6 +743,10 @@ function App() {
     setSelectedLabelId(nextWorkflow.selectedLabelId);
     setActiveTool(nextWorkflow.activeTool);
     setActiveTBGroup(nextWorkflow.activeTBGroup);
+    setWorkflowGroupOrder((currentOrder) => ({
+      ...currentOrder,
+      [nextWorkflow.activeTBGroup.groupId]: currentOrder[nextWorkflow.activeTBGroup.groupId] ?? getNextWorkflowGroupOrderIndex(currentOrder),
+    }));
     setExpandedTBGroups((currentGroups) => ({ ...currentGroups, [nextWorkflow.activeTBGroup.groupId]: true }));
     setErrorMessage('');
   };
@@ -730,6 +773,10 @@ function App() {
     setConnections(nextWorkflow.connections);
     setSelectedLabelId(nextWorkflow.selectedLabelId);
     setActiveSGroup(nextWorkflow.activeSGroup);
+    setWorkflowGroupOrder((currentOrder) => ({
+      ...currentOrder,
+      [nextWorkflow.activeSGroup.groupId]: currentOrder[nextWorkflow.activeSGroup.groupId] ?? getNextWorkflowGroupOrderIndex(currentOrder),
+    }));
     setErrorMessage('');
   };
 
@@ -739,6 +786,10 @@ function App() {
     setConnections(nextWorkflow.connections);
     setSelectedLabelId(nextWorkflow.selectedLabelId);
     setActiveWGroup(nextWorkflow.activeWGroup);
+    setWorkflowGroupOrder((currentOrder) => ({
+      ...currentOrder,
+      [nextWorkflow.activeWGroup.groupId]: currentOrder[nextWorkflow.activeWGroup.groupId] ?? getNextWorkflowGroupOrderIndex(currentOrder),
+    }));
     setExpandedWGroups((currentGroups) => ({ ...currentGroups, [nextWorkflow.activeWGroup.groupId]: true }));
     setErrorMessage('');
   };
