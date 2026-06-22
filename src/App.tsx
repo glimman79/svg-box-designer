@@ -2048,11 +2048,8 @@ function App() {
           </div>
         </section>
         <aside className="workflow-history-panel panel" aria-label="Workflow history">
-          <div className="workflow-history-header">
-            <p className="eyebrow">Workflow History</p>
-            <span className="muted">Navigation only</span>
-          </div>
           <div className="workflow-history-items" aria-label="Workflow groups">
+            <span className="workflow-history-label">History</span>
             {workflowHistoryItems.length > 0 ? workflowHistoryItems.map((item) => (
               <button
                 key={item.id}
@@ -2060,13 +2057,10 @@ function App() {
                 className={`workflow-history-item${item.isActive ? ' active' : ''}`}
                 aria-label={`${item.name}, ${item.isActive ? 'active' : 'inactive'}, ${item.childCount} ${item.childCount === 1 ? 'child connection' : 'child connections'}`}
                 aria-pressed={item.labels.includes(selectedLabelId ?? '')}
+                title={`${item.name} · ${item.isActive ? 'Active' : 'Inactive'} · ${item.childCount} ${item.childCount === 1 ? 'child' : 'children'}`}
                 onClick={() => navigateToWorkflowHistoryItem(item)}
               >
-                <span className="history-item-icon">{item.kind}</span>
-                <span className="history-item-copy">
-                  <strong>{item.name}</strong>
-                  <small>{item.isActive ? 'Active' : 'Inactive'} · {item.childCount} {item.childCount === 1 ? 'child' : 'children'}</small>
-                </span>
+                <span className="history-item-icon" aria-hidden="true">{item.kind}</span>
               </button>
             )) : (
               <p className="workflow-history-empty muted">No workflow groups yet.</p>

@@ -863,7 +863,7 @@ button:disabled {
 .workspace {
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr) minmax(280px, 330px);
-  grid-template-rows: minmax(0, 1fr) 84px;
+  grid-template-rows: minmax(0, 1fr) 42px;
   grid-template-areas:
     "tools canvas active"
     "tools history active";
@@ -1000,8 +1000,7 @@ button:disabled {
   border-bottom: 1px solid #e2e8f0;
 }
 
-.panel-heading .eyebrow,
-.workflow-history-panel .eyebrow {
+.panel-heading .eyebrow {
   margin: 0;
   color: #0f766e;
 }
@@ -1009,45 +1008,45 @@ button:disabled {
 .workflow-history-panel {
   grid-area: history;
   min-height: 0;
-  max-height: 160px;
-  overflow: auto;
-  padding: 7px 10px;
-  border-radius: 14px;
-}
-
-.workflow-history-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.workflow-history-header .eyebrow {
-  font-size: 0.68rem;
-}
-
-.workflow-history-header .muted {
-  font-size: 0.76rem;
+  overflow: hidden;
+  padding: 5px 8px;
+  border-radius: 12px;
 }
 
 .workflow-history-items {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  flex-wrap: nowrap;
   gap: 6px;
-  margin-top: 5px;
+  min-height: 28px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+}
+
+.workflow-history-label {
+  flex: 0 0 auto;
+  margin-right: 2px;
+  color: #0f766e;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
 }
 
 .workflow-history-item {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  padding: 0 9px;
+  justify-content: center;
+  width: 28px;
+  min-width: 28px;
+  height: 24px;
+  padding: 0;
   color: #334155;
   background: #f8fafc;
   border: 1px solid #cbd5e1;
-  border-radius: 12px;
-  font-size: 0.78rem;
+  border-radius: 9px;
+  font-size: 0.72rem;
   font-weight: 800;
   cursor: pointer;
 }
@@ -1064,33 +1063,20 @@ button:disabled {
   background: #ccfbf1;
 }
 
-.history-item-copy {
-  display: grid;
-  gap: 1px;
-  text-align: left;
-}
-
-.history-item-copy small {
-  color: #64748b;
-  font-size: 0.68rem;
-  font-weight: 700;
-}
-
 .workflow-history-empty {
-  margin: 5px 0 0;
+  margin: 0;
   font-size: 0.78rem;
 }
 
 .history-item-icon {
   display: inline-grid;
-  width: 20px;
-  height: 20px;
   place-items: center;
-  color: #022c22;
-  background: #ccfbf1;
-  border-radius: 50%;
-  font-size: 0.68rem;
-  font-weight: 950;
+  min-width: 0;
+  color: inherit;
+  background: transparent;
+  border-radius: 0;
+  font-size: inherit;
+  line-height: 1;
 }
 
 .label-manager {
@@ -1233,28 +1219,6 @@ button:disabled {
   max-height: 100%;
 }
 
-.workflow-history-panel {
-  min-height: 68px;
-  max-height: 84px;
-  padding: 4px 8px 6px;
-}
-
-.workflow-history-header {
-  min-height: 20px;
-}
-
-.workflow-history-items {
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 2px;
-}
-
-.workflow-history-items .history-item-copy small {
-  display: none;
-}
 
 @media (max-width: 1100px) {
   .app-shell {
