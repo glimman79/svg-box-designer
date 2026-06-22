@@ -1562,6 +1562,20 @@ function App() {
       );
     }
 
+    if (activeTool === 'W' && selectedConnection?.prefix === 'W') {
+      const properties = selectedConnection.properties;
+      const controlsLabel = activeWGroup?.isActive && activeWGroup.connectionId === selectedConnection.id
+        ? 'Compact active W group controls'
+        : 'Compact selected W controls';
+
+      return (
+        <div className="compact-property-controls" aria-label={controlsLabel}>
+          <NumericField id="compact-wall-material-thickness" label="Thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateWallProperties({ materialThicknessMm })} />
+          <NumericField id="compact-wall-tab-size" label="Tab" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateWallProperties({ fingerWidthMm })} />
+        </div>
+      );
+    }
+
     return null;
   };
 
