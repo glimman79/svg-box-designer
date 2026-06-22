@@ -6,22 +6,24 @@ import { exportAppliedSvg } from './app/exportAppliedSvg';
 import { buildAppliedSGeometry } from './app/sGeometry';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
+import { appendAutoCreatedEToTBGroup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
 import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildAppliedEPanelPaths } from './app/eGeometry';
 import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 import { createTabSegmentPlan, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
 import { getContourEdgePoints, validateClosedPanel } from './app/sharedPanelGeometry';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
-import type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, EdgeConnectionDefinition, EdgeConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties, WallConnectionDefinition, WallConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
+import type { ActiveSGroup, ActiveTBGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, EdgeConnectionDefinition, EdgeConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties, WallConnectionDefinition, WallConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
 export { edgeMatchesContourSide, getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './app/sharedPanelGeometry';
 export type { PanelValidationResult } from './app/sharedPanelGeometry';
 export { exportAppliedSvg } from './app/exportAppliedSvg';
 export { buildAppliedSGeometry } from './app/sGeometry';
 export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
+export { appendAutoCreatedEToTBGroup, finishTBGroupWorkflow, getNextInternalELabel, startTBGroupWorkflow } from './app/tbWorkflow';
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
 export { applyTabsToContour, buildAppliedEPanelPaths, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
-export type { ActiveSGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
+export type { ActiveSGroup, ActiveTBGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
 
 type LabelPrefix = 'E' | 'S' | 'W' | 'C' | 'P';
 
@@ -42,6 +44,7 @@ type HistoryState = {
   appliedEPanelPaths?: AppliedEPanelPath[];
   appliedSGeometry?: AppliedSGeometry[];
   activeSGroup: ActiveSGroup | null;
+  activeTBGroup: ActiveTBGroup | null;
   activeWGroup: ActiveWGroup | null;
 };
 
@@ -55,6 +58,7 @@ const cloneHistoryState = (state: HistoryState): HistoryState => ({
   ...(state.appliedEPanelPaths ? { appliedEPanelPaths: structuredClone(state.appliedEPanelPaths) } : {}),
   ...(state.appliedSGeometry ? { appliedSGeometry: structuredClone(state.appliedSGeometry) } : {}),
   activeSGroup: state.activeSGroup ? structuredClone(state.activeSGroup) : null,
+  activeTBGroup: state.activeTBGroup ? structuredClone(state.activeTBGroup) : null,
   activeWGroup: state.activeWGroup ? structuredClone(state.activeWGroup) : null,
 });
 
@@ -404,6 +408,7 @@ function App() {
   const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
   const [appliedSGeometry, setAppliedSGeometry] = useState<AppliedSGeometry[]>([]);
   const [activeSGroup, setActiveSGroup] = useState<ActiveSGroup | null>(null);
+  const [activeTBGroup, setActiveTBGroup] = useState<ActiveTBGroup | null>(null);
   const [activeWGroup, setActiveWGroup] = useState<ActiveWGroup | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
@@ -416,6 +421,7 @@ function App() {
   const [redoStack, setRedoStack] = useState<HistoryState[]>([]);
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
   const [expandedSGroups, setExpandedSGroups] = useState<Record<string, boolean>>({});
+  const [expandedTBGroups, setExpandedTBGroups] = useState<Record<string, boolean>>({});
   const [expandedWGroups, setExpandedWGroups] = useState<Record<string, boolean>>({});
   const [activeTool, setActiveTool] = useState<ActiveTool>('select');
 
@@ -486,6 +492,29 @@ function App() {
     return groups;
   }, [activeSGroup, availableLabels]);
 
+  const tbLabelGroups = useMemo(() => {
+    const eLabels = availableLabels
+      .filter((label) => getLabelPrefix(label) === 'E')
+      .sort((first, second) => getLabelNumber(first) - getLabelNumber(second));
+
+    if (eLabels.length === 0) {
+      return [];
+    }
+
+    const activeIds = activeTBGroup?.connectionIds ?? [];
+    const activeLabels = activeIds.filter((label) => eLabels.includes(label));
+    const groupedActive = new Set(activeLabels);
+    const standaloneLabels = eLabels.filter((label) => !groupedActive.has(label));
+    const groups = standaloneLabels.map((label) => ({ id: `tb-group-${label}`, labels: [label], isActive: false }));
+
+    if (activeLabels.length > 0) {
+      groups.push({ id: activeTBGroup?.groupId ?? `tb-group-${activeLabels[0]}`, labels: activeLabels, isActive: activeTBGroup?.isActive ?? false });
+    }
+
+    return groups.sort((first, second) => getLabelNumber(first.labels[0] ?? 'E0') - getLabelNumber(second.labels[0] ?? 'E0'));
+  }, [activeTBGroup, availableLabels]);
+
+  const tbGroupActionNumber = activeTBGroup?.isActive ? getLabelNumber(activeTBGroup.connectionIds[0] ?? 'E1') : tbLabelGroups.length + 1;
   const sGroupActionNumber = getSGroupActionNumber(connections, activeSGroup);
   const wGroupActionNumber = getWGroupActionNumber(connections, activeWGroup);
 
@@ -501,6 +530,7 @@ function App() {
     appliedEPanelPaths,
     appliedSGeometry,
     activeSGroup,
+    activeTBGroup,
     activeWGroup,
   });
 
@@ -513,6 +543,7 @@ function App() {
     setAppliedEPanelPaths(snapshot.appliedEPanelPaths ?? []);
     setAppliedSGeometry(snapshot.appliedSGeometry ?? []);
     setActiveSGroup(snapshot.activeSGroup);
+    setActiveTBGroup(snapshot.activeTBGroup);
     setActiveWGroup(snapshot.activeWGroup);
   };
 
@@ -537,9 +568,13 @@ function App() {
     setAppliedEPanelPaths([]);
     setAppliedSGeometry([]);
     setActiveSGroup(null);
+    setActiveTBGroup(null);
     setActiveWGroup(null);
     setUndoStack([]);
     setRedoStack([]);
+    setExpandedTBGroups({});
+    setExpandedSGroups({});
+    setExpandedWGroups({});
     setErrorMessage('');
     event.target.value = '';
   };
@@ -572,6 +607,28 @@ function App() {
       ),
     }));
     setSelectedLabelId(nextLabel);
+    setErrorMessage('');
+  };
+
+  const startTBGroup = () => {
+    pushUndoState();
+    const nextWorkflow = startTBGroupWorkflow(connections, defaultConnectionProperties.E);
+    setConnections(nextWorkflow.connections);
+    setSelectedLabelId(nextWorkflow.selectedLabelId);
+    setActiveTool(nextWorkflow.activeTool);
+    setActiveTBGroup(nextWorkflow.activeTBGroup);
+    setExpandedTBGroups((currentGroups) => ({ ...currentGroups, [nextWorkflow.activeTBGroup.groupId]: true }));
+    setErrorMessage('');
+  };
+
+  const finishTBGroup = () => {
+    if (!activeTBGroup?.isActive) {
+      return;
+    }
+
+    pushUndoState();
+    setActiveTBGroup(finishTBGroupWorkflow(activeTBGroup));
+    setSelectedLabelId(null);
     setErrorMessage('');
   };
 
@@ -756,6 +813,8 @@ function App() {
         };
       });
       setSelectedLabelId(nextEdgeLabel);
+      setActiveTBGroup((currentGroup) => appendAutoCreatedEToTBGroup(currentGroup, selectedLabelId, nextEdgeLabel));
+      setExpandedTBGroups((currentGroups) => activeTBGroup?.connectionIds.includes(selectedLabelId) ? { ...currentGroups, [activeTBGroup.groupId]: true } : currentGroups);
     }
 
     const selectedSlotRoles = Object.values(nextAssignments)
@@ -877,10 +936,14 @@ function App() {
     setAppliedEPanelPaths([]);
     setAppliedSGeometry([]);
     setActiveSGroup(null);
+    setActiveTBGroup(null);
     setActiveWGroup(null);
     setErrorMessage('');
     setUndoStack([]);
     setRedoStack([]);
+    setExpandedTBGroups({});
+    setExpandedSGroups({});
+    setExpandedWGroups({});
     setCanvasViewBox(parseViewBox(emptySvgModel.viewBox));
   };
 
@@ -1567,7 +1630,12 @@ function App() {
                     <p>{prefix === 'E' ? 'Existing E connections' : description}</p>
                   </div>
                   <div className="label-actions">
-                    {prefix === 'S' ? (
+                    {prefix === 'E' ? (
+                      <>
+                        <button type="button" onClick={startTBGroup}>Start TB Group {tbGroupActionNumber}</button>
+                        <button type="button" onClick={finishTBGroup} disabled={!activeTBGroup?.isActive}>Finish TB Group {tbGroupActionNumber}</button>
+                      </>
+                    ) : prefix === 'S' ? (
                       <>
                         <button type="button" onClick={startSGroup}>Start S Group {sGroupActionNumber}</button>
                         <button type="button" onClick={finishSGroup} disabled={!activeSGroup?.isActive}>Finish S Group {sGroupActionNumber}</button>
@@ -1579,14 +1647,54 @@ function App() {
                       </>
                     ) : (
                       <button type="button" onClick={() => createLabel(prefix)}>
-                        Add {prefix === 'E' ? getNextLabel(prefix, availableLabels).replace('E', 'TB') : getNextLabel(prefix, availableLabels)}
+                        Add {getNextLabel(prefix, availableLabels)}
                       </button>
                     )}
                   </div>
                 </div>
 
                 {groupLabels.length > 0 ? (
-                  prefix === 'S' ? (
+                  prefix === 'E' ? (
+                    <ul className="label-list s-group-list">
+                      {tbLabelGroups.map((tbGroup, groupIndex) => {
+                        const isExpanded = tbGroup.isActive || expandedTBGroups[tbGroup.id] === true;
+                        const groupCount = tbGroup.labels.length;
+
+                        return (
+                          <li key={tbGroup.id}>
+                            <button
+                              type="button"
+                              className={`s-group-toggle${tbGroup.labels.includes(selectedLabelId ?? '') ? ' selected-label' : ''}`}
+                              aria-expanded={isExpanded}
+                              onClick={() => setExpandedTBGroups((currentGroups) => ({ ...currentGroups, [tbGroup.id]: !isExpanded }))}
+                            >
+                              <strong>TB Group {groupIndex + 1} ({groupCount})</strong>
+                              <span>{isExpanded ? 'Hide' : 'Show'}</span>
+                            </button>
+                            {isExpanded && (
+                              <ul className="s-group-connection-list">
+                                {tbGroup.labels.map((label) => (
+                                  <li key={label}>
+                                    <button
+                                      type="button"
+                                      className={selectedLabelId === label ? 'selected-label' : ''}
+                                      onClick={() => {
+                                        setSelectedLabelId(label);
+                                        setErrorMessage('');
+                                      }}
+                                    >
+                                      <strong>{label}</strong>
+                                      <span>{labelCounts[label] ?? 0} {(labelCounts[label] ?? 0) === 1 ? 'edge' : 'edges'}</span>
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : prefix === 'S' ? (
                     <ul className="label-list s-group-list">
                       {sLabelGroups.map((sGroup, groupIndex) => {
                         const isExpanded = sGroup.isActive || expandedSGroups[sGroup.id] === true;
