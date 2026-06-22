@@ -591,3 +591,64 @@ assert.equal({}['w1-top'], undefined, 'temporary W labels are not written to edg
 const inactiveWDisplayAssignments = buildActiveWDisplayAssignments({}, wConnections, { groupId: 'w-group-W1', connectionId: 'W1', isActive: false });
 assert.equal(inactiveWDisplayAssignments['w1-top'], undefined, 'temporary W labels disappear after W group is inactive');
 console.log('W group V1 tests passed');
+
+const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, finishTBGroupWorkflow } = module.exports;
+
+const tbStarted = startTBGroupWorkflow({}, defaultConnectionProperties.E);
+assert.equal(tbStarted.selectedLabelId, 'E1', 'Start TB group selects first internal E label');
+assert.equal(tbStarted.activeTool, 'TB', 'Start TB group activates TB tool');
+assert.equal(tbStarted.activeTBGroup.groupId, 'tb-group-E1', 'Start TB group creates activeTBGroup with first E label');
+assert.deepEqual([...tbStarted.activeTBGroup.connectionIds], ['E1'], 'Start TB group stores first E label in activeTBGroup');
+assert.equal(tbStarted.activeTBGroup.isActive, true, 'Start TB group marks activeTBGroup active');
+assert.equal(tbStarted.connections.E1.prefix, 'E', 'TB group contains internal E connection');
+assert.equal(JSON.stringify(tbStarted.connections.E1.properties), JSON.stringify(defaultConnectionProperties.E), 'Start TB group uses existing E default properties');
+
+const tbWithExisting = startTBGroupWorkflow({ E1: connection('E1') }, { materialThicknessMm: 5, fingerWidthMm: 15, isFingerWidthManual: true });
+assert.equal(tbWithExisting.selectedLabelId, 'E2', 'Start TB group creates next internal E label after existing E labels');
+assert.equal(JSON.stringify(tbWithExisting.connections.E2.properties), JSON.stringify(connection('E1').properties), 'Start TB group shares existing E properties');
+
+const tbAppended = appendAutoCreatedEToTBGroup(tbStarted.activeTBGroup, 'E1', 'E2');
+assert.deepEqual([...tbAppended.connectionIds], ['E1', 'E2'], 'E auto-create after two assignments appends new E label to activeTBGroup');
+assert.strictEqual(appendAutoCreatedEToTBGroup(tbAppended, 'E9', 'E10'), tbAppended, 'E auto-create outside activeTBGroup leaves TB group unchanged');
+
+const tbAssignments = {
+  'p1-top': { edgeAssignment: { connectionId: 'E1', edgeRole: 'A' } },
+  'p1-right': { edgeAssignment: { connectionId: 'E1', edgeRole: 'B' } },
+  'p1-bottom': { edgeAssignment: { connectionId: 'E2', edgeRole: 'A' } },
+  'p1-left': { edgeAssignment: { connectionId: 'E2', edgeRole: 'B' } },
+};
+const tbConnections = {
+  E1: tbStarted.connections.E1,
+  E2: { id: 'E2', prefix: 'E', properties: tbStarted.connections.E1.properties },
+};
+const tbAppliedWhileActive = buildAppliedEPanelPaths(modelForPanels([single]), tbAssignments, tbConnections, true);
+assert.equal(tbAppliedWhileActive.length, 1, 'Apply works while activeTBGroup is active');
+assertClosedPath(tbAppliedWhileActive[0].pathD, 'Apply while activeTBGroup is active produces applied geometry');
+
+const tbAssignmentsBeforeFinish = structuredClone(tbAssignments);
+const tbFinished = finishTBGroupWorkflow(tbAppended);
+assert.equal(tbFinished.groupId, 'tb-group-E1', 'Finish TB group keeps group id');
+assert.deepEqual([...tbFinished.connectionIds], ['E1', 'E2'], 'Finish TB group keeps grouped E labels');
+assert.equal(tbFinished.isActive, false, 'Finish TB group marks group inactive only');
+assert.equal(JSON.stringify(tbAssignments), JSON.stringify(tbAssignmentsBeforeFinish), 'Finish TB group does not change assignments');
+assert.equal(JSON.stringify(tbConnections), JSON.stringify({
+  E1: tbStarted.connections.E1,
+  E2: { id: 'E2', prefix: 'E', properties: tbStarted.connections.E1.properties },
+}), 'Finish TB group does not rename labels or mutate connections');
+
+const cloneTBHistoryState = (state) => structuredClone(state);
+const tbHistoryState = {
+  edgeAssignments: tbAssignments,
+  connections: tbConnections,
+  selectedLabelId: 'E2',
+  selectedEdgeId: 'p1-left',
+  appliedEPanelPaths: tbAppliedWhileActive,
+  appliedSGeometry: [],
+  activeSGroup: null,
+  activeTBGroup: tbAppended,
+  activeWGroup: null,
+};
+const undoRestoredTB = cloneTBHistoryState(tbHistoryState);
+assert.equal(JSON.stringify(undoRestoredTB.activeTBGroup), JSON.stringify(tbAppended), 'Undo restores activeTBGroup');
+const redoRestoredTB = cloneTBHistoryState(undoRestoredTB);
+assert.equal(JSON.stringify(redoRestoredTB.activeTBGroup), JSON.stringify(tbAppended), 'Redo restores activeTBGroup');

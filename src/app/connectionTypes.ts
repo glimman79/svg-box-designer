@@ -109,6 +109,12 @@ export type ActiveSGroup = {
   isActive: boolean;
 };
 
+export type ActiveTBGroup = {
+  groupId: string;
+  connectionIds: string[];
+  isActive: boolean;
+};
+
 export type ActiveWGroup = {
   groupId: string;
   connectionId: string;
