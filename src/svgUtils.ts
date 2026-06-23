@@ -5,6 +5,73 @@ export type Point = {
 
 export type SourceBounds = { minX: number; maxX: number; minY: number; maxY: number };
 
+export type AffineMatrix = {
+  a: number;
+  b: number;
+  c: number;
+  d: number;
+  e: number;
+  f: number;
+};
+
+export const identityMatrix: AffineMatrix = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+
+export const parseMatrixTransform = (transform: string | null): AffineMatrix | undefined => {
+  if (!transform) {
+    return undefined;
+  }
+
+  const match = transform.trim().match(/^matrix\(([^)]*)\)$/i);
+
+  if (!match) {
+    return undefined;
+  }
+
+  const values = match[1]
+    .trim()
+    .split(/[\s,]+/)
+    .filter(Boolean)
+    .map(Number);
+
+  if (values.length !== 6 || values.some((value) => !Number.isFinite(value))) {
+    return undefined;
+  }
+
+  const [a, b, c, d, e, f] = values;
+  return { a, b, c, d, e, f };
+};
+
+export const multiplyAffineMatrices = (first: AffineMatrix, second: AffineMatrix): AffineMatrix => ({
+  a: first.a * second.a + first.c * second.b,
+  b: first.b * second.a + first.d * second.b,
+  c: first.a * second.c + first.c * second.d,
+  d: first.b * second.c + first.d * second.d,
+  e: first.a * second.e + first.c * second.f + first.e,
+  f: first.b * second.e + first.d * second.f + first.f,
+});
+
+export const applyAffineMatrixToPoint = (matrix: AffineMatrix, point: Point): Point => ({
+  x: matrix.a * point.x + matrix.c * point.y + matrix.e,
+  y: matrix.b * point.x + matrix.d * point.y + matrix.f,
+});
+
+const getAccumulatedMatrixTransform = (element: Element, rootElement: SVGSVGElement): AffineMatrix => {
+  const transforms: AffineMatrix[] = [];
+  let current: Element | null = element;
+
+  while (current && current !== rootElement) {
+    const matrix = parseMatrixTransform(current.getAttribute('transform'));
+
+    if (matrix) {
+      transforms.unshift(matrix);
+    }
+
+    current = current.parentElement;
+  }
+
+  return transforms.reduce(multiplyAffineMatrices, identityMatrix);
+};
+
 export type SvgEdge = {
   id: string;
   source: string;
@@ -577,13 +644,15 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
     const y = svgNumber(rect.getAttribute('y'));
     const width = svgNumber(rect.getAttribute('width'));
     const height = svgNumber(rect.getAttribute('height'));
-    const corners = [
+    const localCorners = [
       { x, y },
       { x: x + width, y },
       { x: x + width, y: y + height },
       { x, y: y + height },
     ];
-    const panelBounds = { minX: x, maxX: x + width, minY: y, maxY: y + height };
+    const transformMatrix = getAccumulatedMatrixTransform(rect, svgElement);
+    const corners = localCorners.map((corner) => applyAffineMatrixToPoint(transformMatrix, corner));
+    const panelBounds = getPanelFigureBounds(corners);
 
     const edgeIds: string[] = [];
 
@@ -595,7 +664,7 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
       }
     });
 
-    addPanel(panels, corners, getPanelFigureBounds(corners), edgeIds);
+    addPanel(panels, corners, panelBounds, edgeIds);
   });
 
   svgElement.querySelectorAll('path').forEach((path, elementIndex) => {
