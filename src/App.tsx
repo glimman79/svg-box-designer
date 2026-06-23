@@ -36,7 +36,13 @@ type LabelGroup = {
 
 type ActiveTool = 'select' | 'TB' | 'W' | 'S' | 'J' | 'P';
 
+type ProjectSettings = {
+  kerfMm: number;
+  clearanceMm: number;
+};
+
 type HistoryState = {
+  projectSettings: ProjectSettings;
   edgeAssignments: Record<string, EdgeAssignmentBucket>;
   connections: ConnectionMap;
   selectedLabelId: string | null;
@@ -144,6 +150,11 @@ export const getToolClickGroupStartKind = (
   return null;
 };
 
+const defaultProjectSettings: ProjectSettings = {
+  kerfMm: 0.15,
+  clearanceMm: 0.05,
+};
+
 const maxHistoryEntries = 10;
 
 const getNextWorkflowGroupOrderIndex = (workflowGroupOrder: Record<string, number>) => {
@@ -152,6 +163,7 @@ const getNextWorkflowGroupOrderIndex = (workflowGroupOrder: Record<string, numbe
 };
 
 const cloneHistoryState = (state: HistoryState): HistoryState => ({
+  projectSettings: structuredClone(state.projectSettings ?? defaultProjectSettings),
   edgeAssignments: structuredClone(state.edgeAssignments),
   connections: structuredClone(state.connections),
   selectedLabelId: state.selectedLabelId,
@@ -312,11 +324,11 @@ const minZoom = 0.1;
 const maxZoom = 20;
 const buttonZoomFactor = 1.25;
 const wheelZoomSensitivity = 0.0015;
-const labelFontSizePx = 9;
-const minLabelFontSizePx = 6;
-const labelPaddingXPx = 7;
-const labelPaddingYPx = 4;
-const labelEdgeOffsetPx = 10;
+const labelFontSizePx = 7;
+const minLabelFontSizePx = 5;
+const labelPaddingXPx = 4;
+const labelPaddingYPx = 2;
+const labelEdgeOffsetPx = 6;
 
 const parseViewBox = (viewBox: string): CanvasViewBox => {
   const [x, y, width, height] = viewBox.split(/[\s,]+/).map(Number);
@@ -506,6 +518,7 @@ function App() {
   const [svgModel, setSvgModel] = useState<SvgDocumentModel>(() => parseSvgDocument(starterSvg));
   const [edgeAssignments, setEdgeAssignments] = useState<Record<string, EdgeAssignmentBucket>>({});
   const [connections, setConnections] = useState<ConnectionMap>({});
+  const [projectSettings, setProjectSettings] = useState<ProjectSettings>(defaultProjectSettings);
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
@@ -667,6 +680,7 @@ function App() {
   }, [edgeAssignments]);
 
   const getCurrentHistoryState = (): HistoryState => cloneHistoryState({
+    projectSettings,
     edgeAssignments,
     connections,
     selectedLabelId,
@@ -682,6 +696,7 @@ function App() {
 
   const restoreHistoryState = (state: HistoryState) => {
     const snapshot = cloneHistoryState(state);
+    setProjectSettings(snapshot.projectSettings);
     setEdgeAssignments(Object.fromEntries(Object.entries(snapshot.edgeAssignments).map(([edgeId, assignment]) => [edgeId, toEdgeAssignmentBucket(assignment) ?? {}])));
     setConnections(snapshot.connections);
     setSelectedLabelId(snapshot.selectedLabelId);
@@ -712,6 +727,7 @@ function App() {
     setSvgModel(parsedSvg);
     setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
     setEdgeAssignments({});
+    setProjectSettings(defaultProjectSettings);
     setSelectedEdgeId(null);
     setAppliedEPanelPaths([]);
     setAppliedSGeometry([]);
@@ -1153,6 +1169,7 @@ function App() {
     setSvgModel(emptySvgModel);
     setEdgeAssignments({});
     setConnections({});
+    setProjectSettings(defaultProjectSettings);
     setSelectedLabelId(null);
     setSelectedEdgeId(null);
     setAppliedEPanelPaths([]);
@@ -1179,6 +1196,12 @@ function App() {
 
   const cancelClearProject = () => {
     setIsClearDialogOpen(false);
+  };
+
+  const updateProjectSettings = (updates: Partial<ProjectSettings>) => {
+    pushUndoState();
+    setProjectSettings((currentSettings) => ({ ...currentSettings, ...updates }));
+    setErrorMessage('');
   };
 
   const updateEdgeProperties = (updates: Partial<EdgeConnectionProperties>) => {
@@ -1702,6 +1725,8 @@ function App() {
         <div className="compact-property-controls" aria-label="Compact E controls">
           <NumericField id="compact-edge-material-thickness" label="Thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateEdgeProperties({ materialThicknessMm })} />
           <NumericField id="compact-edge-tab-size" label="Tab" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
+          <NumericField id="compact-global-kerf" label="Kerf" min={0} value={projectSettings.kerfMm} onChange={(kerfMm) => updateProjectSettings({ kerfMm })} />
+          <NumericField id="compact-global-clearance" label="Clearance" min={0} value={projectSettings.clearanceMm} onChange={(clearanceMm) => updateProjectSettings({ clearanceMm })} />
         </div>
       );
     }
@@ -1717,6 +1742,8 @@ function App() {
           <NumericField id="compact-slot-material-thickness" label="Thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateSlotProperties({ materialThicknessMm })} />
           <NumericField id="compact-slot-tab-size" label="Tab" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
           <NumericField id="compact-slot-offset" label="Offset" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
+          <NumericField id="compact-global-kerf" label="Kerf" min={0} value={projectSettings.kerfMm} onChange={(kerfMm) => updateProjectSettings({ kerfMm })} />
+          <NumericField id="compact-global-clearance" label="Clearance" min={0} value={projectSettings.clearanceMm} onChange={(clearanceMm) => updateProjectSettings({ clearanceMm })} />
         </div>
       );
     }
@@ -1731,6 +1758,8 @@ function App() {
         <div className="compact-property-controls" aria-label={controlsLabel}>
           <NumericField id="compact-wall-material-thickness" label="Thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateWallProperties({ materialThicknessMm })} />
           <NumericField id="compact-wall-tab-size" label="Tab" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateWallProperties({ fingerWidthMm })} />
+          <NumericField id="compact-global-kerf" label="Kerf" min={0} value={projectSettings.kerfMm} onChange={(kerfMm) => updateProjectSettings({ kerfMm })} />
+          <NumericField id="compact-global-clearance" label="Clearance" min={0} value={projectSettings.clearanceMm} onChange={(clearanceMm) => updateProjectSettings({ clearanceMm })} />
         </div>
       );
     }
