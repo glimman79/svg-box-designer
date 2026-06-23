@@ -610,6 +610,11 @@ function App() {
     return groups.sort((first, second) => getLabelNumber(first.labels[0] ?? 'E0') - getLabelNumber(second.labels[0] ?? 'E0'));
   }, [activeTBGroup, availableLabels, completedTBGroups, workflowGroupOrder]);
 
+  const tbDisplayLabelAliases = useMemo(() => Object.fromEntries(
+    tbLabelGroups.flatMap((group) => group.labels).map((label, index) => [label, `TB${index + 1}`]),
+  ), [tbLabelGroups]);
+  const formatTBDisplayLabel = (label: string | null | undefined) => (label ? tbDisplayLabelAliases[label] ?? label : 'None');
+
   const tbGroupActionNumber = getTBGroupActionNumber(tbLabelGroups, activeTBGroup);
   const sGroupActionNumber = getSGroupActionNumber(connections, activeSGroup);
   const wGroupActionNumber = getWGroupActionNumber(connections, activeWGroup);
@@ -1783,7 +1788,7 @@ function App() {
             <>
               <div className="active-label-card" aria-live="polite">
                 <span>Selected connection</span>
-                <strong>{selectedLabelId ?? 'None'}</strong>
+                <strong>{activeTool === 'TB' ? formatTBDisplayLabel(selectedLabelId) : selectedLabelId ?? 'None'}</strong>
               </div>
 
               <div className="label-manager">
@@ -1850,7 +1855,7 @@ function App() {
                                         setErrorMessage('');
                                       }}
                                     >
-                                      <strong>{label}</strong>
+                                      <strong>{formatTBDisplayLabel(label)}</strong>
                                       <span>{labelCounts[label] ?? 0} {(labelCounts[label] ?? 0) === 1 ? 'edge' : 'edges'}</span>
                                     </button>
                                   </li>
@@ -1970,7 +1975,7 @@ function App() {
               <div className="properties-card">
                 <div>
                   <p className="eyebrow">Properties</p>
-                  <h3>{selectedConnection ? `${selectedConnection.id} details` : 'No connection selected'}</h3>
+                  <h3>{selectedConnection ? `${activeTool === 'TB' ? formatTBDisplayLabel(selectedConnection.id) : selectedConnection.id} details` : 'No connection selected'}</h3>
                 </div>
                 {renderPropertiesPanel()}
               </div>
