@@ -1,3 +1,5 @@
+import { getBucketEdgeAssignment } from './assignmentBuckets';
+import type { EdgeAssignmentRecord } from '../svgUtils';
 import type { ActiveTBGroup, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties } from './connectionTypes';
 
 const getLabelPrefix = (label: string) => label.charAt(0);
@@ -82,6 +84,49 @@ export const finishTBGroupWorkflow = (activeTBGroup: ActiveTBGroup): ActiveTBGro
   isActive: false,
 });
 
+export const finishTBGroupWithTrailingCleanup = (
+  activeTBGroup: ActiveTBGroup,
+  connections: ConnectionMap,
+  assignments: EdgeAssignmentRecord,
+  selectedLabelId: string | null,
+) => {
+  const lastConnectionId = activeTBGroup.connectionIds.at(-1);
+  const lastAssignmentCount = lastConnectionId
+    ? Object.values(assignments).filter((assignment) => getBucketEdgeAssignment(assignment)?.connectionId === lastConnectionId).length
+    : 0;
+  const shouldRemoveTrailingConnection = !!lastConnectionId && lastAssignmentCount === 0;
+  const nextConnectionIds = shouldRemoveTrailingConnection
+    ? activeTBGroup.connectionIds.slice(0, -1)
+    : activeTBGroup.connectionIds;
+  const nextConnections = shouldRemoveTrailingConnection
+    ? Object.fromEntries(Object.entries(connections).filter(([connectionId]) => connectionId !== lastConnectionId)) as ConnectionMap
+    : connections;
+  const activeTBGroupWithoutTrailing = {
+    ...activeTBGroup,
+    connectionIds: nextConnectionIds,
+  };
+
+  return {
+    connections: nextConnections,
+    selectedLabelId: shouldRemoveTrailingConnection && selectedLabelId === lastConnectionId ? null : selectedLabelId,
+    activeTBGroup: finishTBGroupWorkflow(activeTBGroupWithoutTrailing),
+    removedConnectionId: shouldRemoveTrailingConnection ? lastConnectionId : null,
+  };
+};
+
+
+
+export const getTBGroupActionNumber = (
+  tbGroups: { id: string }[],
+  activeTBGroup: ActiveTBGroup | null,
+) => {
+  if (!activeTBGroup?.isActive) {
+    return tbGroups.length + 1;
+  }
+
+  const activeGroupIndex = tbGroups.findIndex((group) => group.id === activeTBGroup.groupId);
+  return activeGroupIndex >= 0 ? activeGroupIndex + 1 : tbGroups.length;
+};
 
 export const buildTBCanvasLabelAliasMap = (tbGroups: { labels: string[] }[]) => Object.fromEntries(
   tbGroups.flatMap((group, groupIndex) => group.labels.flatMap((connectionId) => [

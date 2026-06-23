@@ -138,6 +138,34 @@ export const finishSGroupWorkflow = (activeSGroup: ActiveSGroup | null): ActiveS
   activeSGroup ? { ...activeSGroup, isActive: false } : null
 );
 
+export const finishSGroupWithTrailingCleanup = (
+  activeSGroup: ActiveSGroup | null,
+  connections: ConnectionMap,
+  assignments: EdgeAssignmentRecord,
+  selectedLabelId: string | null,
+) => {
+  const lastConnectionId = activeSGroup?.connectionIds.at(-1);
+  const lastAssignmentCount = lastConnectionId
+    ? Object.values(assignments)
+      .flatMap((assignment) => getBucketSlotAssignments(assignment))
+      .filter((assignment) => assignment.connectionId === lastConnectionId).length
+    : 0;
+  const shouldRemoveTrailingConnection = !!lastConnectionId && lastAssignmentCount === 0;
+  const nextConnections = shouldRemoveTrailingConnection
+    ? Object.fromEntries(Object.entries(connections).filter(([connectionId]) => connectionId !== lastConnectionId)) as ConnectionMap
+    : connections;
+  const activeSGroupWithoutTrailing = activeSGroup && shouldRemoveTrailingConnection
+    ? { ...activeSGroup, connectionIds: activeSGroup.connectionIds.slice(0, -1) }
+    : activeSGroup;
+
+  return {
+    connections: nextConnections,
+    selectedLabelId: shouldRemoveTrailingConnection && selectedLabelId === lastConnectionId ? null : selectedLabelId,
+    activeSGroup: finishSGroupWorkflow(activeSGroupWithoutTrailing),
+    removedConnectionId: shouldRemoveTrailingConnection ? lastConnectionId : null,
+  };
+};
+
 export const manualAddSWorkflow = (connections: ConnectionMap, activeSGroup: ActiveSGroup | null) => {
   const connectionId = getNextSLabel(Object.keys(connections));
 
