@@ -529,6 +529,7 @@ function App() {
   const [expandedTBGroups, setExpandedTBGroups] = useState<Record<string, boolean>>({});
   const [expandedWGroups, setExpandedWGroups] = useState<Record<string, boolean>>({});
   const [activeTool, setActiveTool] = useState<ActiveTool>('select');
+  const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
   const selectedConnection = selectedLabelId ? connections[selectedLabelId] ?? null : null;
@@ -1148,7 +1149,7 @@ function App() {
     setErrorMessage('');
   };
 
-  const deleteDrawing = () => {
+  const clearProject = () => {
     setSvgModel(emptySvgModel);
     setEdgeAssignments({});
     setConnections({});
@@ -1160,6 +1161,8 @@ function App() {
     setActiveTBGroup(null);
     setCompletedTBGroups([]);
     setActiveWGroup(null);
+    setWorkflowGroupOrder({});
+    setActiveTool('select');
     setErrorMessage('');
     setUndoStack([]);
     setRedoStack([]);
@@ -1167,6 +1170,15 @@ function App() {
     setExpandedSGroups({});
     setExpandedWGroups({});
     setCanvasViewBox(parseViewBox(emptySvgModel.viewBox));
+    setIsClearDialogOpen(false);
+  };
+
+  const requestClearProject = () => {
+    setIsClearDialogOpen(true);
+  };
+
+  const cancelClearProject = () => {
+    setIsClearDialogOpen(false);
   };
 
   const updateEdgeProperties = (updates: Partial<EdgeConnectionProperties>) => {
@@ -1761,34 +1773,21 @@ function App() {
   return (
     <main className="app-shell">
       <header className="top-toolbar" aria-label="Primary actions">
-        <div className="brand-lockup">
-          <span className="brand-mark">SBD</span>
-          <div>
-            <p className="eyebrow">SVG Box Designer</p>
-            <h1>LightBurn-style layout shell</h1>
-          </div>
-        </div>
-        <div className="drawing-toolbar" aria-label="Drawing view controls">
-          <div className="drawing-toolbar-title">
-            <h2>Drawing</h2>
-            <p>{svgModel.edges.length} selectable straight edges detected.</p>
-          </div>
-          <div className="view-controls">
-            <button type="button" onClick={fitCanvasToScreen}>Fit to screen</button>
-            <button type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo" title="Undo">↶</button>
-            <button type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo" title="Redo">↷</button>
-            <button type="button" onClick={applyPanelPaths} disabled={!hasApplyInputs}>Apply</button>
-            <button
-              type="button"
-              onClick={activeToolbarFinish?.onClick}
-              disabled={!activeToolbarFinish}
-              title={activeToolbarFinish ? `${activeToolbarFinish.label} Group` : 'No active group for current tool'}
-            >
-              {activeToolbarFinish?.label ?? 'Finish Group'}
-            </button>
-          </div>
-        </div>
         <div className="toolbar-actions">
+          <button className="toolbar-button" type="button" onClick={fitCanvasToScreen}>Fit to screen</button>
+          <button className="toolbar-button" type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo" title="Undo">Undo</button>
+          <button className="toolbar-button" type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo" title="Redo">Redo</button>
+          <button className="toolbar-button" type="button" onClick={applyPanelPaths} disabled={!hasApplyInputs}>Apply</button>
+          <button
+            className="toolbar-button"
+            type="button"
+            onClick={activeToolbarFinish?.onClick}
+            disabled={!activeToolbarFinish}
+            title={activeToolbarFinish ? `${activeToolbarFinish.label} Group` : 'No active group for current tool'}
+          >
+            {activeToolbarFinish?.label ?? 'Finish Group'}
+          </button>
+          <button className="toolbar-button" type="button" onClick={requestClearProject}>Clear</button>
           <label className="toolbar-button primary" title="Import SVG">
             Import
             <input type="file" accept=".svg,image/svg+xml" onChange={handleImportWithError} />
@@ -1800,6 +1799,18 @@ function App() {
           </a>
         </div>
       </header>
+
+      {isClearDialogOpen && (
+        <div className="clear-dialog-backdrop" role="presentation">
+          <div className="clear-dialog" role="dialog" aria-modal="true" aria-labelledby="clear-dialog-title">
+            <h2 id="clear-dialog-title">Clear current project?</h2>
+            <div className="clear-dialog-actions">
+              <button className="toolbar-button" type="button" onClick={cancelClearProject}>Cancel</button>
+              <button className="toolbar-button primary" type="button" onClick={clearProject}>Clear</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {errorMessage && <div className="notice">{errorMessage}</div>}
 
