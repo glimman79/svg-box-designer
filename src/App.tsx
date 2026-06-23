@@ -623,7 +623,6 @@ function App() {
   const activeWConnection = activeWGroup?.isActive ? connections[activeWGroup.connectionId] : undefined;
   const hasApplyInputs = Object.keys(edgeAssignments).length > 0
     || (activeWConnection?.prefix === 'W' && activeWConnection.properties.selectedEdgeIds.length > 0);
-
   const navigateToWorkflowHistoryItem = (item: WorkflowHistoryItem) => {
     const firstLabel = item.labels[0] ?? null;
     setActiveTool(item.kind);
@@ -832,6 +831,14 @@ function App() {
     setSelectedLabelId(nextWorkflow.selectedLabelId === selectedLabelId ? null : nextWorkflow.selectedLabelId);
     setErrorMessage('');
   };
+
+  const activeToolbarFinish = activeTool === 'TB' && activeTBGroup?.isActive
+    ? { label: 'Finish TB', onClick: finishTBGroup }
+    : activeTool === 'S' && activeSGroup?.isActive
+      ? { label: 'Finish S', onClick: finishSGroup }
+      : activeTool === 'W' && activeWGroup?.isActive
+        ? { label: 'Finish W', onClick: finishWGroup }
+        : null;
 
   const clearEdgeLabel = (edgeId: string) => {
     if (!edgeAssignments[edgeId]) {
@@ -1712,6 +1719,14 @@ function App() {
             <button type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo" title="Undo">↶</button>
             <button type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo" title="Redo">↷</button>
             <button type="button" onClick={applyPanelPaths} disabled={!hasApplyInputs}>Apply</button>
+            <button
+              type="button"
+              onClick={activeToolbarFinish?.onClick}
+              disabled={!activeToolbarFinish}
+              title={activeToolbarFinish ? `${activeToolbarFinish.label} Group` : 'No active group for current tool'}
+            >
+              {activeToolbarFinish?.label ?? 'Finish Group'}
+            </button>
           </div>
         </div>
         <div className="toolbar-actions">
