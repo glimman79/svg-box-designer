@@ -34,7 +34,7 @@ type LabelGroup = {
   description: string;
 };
 
-type ActiveTool = 'select' | 'TB' | 'W' | 'S' | 'J' | 'P';
+type ActiveTool = 'select' | 'TB' | 'W' | 'S' | 'J' | 'P' | 'manufacturing';
 
 type ProjectSettings = {
   kerfMm: number;
@@ -1668,7 +1668,6 @@ function App() {
           <section className="property-section" aria-labelledby="slot-advanced-properties">
             <h4 id="slot-advanced-properties">Advanced</h4>
             <div className="property-grid">
-              <NumericField id="slot-kerf" label="Kerf (mm)" min={0} value={properties.kerfMm} onChange={(kerfMm) => updateSlotProperties({ kerfMm })} />
               <NumericField id="slot-play" label="Play (mm)" min={0} value={properties.playMm} onChange={(playMm) => updateSlotProperties({ playMm })} />
             </div>
           </section>
@@ -1725,8 +1724,6 @@ function App() {
         <div className="compact-property-controls" aria-label="Compact E controls">
           <NumericField id="compact-edge-material-thickness" label="Thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateEdgeProperties({ materialThicknessMm })} />
           <NumericField id="compact-edge-tab-size" label="Tab" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
-          <NumericField id="compact-global-kerf" label="Kerf" min={0} value={projectSettings.kerfMm} onChange={(kerfMm) => updateProjectSettings({ kerfMm })} />
-          <NumericField id="compact-global-clearance" label="Clearance" min={0} value={projectSettings.clearanceMm} onChange={(clearanceMm) => updateProjectSettings({ clearanceMm })} />
         </div>
       );
     }
@@ -1742,8 +1739,6 @@ function App() {
           <NumericField id="compact-slot-material-thickness" label="Thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateSlotProperties({ materialThicknessMm })} />
           <NumericField id="compact-slot-tab-size" label="Tab" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
           <NumericField id="compact-slot-offset" label="Offset" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
-          <NumericField id="compact-global-kerf" label="Kerf" min={0} value={projectSettings.kerfMm} onChange={(kerfMm) => updateProjectSettings({ kerfMm })} />
-          <NumericField id="compact-global-clearance" label="Clearance" min={0} value={projectSettings.clearanceMm} onChange={(clearanceMm) => updateProjectSettings({ clearanceMm })} />
         </div>
       );
     }
@@ -1758,8 +1753,6 @@ function App() {
         <div className="compact-property-controls" aria-label={controlsLabel}>
           <NumericField id="compact-wall-material-thickness" label="Thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateWallProperties({ materialThicknessMm })} />
           <NumericField id="compact-wall-tab-size" label="Tab" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateWallProperties({ fingerWidthMm })} />
-          <NumericField id="compact-global-kerf" label="Kerf" min={0} value={projectSettings.kerfMm} onChange={(kerfMm) => updateProjectSettings({ kerfMm })} />
-          <NumericField id="compact-global-clearance" label="Clearance" min={0} value={projectSettings.clearanceMm} onChange={(clearanceMm) => updateProjectSettings({ clearanceMm })} />
         </div>
       );
     }
@@ -1856,6 +1849,7 @@ function App() {
             ['S', 'S', 'Slot connection workflow'],
             ['J', 'J', 'Future joint tool placeholder'],
             ['P', 'P', 'Future pattern tool placeholder'],
+            ['manufacturing', 'MFG', 'Global manufacturing settings'],
           ] as const).map(([tool, label, title]) => (
             <button
               key={tool}
@@ -1873,7 +1867,7 @@ function App() {
         <aside className="active-tool-panel panel">
           <div className="panel-heading">
             <p className="eyebrow">Active tool</p>
-            <h2>{activeTool === 'TB' ? 'TB / Top Bottom' : activeTool}</h2>
+            <h2>{activeTool === 'TB' ? 'TB / Top Bottom' : activeTool === 'manufacturing' ? 'Manufacturing' : activeTool}</h2>
           </div>
 
           {activeTool === 'select' && (
@@ -1892,6 +1886,19 @@ function App() {
               ) : (
                 <p className="muted">No edge selected.</p>
               )}
+            </div>
+          )}
+
+
+          {activeTool === 'manufacturing' && (
+            <div className="active-tool-card manufacturing-card">
+              <h3>Manufacturing settings</h3>
+              <div className="property-grid">
+                <NumericField id="manufacturing-kerf" label="Kerf" min={0} value={projectSettings.kerfMm} onChange={(kerfMm) => updateProjectSettings({ kerfMm })} />
+                <NumericField id="manufacturing-clearance" label="Clearance" min={0} value={projectSettings.clearanceMm} onChange={(clearanceMm) => updateProjectSettings({ clearanceMm })} />
+              </div>
+              <p className="muted">Kerf applies globally to the whole generated output.</p>
+              <p className="muted">Clearance applies only to joints/slots later.</p>
             </div>
           )}
 

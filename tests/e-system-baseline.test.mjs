@@ -641,6 +641,7 @@ assert.equal(getToolClickGroupStartKind('W', null, null, activeWClickGroup), nul
 assert.equal(getToolClickGroupStartKind('select', null, null, null), null, 'Clicking Select does not start any group');
 assert.equal(getToolClickGroupStartKind('J', null, null, null), null, 'Clicking J does not start any group');
 assert.equal(getToolClickGroupStartKind('P', null, null, null), null, 'Clicking P does not start any group');
+assert.equal(getToolClickGroupStartKind('manufacturing', null, null, null), null, 'Clicking Manufacturing does not start any group');
 
 const tbStarted = startTBGroupWorkflow({}, defaultConnectionProperties.E);
 assert.equal(tbStarted.selectedLabelId, 'E1', 'Start TB group selects first internal E label');
