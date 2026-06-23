@@ -4,9 +4,9 @@ import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacement
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
 import { exportAppliedSvg } from './app/exportAppliedSvg';
 import { buildAppliedSGeometry } from './app/sGeometry';
-import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
+import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
-import { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
+import { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
 import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildAppliedEPanelPaths } from './app/eGeometry';
 import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 import { createTabSegmentPlan, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
@@ -18,8 +18,8 @@ export { edgeMatchesContourSide, getContourEdgePoints, getTabSegmentsForRole, va
 export type { PanelValidationResult } from './app/sharedPanelGeometry';
 export { exportAppliedSvg } from './app/exportAppliedSvg';
 export { buildAppliedSGeometry } from './app/sGeometry';
-export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
-export { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, getNextInternalELabel, startTBGroupWorkflow } from './app/tbWorkflow';
+export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
+export { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getNextInternalELabel, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
 export { applyTabsToContour, buildAppliedEPanelPaths, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
@@ -610,7 +610,7 @@ function App() {
     return groups.sort((first, second) => getLabelNumber(first.labels[0] ?? 'E0') - getLabelNumber(second.labels[0] ?? 'E0'));
   }, [activeTBGroup, availableLabels, completedTBGroups, workflowGroupOrder]);
 
-  const tbGroupActionNumber = activeTBGroup?.isActive ? getLabelNumber(activeTBGroup.connectionIds[0] ?? 'E1') : tbLabelGroups.length + 1;
+  const tbGroupActionNumber = getTBGroupActionNumber(tbLabelGroups, activeTBGroup);
   const sGroupActionNumber = getSGroupActionNumber(connections, activeSGroup);
   const wGroupActionNumber = getWGroupActionNumber(connections, activeWGroup);
 
@@ -757,13 +757,15 @@ function App() {
     }
 
     pushUndoState();
-    const finishedGroup = finishTBGroupWorkflow(activeTBGroup);
+    const nextWorkflow = finishTBGroupWithTrailingCleanup(activeTBGroup, connections, edgeAssignments, selectedLabelId);
+    const finishedGroup = nextWorkflow.activeTBGroup;
+    setConnections(nextWorkflow.connections);
     setActiveTBGroup(finishedGroup);
     setCompletedTBGroups((currentGroups) => [
       ...currentGroups.filter((group) => group.groupId !== finishedGroup.groupId),
       finishedGroup,
     ]);
-    setSelectedLabelId(null);
+    setSelectedLabelId(nextWorkflow.selectedLabelId === selectedLabelId ? null : nextWorkflow.selectedLabelId);
     setErrorMessage('');
   };
 
@@ -819,8 +821,10 @@ function App() {
     }
 
     pushUndoState();
-    setActiveSGroup(finishSGroupWorkflow(activeSGroup));
-    setSelectedLabelId(null);
+    const nextWorkflow = finishSGroupWithTrailingCleanup(activeSGroup, connections, edgeAssignments, selectedLabelId);
+    setConnections(nextWorkflow.connections);
+    setActiveSGroup(nextWorkflow.activeSGroup);
+    setSelectedLabelId(nextWorkflow.selectedLabelId === selectedLabelId ? null : nextWorkflow.selectedLabelId);
     setErrorMessage('');
   };
 
@@ -909,7 +913,7 @@ function App() {
 
     if (connection.prefix === 'E') {
       if (currentBucket.edgeAssignment) {
-        setErrorMessage('This edge already has an E assignment.');
+        setErrorMessage('This edge already has a TB assignment.');
         return;
       }
     } else if (connection.prefix === 'S') {
@@ -1724,7 +1728,7 @@ function App() {
         <aside className="tool-sidebar" aria-label="Tool sidebar">
           {([
             ['select', 'Select', 'Select and inspect existing edges'],
-            ['TB', 'TB', 'Tab/box edge tool alias for existing E connections'],
+            ['TB', 'TB', 'Tab/box edge tool alias for Top/Bottom connections'],
             ['W', 'W', 'Wall connection workflow'],
             ['S', 'S', 'Slot connection workflow'],
             ['J', 'J', 'Future joint tool placeholder'],
@@ -1790,22 +1794,22 @@ function App() {
                 <div className="label-group-header">
                   <div>
                     <h3>{prefix === 'E' ? 'TB / Top Bottom' : `${prefix} = ${name}`}</h3>
-                    <p>{prefix === 'E' ? 'Existing E connections' : description}</p>
+                    <p>{prefix === 'E' ? 'Top/Bottom connections' : description}</p>
                   </div>
                   <div className="label-actions">
                     {prefix === 'E' ? (
                       <>
-                        <button type="button" onClick={startTBGroup}>Start TB Group {tbGroupActionNumber}</button>
+                        <button type="button" onClick={startTBGroup} disabled={activeTBGroup?.isActive}>Start TB Group {tbGroupActionNumber}</button>
                         <button type="button" onClick={finishTBGroup} disabled={!activeTBGroup?.isActive}>Finish TB Group {tbGroupActionNumber}</button>
                       </>
                     ) : prefix === 'S' ? (
                       <>
-                        <button type="button" onClick={startSGroup}>Start S Group {sGroupActionNumber}</button>
+                        <button type="button" onClick={startSGroup} disabled={activeSGroup?.isActive}>Start S Group {sGroupActionNumber}</button>
                         <button type="button" onClick={finishSGroup} disabled={!activeSGroup?.isActive}>Finish S Group {sGroupActionNumber}</button>
                       </>
                     ) : prefix === 'W' ? (
                       <>
-                        <button type="button" onClick={startWGroup}>Start W Group {wGroupActionNumber}</button>
+                        <button type="button" onClick={startWGroup} disabled={activeWGroup?.isActive}>Start W Group {wGroupActionNumber}</button>
                         <button type="button" onClick={finishWGroup} disabled={!activeWGroup?.isActive}>Finish W Group {wGroupActionNumber}</button>
                       </>
                     ) : (

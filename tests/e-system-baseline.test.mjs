@@ -318,6 +318,7 @@ const {
   manualAddSWorkflow,
   maybeAutoCreateNextSInGroup,
   finishSGroupWorkflow,
+  finishSGroupWithTrailingCleanup,
   getDefaultSlotRole,
 } = module.exports;
 
@@ -328,6 +329,29 @@ const workflowAssign = (connectionId, roles = ['A', 'B']) => Object.fromEntries(
 
 assert.equal(getDefaultSlotRole(workflowAssign('S1', ['A']), 'S1'), 'B', 'S1 gets B after A is assigned');
 assert.equal(getDefaultSlotRole(workflowAssign('S1'), 'S1'), null, 'S1 cannot receive a third assigned edge after A and B');
+
+const sCleanupConnections = {
+  S1: sConnection('S1'),
+  S2: sConnection('S2'),
+  S3: sConnection('S3'),
+};
+const sCleanupGroup = { groupId: 's-group-S1', connectionIds: ['S1', 'S2', 'S3'], isActive: true };
+const sCleanupAssignments = {
+  'slot-a': { slotAssignments: [{ connectionId: 'S1', slotRole: 'A' }] },
+  'slot-b': { slotAssignments: [{ connectionId: 'S2', slotRole: 'B' }] },
+};
+const sCleanupFinished = finishSGroupWithTrailingCleanup(sCleanupGroup, sCleanupConnections, sCleanupAssignments, 'S3');
+assert.deepEqual([...sCleanupFinished.activeSGroup.connectionIds], ['S1', 'S2'], 'S Finish removes only trailing 0-slot S child from active group data');
+assert.equal(sCleanupFinished.connections.S3, undefined, 'S Finish removes trailing 0-slot S child from connections map');
+assert.equal(sCleanupFinished.selectedLabelId, null, 'S Finish clears selectedLabelId when removed trailing S child was selected');
+assert.equal(sCleanupFinished.connections.S2.id, 'S2', 'S Finish keeps preceding assigned S child');
+const sAssignedTrailingFinished = finishSGroupWithTrailingCleanup(sCleanupGroup, sCleanupConnections, {
+  ...sCleanupAssignments,
+  'slot-c': { slotAssignments: [{ connectionId: 'S3', slotRole: 'A' }] },
+}, 'S3');
+assert.deepEqual([...sAssignedTrailingFinished.activeSGroup.connectionIds], ['S1', 'S2', 'S3'], 'S Finish does not remove assigned trailing S child');
+assert.equal(sAssignedTrailingFinished.connections.S3.id, 'S3', 'S Finish keeps assigned trailing S child in connections map');
+
 const completeS1 = workflowAssign('S1');
 assert.equal(getDefaultSlotRole(completeS1, 'S1'), null, 'S1 cannot have 3 assigned edges');
 assert.equal(getDefaultSlotRole(completeS1, 'S1'), null, 'S1 cannot have 4 or 5 assigned edges');
@@ -602,7 +626,7 @@ const inactiveWDisplayAssignments = buildActiveWDisplayAssignments({}, wConnecti
 assert.equal(inactiveWDisplayAssignments['w1-top'], undefined, 'temporary W labels disappear after W group is inactive');
 console.log('W group V1 tests passed');
 
-const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, buildWorkflowHistoryItems } = module.exports;
+const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, finishTBGroupWithTrailingCleanup, getTBGroupActionNumber, buildWorkflowHistoryItems } = module.exports;
 
 const tbStarted = startTBGroupWorkflow({}, defaultConnectionProperties.E);
 assert.equal(tbStarted.selectedLabelId, 'E1', 'Start TB group selects first internal E label');
@@ -655,6 +679,30 @@ assert.equal(JSON.stringify(tbConnections), JSON.stringify({
   E1: tbStarted.connections.E1,
   E2: { id: 'E2', prefix: 'E', properties: tbStarted.connections.E1.properties },
 }), 'Finish TB group does not rename labels or mutate connections');
+
+const tbCleanupConnections = {
+  E1: tbStarted.connections.E1,
+  E2: { id: 'E2', prefix: 'E', properties: tbStarted.connections.E1.properties },
+  E3: { id: 'E3', prefix: 'E', properties: tbStarted.connections.E1.properties },
+};
+const tbCleanupGroup = { groupId: 'tb-group-E1', connectionIds: ['E1', 'E2', 'E3'], isActive: true };
+const tbCleanupAssignments = {
+  'p1-top': { edgeAssignment: { connectionId: 'E1', edgeRole: 'A' } },
+  'p1-right': { edgeAssignment: { connectionId: 'E2', edgeRole: 'B' } },
+};
+const tbCleanupFinished = finishTBGroupWithTrailingCleanup(tbCleanupGroup, tbCleanupConnections, tbCleanupAssignments, 'E3');
+assert.deepEqual([...tbCleanupFinished.activeTBGroup.connectionIds], ['E1', 'E2'], 'TB Finish removes only trailing 0-edge E child from active/completed group data');
+assert.equal(tbCleanupFinished.connections.E3, undefined, 'TB Finish removes trailing 0-edge E child from connections map');
+assert.equal(tbCleanupFinished.selectedLabelId, null, 'TB Finish clears selectedLabelId when removed trailing E child was selected');
+assert.equal(tbCleanupFinished.connections.E2.id, 'E2', 'TB Finish keeps preceding assigned E child');
+const tbAssignedTrailingFinished = finishTBGroupWithTrailingCleanup(tbCleanupGroup, tbCleanupConnections, {
+  ...tbCleanupAssignments,
+  'p1-bottom': { edgeAssignment: { connectionId: 'E3', edgeRole: 'A' } },
+}, 'E3');
+assert.deepEqual([...tbAssignedTrailingFinished.activeTBGroup.connectionIds], ['E1', 'E2', 'E3'], 'TB Finish does not remove assigned trailing E child');
+assert.equal(tbAssignedTrailingFinished.connections.E3.id, 'E3', 'TB Finish keeps assigned trailing E child in connections map');
+assert.equal(getTBGroupActionNumber([{ id: 'tb-group-E1' }, { id: 'tb-group-E7' }], null), 3, 'TB next group number is based on TB group count rather than internal E label number');
+
 
 const workflowHistoryConnections = {
   ...tbConnections,
