@@ -626,7 +626,21 @@ const inactiveWDisplayAssignments = buildActiveWDisplayAssignments({}, wConnecti
 assert.equal(inactiveWDisplayAssignments['w1-top'], undefined, 'temporary W labels disappear after W group is inactive');
 console.log('W group V1 tests passed');
 
-const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, finishTBGroupWithTrailingCleanup, getTBGroupActionNumber, buildWorkflowHistoryItems } = module.exports;
+const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, finishTBGroupWithTrailingCleanup, getTBGroupActionNumber, buildWorkflowHistoryItems, getToolClickGroupStartKind, startWGroupWorkflow } = module.exports;
+
+
+assert.equal(getToolClickGroupStartKind('TB', null, null, null), 'TB', 'Clicking TB starts a TB group if none is active');
+const activeTBClickGroup = startTBGroupWorkflow({}, defaultConnectionProperties.E).activeTBGroup;
+assert.equal(getToolClickGroupStartKind('TB', activeTBClickGroup, null, null), null, 'Clicking TB again does not create another active TB group');
+assert.equal(getToolClickGroupStartKind('S', null, null, null), 'S', 'Clicking S starts an S group if none is active');
+const activeSClickGroup = startSGroupWorkflow({}).activeSGroup;
+assert.equal(getToolClickGroupStartKind('S', null, activeSClickGroup, null), null, 'Clicking S again does not create another active S group');
+assert.equal(getToolClickGroupStartKind('W', null, null, null), 'W', 'Clicking W starts a W group if none is active');
+const activeWClickGroup = startWGroupWorkflow({}).activeWGroup;
+assert.equal(getToolClickGroupStartKind('W', null, null, activeWClickGroup), null, 'Clicking W again does not create another active W group');
+assert.equal(getToolClickGroupStartKind('select', null, null, null), null, 'Clicking Select does not start any group');
+assert.equal(getToolClickGroupStartKind('J', null, null, null), null, 'Clicking J does not start any group');
+assert.equal(getToolClickGroupStartKind('P', null, null, null), null, 'Clicking P does not start any group');
 
 const tbStarted = startTBGroupWorkflow({}, defaultConnectionProperties.E);
 assert.equal(tbStarted.selectedLabelId, 'E1', 'Start TB group selects first internal E label');

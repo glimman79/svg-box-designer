@@ -6,7 +6,7 @@ import { exportAppliedSvg } from './app/exportAppliedSvg';
 import { buildAppliedSGeometry } from './app/sGeometry';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
-import { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
+import { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
 import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildAppliedEPanelPaths } from './app/eGeometry';
 import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 import { createTabSegmentPlan, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
@@ -120,6 +120,28 @@ export const buildWorkflowHistoryItems = (
       const { orderIndex: _orderIndex, ...historyItem } = item;
       return historyItem;
     });
+};
+
+
+export const getToolClickGroupStartKind = (
+  tool: ActiveTool,
+  activeTBGroup: ActiveTBGroup | null,
+  activeSGroup: ActiveSGroup | null,
+  activeWGroup: ActiveWGroup | null,
+): 'TB' | 'S' | 'W' | null => {
+  if (tool === 'TB') {
+    return activeTBGroup?.isActive ? null : 'TB';
+  }
+
+  if (tool === 'S') {
+    return activeSGroup?.isActive ? null : 'S';
+  }
+
+  if (tool === 'W') {
+    return activeWGroup?.isActive ? null : 'W';
+  }
+
+  return null;
 };
 
 const maxHistoryEntries = 10;
@@ -615,9 +637,6 @@ function App() {
   ), [tbLabelGroups]);
   const formatTBDisplayLabel = (label: string | null | undefined) => (label ? tbDisplayLabelAliases[label] ?? label : 'None');
 
-  const tbGroupActionNumber = getTBGroupActionNumber(tbLabelGroups, activeTBGroup);
-  const sGroupActionNumber = getSGroupActionNumber(connections, activeSGroup);
-  const wGroupActionNumber = getWGroupActionNumber(connections, activeWGroup);
 
   const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections), [connections, sLabelGroups, tbLabelGroups, wLabelGroups]);
   const activeWConnection = activeWGroup?.isActive ? connections[activeWGroup.connectionId] : undefined;
@@ -798,6 +817,46 @@ function App() {
     }));
     setExpandedWGroups((currentGroups) => ({ ...currentGroups, [nextWorkflow.activeWGroup.groupId]: true }));
     setErrorMessage('');
+  };
+
+  const handleToolClick = (tool: ActiveTool) => {
+    setActiveTool(tool);
+
+    const groupStartKind = getToolClickGroupStartKind(tool, activeTBGroup, activeSGroup, activeWGroup);
+
+    if (groupStartKind === 'TB') {
+      startTBGroup();
+      return;
+    }
+
+    if (groupStartKind === 'S') {
+      startSGroup();
+      return;
+    }
+
+    if (groupStartKind === 'W') {
+      startWGroup();
+      return;
+    }
+
+    if (tool === 'TB' && activeTBGroup?.isActive) {
+      setSelectedLabelId(activeTBGroup.connectionIds[activeTBGroup.connectionIds.length - 1] ?? null);
+      setExpandedTBGroups((currentGroups) => ({ ...currentGroups, [activeTBGroup.groupId]: true }));
+      setErrorMessage('');
+      return;
+    }
+
+    if (tool === 'S' && activeSGroup?.isActive) {
+      setSelectedLabelId(activeSGroup.connectionIds[activeSGroup.connectionIds.length - 1] ?? null);
+      setErrorMessage('');
+      return;
+    }
+
+    if (tool === 'W' && activeWGroup?.isActive) {
+      setSelectedLabelId(activeWGroup.connectionId);
+      setExpandedWGroups((currentGroups) => ({ ...currentGroups, [activeWGroup.groupId]: true }));
+      setErrorMessage('');
+    }
   };
 
   const finishWGroup = () => {
@@ -1760,7 +1819,7 @@ function App() {
               className={`tool-button${activeTool === tool ? ' active' : ''}`}
               title={title}
               aria-pressed={activeTool === tool}
-              onClick={() => setActiveTool(tool)}
+              onClick={() => handleToolClick(tool)}
             >
               {label}
             </button>
@@ -1816,28 +1875,13 @@ function App() {
                     <h3>{prefix === 'E' ? 'TB / Top Bottom' : `${prefix} = ${name}`}</h3>
                     <p>{prefix === 'E' ? 'Top/Bottom connections' : description}</p>
                   </div>
-                  <div className="label-actions">
-                    {prefix === 'E' ? (
-                      <>
-                        <button type="button" onClick={startTBGroup} disabled={activeTBGroup?.isActive}>Start TB Group {tbGroupActionNumber}</button>
-                        <button type="button" onClick={finishTBGroup} disabled={!activeTBGroup?.isActive}>Finish TB Group {tbGroupActionNumber}</button>
-                      </>
-                    ) : prefix === 'S' ? (
-                      <>
-                        <button type="button" onClick={startSGroup} disabled={activeSGroup?.isActive}>Start S Group {sGroupActionNumber}</button>
-                        <button type="button" onClick={finishSGroup} disabled={!activeSGroup?.isActive}>Finish S Group {sGroupActionNumber}</button>
-                      </>
-                    ) : prefix === 'W' ? (
-                      <>
-                        <button type="button" onClick={startWGroup} disabled={activeWGroup?.isActive}>Start W Group {wGroupActionNumber}</button>
-                        <button type="button" onClick={finishWGroup} disabled={!activeWGroup?.isActive}>Finish W Group {wGroupActionNumber}</button>
-                      </>
-                    ) : (
+                  {prefix !== 'E' && prefix !== 'S' && prefix !== 'W' && (
+                    <div className="label-actions">
                       <button type="button" onClick={() => createLabel(prefix)}>
                         Add {getNextLabel(prefix, availableLabels)}
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 {groupLabels.length > 0 ? (
