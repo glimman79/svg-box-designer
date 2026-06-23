@@ -783,10 +783,6 @@ button:disabled {
   gap: 10px;
 }
 
-.brand-lockup {
-  min-width: 250px;
-}
-
 .brand-mark {
   display: inline-grid;
   width: 38px;
@@ -816,6 +812,40 @@ button:disabled {
   flex: 1;
   justify-content: flex-end;
   overflow-x: auto;
+}
+
+.clear-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(15 23 42 / 45%);
+}
+
+.clear-dialog {
+  display: grid;
+  gap: 18px;
+  width: min(360px, 100%);
+  padding: 22px;
+  color: #e5e7eb;
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 16px;
+  box-shadow: 0 22px 55px rgb(15 23 42 / 45%);
+}
+
+.clear-dialog h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1.05rem;
+}
+
+.clear-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .toolbar-button {
@@ -1125,8 +1155,8 @@ button:disabled {
 }
 
 .top-toolbar {
-  flex: 0 0 64px;
-  min-height: 64px;
+  flex: 0 0 auto;
+  min-height: 52px;
 }
 
 .drawing-toolbar {
@@ -1332,4 +1362,36 @@ button:disabled {
 
 .active-tool-panel .calculated-edge-list li {
   padding: 8px;
+}
+
+
+/* UI cleanup: shrink only the detailed Properties inspector text. */
+.properties-card .property-section h4 {
+  font-size: 0.74rem;
+}
+
+.properties-card .calculated-edge-list strong {
+  font-size: 0.78rem;
+}
+
+.properties-card .calculated-edge-list dt {
+  font-size: 0.68rem;
+}
+
+.properties-card .calculated-edge-list dd {
+  font-size: 0.74rem;
+}
+
+.properties-card .property-field span {
+  font-size: 0.7rem;
+}
+
+.properties-card .property-field input,
+.properties-card .property-field select {
+  min-height: 30px;
+  font-size: 0.78rem;
+}
+
+.properties-card .muted {
+  font-size: 0.68rem;
 }
