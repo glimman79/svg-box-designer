@@ -766,10 +766,10 @@ button:disabled {
 .top-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 64px;
-  padding: 10px 14px;
+  justify-content: flex-start;
+  gap: 12px;
+  min-height: 46px;
+  padding: 7px 12px;
   color: #dbeafe;
   background: #111827;
   border-bottom: 1px solid #020617;
@@ -780,18 +780,23 @@ button:disabled {
 .toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+
+.brand-lockup {
+  flex: 0 0 auto;
 }
 
 .brand-mark {
   display: inline-grid;
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
   place-items: center;
   color: #022c22;
   background: #5eead4;
-  border-radius: 10px;
-  font-size: 0.78rem;
+  border-radius: 8px;
+  font-size: 0.72rem;
   font-weight: 950;
   letter-spacing: 0.06em;
 }
@@ -802,15 +807,16 @@ button:disabled {
 }
 
 .brand-lockup h1 {
-  margin: 2px 0 0;
+  margin: 0;
   color: #ffffff;
-  font-size: 1rem;
+  font-size: 0.95rem;
   letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
 .toolbar-actions {
-  flex: 1;
-  justify-content: flex-end;
+  flex: 0 1 auto;
+  justify-content: flex-start;
   overflow-x: auto;
 }
 
@@ -852,12 +858,13 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 38px;
-  padding: 0 12px;
+  min-height: 30px;
+  padding: 0 9px;
   color: #e5e7eb;
   background: #1f2937;
   border: 1px solid #374151;
-  border-radius: 9px;
+  border-radius: 8px;
+  font-size: 0.8rem;
   font-weight: 850;
   white-space: nowrap;
   box-shadow: none;
@@ -880,9 +887,9 @@ button:disabled {
 }
 
 .icon-button {
-  width: 40px;
+  width: 30px;
   padding: 0;
-  font-size: 1.2rem;
+  font-size: 1rem;
 }
 
 .notice {
@@ -892,7 +899,7 @@ button:disabled {
 
 .workspace {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) minmax(280px, 330px);
+  grid-template-columns: 50px minmax(0, 1fr) minmax(280px, 330px);
   grid-template-rows: minmax(0, 1fr) 42px;
   grid-template-areas:
     "tools canvas active"
@@ -910,9 +917,9 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 8px;
+  gap: 6px;
   min-height: 0;
-  padding: 8px;
+  padding: 6px;
   background: #111827;
   border: 1px solid #1f2937;
   border-radius: 16px;
@@ -921,13 +928,13 @@ button:disabled {
 
 .tool-button {
   display: grid;
-  min-height: 48px;
+  min-height: 34px;
   place-items: center;
   color: #cbd5e1;
   background: #1f2937;
   border: 1px solid #374151;
-  border-radius: 12px;
-  font-size: 0.82rem;
+  border-radius: 9px;
+  font-size: 0.74rem;
   font-weight: 950;
 }
 
@@ -1126,8 +1133,8 @@ button:disabled {
 
   .top-toolbar,
   .toolbar-actions {
-    align-items: flex-start;
-    flex-wrap: wrap;
+    align-items: center;
+    flex-wrap: nowrap;
     justify-content: flex-start;
   }
 
@@ -1156,7 +1163,7 @@ button:disabled {
 
 .top-toolbar {
   flex: 0 0 auto;
-  min-height: 52px;
+  min-height: 46px;
 }
 
 .drawing-toolbar {
@@ -1259,6 +1266,8 @@ button:disabled {
 
   .top-toolbar {
     flex-basis: auto;
+    align-items: center;
+    flex-wrap: nowrap;
   }
 
   .drawing-toolbar {

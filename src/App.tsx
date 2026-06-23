@@ -1773,10 +1773,21 @@ function App() {
   return (
     <main className="app-shell">
       <header className="top-toolbar" aria-label="Primary actions">
+        <div className="brand-lockup" aria-label="SVG Box Designer">
+          <span className="brand-mark" aria-hidden="true">SBD</span>
+          <h1>SVG BOX DESIGNER</h1>
+        </div>
         <div className="toolbar-actions">
+          <label className="toolbar-button primary" title="Import SVG">
+            Import
+            <input type="file" accept=".svg,image/svg+xml" onChange={handleImportWithError} />
+          </label>
+          <button className="toolbar-button" type="button" disabled title="Save placeholder">Save</button>
+          <button className="toolbar-button" type="button" onClick={exportSvg} disabled={Object.keys(edgeAssignments).length === 0} title="Export SVG">Export</button>
+          <button className="toolbar-button" type="button" onClick={requestClearProject}>Clear</button>
           <button className="toolbar-button" type="button" onClick={fitCanvasToScreen}>Fit to screen</button>
-          <button className="toolbar-button" type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo" title="Undo">Undo</button>
-          <button className="toolbar-button" type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo" title="Redo">Redo</button>
+          <button className="toolbar-button icon-button" type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo" title="Undo">↶</button>
+          <button className="toolbar-button icon-button" type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo" title="Redo">↷</button>
           <button className="toolbar-button" type="button" onClick={applyPanelPaths} disabled={!hasApplyInputs}>Apply</button>
           <button
             className="toolbar-button"
@@ -1787,13 +1798,6 @@ function App() {
           >
             {activeToolbarFinish?.label ?? 'Finish Group'}
           </button>
-          <button className="toolbar-button" type="button" onClick={requestClearProject}>Clear</button>
-          <label className="toolbar-button primary" title="Import SVG">
-            Import
-            <input type="file" accept=".svg,image/svg+xml" onChange={handleImportWithError} />
-          </label>
-          <button className="toolbar-button" type="button" disabled title="Save placeholder">Save</button>
-          <button className="toolbar-button" type="button" onClick={exportSvg} disabled={Object.keys(edgeAssignments).length === 0} title="Export SVG">Export</button>
           <a ref={downloadRef} className="visually-hidden" aria-hidden="true">
             download
           </a>
