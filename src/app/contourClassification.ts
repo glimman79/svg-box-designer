@@ -1,14 +1,12 @@
 import type { AppliedEPanelPath, AppliedSGeometry } from './connectionTypes';
-import { cornerTouchTolerance, pointsToClosedPathD } from './sharedGeometry';
+import { cornerTouchTolerance, getContourSignedArea, pointsToClosedPathD } from './sharedGeometry';
 import type { Point, SvgDocumentModel } from '../svgUtils';
 
 export type ContourKind = 'OUTER' | 'INNER';
 
-export type ClassifiedContourSource =
-  | 'imported-panel'
-  | 'applied-e-panel'
-  | 'applied-s-panel'
-  | 'applied-s-slot';
+export type ClassifiedContourSource = 'final-contour';
+
+export type FinalContourSource = 'original-panel' | 'applied-panel' | 's-slot';
 
 export type ClassifiedContour = {
   id: string;
@@ -19,85 +17,77 @@ export type ClassifiedContour = {
   pathD?: string;
   points?: Point[];
   depth?: number;
+  finalSource?: FinalContourSource;
+  diagnostics?: string[];
 };
+
+export type FinalContour = Omit<ClassifiedContour, 'kind' | 'source' | 'depth'> & {
+  source: 'final-contour';
+  finalSource: FinalContourSource;
+};
+
+export type ContourDiagnostic = {
+  id: string;
+  message: string;
+};
+
+export type FinalContourListResult = {
+  contours: FinalContour[];
+  diagnostics: ContourDiagnostic[];
+};
+
+const clonePoints = (points: Point[]) => points.map((point) => ({ ...point }));
 
 const pointOnSegment = (point: Point, start: Point, end: Point) => {
   const cross = (point.y - start.y) * (end.x - start.x) - (point.x - start.x) * (end.y - start.y);
-  if (Math.abs(cross) > 0.000001) {
-    return false;
-  }
-
+  if (Math.abs(cross) > 0.000001) return false;
   const dot = (point.x - start.x) * (end.x - start.x) + (point.y - start.y) * (end.y - start.y);
-  if (dot < 0) {
-    return false;
-  }
-
+  if (dot < 0) return false;
   const lengthSquared = (end.x - start.x) ** 2 + (end.y - start.y) ** 2;
   return dot <= lengthSquared;
 };
 
 const pointInContour = (point: Point, contour: Point[]) => {
-  if (contour.length < 3) {
-    return false;
-  }
-
+  if (contour.length < 3) return false;
   let inside = false;
   for (let index = 0, previousIndex = contour.length - 1; index < contour.length; previousIndex = index, index += 1) {
     const current = contour[index];
     const previous = contour[previousIndex];
-
-    if (pointOnSegment(point, previous, current)) {
-      return true;
-    }
-
+    if (pointOnSegment(point, previous, current)) return true;
     const intersects = (current.y > point.y) !== (previous.y > point.y)
       && point.x < ((previous.x - current.x) * (point.y - current.y)) / (previous.y - current.y) + current.x;
-
-    if (intersects) {
-      inside = !inside;
-    }
+    if (intersects) inside = !inside;
   }
-
   return inside;
 };
 
 const contourContainsContour = (outerId: string, outerContour: Point[], innerId: string, innerContour: Point[]) => {
-  if (outerId === innerId || outerContour.length < 3 || innerContour.length < 3) {
-    return false;
-  }
-
+  if (outerId === innerId || outerContour.length < 3 || innerContour.length < 3) return false;
   return innerContour.every((point) => pointInContour(point, outerContour));
 };
 
-const pathDToClosedContourForClassification = (pathD: string): Point[] | null => {
+export const pathDToClosedContourForClassification = (pathD: string): Point[] | null => {
   const tokens = pathD.match(/[a-zA-Z]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
   const points: Point[] = [];
   let index = 0;
   let command = '';
+  let sawClose = false;
 
   while (index < tokens.length) {
     const token = tokens[index];
-
     if (/^[a-zA-Z]$/.test(token)) {
       command = token;
       index += 1;
       if (command.toUpperCase() === 'Z') {
+        sawClose = true;
         break;
       }
       continue;
     }
-
-    if (command.toUpperCase() !== 'M' && command.toUpperCase() !== 'L') {
-      return null;
-    }
-
+    if (command.toUpperCase() !== 'M' && command.toUpperCase() !== 'L') return null;
     const x = Number(token);
     const y = Number(tokens[index + 1]);
-
-    if (!Number.isFinite(x) || !Number.isFinite(y)) {
-      return null;
-    }
-
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
     points.push({ x, y });
     index += 2;
   }
@@ -107,87 +97,86 @@ const pathDToClosedContourForClassification = (pathD: string): Point[] | null =>
     const last = points[points.length - 1];
     if (Math.abs(first.x - last.x) <= cornerTouchTolerance && Math.abs(first.y - last.y) <= cornerTouchTolerance) {
       points.pop();
+      sawClose = true;
     }
   }
 
-  return points.length >= 3 ? points : null;
+  return sawClose && points.length >= 3 ? points : null;
 };
 
-const hasSemanticAppliedContourRole = (contour: ClassifiedContour) => (
-  contour.source === 'applied-e-panel'
-  || contour.source === 'applied-s-panel'
-  || contour.source === 'applied-s-slot'
-);
+const validateContour = (id: string, points?: Point[]) => {
+  const diagnostics: ContourDiagnostic[] = [];
+  if (!points || points.length < 3) diagnostics.push({ id, message: 'Contour must be closed and contain at least 3 points.' });
+  if (points && points.length >= 3 && Math.abs(getContourSignedArea(points)) <= cornerTouchTolerance) diagnostics.push({ id, message: 'Contour polygon area is invalid.' });
+  return diagnostics;
+};
 
-export const classifyContoursByContainment = (contours: ClassifiedContour[]): ClassifiedContour[] => {
+export const buildFinalContourList = (
+  svgModel: SvgDocumentModel,
+  appliedEPanelPaths: AppliedEPanelPath[],
+  appliedSGeometry: AppliedSGeometry[],
+): FinalContourListResult => {
+  const replacementByPanelId = new Map<string, { pathD: string; finalSource: FinalContourSource }>();
+  appliedEPanelPaths.forEach((path) => replacementByPanelId.set(path.panelId, { pathD: path.pathD, finalSource: 'applied-panel' }));
+  appliedSGeometry.flatMap((geometry) => geometry.panelPaths).forEach((path) => replacementByPanelId.set(path.panelId, { pathD: path.pathD, finalSource: 'applied-panel' }));
+
+  const contours: FinalContour[] = svgModel.panels.map((panel) => {
+    const replacement = replacementByPanelId.get(panel.id);
+    const points = replacement ? pathDToClosedContourForClassification(replacement.pathD) ?? undefined : clonePoints(panel.contour);
+    return {
+      id: `final-panel:${panel.id}`,
+      source: 'final-contour',
+      finalSource: replacement?.finalSource ?? 'original-panel',
+      panelId: panel.id,
+      ownerPanelId: panel.id,
+      pathD: replacement?.pathD ?? pointsToClosedPathD(panel.contour),
+      points,
+    };
+  });
+
+  appliedSGeometry.flatMap((geometry) => geometry.slotPaths).forEach((slotPath, index) => {
+    contours.push({
+      id: `final-s-slot:${slotPath.connectionId}:${index}`,
+      source: 'final-contour',
+      finalSource: 's-slot',
+      ownerPanelId: slotPath.sourceBEdgeId,
+      pathD: slotPath.pathD,
+      points: pathDToClosedContourForClassification(slotPath.pathD) ?? undefined,
+    });
+  });
+
+  const diagnostics = contours.flatMap((contour) => validateContour(contour.id, contour.points));
+  return { contours, diagnostics };
+};
+
+export const classifyContoursByContainment = (contours: FinalContour[] | ClassifiedContour[]): ClassifiedContour[] => {
   const contoursWithPoints = contours.map((contour) => ({
     ...contour,
-    points: contour.points?.map((point) => ({ ...point })) ?? (contour.pathD ? pathDToClosedContourForClassification(contour.pathD) ?? undefined : undefined),
+    source: 'final-contour' as const,
+    points: contour.points ? clonePoints(contour.points) : (contour.pathD ? pathDToClosedContourForClassification(contour.pathD) ?? undefined : undefined),
   }));
 
   return contoursWithPoints.map((contour) => {
-    if (hasSemanticAppliedContourRole(contour)) {
-      return {
-        ...contour,
-        depth: undefined,
-      };
-    }
-
     const containingContour = contour.points
-      ? contoursWithPoints.find((candidate) => (
-        candidate.points
-          ? contourContainsContour(candidate.id, candidate.points, contour.id, contour.points as Point[])
-          : false
-      ))
+      ? contoursWithPoints.find((candidate) => (candidate.points ? contourContainsContour(candidate.id, candidate.points, contour.id, contour.points as Point[]) : false))
       : undefined;
-
-    return {
-      ...contour,
-      kind: containingContour ? 'INNER' : 'OUTER',
-      depth: containingContour ? 1 : 0,
-    };
+    return { ...contour, kind: containingContour ? 'INNER' : 'OUTER', depth: containingContour ? 1 : 0 };
   });
 };
 
+export const classifyFinalContours = (contours: FinalContour[]): ClassifiedContour[] => classifyContoursByContainment(contours);
 
 export const classifyImportedPanelContours = (svgModel: SvgDocumentModel): ClassifiedContour[] => classifyContoursByContainment(
-  svgModel.panels.map((panel) => ({
-    id: panel.id,
-    kind: 'OUTER',
-    source: 'imported-panel',
-    panelId: panel.id,
-    pathD: pointsToClosedPathD(panel.contour),
-    points: panel.contour.map((point) => ({ ...point })),
-  })),
+  buildFinalContourList(svgModel, [], []).contours,
 );
 
 export const classifyAppliedContours = (
   appliedEPanelPaths: AppliedEPanelPath[],
   appliedSGeometry: AppliedSGeometry[],
-): ClassifiedContour[] => [
-  ...appliedEPanelPaths.map((path): ClassifiedContour => ({
-    id: `applied-e:${path.panelId}`,
-    kind: 'OUTER',
-    source: 'applied-e-panel',
-    panelId: path.panelId,
-    ownerPanelId: path.panelId,
-    pathD: path.pathD,
-  })),
+): ClassifiedContour[] => classifyContoursByContainment([
+  ...appliedEPanelPaths.map((path): FinalContour => ({ id: `final-applied-panel:${path.panelId}`, source: 'final-contour', finalSource: 'applied-panel', panelId: path.panelId, ownerPanelId: path.panelId, pathD: path.pathD, points: pathDToClosedContourForClassification(path.pathD) ?? undefined })),
   ...appliedSGeometry.flatMap((geometry) => [
-    ...geometry.panelPaths.map((path): ClassifiedContour => ({
-      id: `applied-s-panel:${geometry.connectionId}:${path.panelId}`,
-      kind: 'OUTER',
-      source: 'applied-s-panel',
-      panelId: path.panelId,
-      ownerPanelId: path.panelId,
-      pathD: path.pathD,
-    })),
-    ...geometry.slotPaths.map((path, index): ClassifiedContour => ({
-      id: `applied-s-slot:${geometry.connectionId}:${index}`,
-      kind: 'INNER',
-      source: 'applied-s-slot',
-      ownerPanelId: path.sourceBEdgeId,
-      pathD: path.pathD,
-    })),
+    ...geometry.panelPaths.map((path): FinalContour => ({ id: `final-applied-s-panel:${geometry.connectionId}:${path.panelId}`, source: 'final-contour', finalSource: 'applied-panel', panelId: path.panelId, ownerPanelId: path.panelId, pathD: path.pathD, points: pathDToClosedContourForClassification(path.pathD) ?? undefined })),
+    ...geometry.slotPaths.map((path, index): FinalContour => ({ id: `final-s-slot:${geometry.connectionId}:${index}`, source: 'final-contour', finalSource: 's-slot', ownerPanelId: path.sourceBEdgeId, pathD: path.pathD, points: pathDToClosedContourForClassification(path.pathD) ?? undefined })),
   ]),
-];
+]);

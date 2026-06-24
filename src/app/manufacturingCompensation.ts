@@ -1,11 +1,14 @@
 import type { AppliedEPanelPath, AppliedSGeometry } from './connectionTypes';
-import type { ClassifiedContour } from './contourClassification';
-import { classifyAppliedContours } from './contourClassification';
+import type { ClassifiedContour, ContourDiagnostic, FinalContour } from './contourClassification';
+import { buildFinalContourList, classifyFinalContours } from './contourClassification';
+import type { SvgDocumentModel } from '../svgUtils';
 import { buildContourSides, cornerTouchTolerance, getContourSignedArea, lineIntersection, offsetContourSide, pointsToClosedPathD } from './sharedGeometry';
 import type { PanelContour } from './sharedGeometry';
 import type { Point } from '../svgUtils';
 
 export type KerfCompensationResult = {
+  finalContourList: FinalContour[];
+  diagnostics: ContourDiagnostic[];
   contours: ClassifiedContour[];
   appliedEPanelPaths: AppliedEPanelPath[];
   appliedSGeometry: AppliedSGeometry[];
@@ -108,29 +111,19 @@ export const compensateClassifiedContours = (contours: ClassifiedContour[], kerf
 };
 
 export const buildKerfCompensatedAppliedPreview = (
+  svgModel: SvgDocumentModel,
   appliedEPanelPaths: AppliedEPanelPath[],
   appliedSGeometry: AppliedSGeometry[],
   kerfMm: number,
 ): KerfCompensationResult => {
-  const contours = compensateClassifiedContours(classifyAppliedContours(appliedEPanelPaths, appliedSGeometry), kerfMm);
-  const pathDById = new Map(contours.map((contour) => [contour.id, contour.pathD]));
+  const { contours: finalContourList, diagnostics } = buildFinalContourList(svgModel, appliedEPanelPaths, appliedSGeometry);
+  const contours = compensateClassifiedContours(classifyFinalContours(finalContourList), kerfMm);
 
   return {
+    finalContourList,
+    diagnostics,
     contours,
-    appliedEPanelPaths: appliedEPanelPaths.map((path) => ({
-      ...path,
-      pathD: pathDById.get(`applied-e:${path.panelId}`) ?? path.pathD,
-    })),
-    appliedSGeometry: appliedSGeometry.map((geometry) => ({
-      ...geometry,
-      panelPaths: geometry.panelPaths.map((path) => ({
-        ...path,
-        pathD: pathDById.get(`applied-s-panel:${geometry.connectionId}:${path.panelId}`) ?? path.pathD,
-      })),
-      slotPaths: geometry.slotPaths.map((path, index) => ({
-        ...path,
-        pathD: pathDById.get(`applied-s-slot:${geometry.connectionId}:${index}`) ?? path.pathD,
-      })),
-    })),
+    appliedEPanelPaths: [],
+    appliedSGeometry: [],
   };
 };
