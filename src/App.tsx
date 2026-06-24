@@ -22,7 +22,7 @@ export { buildAppliedSGeometry } from './app/sGeometry';
 export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 export { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getNextInternalELabel, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
-export { classifyAppliedContours, classifyImportedPanelContours } from './app/contourClassification';
+export { buildFinalContourList, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours } from './app/contourClassification';
 export { buildKerfCompensatedAppliedPreview, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour } from './app/manufacturingCompensation';
 export type { ClassifiedContour, ClassifiedContourSource, ContourKind } from './app/contourClassification';
 export { applyTabsToContour, buildAppliedEPanelPaths, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations } from './app/eGeometry';
@@ -658,8 +658,8 @@ function App() {
 
 
   const kerfCompensatedAppliedPreview = useMemo(
-    () => buildKerfCompensatedAppliedPreview(appliedEPanelPaths, appliedSGeometry, projectSettings.kerfMm),
-    [appliedEPanelPaths, appliedSGeometry, projectSettings.kerfMm],
+    () => buildKerfCompensatedAppliedPreview(svgModel, appliedEPanelPaths, appliedSGeometry, projectSettings.kerfMm),
+    [appliedEPanelPaths, appliedSGeometry, projectSettings.kerfMm, svgModel],
   );
 
   const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections), [connections, sLabelGroups, tbLabelGroups, wLabelGroups]);
@@ -2126,52 +2126,13 @@ function App() {
               onPointerCancel={handleCanvasPointerUp}
               onPointerLeave={handleCanvasPointerLeave}
             >
-              <g className="drawing-layer" dangerouslySetInnerHTML={{ __html: svgModel.innerMarkup }} />
-              <g className="applied-e-panel-layer">
-                {kerfCompensatedAppliedPreview.appliedEPanelPaths.map((panelPath) => (
-                  <g key={panelPath.panelId}>
-                    <rect
-                      className="applied-e-panel-erase"
-                      x={panelPath.eraseRect.minX}
-                      y={panelPath.eraseRect.minY}
-                      width={panelPath.eraseRect.maxX - panelPath.eraseRect.minX}
-                      height={panelPath.eraseRect.maxY - panelPath.eraseRect.minY}
-                    />
-                    <path
-                      className="applied-e-panel-erase-contour"
-                      d={panelPath.erasePathD}
-                    />
-                    <path
-                      className="applied-e-panel-path"
-                      d={panelPath.pathD}
-                    />
-                  </g>
-                ))}
-              </g>
-              <g className="applied-s-geometry-layer">
-                {kerfCompensatedAppliedPreview.appliedSGeometry.map((geometry) => (
-                  <g key={geometry.connectionId}>
-                    {geometry.panelPaths.map((panelPath) => (
-                      <g key={panelPath.sourceEdgeId}>
-                        <rect
-                          className="applied-e-panel-erase"
-                          x={panelPath.eraseRect.minX}
-                          y={panelPath.eraseRect.minY}
-                          width={panelPath.eraseRect.maxX - panelPath.eraseRect.minX}
-                          height={panelPath.eraseRect.maxY - panelPath.eraseRect.minY}
-                        />
-                        <path className="applied-e-panel-erase-contour" d={panelPath.erasePathD} />
-                        <path className="applied-e-panel-path" d={panelPath.pathD} />
-                      </g>
-                    ))}
-                    {geometry.slotPaths.map((slotPath) => (
-                      <path
-                        key={`${slotPath.connectionId}-${slotPath.startDistance}-${slotPath.endDistance}`}
-                        className="applied-s-slot-path"
-                        d={slotPath.pathD}
-                      />
-                    ))}
-                  </g>
+              <g className="final-contour-kerf-layer">
+                {kerfCompensatedAppliedPreview.contours.map((contour) => (
+                  <path
+                    key={contour.id}
+                    className={contour.kind === 'INNER' ? 'applied-s-slot-path' : 'applied-e-panel-path'}
+                    d={contour.pathD}
+                  />
                 ))}
               </g>
               <g className="edge-overlays">
