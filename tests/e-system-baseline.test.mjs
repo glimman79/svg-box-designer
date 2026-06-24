@@ -74,7 +74,7 @@ const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
 const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
-const { buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalContourList, buildKerfCompensatedAppliedPreview, classifyAppliedContours, classifyContoursByContainment, classifyImportedPanelContours, compensateClassifiedContours, createTabSegmentPlan, exportAppliedSvg, pathDToClosedContour } = module.exports;
+const { buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalContourList, buildKerfCompensatedAppliedPreview, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, compensateClassifiedContours, createTabSegmentPlan, exportAppliedSvg, pathDToClosedContour } = module.exports;
 const { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, defaultConnectionProperties } = module.exports;
 const { collectWReferences, classifyWReferencePattern, invertWPatternType, generateWEdgeRoles, finishWGroupWorkflow, buildActiveWDisplayAssignments, buildAppliedEPanelPaths: buildE } = module.exports;
 
@@ -110,7 +110,7 @@ const nestedAppliedEContours = classifyAppliedContours([
   { panelId: 'panel-e-outer', eraseRect: { minX: 0, maxX: 20, minY: 0, maxY: 20 }, erasePathD: 'M 0 0 L 20 0 L 20 20 L 0 20 Z', pathD: 'M 0 0 L 20 0 L 20 20 L 0 20 Z', edgeIds: [] },
   { panelId: 'panel-e-inner', eraseRect: { minX: 5, maxX: 15, minY: 5, maxY: 15 }, erasePathD: 'M 5 5 L 15 5 L 15 15 L 5 15 Z', pathD: 'M 5 5 L 15 5 L 15 15 L 5 15 Z', edgeIds: [] },
 ], []);
-assert.equal(nestedAppliedEContours.find((contour) => contour.panelId === 'panel-e-inner')?.kind, 'INNER', 'contour inside another contour classifies INNER without source overrides');
+assert.equal(nestedAppliedEContours.find((contour) => contour.panelId === 'panel-e-inner')?.kind, 'OUTER', 'explicit applied panel perimeter inside another contour remains OUTER');
 
 const mixedGeneratedContours = classifyAppliedContours([
   { panelId: 'generated-tb-or-w-panel', eraseRect: { minX: 0, maxX: 30, minY: 0, maxY: 30 }, erasePathD: 'M 0 0 L 30 0 L 30 30 L 0 30 Z', pathD: 'M 0 0 L 30 0 L 30 30 L 0 30 Z', edgeIds: [] },
@@ -120,7 +120,7 @@ const mixedGeneratedContours = classifyAppliedContours([
   slotPaths: [{ connectionId: 'S-nested', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 6 6 L 10 6 L 10 10 L 6 10 Z', startDistance: 6, endDistance: 10, widthMm: 4 }],
   edgeIds: ['edge-a', 'edge-b'],
 }]);
-assert.equal(mixedGeneratedContours.find((contour) => contour.finalSource === 'applied-panel' && contour.panelId === 'panel-s-inner')?.kind, 'INNER', 'applied-s-panel inside another contour classifies INNER by geometry');
+assert.equal(mixedGeneratedContours.find((contour) => contour.finalSource === 'applied-panel' && contour.panelId === 'panel-s-inner')?.kind, 'OUTER', 'explicit applied S panel perimeter inside another contour remains OUTER');
 assert.equal(mixedGeneratedContours.find((contour) => contour.finalSource === 's-slot')?.kind, 'INNER', 'applied-s-slot inside another contour remains INNER');
 assert.ok(mixedGeneratedContours.filter((contour) => contour.finalSource === 'applied-panel' && contour.panelId === 'generated-tb-or-w-panel').every((contour) => contour.kind === 'OUTER'), 'separate generated panel paths classify by containment only');
 
@@ -136,7 +136,7 @@ const sourceAgnosticContours = classifyAppliedContours([], [{
   slotPaths: [{ connectionId: 'S-source-agnostic', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 20 20 L 24 20 L 24 22 L 20 22 Z', startDistance: 20, endDistance: 24, widthMm: 2 }],
   edgeIds: ['edge-a', 'edge-b'],
 }]);
-assert.equal(sourceAgnosticContours[0].kind, 'OUTER', 'generated S slot without geometric containment classifies OUTER');
+assert.equal(sourceAgnosticContours[0].kind, 'INNER', 'generated S slot keeps explicit INNER role without geometric containment');
 
 const boundsForPathD = (pathD) => {
   const points = pathDToClosedContour(pathD);
@@ -222,8 +222,25 @@ assertBoundsClose(boundsForPathD(finalS.contours.find((contour) => contour.panel
 assertBoundsClose(boundsForPathD(finalS.contours.find((contour) => contour.finalSource === 's-slot').pathD), { minX: 2.05, maxX: 5.95, minY: 2.05, maxY: 4.95 }, 'S slot receives inward kerf when inside final panel');
 const mixedFinalList = buildFinalContourList(modelForPanels([panel('original-mixed', 0, 0, 10, 8), panel('tb-mixed', 20, 0, 10, 8), panel('w-mixed', 40, 0, 10, 8), panel('s-mixed', 60, 0, 10, 8)]), [{ panelId: 'tb-mixed', eraseRect: { minX: 20, maxX: 30, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 20 0 L 31 0 L 31 8 L 20 8 Z', edgeIds: [] }, { panelId: 'w-mixed', eraseRect: { minX: 40, maxX: 50, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 40 0 L 51 0 L 51 8 L 40 8 Z', edgeIds: [] }], [{ connectionId: 'S-mixed', panelPaths: [{ panelId: 's-mixed', sourceEdgeId: 'edge-a', eraseRect: { minX: 60, maxX: 70, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 60 0 L 71 0 L 71 8 L 60 8 Z', edgeIds: [] }], slotPaths: [{ connectionId: 'S-mixed', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 62 2 L 66 2 L 66 5 L 62 5 Z', startDistance: 2, endDistance: 6, widthMm: 3 }], edgeIds: [] }]);
 assert.deepEqual(mixedFinalList.contours.map((contour) => contour.panelId ?? contour.finalSource), ['original-mixed', 'tb-mixed', 'w-mixed', 's-mixed', 's-slot'], 'mixed drawing finalContourList contains original, TB, W, S and slot contours');
-assert.equal(classifyContoursByContainment([{ id: 'outer-check', source: 'final-contour', finalSource: 'original-panel', pathD: 'M 0 0 L 20 0 L 20 20 L 0 20 Z' }, { id: 'inner-check', source: 'final-contour', finalSource: 's-slot', pathD: 'M 5 5 L 10 5 L 10 10 L 5 10 Z' }]).find((contour) => contour.id === 'inner-check').kind, 'INNER', 'contour inside contour classifies INNER');
+assert.equal(classifyContoursByContainment([{ id: 'outer-check', source: 'final-contour', finalSource: 'original-panel', kind: 'OUTER', pathD: 'M 0 0 L 20 0 L 20 20 L 0 20 Z' }, { id: 'inner-check', source: 'final-contour', finalSource: 's-slot', kind: 'INNER', pathD: 'M 5 5 L 10 5 L 10 10 L 5 10 Z' }]).find((contour) => contour.id === 'inner-check').kind, 'INNER', 'explicit INNER contour keeps role inside contour');
 assert.ok(classifyContoursByContainment([{ id: 'separate-a', source: 'final-contour', finalSource: 'original-panel', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z' }, { id: 'separate-b', source: 'final-contour', finalSource: 'original-panel', pathD: 'M 20 0 L 30 0 L 30 10 L 20 10 Z' }]).every((contour) => contour.kind === 'OUTER'), 'separate contours classify OUTER');
+
+
+const panelWithFourSlots = buildFinalContourList(modelForPanels([panel('slot-panel', 0, 0, 20, 12)]), [], [{
+  connectionId: 'S-four-slots',
+  panelPaths: [{ panelId: 'slot-panel', sourceEdgeId: 'edge-a', eraseRect: { minX: 0, maxX: 20, minY: 0, maxY: 12 }, erasePathD: '', pathD: 'M 0 0 L 20 0 L 20 12 L 0 12 Z', edgeIds: [] }],
+  slotPaths: [
+    { connectionId: 'S-four-slots', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 2 2 L 4 2 L 4 4 L 2 4 Z', startDistance: 2, endDistance: 4, widthMm: 2 },
+    { connectionId: 'S-four-slots', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 6 2 L 8 2 L 8 4 L 6 4 Z', startDistance: 6, endDistance: 8, widthMm: 2 },
+    { connectionId: 'S-four-slots', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 10 2 L 12 2 L 12 4 L 10 4 Z', startDistance: 10, endDistance: 12, widthMm: 2 },
+    { connectionId: 'S-four-slots', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 14 2 L 16 2 L 16 4 L 14 4 Z', startDistance: 14, endDistance: 16, widthMm: 2 },
+  ],
+  edgeIds: [],
+}]);
+const classifiedPanelWithFourSlots = classifyFinalContours(panelWithFourSlots.contours);
+assert.equal(classifiedPanelWithFourSlots.length, 5, 'panel with 4 slots produces 5 final contours');
+assert.equal(classifiedPanelWithFourSlots.filter((contour) => contour.kind === 'OUTER').length, 1, 'panel with 4 slots has 1 OUTER panel perimeter');
+assert.equal(classifiedPanelWithFourSlots.filter((contour) => contour.kind === 'INNER').length, 4, 'panel with 4 slots has 4 INNER slot contours');
 
 const connection = (id) => ({ id, prefix: 'E', properties: { materialThicknessMm: 3, fingerWidthMm: 9, isFingerWidthManual: false } });
 const pathNumbers = (pathD) => [...pathD.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));

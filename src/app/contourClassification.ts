@@ -21,7 +21,7 @@ export type ClassifiedContour = {
   diagnostics?: string[];
 };
 
-export type FinalContour = Omit<ClassifiedContour, 'kind' | 'source' | 'depth'> & {
+export type FinalContour = Omit<ClassifiedContour, 'source' | 'depth'> & {
   source: 'final-contour';
   finalSource: FinalContourSource;
 };
@@ -127,6 +127,7 @@ export const buildFinalContourList = (
       id: `final-panel:${panel.id}`,
       source: 'final-contour',
       finalSource: replacement?.finalSource ?? 'original-panel',
+      kind: 'OUTER',
       panelId: panel.id,
       ownerPanelId: panel.id,
       pathD: replacement?.pathD ?? pointsToClosedPathD(panel.contour),
@@ -139,6 +140,7 @@ export const buildFinalContourList = (
       id: `final-s-slot:${slotPath.connectionId}:${index}`,
       source: 'final-contour',
       finalSource: 's-slot',
+      kind: 'INNER',
       ownerPanelId: slotPath.sourceBEdgeId,
       pathD: slotPath.pathD,
       points: pathDToClosedContourForClassification(slotPath.pathD) ?? undefined,
@@ -149,7 +151,9 @@ export const buildFinalContourList = (
   return { contours, diagnostics };
 };
 
-export const classifyContoursByContainment = (contours: FinalContour[] | ClassifiedContour[]): ClassifiedContour[] => {
+type ContourClassificationInput = Omit<ClassifiedContour, 'kind'> & Partial<Pick<ClassifiedContour, 'kind'>>;
+
+export const classifyContoursByContainment = (contours: ContourClassificationInput[]): ClassifiedContour[] => {
   const contoursWithPoints = contours.map((contour) => ({
     ...contour,
     source: 'final-contour' as const,
@@ -157,6 +161,10 @@ export const classifyContoursByContainment = (contours: FinalContour[] | Classif
   }));
 
   return contoursWithPoints.map((contour) => {
+    if (contour.kind) {
+      return { ...contour, kind: contour.kind, depth: contour.kind === 'INNER' ? 1 : 0 };
+    }
+
     const containingContour = contour.points
       ? contoursWithPoints.find((candidate) => (candidate.points ? contourContainsContour(candidate.id, candidate.points, contour.id, contour.points as Point[]) : false))
       : undefined;
@@ -167,16 +175,24 @@ export const classifyContoursByContainment = (contours: FinalContour[] | Classif
 export const classifyFinalContours = (contours: FinalContour[]): ClassifiedContour[] => classifyContoursByContainment(contours);
 
 export const classifyImportedPanelContours = (svgModel: SvgDocumentModel): ClassifiedContour[] => classifyContoursByContainment(
-  buildFinalContourList(svgModel, [], []).contours,
+  svgModel.panels.map((panel) => ({
+    id: `final-panel:${panel.id}`,
+    source: 'final-contour' as const,
+    finalSource: 'original-panel' as const,
+    panelId: panel.id,
+    ownerPanelId: panel.id,
+    pathD: pointsToClosedPathD(panel.contour),
+    points: clonePoints(panel.contour),
+  })),
 );
 
 export const classifyAppliedContours = (
   appliedEPanelPaths: AppliedEPanelPath[],
   appliedSGeometry: AppliedSGeometry[],
 ): ClassifiedContour[] => classifyContoursByContainment([
-  ...appliedEPanelPaths.map((path): FinalContour => ({ id: `final-applied-panel:${path.panelId}`, source: 'final-contour', finalSource: 'applied-panel', panelId: path.panelId, ownerPanelId: path.panelId, pathD: path.pathD, points: pathDToClosedContourForClassification(path.pathD) ?? undefined })),
+  ...appliedEPanelPaths.map((path): FinalContour => ({ id: `final-applied-panel:${path.panelId}`, source: 'final-contour', finalSource: 'applied-panel', kind: 'OUTER', panelId: path.panelId, ownerPanelId: path.panelId, pathD: path.pathD, points: pathDToClosedContourForClassification(path.pathD) ?? undefined })),
   ...appliedSGeometry.flatMap((geometry) => [
-    ...geometry.panelPaths.map((path): FinalContour => ({ id: `final-applied-s-panel:${geometry.connectionId}:${path.panelId}`, source: 'final-contour', finalSource: 'applied-panel', panelId: path.panelId, ownerPanelId: path.panelId, pathD: path.pathD, points: pathDToClosedContourForClassification(path.pathD) ?? undefined })),
-    ...geometry.slotPaths.map((path, index): FinalContour => ({ id: `final-s-slot:${geometry.connectionId}:${index}`, source: 'final-contour', finalSource: 's-slot', ownerPanelId: path.sourceBEdgeId, pathD: path.pathD, points: pathDToClosedContourForClassification(path.pathD) ?? undefined })),
+    ...geometry.panelPaths.map((path): FinalContour => ({ id: `final-applied-s-panel:${geometry.connectionId}:${path.panelId}`, source: 'final-contour', finalSource: 'applied-panel', kind: 'OUTER', panelId: path.panelId, ownerPanelId: path.panelId, pathD: path.pathD, points: pathDToClosedContourForClassification(path.pathD) ?? undefined })),
+    ...geometry.slotPaths.map((path, index): FinalContour => ({ id: `final-s-slot:${geometry.connectionId}:${index}`, source: 'final-contour', finalSource: 's-slot', kind: 'INNER', ownerPanelId: path.sourceBEdgeId, pathD: path.pathD, points: pathDToClosedContourForClassification(path.pathD) ?? undefined })),
   ]),
 ]);
