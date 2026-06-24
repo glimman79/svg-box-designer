@@ -113,6 +113,12 @@ const pathDToClosedContourForClassification = (pathD: string): Point[] | null =>
   return points.length >= 3 ? points : null;
 };
 
+const hasSemanticAppliedContourRole = (contour: ClassifiedContour) => (
+  contour.source === 'applied-e-panel'
+  || contour.source === 'applied-s-panel'
+  || contour.source === 'applied-s-slot'
+);
+
 export const classifyContoursByContainment = (contours: ClassifiedContour[]): ClassifiedContour[] => {
   const contoursWithPoints = contours.map((contour) => ({
     ...contour,
@@ -120,6 +126,13 @@ export const classifyContoursByContainment = (contours: ClassifiedContour[]): Cl
   }));
 
   return contoursWithPoints.map((contour) => {
+    if (hasSemanticAppliedContourRole(contour)) {
+      return {
+        ...contour,
+        depth: undefined,
+      };
+    }
+
     const containingContour = contour.points
       ? contoursWithPoints.find((candidate) => (
         candidate.points
@@ -151,7 +164,7 @@ export const classifyImportedPanelContours = (svgModel: SvgDocumentModel): Class
 export const classifyAppliedContours = (
   appliedEPanelPaths: AppliedEPanelPath[],
   appliedSGeometry: AppliedSGeometry[],
-): ClassifiedContour[] => classifyContoursByContainment([
+): ClassifiedContour[] => [
   ...appliedEPanelPaths.map((path): ClassifiedContour => ({
     id: `applied-e:${path.panelId}`,
     kind: 'OUTER',
@@ -177,4 +190,4 @@ export const classifyAppliedContours = (
       pathD: path.pathD,
     })),
   ]),
-]);
+];
