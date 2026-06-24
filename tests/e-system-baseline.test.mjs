@@ -74,7 +74,7 @@ const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
 const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
-const { buildAppliedEPanelPaths, buildAppliedSGeometry, classifyAppliedContours, createTabSegmentPlan, exportAppliedSvg } = module.exports;
+const { buildAppliedEPanelPaths, buildAppliedSGeometry, buildKerfCompensatedAppliedPreview, classifyAppliedContours, compensateClassifiedContours, createTabSegmentPlan, exportAppliedSvg, pathDToClosedContour } = module.exports;
 const { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, defaultConnectionProperties } = module.exports;
 const { collectWReferences, classifyWReferencePattern, invertWPatternType, generateWEdgeRoles, finishWGroupWorkflow, buildActiveWDisplayAssignments, buildAppliedEPanelPaths: buildE } = module.exports;
 
@@ -92,6 +92,50 @@ const classifiedSContours = classifyAppliedContours([], [{
 }]);
 assert.equal(classifiedSContours.find((contour) => contour.source === 'applied-s-panel')?.kind, 'OUTER', 'AppliedSPanelPath is classified OUTER');
 assert.equal(classifiedSContours.find((contour) => contour.source === 'applied-s-slot')?.kind, 'INNER', 'AppliedSSlotPath is classified INNER');
+
+const boundsForPathD = (pathD) => {
+  const points = pathDToClosedContour(pathD);
+  assert.ok(points, `expected path to parse: ${pathD}`);
+  return points.reduce((bounds, point) => ({
+    minX: Math.min(bounds.minX, point.x),
+    maxX: Math.max(bounds.maxX, point.x),
+    minY: Math.min(bounds.minY, point.y),
+    maxY: Math.max(bounds.maxY, point.y),
+  }), { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity });
+};
+
+const assertBoundsClose = (actual, expected, message) => {
+  assert.ok(Math.abs(actual.minX - expected.minX) < 0.000001, `${message} minX`);
+  assert.ok(Math.abs(actual.maxX - expected.maxX) < 0.000001, `${message} maxX`);
+  assert.ok(Math.abs(actual.minY - expected.minY) < 0.000001, `${message} minY`);
+  assert.ok(Math.abs(actual.maxY - expected.maxY) < 0.000001, `${message} maxY`);
+};
+
+const outerContour = { id: 'outer', kind: 'OUTER', source: 'applied-e-panel', pathD: 'M 0 0 L 10 0 L 10 8 L 0 8 Z' };
+const innerContour = { id: 'inner', kind: 'INNER', source: 'applied-s-slot', pathD: 'M 2 2 L 6 2 L 6 5 L 2 5 Z' };
+const zeroKerfContours = compensateClassifiedContours([outerContour], 0);
+assertBoundsClose(boundsForPathD(zeroKerfContours[0].pathD), { minX: 0, maxX: 10, minY: 0, maxY: 8 }, 'zero kerf preserves OUTER contour');
+const compensatedOuter = compensateClassifiedContours([outerContour], 0.10);
+assertBoundsClose(boundsForPathD(compensatedOuter[0].pathD), { minX: -0.05, maxX: 10.05, minY: -0.05, maxY: 8.05 }, 'OUTER kerf grows by total kerf');
+const compensatedInner = compensateClassifiedContours([innerContour], 0.10);
+assertBoundsClose(boundsForPathD(compensatedInner[0].pathD), { minX: 2.05, maxX: 5.95, minY: 2.05, maxY: 4.95 }, 'INNER kerf shrinks by total kerf');
+const compensatedNested = compensateClassifiedContours([outerContour, innerContour], 0.10);
+assertBoundsClose(boundsForPathD(compensatedNested.find((contour) => contour.id === 'outer').pathD), { minX: -0.05, maxX: 10.05, minY: -0.05, maxY: 8.05 }, 'nested OUTER uses outward compensation');
+assertBoundsClose(boundsForPathD(compensatedNested.find((contour) => contour.id === 'inner').pathD), { minX: 2.05, maxX: 5.95, minY: 2.05, maxY: 4.95 }, 'nested INNER uses inward compensation');
+const appliedPreview = buildKerfCompensatedAppliedPreview(
+  [],
+  [{
+    connectionId: 'S-test',
+    panelPaths: [],
+    slotPaths: [{ connectionId: 'S-test', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 2 2 L 6 2 L 6 5 L 2 5 Z', startDistance: 2, endDistance: 6, widthMm: 3 }],
+    edgeIds: ['edge-a', 'edge-b'],
+  }],
+  0.10,
+);
+assertBoundsClose(boundsForPathD(appliedPreview.appliedSGeometry[0].slotPaths[0].pathD), { minX: 2.05, maxX: 5.95, minY: 2.05, maxY: 4.95 }, 'applied S slot receives INNER compensation');
+const uncompensatedPreview = buildKerfCompensatedAppliedPreview([{ panelId: 'panel-e', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: outerContour.pathD, edgeIds: [] }], [], 0);
+const changedPreview = buildKerfCompensatedAppliedPreview([{ panelId: 'panel-e', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: outerContour.pathD, edgeIds: [] }], [], 0.10);
+assert.notEqual(uncompensatedPreview.appliedEPanelPaths[0].pathD, changedPreview.appliedEPanelPaths[0].pathD, 'preview geometry changes when kerf changes');
 
 const edge = (id, start, end) => ({ id, source: id, start, end });
 const panel = (id, x, y, width, height) => {
