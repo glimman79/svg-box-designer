@@ -1,6 +1,6 @@
 import type { AppliedEPanelPath, AppliedSGeometry } from './connectionTypes';
-import { pointsToClosedPathD } from './sharedGeometry';
-import type { Point, SvgDocumentModel, SvgPanel } from '../svgUtils';
+import { cornerTouchTolerance, pointsToClosedPathD } from './sharedGeometry';
+import type { Point, SvgDocumentModel } from '../svgUtils';
 
 export type ContourKind = 'OUTER' | 'INNER';
 
@@ -61,36 +61,97 @@ const pointInContour = (point: Point, contour: Point[]) => {
   return inside;
 };
 
-const containsPanel = (outerPanel: SvgPanel, innerPanel: SvgPanel) => {
-  if (outerPanel.id === innerPanel.id || innerPanel.contour.length === 0) {
+const contourContainsContour = (outerId: string, outerContour: Point[], innerId: string, innerContour: Point[]) => {
+  if (outerId === innerId || outerContour.length < 3 || innerContour.length < 3) {
     return false;
   }
 
-  return innerPanel.contour.every((point) => pointInContour(point, outerPanel.contour));
+  return innerContour.every((point) => pointInContour(point, outerContour));
 };
 
-const kindForDepth = (depth: number): ContourKind => (depth % 2 === 0 ? 'OUTER' : 'INNER');
+const pathDToClosedContourForClassification = (pathD: string): Point[] | null => {
+  const tokens = pathD.match(/[a-zA-Z]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
+  const points: Point[] = [];
+  let index = 0;
+  let command = '';
 
-export const classifyImportedPanelContours = (svgModel: SvgDocumentModel): ClassifiedContour[] => (
-  svgModel.panels.map((panel) => {
-    const depth = svgModel.panels.filter((candidate) => containsPanel(candidate, panel)).length;
+  while (index < tokens.length) {
+    const token = tokens[index];
+
+    if (/^[a-zA-Z]$/.test(token)) {
+      command = token;
+      index += 1;
+      if (command.toUpperCase() === 'Z') {
+        break;
+      }
+      continue;
+    }
+
+    if (command.toUpperCase() !== 'M' && command.toUpperCase() !== 'L') {
+      return null;
+    }
+
+    const x = Number(token);
+    const y = Number(tokens[index + 1]);
+
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return null;
+    }
+
+    points.push({ x, y });
+    index += 2;
+  }
+
+  if (points.length > 1) {
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (Math.abs(first.x - last.x) <= cornerTouchTolerance && Math.abs(first.y - last.y) <= cornerTouchTolerance) {
+      points.pop();
+    }
+  }
+
+  return points.length >= 3 ? points : null;
+};
+
+export const classifyContoursByContainment = (contours: ClassifiedContour[]): ClassifiedContour[] => {
+  const contoursWithPoints = contours.map((contour) => ({
+    ...contour,
+    points: contour.points?.map((point) => ({ ...point })) ?? (contour.pathD ? pathDToClosedContourForClassification(contour.pathD) ?? undefined : undefined),
+  }));
+
+  return contoursWithPoints.map((contour) => {
+    const containingContour = contour.points
+      ? contoursWithPoints.find((candidate) => (
+        candidate.points
+          ? contourContainsContour(candidate.id, candidate.points, contour.id, contour.points as Point[])
+          : false
+      ))
+      : undefined;
 
     return {
-      id: panel.id,
-      kind: kindForDepth(depth),
-      source: 'imported-panel',
-      panelId: panel.id,
-      pathD: pointsToClosedPathD(panel.contour),
-      points: panel.contour.map((point) => ({ ...point })),
-      depth,
+      ...contour,
+      kind: containingContour ? 'INNER' : 'OUTER',
+      depth: containingContour ? 1 : 0,
     };
-  })
+  });
+};
+
+
+export const classifyImportedPanelContours = (svgModel: SvgDocumentModel): ClassifiedContour[] => classifyContoursByContainment(
+  svgModel.panels.map((panel) => ({
+    id: panel.id,
+    kind: 'OUTER',
+    source: 'imported-panel',
+    panelId: panel.id,
+    pathD: pointsToClosedPathD(panel.contour),
+    points: panel.contour.map((point) => ({ ...point })),
+  })),
 );
 
 export const classifyAppliedContours = (
   appliedEPanelPaths: AppliedEPanelPath[],
   appliedSGeometry: AppliedSGeometry[],
-): ClassifiedContour[] => [
+): ClassifiedContour[] => classifyContoursByContainment([
   ...appliedEPanelPaths.map((path): ClassifiedContour => ({
     id: `applied-e:${path.panelId}`,
     kind: 'OUTER',
@@ -116,4 +177,4 @@ export const classifyAppliedContours = (
       pathD: path.pathD,
     })),
   ]),
-];
+]);

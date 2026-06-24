@@ -161,15 +161,15 @@ assert.equal(singleRectangleContours[0].kind, 'OUTER', 'single rectangle is clas
 assert.equal(singleRectangleContours[0].depth, 0, 'single rectangle has depth 0');
 
 const nestedRectangles = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="90" height="90"/><rect x="10" y="10" width="20" height="20"/></svg>');
-const nestedClassifications = classifyImportedPanelContours(nestedRectangles).sort((first, second) => first.depth - second.depth);
-assert.equal(nestedClassifications[0].kind, 'OUTER', 'outer rectangle remains OUTER');
-assert.equal(nestedClassifications[1].kind, 'INNER', 'rectangle inside rectangle is classified INNER');
+const nestedClassifications = classifyImportedPanelContours(nestedRectangles);
+assert.equal(nestedClassifications.find((contour) => contour.id === 'panel-1')?.kind, 'OUTER', 'outer rectangle remains OUTER');
+assert.equal(nestedClassifications.find((contour) => contour.id === 'panel-2')?.kind, 'INNER', 'rectangle inside rectangle is classified INNER');
 
 const threeDeepRectangles = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="90" height="90"/><rect x="10" y="10" width="60" height="60"/><rect x="20" y="20" width="20" height="20"/></svg>');
 const threeDeepClassifications = classifyImportedPanelContours(threeDeepRectangles);
-const nestedIsland = threeDeepClassifications.find((contour) => contour.depth === 2);
-assert.equal(nestedIsland?.kind, 'OUTER', 'nested rectangle inside hole is classified OUTER by parity');
+const nestedIsland = threeDeepClassifications.find((contour) => contour.id === 'panel-3');
+assert.equal(nestedIsland?.kind, 'INNER', 'nested rectangle inside another contour is classified INNER without depth parity');
 
 const lightburnNested = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="80" height="80"/><rect x="0" y="0" width="10" height="10" transform="matrix(1 0 0 1 20 20)"/></svg>');
 const lightburnNestedClassifications = classifyImportedPanelContours(lightburnNested);
-assert.equal(lightburnNestedClassifications.find((contour) => contour.depth === 1)?.kind, 'INNER', 'LightBurn-style transformed rect inside larger panel is classified INNER');
+assert.equal(lightburnNestedClassifications.find((contour) => contour.id === 'panel-2')?.kind, 'INNER', 'LightBurn-style transformed rect inside larger panel is classified INNER');

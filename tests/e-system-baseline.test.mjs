@@ -93,6 +93,20 @@ const classifiedSContours = classifyAppliedContours([], [{
 assert.equal(classifiedSContours.find((contour) => contour.source === 'applied-s-panel')?.kind, 'OUTER', 'AppliedSPanelPath is classified OUTER');
 assert.equal(classifiedSContours.find((contour) => contour.source === 'applied-s-slot')?.kind, 'INNER', 'AppliedSSlotPath is classified INNER');
 
+const separatePanelContours = classifyAppliedContours([
+  { panelId: 'panel-a', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 10 }, erasePathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z', edgeIds: [] },
+  { panelId: 'panel-b', eraseRect: { minX: 20, maxX: 30, minY: 0, maxY: 10 }, erasePathD: 'M 20 0 L 30 0 L 30 10 L 20 10 Z', pathD: 'M 20 0 L 30 0 L 30 10 L 20 10 Z', edgeIds: [] },
+], []);
+assert.ok(separatePanelContours.every((contour) => contour.kind === 'OUTER'), 'two separate non-overlapping panels are both OUTER');
+
+const sourceAgnosticContours = classifyAppliedContours([], [{
+  connectionId: 'S-source-agnostic',
+  panelPaths: [],
+  slotPaths: [{ connectionId: 'S-source-agnostic', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 20 20 L 24 20 L 24 22 L 20 22 Z', startDistance: 20, endDistance: 24, widthMm: 2 }],
+  edgeIds: ['edge-a', 'edge-b'],
+}]);
+assert.equal(sourceAgnosticContours[0].kind, 'OUTER', 'TB/W/S source does not force INNER classification without geometric containment');
+
 const boundsForPathD = (pathD) => {
   const points = pathDToClosedContour(pathD);
   assert.ok(points, `expected path to parse: ${pathD}`);
@@ -126,7 +140,7 @@ const appliedPreview = buildKerfCompensatedAppliedPreview(
   [],
   [{
     connectionId: 'S-test',
-    panelPaths: [],
+    panelPaths: [{ panelId: 'panel-s', sourceEdgeId: 'edge-a', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: outerContour.pathD, edgeIds: [] }],
     slotPaths: [{ connectionId: 'S-test', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 2 2 L 6 2 L 6 5 L 2 5 Z', startDistance: 2, endDistance: 6, widthMm: 3 }],
     edgeIds: ['edge-a', 'edge-b'],
   }],
