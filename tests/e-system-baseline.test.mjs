@@ -74,9 +74,24 @@ const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
 const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
-const { buildAppliedEPanelPaths, buildAppliedSGeometry, createTabSegmentPlan, exportAppliedSvg } = module.exports;
+const { buildAppliedEPanelPaths, buildAppliedSGeometry, classifyAppliedContours, createTabSegmentPlan, exportAppliedSvg } = module.exports;
 const { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, defaultConnectionProperties } = module.exports;
 const { collectWReferences, classifyWReferencePattern, invertWPatternType, generateWEdgeRoles, finishWGroupWorkflow, buildActiveWDisplayAssignments, buildAppliedEPanelPaths: buildE } = module.exports;
+
+
+const classifiedEContours = classifyAppliedContours([{ panelId: 'panel-e', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 10 }, erasePathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z', edgeIds: [] }], []);
+assert.equal(classifiedEContours.length, 1, 'AppliedEPanelPath produces one classified contour');
+assert.equal(classifiedEContours[0].kind, 'OUTER', 'AppliedEPanelPath is classified OUTER');
+assert.equal(classifiedEContours[0].source, 'applied-e-panel', 'AppliedEPanelPath classification keeps generated E provenance');
+
+const classifiedSContours = classifyAppliedContours([], [{
+  connectionId: 'S-test',
+  panelPaths: [{ panelId: 'panel-s', sourceEdgeId: 'edge-a', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 10 }, erasePathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z', pathD: 'M 1 1 L 9 1 L 9 9 L 1 9 Z', edgeIds: [] }],
+  slotPaths: [{ connectionId: 'S-test', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 2 2 L 4 2 L 4 3 L 2 3 Z', startDistance: 2, endDistance: 4, widthMm: 1 }],
+  edgeIds: ['edge-a', 'edge-b'],
+}]);
+assert.equal(classifiedSContours.find((contour) => contour.source === 'applied-s-panel')?.kind, 'OUTER', 'AppliedSPanelPath is classified OUTER');
+assert.equal(classifiedSContours.find((contour) => contour.source === 'applied-s-slot')?.kind, 'INNER', 'AppliedSSlotPath is classified INNER');
 
 const edge = (id, start, end) => ({ id, source: id, start, end });
 const panel = (id, x, y, width, height) => {
