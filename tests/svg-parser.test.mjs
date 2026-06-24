@@ -94,7 +94,34 @@ vm.runInNewContext(compiledSvgUtils, {
   XMLSerializer: TestXMLSerializer,
 }, { filename: 'svgUtils.cjs' });
 
+
+const contourModuleCache = new Map();
+const loadSrcModule = (relativePath) => {
+  const absolutePath = resolve(root, relativePath);
+  if (contourModuleCache.has(absolutePath)) return contourModuleCache.get(absolutePath).exports;
+  const source = readFileSync(absolutePath, 'utf8');
+  const output = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const loadedModule = { exports: {} };
+  contourModuleCache.set(absolutePath, loadedModule);
+  const baseDir = dirname(absolutePath);
+  const localRequire = (id) => {
+    if (id === '../svgUtils') return svgUtilsModule.exports;
+    if (id.startsWith('./') || id.startsWith('../')) {
+      const resolvedPath = resolve(baseDir, id);
+      if (resolvedPath.startsWith(resolve(root, 'src'))) {
+        return loadSrcModule(`${resolvedPath.slice(resolve(root).length + 1)}.ts`);
+      }
+    }
+    return require(id);
+  };
+  vm.runInNewContext(output, { require: localRequire, module: loadedModule, exports: loadedModule.exports, console }, { filename: `${relativePath}.cjs` });
+  return loadedModule.exports;
+};
+
 const { parseSvgDocument, applyAffineMatrixToPoint, multiplyAffineMatrices, parseMatrixTransform } = svgUtilsModule.exports;
+const { classifyImportedPanelContours } = loadSrcModule('src/app/contourClassification.ts');
 const round = (value) => Number(value.toFixed(6));
 const points = (model) => model.edges.map((edge) => [round(edge.start.x), round(edge.start.y), round(edge.end.x), round(edge.end.y)]);
 
@@ -126,3 +153,23 @@ const mixed = parseSvgDocument('<svg viewBox="0 0 100 100"><path d="M 0 0 L 5 0 
 assert.equal(mixed.edges.length, 9, 'paths, polygons, polylines, and lines still parse');
 
 console.log('svg parser rect matrix tests passed');
+
+
+const singleRectangleContours = classifyImportedPanelContours(plain);
+assert.equal(singleRectangleContours.length, 1, 'single rectangle has one classified contour');
+assert.equal(singleRectangleContours[0].kind, 'OUTER', 'single rectangle is classified OUTER');
+assert.equal(singleRectangleContours[0].depth, 0, 'single rectangle has depth 0');
+
+const nestedRectangles = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="90" height="90"/><rect x="10" y="10" width="20" height="20"/></svg>');
+const nestedClassifications = classifyImportedPanelContours(nestedRectangles).sort((first, second) => first.depth - second.depth);
+assert.equal(nestedClassifications[0].kind, 'OUTER', 'outer rectangle remains OUTER');
+assert.equal(nestedClassifications[1].kind, 'INNER', 'rectangle inside rectangle is classified INNER');
+
+const threeDeepRectangles = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="90" height="90"/><rect x="10" y="10" width="60" height="60"/><rect x="20" y="20" width="20" height="20"/></svg>');
+const threeDeepClassifications = classifyImportedPanelContours(threeDeepRectangles);
+const nestedIsland = threeDeepClassifications.find((contour) => contour.depth === 2);
+assert.equal(nestedIsland?.kind, 'OUTER', 'nested rectangle inside hole is classified OUTER by parity');
+
+const lightburnNested = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="80" height="80"/><rect x="0" y="0" width="10" height="10" transform="matrix(1 0 0 1 20 20)"/></svg>');
+const lightburnNestedClassifications = classifyImportedPanelContours(lightburnNested);
+assert.equal(lightburnNestedClassifications.find((contour) => contour.depth === 1)?.kind, 'INNER', 'LightBurn-style transformed rect inside larger panel is classified INNER');

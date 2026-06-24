@@ -21,6 +21,8 @@ export { buildAppliedSGeometry } from './app/sGeometry';
 export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 export { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getNextInternalELabel, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
+export { classifyAppliedContours, classifyImportedPanelContours } from './app/contourClassification';
+export type { ClassifiedContour, ClassifiedContourSource, ContourKind } from './app/contourClassification';
 export { applyTabsToContour, buildAppliedEPanelPaths, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 export type { ActiveSGroup, ActiveTBGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
