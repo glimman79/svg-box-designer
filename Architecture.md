@@ -1,30 +1,8 @@
 # Architecture
 
-This document describes the Version 1.0 geometry pipeline cleanup. The cleanup is an internal refactor only: UI behavior, TB, W, S, manufacturing compensation, preview rendering, and export output are intended to remain unchanged.
+This document describes the Version 1.0 final geometry pipeline. The cleanup is internal only: UI behavior, TB, W, S, manufacturing compensation, preview rendering, and export output are intended to remain unchanged.
 
-## Before
-
-Before this cleanup, applied geometry existed in tool-specific structures and downstream code converted those structures independently:
-
-```text
-Import
-↓
-Original SVG model
-↓
-Tool-specific Apply outputs
-  ├─ AppliedEPanelPath[]
-  └─ AppliedSGeometry[]
-↓
-Separate downstream conversions
-  ├─ Preview: buildFinalContourList(...) → manufacturing kerf preview
-  └─ Export: exportAppliedSvg(...) rebuilt panel/slot paths from applied E/S data
-```
-
-The duplicate conversions meant preview and export both understood the legacy applied E/S structures.
-
-## After
-
-The application now uses one Final Geometry model after Apply:
+## Final pipeline
 
 ```text
 Import
@@ -36,7 +14,7 @@ Workflow Engine
 ↓
 Final Geometry
 ↓
-Manufacturing Engine
+Manufacturing
 (Clearance → Kerf)
 ↓
 Preview
@@ -44,21 +22,21 @@ Preview
 Export
 ```
 
+## Pipeline ownership
+
+- Import parses the SVG into the original document model and preserves root attributes used later by export.
+- The workflow engine applies TB, W, S, and related operations to produce the internal applied tool geometry used to construct final geometry.
+- `buildFinalGeometry(...)` is the single handoff from workflow output to downstream consumers.
+- Manufacturing consumes final contours from `FinalGeometry.contours` and applies compensation for preview.
+- Preview renders the manufacturing-compensated contours derived from Final Geometry.
+- Export serializes the same Final Geometry model via `exportFinalGeometrySvg(...)`.
+
 ## Final Geometry contract
 
-`FinalGeometry` is the single geometry model passed beyond the workflow stage. It contains only final contours and diagnostics. Each contour records geometry provenance such as `original-panel`, `applied-panel`, or `s-slot`, but manufacturing code consumes contours as geometry and does not need to know TB, W, S, A/B roles, or workflow history.
+`FinalGeometry` is the single geometry model passed beyond the workflow stage. It contains final contours and diagnostics. Each contour records geometry provenance such as `original-panel`, `applied-panel`, or `s-slot`, but manufacturing code consumes contours as geometry and does not need to know TB, W, S, A/B roles, or workflow history.
 
-## Downstream ownership
+## Version 1.0 cleanup result
 
-- Preview reads `FinalGeometry.contours`, then manufacturing classifies and kerf-compensates those final contours.
-- Export reads the same `FinalGeometry` instance as preview and serializes it with the source SVG root dimensions.
-- Manufacturing receives only the final contour list and project manufacturing settings.
+Legacy downstream export compatibility code has been removed from the active runtime. Preview and export now share the Final Geometry handoff instead of converting tool-specific applied geometry independently.
 
-## Deprecated adapters
-
-The following legacy adapters remain for compatibility with existing tests and any older callers:
-
-- `buildFinalContourList(...)` in `src/app/contourClassification.ts` is deprecated. Use `buildFinalGeometry(...)` from `src/app/finalGeometry.ts`.
-- `exportAppliedSvg(...)` in `src/app/exportAppliedSvg.ts` is deprecated. Use `exportFinalGeometrySvg(...)` from `src/app/exportFinalGeometrySvg.ts`.
-
-These adapters delegate to the Final Geometry pipeline instead of preserving separate downstream pipelines.
+`buildFinalContourList(...)` remains available as a named final-contour helper in `src/app/contourClassification.ts` because it is part of the Version 1.0 architecture surface, but tests and runtime code validate the Final Geometry pipeline directly.

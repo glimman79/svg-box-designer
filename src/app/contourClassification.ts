@@ -112,10 +112,6 @@ const validateContour = (id: string, points?: Point[]) => {
   return diagnostics;
 };
 
-/**
- * @deprecated Legacy adapter retained for tests and older callers. FinalGeometry is now the
- * single geometry model after Apply; use buildFinalGeometry() from finalGeometry.ts instead.
- */
 export const buildFinalContourList = (
   svgModel: SvgDocumentModel,
   appliedEPanelPaths: AppliedEPanelPath[],

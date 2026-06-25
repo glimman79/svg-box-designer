@@ -18,7 +18,6 @@ import type { ActiveSGroup, ActiveTBGroup, ActiveWGroup, AppliedEPanelPath, Appl
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
 export { edgeMatchesContourSide, getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './app/sharedPanelGeometry';
 export type { PanelValidationResult } from './app/sharedPanelGeometry';
-export { exportAppliedSvg } from './app/exportAppliedSvg';
 export { exportFinalGeometrySvg } from './app/exportFinalGeometrySvg';
 export { buildFinalGeometry } from './app/finalGeometry';
 export { buildAppliedSGeometry } from './app/sGeometry';
@@ -2176,7 +2175,7 @@ function App() {
                 {kerfCompensatedAppliedPreview.contours.map((contour) => (
                   <path
                     key={contour.id}
-                    className={contour.kind === 'INNER' ? 'applied-s-slot-path' : 'applied-e-panel-path'}
+                    className={contour.kind === 'INNER' ? 'final-slot-path' : 'final-panel-path'}
                     d={contour.pathD}
                   />
                 ))}

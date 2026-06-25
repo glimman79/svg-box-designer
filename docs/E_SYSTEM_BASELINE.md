@@ -24,7 +24,7 @@ When two adjacent sides on the same panel are both B roles, both sides have alre
 
 ## Export pipeline
 
-`buildAppliedEPanelPaths()` returns applied path records containing the source panel ID, source erase bounds, original erase path, new applied path data, and the original panel edge IDs. `exportAppliedSvg()` writes a fresh SVG with the original root viewBox and original width/height attributes when present. It emits one path per source panel, using the applied E path when available and the original closed panel contour otherwise.
+`buildAppliedEPanelPaths()` returns applied path records containing the source panel ID, source erase bounds, original erase path, new applied path data, and the original panel edge IDs. `exportFinalGeometrySvg()` writes a fresh SVG with the original root viewBox and original width/height attributes when present. It emits one path per source panel, using the applied E path when available and the original closed panel contour otherwise.
 
 ## Known assumptions
 
