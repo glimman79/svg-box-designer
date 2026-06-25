@@ -66,7 +66,7 @@ type WorkflowHistoryGroup = { id: string; labels: string[]; isActive: boolean; o
 
 type WorkflowHistoryItem = {
   id: string;
-  kind: 'TB' | 'S' | 'W';
+  kind: 'TB' | 'S' | 'W' | 'manufacturing';
   name: string;
   labels: string[];
   isActive: boolean;
@@ -80,6 +80,15 @@ export const buildWorkflowHistoryItems = (
   connections: ConnectionMap,
 ): WorkflowHistoryItem[] => {
   const orderedItems = [
+    {
+      id: 'workflow-history-manufacturing',
+      kind: 'manufacturing' as const,
+      name: 'MFG',
+      labels: [],
+      isActive: false,
+      childCount: 0,
+      orderIndex: Number.NEGATIVE_INFINITY,
+    },
     ...tbGroups.map((group, groupIndex) => ({
       id: group.id,
       kind: 'TB' as const,
@@ -133,6 +142,8 @@ export const buildWorkflowHistoryItems = (
     });
 };
 
+
+export const getWorkflowHistoryTool = (item: WorkflowHistoryItem): ActiveTool => item.kind === 'manufacturing' ? 'manufacturing' : item.kind;
 
 export const getToolClickGroupStartKind = (
   tool: ActiveTool,
@@ -674,9 +685,14 @@ function App() {
     || (activeWConnection?.prefix === 'W' && activeWConnection.properties.selectedEdgeIds.length > 0);
   const navigateToWorkflowHistoryItem = (item: WorkflowHistoryItem) => {
     const firstLabel = item.labels[0] ?? null;
-    setActiveTool(item.kind);
+    setActiveTool(getWorkflowHistoryTool(item));
     setSelectedLabelId(firstLabel);
     setErrorMessage('');
+
+    if (item.kind === 'manufacturing') {
+      setSelectedLabelId(null);
+      return;
+    }
 
     if (item.kind === 'TB') {
       setExpandedTBGroups((currentGroups) => ({ ...currentGroups, [item.id]: true }));
@@ -2221,12 +2237,12 @@ function App() {
                 key={item.id}
                 type="button"
                 className={`workflow-history-item${item.isActive ? ' active' : ''}`}
-                aria-label={`${item.name}, ${item.isActive ? 'active' : 'inactive'}, ${item.childCount} ${item.childCount === 1 ? 'child connection' : 'child connections'}`}
-                aria-pressed={item.labels.includes(selectedLabelId ?? '')}
-                title={`${item.name} · ${item.isActive ? 'Active' : 'Inactive'} · ${item.childCount} ${item.childCount === 1 ? 'child' : 'children'}`}
+                aria-label={item.kind === 'manufacturing' ? 'MFG, opens Manufacturing panel' : `${item.name}, ${item.isActive ? 'active' : 'inactive'}, ${item.childCount} ${item.childCount === 1 ? 'child connection' : 'child connections'}`}
+                aria-pressed={item.kind === 'manufacturing' ? activeTool === 'manufacturing' : item.labels.includes(selectedLabelId ?? '')}
+                title={item.kind === 'manufacturing' ? 'MFG · Manufacturing' : `${item.name} · ${item.isActive ? 'Active' : 'Inactive'} · ${item.childCount} ${item.childCount === 1 ? 'child' : 'children'}`}
                 onClick={() => navigateToWorkflowHistoryItem(item)}
               >
-                <span className="history-item-icon" aria-hidden="true">{item.kind}</span>
+                <span className="history-item-icon" aria-hidden="true">{item.kind === 'manufacturing' ? 'MFG' : item.kind}</span>
               </button>
             )) : (
               <p className="workflow-history-empty muted">No workflow groups yet.</p>
