@@ -1,17 +1,12 @@
-import type { AppliedEPanelPath, AppliedSGeometry } from './connectionTypes';
-import type { ClassifiedContour, ContourDiagnostic, FinalContour } from './contourClassification';
-import { buildFinalContourList, classifyFinalContours } from './contourClassification';
-import type { SvgDocumentModel } from '../svgUtils';
+import type { ClassifiedContour, FinalContour } from './contourClassification';
+import { classifyFinalContours } from './contourClassification';
 import { buildContourSides, cornerTouchTolerance, getContourSignedArea, lineIntersection, offsetContourSide, pointsToClosedPathD } from './sharedGeometry';
 import type { PanelContour } from './sharedGeometry';
 import type { Point } from '../svgUtils';
 
 export type KerfCompensationResult = {
   finalContourList: FinalContour[];
-  diagnostics: ContourDiagnostic[];
   contours: ClassifiedContour[];
-  appliedEPanelPaths: AppliedEPanelPath[];
-  appliedSGeometry: AppliedSGeometry[];
 };
 
 export const getKerfCompensationMm = (kerfMm: number) => Math.max(0, kerfMm) / 2;
@@ -110,20 +105,14 @@ export const compensateClassifiedContours = (contours: ClassifiedContour[], kerf
   });
 };
 
-export const buildKerfCompensatedAppliedPreview = (
-  svgModel: SvgDocumentModel,
-  appliedEPanelPaths: AppliedEPanelPath[],
-  appliedSGeometry: AppliedSGeometry[],
+export const buildKerfCompensatedPreviewFromFinalContours = (
+  finalContourList: FinalContour[],
   kerfMm: number,
 ): KerfCompensationResult => {
-  const { contours: finalContourList, diagnostics } = buildFinalContourList(svgModel, appliedEPanelPaths, appliedSGeometry);
   const contours = compensateClassifiedContours(classifyFinalContours(finalContourList), kerfMm);
 
   return {
     finalContourList,
-    diagnostics,
     contours,
-    appliedEPanelPaths: [],
-    appliedSGeometry: [],
   };
 };
