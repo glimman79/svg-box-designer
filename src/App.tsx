@@ -4,7 +4,7 @@ import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacement
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
 import { exportFinalGeometrySvg } from './app/exportFinalGeometrySvg';
 import { buildAppliedSGeometry } from './app/sGeometry';
-import { buildKerfCompensatedPreviewFromFinalContours } from './app/manufacturingCompensation';
+import { buildManufacturingGeometry } from './app/manufacturingPipeline';
 import { buildFinalGeometry } from './app/finalGeometry';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
@@ -27,6 +27,8 @@ export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWRefe
 // classifyAppliedContours is intentionally re-exported only as a compatibility/test helper.
 export { buildFinalContourList, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours } from './app/contourClassification';
 export { buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour } from './app/manufacturingCompensation';
+export { applyClearance, buildManufacturingGeometry } from './app/manufacturingPipeline';
+export type { ManufacturingContour, ManufacturingGeometry, ManufacturingSettings } from './app/manufacturingPipeline';
 export type { ClassifiedContour, ClassifiedContourSource, ContourKind } from './app/contourClassification';
 export { applyTabsToContour, buildAppliedEPanelPaths, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
@@ -686,9 +688,9 @@ function App() {
     [appliedEPanelPaths, appliedSGeometry, svgModel],
   );
 
-  const kerfCompensatedAppliedPreview = useMemo(
-    () => buildKerfCompensatedPreviewFromFinalContours(finalGeometry.contours, projectSettings.kerfMm),
-    [finalGeometry.contours, projectSettings.kerfMm],
+  const manufacturingGeometry = useMemo(
+    () => buildManufacturingGeometry(finalGeometry.contours, projectSettings),
+    [finalGeometry.contours, projectSettings],
   );
 
   const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections, workflowGroupOrder.manufacturing), [connections, sLabelGroups, tbLabelGroups, wLabelGroups, workflowGroupOrder]);
@@ -2173,7 +2175,7 @@ function App() {
               onPointerLeave={handleCanvasPointerLeave}
             >
               <g className="final-contour-kerf-layer">
-                {kerfCompensatedAppliedPreview.contours.map((contour) => (
+                {manufacturingGeometry.contours.map((contour) => (
                   <path
                     key={contour.id}
                     className={contour.kind === 'INNER' ? 'final-slot-path' : 'final-panel-path'}
