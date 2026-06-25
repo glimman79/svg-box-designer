@@ -886,6 +886,12 @@ function App() {
   const handleToolClick = (tool: ActiveTool) => {
     setActiveTool(tool);
 
+    if (tool === 'manufacturing') {
+      setWorkflowGroupOrder((currentOrder) => currentOrder.manufacturing !== undefined
+        ? currentOrder
+        : { ...currentOrder, manufacturing: getNextWorkflowGroupOrderIndex(currentOrder) });
+    }
+
     const groupStartKind = getToolClickGroupStartKind(tool, activeTBGroup, activeSGroup, activeWGroup);
 
     if (groupStartKind === 'TB') {
@@ -1181,9 +1187,6 @@ function App() {
       const shouldRecordManufacturing = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
       if (shouldRecordManufacturing) {
         setLastAppliedManufacturingSettings(structuredClone(projectSettings));
-        setWorkflowGroupOrder((currentOrder) => currentOrder.manufacturing !== undefined
-          ? currentOrder
-          : { ...currentOrder, manufacturing: getNextWorkflowGroupOrderIndex(currentOrder) });
       }
       setAppliedEPanelPaths(nextAppliedEPanelPaths);
       setAppliedSGeometry(nextAppliedSGeometry);

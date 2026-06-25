@@ -926,12 +926,22 @@ const workflowHistoryItems = buildWorkflowHistoryItems(
   [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 1 }],
   workflowHistoryConnections,
 );
-assert.equal(workflowHistoryItems.filter((item) => item.kind === 'manufacturing').length, 0, 'Opening Manufacturing does not create a Workflow History entry');
+assert.equal(workflowHistoryItems.filter((item) => item.kind === 'manufacturing').length, 0, 'Workflow History omits Manufacturing until the first MFG tool click is recorded');
 
 assert.equal(haveProjectSettingsChanged({ kerfMm: 0.15, clearanceMm: 0.05 }, null), false, 'Default Manufacturing settings are not a completed operation');
 assert.equal(haveProjectSettingsChanged({ kerfMm: 0.2, clearanceMm: 0.05 }, null), true, 'Changing Kerf before Apply is a pending Manufacturing operation');
 assert.equal(haveProjectSettingsChanged({ kerfMm: 0.2, clearanceMm: 0.08 }, { kerfMm: 0.2, clearanceMm: 0.05 }), true, 'Changing Clearance after a Kerf Apply is a pending Manufacturing operation');
 assert.equal(haveProjectSettingsChanged({ kerfMm: 0.2, clearanceMm: 0.08 }, { kerfMm: 0.2, clearanceMm: 0.08 }), false, 'Repeated Apply without Manufacturing changes does not add work');
+
+const workflowHistoryItemsWithFirstMfgClick = buildWorkflowHistoryItems(
+  [{ id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: tbFinished.isActive, orderIndex: 1 }],
+  [{ id: 's-group-S1', labels: ['S1', 'S2'], isActive: true, orderIndex: 3 }],
+  [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 2 }],
+  workflowHistoryConnections,
+  0,
+);
+assert.equal(workflowHistoryItemsWithFirstMfgClick.filter((item) => item.kind === 'manufacturing').length, 1, 'First Manufacturing tool click creates an MFG history item before Apply');
+assert.equal(JSON.stringify(workflowHistoryItemsWithFirstMfgClick.map((item) => item.kind)), JSON.stringify(['manufacturing', 'TB', 'W', 'S']), 'MFG history item keeps chronological order from the first Manufacturing tool click');
 
 const workflowHistoryItemsWithMfg = buildWorkflowHistoryItems(
   [{ id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: tbFinished.isActive, orderIndex: 0 }],
@@ -940,8 +950,8 @@ const workflowHistoryItemsWithMfg = buildWorkflowHistoryItems(
   workflowHistoryConnections,
   3,
 );
-assert.equal(workflowHistoryItemsWithMfg.filter((item) => item.kind === 'manufacturing').length, 1, 'Changing Kerf + Apply creates one MFG item');
-assert.equal(workflowHistoryItemsWithMfg[3].name, 'MFG', 'MFG history item appears in first Apply order');
+assert.equal(workflowHistoryItemsWithMfg.filter((item) => item.kind === 'manufacturing').length, 1, 'First Manufacturing tool click creates one MFG item');
+assert.equal(workflowHistoryItemsWithMfg[3].name, 'MFG', 'MFG history item appears at its original Manufacturing click order');
 assert.equal(getWorkflowHistoryTool(workflowHistoryItemsWithMfg[3]), 'manufacturing', 'Clicking MFG navigates to the Manufacturing tool');
 assert.equal(getToolClickGroupStartKind(getWorkflowHistoryTool(workflowHistoryItemsWithMfg[3]), null, null, null), null, 'Clicking MFG from history does not start a TB/S/W group');
 assert.equal(JSON.stringify(workflowHistoryItemsWithMfg.filter((item) => item.kind !== 'manufacturing').map((item) => item.name)), JSON.stringify(['TB Group 1', 'W Group 1', 'S Group 1']), 'Workflow History displays TB, W, and S groups by creation order');
@@ -955,8 +965,8 @@ const workflowHistoryItemsWithRepeatedMfg = buildWorkflowHistoryItems(
   workflowHistoryConnections,
   3,
 );
-assert.equal(workflowHistoryItemsWithRepeatedMfg.filter((item) => item.kind === 'manufacturing').length, 1, 'Changing Clearance + Apply reuses the same MFG item');
-assert.equal(JSON.stringify(workflowHistoryItemsWithRepeatedMfg.map((item) => item.kind)), JSON.stringify(['TB', 'W', 'S', 'manufacturing']), 'Multiple Apply operations never duplicate or move MFG');
+assert.equal(workflowHistoryItemsWithRepeatedMfg.filter((item) => item.kind === 'manufacturing').length, 1, 'Repeated Manufacturing tool clicks reuse the same MFG item');
+assert.equal(JSON.stringify(workflowHistoryItemsWithRepeatedMfg.map((item) => item.kind)), JSON.stringify(['TB', 'W', 'S', 'manufacturing']), 'Repeated Manufacturing clicks never duplicate or move MFG');
 
 const workflowHistoryCreationOrderItems = buildWorkflowHistoryItems(
   [
