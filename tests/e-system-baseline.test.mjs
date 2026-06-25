@@ -820,7 +820,7 @@ const inactiveWDisplayAssignments = buildActiveWDisplayAssignments({}, wConnecti
 assert.equal(inactiveWDisplayAssignments['w1-top'], undefined, 'temporary W labels disappear after W group is inactive');
 console.log('W group V1 tests passed');
 
-const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, finishTBGroupWithTrailingCleanup, getTBGroupActionNumber, buildWorkflowHistoryItems, getWorkflowHistoryTool, getToolClickGroupStartKind, startWGroupWorkflow } = module.exports;
+const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, finishTBGroupWithTrailingCleanup, getTBGroupActionNumber, buildWorkflowHistoryItems, getWorkflowHistoryTool, getToolClickGroupStartKind, haveProjectSettingsChanged, startWGroupWorkflow } = module.exports;
 
 
 assert.equal(getToolClickGroupStartKind('TB', null, null, null), 'TB', 'Clicking TB starts a TB group if none is active');
@@ -926,14 +926,37 @@ const workflowHistoryItems = buildWorkflowHistoryItems(
   [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 1 }],
   workflowHistoryConnections,
 );
-assert.equal(workflowHistoryItems.filter((item) => item.kind === 'manufacturing').length, 1, 'Workflow History shows one MFG item');
-assert.equal(workflowHistoryItems[0].name, 'MFG', 'MFG history item appears as compact MFG item');
-assert.equal(getWorkflowHistoryTool(workflowHistoryItems[0]), 'manufacturing', 'Clicking MFG navigates to the Manufacturing tool');
-assert.equal(getToolClickGroupStartKind(getWorkflowHistoryTool(workflowHistoryItems[0]), null, null, null), null, 'Clicking MFG from history does not start a TB/S/W group');
-assert.equal(JSON.stringify(workflowHistoryItems.filter((item) => item.kind !== 'manufacturing').map((item) => item.name)), JSON.stringify(['TB Group 1', 'W Group 1', 'S Group 1']), 'Workflow History displays TB, W, and S groups by creation order');
-assert.equal(workflowHistoryItems.filter((item) => item.kind === 'TB').length, 1, 'Workflow History shows one TB group for one TB workflow, not one group per E label');
-assert.equal(JSON.stringify(workflowHistoryItems.filter((item) => item.kind !== 'manufacturing').map((item) => item.childCount)), JSON.stringify([2, 2, 2]), 'Workflow History includes available child connection counts');
-assert.equal(workflowHistoryItems.filter((item) => item.kind !== 'manufacturing')[2].isActive, true, 'Workflow History exposes active group state for navigation');
+assert.equal(workflowHistoryItems.filter((item) => item.kind === 'manufacturing').length, 0, 'Opening Manufacturing does not create a Workflow History entry');
+
+assert.equal(haveProjectSettingsChanged({ kerfMm: 0.15, clearanceMm: 0.05 }, null), false, 'Default Manufacturing settings are not a completed operation');
+assert.equal(haveProjectSettingsChanged({ kerfMm: 0.2, clearanceMm: 0.05 }, null), true, 'Changing Kerf before Apply is a pending Manufacturing operation');
+assert.equal(haveProjectSettingsChanged({ kerfMm: 0.2, clearanceMm: 0.08 }, { kerfMm: 0.2, clearanceMm: 0.05 }), true, 'Changing Clearance after a Kerf Apply is a pending Manufacturing operation');
+assert.equal(haveProjectSettingsChanged({ kerfMm: 0.2, clearanceMm: 0.08 }, { kerfMm: 0.2, clearanceMm: 0.08 }), false, 'Repeated Apply without Manufacturing changes does not add work');
+
+const workflowHistoryItemsWithMfg = buildWorkflowHistoryItems(
+  [{ id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: tbFinished.isActive, orderIndex: 0 }],
+  [{ id: 's-group-S1', labels: ['S1', 'S2'], isActive: true, orderIndex: 2 }],
+  [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 1 }],
+  workflowHistoryConnections,
+  3,
+);
+assert.equal(workflowHistoryItemsWithMfg.filter((item) => item.kind === 'manufacturing').length, 1, 'Changing Kerf + Apply creates one MFG item');
+assert.equal(workflowHistoryItemsWithMfg[3].name, 'MFG', 'MFG history item appears in first Apply order');
+assert.equal(getWorkflowHistoryTool(workflowHistoryItemsWithMfg[3]), 'manufacturing', 'Clicking MFG navigates to the Manufacturing tool');
+assert.equal(getToolClickGroupStartKind(getWorkflowHistoryTool(workflowHistoryItemsWithMfg[3]), null, null, null), null, 'Clicking MFG from history does not start a TB/S/W group');
+assert.equal(JSON.stringify(workflowHistoryItemsWithMfg.filter((item) => item.kind !== 'manufacturing').map((item) => item.name)), JSON.stringify(['TB Group 1', 'W Group 1', 'S Group 1']), 'Workflow History displays TB, W, and S groups by creation order');
+assert.equal(workflowHistoryItemsWithMfg.filter((item) => item.kind === 'TB').length, 1, 'Workflow History shows one TB group for one TB workflow, not one group per E label');
+assert.equal(JSON.stringify(workflowHistoryItemsWithMfg.filter((item) => item.kind !== 'manufacturing').map((item) => item.childCount)), JSON.stringify([2, 2, 2]), 'Workflow History includes available child connection counts');
+assert.equal(workflowHistoryItemsWithMfg.filter((item) => item.kind !== 'manufacturing')[2].isActive, true, 'Workflow History exposes active group state for navigation');
+const workflowHistoryItemsWithRepeatedMfg = buildWorkflowHistoryItems(
+  [{ id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: tbFinished.isActive, orderIndex: 0 }],
+  [{ id: 's-group-S1', labels: ['S1', 'S2'], isActive: true, orderIndex: 2 }],
+  [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 1 }],
+  workflowHistoryConnections,
+  3,
+);
+assert.equal(workflowHistoryItemsWithRepeatedMfg.filter((item) => item.kind === 'manufacturing').length, 1, 'Changing Clearance + Apply reuses the same MFG item');
+assert.equal(JSON.stringify(workflowHistoryItemsWithRepeatedMfg.map((item) => item.kind)), JSON.stringify(['TB', 'W', 'S', 'manufacturing']), 'Multiple Apply operations never duplicate or move MFG');
 
 const workflowHistoryCreationOrderItems = buildWorkflowHistoryItems(
   [

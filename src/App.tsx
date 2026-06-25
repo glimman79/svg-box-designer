@@ -48,6 +48,7 @@ type ProjectSettings = {
 
 type HistoryState = {
   projectSettings: ProjectSettings;
+  lastAppliedManufacturingSettings: ProjectSettings | null;
   edgeAssignments: Record<string, EdgeAssignmentBucket>;
   connections: ConnectionMap;
   selectedLabelId: string | null;
@@ -78,17 +79,19 @@ export const buildWorkflowHistoryItems = (
   sGroups: WorkflowHistoryGroup[],
   wGroups: WorkflowHistoryGroup[],
   connections: ConnectionMap,
+  manufacturingOrderIndex?: number,
 ): WorkflowHistoryItem[] => {
-  const orderedItems = [
-    {
+  const manufacturingItem = Number.isFinite(manufacturingOrderIndex) ? [{
       id: 'workflow-history-manufacturing',
       kind: 'manufacturing' as const,
       name: 'MFG',
       labels: [],
       isActive: false,
       childCount: 0,
-      orderIndex: Number.NEGATIVE_INFINITY,
-    },
+      orderIndex: manufacturingOrderIndex,
+    }] : [];
+  const orderedItems = [
+    ...manufacturingItem,
     ...tbGroups.map((group, groupIndex) => ({
       id: group.id,
       kind: 'TB' as const,
@@ -173,6 +176,11 @@ const defaultProjectSettings: ProjectSettings = {
 
 const maxHistoryEntries = 10;
 
+export const haveProjectSettingsChanged = (currentSettings: ProjectSettings, appliedSettings: ProjectSettings | null): boolean => {
+  const baseline = appliedSettings ?? defaultProjectSettings;
+  return currentSettings.kerfMm !== baseline.kerfMm || currentSettings.clearanceMm !== baseline.clearanceMm;
+};
+
 const getNextWorkflowGroupOrderIndex = (workflowGroupOrder: Record<string, number>) => {
   const orderIndexes = Object.values(workflowGroupOrder).filter((value) => Number.isFinite(value));
   return orderIndexes.length > 0 ? Math.max(...orderIndexes) + 1 : 0;
@@ -180,6 +188,7 @@ const getNextWorkflowGroupOrderIndex = (workflowGroupOrder: Record<string, numbe
 
 const cloneHistoryState = (state: HistoryState): HistoryState => ({
   projectSettings: structuredClone(state.projectSettings ?? defaultProjectSettings),
+  lastAppliedManufacturingSettings: state.lastAppliedManufacturingSettings ? structuredClone(state.lastAppliedManufacturingSettings) : null,
   edgeAssignments: structuredClone(state.edgeAssignments),
   connections: structuredClone(state.connections),
   selectedLabelId: state.selectedLabelId,
@@ -535,6 +544,7 @@ function App() {
   const [edgeAssignments, setEdgeAssignments] = useState<Record<string, EdgeAssignmentBucket>>({});
   const [connections, setConnections] = useState<ConnectionMap>({});
   const [projectSettings, setProjectSettings] = useState<ProjectSettings>(defaultProjectSettings);
+  const [lastAppliedManufacturingSettings, setLastAppliedManufacturingSettings] = useState<ProjectSettings | null>(null);
   const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
@@ -679,9 +689,11 @@ function App() {
     [finalContourListResult.contours, projectSettings.kerfMm],
   );
 
-  const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections), [connections, sLabelGroups, tbLabelGroups, wLabelGroups]);
+  const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections, workflowGroupOrder.manufacturing), [connections, sLabelGroups, tbLabelGroups, wLabelGroups, workflowGroupOrder]);
   const activeWConnection = activeWGroup?.isActive ? connections[activeWGroup.connectionId] : undefined;
-  const hasApplyInputs = Object.keys(edgeAssignments).length > 0
+  const hasPendingManufacturingSettings = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
+  const hasApplyInputs = hasPendingManufacturingSettings
+    || Object.keys(edgeAssignments).length > 0
     || (activeWConnection?.prefix === 'W' && activeWConnection.properties.selectedEdgeIds.length > 0);
   const navigateToWorkflowHistoryItem = (item: WorkflowHistoryItem) => {
     const firstLabel = item.labels[0] ?? null;
@@ -713,6 +725,7 @@ function App() {
 
   const getCurrentHistoryState = (): HistoryState => cloneHistoryState({
     projectSettings,
+    lastAppliedManufacturingSettings,
     edgeAssignments,
     connections,
     selectedLabelId,
@@ -729,6 +742,7 @@ function App() {
   const restoreHistoryState = (state: HistoryState) => {
     const snapshot = cloneHistoryState(state);
     setProjectSettings(snapshot.projectSettings);
+    setLastAppliedManufacturingSettings(snapshot.lastAppliedManufacturingSettings);
     setEdgeAssignments(Object.fromEntries(Object.entries(snapshot.edgeAssignments).map(([edgeId, assignment]) => [edgeId, toEdgeAssignmentBucket(assignment) ?? {}])));
     setConnections(snapshot.connections);
     setSelectedLabelId(snapshot.selectedLabelId);
@@ -760,6 +774,7 @@ function App() {
     setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
     setEdgeAssignments({});
     setProjectSettings(defaultProjectSettings);
+    setLastAppliedManufacturingSettings(null);
     setSelectedEdgeId(null);
     setAppliedEPanelPaths([]);
     setAppliedSGeometry([]);
@@ -1163,6 +1178,13 @@ function App() {
         : { connections, assignments: edgeAssignments };
       const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, applyInputs.assignments, applyInputs.connections, true);
       const nextAppliedSGeometry = buildAppliedSGeometry(svgModel, applyInputs.assignments, applyInputs.connections);
+      const shouldRecordManufacturing = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
+      if (shouldRecordManufacturing) {
+        setLastAppliedManufacturingSettings(structuredClone(projectSettings));
+        setWorkflowGroupOrder((currentOrder) => currentOrder.manufacturing !== undefined
+          ? currentOrder
+          : { ...currentOrder, manufacturing: getNextWorkflowGroupOrderIndex(currentOrder) });
+      }
       setAppliedEPanelPaths(nextAppliedEPanelPaths);
       setAppliedSGeometry(nextAppliedSGeometry);
       setErrorMessage('');
@@ -1202,6 +1224,7 @@ function App() {
     setEdgeAssignments({});
     setConnections({});
     setProjectSettings(defaultProjectSettings);
+    setLastAppliedManufacturingSettings(null);
     setSelectedLabelId(null);
     setSelectedEdgeId(null);
     setAppliedEPanelPaths([]);
