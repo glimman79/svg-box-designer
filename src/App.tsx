@@ -4,7 +4,8 @@ import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacement
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
 import { exportAppliedSvg } from './app/exportAppliedSvg';
 import { buildAppliedSGeometry } from './app/sGeometry';
-import { buildKerfCompensatedAppliedPreview } from './app/manufacturingCompensation';
+import { buildFinalContourList } from './app/contourClassification';
+import { buildKerfCompensatedPreviewFromFinalContours } from './app/manufacturingCompensation';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
 import { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
@@ -23,7 +24,7 @@ export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createC
 export { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getNextInternalELabel, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
 export { buildFinalContourList, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours } from './app/contourClassification';
-export { buildKerfCompensatedAppliedPreview, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour } from './app/manufacturingCompensation';
+export { buildKerfCompensatedPreviewFromFinalContours, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour } from './app/manufacturingCompensation';
 export type { ClassifiedContour, ClassifiedContourSource, ContourKind } from './app/contourClassification';
 export { applyTabsToContour, buildAppliedEPanelPaths, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
@@ -657,9 +658,14 @@ function App() {
 
 
 
+  const finalContourListResult = useMemo(
+    () => buildFinalContourList(svgModel, appliedEPanelPaths, appliedSGeometry),
+    [appliedEPanelPaths, appliedSGeometry, svgModel],
+  );
+
   const kerfCompensatedAppliedPreview = useMemo(
-    () => buildKerfCompensatedAppliedPreview(svgModel, appliedEPanelPaths, appliedSGeometry, projectSettings.kerfMm),
-    [appliedEPanelPaths, appliedSGeometry, projectSettings.kerfMm, svgModel],
+    () => buildKerfCompensatedPreviewFromFinalContours(finalContourListResult.contours, projectSettings.kerfMm),
+    [finalContourListResult.contours, projectSettings.kerfMm],
   );
 
   const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections), [connections, sLabelGroups, tbLabelGroups, wLabelGroups]);
@@ -1440,10 +1446,6 @@ function App() {
     svgModel.panels.forEach((panel) => {
       includeBounds(panel.bounds);
     });
-    kerfCompensatedAppliedPreview.appliedEPanelPaths.forEach((panelPath) => {
-      includeBounds(panelPath.eraseRect);
-    });
-
     if (!contentBounds) {
       return fallbackViewBox;
     }

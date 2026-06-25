@@ -74,7 +74,22 @@ const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
 const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
-const { buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalContourList, buildKerfCompensatedAppliedPreview, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, compensateClassifiedContours, createTabSegmentPlan, exportAppliedSvg, pathDToClosedContour } = module.exports;
+const { buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalContourList, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, compensateClassifiedContours, createTabSegmentPlan, exportAppliedSvg, pathDToClosedContour } = module.exports;
+
+const buildKerfPreviewViaFinalContours = (svgModel, appliedEPanelPaths, appliedSGeometry, kerfMm) => {
+  const finalContourListResult = buildFinalContourList(svgModel, appliedEPanelPaths, appliedSGeometry);
+  return buildKerfCompensatedPreviewFromFinalContours(finalContourListResult.contours, kerfMm);
+};
+assert.equal(buildKerfCompensatedPreviewFromFinalContours.length, 2, 'kerf function accepts only finalContourList and kerfMm');
+assert.equal(module.exports.buildKerfCompensatedAppliedPreview, undefined, 'legacy kerf API accepting svgModel/applied geometry is not exported');
+const boundaryFinalContourList = [
+  { id: 'boundary-outer', source: 'final-contour', finalSource: 'original-panel', kind: 'OUTER', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z' },
+  { id: 'boundary-inner', source: 'final-contour', finalSource: 's-slot', kind: 'INNER', pathD: 'M 2 2 L 4 2 L 4 4 L 2 4 Z' },
+];
+const boundaryKerfPreview = buildKerfCompensatedPreviewFromFinalContours(boundaryFinalContourList, 0.10);
+assert.deepEqual(boundaryKerfPreview.contours.map((contour) => contour.id), boundaryFinalContourList.map((contour) => contour.id), 'every finalContourList item creates one compensated contour with same id');
+assert.equal('appliedEPanelPaths' in boundaryKerfPreview, false, 'kerf result omits legacy appliedEPanelPaths');
+assert.equal('appliedSGeometry' in boundaryKerfPreview, false, 'kerf result omits legacy appliedSGeometry');
 const { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, defaultConnectionProperties } = module.exports;
 const { collectWReferences, classifyWReferencePattern, invertWPatternType, generateWEdgeRoles, finishWGroupWorkflow, buildActiveWDisplayAssignments, buildAppliedEPanelPaths: buildE } = module.exports;
 
@@ -167,7 +182,7 @@ assertBoundsClose(boundsForPathD(compensatedInner[0].pathD), { minX: 2.05, maxX:
 const compensatedNested = compensateClassifiedContours([outerContour, innerContour], 0.10);
 assertBoundsClose(boundsForPathD(compensatedNested.find((contour) => contour.id === 'outer').pathD), { minX: -0.05, maxX: 10.05, minY: -0.05, maxY: 8.05 }, 'nested OUTER uses outward compensation');
 assertBoundsClose(boundsForPathD(compensatedNested.find((contour) => contour.id === 'inner').pathD), { minX: 2.05, maxX: 5.95, minY: 2.05, maxY: 4.95 }, 'nested INNER uses inward compensation');
-const appliedPreview = buildKerfCompensatedAppliedPreview(
+const appliedPreview = buildKerfPreviewViaFinalContours(
   simpleModelForPanels([{ id: 'panel-s', contour: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 8 }, { x: 0, y: 8 }], bounds: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, edgeIds: [] }]),
   [],
   [{
@@ -180,8 +195,8 @@ const appliedPreview = buildKerfCompensatedAppliedPreview(
 );
 assertBoundsClose(boundsForPathD(appliedPreview.contours.find((contour) => contour.panelId === 'panel-s').pathD), { minX: -0.05, maxX: 10.05, minY: -0.05, maxY: 8.05 }, 'kerf preview generated physical panels expand');
 assertBoundsClose(boundsForPathD(appliedPreview.contours.find((contour) => contour.finalSource === 's-slot').pathD), { minX: 2.05, maxX: 5.95, minY: 2.05, maxY: 4.95 }, 'kerf preview generated slots shrink');
-const uncompensatedPreview = buildKerfCompensatedAppliedPreview(simpleModelForPanels([{ id: 'panel-e', contour: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 8 }, { x: 0, y: 8 }], bounds: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, edgeIds: [] }]), [{ panelId: 'panel-e', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: outerContour.pathD, edgeIds: [] }], [], 0);
-const changedPreview = buildKerfCompensatedAppliedPreview(simpleModelForPanels([{ id: 'panel-e', contour: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 8 }, { x: 0, y: 8 }], bounds: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, edgeIds: [] }]), [{ panelId: 'panel-e', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: outerContour.pathD, edgeIds: [] }], [], 0.10);
+const uncompensatedPreview = buildKerfPreviewViaFinalContours(simpleModelForPanels([{ id: 'panel-e', contour: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 8 }, { x: 0, y: 8 }], bounds: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, edgeIds: [] }]), [{ panelId: 'panel-e', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: outerContour.pathD, edgeIds: [] }], [], 0);
+const changedPreview = buildKerfPreviewViaFinalContours(simpleModelForPanels([{ id: 'panel-e', contour: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 8 }, { x: 0, y: 8 }], bounds: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, edgeIds: [] }]), [{ panelId: 'panel-e', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: outerContour.pathD, edgeIds: [] }], [], 0.10);
 assert.notEqual(uncompensatedPreview.contours[0].pathD, changedPreview.contours[0].pathD, 'preview geometry changes when kerf changes');
 
 const edge = (id, start, end) => ({ id, source: id, start, end });
@@ -211,13 +226,13 @@ const importedNestedContours = classifyImportedPanelContours(modelForPanels([
 assert.equal(importedNestedContours.find((contour) => contour.panelId === 'imported-inner')?.kind, 'INNER', 'imported unknown contour inside another imported contour may classify INNER');
 
 
-const finalOriginal = buildKerfCompensatedAppliedPreview(modelForPanels([panel('original-only', 0, 0, 10, 8)]), [], [], 0.10);
+const finalOriginal = buildKerfPreviewViaFinalContours(modelForPanels([panel('original-only', 0, 0, 10, 8)]), [], [], 0.10);
 assertBoundsClose(boundsForPathD(finalOriginal.contours[0].pathD), { minX: -0.05, maxX: 10.05, minY: -0.05, maxY: 8.05 }, 'original panel only receives kerf');
-const finalTb = buildKerfCompensatedAppliedPreview(modelForPanels([panel('tb-panel', 0, 0, 10, 8)]), [{ panelId: 'tb-panel', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: 'M 0 0 L 12 0 L 12 8 L 0 8 Z', edgeIds: [] }], [], 0.10);
+const finalTb = buildKerfPreviewViaFinalContours(modelForPanels([panel('tb-panel', 0, 0, 10, 8)]), [{ panelId: 'tb-panel', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: 'M 0 0 L 12 0 L 12 8 L 0 8 Z', edgeIds: [] }], [], 0.10);
 assertBoundsClose(boundsForPathD(finalTb.contours[0].pathD), { minX: -0.05, maxX: 12.05, minY: -0.05, maxY: 8.05 }, 'TB modified panel receives kerf');
-const finalW = buildKerfCompensatedAppliedPreview(modelForPanels([panel('w-panel', 0, 0, 10, 8)]), [{ panelId: 'w-panel', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: 'M 0 0 L 11 0 L 11 9 L 0 9 Z', edgeIds: [] }], [], 0.10);
+const finalW = buildKerfPreviewViaFinalContours(modelForPanels([panel('w-panel', 0, 0, 10, 8)]), [{ panelId: 'w-panel', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: 'M 0 0 L 11 0 L 11 9 L 0 9 Z', edgeIds: [] }], [], 0.10);
 assertBoundsClose(boundsForPathD(finalW.contours[0].pathD), { minX: -0.05, maxX: 11.05, minY: -0.05, maxY: 9.05 }, 'W modified panel receives kerf');
-const finalS = buildKerfCompensatedAppliedPreview(modelForPanels([panel('s-panel', 0, 0, 10, 8)]), [], [{ connectionId: 'S-final', panelPaths: [{ panelId: 's-panel', sourceEdgeId: 'edge-a', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: 'M 0 0 L 13 0 L 13 8 L 0 8 Z', edgeIds: [] }], slotPaths: [{ connectionId: 'S-final', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 2 2 L 6 2 L 6 5 L 2 5 Z', startDistance: 2, endDistance: 6, widthMm: 3 }], edgeIds: [] }], 0.10);
+const finalS = buildKerfPreviewViaFinalContours(modelForPanels([panel('s-panel', 0, 0, 10, 8)]), [], [{ connectionId: 'S-final', panelPaths: [{ panelId: 's-panel', sourceEdgeId: 'edge-a', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: 'M 0 0 L 13 0 L 13 8 L 0 8 Z', edgeIds: [] }], slotPaths: [{ connectionId: 'S-final', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 2 2 L 6 2 L 6 5 L 2 5 Z', startDistance: 2, endDistance: 6, widthMm: 3 }], edgeIds: [] }], 0.10);
 assertBoundsClose(boundsForPathD(finalS.contours.find((contour) => contour.panelId === 's-panel').pathD), { minX: -0.05, maxX: 13.05, minY: -0.05, maxY: 8.05 }, 'S modified panel receives kerf');
 assertBoundsClose(boundsForPathD(finalS.contours.find((contour) => contour.finalSource === 's-slot').pathD), { minX: 2.05, maxX: 5.95, minY: 2.05, maxY: 4.95 }, 'S slot receives inward kerf when inside final panel');
 const mixedFinalList = buildFinalContourList(modelForPanels([panel('original-mixed', 0, 0, 10, 8), panel('tb-mixed', 20, 0, 10, 8), panel('w-mixed', 40, 0, 10, 8), panel('s-mixed', 60, 0, 10, 8)]), [{ panelId: 'tb-mixed', eraseRect: { minX: 20, maxX: 30, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 20 0 L 31 0 L 31 8 L 20 8 Z', edgeIds: [] }, { panelId: 'w-mixed', eraseRect: { minX: 40, maxX: 50, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 40 0 L 51 0 L 51 8 L 40 8 Z', edgeIds: [] }], [{ connectionId: 'S-mixed', panelPaths: [{ panelId: 's-mixed', sourceEdgeId: 'edge-a', eraseRect: { minX: 60, maxX: 70, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 60 0 L 71 0 L 71 8 L 60 8 Z', edgeIds: [] }], slotPaths: [{ connectionId: 'S-mixed', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 62 2 L 66 2 L 66 5 L 62 5 Z', startDistance: 2, endDistance: 6, widthMm: 3 }], edgeIds: [] }]);
