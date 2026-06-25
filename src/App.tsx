@@ -2,10 +2,10 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
-import { exportAppliedSvg } from './app/exportAppliedSvg';
+import { exportFinalGeometrySvg } from './app/exportFinalGeometrySvg';
 import { buildAppliedSGeometry } from './app/sGeometry';
-import { buildFinalContourList } from './app/contourClassification';
 import { buildKerfCompensatedPreviewFromFinalContours } from './app/manufacturingCompensation';
+import { buildFinalGeometry } from './app/finalGeometry';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
 import { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
@@ -19,6 +19,8 @@ export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry'
 export { edgeMatchesContourSide, getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './app/sharedPanelGeometry';
 export type { PanelValidationResult } from './app/sharedPanelGeometry';
 export { exportAppliedSvg } from './app/exportAppliedSvg';
+export { exportFinalGeometrySvg } from './app/exportFinalGeometrySvg';
+export { buildFinalGeometry } from './app/finalGeometry';
 export { buildAppliedSGeometry } from './app/sGeometry';
 export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 export { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getNextInternalELabel, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
@@ -679,14 +681,14 @@ function App() {
 
 
 
-  const finalContourListResult = useMemo(
-    () => buildFinalContourList(svgModel, appliedEPanelPaths, appliedSGeometry),
+  const finalGeometry = useMemo(
+    () => buildFinalGeometry(svgModel, appliedEPanelPaths, appliedSGeometry),
     [appliedEPanelPaths, appliedSGeometry, svgModel],
   );
 
   const kerfCompensatedAppliedPreview = useMemo(
-    () => buildKerfCompensatedPreviewFromFinalContours(finalContourListResult.contours, projectSettings.kerfMm),
-    [finalContourListResult.contours, projectSettings.kerfMm],
+    () => buildKerfCompensatedPreviewFromFinalContours(finalGeometry.contours, projectSettings.kerfMm),
+    [finalGeometry.contours, projectSettings.kerfMm],
   );
 
   const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections, workflowGroupOrder.manufacturing), [connections, sLabelGroups, tbLabelGroups, wLabelGroups, workflowGroupOrder]);
@@ -1397,7 +1399,7 @@ function App() {
     // Export after Apply is clean laser geometry; export before Apply remains label/reference export.
     const hasAppliedGeometry = appliedEPanelPaths.length > 0 || appliedSGeometry.length > 0;
     const output = hasAppliedGeometry
-      ? exportAppliedSvg(svgModel, appliedEPanelPaths, appliedSGeometry)
+      ? exportFinalGeometrySvg(svgModel, finalGeometry)
       : exportLabeledSvg(svgModel.content, edgeAssignments, svgModel.edges);
     const blob = new Blob([output], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);

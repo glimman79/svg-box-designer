@@ -1,4 +1,5 @@
 import type { AppliedEPanelPath, AppliedSGeometry } from './connectionTypes';
+import { buildFinalGeometry } from './finalGeometry';
 import { cornerTouchTolerance, getContourSignedArea, pointsToClosedPathD } from './sharedGeometry';
 import type { Point, SvgDocumentModel } from '../svgUtils';
 
@@ -111,45 +112,15 @@ const validateContour = (id: string, points?: Point[]) => {
   return diagnostics;
 };
 
+/**
+ * @deprecated Legacy adapter retained for tests and older callers. FinalGeometry is now the
+ * single geometry model after Apply; use buildFinalGeometry() from finalGeometry.ts instead.
+ */
 export const buildFinalContourList = (
   svgModel: SvgDocumentModel,
   appliedEPanelPaths: AppliedEPanelPath[],
   appliedSGeometry: AppliedSGeometry[],
-): FinalContourListResult => {
-  const replacementByPanelId = new Map<string, { pathD: string; finalSource: FinalContourSource }>();
-  appliedEPanelPaths.forEach((path) => replacementByPanelId.set(path.panelId, { pathD: path.pathD, finalSource: 'applied-panel' }));
-  appliedSGeometry.flatMap((geometry) => geometry.panelPaths).forEach((path) => replacementByPanelId.set(path.panelId, { pathD: path.pathD, finalSource: 'applied-panel' }));
-
-  const contours: FinalContour[] = svgModel.panels.map((panel) => {
-    const replacement = replacementByPanelId.get(panel.id);
-    const points = replacement ? pathDToClosedContourForClassification(replacement.pathD) ?? undefined : clonePoints(panel.contour);
-    return {
-      id: `final-panel:${panel.id}`,
-      source: 'final-contour',
-      finalSource: replacement?.finalSource ?? 'original-panel',
-      kind: 'OUTER',
-      panelId: panel.id,
-      ownerPanelId: panel.id,
-      pathD: replacement?.pathD ?? pointsToClosedPathD(panel.contour),
-      points,
-    };
-  });
-
-  appliedSGeometry.flatMap((geometry) => geometry.slotPaths).forEach((slotPath, index) => {
-    contours.push({
-      id: `final-s-slot:${slotPath.connectionId}:${index}`,
-      source: 'final-contour',
-      finalSource: 's-slot',
-      kind: 'INNER',
-      ownerPanelId: slotPath.sourceBEdgeId,
-      pathD: slotPath.pathD,
-      points: pathDToClosedContourForClassification(slotPath.pathD) ?? undefined,
-    });
-  });
-
-  const diagnostics = contours.flatMap((contour) => validateContour(contour.id, contour.points));
-  return { contours, diagnostics };
-};
+): FinalContourListResult => buildFinalGeometry(svgModel, appliedEPanelPaths, appliedSGeometry);
 
 type ContourClassificationInput = Omit<ClassifiedContour, 'kind'> & Partial<Pick<ClassifiedContour, 'kind'>>;
 
