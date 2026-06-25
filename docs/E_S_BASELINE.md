@@ -1,8 +1,10 @@
-# E + S Locked Baseline
+# E + S Historical Baseline
 
-E and S are locked baselines. Future C and P work must not modify E or S behavior.
+> Historical reference: this document captures the E/S geometry and export contract at the time the E + S baseline was locked. It is not a statement of the current implementation unless current code or tests explicitly reference it.
 
-This document records the geometry and export contract after E and S verification. It is a regression reference for future connection systems and should be updated only when an intentional E/S baseline migration is approved.
+E and S were locked baselines when this reference was written. Future C and P work should use this as regression context, not as live product documentation.
+
+This document records the historical geometry and export contract after E and S verification. It should be updated only to annotate baseline migrations or clarify historical context; current behavior should be verified against the source code and regression tests.
 
 ## E architecture
 

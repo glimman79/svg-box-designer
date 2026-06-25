@@ -533,24 +533,6 @@ button:disabled {
   stroke-width: 1;
 }
 
-.applied-e-panel-layer {
-  pointer-events: none;
-}
-
-.applied-e-panel-erase {
-  fill: #ffffff;
-  pointer-events: none;
-}
-
-.applied-e-panel-erase-contour {
-  fill: none;
-  stroke: #ffffff;
-  stroke-width: 4;
-  stroke-linecap: square;
-  stroke-linejoin: miter;
-  pointer-events: none;
-  vector-effect: non-scaling-stroke;
-}
 
 .final-panel-path {
   fill: none;
