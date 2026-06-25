@@ -820,7 +820,7 @@ const inactiveWDisplayAssignments = buildActiveWDisplayAssignments({}, wConnecti
 assert.equal(inactiveWDisplayAssignments['w1-top'], undefined, 'temporary W labels disappear after W group is inactive');
 console.log('W group V1 tests passed');
 
-const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, finishTBGroupWithTrailingCleanup, getTBGroupActionNumber, buildWorkflowHistoryItems, getToolClickGroupStartKind, startWGroupWorkflow } = module.exports;
+const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, finishTBGroupWithTrailingCleanup, getTBGroupActionNumber, buildWorkflowHistoryItems, getWorkflowHistoryTool, getToolClickGroupStartKind, startWGroupWorkflow } = module.exports;
 
 
 assert.equal(getToolClickGroupStartKind('TB', null, null, null), 'TB', 'Clicking TB starts a TB group if none is active');
@@ -926,10 +926,14 @@ const workflowHistoryItems = buildWorkflowHistoryItems(
   [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 1 }],
   workflowHistoryConnections,
 );
-assert.equal(JSON.stringify(workflowHistoryItems.map((item) => item.name)), JSON.stringify(['TB Group 1', 'W Group 1', 'S Group 1']), 'Workflow History displays TB, W, and S groups by creation order');
+assert.equal(workflowHistoryItems.filter((item) => item.kind === 'manufacturing').length, 1, 'Workflow History shows one MFG item');
+assert.equal(workflowHistoryItems[0].name, 'MFG', 'MFG history item appears as compact MFG item');
+assert.equal(getWorkflowHistoryTool(workflowHistoryItems[0]), 'manufacturing', 'Clicking MFG navigates to the Manufacturing tool');
+assert.equal(getToolClickGroupStartKind(getWorkflowHistoryTool(workflowHistoryItems[0]), null, null, null), null, 'Clicking MFG from history does not start a TB/S/W group');
+assert.equal(JSON.stringify(workflowHistoryItems.filter((item) => item.kind !== 'manufacturing').map((item) => item.name)), JSON.stringify(['TB Group 1', 'W Group 1', 'S Group 1']), 'Workflow History displays TB, W, and S groups by creation order');
 assert.equal(workflowHistoryItems.filter((item) => item.kind === 'TB').length, 1, 'Workflow History shows one TB group for one TB workflow, not one group per E label');
-assert.equal(JSON.stringify(workflowHistoryItems.map((item) => item.childCount)), JSON.stringify([2, 2, 2]), 'Workflow History includes available child connection counts');
-assert.equal(workflowHistoryItems[2].isActive, true, 'Workflow History exposes active group state for navigation');
+assert.equal(JSON.stringify(workflowHistoryItems.filter((item) => item.kind !== 'manufacturing').map((item) => item.childCount)), JSON.stringify([2, 2, 2]), 'Workflow History includes available child connection counts');
+assert.equal(workflowHistoryItems.filter((item) => item.kind !== 'manufacturing')[2].isActive, true, 'Workflow History exposes active group state for navigation');
 
 const workflowHistoryCreationOrderItems = buildWorkflowHistoryItems(
   [
@@ -940,7 +944,7 @@ const workflowHistoryCreationOrderItems = buildWorkflowHistoryItems(
   [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 1 }],
   workflowHistoryConnections,
 );
-assert.equal(JSON.stringify(workflowHistoryCreationOrderItems.map((item) => item.kind)), JSON.stringify(['TB', 'W', 'S', 'TB']), 'Workflow History preserves TB, W, S, TB creation order instead of sorting by type');
+assert.equal(JSON.stringify(workflowHistoryCreationOrderItems.filter((item) => item.kind !== 'manufacturing').map((item) => item.kind)), JSON.stringify(['TB', 'W', 'S', 'TB']), 'Workflow History preserves TB, W, S, TB creation order instead of sorting by type');
 
 const workflowHistoryFallbackItems = buildWorkflowHistoryItems(
   [{ id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: false, orderIndex: 0 }],
@@ -948,7 +952,7 @@ const workflowHistoryFallbackItems = buildWorkflowHistoryItems(
   [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 1 }],
   workflowHistoryConnections,
 );
-assert.equal(JSON.stringify(workflowHistoryFallbackItems.map((item) => item.kind)), JSON.stringify(['TB', 'W', 'S']), 'Workflow History places old unordered groups after ordered groups');
+assert.equal(JSON.stringify(workflowHistoryFallbackItems.filter((item) => item.kind !== 'manufacturing').map((item) => item.kind)), JSON.stringify(['TB', 'W', 'S']), 'Workflow History places old unordered groups after ordered groups');
 
 const cloneTBHistoryState = (state) => structuredClone(state);
 const tbHistoryState = {
