@@ -34,7 +34,7 @@ This document records the geometry and export contract after E and S verificatio
 
 ## Export model
 
-- `exportAppliedSvg()` emits a new SVG using the source root `viewBox`, `width`, and `height` attributes.
+- `exportFinalGeometrySvg()` emits a new SVG using the source root `viewBox`, `width`, and `height` attributes.
 - Export emits one outline path for every source panel: applied E/S replacement geometry when present, otherwise the original closed panel contour.
 - S slot paths are emitted in addition to panel outline paths.
 - Export output is geometry-only: no labels, connection text, handles, overlays, or UI artifacts.
@@ -46,7 +46,7 @@ This document records the geometry and export contract after E and S verificatio
 - S inset reconstruction is owned by `buildSInsetPanelContour()`.
 - S tab application is owned by `applySTabsToContour()`.
 - S connection aggregation and slot generation are owned by `buildAppliedSGeometry()`.
-- Export serialization is owned by `exportAppliedSvg()`.
+- Export serialization is owned by `exportFinalGeometrySvg()` using Final Geometry.
 - Future C and P systems must integrate around these contracts and must not alter E or S tab spacing, slot spacing, corner handling, contour reconstruction, panel ownership, or export dimensions.
 
 ## Assumptions

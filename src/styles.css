@@ -552,7 +552,7 @@ button:disabled {
   vector-effect: non-scaling-stroke;
 }
 
-.applied-e-panel-path {
+.final-panel-path {
   fill: none;
   stroke: #000000;
   stroke-width: 1.25;
@@ -742,7 +742,7 @@ button:disabled {
   pointer-events: none;
 }
 
-.applied-s-slot-path {
+.final-slot-path {
   fill: none;
   stroke: #000000;
   stroke-width: 1.25;

@@ -74,11 +74,11 @@ const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
 const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
-const { buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalContourList, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportAppliedSvg, pathDToClosedContour } = module.exports;
+const { buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, pathDToClosedContour } = module.exports;
 
 const buildKerfPreviewViaFinalContours = (svgModel, appliedEPanelPaths, appliedSGeometry, kerfMm) => {
-  const finalContourListResult = buildFinalContourList(svgModel, appliedEPanelPaths, appliedSGeometry);
-  return buildKerfCompensatedPreviewFromFinalContours(finalContourListResult.contours, kerfMm);
+  const finalGeometry = buildFinalGeometry(svgModel, appliedEPanelPaths, appliedSGeometry);
+  return buildKerfCompensatedPreviewFromFinalContours(finalGeometry.contours, kerfMm);
 };
 assert.equal(buildKerfCompensatedPreviewFromFinalContours.length, 2, 'kerf function accepts only finalContourList and kerfMm');
 assert.equal(module.exports.buildKerfCompensatedAppliedPreview, undefined, 'legacy kerf API accepting svgModel/applied geometry is not exported');
@@ -270,13 +270,13 @@ assertBoundsClose(boundsForPathD(finalW.contours[0].pathD), { minX: -0.05, maxX:
 const finalS = buildKerfPreviewViaFinalContours(modelForPanels([panel('s-panel', 0, 0, 10, 8)]), [], [{ connectionId: 'S-final', panelPaths: [{ panelId: 's-panel', sourceEdgeId: 'edge-a', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: 'M 0 0 L 13 0 L 13 8 L 0 8 Z', edgeIds: [] }], slotPaths: [{ connectionId: 'S-final', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 2 2 L 6 2 L 6 5 L 2 5 Z', startDistance: 2, endDistance: 6, widthMm: 3 }], edgeIds: [] }], 0.10);
 assertBoundsClose(boundsForPathD(finalS.contours.find((contour) => contour.panelId === 's-panel').pathD), { minX: -0.05, maxX: 13.05, minY: -0.05, maxY: 8.05 }, 'S modified panel receives kerf');
 assertBoundsClose(boundsForPathD(finalS.contours.find((contour) => contour.finalSource === 's-slot').pathD), { minX: 2.05, maxX: 5.95, minY: 2.05, maxY: 4.95 }, 'S slot receives inward kerf when inside final panel');
-const mixedFinalList = buildFinalContourList(modelForPanels([panel('original-mixed', 0, 0, 10, 8), panel('tb-mixed', 20, 0, 10, 8), panel('w-mixed', 40, 0, 10, 8), panel('s-mixed', 60, 0, 10, 8)]), [{ panelId: 'tb-mixed', eraseRect: { minX: 20, maxX: 30, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 20 0 L 31 0 L 31 8 L 20 8 Z', edgeIds: [] }, { panelId: 'w-mixed', eraseRect: { minX: 40, maxX: 50, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 40 0 L 51 0 L 51 8 L 40 8 Z', edgeIds: [] }], [{ connectionId: 'S-mixed', panelPaths: [{ panelId: 's-mixed', sourceEdgeId: 'edge-a', eraseRect: { minX: 60, maxX: 70, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 60 0 L 71 0 L 71 8 L 60 8 Z', edgeIds: [] }], slotPaths: [{ connectionId: 'S-mixed', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 62 2 L 66 2 L 66 5 L 62 5 Z', startDistance: 2, endDistance: 6, widthMm: 3 }], edgeIds: [] }]);
+const mixedFinalList = buildFinalGeometry(modelForPanels([panel('original-mixed', 0, 0, 10, 8), panel('tb-mixed', 20, 0, 10, 8), panel('w-mixed', 40, 0, 10, 8), panel('s-mixed', 60, 0, 10, 8)]), [{ panelId: 'tb-mixed', eraseRect: { minX: 20, maxX: 30, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 20 0 L 31 0 L 31 8 L 20 8 Z', edgeIds: [] }, { panelId: 'w-mixed', eraseRect: { minX: 40, maxX: 50, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 40 0 L 51 0 L 51 8 L 40 8 Z', edgeIds: [] }], [{ connectionId: 'S-mixed', panelPaths: [{ panelId: 's-mixed', sourceEdgeId: 'edge-a', eraseRect: { minX: 60, maxX: 70, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 60 0 L 71 0 L 71 8 L 60 8 Z', edgeIds: [] }], slotPaths: [{ connectionId: 'S-mixed', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 62 2 L 66 2 L 66 5 L 62 5 Z', startDistance: 2, endDistance: 6, widthMm: 3 }], edgeIds: [] }]);
 assert.deepEqual(mixedFinalList.contours.map((contour) => contour.panelId ?? contour.finalSource), ['original-mixed', 'tb-mixed', 'w-mixed', 's-mixed', 's-slot'], 'mixed drawing finalContourList contains original, TB, W, S and slot contours');
 assert.equal(classifyContoursByContainment([{ id: 'outer-check', source: 'final-contour', finalSource: 'original-panel', kind: 'OUTER', pathD: 'M 0 0 L 20 0 L 20 20 L 0 20 Z' }, { id: 'inner-check', source: 'final-contour', finalSource: 's-slot', kind: 'INNER', pathD: 'M 5 5 L 10 5 L 10 10 L 5 10 Z' }]).find((contour) => contour.id === 'inner-check').kind, 'INNER', 'explicit INNER contour keeps role inside contour');
 assert.ok(classifyContoursByContainment([{ id: 'separate-a', source: 'final-contour', finalSource: 'original-panel', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z' }, { id: 'separate-b', source: 'final-contour', finalSource: 'original-panel', pathD: 'M 20 0 L 30 0 L 30 10 L 20 10 Z' }]).every((contour) => contour.kind === 'OUTER'), 'separate contours classify OUTER');
 
 
-const panelWithFourSlots = buildFinalContourList(modelForPanels([panel('slot-panel', 0, 0, 20, 12)]), [], [{
+const panelWithFourSlots = buildFinalGeometry(modelForPanels([panel('slot-panel', 0, 0, 20, 12)]), [], [{
   connectionId: 'S-four-slots',
   panelPaths: [{ panelId: 'slot-panel', sourceEdgeId: 'edge-a', eraseRect: { minX: 0, maxX: 20, minY: 0, maxY: 12 }, erasePathD: '', pathD: 'M 0 0 L 20 0 L 20 12 L 0 12 Z', edgeIds: [] }],
   slotPaths: [
@@ -329,7 +329,7 @@ const runCase = (name, panels, assignments, connections) => {
     assertNoInteriorSpur(applied.pathD);
     assertClosedPath(applied.pathD, `${name}: contour is closed`);
   });
-  const exported = exportAppliedSvg(svgModel, result);
+  const exported = exportFinalGeometrySvg(svgModel, buildFinalGeometry(svgModel, result, []));
   assert.match(exported, /viewBox="0 0 320 240"/, `${name}: exported viewBox preserved`);
   assert.match(exported, /width="320"/, `${name}: exported width preserved`);
   assert.match(exported, /height="240"/, `${name}: exported height preserved`);
@@ -480,7 +480,7 @@ assert.equal(eOnly.length, 0, 'S assignments do not enter E geometry functions')
 
 const exportModel = modelForPanels([sPanel, receiver, panel('untouched', 160, 100, 20, 20)], { width: 200, height: 180 });
 const exportSGeometry = buildAppliedSGeometry(exportModel, sAssignments, { S1: sConnection('S1', 5) });
-const exportedS = exportAppliedSvg(exportModel, [], exportSGeometry);
+const exportedS = exportFinalGeometrySvg(exportModel, buildFinalGeometry(exportModel, [], exportSGeometry));
 assert.match(exportedS, /viewBox="0 0 200 180"/, 'S export viewBox equals source dimensions');
 assert.match(exportedS, /width="200"/, 'S export width equals source dimensions');
 assert.match(exportedS, /height="180"/, 'S export height equals source dimensions');
@@ -796,7 +796,7 @@ const generatedAssignments = Object.fromEntries(selectedWallEdges.map((edgeId) =
 const generatedPaths = buildAppliedEPanelPaths(wallModel, generatedAssignments, finishedW.connections);
 const manualPaths = buildAppliedEPanelPaths(wallModel, manualEquivalentAssignments, { E1: { id: 'E1', prefix: 'E', properties: { materialThicknessMm: 4, fingerWidthMm: 11, isFingerWidthManual: true } } });
 assert.deepEqual(generatedPaths.map((path) => path.pathD), manualPaths.map((path) => path.pathD), 'W assignments pass through existing E geometry like equivalent manual E setup');
-assert.equal(exportAppliedSvg(wallModel, generatedPaths), exportAppliedSvg(wallModel, manualPaths), 'W export geometry matches equivalent manual E setup');
+assert.equal(exportFinalGeometrySvg(wallModel, buildFinalGeometry(wallModel, generatedPaths, [])), exportFinalGeometrySvg(wallModel, buildFinalGeometry(wallModel, manualPaths, [])), 'W export geometry matches equivalent manual E setup');
 assert.throws(
   () => finishWGroupWorkflow(wConnections, {}, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true }, wallModel),
   /has 0 E\/S reference labels/,
