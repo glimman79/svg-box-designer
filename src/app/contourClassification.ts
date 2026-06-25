@@ -153,6 +153,12 @@ export const classifyImportedPanelContours = (svgModel: SvgDocumentModel): Class
   })),
 );
 
+/**
+ * Compatibility/test-only helper for legacy tests that still classify pre-final
+ * applied E/S geometry directly. Runtime geometry should prefer
+ * buildFinalContourList()/classifyFinalContours() so every contour is classified
+ * from the Final Geometry contract.
+ */
 export const classifyAppliedContours = (
   appliedEPanelPaths: AppliedEPanelPath[],
   appliedSGeometry: AppliedSGeometry[],
