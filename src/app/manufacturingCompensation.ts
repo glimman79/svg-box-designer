@@ -1,6 +1,6 @@
 import type { ClassifiedContour, FinalContour } from './contourClassification';
 import { classifyFinalContours } from './contourClassification';
-import { buildContourSides, cornerTouchTolerance, getContourSignedArea, lineIntersection, offsetContourSide, pointsToClosedPathD } from './sharedGeometry';
+import { buildContourSides, cornerTouchTolerance, getContourSignedArea, lineIntersection, offsetContourSide, pointsMatch, pointsToClosedPathD } from './sharedGeometry';
 import type { PanelContour } from './sharedGeometry';
 import type { Point } from '../svgUtils';
 
@@ -10,6 +10,50 @@ export type KerfCompensationResult = {
 };
 
 export const getKerfCompensationMm = (kerfMm: number) => Math.max(0, kerfMm) / 2;
+
+const cloneContourPoints = (points: PanelContour): PanelContour => points.map((point) => ({ ...point }));
+
+const areCollinear = (previous: Point, current: Point, next: Point) => {
+  const previousDx = current.x - previous.x;
+  const previousDy = current.y - previous.y;
+  const nextDx = next.x - current.x;
+  const nextDy = next.y - current.y;
+  return Math.abs((previousDx * nextDy) - (previousDy * nextDx)) <= cornerTouchTolerance;
+};
+
+export const cleanContourPointsForOffset = (points: PanelContour): PanelContour => {
+  const cleaned: PanelContour = [];
+
+  points.forEach((point) => {
+    if (cleaned.length === 0 || !pointsMatch(cleaned[cleaned.length - 1], point)) {
+      cleaned.push({ ...point });
+    }
+  });
+
+  while (cleaned.length > 1 && pointsMatch(cleaned[0], cleaned[cleaned.length - 1])) {
+    cleaned.pop();
+  }
+
+  let removedPoint = true;
+  while (removedPoint && cleaned.length >= 3) {
+    removedPoint = false;
+
+    for (let pointIndex = 0; pointIndex < cleaned.length; pointIndex += 1) {
+      const previous = cleaned[(pointIndex + cleaned.length - 1) % cleaned.length];
+      const current = cleaned[pointIndex];
+      const next = cleaned[(pointIndex + 1) % cleaned.length];
+
+      if (pointsMatch(previous, current) || pointsMatch(current, next) || areCollinear(previous, current, next)) {
+        cleaned.splice(pointIndex, 1);
+        removedPoint = true;
+        break;
+      }
+    }
+  }
+
+  return cleaned;
+};
+
 
 export const pathDToClosedContour = (pathD: string): PanelContour | null => {
   const tokens = pathD.match(/[a-zA-Z]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
@@ -57,16 +101,22 @@ export const pathDToClosedContour = (pathD: string): PanelContour | null => {
 
 export const compensateContourPoints = (points: PanelContour, contourKind: ClassifiedContour['kind'], compensationMm: number): PanelContour => {
   if (compensationMm <= cornerTouchTolerance) {
-    return points.map((point) => ({ ...point }));
+    return cloneContourPoints(points);
   }
 
-  const windingSign = getContourSignedArea(points) >= 0 ? 1 : -1;
+  const cleanedPoints = cleanContourPointsForOffset(points);
+
+  if (cleanedPoints.length < 3) {
+    return cloneContourPoints(points);
+  }
+
+  const windingSign = getContourSignedArea(cleanedPoints) >= 0 ? 1 : -1;
   const direction = contourKind === 'OUTER' ? -1 : 1;
   const signedOffset = direction * windingSign * compensationMm;
-  const offsetSides = buildContourSides(points).map((side) => offsetContourSide(side, signedOffset));
+  const offsetSides = buildContourSides(cleanedPoints).map((side) => offsetContourSide(side, signedOffset));
 
   if (offsetSides.some((side) => !side)) {
-    return points.map((point) => ({ ...point }));
+    return cloneContourPoints(points);
   }
 
   const rebuilt = (offsetSides as NonNullable<(typeof offsetSides)[number]>[]).map((side, sideIndex, sides) => {
@@ -75,7 +125,7 @@ export const compensateContourPoints = (points: PanelContour, contourKind: Class
   });
 
   if (rebuilt.some((point) => !point)) {
-    return points.map((point) => ({ ...point }));
+    return cloneContourPoints(points);
   }
 
   return rebuilt as PanelContour;

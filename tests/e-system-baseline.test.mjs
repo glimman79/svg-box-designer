@@ -74,7 +74,7 @@ const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
 const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
-const { buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalContourList, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, compensateClassifiedContours, createTabSegmentPlan, exportAppliedSvg, pathDToClosedContour } = module.exports;
+const { buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalContourList, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportAppliedSvg, pathDToClosedContour } = module.exports;
 
 const buildKerfPreviewViaFinalContours = (svgModel, appliedEPanelPaths, appliedSGeometry, kerfMm) => {
   const finalContourListResult = buildFinalContourList(svgModel, appliedEPanelPaths, appliedSGeometry);
@@ -179,6 +179,41 @@ const compensatedOuter = compensateClassifiedContours([outerContour], 0.10);
 assertBoundsClose(boundsForPathD(compensatedOuter[0].pathD), { minX: -0.05, maxX: 10.05, minY: -0.05, maxY: 8.05 }, 'OUTER kerf grows by total kerf');
 const compensatedInner = compensateClassifiedContours([innerContour], 0.10);
 assertBoundsClose(boundsForPathD(compensatedInner[0].pathD), { minX: 2.05, maxX: 5.95, minY: 2.05, maxY: 4.95 }, 'INNER kerf shrinks by total kerf');
+const steppedContourPoints = [
+  { x: 0, y: 0 },
+  { x: 5, y: 0 },
+  { x: 10, y: 0 },
+  { x: 10, y: 4 },
+  { x: 12, y: 4 },
+  { x: 12, y: 6 },
+  { x: 10, y: 6 },
+  { x: 10, y: 8 },
+  { x: 0, y: 8 },
+  { x: 0, y: 8 },
+];
+const cleanedSteppedContour = cleanContourPointsForOffset(steppedContourPoints);
+assert.equal(cleanedSteppedContour.length, 8, 'cleanup removes only duplicate and redundant collinear contour points');
+assert.equal(JSON.stringify(cleanedSteppedContour), JSON.stringify([
+  { x: 0, y: 0 },
+  { x: 10, y: 0 },
+  { x: 10, y: 4 },
+  { x: 12, y: 4 },
+  { x: 12, y: 6 },
+  { x: 10, y: 6 },
+  { x: 10, y: 8 },
+  { x: 0, y: 8 },
+]), 'cleanup preserves real tab/finger step corners');
+const compensatedSteppedOuter = compensateContourPoints(steppedContourPoints, 'OUTER', 0.05);
+assert.notDeepEqual(compensatedSteppedOuter, steppedContourPoints, 'stepped OUTER compensation does not fall back to original points');
+assert.equal(compensatedSteppedOuter.length, cleanedSteppedContour.length, 'stepped OUTER compensation returns compensated cleaned contour');
+assertBoundsClose(compensatedSteppedOuter.reduce((bounds, point) => ({
+  minX: Math.min(bounds.minX, point.x),
+  maxX: Math.max(bounds.maxX, point.x),
+  minY: Math.min(bounds.minY, point.y),
+  maxY: Math.max(bounds.maxY, point.y),
+}), { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity }), { minX: -0.05, maxX: 12.05, minY: -0.05, maxY: 8.05 }, 'stepped OUTER kerf grows bounds by total kerf');
+const zeroKerfStepped = compensateContourPoints(steppedContourPoints, 'OUTER', 0);
+assert.equal(JSON.stringify(zeroKerfStepped), JSON.stringify(steppedContourPoints), 'zero kerf leaves stepped contour geometry unchanged');
 const compensatedNested = compensateClassifiedContours([outerContour, innerContour], 0.10);
 assertBoundsClose(boundsForPathD(compensatedNested.find((contour) => contour.id === 'outer').pathD), { minX: -0.05, maxX: 10.05, minY: -0.05, maxY: 8.05 }, 'nested OUTER uses outward compensation');
 assertBoundsClose(boundsForPathD(compensatedNested.find((contour) => contour.id === 'inner').pathD), { minX: 2.05, maxX: 5.95, minY: 2.05, maxY: 4.95 }, 'nested INNER uses inward compensation');
