@@ -74,7 +74,7 @@ const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
 const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
-const { applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, pathDToClosedContour } = module.exports;
+const { applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, exportManufacturingGeometrySvg, pathDToClosedContour } = module.exports;
 
 const buildKerfPreviewViaFinalContours = (svgModel, appliedEPanelPaths, appliedSGeometry, kerfMm, slotClearanceMm = 0) => {
   const finalGeometry = buildFinalGeometry(svgModel, appliedEPanelPaths, appliedSGeometry);
@@ -265,6 +265,27 @@ const modelForPanels = (panels, { width = 320, height = 240, viewBox = `0 0 ${wi
   panels,
   edges: panels.flatMap((p) => p.edgeIds.map((id, i) => edge(id, p.contour[i], p.contour[(i + 1) % p.contour.length]))),
 });
+
+const exportedPathDs = (svg) => [...svg.matchAll(/<path\b[^>]*\sd="([^"]*)"/g)].map((match) => match[1]);
+const assertExportMatchesPreview = (name, kerfMm, slotClearanceMm) => {
+  const exportPreviewModel = modelForPanels([panel(`export-preview-${name}`, 0, 0, 20, 12)]);
+  const finalGeometry = buildFinalGeometry(exportPreviewModel, [], [{
+    connectionId: `S-export-preview-${name}`,
+    panelPaths: [{ panelId: `export-preview-${name}`, sourceEdgeId: 'edge-a', eraseRect: { minX: 0, maxX: 20, minY: 0, maxY: 12 }, erasePathD: '', pathD: 'M 0 0 L 20 0 L 20 12 L 0 12 Z', edgeIds: [] }],
+    slotPaths: [{ connectionId: `S-export-preview-${name}`, sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 5 3 L 10 3 L 10 7 L 5 7 Z', startDistance: 5, endDistance: 10, widthMm: 4 }],
+    edgeIds: [],
+  }]);
+  const manufacturingGeometry = buildKerfCompensatedPreviewFromFinalContours(finalGeometry.contours, kerfMm, slotClearanceMm);
+  const exported = exportManufacturingGeometrySvg(exportPreviewModel, manufacturingGeometry);
+  assert.deepEqual(exportedPathDs(exported), manufacturingGeometry.contours.map((contour) => contour.pathD ?? ''), `${name}: export serializes exactly the same ManufacturingGeometry contours as preview`);
+};
+assertExportMatchesPreview('zero-kerf-zero-clearance', 0, 0);
+assertExportMatchesPreview('positive-kerf', 0.10, 0);
+assertExportMatchesPreview('positive-slot-clearance', 0, 0.10);
+assertExportMatchesPreview('positive-kerf-and-slot-clearance', 0.10, 0.10);
+const exportSource = readFileSync(resolve(root, 'src/app/exportFinalGeometrySvg.ts'), 'utf8');
+assert.doesNotMatch(exportSource, /buildFinalGeometry|buildAppliedEPanelPaths|buildAppliedSGeometry|applySlotClearance|compensateClassifiedContours/, 'export serialization performs no geometry rebuilding or manufacturing calculations');
+
 const importedNestedContours = classifyImportedPanelContours(modelForPanels([
   panel('imported-outer', 0, 0, 30, 30),
   panel('imported-inner', 5, 5, 10, 10),

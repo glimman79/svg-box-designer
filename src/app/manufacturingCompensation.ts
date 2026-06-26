@@ -4,10 +4,12 @@ import { buildContourSides, cornerTouchTolerance, getContourSignedArea, lineInte
 import type { PanelContour } from './sharedGeometry';
 import type { Point } from '../svgUtils';
 
-export type KerfCompensationResult = {
+export type ManufacturingGeometry = {
   finalContourList: FinalContour[];
   contours: ClassifiedContour[];
 };
+
+export type KerfCompensationResult = ManufacturingGeometry;
 
 export const getKerfCompensationMm = (kerfMm: number) => Math.max(0, kerfMm) / 2;
 
@@ -194,7 +196,7 @@ export const buildKerfCompensatedPreviewFromFinalContours = (
   finalContourList: FinalContour[],
   kerfMm: number,
   slotClearanceMm = 0,
-): KerfCompensationResult => {
+): ManufacturingGeometry => {
   const clearedFinalContourList = applySlotClearance(finalContourList, slotClearanceMm);
   const contours = compensateClassifiedContours(classifyFinalContours(clearedFinalContourList), kerfMm);
 
