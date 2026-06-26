@@ -2,7 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
-import { exportFinalGeometrySvg } from './app/exportFinalGeometrySvg';
+import { exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
 import { buildAppliedSGeometry } from './app/sGeometry';
 import { buildKerfCompensatedPreviewFromFinalContours } from './app/manufacturingCompensation';
 import { buildFinalGeometry } from './app/finalGeometry';
@@ -18,7 +18,7 @@ import type { ActiveSGroup, ActiveTBGroup, ActiveWGroup, AppliedEPanelPath, Appl
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
 export { edgeMatchesContourSide, getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './app/sharedPanelGeometry';
 export type { PanelValidationResult } from './app/sharedPanelGeometry';
-export { exportFinalGeometrySvg } from './app/exportFinalGeometrySvg';
+export { exportFinalGeometrySvg, exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
 export { buildFinalGeometry } from './app/finalGeometry';
 export { buildAppliedSGeometry } from './app/sGeometry';
 export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
@@ -1399,7 +1399,7 @@ function App() {
     // Export after Apply is clean laser geometry; export before Apply remains label/reference export.
     const hasAppliedGeometry = appliedEPanelPaths.length > 0 || appliedSGeometry.length > 0;
     const output = hasAppliedGeometry
-      ? exportFinalGeometrySvg(svgModel, finalGeometry)
+      ? exportManufacturingGeometrySvg(svgModel, kerfCompensatedAppliedPreview)
       : exportLabeledSvg(svgModel.content, edgeAssignments, svgModel.edges);
     const blob = new Blob([output], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
