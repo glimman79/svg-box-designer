@@ -74,14 +74,15 @@ const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
 const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
-const { buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, pathDToClosedContour } = module.exports;
+const { applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, pathDToClosedContour } = module.exports;
 
-const buildKerfPreviewViaFinalContours = (svgModel, appliedEPanelPaths, appliedSGeometry, kerfMm) => {
+const buildKerfPreviewViaFinalContours = (svgModel, appliedEPanelPaths, appliedSGeometry, kerfMm, slotClearanceMm = 0) => {
   const finalGeometry = buildFinalGeometry(svgModel, appliedEPanelPaths, appliedSGeometry);
-  return buildKerfCompensatedPreviewFromFinalContours(finalGeometry.contours, kerfMm);
+  return buildKerfCompensatedPreviewFromFinalContours(finalGeometry.contours, kerfMm, slotClearanceMm);
 };
 assert.equal(buildKerfCompensatedPreviewFromFinalContours.length, 2, 'kerf function accepts only finalContourList and kerfMm');
 assert.equal(module.exports.buildKerfCompensatedAppliedPreview, undefined, 'legacy kerf API accepting svgModel/applied geometry is not exported');
+assert.equal(applySlotClearance.length, 2, 'slot clearance helper accepts finalContourList and slotClearanceMm');
 const boundaryFinalContourList = [
   { id: 'boundary-outer', source: 'final-contour', finalSource: 'original-panel', kind: 'OUTER', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z' },
   { id: 'boundary-inner', source: 'final-contour', finalSource: 's-slot', kind: 'INNER', pathD: 'M 2 2 L 4 2 L 4 4 L 2 4 Z' },
@@ -230,6 +231,16 @@ const appliedPreview = buildKerfPreviewViaFinalContours(
 );
 assertBoundsClose(boundsForPathD(appliedPreview.contours.find((contour) => contour.panelId === 'panel-s').pathD), { minX: -0.05, maxX: 10.05, minY: -0.05, maxY: 8.05 }, 'kerf preview generated physical panels expand');
 assertBoundsClose(boundsForPathD(appliedPreview.contours.find((contour) => contour.finalSource === 's-slot').pathD), { minX: 2.05, maxX: 5.95, minY: 2.05, maxY: 4.95 }, 'kerf preview generated slots shrink');
+
+const zeroSlotClearance = applySlotClearance(boundaryFinalContourList, 0);
+assert.equal(JSON.stringify(zeroSlotClearance), JSON.stringify(boundaryFinalContourList), 'slotClearanceMm 0 produces no geometry changes');
+const positiveSlotClearance = applySlotClearance(boundaryFinalContourList, 0.10);
+assertBoundsClose(boundsForPathD(positiveSlotClearance.find((contour) => contour.finalSource === 's-slot').pathD), { minX: 1.9, maxX: 4.1, minY: 1.9, maxY: 4.1 }, 'slotClearanceMm expands only S slot contour before kerf');
+assert.equal(positiveSlotClearance.find((contour) => contour.finalSource === 'original-panel').pathD, boundaryFinalContourList.find((contour) => contour.finalSource === 'original-panel').pathD, 'outer panel contours unchanged by slot clearance');
+const slotClearanceThenKerf = buildKerfCompensatedPreviewFromFinalContours(boundaryFinalContourList, 0.10, 0.10);
+assertBoundsClose(boundsForPathD(slotClearanceThenKerf.contours.find((contour) => contour.finalSource === 's-slot').pathD), { minX: 1.95, maxX: 4.05, minY: 1.95, maxY: 4.05 }, 'slot clearance runs before normal inward kerf for S slots');
+assertBoundsClose(boundsForPathD(buildKerfCompensatedPreviewFromFinalContours(boundaryFinalContourList, 0.10, 0.10).contours.find((contour) => contour.finalSource === 'original-panel').pathD), { minX: -0.05, maxX: 10.05, minY: -0.05, maxY: 10.05 }, 'kerf behavior for outer panels remains unchanged with slot clearance');
+
 const uncompensatedPreview = buildKerfPreviewViaFinalContours(simpleModelForPanels([{ id: 'panel-e', contour: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 8 }, { x: 0, y: 8 }], bounds: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, edgeIds: [] }]), [{ panelId: 'panel-e', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: outerContour.pathD, edgeIds: [] }], [], 0);
 const changedPreview = buildKerfPreviewViaFinalContours(simpleModelForPanels([{ id: 'panel-e', contour: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 8 }, { x: 0, y: 8 }], bounds: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, edgeIds: [] }]), [{ panelId: 'panel-e', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: outerContour.pathD, edgeIds: [] }], [], 0.10);
 assert.notEqual(uncompensatedPreview.contours[0].pathD, changedPreview.contours[0].pathD, 'preview geometry changes when kerf changes');
@@ -272,6 +283,18 @@ assertBoundsClose(boundsForPathD(finalS.contours.find((contour) => contour.panel
 assertBoundsClose(boundsForPathD(finalS.contours.find((contour) => contour.finalSource === 's-slot').pathD), { minX: 2.05, maxX: 5.95, minY: 2.05, maxY: 4.95 }, 'S slot receives inward kerf when inside final panel');
 const mixedFinalList = buildFinalGeometry(modelForPanels([panel('original-mixed', 0, 0, 10, 8), panel('tb-mixed', 20, 0, 10, 8), panel('w-mixed', 40, 0, 10, 8), panel('s-mixed', 60, 0, 10, 8)]), [{ panelId: 'tb-mixed', eraseRect: { minX: 20, maxX: 30, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 20 0 L 31 0 L 31 8 L 20 8 Z', edgeIds: [] }, { panelId: 'w-mixed', eraseRect: { minX: 40, maxX: 50, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 40 0 L 51 0 L 51 8 L 40 8 Z', edgeIds: [] }], [{ connectionId: 'S-mixed', panelPaths: [{ panelId: 's-mixed', sourceEdgeId: 'edge-a', eraseRect: { minX: 60, maxX: 70, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 60 0 L 71 0 L 71 8 L 60 8 Z', edgeIds: [] }], slotPaths: [{ connectionId: 'S-mixed', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 62 2 L 66 2 L 66 5 L 62 5 Z', startDistance: 2, endDistance: 6, widthMm: 3 }], edgeIds: [] }]);
 assert.deepEqual(mixedFinalList.contours.map((contour) => contour.panelId ?? contour.finalSource), ['original-mixed', 'tb-mixed', 'w-mixed', 's-mixed', 's-slot'], 'mixed drawing finalContourList contains original, TB, W, S and slot contours');
+
+const mixedFinalGeometryBeforeManufacturing = JSON.stringify(mixedFinalList.contours);
+const mixedWithSlotClearance = buildKerfCompensatedPreviewFromFinalContours(mixedFinalList.contours, 0, 0.10);
+assert.equal(JSON.stringify(mixedFinalList.contours), mixedFinalGeometryBeforeManufacturing, 'Final Geometry remains byte-for-byte identical before Manufacturing slot clearance');
+assertBoundsClose(boundsForPathD(mixedWithSlotClearance.contours.find((contour) => contour.panelId === 'original-mixed').pathD), { minX: 0, maxX: 10, minY: 0, maxY: 8 }, 'outer panel contour unchanged by slot clearance');
+assertBoundsClose(boundsForPathD(mixedWithSlotClearance.contours.find((contour) => contour.panelId === 'tb-mixed').pathD), { minX: 20, maxX: 31, minY: 0, maxY: 8 }, 'TB geometry unchanged by slot clearance');
+assertBoundsClose(boundsForPathD(mixedWithSlotClearance.contours.find((contour) => contour.panelId === 'w-mixed').pathD), { minX: 40, maxX: 51, minY: 0, maxY: 8 }, 'W geometry unchanged by slot clearance');
+assertBoundsClose(boundsForPathD(mixedWithSlotClearance.contours.find((contour) => contour.finalSource === 's-slot').pathD), { minX: 61.9, maxX: 66.1, minY: 1.9, maxY: 5.1 }, 'only S-slot contours receive slot clearance');
+const tbApplyFinalGeometryZeroClearance = buildFinalGeometry(modelForPanels([panel('tb-apply', 0, 0, 10, 8)]), [{ panelId: 'tb-apply', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: 'M 0 0 L 12 0 L 12 8 L 0 8 Z', edgeIds: [] }], []);
+const tbApplyFinalGeometryPositiveClearance = buildFinalGeometry(modelForPanels([panel('tb-apply', 0, 0, 10, 8)]), [{ panelId: 'tb-apply', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: 'M 0 0 L 12 0 L 12 8 L 0 8 Z', edgeIds: [] }], []);
+assert.equal(JSON.stringify(tbApplyFinalGeometryPositiveClearance.contours), JSON.stringify(tbApplyFinalGeometryZeroClearance.contours), 'TB Apply produces identical geometry regardless of slotClearanceMm');
+
 assert.equal(classifyContoursByContainment([{ id: 'outer-check', source: 'final-contour', finalSource: 'original-panel', kind: 'OUTER', pathD: 'M 0 0 L 20 0 L 20 20 L 0 20 Z' }, { id: 'inner-check', source: 'final-contour', finalSource: 's-slot', kind: 'INNER', pathD: 'M 5 5 L 10 5 L 10 10 L 5 10 Z' }]).find((contour) => contour.id === 'inner-check').kind, 'INNER', 'explicit INNER contour keeps role inside contour');
 assert.ok(classifyContoursByContainment([{ id: 'separate-a', source: 'final-contour', finalSource: 'original-panel', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z' }, { id: 'separate-b', source: 'final-contour', finalSource: 'original-panel', pathD: 'M 20 0 L 30 0 L 30 10 L 20 10 Z' }]).every((contour) => contour.kind === 'OUTER'), 'separate contours classify OUTER');
 
@@ -928,10 +951,10 @@ const workflowHistoryItems = buildWorkflowHistoryItems(
 );
 assert.equal(workflowHistoryItems.filter((item) => item.kind === 'manufacturing').length, 0, 'Workflow History omits Manufacturing until the first MFG tool click is recorded');
 
-assert.equal(haveProjectSettingsChanged({ kerfMm: 0.15, clearanceMm: 0.05 }, null), false, 'Default Manufacturing settings are not a completed operation');
-assert.equal(haveProjectSettingsChanged({ kerfMm: 0.2, clearanceMm: 0.05 }, null), true, 'Changing Kerf before Apply is a pending Manufacturing operation');
-assert.equal(haveProjectSettingsChanged({ kerfMm: 0.2, clearanceMm: 0.08 }, { kerfMm: 0.2, clearanceMm: 0.05 }), true, 'Changing Clearance after a Kerf Apply is a pending Manufacturing operation');
-assert.equal(haveProjectSettingsChanged({ kerfMm: 0.2, clearanceMm: 0.08 }, { kerfMm: 0.2, clearanceMm: 0.08 }), false, 'Repeated Apply without Manufacturing changes does not add work');
+assert.equal(haveProjectSettingsChanged({ kerfMm: 0.15, slotClearanceMm: 0 }, null), false, 'Default Manufacturing settings are not a completed operation');
+assert.equal(haveProjectSettingsChanged({ kerfMm: 0.2, slotClearanceMm: 0 }, null), true, 'Changing Kerf before Apply is a pending Manufacturing operation');
+assert.equal(haveProjectSettingsChanged({ kerfMm: 0.2, slotClearanceMm: 0.08 }, { kerfMm: 0.2, slotClearanceMm: 0 }), true, 'Changing Slot Clearance after a Kerf Apply is a pending Manufacturing operation');
+assert.equal(haveProjectSettingsChanged({ kerfMm: 0.2, slotClearanceMm: 0.08 }, { kerfMm: 0.2, slotClearanceMm: 0.08 }), false, 'Repeated Apply without Manufacturing changes does not add work');
 
 const workflowHistoryItemsWithFirstMfgClick = buildWorkflowHistoryItems(
   [{ id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: tbFinished.isActive, orderIndex: 1 }],
