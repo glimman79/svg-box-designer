@@ -155,14 +155,51 @@ export const compensateClassifiedContours = (contours: ClassifiedContour[], kerf
   });
 };
 
+export const applySlotClearance = (
+  finalContourList: FinalContour[],
+  slotClearanceMm: number,
+): FinalContour[] => {
+  if (slotClearanceMm <= cornerTouchTolerance) {
+    return finalContourList.map((contour) => ({
+      ...contour,
+      ...(contour.points ? { points: contour.points.map((point) => ({ ...point })) } : {}),
+    }));
+  }
+
+  return finalContourList.map((contour) => {
+    if (contour.finalSource !== 's-slot') {
+      return {
+        ...contour,
+        ...(contour.points ? { points: contour.points.map((point) => ({ ...point })) } : {}),
+      };
+    }
+
+    const points = contour.points ?? (contour.pathD ? pathDToClosedContour(contour.pathD) ?? undefined : undefined);
+
+    if (!points) {
+      return { ...contour };
+    }
+
+    const clearedPoints = compensateContourPoints(points, 'OUTER', slotClearanceMm);
+
+    return {
+      ...contour,
+      points: clearedPoints,
+      pathD: pointsToClosedPathD(clearedPoints),
+    };
+  });
+};
+
 export const buildKerfCompensatedPreviewFromFinalContours = (
   finalContourList: FinalContour[],
   kerfMm: number,
+  slotClearanceMm = 0,
 ): KerfCompensationResult => {
-  const contours = compensateClassifiedContours(classifyFinalContours(finalContourList), kerfMm);
+  const clearedFinalContourList = applySlotClearance(finalContourList, slotClearanceMm);
+  const contours = compensateClassifiedContours(classifyFinalContours(clearedFinalContourList), kerfMm);
 
   return {
-    finalContourList,
+    finalContourList: clearedFinalContourList,
     contours,
   };
 };

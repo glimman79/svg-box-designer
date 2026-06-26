@@ -26,7 +26,7 @@ export { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupW
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
 // classifyAppliedContours is intentionally re-exported only as a compatibility/test helper.
 export { buildFinalContourList, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours } from './app/contourClassification';
-export { buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour } from './app/manufacturingCompensation';
+export { applySlotClearance, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour } from './app/manufacturingCompensation';
 export type { ClassifiedContour, ClassifiedContourSource, ContourKind } from './app/contourClassification';
 export { applyTabsToContour, buildAppliedEPanelPaths, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
@@ -45,7 +45,7 @@ type ActiveTool = 'select' | 'TB' | 'W' | 'S' | 'J' | 'P' | 'manufacturing';
 
 type ProjectSettings = {
   kerfMm: number;
-  clearanceMm: number;
+  slotClearanceMm: number;
 };
 
 type HistoryState = {
@@ -173,14 +173,14 @@ export const getToolClickGroupStartKind = (
 
 const defaultProjectSettings: ProjectSettings = {
   kerfMm: 0.15,
-  clearanceMm: 0.05,
+  slotClearanceMm: 0,
 };
 
 const maxHistoryEntries = 10;
 
 export const haveProjectSettingsChanged = (currentSettings: ProjectSettings, appliedSettings: ProjectSettings | null): boolean => {
   const baseline = appliedSettings ?? defaultProjectSettings;
-  return currentSettings.kerfMm !== baseline.kerfMm || currentSettings.clearanceMm !== baseline.clearanceMm;
+  return currentSettings.kerfMm !== baseline.kerfMm || currentSettings.slotClearanceMm !== baseline.slotClearanceMm;
 };
 
 const getNextWorkflowGroupOrderIndex = (workflowGroupOrder: Record<string, number>) => {
@@ -687,8 +687,8 @@ function App() {
   );
 
   const kerfCompensatedAppliedPreview = useMemo(
-    () => buildKerfCompensatedPreviewFromFinalContours(finalGeometry.contours, projectSettings.kerfMm),
-    [finalGeometry.contours, projectSettings.kerfMm],
+    () => buildKerfCompensatedPreviewFromFinalContours(finalGeometry.contours, projectSettings.kerfMm, projectSettings.slotClearanceMm),
+    [finalGeometry.contours, projectSettings.kerfMm, projectSettings.slotClearanceMm],
   );
 
   const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections, workflowGroupOrder.manufacturing), [connections, sLabelGroups, tbLabelGroups, wLabelGroups, workflowGroupOrder]);
@@ -1951,10 +1951,10 @@ function App() {
               <h3>Manufacturing settings</h3>
               <div className="property-grid">
                 <NumericField id="manufacturing-kerf" label="Kerf" min={0} value={projectSettings.kerfMm} onChange={(kerfMm) => updateProjectSettings({ kerfMm })} />
-                <NumericField id="manufacturing-clearance" label="Clearance" min={0} value={projectSettings.clearanceMm} onChange={(clearanceMm) => updateProjectSettings({ clearanceMm })} />
+                <NumericField id="manufacturing-slot-clearance" label="Slot clearance" min={0} value={projectSettings.slotClearanceMm} onChange={(slotClearanceMm) => updateProjectSettings({ slotClearanceMm })} />
               </div>
               <p className="muted">Kerf applies globally to the whole generated output.</p>
-              <p className="muted">Clearance applies only to joints/slots later.</p>
+              <p className="muted">Slot clearance applies only to S-generated slot contours before Kerf.</p>
             </div>
           )}
 
