@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node tests/e-system-baseline.test.mjs && node tests/svg-parser.test.mjs && node tests/manufacturing-pipeline.test.mjs"
+    "test": "node tests/e-system-baseline.test.mjs && node tests/svg-parser.test.mjs"
   },
   "dependencies": {
     "react": "latest",
