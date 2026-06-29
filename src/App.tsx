@@ -52,12 +52,14 @@ export type PanelManagerState = {
   panels: Record<string, PanelMetadata>;
   defaultThicknessMm: number;
   isApplied: boolean;
+  isDirty: boolean;
 };
 
 export const defaultPanelManagerState: PanelManagerState = {
   panels: {},
   defaultThicknessMm: 3,
   isApplied: false,
+  isDirty: false,
 };
 
 type ProjectSettings = {
@@ -238,6 +240,7 @@ export const createPanelManagerStateFromModel = (svgModel: SvgDocumentModel, def
   panels: Object.fromEntries(svgModel.panels.map((panel) => [panel.id, { panelId: panel.id, thicknessMm: defaultThicknessMm }])),
   defaultThicknessMm,
   isApplied: false,
+  isDirty: false,
 });
 
 
@@ -758,7 +761,7 @@ function App() {
   );
 
   const isProjectLocked = !panelManager.isApplied;
-  const isPanelManagerVisible = isPanelManagerModalOpen || activeTool === 'PM';
+  const isPanelManagerVisible = activeTool === 'PM';
   const panelDisplayItems = useMemo(() => svgModel.panels.map((panel) => ({
     panelId: panel.id,
     name: getPanelDisplayName(panel.id),
@@ -1370,7 +1373,7 @@ function App() {
       const currentThickness = current.panels[panelId]?.thicknessMm;
       return {
         ...current,
-        isApplied: currentThickness === thicknessMm ? current.isApplied : false,
+        isDirty: currentThickness === thicknessMm ? current.isDirty : true,
         panels: {
           ...current.panels,
           [panelId]: { panelId, thicknessMm },
@@ -1386,9 +1389,9 @@ function App() {
       return;
     }
     pushUndoState();
-    setPanelManager((current) => ({ ...current, isApplied: true }));
+    setPanelManager((current) => ({ ...current, isApplied: true, isDirty: false }));
     setIsPanelManagerModalOpen(false);
-    setActiveTool('PM');
+    setActiveTool('select');
     setActivePanelId(null);
     setErrorMessage('');
   };
@@ -2037,14 +2040,10 @@ function App() {
         <div className="clear-dialog-backdrop" role="presentation">
           <div className="clear-dialog panel-manager-modal" role="dialog" aria-modal="true" aria-labelledby="panel-manager-title">
             <h2 id="panel-manager-title">Panel Manager</h2>
-            <p>{Object.keys(panelManager.panels).length} panels found. Set panel thickness before continuing.</p>
-            <div className="property-grid">
-              {Object.values(panelManager.panels).map((panel) => (
-                <NumericField key={panel.panelId} id={`pm-modal-${panel.panelId}`} label={`${getPanelDisplayName(panel.panelId)} thickness (mm)`} min={0.01} step={0.01} value={panel.thicknessMm} onFocus={() => setActivePanelId(panel.panelId)} onChange={(thicknessMm) => updatePanelThickness(panel.panelId, thicknessMm)} />
-              ))}
-            </div>
+            <p>{Object.keys(panelManager.panels).length} panels detected.</p>
+            <p>Please assign panel thickness before continuing.</p>
             <div className="clear-dialog-actions">
-              <button className="toolbar-button primary" type="button" onClick={applyPanelManager} disabled={panelManager.isApplied}>Apply</button>
+              <button className="toolbar-button primary" type="button" onClick={() => { setIsPanelManagerModalOpen(false); setActiveTool('PM'); }}>OK</button>
             </div>
           </div>
         </div>
@@ -2089,10 +2088,10 @@ function App() {
               <p className="muted">PM is the owner of panel thickness. Downstream TB/S/W tools still use their existing thickness fields in this PR.</p>
               <div className="property-grid">
                 {Object.values(panelManager.panels).map((panel) => (
-                  <NumericField key={panel.panelId} id={`pm-panel-${panel.panelId}`} label={`${getPanelDisplayName(panel.panelId)} thickness (mm)`} min={0.01} step={0.01} value={panel.thicknessMm} onFocus={() => setActivePanelId(panel.panelId)} onChange={(thicknessMm) => updatePanelThickness(panel.panelId, thicknessMm)} />
+                  <NumericField key={panel.panelId} id={`pm-panel-${panel.panelId}`} label={`${getPanelDisplayName(panel.panelId)} Thickness`} min={0.01} step={0.01} value={panel.thicknessMm} onFocus={() => setActivePanelId(panel.panelId)} onChange={(thicknessMm) => updatePanelThickness(panel.panelId, thicknessMm)} />
                 ))}
               </div>
-              <button className="toolbar-button primary" type="button" onClick={applyPanelManager} disabled={panelManager.isApplied}>Apply</button>
+              <button className="toolbar-button primary" type="button" onClick={applyPanelManager} disabled={!panelManager.isDirty}>Apply</button>
             </div>
           )}
 

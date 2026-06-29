@@ -115,6 +115,7 @@ const pmModel = simpleModelForPanels([
 const pmState = createPanelManagerStateFromModel(pmModel);
 assert.equal(pmState.defaultThicknessMm, 3, 'PM default thickness is 3 mm');
 assert.equal(pmState.isApplied, false, 'PM starts unapplied after import');
+assert.equal(pmState.isDirty, false, 'PM starts with no pending property panel edits after import');
 assert.deepEqual(Object.keys(pmState.panels), ['panel-1', 'panel-2'], 'import with panels creates PM state per panel');
 assert.equal(pmState.panels['panel-1'].thicknessMm, 3, 'PM panel defaults to 3 mm thickness');
 assert.equal(validatePanelManagerState(pmState), null, 'valid PM thickness values allow Apply');
@@ -122,17 +123,18 @@ assert.match(validatePanelManagerState({ ...pmState, panels: { 'panel-1': { pane
 assert.match(validatePanelManagerState(createPanelManagerStateFromModel(simpleModelForPanels([]))) ?? '', /No panels were detected/, 'no detected panels keep workflow locked');
 const lockedByDefault = !pmState.isApplied;
 assert.equal(lockedByDefault, true, 'TB/S/W/MFG tools are locked before PM Apply');
-const appliedPmState = { ...pmState, isApplied: true };
+const appliedPmState = { ...pmState, isApplied: true, isDirty: false };
 assert.equal(!appliedPmState.isApplied, false, 'PM Apply unlocks tools');
 const pmHistory = buildPmWorkflowHistoryItems([], [], [], {}, undefined, appliedPmState.isApplied);
 assert.equal(pmHistory.filter((item) => item.kind === 'PM').length, 1, 'PM appears in History once after Apply and is not duplicated');
 assert.equal(pmHistory[0].name, 'PM', 'PM history item label is PM');
 assert.equal(getPmWorkflowHistoryTool(pmHistory[0]), 'PM', 'clicking PM history item opens PM property panel');
 const undoSnapshot = structuredClone(appliedPmState);
-const redoSnapshot = { ...undoSnapshot, panels: { ...undoSnapshot.panels, 'panel-1': { panelId: 'panel-1', thicknessMm: 4.5 } }, isApplied: false };
+const redoSnapshot = { ...undoSnapshot, panels: { ...undoSnapshot.panels, 'panel-1': { panelId: 'panel-1', thicknessMm: 4.5 } }, isApplied: true, isDirty: true };
 assert.equal(undoSnapshot.panels['panel-1'].thicknessMm, 3, 'Undo restores PM panel thickness values');
 assert.equal(redoSnapshot.panels['panel-1'].thicknessMm, 4.5, 'Redo restores updated PM panel thickness values');
-assert.equal(redoSnapshot.isApplied, false, 'Undo/Redo snapshots carry PM applied/unapplied lock state');
+assert.equal(redoSnapshot.isApplied, true, 'PM edits after an Apply do not relock an unlocked project before reapplying');
+assert.equal(redoSnapshot.isDirty, true, 'Undo/Redo snapshots carry pending PM edit state');
 
 
 const classifiedEContours = classifyAppliedContours([{ panelId: 'panel-e', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 10 }, erasePathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z', edgeIds: [] }], []);
