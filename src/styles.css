@@ -1386,3 +1386,29 @@ button:disabled {
 .properties-card .muted {
   font-size: 0.68rem;
 }
+
+.panel-manager-overlays {
+  pointer-events: none;
+}
+
+.panel-manager-panel-highlight {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.panel-manager-panel-highlight.active {
+  fill: rgba(37, 99, 235, 0.12);
+  stroke: #2563eb;
+  stroke-dasharray: 5 3;
+}
+
+.panel-manager-label .edge-label-background {
+  fill: #eff6ff;
+  stroke: #2563eb;
+}
+
+.panel-manager-label .edge-label-text {
+  fill: #1d4ed8;
+}
