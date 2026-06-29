@@ -41,7 +41,24 @@ type LabelGroup = {
   description: string;
 };
 
-type ActiveTool = 'select' | 'TB' | 'W' | 'S' | 'J' | 'P' | 'manufacturing';
+type ActiveTool = 'select' | 'PM' | 'TB' | 'W' | 'S' | 'J' | 'P' | 'manufacturing';
+
+export type PanelMetadata = {
+  panelId: string;
+  thicknessMm: number;
+};
+
+export type PanelManagerState = {
+  panels: Record<string, PanelMetadata>;
+  defaultThicknessMm: number;
+  isApplied: boolean;
+};
+
+export const defaultPanelManagerState: PanelManagerState = {
+  panels: {},
+  defaultThicknessMm: 3,
+  isApplied: false,
+};
 
 type ProjectSettings = {
   kerfMm: number;
@@ -62,6 +79,7 @@ type HistoryState = {
   completedTBGroups: ActiveTBGroup[];
   activeWGroup: ActiveWGroup | null;
   workflowGroupOrder: Record<string, number>;
+  panelManager: PanelManagerState;
 };
 
 
@@ -69,7 +87,7 @@ type WorkflowHistoryGroup = { id: string; labels: string[]; isActive: boolean; o
 
 type WorkflowHistoryItem = {
   id: string;
-  kind: 'TB' | 'S' | 'W' | 'manufacturing';
+  kind: 'PM' | 'TB' | 'S' | 'W' | 'manufacturing';
   name: string;
   labels: string[];
   isActive: boolean;
@@ -82,6 +100,7 @@ export const buildWorkflowHistoryItems = (
   wGroups: WorkflowHistoryGroup[],
   connections: ConnectionMap,
   manufacturingOrderIndex?: number,
+  includePanelManager = false,
 ): WorkflowHistoryItem[] => {
   const manufacturingItem = Number.isFinite(manufacturingOrderIndex) ? [{
       id: 'workflow-history-manufacturing',
@@ -92,7 +111,17 @@ export const buildWorkflowHistoryItems = (
       childCount: 0,
       orderIndex: manufacturingOrderIndex,
     }] : [];
+  const panelManagerItem = includePanelManager ? [{
+      id: 'workflow-history-panel-manager',
+      kind: 'PM' as const,
+      name: 'PM',
+      labels: [],
+      isActive: false,
+      childCount: 0,
+      orderIndex: -1,
+    }] : [];
   const orderedItems = [
+    ...panelManagerItem,
     ...manufacturingItem,
     ...tbGroups.map((group, groupIndex) => ({
       id: group.id,
@@ -202,7 +231,24 @@ const cloneHistoryState = (state: HistoryState): HistoryState => ({
   completedTBGroups: structuredClone(state.completedTBGroups ?? []),
   activeWGroup: state.activeWGroup ? structuredClone(state.activeWGroup) : null,
   workflowGroupOrder: structuredClone(state.workflowGroupOrder ?? {}),
+  panelManager: structuredClone(state.panelManager ?? defaultPanelManagerState),
 });
+
+export const createPanelManagerStateFromModel = (svgModel: SvgDocumentModel, defaultThicknessMm = 3): PanelManagerState => ({
+  panels: Object.fromEntries(svgModel.panels.map((panel) => [panel.id, { panelId: panel.id, thicknessMm: defaultThicknessMm }])),
+  defaultThicknessMm,
+  isApplied: false,
+});
+
+export const validatePanelManagerState = (panelManager: PanelManagerState): string | null => {
+  const panels = Object.values(panelManager.panels);
+  if (panels.length === 0) {
+    return 'No panels were detected. Import a file with closed panels before using workflow tools.';
+  }
+  return panels.every((panel) => Number.isFinite(panel.thicknessMm) && panel.thicknessMm > 0)
+    ? null
+    : 'Panel thickness must be a finite number greater than 0 mm.';
+};
 
 type NumericFieldProps = {
   id: string;
@@ -570,6 +616,8 @@ function App() {
   const [expandedTBGroups, setExpandedTBGroups] = useState<Record<string, boolean>>({});
   const [expandedWGroups, setExpandedWGroups] = useState<Record<string, boolean>>({});
   const [activeTool, setActiveTool] = useState<ActiveTool>('select');
+  const [panelManager, setPanelManager] = useState<PanelManagerState>(() => ({ ...createPanelManagerStateFromModel(parseSvgDocument(starterSvg)), isApplied: true }));
+  const [isPanelManagerModalOpen, setIsPanelManagerModalOpen] = useState(false);
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
@@ -691,7 +739,8 @@ function App() {
     [finalGeometry.contours, projectSettings.kerfMm, projectSettings.slotClearanceMm],
   );
 
-  const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections, workflowGroupOrder.manufacturing), [connections, sLabelGroups, tbLabelGroups, wLabelGroups, workflowGroupOrder]);
+  const isProjectLocked = !panelManager.isApplied;
+  const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections, workflowGroupOrder.manufacturing, panelManager.isApplied), [connections, panelManager.isApplied, sLabelGroups, tbLabelGroups, wLabelGroups, workflowGroupOrder]);
   const activeWConnection = activeWGroup?.isActive ? connections[activeWGroup.connectionId] : undefined;
   const hasPendingManufacturingSettings = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
   const hasApplyInputs = hasPendingManufacturingSettings
@@ -702,6 +751,11 @@ function App() {
     setActiveTool(getWorkflowHistoryTool(item));
     setSelectedLabelId(firstLabel);
     setErrorMessage('');
+
+    if (item.kind === 'PM') {
+      setSelectedLabelId(null);
+      return;
+    }
 
     if (item.kind === 'manufacturing') {
       setSelectedLabelId(null);
@@ -739,6 +793,7 @@ function App() {
     completedTBGroups,
     activeWGroup,
     workflowGroupOrder,
+    panelManager,
   });
 
   const restoreHistoryState = (state: HistoryState) => {
@@ -756,6 +811,8 @@ function App() {
     setCompletedTBGroups(snapshot.completedTBGroups);
     setActiveWGroup(snapshot.activeWGroup);
     setWorkflowGroupOrder(snapshot.workflowGroupOrder);
+    setPanelManager(snapshot.panelManager);
+    setIsPanelManagerModalOpen(!snapshot.panelManager.isApplied && Object.keys(snapshot.panelManager.panels).length > 0);
   };
 
   const pushUndoState = () => {
@@ -785,12 +842,16 @@ function App() {
     setCompletedTBGroups([]);
     setActiveWGroup(null);
     setWorkflowGroupOrder({});
+    const nextPanelManager = createPanelManagerStateFromModel(parsedSvg);
+    setPanelManager(nextPanelManager);
+    setIsPanelManagerModalOpen(parsedSvg.panels.length > 0);
+    setActiveTool('select');
     setUndoStack([]);
     setRedoStack([]);
     setExpandedTBGroups({});
     setExpandedSGroups({});
     setExpandedWGroups({});
-    setErrorMessage('');
+    setErrorMessage(parsedSvg.panels.length === 0 ? 'No panels were detected. Import a file with closed panels before using workflow tools.' : '');
     event.target.value = '';
   };
 
@@ -801,6 +862,10 @@ function App() {
   };
 
   const createLabel = (prefix: LabelPrefix) => {
+    if (isProjectLocked) {
+      setErrorMessage('Apply Panel Manager before using workflow tools.');
+      return;
+    }
     pushUndoState();
 
     if (prefix === 'S') {
@@ -886,6 +951,10 @@ function App() {
   };
 
   const handleToolClick = (tool: ActiveTool) => {
+    if (isProjectLocked && !['select', 'PM'].includes(tool)) {
+      setErrorMessage('Apply Panel Manager before using workflow tools.');
+      return;
+    }
     setActiveTool(tool);
 
     if (tool === 'manufacturing') {
@@ -986,6 +1055,11 @@ function App() {
   };
 
   const assignSelectedLabelToEdge = (edgeId: string) => {
+    if (isProjectLocked) {
+      setSelectedEdgeId(edgeId);
+      setErrorMessage('Apply Panel Manager before assigning edges.');
+      return;
+    }
     setSelectedEdgeId(edgeId);
 
     if (!selectedLabelId) {
@@ -1180,6 +1254,10 @@ function App() {
   };
 
   const applyPanelPaths = () => {
+    if (isProjectLocked) {
+      setErrorMessage('Apply Panel Manager before applying or exporting workflow geometry.');
+      return;
+    }
     try {
       const applyInputs = activeWGroup?.isActive
         ? finishWGroupWorkflow(connections, edgeAssignments, activeWGroup, svgModel)
@@ -1239,6 +1317,8 @@ function App() {
     setCompletedTBGroups([]);
     setActiveWGroup(null);
     setWorkflowGroupOrder({});
+    setPanelManager(defaultPanelManagerState);
+    setIsPanelManagerModalOpen(false);
     setActiveTool('select');
     setErrorMessage('');
     setUndoStack([]);
@@ -1256,6 +1336,29 @@ function App() {
 
   const cancelClearProject = () => {
     setIsClearDialogOpen(false);
+  };
+
+  const updatePanelThickness = (panelId: string, thicknessMm: number) => {
+    setPanelManager((current) => ({
+      ...current,
+      panels: {
+        ...current.panels,
+        [panelId]: { panelId, thicknessMm },
+      },
+    }));
+  };
+
+  const applyPanelManager = () => {
+    const validationError = validatePanelManagerState(panelManager);
+    if (validationError) {
+      setErrorMessage(validationError);
+      return;
+    }
+    pushUndoState();
+    setPanelManager((current) => ({ ...current, isApplied: true }));
+    setIsPanelManagerModalOpen(false);
+    setActiveTool('PM');
+    setErrorMessage('');
   };
 
   const updateProjectSettings = (updates: Partial<ProjectSettings>) => {
@@ -1398,6 +1501,10 @@ function App() {
   const exportSvg = () => {
     // Export after Apply is clean laser geometry; export before Apply remains label/reference export.
     const hasAppliedGeometry = appliedEPanelPaths.length > 0 || appliedSGeometry.length > 0;
+    if (isProjectLocked) {
+      setErrorMessage('Apply Panel Manager before exporting applied or manufacturing output.');
+      return;
+    }
     const output = hasAppliedGeometry
       ? exportManufacturingGeometrySvg(svgModel, kerfCompensatedAppliedPreview)
       : exportLabeledSvg(svgModel.content, edgeAssignments, svgModel.edges);
@@ -1861,17 +1968,17 @@ function App() {
             <input type="file" accept=".svg,image/svg+xml" onChange={handleImportWithError} />
           </label>
           <button className="toolbar-button" type="button" disabled title="Save placeholder">Save</button>
-          <button className="toolbar-button" type="button" onClick={exportSvg} disabled={Object.keys(edgeAssignments).length === 0} title="Export SVG">Export</button>
+          <button className="toolbar-button" type="button" onClick={exportSvg} disabled={isProjectLocked || Object.keys(edgeAssignments).length === 0} title="Export SVG">Export</button>
           <button className="toolbar-button" type="button" onClick={requestClearProject}>Clear</button>
           <button className="toolbar-button" type="button" onClick={fitCanvasToScreen}>Fit to screen</button>
           <button className="toolbar-button icon-button" type="button" onClick={undoLastEdit} disabled={undoStack.length === 0} aria-label="Undo" title="Undo">↶</button>
           <button className="toolbar-button icon-button" type="button" onClick={redoLastEdit} disabled={redoStack.length === 0} aria-label="Redo" title="Redo">↷</button>
-          <button className="toolbar-button" type="button" onClick={applyPanelPaths} disabled={!hasApplyInputs}>Apply</button>
+          <button className="toolbar-button" type="button" onClick={applyPanelPaths} disabled={isProjectLocked || !hasApplyInputs}>Apply</button>
           <button
             className="toolbar-button"
             type="button"
             onClick={activeToolbarFinish?.onClick}
-            disabled={!activeToolbarFinish}
+            disabled={isProjectLocked || !activeToolbarFinish}
             title={activeToolbarFinish ? `${activeToolbarFinish.label} Group` : 'No active group for current tool'}
           >
             {activeToolbarFinish?.label ?? 'Finish Group'}
@@ -1894,12 +2001,30 @@ function App() {
         </div>
       )}
 
+      {isPanelManagerModalOpen && (
+        <div className="clear-dialog-backdrop" role="presentation">
+          <div className="clear-dialog panel-manager-modal" role="dialog" aria-modal="true" aria-labelledby="panel-manager-title">
+            <h2 id="panel-manager-title">Panel Manager</h2>
+            <p>{Object.keys(panelManager.panels).length} panels found. Set panel thickness before continuing.</p>
+            <div className="property-grid">
+              {Object.values(panelManager.panels).map((panel) => (
+                <NumericField key={panel.panelId} id={`pm-modal-${panel.panelId}`} label={`${panel.panelId} thickness (mm)`} min={0.01} step={0.01} value={panel.thicknessMm} onChange={(thicknessMm) => updatePanelThickness(panel.panelId, thicknessMm)} />
+              ))}
+            </div>
+            <div className="clear-dialog-actions">
+              <button className="toolbar-button primary" type="button" onClick={applyPanelManager}>Apply</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {errorMessage && <div className="notice">{errorMessage}</div>}
 
       <section className="workspace" aria-label="SVG connection workspace">
         <aside className="tool-sidebar" aria-label="Tool sidebar">
           {([
             ['select', 'Select', 'Select and inspect existing edges'],
+            ['PM', 'PM', 'Panel Manager thickness setup'],
             ['TB', 'TB', 'Tab/box edge tool alias for Top/Bottom connections'],
             ['W', 'W', 'Wall connection workflow'],
             ['S', 'S', 'Slot connection workflow'],
@@ -1914,6 +2039,7 @@ function App() {
               title={title}
               aria-pressed={activeTool === tool}
               onClick={() => handleToolClick(tool)}
+              disabled={isProjectLocked && !['select', 'PM'].includes(tool)}
             >
               {label}
             </button>
@@ -1925,6 +2051,19 @@ function App() {
             <p className="eyebrow">Active tool</p>
             <h2>{activeTool === 'TB' ? 'TB / Top Bottom' : activeTool === 'manufacturing' ? 'Manufacturing' : activeTool}</h2>
           </div>
+
+          {activeTool === 'PM' && (
+            <div className="active-tool-card">
+              <h3>Panel thickness</h3>
+              <p className="muted">PM is the owner of panel thickness. Downstream TB/S/W tools still use their existing thickness fields in this PR.</p>
+              <div className="property-grid">
+                {Object.values(panelManager.panels).map((panel) => (
+                  <NumericField key={panel.panelId} id={`pm-panel-${panel.panelId}`} label={`${panel.panelId} thickness (mm)`} min={0.01} step={0.01} value={panel.thicknessMm} onChange={(thicknessMm) => updatePanelThickness(panel.panelId, thicknessMm)} />
+                ))}
+              </div>
+              <button className="toolbar-button primary" type="button" onClick={applyPanelManager}>Apply</button>
+            </div>
+          )}
 
           {activeTool === 'select' && (
             <div className="selection-card active-tool-card">
@@ -1946,7 +2085,14 @@ function App() {
           )}
 
 
-          {activeTool === 'manufacturing' && (
+          {isProjectLocked && activeTool !== 'PM' && (
+            <div className="active-tool-card">
+              <h3>Project locked</h3>
+              <p className="muted">Apply Panel Manager before using TB, S, W, Manufacturing, edge assignment, export, or future tools.</p>
+            </div>
+          )}
+
+          {!isProjectLocked && activeTool === 'manufacturing' && (
             <div className="active-tool-card manufacturing-card">
               <h3>Manufacturing settings</h3>
               <div className="property-grid">
@@ -1958,14 +2104,14 @@ function App() {
             </div>
           )}
 
-          {(activeTool === 'J' || activeTool === 'P') && (
+          {!isProjectLocked && (activeTool === 'J' || activeTool === 'P') && (
             <div className="active-tool-card placeholder-card">
               <h3>{activeTool === 'J' ? 'Join coming soon' : 'Pattern coming soon'}</h3>
               <p className="muted">This tool is a placeholder and has no actions yet.</p>
             </div>
           )}
 
-          {(activeTool === 'TB' || activeTool === 'S' || activeTool === 'W') && (
+          {!isProjectLocked && (activeTool === 'TB' || activeTool === 'S' || activeTool === 'W') && (
             <>
               <div className="active-label-card" aria-live="polite">
                 <span>Selected connection</span>
@@ -2265,9 +2411,9 @@ function App() {
                 key={item.id}
                 type="button"
                 className={`workflow-history-item${item.isActive ? ' active' : ''}`}
-                aria-label={item.kind === 'manufacturing' ? 'MFG, opens Manufacturing panel' : `${item.name}, ${item.isActive ? 'active' : 'inactive'}, ${item.childCount} ${item.childCount === 1 ? 'child connection' : 'child connections'}`}
-                aria-pressed={item.kind === 'manufacturing' ? activeTool === 'manufacturing' : item.labels.includes(selectedLabelId ?? '')}
-                title={item.kind === 'manufacturing' ? 'MFG · Manufacturing' : `${item.name} · ${item.isActive ? 'Active' : 'Inactive'} · ${item.childCount} ${item.childCount === 1 ? 'child' : 'children'}`}
+                aria-label={item.kind === 'PM' ? 'PM, opens Panel Manager panel' : item.kind === 'manufacturing' ? 'MFG, opens Manufacturing panel' : `${item.name}, ${item.isActive ? 'active' : 'inactive'}, ${item.childCount} ${item.childCount === 1 ? 'child connection' : 'child connections'}`}
+                aria-pressed={item.kind === 'PM' ? activeTool === 'PM' : item.kind === 'manufacturing' ? activeTool === 'manufacturing' : item.labels.includes(selectedLabelId ?? '')}
+                title={item.kind === 'PM' ? 'PM · Panel Manager' : item.kind === 'manufacturing' ? 'MFG · Manufacturing' : `${item.name} · ${item.isActive ? 'Active' : 'Inactive'} · ${item.childCount} ${item.childCount === 1 ? 'child' : 'children'}`}
                 onClick={() => navigateToWorkflowHistoryItem(item)}
               >
                 <span className="history-item-icon" aria-hidden="true">{item.kind === 'manufacturing' ? 'MFG' : item.kind}</span>
