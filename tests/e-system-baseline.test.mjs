@@ -107,6 +107,34 @@ const simpleModelForPanels = (panels, { width = 320, height = 240, viewBox = `0 
   edges: [],
 });
 
+const { createPanelManagerStateFromModel, validatePanelManagerState, buildWorkflowHistoryItems: buildPmWorkflowHistoryItems, getWorkflowHistoryTool: getPmWorkflowHistoryTool } = module.exports;
+const pmModel = simpleModelForPanels([
+  { id: 'panel-1', contour: [], bounds: { minX: 0, maxX: 10, minY: 0, maxY: 10 }, edgeIds: [] },
+  { id: 'panel-2', contour: [], bounds: { minX: 20, maxX: 30, minY: 0, maxY: 10 }, edgeIds: [] },
+]);
+const pmState = createPanelManagerStateFromModel(pmModel);
+assert.equal(pmState.defaultThicknessMm, 3, 'PM default thickness is 3 mm');
+assert.equal(pmState.isApplied, false, 'PM starts unapplied after import');
+assert.deepEqual(Object.keys(pmState.panels), ['panel-1', 'panel-2'], 'import with panels creates PM state per panel');
+assert.equal(pmState.panels['panel-1'].thicknessMm, 3, 'PM panel defaults to 3 mm thickness');
+assert.equal(validatePanelManagerState(pmState), null, 'valid PM thickness values allow Apply');
+assert.match(validatePanelManagerState({ ...pmState, panels: { 'panel-1': { panelId: 'panel-1', thicknessMm: 0 } } }) ?? '', /greater than 0 mm/, 'invalid PM thickness blocks Apply');
+assert.match(validatePanelManagerState(createPanelManagerStateFromModel(simpleModelForPanels([]))) ?? '', /No panels were detected/, 'no detected panels keep workflow locked');
+const lockedByDefault = !pmState.isApplied;
+assert.equal(lockedByDefault, true, 'TB/S/W/MFG tools are locked before PM Apply');
+const appliedPmState = { ...pmState, isApplied: true };
+assert.equal(!appliedPmState.isApplied, false, 'PM Apply unlocks tools');
+const pmHistory = buildPmWorkflowHistoryItems([], [], [], {}, undefined, appliedPmState.isApplied);
+assert.equal(pmHistory.filter((item) => item.kind === 'PM').length, 1, 'PM appears in History once after Apply and is not duplicated');
+assert.equal(pmHistory[0].name, 'PM', 'PM history item label is PM');
+assert.equal(getPmWorkflowHistoryTool(pmHistory[0]), 'PM', 'clicking PM history item opens PM property panel');
+const undoSnapshot = structuredClone(appliedPmState);
+const redoSnapshot = { ...undoSnapshot, panels: { ...undoSnapshot.panels, 'panel-1': { panelId: 'panel-1', thicknessMm: 4.5 } }, isApplied: false };
+assert.equal(undoSnapshot.panels['panel-1'].thicknessMm, 3, 'Undo restores PM panel thickness values');
+assert.equal(redoSnapshot.panels['panel-1'].thicknessMm, 4.5, 'Redo restores updated PM panel thickness values');
+assert.equal(redoSnapshot.isApplied, false, 'Undo/Redo snapshots carry PM applied/unapplied lock state');
+
+
 const classifiedEContours = classifyAppliedContours([{ panelId: 'panel-e', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 10 }, erasePathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z', edgeIds: [] }], []);
 assert.equal(classifiedEContours.length, 1, 'AppliedEPanelPath produces one classified contour');
 assert.equal(classifiedEContours[0].kind, 'OUTER', 'AppliedEPanelPath is classified OUTER');
