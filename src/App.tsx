@@ -9,7 +9,7 @@ import { buildFinalGeometry } from './app/finalGeometry';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
 import { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
-import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildAppliedEPanelPaths, recalculateAutomaticTBFingerWidths } from './app/eGeometry';
+import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildAppliedEPanelPaths, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
 import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 import { createTabSegmentPlan, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
 import { getContourEdgePoints, validateClosedPanel } from './app/sharedPanelGeometry';
@@ -1770,8 +1770,46 @@ function App() {
 
     if (selectedConnection.prefix === 'E') {
       const assignedEEdges = svgModel.edges.filter((edge) => getBucketEdgeAssignment(edgeAssignments[edge.id])?.connectionId === selectedConnection.id);
+      const tbThickness = resolveTBThickness(svgModel, edgeAssignments, selectedConnection, panelManager);
+      const tbPanelByRole = {
+        A: { panelId: tbThickness.panelAId, ownerThicknessMm: tbThickness.panelAThicknessMm, matingPanelId: tbThickness.panelBId, matingThicknessMm: tbThickness.panelBThicknessMm },
+        B: { panelId: tbThickness.panelBId, ownerThicknessMm: tbThickness.panelBThicknessMm, matingPanelId: tbThickness.panelAId, matingThicknessMm: tbThickness.panelAThicknessMm },
+      };
+      const tbFingerSizeMm = selectedConnection.properties.isFingerWidthManual ? selectedConnection.properties.fingerWidthMm : tbThickness.autoFingerWidthMm;
       return (
         <div className="property-sections">
+          <section className="property-section" aria-labelledby="edge-diagnostics">
+            <h4 id="edge-diagnostics">{formatTBDisplayLabel(selectedConnection.id)} diagnostics</h4>
+            {assignedEEdges.length > 0 ? (
+              <ul className="calculated-edge-list">
+                {assignedEEdges.map((edge) => {
+                  const role = getBucketEdgeAssignment(edgeAssignments[edge.id])?.edgeRole ?? 'A';
+                  const diagnostic = tbPanelByRole[role];
+                  return (
+                    <li key={`${edge.id}-diagnostics`}>
+                      <strong>Edge {role}</strong>
+                      <dl>
+                        <div><dt>Edge id</dt><dd>{edge.id}</dd></div>
+                        <div><dt>Owner panel</dt><dd>{diagnostic.panelId ? getPanelDisplayName(diagnostic.panelId) : 'Unknown'}</dd></div>
+                        <div><dt>Owner thickness</dt><dd>{formatCalculatedMm(diagnostic.ownerThicknessMm)}</dd></div>
+                        <div><dt>Mating panel</dt><dd>{diagnostic.matingPanelId ? getPanelDisplayName(diagnostic.matingPanelId) : 'Unknown'}</dd></div>
+                        <div><dt>Mating thickness</dt><dd>{formatCalculatedMm(diagnostic.matingThicknessMm)}</dd></div>
+                        <div><dt>Tab thickness</dt><dd>{formatCalculatedMm(diagnostic.ownerThicknessMm)}</dd></div>
+                        <div><dt>Joint depth</dt><dd>{formatCalculatedMm(diagnostic.matingThicknessMm)}</dd></div>
+                      </dl>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="muted">No edges assigned to this TB / Top Bottom label yet.</p>
+            )}
+            <dl>
+              <div><dt>Finger size mode</dt><dd>{selectedConnection.properties.isFingerWidthManual ? 'Manual' : 'Auto'}</dd></div>
+              <div><dt>Computed finger size</dt><dd>{formatCalculatedMm(tbFingerSizeMm)}</dd></div>
+            </dl>
+          </section>
+
           <section className="property-section" aria-labelledby="edge-assigned-edges">
             <h4 id="edge-assigned-edges">Assigned edges</h4>
             {assignedEEdges.length > 0 ? (
@@ -1924,7 +1962,7 @@ function App() {
 
       return (
         <div className="compact-property-controls" aria-label="Compact E controls">
-          <NumericField id="compact-edge-material-thickness" label="Thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateEdgeProperties({ materialThicknessMm })} />
+          <span className="muted">PM thickness</span>
           <NumericField id="compact-edge-tab-size" label="Tab" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
         </div>
       );

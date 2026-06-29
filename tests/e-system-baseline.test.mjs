@@ -167,6 +167,36 @@ const oldProjectThickness = resolveTBThickness(tbPmModel, tbPmAssignments, tbPmC
 assert.equal(oldProjectThickness.panelAThicknessMm, 3, 'TB falls back to legacy materialThicknessMm when PM metadata is missing');
 assert.equal(oldProjectThickness.autoFingerWidthMm, 9, 'TB fallback preserves old project automatic finger size behavior without PM metadata');
 
+
+const mixedTbModel = {
+  ...simpleModelForPanels([
+    { id: 'panel-1', contour: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 30 }, { x: 0, y: 30 }], bounds: { minX: 0, maxX: 100, minY: 0, maxY: 30 }, edgeIds: ['edge-p1'] },
+    { id: 'panel-5', contour: [{ x: 0, y: 50 }, { x: 100, y: 50 }, { x: 100, y: 80 }, { x: 0, y: 80 }], bounds: { minX: 0, maxX: 100, minY: 50, maxY: 80 }, edgeIds: ['edge-p5'] },
+  ]),
+  edges: [{ id: 'edge-p1' }, { id: 'edge-p5' }],
+};
+const mixedTbAssignments = {
+  'edge-p1': { connectionId: 'E-mixed', edgeRole: 'A' },
+  'edge-p5': { connectionId: 'E-mixed', edgeRole: 'B' },
+};
+const mixedTbState = { defaultThicknessMm: 3, panels: { 'panel-1': { panelId: 'panel-1', thicknessMm: 10 }, 'panel-5': { panelId: 'panel-5', thicknessMm: 3 } } };
+const autoMixedTbConnection = { id: 'E-mixed', prefix: 'E', properties: { materialThicknessMm: 99, fingerWidthMm: 99, isFingerWidthManual: false } };
+const mixedTbThickness = resolveTBThickness(mixedTbModel, mixedTbAssignments, autoMixedTbConnection, mixedTbState);
+assert.equal(mixedTbThickness.panelAThicknessMm, 10, 'mixed TB P1 thickness resolves from PM instead of legacy materialThicknessMm');
+assert.equal(mixedTbThickness.panelBThicknessMm, 3, 'mixed TB P5 thickness resolves from PM instead of legacy materialThicknessMm');
+assert.equal(mixedTbThickness.autoFingerWidthMm, 9, 'mixed TB auto finger size is 3 × min(10, 3)');
+const mixedP1Operation = getPanelEdgeOperations(mixedTbModel.panels[0], mixedTbAssignments, { 'E-mixed': autoMixedTbConnection }, mixedTbState, mixedTbModel)[0];
+const mixedP5Operation = getPanelEdgeOperations(mixedTbModel.panels[1], mixedTbAssignments, { 'E-mixed': autoMixedTbConnection }, mixedTbState, mixedTbModel)[0];
+assert.equal(mixedP1Operation.materialThicknessMm, 10, 'mixed TB geometry generated on P1 uses tab thickness 10');
+assert.equal(mixedP1Operation.insetDepthMm, 3, 'mixed TB geometry generated on P1 uses joint depth 3');
+assert.equal(mixedP1Operation.fingerWidthMm, 9, 'mixed TB geometry generated on P1 uses auto finger size 9');
+assert.equal(mixedP5Operation.materialThicknessMm, 3, 'mixed TB geometry generated on P5 uses tab thickness 3');
+assert.equal(mixedP5Operation.insetDepthMm, 10, 'mixed TB geometry generated on P5 uses joint depth 10');
+assert.equal(mixedP5Operation.fingerWidthMm, 9, 'mixed TB geometry generated on P5 uses auto finger size 9');
+const manualMixedTbConnection = { id: 'E-mixed', prefix: 'E', properties: { materialThicknessMm: 99, fingerWidthMm: 20, isFingerWidthManual: true } };
+assert.equal(recalculateAutomaticTBFingerWidths(mixedTbModel, mixedTbAssignments, { 'E-mixed': manualMixedTbConnection }, mixedTbState)['E-mixed'].properties.fingerWidthMm, 20, 'mixed TB manual finger size 20 remains unchanged');
+assert.equal(getPanelEdgeOperations(mixedTbModel.panels[0], mixedTbAssignments, { 'E-mixed': manualMixedTbConnection }, mixedTbState, mixedTbModel)[0].fingerWidthMm, 20, 'mixed TB manual operation finger size stays 20');
+
 const classifiedEContours = classifyAppliedContours([{ panelId: 'panel-e', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 10 }, erasePathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z', edgeIds: [] }], []);
 assert.equal(classifiedEContours.length, 1, 'AppliedEPanelPath produces one classified contour');
 assert.equal(classifiedEContours[0].kind, 'OUTER', 'AppliedEPanelPath is classified OUTER');
