@@ -1,4 +1,4 @@
-import type { AppliedEPanelPath, ConnectionMap } from './connectionTypes';
+import type { AppliedEPanelPath, ConnectionMap, EdgeConnectionDefinition } from './connectionTypes';
 import { getBucketEdgeAssignment } from './assignmentBuckets';
 import type { EdgeAssignmentRecord, EdgeRole, Point, SvgDocumentModel, SvgPanel } from '../svgUtils';
 import {
@@ -20,6 +20,10 @@ import type { ContourSide, TabSegment } from './sharedGeometry';
 import { validateClosedPanel } from './sharedPanelGeometry';
 
 type PanelPoint = Point;
+
+export type PanelThicknessMetadata = { panelId: string; thicknessMm: number };
+
+export type PanelThicknessState = { panels?: Record<string, PanelThicknessMetadata>; defaultThicknessMm?: number };
 
 export type PanelContour = PanelPoint[];
 
@@ -52,6 +56,7 @@ export type PanelEdgeOperation = {
   role: EdgeRole;
   materialThicknessMm: number;
   fingerWidthMm: number;
+  insetDepthMm?: number;
 };
 
 export type TabSegmentPlan = {
@@ -67,6 +72,7 @@ export type PanelTabOperation = {
   role: EdgeRole;
   materialThicknessMm: number;
   fingerWidthMm: number;
+  insetDepthMm?: number;
   insetLength: number;
   segments: TabSegment[];
 };
@@ -76,10 +82,100 @@ export type PanelGeometryBuildResult =
   | { ok: false; reason: string };
 
 
+
+export const getPanelThickness = (
+  panelId: string | null | undefined,
+  panelThicknessState?: PanelThicknessState,
+  fallbackThicknessMm = 3,
+): number => {
+  const pmThickness = panelId ? panelThicknessState?.panels?.[panelId]?.thicknessMm : undefined;
+
+  if (Number.isFinite(pmThickness) && (pmThickness as number) > 0) {
+    return pmThickness as number;
+  }
+
+  if (Number.isFinite(fallbackThicknessMm) && fallbackThicknessMm > 0) {
+    return fallbackThicknessMm;
+  }
+
+  const defaultThickness = panelThicknessState?.defaultThicknessMm;
+  return Number.isFinite(defaultThickness) && (defaultThickness as number) > 0 ? defaultThickness as number : 3;
+};
+
+export const getPanelThicknessForEdge = (
+  svgModel: SvgDocumentModel,
+  edgeId: string,
+  panelThicknessState?: PanelThicknessState,
+  fallbackThicknessMm = 3,
+): number => {
+  const panel = svgModel.panels.find((candidate) => candidate.edgeIds.includes(edgeId));
+  return getPanelThickness(panel?.id, panelThicknessState, fallbackThicknessMm);
+};
+
+type TBConnectionThickness = {
+  panelAId: string | null;
+  panelBId: string | null;
+  panelAThicknessMm: number;
+  panelBThicknessMm: number;
+  autoFingerWidthMm: number;
+};
+
+export const resolveTBThickness = (
+  svgModel: SvgDocumentModel,
+  assignments: EdgeAssignmentRecord,
+  connection: EdgeConnectionDefinition,
+  panelThicknessState?: PanelThicknessState,
+): TBConnectionThickness => {
+  const assignedEdges = Object.entries(assignments).flatMap(([edgeId, bucket]) => {
+    const assignment = getBucketEdgeAssignment(bucket);
+    return assignment?.connectionId === connection.id ? [{ edgeId, role: assignment.edgeRole }] : [];
+  });
+  const panelForRole = (role: EdgeRole) => {
+    const edgeId = assignedEdges.find((assignment) => assignment.role === role)?.edgeId;
+    return edgeId ? svgModel.panels.find((panel) => panel.edgeIds.includes(edgeId)) ?? null : null;
+  };
+  const panelA = panelForRole('A');
+  const panelB = panelForRole('B');
+  const fallbackThickness = connection.properties.materialThicknessMm;
+  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState, fallbackThickness);
+  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState, fallbackThickness);
+
+  return {
+    panelAId: panelA?.id ?? null,
+    panelBId: panelB?.id ?? null,
+    panelAThicknessMm,
+    panelBThicknessMm,
+    autoFingerWidthMm: 3 * Math.min(panelAThicknessMm, panelBThicknessMm),
+  };
+};
+
+export const recalculateAutomaticTBFingerWidths = (
+  svgModel: SvgDocumentModel,
+  assignments: EdgeAssignmentRecord,
+  connectionMap: ConnectionMap,
+  panelThicknessState?: PanelThicknessState,
+): ConnectionMap => Object.fromEntries(
+  Object.entries(connectionMap).map(([connectionId, connection]) => {
+    if (connection.prefix !== 'E' || connection.properties.isFingerWidthManual) {
+      return [connectionId, connection];
+    }
+
+    return [connectionId, {
+      ...connection,
+      properties: {
+        ...connection.properties,
+        fingerWidthMm: resolveTBThickness(svgModel, assignments, connection, panelThicknessState).autoFingerWidthMm,
+      },
+    }];
+  }),
+);
+
 export const getPanelEdgeOperations = (
   panel: SvgPanel,
   assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
+  panelThicknessState?: PanelThicknessState,
+  svgModel?: SvgDocumentModel,
 ): PanelEdgeOperation[] => (
   panel.edgeIds.flatMap((edgeId) => {
     const assignment = getBucketEdgeAssignment(assignments[edgeId]);
@@ -89,12 +185,25 @@ export const getPanelEdgeOperations = (
       return [];
     }
 
+    const connectionThickness = svgModel && connection.prefix === 'E'
+      ? resolveTBThickness(svgModel, assignments, connection, panelThicknessState)
+      : null;
+    const ownPanelThickness = connectionThickness
+      ? (assignment.edgeRole === 'A' ? connectionThickness.panelAThicknessMm : connectionThickness.panelBThicknessMm)
+      : connection.properties.materialThicknessMm;
+    const receivingPanelThickness = connectionThickness
+      ? (assignment.edgeRole === 'A' ? connectionThickness.panelBThicknessMm : connectionThickness.panelAThicknessMm)
+      : connection.properties.materialThicknessMm;
+
     return [{
       edgeId,
       connectionId: assignment.connectionId,
       role: assignment.edgeRole,
-      materialThicknessMm: connection.properties.materialThicknessMm,
-      fingerWidthMm: connection.properties.fingerWidthMm,
+      materialThicknessMm: ownPanelThickness,
+      insetDepthMm: receivingPanelThickness,
+      fingerWidthMm: connection.prefix !== 'E' || connection.properties.isFingerWidthManual || !connectionThickness
+        ? connection.properties.fingerWidthMm
+        : connectionThickness.autoFingerWidthMm,
     }];
   })
 );
@@ -104,10 +213,11 @@ export const buildAppliedEPanelPaths = (
   assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
   shouldDebugApply = false,
+  panelThicknessState?: PanelThicknessState,
 ): AppliedEPanelPath[] => {
   const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
   const insetPanelOperations = svgModel.panels.flatMap((panel) => {
-    const operations = getPanelEdgeOperations(panel, assignments, connectionMap);
+    const operations = getPanelEdgeOperations(panel, assignments, connectionMap, panelThicknessState, svgModel);
     const validation = validateClosedPanel(panel, edgesById);
 
     if (!validation.valid || operations.length === 0) {
@@ -215,7 +325,7 @@ export const buildContourSideOffsetPlan = (
     return {
       sideIndex,
       edgeId,
-      offsetDistance: operation?.materialThicknessMm ?? 0,
+      offsetDistance: operation ? operation.insetDepthMm ?? operation.materialThicknessMm : 0,
     };
   })
 );

@@ -74,7 +74,7 @@ const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
 const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
-const { applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, exportManufacturingGeometrySvg, pathDToClosedContour } = module.exports;
+const { getPanelEdgeOperations, recalculateAutomaticTBFingerWidths, resolveTBThickness, applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, exportManufacturingGeometrySvg, pathDToClosedContour } = module.exports;
 
 const buildKerfPreviewViaFinalContours = (svgModel, appliedEPanelPaths, appliedSGeometry, kerfMm, slotClearanceMm = 0) => {
   const finalGeometry = buildFinalGeometry(svgModel, appliedEPanelPaths, appliedSGeometry);
@@ -136,6 +136,36 @@ assert.equal(redoSnapshot.panels['panel-1'].thicknessMm, 4.5, 'Redo restores upd
 assert.equal(redoSnapshot.isApplied, true, 'PM edits after an Apply do not relock an unlocked project before reapplying');
 assert.equal(redoSnapshot.isDirty, true, 'Undo/Redo snapshots carry pending PM edit state');
 
+
+const tbPmModel = {
+  ...simpleModelForPanels([
+    { id: 'panel-a', contour: [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 20 }, { x: 0, y: 20 }], bounds: { minX: 0, maxX: 100, minY: 0, maxY: 20 }, edgeIds: ['edge-a'] },
+    { id: 'panel-b', contour: [{ x: 0, y: 40 }, { x: 100, y: 40 }, { x: 100, y: 60 }, { x: 0, y: 60 }], bounds: { minX: 0, maxX: 100, minY: 40, maxY: 60 }, edgeIds: ['edge-b'] },
+  ]),
+  edges: [{ id: 'edge-a' }, { id: 'edge-b' }],
+};
+const tbPmAssignments = {
+  'edge-a': { connectionId: 'E-pm', edgeRole: 'A' },
+  'edge-b': { connectionId: 'E-pm', edgeRole: 'B' },
+};
+const tbPmConnection = { id: 'E-pm', prefix: 'E', properties: { materialThicknessMm: 3, fingerWidthMm: 9, isFingerWidthManual: false } };
+const tbPmState = { defaultThicknessMm: 3, panels: { 'panel-a': { panelId: 'panel-a', thicknessMm: 18 }, 'panel-b': { panelId: 'panel-b', thicknessMm: 10 } } };
+const tbPmThickness = resolveTBThickness(tbPmModel, tbPmAssignments, tbPmConnection, tbPmState);
+assert.equal(tbPmThickness.panelAThicknessMm, 18, 'TB resolves panel A physical thickness from PM');
+assert.equal(tbPmThickness.panelBThicknessMm, 10, 'TB resolves panel B physical thickness from PM');
+assert.equal(tbPmThickness.autoFingerWidthMm, 30, 'TB auto finger size is 3 × min(PM panel thicknesses)');
+const panelAOperation = getPanelEdgeOperations(tbPmModel.panels[0], tbPmAssignments, { 'E-pm': tbPmConnection }, tbPmState, tbPmModel)[0];
+assert.equal(panelAOperation.materialThicknessMm, 18, 'TB tab thickness uses the tab-owning panel thickness');
+assert.equal(panelAOperation.materialThicknessMm, 18, 'TB receiving slot width follows the tab panel thickness');
+assert.equal(panelAOperation.insetDepthMm, 10, 'TB joint depth/inset uses the receiving panel thickness');
+assert.equal(panelAOperation.fingerWidthMm, 30, 'TB automatic operation finger size follows PM thickness');
+const tbPmChangedState = { defaultThicknessMm: 3, panels: { 'panel-a': { panelId: 'panel-a', thicknessMm: 18 }, 'panel-b': { panelId: 'panel-b', thicknessMm: 12 } } };
+assert.equal(recalculateAutomaticTBFingerWidths(tbPmModel, tbPmAssignments, { 'E-pm': tbPmConnection }, tbPmChangedState)['E-pm'].properties.fingerWidthMm, 36, 'TB automatic finger size recalculates when PM thickness changes');
+const manualTbConnection = { id: 'E-pm', prefix: 'E', properties: { materialThicknessMm: 3, fingerWidthMm: 22, isFingerWidthManual: true } };
+assert.equal(recalculateAutomaticTBFingerWidths(tbPmModel, tbPmAssignments, { 'E-pm': manualTbConnection }, tbPmChangedState)['E-pm'].properties.fingerWidthMm, 22, 'TB manual finger size remains unchanged when PM thickness changes');
+const oldProjectThickness = resolveTBThickness(tbPmModel, tbPmAssignments, tbPmConnection, undefined);
+assert.equal(oldProjectThickness.panelAThicknessMm, 3, 'TB falls back to legacy materialThicknessMm when PM metadata is missing');
+assert.equal(oldProjectThickness.autoFingerWidthMm, 9, 'TB fallback preserves old project automatic finger size behavior without PM metadata');
 
 const classifiedEContours = classifyAppliedContours([{ panelId: 'panel-e', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 10 }, erasePathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z', edgeIds: [] }], []);
 assert.equal(classifiedEContours.length, 1, 'AppliedEPanelPath produces one classified contour');
