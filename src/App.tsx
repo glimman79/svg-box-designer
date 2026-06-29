@@ -240,6 +240,21 @@ export const createPanelManagerStateFromModel = (svgModel: SvgDocumentModel, def
   isApplied: false,
 });
 
+
+const getPanelDisplayName = (panelId: string): string => {
+  const panelNumber = panelId.match(/^panel-(\d+)$/)?.[1];
+  return panelNumber ? `P${panelNumber}` : panelId;
+};
+
+const getPanelPathD = (panel: SvgDocumentModel['panels'][number]): string => {
+  if (panel.contour.length > 0) {
+    return pointsToClosedPathD(panel.contour);
+  }
+
+  const { minX, maxX, minY, maxY } = panel.bounds;
+  return `M ${minX} ${minY} L ${maxX} ${minY} L ${maxX} ${maxY} L ${minX} ${maxY} Z`;
+};
+
 export const validatePanelManagerState = (panelManager: PanelManagerState): string | null => {
   const panels = Object.values(panelManager.panels);
   if (panels.length === 0) {
@@ -257,6 +272,7 @@ type NumericFieldProps = {
   min?: number;
   step?: number;
   onChange: (value: number) => void;
+  onFocus?: () => void;
 };
 
 type SelectFieldProps = {
@@ -560,7 +576,7 @@ const getSharedEdgeProperties = (connections: ConnectionMap): EdgeConnectionProp
   return sharedConnection ? { ...sharedConnection.properties } : cloneDefaultProperties('E');
 };
 
-const NumericField = ({ id, label, value, min, step = 0.1, onChange }: NumericFieldProps) => (
+const NumericField = ({ id, label, value, min, step = 0.1, onChange, onFocus }: NumericFieldProps) => (
   <label className="property-field" htmlFor={id}>
     <span>{label}</span>
     <input
@@ -569,6 +585,7 @@ const NumericField = ({ id, label, value, min, step = 0.1, onChange }: NumericFi
       min={min}
       step={step}
       value={value}
+      onFocus={onFocus}
       onChange={(event) => onChange(Number.isFinite(event.target.valueAsNumber) ? event.target.valueAsNumber : 0)}
     />
   </label>
@@ -618,6 +635,7 @@ function App() {
   const [activeTool, setActiveTool] = useState<ActiveTool>('select');
   const [panelManager, setPanelManager] = useState<PanelManagerState>(() => ({ ...createPanelManagerStateFromModel(parseSvgDocument(starterSvg)), isApplied: true }));
   const [isPanelManagerModalOpen, setIsPanelManagerModalOpen] = useState(false);
+  const [activePanelId, setActivePanelId] = useState<string | null>(null);
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
@@ -740,6 +758,14 @@ function App() {
   );
 
   const isProjectLocked = !panelManager.isApplied;
+  const isPanelManagerVisible = isPanelManagerModalOpen || activeTool === 'PM';
+  const panelDisplayItems = useMemo(() => svgModel.panels.map((panel) => ({
+    panelId: panel.id,
+    name: getPanelDisplayName(panel.id),
+    pathD: getPanelPathD(panel),
+    centerX: (panel.bounds.minX + panel.bounds.maxX) / 2,
+    centerY: (panel.bounds.minY + panel.bounds.maxY) / 2,
+  })), [svgModel]);
   const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections, workflowGroupOrder.manufacturing, panelManager.isApplied), [connections, panelManager.isApplied, sLabelGroups, tbLabelGroups, wLabelGroups, workflowGroupOrder]);
   const activeWConnection = activeWGroup?.isActive ? connections[activeWGroup.connectionId] : undefined;
   const hasPendingManufacturingSettings = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
@@ -1339,13 +1365,18 @@ function App() {
   };
 
   const updatePanelThickness = (panelId: string, thicknessMm: number) => {
-    setPanelManager((current) => ({
-      ...current,
-      panels: {
-        ...current.panels,
-        [panelId]: { panelId, thicknessMm },
-      },
-    }));
+    setActivePanelId(panelId);
+    setPanelManager((current) => {
+      const currentThickness = current.panels[panelId]?.thicknessMm;
+      return {
+        ...current,
+        isApplied: currentThickness === thicknessMm ? current.isApplied : false,
+        panels: {
+          ...current.panels,
+          [panelId]: { panelId, thicknessMm },
+        },
+      };
+    });
   };
 
   const applyPanelManager = () => {
@@ -1358,6 +1389,7 @@ function App() {
     setPanelManager((current) => ({ ...current, isApplied: true }));
     setIsPanelManagerModalOpen(false);
     setActiveTool('PM');
+    setActivePanelId(null);
     setErrorMessage('');
   };
 
@@ -2008,11 +2040,11 @@ function App() {
             <p>{Object.keys(panelManager.panels).length} panels found. Set panel thickness before continuing.</p>
             <div className="property-grid">
               {Object.values(panelManager.panels).map((panel) => (
-                <NumericField key={panel.panelId} id={`pm-modal-${panel.panelId}`} label={`${panel.panelId} thickness (mm)`} min={0.01} step={0.01} value={panel.thicknessMm} onChange={(thicknessMm) => updatePanelThickness(panel.panelId, thicknessMm)} />
+                <NumericField key={panel.panelId} id={`pm-modal-${panel.panelId}`} label={`${getPanelDisplayName(panel.panelId)} thickness (mm)`} min={0.01} step={0.01} value={panel.thicknessMm} onFocus={() => setActivePanelId(panel.panelId)} onChange={(thicknessMm) => updatePanelThickness(panel.panelId, thicknessMm)} />
               ))}
             </div>
             <div className="clear-dialog-actions">
-              <button className="toolbar-button primary" type="button" onClick={applyPanelManager}>Apply</button>
+              <button className="toolbar-button primary" type="button" onClick={applyPanelManager} disabled={panelManager.isApplied}>Apply</button>
             </div>
           </div>
         </div>
@@ -2024,7 +2056,6 @@ function App() {
         <aside className="tool-sidebar" aria-label="Tool sidebar">
           {([
             ['select', 'Select', 'Select and inspect existing edges'],
-            ['PM', 'PM', 'Panel Manager thickness setup'],
             ['TB', 'TB', 'Tab/box edge tool alias for Top/Bottom connections'],
             ['W', 'W', 'Wall connection workflow'],
             ['S', 'S', 'Slot connection workflow'],
@@ -2058,10 +2089,10 @@ function App() {
               <p className="muted">PM is the owner of panel thickness. Downstream TB/S/W tools still use their existing thickness fields in this PR.</p>
               <div className="property-grid">
                 {Object.values(panelManager.panels).map((panel) => (
-                  <NumericField key={panel.panelId} id={`pm-panel-${panel.panelId}`} label={`${panel.panelId} thickness (mm)`} min={0.01} step={0.01} value={panel.thicknessMm} onChange={(thicknessMm) => updatePanelThickness(panel.panelId, thicknessMm)} />
+                  <NumericField key={panel.panelId} id={`pm-panel-${panel.panelId}`} label={`${getPanelDisplayName(panel.panelId)} thickness (mm)`} min={0.01} step={0.01} value={panel.thicknessMm} onFocus={() => setActivePanelId(panel.panelId)} onChange={(thicknessMm) => updatePanelThickness(panel.panelId, thicknessMm)} />
                 ))}
               </div>
-              <button className="toolbar-button primary" type="button" onClick={applyPanelManager}>Apply</button>
+              <button className="toolbar-button primary" type="button" onClick={applyPanelManager} disabled={panelManager.isApplied}>Apply</button>
             </div>
           )}
 
@@ -2327,6 +2358,19 @@ function App() {
                   />
                 ))}
               </g>
+              {isPanelManagerVisible && (
+                <g className="panel-manager-overlays" aria-hidden="true">
+                  {panelDisplayItems.map((panel) => (
+                    <g key={panel.panelId}>
+                      <path className={`panel-manager-panel-highlight${activePanelId === panel.panelId ? ' active' : ''}`} d={panel.pathD} />
+                      <g className="edge-label panel-manager-label" transform={`translate(${panel.centerX} ${panel.centerY}) scale(${labelScale})`}>
+                        <rect className="edge-label-background" x={-14} y={-10} width={28} height={20} rx={5} />
+                        <text className="edge-label-text" textAnchor="middle" dominantBaseline="middle">{panel.name}</text>
+                      </g>
+                    </g>
+                  ))}
+                </g>
+              )}
               <g className="edge-overlays">
                   {svgModel.edges.map((edge) => {
                   const assignment = displayEdgeAssignments[edge.id];
