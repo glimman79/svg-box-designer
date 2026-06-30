@@ -74,7 +74,9 @@ type HistoryState = {
   lastAppliedManufacturingSettings: ProjectSettings | null;
   edgeAssignments: Record<string, EdgeAssignmentBucket>;
   connections: ConnectionMap;
-  selectedLabelId: string | null;
+  assignmentTargetConnectionId?: string | null;
+  displayConnectionId?: string | null;
+  selectedLabelId?: string | null;
   selectedEdgeId: string | null;
   appliedEPanelPaths?: AppliedEPanelPath[];
   appliedSGeometry?: AppliedSGeometry[];
@@ -226,7 +228,9 @@ const cloneHistoryState = (state: HistoryState): HistoryState => ({
   lastAppliedManufacturingSettings: state.lastAppliedManufacturingSettings ? structuredClone(state.lastAppliedManufacturingSettings) : null,
   edgeAssignments: structuredClone(state.edgeAssignments),
   connections: structuredClone(state.connections),
-  selectedLabelId: state.selectedLabelId,
+  assignmentTargetConnectionId: state.assignmentTargetConnectionId ?? state.selectedLabelId ?? null,
+  displayConnectionId: state.displayConnectionId ?? state.selectedLabelId ?? null,
+  selectedLabelId: state.displayConnectionId ?? state.selectedLabelId ?? null,
   selectedEdgeId: state.selectedEdgeId,
   ...(state.appliedEPanelPaths ? { appliedEPanelPaths: structuredClone(state.appliedEPanelPaths) } : {}),
   ...(state.appliedSGeometry ? { appliedSGeometry: structuredClone(state.appliedSGeometry) } : {}),
@@ -651,7 +655,8 @@ function App() {
   const [connections, setConnections] = useState<ConnectionMap>({});
   const [projectSettings, setProjectSettings] = useState<ProjectSettings>(defaultProjectSettings);
   const [lastAppliedManufacturingSettings, setLastAppliedManufacturingSettings] = useState<ProjectSettings | null>(null);
-  const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
+  const [assignmentTargetConnectionId, setAssignmentTargetConnectionId] = useState<string | null>(null);
+  const [displayConnectionId, setDisplayConnectionId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
   const [appliedSGeometry, setAppliedSGeometry] = useState<AppliedSGeometry[]>([]);
@@ -680,7 +685,12 @@ function App() {
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
-  const selectedConnection = selectedLabelId ? connections[selectedLabelId] ?? null : null;
+  const selectedLabelId = displayConnectionId;
+  const selectedConnection = displayConnectionId ? connections[displayConnectionId] ?? null : null;
+  const selectConnectionForDisplayAndAssignment = (connectionId: string | null) => {
+    setAssignmentTargetConnectionId(connectionId);
+    setDisplayConnectionId(connectionId);
+  };
   const selectedEdge = svgModel.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
 
   useEffect(() => {
@@ -850,16 +860,19 @@ function App() {
   const navigateToWorkflowHistoryItem = (item: WorkflowHistoryItem) => {
     const firstLabel = item.labels[0] ?? null;
     setActiveTool(getWorkflowHistoryTool(item));
-    setSelectedLabelId(firstLabel);
+    setAssignmentTargetConnectionId(firstLabel);
+    setDisplayConnectionId(firstLabel);
     setErrorMessage('');
 
     if (item.kind === 'PM') {
-      setSelectedLabelId(null);
+      setAssignmentTargetConnectionId(null);
+      setDisplayConnectionId(null);
       return;
     }
 
     if (item.kind === 'manufacturing') {
-      setSelectedLabelId(null);
+      setAssignmentTargetConnectionId(null);
+      setDisplayConnectionId(null);
       return;
     }
 
@@ -885,7 +898,9 @@ function App() {
     lastAppliedManufacturingSettings,
     edgeAssignments,
     connections,
-    selectedLabelId,
+    assignmentTargetConnectionId,
+    displayConnectionId,
+    selectedLabelId: displayConnectionId,
     selectedEdgeId,
     appliedEPanelPaths,
     appliedSGeometry,
@@ -903,7 +918,8 @@ function App() {
     setLastAppliedManufacturingSettings(snapshot.lastAppliedManufacturingSettings);
     setEdgeAssignments(Object.fromEntries(Object.entries(snapshot.edgeAssignments).map(([edgeId, assignment]) => [edgeId, toEdgeAssignmentBucket(assignment) ?? {}])));
     setConnections(snapshot.connections);
-    setSelectedLabelId(snapshot.selectedLabelId);
+    setAssignmentTargetConnectionId(snapshot.assignmentTargetConnectionId ?? snapshot.selectedLabelId ?? null);
+    setDisplayConnectionId(snapshot.displayConnectionId ?? snapshot.selectedLabelId ?? null);
     setSelectedEdgeId(snapshot.selectedEdgeId);
     setAppliedEPanelPaths(snapshot.appliedEPanelPaths ?? []);
     setAppliedSGeometry(snapshot.appliedSGeometry ?? []);
@@ -935,6 +951,8 @@ function App() {
     setEdgeAssignments({});
     setProjectSettings(defaultProjectSettings);
     setLastAppliedManufacturingSettings(null);
+    setAssignmentTargetConnectionId(null);
+    setDisplayConnectionId(null);
     setSelectedEdgeId(null);
     setAppliedEPanelPaths([]);
     setAppliedSGeometry([]);
@@ -973,7 +991,7 @@ function App() {
       const nextWorkflow = manualAddSWorkflow(connections, activeSGroup);
       setConnections(nextWorkflow.connections);
       setActiveSGroup(nextWorkflow.activeSGroup);
-      setSelectedLabelId(nextWorkflow.selectedLabelId);
+      selectConnectionForDisplayAndAssignment(nextWorkflow.selectedLabelId);
       setErrorMessage('');
       return;
     }
@@ -987,7 +1005,7 @@ function App() {
         prefix === 'E' ? getSharedEdgeProperties(currentConnections) : undefined,
       ),
     }));
-    setSelectedLabelId(nextLabel);
+    selectConnectionForDisplayAndAssignment(nextLabel);
     setErrorMessage('');
   };
 
@@ -995,7 +1013,7 @@ function App() {
     pushUndoState();
     const nextWorkflow = startTBGroupWorkflow(connections, defaultConnectionProperties.E);
     setConnections(nextWorkflow.connections);
-    setSelectedLabelId(nextWorkflow.selectedLabelId);
+    selectConnectionForDisplayAndAssignment(nextWorkflow.selectedLabelId);
     setActiveTool(nextWorkflow.activeTool);
     setActiveTBGroup(nextWorkflow.activeTBGroup);
     setWorkflowGroupOrder((currentOrder) => ({
@@ -1012,7 +1030,7 @@ function App() {
     }
 
     pushUndoState();
-    const nextWorkflow = finishTBGroupWithTrailingCleanup(activeTBGroup, connections, edgeAssignments, selectedLabelId);
+    const nextWorkflow = finishTBGroupWithTrailingCleanup(activeTBGroup, connections, edgeAssignments, assignmentTargetConnectionId);
     const finishedGroup = nextWorkflow.activeTBGroup;
     setConnections(nextWorkflow.connections);
     setActiveTBGroup(finishedGroup);
@@ -1020,7 +1038,8 @@ function App() {
       ...currentGroups.filter((group) => group.groupId !== finishedGroup.groupId),
       finishedGroup,
     ]);
-    setSelectedLabelId(nextWorkflow.selectedLabelId === selectedLabelId ? null : nextWorkflow.selectedLabelId);
+    setAssignmentTargetConnectionId(nextWorkflow.selectedLabelId);
+    setDisplayConnectionId(nextWorkflow.removedConnectionId === displayConnectionId ? null : displayConnectionId);
     setErrorMessage('');
   };
 
@@ -1028,7 +1047,7 @@ function App() {
     pushUndoState();
     const nextWorkflow = startSGroupWorkflow(connections);
     setConnections(nextWorkflow.connections);
-    setSelectedLabelId(nextWorkflow.selectedLabelId);
+    selectConnectionForDisplayAndAssignment(nextWorkflow.selectedLabelId);
     setActiveSGroup(nextWorkflow.activeSGroup);
     setWorkflowGroupOrder((currentOrder) => ({
       ...currentOrder,
@@ -1041,7 +1060,7 @@ function App() {
     pushUndoState();
     const nextWorkflow = startWGroupWorkflow(connections);
     setConnections(nextWorkflow.connections);
-    setSelectedLabelId(nextWorkflow.selectedLabelId);
+    selectConnectionForDisplayAndAssignment(nextWorkflow.selectedLabelId);
     setActiveWGroup(nextWorkflow.activeWGroup);
     setWorkflowGroupOrder((currentOrder) => ({
       ...currentOrder,
@@ -1082,20 +1101,20 @@ function App() {
     }
 
     if (tool === 'TB' && activeTBGroup?.isActive) {
-      setSelectedLabelId(activeTBGroup.connectionIds[activeTBGroup.connectionIds.length - 1] ?? null);
+      selectConnectionForDisplayAndAssignment(activeTBGroup.connectionIds[activeTBGroup.connectionIds.length - 1] ?? null);
       setExpandedTBGroups((currentGroups) => ({ ...currentGroups, [activeTBGroup.groupId]: true }));
       setErrorMessage('');
       return;
     }
 
     if (tool === 'S' && activeSGroup?.isActive) {
-      setSelectedLabelId(activeSGroup.connectionIds[activeSGroup.connectionIds.length - 1] ?? null);
+      selectConnectionForDisplayAndAssignment(activeSGroup.connectionIds[activeSGroup.connectionIds.length - 1] ?? null);
       setErrorMessage('');
       return;
     }
 
     if (tool === 'W' && activeWGroup?.isActive) {
-      setSelectedLabelId(activeWGroup.connectionId);
+      selectConnectionForDisplayAndAssignment(activeWGroup.connectionId);
       setExpandedWGroups((currentGroups) => ({ ...currentGroups, [activeWGroup.groupId]: true }));
       setErrorMessage('');
     }
@@ -1111,7 +1130,7 @@ function App() {
       const nextWorkflow = finishWGroupWorkflow(connections, edgeAssignments, activeWGroup, svgModel);
       setConnections(nextWorkflow.connections);
       setEdgeAssignments(nextWorkflow.assignments as Record<string, EdgeAssignmentBucket>);
-      setSelectedLabelId(nextWorkflow.selectedLabelId);
+      selectConnectionForDisplayAndAssignment(nextWorkflow.selectedLabelId);
       setActiveWGroup(nextWorkflow.activeWGroup);
       setExpandedWGroups((currentGroups) => ({ ...currentGroups, [activeWGroup.groupId]: false }));
       setErrorMessage('');
@@ -1126,10 +1145,11 @@ function App() {
     }
 
     pushUndoState();
-    const nextWorkflow = finishSGroupWithTrailingCleanup(activeSGroup, connections, edgeAssignments, selectedLabelId);
+    const nextWorkflow = finishSGroupWithTrailingCleanup(activeSGroup, connections, edgeAssignments, assignmentTargetConnectionId);
     setConnections(nextWorkflow.connections);
     setActiveSGroup(nextWorkflow.activeSGroup);
-    setSelectedLabelId(nextWorkflow.selectedLabelId === selectedLabelId ? null : nextWorkflow.selectedLabelId);
+    setAssignmentTargetConnectionId(nextWorkflow.selectedLabelId);
+    setDisplayConnectionId(nextWorkflow.removedConnectionId === displayConnectionId ? null : displayConnectionId);
     setErrorMessage('');
   };
 
@@ -1156,11 +1176,12 @@ function App() {
   };
 
   const assignSelectedLabelToEdge = (edgeId: string) => {
+    const assignmentConnectionId = assignmentTargetConnectionId;
     const assignedConnectionId = resolveAssignedTBOrSConnectionIdForEdge(edgeAssignments, edgeId, activeTool === 'S' ? 'S' : activeTool === 'TB' ? 'TB' : undefined);
     setSelectedEdgeId(edgeId);
 
     if (assignedConnectionId && connections[assignedConnectionId]?.prefix !== 'W') {
-      setSelectedLabelId(assignedConnectionId);
+      setDisplayConnectionId(assignedConnectionId);
       setErrorMessage('');
       return;
     }
@@ -1170,12 +1191,12 @@ function App() {
       return;
     }
 
-    if (!selectedLabelId) {
+    if (!assignmentConnectionId) {
       setErrorMessage('Create and select a connection before clicking an edge.');
       return;
     }
 
-    const connection = connections[selectedLabelId];
+    const connection = connections[assignmentConnectionId];
     if (!connection) {
       setErrorMessage('Select a valid connection before clicking an edge.');
       return;
@@ -1211,19 +1232,20 @@ function App() {
       return;
     }
 
-    const nextSlotRole = connection.prefix === 'S' ? getDefaultSlotRole(edgeAssignments, selectedLabelId) : null;
+    const nextSlotRole = connection.prefix === 'S' ? getDefaultSlotRole(edgeAssignments, assignmentConnectionId) : null;
 
     if (connection.prefix === 'S' && !nextSlotRole) {
-      if (activeSGroup?.isActive && activeSGroup.connectionIds.includes(selectedLabelId)) {
-        const nextWorkflow = maybeAutoCreateNextSInGroup(connections, edgeAssignments, activeSGroup, selectedLabelId);
+      if (activeSGroup?.isActive && activeSGroup.connectionIds.includes(assignmentConnectionId)) {
+        const nextWorkflow = maybeAutoCreateNextSInGroup(connections, edgeAssignments, activeSGroup, assignmentConnectionId);
         setConnections(nextWorkflow.connections);
-        setSelectedLabelId(nextWorkflow.selectedLabelId);
+        setAssignmentTargetConnectionId(nextWorkflow.selectedLabelId);
+        setDisplayConnectionId(assignmentConnectionId);
         setActiveSGroup(nextWorkflow.activeSGroup);
-        setErrorMessage(`${selectedLabelId} is complete. Select the next S connection before assigning another edge.`);
+        setErrorMessage(`${assignmentConnectionId} is complete. Select the next S connection before assigning another edge.`);
         return;
       }
 
-      setErrorMessage(`${selectedLabelId} is complete. Start S Group or select another S connection before assigning another edge.`);
+      setErrorMessage(`${assignmentConnectionId} is complete. Start S Group or select another S connection before assigning another edge.`);
       return;
     }
 
@@ -1231,8 +1253,8 @@ function App() {
 
     const currentBucket = toEdgeAssignmentBucket(edgeAssignments[edgeId]) ?? {};
     const nextAssignment: EdgeAssignment = {
-      connectionId: selectedLabelId,
-      ...(connection.prefix === 'E' ? { edgeRole: getDefaultEdgeRole(edgeAssignments, selectedLabelId) } : {}),
+      connectionId: assignmentConnectionId,
+      ...(connection.prefix === 'E' ? { edgeRole: getDefaultEdgeRole(edgeAssignments, assignmentConnectionId) } : {}),
       ...(connection.prefix === 'S' && nextSlotRole ? { slotRole: nextSlotRole } : {}),
     };
 
@@ -1260,14 +1282,15 @@ function App() {
         : { ...currentBucket, slotAssignments: [...(currentBucket.slotAssignments ?? []), nextAssignment] },
     };
     setEdgeAssignments(nextAssignments);
+    setDisplayConnectionId(assignmentConnectionId);
 
 
     const selectedLabelAssignmentCount = Object.values(nextAssignments).reduce((count, assignment) => (
       count
-      + (getBucketEdgeAssignment(assignment)?.connectionId === selectedLabelId ? 1 : 0)
-      + getBucketSlotAssignments(assignment).filter((slotAssignment) => slotAssignment.connectionId === selectedLabelId).length
+      + (getBucketEdgeAssignment(assignment)?.connectionId === assignmentConnectionId ? 1 : 0)
+      + getBucketSlotAssignments(assignment).filter((slotAssignment) => slotAssignment.connectionId === assignmentConnectionId).length
     ), 0);
-    const nextEdgeLabel = selectedLabelAssignmentCount === 2 ? getFollowingEdgeLabel(selectedLabelId) : null;
+    const nextEdgeLabel = selectedLabelAssignmentCount === 2 ? getFollowingEdgeLabel(assignmentConnectionId) : null;
 
     if (connection.prefix === 'E' && nextEdgeLabel) {
       setConnections((currentConnections) => {
@@ -1284,23 +1307,25 @@ function App() {
           ),
         };
       });
-      setSelectedLabelId(nextEdgeLabel);
-      setActiveTBGroup((currentGroup) => appendAutoCreatedEToTBGroup(currentGroup, selectedLabelId, nextEdgeLabel));
-      setExpandedTBGroups((currentGroups) => activeTBGroup?.connectionIds.includes(selectedLabelId) ? { ...currentGroups, [activeTBGroup.groupId]: true } : currentGroups);
+      setAssignmentTargetConnectionId(nextEdgeLabel);
+      setDisplayConnectionId(assignmentConnectionId);
+      setActiveTBGroup((currentGroup) => appendAutoCreatedEToTBGroup(currentGroup, assignmentConnectionId, nextEdgeLabel));
+      setExpandedTBGroups((currentGroups) => activeTBGroup?.connectionIds.includes(assignmentConnectionId) ? { ...currentGroups, [activeTBGroup.groupId]: true } : currentGroups);
     }
 
     const selectedSlotRoles = Object.values(nextAssignments)
       .flatMap((assignment) => getBucketSlotAssignments(assignment))
-      .filter((assignment) => assignment.connectionId === selectedLabelId)
+      .filter((assignment) => assignment.connectionId === assignmentConnectionId)
       .map((assignment) => assignment.slotRole);
     const nextSlotLabel = selectedSlotRoles.includes('A') && selectedSlotRoles.includes('B')
-      ? getFollowingSlotLabel(selectedLabelId)
+      ? getFollowingSlotLabel(assignmentConnectionId)
       : null;
 
     if (connection.prefix === 'S' && nextSlotLabel) {
-      const nextWorkflow = maybeAutoCreateNextSInGroup(connections, nextAssignments, activeSGroup, selectedLabelId);
+      const nextWorkflow = maybeAutoCreateNextSInGroup(connections, nextAssignments, activeSGroup, assignmentConnectionId);
       setConnections(nextWorkflow.connections);
-      setSelectedLabelId(nextWorkflow.selectedLabelId);
+      setAssignmentTargetConnectionId(nextWorkflow.selectedLabelId);
+      setDisplayConnectionId(assignmentConnectionId);
       setActiveSGroup(nextWorkflow.activeSGroup);
     }
 
@@ -1418,7 +1443,8 @@ function App() {
     setConnections({});
     setProjectSettings(defaultProjectSettings);
     setLastAppliedManufacturingSettings(null);
-    setSelectedLabelId(null);
+    setAssignmentTargetConnectionId(null);
+    setDisplayConnectionId(null);
     setSelectedEdgeId(null);
     setAppliedEPanelPaths([]);
     setAppliedSGeometry([]);
@@ -2350,7 +2376,7 @@ function App() {
                                       type="button"
                                       className={selectedLabelId === label ? 'selected-label' : ''}
                                       onClick={() => {
-                                        setSelectedLabelId(label);
+                                        selectConnectionForDisplayAndAssignment(label);
                                         setErrorMessage('');
                                       }}
                                     >
@@ -2391,7 +2417,7 @@ function App() {
                                       type="button"
                                       className={selectedLabelId === label ? 'selected-label' : ''}
                                       onClick={() => {
-                                        setSelectedLabelId(label);
+                                        selectConnectionForDisplayAndAssignment(label);
                                         setErrorMessage('');
                                       }}
                                     >
@@ -2431,7 +2457,7 @@ function App() {
                                     type="button"
                                     className={selectedLabelId === label ? 'selected-label' : ''}
                                     onClick={() => {
-                                      setSelectedLabelId(label);
+                                      selectConnectionForDisplayAndAssignment(label);
                                       setErrorMessage('');
                                     }}
                                   >
@@ -2453,7 +2479,7 @@ function App() {
                             type="button"
                             className={selectedLabelId === label ? 'selected-label' : ''}
                             onClick={() => {
-                              setSelectedLabelId(label);
+                              selectConnectionForDisplayAndAssignment(label);
                               setErrorMessage('');
                             }}
                           >
