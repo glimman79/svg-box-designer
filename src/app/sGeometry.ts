@@ -279,7 +279,6 @@ export const recalculateAutomaticSSlotLengths = (
       ...connection,
       properties: {
         ...connection.properties,
-        slotLengthMm: thickness.autoSlotLengthMm,
         slotWidthMm: thickness.panelAThicknessMm,
       },
     }];

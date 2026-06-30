@@ -175,25 +175,11 @@ export const resolveTBThickness = (
 };
 
 export const recalculateAutomaticTBFingerWidths = (
-  svgModel: SvgDocumentModel,
-  assignments: EdgeAssignmentRecord,
+  _svgModel: SvgDocumentModel,
+  _assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
-  panelThicknessState?: PanelThicknessState,
-): ConnectionMap => Object.fromEntries(
-  Object.entries(connectionMap).map(([connectionId, connection]) => {
-    if (connection.prefix !== 'E' || connection.properties.isFingerWidthManual) {
-      return [connectionId, connection];
-    }
-
-    return [connectionId, {
-      ...connection,
-      properties: {
-        ...connection.properties,
-        fingerWidthMm: resolveTBThickness(svgModel, assignments, connection, panelThicknessState).autoFingerWidthMm,
-      },
-    }];
-  }),
-);
+  _panelThicknessState?: PanelThicknessState,
+): ConnectionMap => connectionMap;
 
 export const getPanelEdgeOperations = (
   panel: SvgPanel,

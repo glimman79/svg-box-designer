@@ -167,7 +167,8 @@ assert.equal(tbStaleViewModel.autoTabMm, 15, 'TB auto view model exposes compute
 assert.equal(tbStaleViewModel.storedTabMm, 9, 'TB auto view model keeps stale stored value separate from display value');
 assert.equal(getPanelEdgeOperations(tbPmModel.panels[0], tbPmAssignments, { 'E-pm': tbStaleAutoConnection }, tbStaleDisplayState, tbPmModel)[0].fingerWidthMm, 15, 'TB auto geometry uses same PM-derived value as view model');
 const tbPmChangedState = { defaultThicknessMm: 3, panels: { 'panel-a': { panelId: 'panel-a', thicknessMm: 18 }, 'panel-b': { panelId: 'panel-b', thicknessMm: 12 } } };
-assert.equal(recalculateAutomaticTBFingerWidths(tbPmModel, tbPmAssignments, { 'E-pm': tbPmConnection }, tbPmChangedState)['E-pm'].properties.fingerWidthMm, 36, 'TB automatic finger size recalculates when PM thickness changes');
+assert.equal(recalculateAutomaticTBFingerWidths(tbPmModel, tbPmAssignments, { 'E-pm': tbPmConnection }, tbPmChangedState)['E-pm'].properties.fingerWidthMm, 9, 'TB automatic PM change does not write computed finger size into stored field');
+assert.equal(getPanelEdgeOperations(tbPmModel.panels[0], tbPmAssignments, { 'E-pm': tbPmConnection }, tbPmChangedState, tbPmModel)[0].fingerWidthMm, 36, 'TB automatic geometry recalculates from PM thickness without stored write-back');
 const manualTbConnection = { id: 'E-pm', prefix: 'E', properties: { materialThicknessMm: 3, fingerWidthMm: 22, isFingerWidthManual: true } };
 const tbManualViewModel = getConnectionViewModel(tbPmModel, tbPmAssignments, manualTbConnection, tbStaleDisplayState);
 assert.equal(tbManualViewModel.displayTabMm, 22, 'TB manual view model display uses stored manual fingerWidthMm');
@@ -219,7 +220,8 @@ const { recomputeAppliedTBGeometryForPanelManager } = module.exports;
 const mixedAppliedPathsBeforePmChange = buildAppliedEPanelPaths(mixedTbModel, mixedTbAssignments, { 'E-mixed': autoMixedTbConnection }, mixedTbState);
 const mixedTbStateAfterPmApply = { defaultThicknessMm: 3, isApplied: true, isDirty: false, panels: { 'panel-1': { panelId: 'panel-1', thicknessMm: 10 }, 'panel-5': { panelId: 'panel-5', thicknessMm: 5 } } };
 const mixedRecomputedAfterPmApply = recomputeAppliedTBGeometryForPanelManager(mixedTbModel, mixedTbAssignments, { 'E-mixed': autoMixedTbConnection }, mixedTbStateAfterPmApply, mixedAppliedPathsBeforePmChange);
-assert.equal(mixedRecomputedAfterPmApply.connections['E-mixed'].properties.fingerWidthMm, 15, 'PM Apply recalculates automatic TB finger size from 9 to 15 without global Apply');
+assert.equal(mixedRecomputedAfterPmApply.connections['E-mixed'].properties.fingerWidthMm, 99, 'PM Apply does not write automatic TB finger size into stored field');
+assert.equal(getPanelEdgeOperations(mixedTbModel.panels[0], mixedTbAssignments, mixedRecomputedAfterPmApply.connections, mixedTbStateAfterPmApply, mixedTbModel)[0].fingerWidthMm, 15, 'PM Apply recalculates automatic TB geometry from PM thickness without stored write-back');
 assert.equal(getPanelEdgeOperations(mixedTbModel.panels[0], mixedTbAssignments, mixedRecomputedAfterPmApply.connections, mixedTbStateAfterPmApply, mixedTbModel)[0].insetDepthMm, 5, 'PM Apply recomputes TB joint depth from changed P5 thickness');
 assert.notDeepEqual(mixedRecomputedAfterPmApply.appliedEPanelPaths.map((path) => path.pathD), mixedAppliedPathsBeforePmChange.map((path) => path.pathD), 'PM Apply immediately rebuilds already-applied TB geometry');
 assert.equal(buildFinalGeometry(mixedTbModel, mixedRecomputedAfterPmApply.appliedEPanelPaths, []).contours.find((contour) => contour.panelId === 'panel-1')?.pathD, mixedRecomputedAfterPmApply.appliedEPanelPaths.find((path) => path.panelId === 'panel-1')?.pathD, 'Final Geometry consumes PM Apply recomputed TB geometry without another global Apply');
@@ -619,7 +621,8 @@ const mixedSCase1Geometry = buildAppliedSGeometry(mixedSModel, mixedSCase1Assign
 assert.equal(mixedSCase1Thickness.panelAThicknessMm, 18, 'mixed S case 1 wall thickness resolves from S-A PM thickness 18');
 assert.equal(mixedSCase1Geometry[0].slotPaths[0].widthMm, 18, 'mixed S case 1 slot width resolves from S-A PM thickness 18');
 assert.equal(mixedSCase1Thickness.panelBThicknessMm, 10, 'mixed S case 1 insert depth resolves from S-B PM thickness 10');
-assert.equal(mixedSCase1Connections['S-mixed'].properties.slotLengthMm, 54, 'mixed S case 1 auto slot length is 3 × S-A thickness');
+assert.equal(mixedSCase1Connections['S-mixed'].properties.slotLengthMm, 9, 'mixed S case 1 auto slot length stored field is not overwritten');
+assert.equal(resolveSSlotLengthMm(mixedSCase1Connections['S-mixed'], mixedSCase1Thickness), 54, 'mixed S case 1 auto geometry slot length is 3 × S-A thickness');
 assert.match(mixedSCase1Geometry[0].panelPaths[0].pathD, /20/, 'mixed S case 1 S-A receiving inset depth uses S-B thickness 10 from y=10 to y=20');
 const mixedSCase2Assignments = { 's-mixed-c-top': { connectionId: 'S-mixed', slotRole: 'A' }, 's-mixed-a-top': { connectionId: 'S-mixed', slotRole: 'B' } };
 const mixedSCase2Connections = recalculateAutomaticSSlotLengths(mixedSModel, mixedSCase2Assignments, { 'S-mixed': mixedSCase1Connection }, mixedSState);
@@ -628,7 +631,8 @@ const mixedSCase2Geometry = buildAppliedSGeometry(mixedSModel, mixedSCase2Assign
 assert.equal(mixedSCase2Thickness.panelAThicknessMm, 4, 'mixed S case 2 wall thickness resolves from S-A PM thickness 4');
 assert.equal(mixedSCase2Geometry[0].slotPaths[0].widthMm, 4, 'mixed S case 2 slot width resolves from S-A PM thickness 4');
 assert.equal(mixedSCase2Thickness.panelBThicknessMm, 18, 'mixed S case 2 insert depth resolves from S-B PM thickness 18');
-assert.equal(mixedSCase2Connections['S-mixed'].properties.slotLengthMm, 12, 'mixed S case 2 auto slot length is 3 × S-A thickness');
+assert.equal(mixedSCase2Connections['S-mixed'].properties.slotLengthMm, 9, 'mixed S case 2 auto slot length stored field is not overwritten');
+assert.equal(resolveSSlotLengthMm(mixedSCase2Connections['S-mixed'], mixedSCase2Thickness), 12, 'mixed S case 2 auto geometry slot length is 3 × S-A thickness');
 assert.match(mixedSCase2Geometry[0].panelPaths[0].pathD, /208/, 'mixed S case 2 S-A receiving inset depth uses S-B thickness 18 from y=190 to y=208');
 const manualMixedSConnection = { ...sConnection('S-mixed'), properties: { ...sConnection('S-mixed').properties, slotLengthMm: 25, isSlotLengthManual: true } };
 const changedMixedSState = { ...mixedSState, panels: { ...mixedSState.panels, 's-mixed-a': { panelId: 's-mixed-a', thicknessMm: 12 }, 's-mixed-b': { panelId: 's-mixed-b', thicknessMm: 6 } } };
@@ -639,7 +643,7 @@ assert.equal(manualMixedSGeometry[0].slotPaths[0].widthMm, 12, 'manual mixed S s
 assert.match(manualMixedSGeometry[0].panelPaths[0].pathD, /16/, 'manual mixed S insert depth recomputes from changed S-B PM thickness 6 from y=10 to y=16');
 const mixedSAppliedBeforePmChange = buildAppliedSGeometry(mixedSModel, mixedSCase1Assignments, mixedSCase1Connections, mixedSState);
 const mixedSPmApplyRecomputed = recomputeAppliedTBGeometryForPanelManager(mixedSModel, mixedSCase1Assignments, mixedSCase1Connections, changedMixedSState, [], mixedSAppliedBeforePmChange);
-assert.equal(mixedSPmApplyRecomputed.connections['S-mixed'].properties.slotLengthMm, 36, 'PM Apply recalculates automatic S slot length from changed S-A thickness');
+assert.equal(mixedSPmApplyRecomputed.connections['S-mixed'].properties.slotLengthMm, 9, 'PM Apply does not write automatic S slot length into stored field');
 assert.equal(mixedSPmApplyRecomputed.appliedSGeometry[0].slotPaths[0].widthMm, 12, 'PM Apply immediately recomputes already-applied S slot width');
 assert.notDeepEqual(mixedSPmApplyRecomputed.appliedSGeometry[0].panelPaths.map((path) => path.pathD), mixedSAppliedBeforePmChange[0].panelPaths.map((path) => path.pathD), 'PM Apply immediately rebuilds already-applied S geometry without global Apply');
 
