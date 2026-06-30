@@ -254,6 +254,15 @@ export const resolveSThickness = (
   };
 };
 
+export const resolveSSlotLengthMm = (
+  connection: SlotConnectionDefinition,
+  thickness: SConnectionThickness,
+): number => (
+  connection.properties.isSlotLengthManual
+    ? connection.properties.slotLengthMm
+    : thickness.autoSlotLengthMm
+);
+
 export const recalculateAutomaticSSlotLengths = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
@@ -343,7 +352,8 @@ export const buildAppliedSGeometry = (
     const sThickness = resolveSThickness(svgModel, assignments, connection, panelThicknessState);
     const wallThicknessMm = sThickness.panelAThicknessMm;
     const insertDepthMm = sThickness.panelBThicknessMm;
-    const planSegments = createTabSegmentPlan(sideLength, connection.properties.slotLengthMm);
+    const slotLengthMm = resolveSSlotLengthMm(connection, sThickness);
+    const planSegments = createTabSegmentPlan(sideLength, slotLengthMm);
     const aSegments = getTabSegmentsForRole(planSegments, 'A');
     const bLength = Math.hypot(sourceBEdge.end.x - sourceBEdge.start.x, sourceBEdge.end.y - sourceBEdge.start.y);
     const bSideIndex = bPanel.edgeIds.findIndex((edgeId) => edgeId === sourceBEdgeId);

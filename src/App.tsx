@@ -3,7 +3,7 @@ import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
 import { exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
-import { buildAppliedSGeometry, recalculateAutomaticSSlotLengths, resolveSThickness } from './app/sGeometry';
+import { buildAppliedSGeometry, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
 import { buildKerfCompensatedPreviewFromFinalContours } from './app/manufacturingCompensation';
 import { buildFinalGeometry } from './app/finalGeometry';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
@@ -20,7 +20,7 @@ export { edgeMatchesContourSide, getContourEdgePoints, getTabSegmentsForRole, va
 export type { PanelValidationResult } from './app/sharedPanelGeometry';
 export { exportFinalGeometrySvg, exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
 export { buildFinalGeometry } from './app/finalGeometry';
-export { buildAppliedSGeometry, recalculateAutomaticSSlotLengths, resolveSThickness } from './app/sGeometry';
+export { buildAppliedSGeometry, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
 export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 export { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getNextInternalELabel, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
@@ -1924,6 +1924,7 @@ function App() {
     if (selectedConnection.prefix === 'S') {
       const properties = selectedConnection.properties;
       const sThickness = resolveSThickness(svgModel, edgeAssignments, selectedConnection, panelManager);
+      const displayedSlotLengthMm = resolveSSlotLengthMm(selectedConnection, sThickness);
       const assignedSEdges = svgModel.edges.filter((edge) => getBucketSlotAssignments(edgeAssignments[edge.id]).some((assignment) => assignment.connectionId === selectedConnection.id));
 
       return (
@@ -1982,7 +1983,7 @@ function App() {
             <h4 id="slot-basic-properties">Basic</h4>
             <div className="property-grid">
               <NumericField id="slot-offset" label="Slot offset inward from selected S-B edge (mm)" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
-              <NumericField id="slot-length" label="Slot length (mm)" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
+              <NumericField id="slot-length" label="Slot length (mm)" min={0} value={displayedSlotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
             </div>
           </section>
         </div>
@@ -2044,13 +2045,15 @@ function App() {
 
     if (selectedConnection?.prefix === 'S' && (activeSGroup?.isActive || selectedConnection)) {
       const properties = selectedConnection.properties;
+      const sThickness = resolveSThickness(svgModel, edgeAssignments, selectedConnection, panelManager);
+      const displayedSlotLengthMm = resolveSSlotLengthMm(selectedConnection, sThickness);
       const controlsLabel = activeSGroup?.isActive && activeSGroup.connectionIds.includes(selectedConnection.id)
         ? 'Compact active S group controls'
         : 'Compact selected S controls';
 
       return (
         <div className="compact-property-controls" aria-label={controlsLabel}>
-          <NumericField id="compact-slot-tab-size" label="Tab" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
+          <NumericField id="compact-slot-tab-size" label="Tab" min={0} value={displayedSlotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
           <NumericField id="compact-slot-offset" label="Offset" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
         </div>
       );

@@ -74,7 +74,7 @@ const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
 const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
-const { getPanelEdgeOperations, recalculateAutomaticTBFingerWidths, resolveTBThickness, resolveSThickness, recalculateAutomaticSSlotLengths, applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, exportManufacturingGeometrySvg, pathDToClosedContour } = module.exports;
+const { getPanelEdgeOperations, recalculateAutomaticTBFingerWidths, resolveTBThickness, resolveSThickness, resolveSSlotLengthMm, recalculateAutomaticSSlotLengths, applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, exportManufacturingGeometrySvg, pathDToClosedContour } = module.exports;
 
 const buildKerfPreviewViaFinalContours = (svgModel, appliedEPanelPaths, appliedSGeometry, kerfMm, slotClearanceMm = 0) => {
   const finalGeometry = buildFinalGeometry(svgModel, appliedEPanelPaths, appliedSGeometry);
@@ -552,6 +552,27 @@ sResult[0].slotPaths.forEach((slotPath, index) => {
 });
 assert.deepEqual(segmentDistances(sResult[0].slotPaths), [[9.5, 18.5], [27.5, 36.5], [45.5, 54.5], [63.5, 72.5], [81.5, 90.5]], 'S slot spacing baseline remains stable');
 
+const autoDisplayState = {
+  defaultThicknessMm: 3,
+  panels: {
+    sPanel: { panelId: 'sPanel', thicknessMm: 5 },
+    receiver: { panelId: 'receiver', thicknessMm: 3 },
+  },
+};
+const staleAutoSConnection = sConnection('S1');
+assert.equal(staleAutoSConnection.properties.slotLengthMm, 9, 'stale fixture starts with old stored S tab length');
+const staleAutoThickness = resolveSThickness(sModel, sAssignments, staleAutoSConnection, autoDisplayState);
+assert.equal(resolveSSlotLengthMm(staleAutoSConnection, staleAutoThickness), 15, 'automatic S tab display resolves to 3 × S-A PM thickness instead of stale stored value');
+const staleAutoGeometry = buildAppliedSGeometry(sModel, sAssignments, { S1: staleAutoSConnection }, autoDisplayState);
+const expectedAutoSegments = createTabSegmentPlan(100, 15).filter((_, segmentIndex) => segmentIndex % 2 === 1);
+assert.equal(staleAutoGeometry[0].slotPaths[0].startDistance, expectedAutoSegments[0].startDistance, 'automatic S canvas geometry uses computed PM slot length when stored value is stale');
+const manualDisplayConnection = { ...staleAutoSConnection, properties: { ...staleAutoSConnection.properties, slotLengthMm: 12, isSlotLengthManual: true } };
+const manualDisplayThickness = resolveSThickness(sModel, sAssignments, manualDisplayConnection, autoDisplayState);
+assert.equal(resolveSSlotLengthMm(manualDisplayConnection, manualDisplayThickness), 12, 'manual S tab display remains the stored manual value after PM changes');
+const manualDisplayGeometry = buildAppliedSGeometry(sModel, sAssignments, { S1: manualDisplayConnection }, autoDisplayState);
+const expectedManualSegments = createTabSegmentPlan(100, 12).filter((_, segmentIndex) => segmentIndex % 2 === 1);
+assert.equal(manualDisplayGeometry[0].slotPaths[0].startDistance, expectedManualSegments[0].startDistance, 'manual S canvas geometry uses stored manual slot length after PM changes');
+
 const mixedSPanelA = panel('s-mixed-a', 250, 10, 200, 50);
 const mixedSPanelB = panel('s-mixed-b', 250, 100, 200, 50);
 const mixedSPanelC = panel('s-mixed-c', 250, 190, 200, 50);
@@ -878,6 +899,7 @@ assert.equal(compactSelectedS.properties.isSlotLengthManual, true, 'selected com
 const sTabNineGeometry = buildAppliedSGeometry(sModel, sAssignments, { S1: sConnection('S1') });
 const sTabFifteenConnection = sConnection('S1');
 sTabFifteenConnection.properties.slotLengthMm = 15;
+sTabFifteenConnection.properties.isSlotLengthManual = true;
 const sTabFifteenGeometry = buildAppliedSGeometry(sModel, sAssignments, { S1: sTabFifteenConnection });
 const sTabNineFirstSlot = sTabNineGeometry[0].slotPaths[0]?.startDistance;
 const sTabFifteenFirstSlot = sTabFifteenGeometry[0].slotPaths[0]?.startDistance;
