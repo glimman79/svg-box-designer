@@ -195,7 +195,7 @@ export const maybeAutoCreateNextSInGroup = (
 
   return {
     connections: { ...connections, [connectionId]: createCopiedSConnection(connectionId, previousConnection) },
-    selectedLabelId: completedConnectionId,
+    selectedLabelId: connectionId,
     activeSGroup: { ...activeSGroup, connectionIds: [...activeSGroup.connectionIds, connectionId] },
   };
 };
