@@ -12,22 +12,22 @@ export type ConnectionViewModelAssignedEdge = {
   role: EdgeRole | SlotRole;
   panelId: string | null;
   panelLabel: string | null;
-  panelThicknessMm: number;
+  panelThicknessMm: number | null;
   matingPanelId: string | null;
   matingPanelLabel: string | null;
-  matingThicknessMm: number;
+  matingThicknessMm: number | null;
 };
 
 export type ConnectionViewModel = {
   connectionId: string;
   prefix: ConnectionViewModelPrefix;
-  displayTabMm: number;
+  displayTabMm: number | null;
   isTabManual: boolean;
   storedTabMm: number;
-  autoTabMm: number;
+  autoTabMm: number | null;
   panelIds: { panelAId: string | null; panelBId: string | null };
   panelLabels: { panelALabel: string | null; panelBLabel: string | null };
-  panelThicknesses: { panelAThicknessMm: number; panelBThicknessMm: number };
+  panelThicknesses: { panelAThicknessMm: number | null; panelBThicknessMm: number | null };
   diagnostics: string[];
   assignedEdges: ConnectionViewModelAssignedEdge[];
 };
@@ -110,7 +110,10 @@ export const getTBConnectionViewModel = (
       panelBLabel: getPanelLabel(thickness.panelBId, getPanelDisplayLabel),
     },
     panelThicknesses: { panelAThicknessMm: thickness.panelAThicknessMm, panelBThicknessMm: thickness.panelBThicknessMm },
-    diagnostics: [connection.properties.isFingerWidthManual ? 'Manual tab value uses stored fingerWidthMm.' : 'Auto tab value uses 3 × min(panel A thickness, panel B thickness).'],
+    diagnostics: [
+      ...(thickness.isComplete ? [] : ['Incomplete connection']),
+      connection.properties.isFingerWidthManual ? 'Manual tab value uses stored fingerWidthMm.' : 'Auto tab value uses 3 × min(panel A thickness, panel B thickness).',
+    ],
     assignedEdges,
   };
 };
@@ -159,7 +162,10 @@ export const getSConnectionViewModel = (
       panelBLabel: getPanelLabel(thickness.panelBId, getPanelDisplayLabel),
     },
     panelThicknesses: { panelAThicknessMm: thickness.panelAThicknessMm, panelBThicknessMm: thickness.panelBThicknessMm },
-    diagnostics: [connection.properties.isSlotLengthManual ? 'Manual tab value uses stored slotLengthMm.' : 'Auto tab value uses 3 × S-A panel thickness.'],
+    diagnostics: [
+      ...(thickness.isComplete ? [] : ['Incomplete connection']),
+      connection.properties.isSlotLengthManual ? 'Manual tab value uses stored slotLengthMm.' : 'Auto tab value uses 3 × S-A panel thickness.',
+    ],
     assignedEdges,
   };
 };

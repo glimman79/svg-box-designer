@@ -86,28 +86,27 @@ export type PanelGeometryBuildResult =
 export const getPanelThickness = (
   panelId: string | null | undefined,
   panelThicknessState?: PanelThicknessState,
-  fallbackThicknessMm = 3,
-): number => {
+  fallbackThicknessMm?: number,
+): number | null => {
   const pmThickness = panelId ? panelThicknessState?.panels?.[panelId]?.thicknessMm : undefined;
 
   if (Number.isFinite(pmThickness) && (pmThickness as number) > 0) {
     return pmThickness as number;
   }
 
-  if (Number.isFinite(fallbackThicknessMm) && fallbackThicknessMm > 0) {
-    return fallbackThicknessMm;
+  if (!panelThicknessState && Number.isFinite(fallbackThicknessMm) && (fallbackThicknessMm as number) > 0) {
+    return fallbackThicknessMm as number;
   }
 
-  const defaultThickness = panelThicknessState?.defaultThicknessMm;
-  return Number.isFinite(defaultThickness) && (defaultThickness as number) > 0 ? defaultThickness as number : 3;
+  return null;
 };
 
 export const getPanelThicknessForEdge = (
   svgModel: SvgDocumentModel,
   edgeId: string,
   panelThicknessState?: PanelThicknessState,
-  fallbackThicknessMm = 3,
-): number => {
+  fallbackThicknessMm?: number,
+): number | null => {
   const panel = svgModel.panels.find((candidate) => candidate.edgeIds.includes(edgeId));
   return getPanelThickness(panel?.id, panelThicknessState, fallbackThicknessMm);
 };
@@ -115,9 +114,10 @@ export const getPanelThicknessForEdge = (
 type TBConnectionThickness = {
   panelAId: string | null;
   panelBId: string | null;
-  panelAThicknessMm: number;
-  panelBThicknessMm: number;
-  autoFingerWidthMm: number;
+  panelAThicknessMm: number | null;
+  panelBThicknessMm: number | null;
+  autoFingerWidthMm: number | null;
+  isComplete: boolean;
 };
 
 type AssignedTBEdge = { edgeId: string; role: EdgeRole };
@@ -146,7 +146,7 @@ const getAssignedPanelForRole = (
 const getTBRoleThickness = (
   thickness: TBConnectionThickness,
   role: EdgeRole,
-): { ownerThicknessMm: number; receiverThicknessMm: number } => (
+): { ownerThicknessMm: number | null; receiverThicknessMm: number | null } => (
   role === 'A'
     ? { ownerThicknessMm: thickness.panelAThicknessMm, receiverThicknessMm: thickness.panelBThicknessMm }
     : { ownerThicknessMm: thickness.panelBThicknessMm, receiverThicknessMm: thickness.panelAThicknessMm }
@@ -161,16 +161,17 @@ export const resolveTBThickness = (
   const assignedEdges = getAssignedTBEdges(assignments, connection.id);
   const panelA = getAssignedPanelForRole(svgModel, assignedEdges, 'A');
   const panelB = getAssignedPanelForRole(svgModel, assignedEdges, 'B');
-  const legacyThicknessMm = connection.properties.materialThicknessMm;
-  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState, legacyThicknessMm);
-  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState, legacyThicknessMm);
+  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState, connection.properties.materialThicknessMm);
+  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState, connection.properties.materialThicknessMm);
+  const isComplete = panelAThicknessMm !== null && panelBThicknessMm !== null;
 
   return {
     panelAId: panelA?.id ?? null,
     panelBId: panelB?.id ?? null,
     panelAThicknessMm,
     panelBThicknessMm,
-    autoFingerWidthMm: 3 * Math.min(panelAThicknessMm, panelBThicknessMm),
+    autoFingerWidthMm: isComplete ? 3 * Math.min(panelAThicknessMm, panelBThicknessMm) : null,
+    isComplete,
   };
 };
 
@@ -199,12 +200,17 @@ export const getPanelEdgeOperations = (
     const connectionThickness = svgModel && connection.prefix === 'E'
       ? resolveTBThickness(svgModel, assignments, connection, panelThicknessState)
       : null;
-    const { ownerThicknessMm, receiverThicknessMm } = connectionThickness
+    const roleThickness = connectionThickness
       ? getTBRoleThickness(connectionThickness, assignment.edgeRole)
-      : {
-          ownerThicknessMm: connection.properties.materialThicknessMm,
-          receiverThicknessMm: connection.properties.materialThicknessMm,
-        };
+      : { ownerThicknessMm: connection.properties.materialThicknessMm, receiverThicknessMm: connection.properties.materialThicknessMm };
+    const { ownerThicknessMm, receiverThicknessMm } = roleThickness;
+    const fingerWidthMm = connection.prefix !== 'E' || connection.properties.isFingerWidthManual || !connectionThickness
+      ? connection.properties.fingerWidthMm
+      : connectionThickness.autoFingerWidthMm;
+
+    if (ownerThicknessMm === null || receiverThicknessMm === null || fingerWidthMm === null) {
+      return [];
+    }
 
     return [{
       edgeId,
@@ -212,9 +218,7 @@ export const getPanelEdgeOperations = (
       role: assignment.edgeRole,
       materialThicknessMm: ownerThicknessMm,
       insetDepthMm: receiverThicknessMm,
-      fingerWidthMm: connection.prefix !== 'E' || connection.properties.isFingerWidthManual || !connectionThickness
-        ? connection.properties.fingerWidthMm
-        : connectionThickness.autoFingerWidthMm,
+      fingerWidthMm,
     }];
   })
 );
