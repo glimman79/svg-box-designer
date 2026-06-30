@@ -3,7 +3,7 @@ import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
 import { exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
-import { buildAppliedSGeometry } from './app/sGeometry';
+import { buildAppliedSGeometry, recalculateAutomaticSSlotLengths, resolveSThickness } from './app/sGeometry';
 import { buildKerfCompensatedPreviewFromFinalContours } from './app/manufacturingCompensation';
 import { buildFinalGeometry } from './app/finalGeometry';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
@@ -20,7 +20,7 @@ export { edgeMatchesContourSide, getContourEdgePoints, getTabSegmentsForRole, va
 export type { PanelValidationResult } from './app/sharedPanelGeometry';
 export { exportFinalGeometrySvg, exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
 export { buildFinalGeometry } from './app/finalGeometry';
-export { buildAppliedSGeometry } from './app/sGeometry';
+export { buildAppliedSGeometry, recalculateAutomaticSSlotLengths, resolveSThickness } from './app/sGeometry';
 export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 export { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getNextInternalELabel, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
@@ -274,19 +274,30 @@ export const recomputeAppliedTBGeometryForPanelManager = (
   connectionMap: ConnectionMap,
   panelManager: PanelManagerState,
   appliedEPanelPaths: AppliedEPanelPath[],
+  appliedSGeometry: AppliedSGeometry[] = [],
 ) => {
-  const nextConnections = recalculateAutomaticTBFingerWidths(svgModel, assignments, connectionMap, panelManager);
+  const nextConnections = recalculateAutomaticTBFingerWidths(
+    svgModel,
+    assignments,
+    recalculateAutomaticSSlotLengths(svgModel, assignments, connectionMap, panelManager),
+    panelManager,
+  );
   const hasAppliedTBGeometry = appliedEPanelPaths.length > 0;
   const hasTBAssignments = Object.values(assignments).some((bucket) => {
     const assignment = getBucketEdgeAssignment(bucket);
     return assignment ? nextConnections[assignment.connectionId]?.prefix === 'E' : false;
   });
 
+  const hasAppliedSGeometry = appliedSGeometry.length > 0;
+
   return {
     connections: nextConnections,
     appliedEPanelPaths: hasAppliedTBGeometry || hasTBAssignments
       ? buildAppliedEPanelPaths(svgModel, assignments, nextConnections, panelManager)
       : appliedEPanelPaths,
+    appliedSGeometry: hasAppliedSGeometry
+      ? buildAppliedSGeometry(svgModel, assignments, nextConnections, panelManager)
+      : appliedSGeometry,
   };
 };
 
@@ -1313,9 +1324,9 @@ function App() {
       const applyInputs = activeWGroup?.isActive
         ? finishWGroupWorkflow(connections, edgeAssignments, activeWGroup, svgModel)
         : { connections, assignments: edgeAssignments };
-      const nextConnections = recalculateAutomaticTBFingerWidths(svgModel, applyInputs.assignments, applyInputs.connections, panelManager);
+      const nextConnections = recalculateAutomaticTBFingerWidths(svgModel, applyInputs.assignments, recalculateAutomaticSSlotLengths(svgModel, applyInputs.assignments, applyInputs.connections, panelManager), panelManager);
       const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, applyInputs.assignments, nextConnections, panelManager);
-      const nextAppliedSGeometry = buildAppliedSGeometry(svgModel, applyInputs.assignments, applyInputs.connections);
+      const nextAppliedSGeometry = buildAppliedSGeometry(svgModel, applyInputs.assignments, nextConnections, panelManager);
       const shouldRecordManufacturing = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
       if (shouldRecordManufacturing) {
         setLastAppliedManufacturingSettings(structuredClone(projectSettings));
@@ -1414,9 +1425,10 @@ function App() {
     }
     pushUndoState();
     const appliedPanelManager = { ...panelManager, isApplied: true, isDirty: false };
-    const recomputedTBGeometry = recomputeAppliedTBGeometryForPanelManager(svgModel, edgeAssignments, connections, appliedPanelManager, appliedEPanelPaths);
+    const recomputedTBGeometry = recomputeAppliedTBGeometryForPanelManager(svgModel, edgeAssignments, connections, appliedPanelManager, appliedEPanelPaths, appliedSGeometry);
     setConnections(recomputedTBGeometry.connections);
     setAppliedEPanelPaths(recomputedTBGeometry.appliedEPanelPaths);
+    setAppliedSGeometry(recomputedTBGeometry.appliedSGeometry);
     setPanelManager(appliedPanelManager);
     setIsPanelManagerModalOpen(false);
     setActiveTool('select');
@@ -1878,10 +1890,22 @@ function App() {
 
     if (selectedConnection.prefix === 'S') {
       const properties = selectedConnection.properties;
+      const sThickness = resolveSThickness(svgModel, edgeAssignments, selectedConnection, panelManager);
       const assignedSEdges = svgModel.edges.filter((edge) => getBucketSlotAssignments(edgeAssignments[edge.id]).some((assignment) => assignment.connectionId === selectedConnection.id));
 
       return (
         <div className="property-sections">
+          <section className="property-section" aria-labelledby="slot-pm-thickness">
+            <h4 id="slot-pm-thickness">PM thickness</h4>
+            <dl>
+              <div><dt>S-A panel</dt><dd>{sThickness.panelAId ? `${getPanelDisplayName(sThickness.panelAId)} = ${formatCalculatedMm(sThickness.panelAThicknessMm)}` : formatCalculatedMm(sThickness.panelAThicknessMm)}</dd></div>
+              <div><dt>S-B panel</dt><dd>{sThickness.panelBId ? `${getPanelDisplayName(sThickness.panelBId)} = ${formatCalculatedMm(sThickness.panelBThicknessMm)}` : formatCalculatedMm(sThickness.panelBThicknessMm)}</dd></div>
+              <div><dt>Wall thickness</dt><dd>{formatCalculatedMm(sThickness.panelAThicknessMm)}</dd></div>
+              <div><dt>Slot width</dt><dd>{formatCalculatedMm(sThickness.panelAThicknessMm)}</dd></div>
+              <div><dt>Insert depth</dt><dd>{formatCalculatedMm(sThickness.panelBThicknessMm)}</dd></div>
+            </dl>
+          </section>
+
           <section className="property-section" aria-labelledby="slot-assigned-edges">
             <h4 id="slot-assigned-edges">Assigned edges</h4>
             {assignedSEdges.length > 0 ? (
@@ -2000,7 +2024,6 @@ function App() {
 
       return (
         <div className="compact-property-controls" aria-label={controlsLabel}>
-          <NumericField id="compact-slot-material-thickness" label="Thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateSlotProperties({ materialThicknessMm })} />
           <NumericField id="compact-slot-tab-size" label="Tab" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
           <NumericField id="compact-slot-offset" label="Offset" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
         </div>

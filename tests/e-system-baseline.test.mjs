@@ -74,7 +74,7 @@ const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
 const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
-const { getPanelEdgeOperations, recalculateAutomaticTBFingerWidths, resolveTBThickness, applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, exportManufacturingGeometrySvg, pathDToClosedContour } = module.exports;
+const { getPanelEdgeOperations, recalculateAutomaticTBFingerWidths, resolveTBThickness, resolveSThickness, recalculateAutomaticSSlotLengths, applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, exportManufacturingGeometrySvg, pathDToClosedContour } = module.exports;
 
 const buildKerfPreviewViaFinalContours = (svgModel, appliedEPanelPaths, appliedSGeometry, kerfMm, slotClearanceMm = 0) => {
   const finalGeometry = buildFinalGeometry(svgModel, appliedEPanelPaths, appliedSGeometry);
@@ -551,6 +551,51 @@ sResult[0].slotPaths.forEach((slotPath, index) => {
   assertClosedPath(slotPath.pathD, 'S-B slot contour is closed');
 });
 assert.deepEqual(segmentDistances(sResult[0].slotPaths), [[9.5, 18.5], [27.5, 36.5], [45.5, 54.5], [63.5, 72.5], [81.5, 90.5]], 'S slot spacing baseline remains stable');
+
+const mixedSPanelA = panel('s-mixed-a', 250, 10, 200, 50);
+const mixedSPanelB = panel('s-mixed-b', 250, 100, 200, 50);
+const mixedSPanelC = panel('s-mixed-c', 250, 190, 200, 50);
+const mixedSModel = modelForPanels([mixedSPanelA, mixedSPanelB, mixedSPanelC], { width: 500, height: 260 });
+const mixedSState = {
+  defaultThicknessMm: 3,
+  panels: {
+    's-mixed-a': { panelId: 's-mixed-a', thicknessMm: 18 },
+    's-mixed-b': { panelId: 's-mixed-b', thicknessMm: 10 },
+    's-mixed-c': { panelId: 's-mixed-c', thicknessMm: 4 },
+  },
+};
+const mixedSCase1Assignments = { 's-mixed-a-top': { connectionId: 'S-mixed', slotRole: 'A' }, 's-mixed-b-top': { connectionId: 'S-mixed', slotRole: 'B' } };
+const mixedSCase1Connection = sConnection('S-mixed');
+const mixedSCase1Connections = recalculateAutomaticSSlotLengths(mixedSModel, mixedSCase1Assignments, { 'S-mixed': mixedSCase1Connection }, mixedSState);
+const mixedSCase1Thickness = resolveSThickness(mixedSModel, mixedSCase1Assignments, mixedSCase1Connection, mixedSState);
+const mixedSCase1Geometry = buildAppliedSGeometry(mixedSModel, mixedSCase1Assignments, mixedSCase1Connections, mixedSState);
+assert.equal(mixedSCase1Thickness.panelAThicknessMm, 18, 'mixed S case 1 wall thickness resolves from S-A PM thickness 18');
+assert.equal(mixedSCase1Geometry[0].slotPaths[0].widthMm, 18, 'mixed S case 1 slot width resolves from S-A PM thickness 18');
+assert.equal(mixedSCase1Thickness.panelBThicknessMm, 10, 'mixed S case 1 insert depth resolves from S-B PM thickness 10');
+assert.equal(mixedSCase1Connections['S-mixed'].properties.slotLengthMm, 54, 'mixed S case 1 auto slot length is 3 × S-A thickness');
+assert.match(mixedSCase1Geometry[0].panelPaths[0].pathD, /20/, 'mixed S case 1 S-A receiving inset depth uses S-B thickness 10 from y=10 to y=20');
+const mixedSCase2Assignments = { 's-mixed-c-top': { connectionId: 'S-mixed', slotRole: 'A' }, 's-mixed-a-top': { connectionId: 'S-mixed', slotRole: 'B' } };
+const mixedSCase2Connections = recalculateAutomaticSSlotLengths(mixedSModel, mixedSCase2Assignments, { 'S-mixed': mixedSCase1Connection }, mixedSState);
+const mixedSCase2Thickness = resolveSThickness(mixedSModel, mixedSCase2Assignments, mixedSCase1Connection, mixedSState);
+const mixedSCase2Geometry = buildAppliedSGeometry(mixedSModel, mixedSCase2Assignments, mixedSCase2Connections, mixedSState);
+assert.equal(mixedSCase2Thickness.panelAThicknessMm, 4, 'mixed S case 2 wall thickness resolves from S-A PM thickness 4');
+assert.equal(mixedSCase2Geometry[0].slotPaths[0].widthMm, 4, 'mixed S case 2 slot width resolves from S-A PM thickness 4');
+assert.equal(mixedSCase2Thickness.panelBThicknessMm, 18, 'mixed S case 2 insert depth resolves from S-B PM thickness 18');
+assert.equal(mixedSCase2Connections['S-mixed'].properties.slotLengthMm, 12, 'mixed S case 2 auto slot length is 3 × S-A thickness');
+assert.match(mixedSCase2Geometry[0].panelPaths[0].pathD, /208/, 'mixed S case 2 S-A receiving inset depth uses S-B thickness 18 from y=190 to y=208');
+const manualMixedSConnection = { ...sConnection('S-mixed'), properties: { ...sConnection('S-mixed').properties, slotLengthMm: 25, isSlotLengthManual: true } };
+const changedMixedSState = { ...mixedSState, panels: { ...mixedSState.panels, 's-mixed-a': { panelId: 's-mixed-a', thicknessMm: 12 }, 's-mixed-b': { panelId: 's-mixed-b', thicknessMm: 6 } } };
+const manualMixedSConnections = recalculateAutomaticSSlotLengths(mixedSModel, mixedSCase1Assignments, { 'S-mixed': manualMixedSConnection }, changedMixedSState);
+const manualMixedSGeometry = buildAppliedSGeometry(mixedSModel, mixedSCase1Assignments, manualMixedSConnections, changedMixedSState);
+assert.equal(manualMixedSConnections['S-mixed'].properties.slotLengthMm, 25, 'manual mixed S slot length remains 25 when PM thickness changes');
+assert.equal(manualMixedSGeometry[0].slotPaths[0].widthMm, 12, 'manual mixed S slot width recomputes from changed S-A PM thickness');
+assert.match(manualMixedSGeometry[0].panelPaths[0].pathD, /16/, 'manual mixed S insert depth recomputes from changed S-B PM thickness 6 from y=10 to y=16');
+const mixedSAppliedBeforePmChange = buildAppliedSGeometry(mixedSModel, mixedSCase1Assignments, mixedSCase1Connections, mixedSState);
+const mixedSPmApplyRecomputed = recomputeAppliedTBGeometryForPanelManager(mixedSModel, mixedSCase1Assignments, mixedSCase1Connections, changedMixedSState, [], mixedSAppliedBeforePmChange);
+assert.equal(mixedSPmApplyRecomputed.connections['S-mixed'].properties.slotLengthMm, 36, 'PM Apply recalculates automatic S slot length from changed S-A thickness');
+assert.equal(mixedSPmApplyRecomputed.appliedSGeometry[0].slotPaths[0].widthMm, 12, 'PM Apply immediately recomputes already-applied S slot width');
+assert.notDeepEqual(mixedSPmApplyRecomputed.appliedSGeometry[0].panelPaths.map((path) => path.pathD), mixedSAppliedBeforePmChange[0].panelPaths.map((path) => path.pathD), 'PM Apply immediately rebuilds already-applied S geometry without global Apply');
+
 const sResultNoOffset = buildAppliedSGeometry(sModel, sAssignments, { S1: sConnection('S1') });
 const firstSlotNoOffsetNumbers = pathNumbers(sResultNoOffset[0].slotPaths[0].pathD);
 const firstSlotOffsetNumbers = pathNumbers(sResult[0].slotPaths[0].pathD);

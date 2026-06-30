@@ -1,7 +1,7 @@
 import { getBucketEdgeAssignment, getBucketSlotAssignments } from './assignmentBuckets';
 import type { AppliedSGeometry, ConnectionMap, SlotConnectionDefinition } from './connectionTypes';
-import { addContourPoint, clipOriginalSegmentsToInsetSide, clonePanelContour, removeInteriorBacktrackSpurs, validatePanelContour } from './eGeometry';
-import type { PanelContour, PanelGeometryBuildResult } from './eGeometry';
+import { addContourPoint, clipOriginalSegmentsToInsetSide, clonePanelContour, getPanelThickness, removeInteriorBacktrackSpurs, validatePanelContour } from './eGeometry';
+import type { PanelContour, PanelGeometryBuildResult, PanelThicknessState } from './eGeometry';
 import { findPanelContainingEdge } from './panelLookup';
 import { getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './sharedPanelGeometry';
 import { buildContourSides, cornerTouchTolerance, createTabSegmentPlan, getContourSideLength, getContourSignedArea, interpolateSidePoint, isContourSideReversedFromCanonical, lineIntersection, mirrorSegments, offsetContourSide, pointsMatch, pointsToClosedPathD } from './sharedGeometry';
@@ -11,7 +11,8 @@ import type { EdgeAssignmentRecord, Point, SvgDocumentModel, SvgEdge, SvgPanel }
 type SPanelOperation = {
   connectionId: string;
   sourceAEdgeId: string;
-  materialThicknessMm: number;
+  wallThicknessMm: number;
+  insertDepthMm: number;
   aSegments: TabSegment[];
 };
 
@@ -46,7 +47,7 @@ const buildSInsetPanelContour = (
   const contourWindingSign = getContourSignedArea(contour) >= 0 ? 1 : -1;
   const offsetSides = contourSides.map((side, sideIndex) => {
     const operation = operationsBySideIndex.get(sideIndex);
-    const offsetDistance = operation?.materialThicknessMm ?? 0;
+    const offsetDistance = operation?.insertDepthMm ?? 0;
 
     return offsetContourSide(side, offsetDistance * contourWindingSign);
   });
@@ -112,7 +113,7 @@ const applySTabsToContour = (
       return;
     }
 
-    const outwardSide = offsetContourSide(insetSide, -operation.materialThicknessMm * contourWindingSign);
+    const outwardSide = offsetContourSide(insetSide, -operation.insertDepthMm * contourWindingSign);
 
     if (!outwardSide) {
       addContourPoint(tabbedContour, insetSide.end);
@@ -213,10 +214,74 @@ const buildSlotPathD = (
   return pointsToClosedPathD([q0, q1, q2, q3]);
 };
 
+export type SConnectionThickness = {
+  panelAId: string | null;
+  panelBId: string | null;
+  panelAThicknessMm: number;
+  panelBThicknessMm: number;
+  autoSlotLengthMm: number;
+};
+
+const getAssignedSEdges = (assignments: EdgeAssignmentRecord, connectionId: string) => (
+  Object.entries(assignments).flatMap(([edgeId, assignment]) => (
+    getBucketSlotAssignments(assignment)
+      .filter((slotAssignment) => slotAssignment.connectionId === connectionId)
+      .map((slotAssignment) => ({ edgeId, role: slotAssignment.slotRole }))
+  ))
+);
+
+export const resolveSThickness = (
+  svgModel: SvgDocumentModel,
+  assignments: EdgeAssignmentRecord,
+  connection: SlotConnectionDefinition,
+  panelThicknessState?: PanelThicknessState,
+): SConnectionThickness => {
+  const assignedEdges = getAssignedSEdges(assignments, connection.id);
+  const aEdgeId = assignedEdges.find((assignment) => assignment.role === 'A')?.edgeId;
+  const bEdgeId = assignedEdges.find((assignment) => assignment.role === 'B')?.edgeId;
+  const panelA = aEdgeId ? findPanelContainingEdge(svgModel, aEdgeId) : null;
+  const panelB = bEdgeId ? findPanelContainingEdge(svgModel, bEdgeId) : null;
+  const legacyThicknessMm = connection.properties.materialThicknessMm;
+  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState, legacyThicknessMm);
+  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState, legacyThicknessMm);
+
+  return {
+    panelAId: panelA?.id ?? null,
+    panelBId: panelB?.id ?? null,
+    panelAThicknessMm,
+    panelBThicknessMm,
+    autoSlotLengthMm: panelAThicknessMm * 3,
+  };
+};
+
+export const recalculateAutomaticSSlotLengths = (
+  svgModel: SvgDocumentModel,
+  assignments: EdgeAssignmentRecord,
+  connectionMap: ConnectionMap,
+  panelThicknessState?: PanelThicknessState,
+): ConnectionMap => Object.fromEntries(
+  Object.entries(connectionMap).map(([connectionId, connection]) => {
+    if (connection.prefix !== 'S' || connection.properties.isSlotLengthManual) {
+      return [connectionId, connection];
+    }
+
+    const thickness = resolveSThickness(svgModel, assignments, connection, panelThicknessState);
+    return [connectionId, {
+      ...connection,
+      properties: {
+        ...connection.properties,
+        slotLengthMm: thickness.autoSlotLengthMm,
+        slotWidthMm: thickness.panelAThicknessMm,
+      },
+    }];
+  }),
+);
+
 export const buildAppliedSGeometry = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
+  panelThicknessState?: PanelThicknessState,
 ): AppliedSGeometry[] => {
   const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
   const sConnections = Object.values(connectionMap).filter((connection): connection is SlotConnectionDefinition => connection.prefix === 'S');
@@ -275,7 +340,9 @@ export const buildAppliedSGeometry = (
     const sideIndex = panel.edgeIds.findIndex((edgeId) => edgeId === sourceAEdgeId);
     const originalSide = getContourEdgePoints(panel, sideIndex);
     const sideLength = getContourSideLength(originalSide);
-    const materialThicknessMm = connection.properties.materialThicknessMm;
+    const sThickness = resolveSThickness(svgModel, assignments, connection, panelThicknessState);
+    const wallThicknessMm = sThickness.panelAThicknessMm;
+    const insertDepthMm = sThickness.panelBThicknessMm;
     const planSegments = createTabSegmentPlan(sideLength, connection.properties.slotLengthMm);
     const aSegments = getTabSegmentsForRole(planSegments, 'A');
     const bLength = Math.hypot(sourceBEdge.end.x - sourceBEdge.start.x, sourceBEdge.end.y - sourceBEdge.start.y);
@@ -297,7 +364,8 @@ export const buildAppliedSGeometry = (
     panelOperations.operations.push({
       connectionId: connection.id,
       sourceAEdgeId,
-      materialThicknessMm,
+      wallThicknessMm,
+      insertDepthMm,
       aSegments,
     });
     operationsByPanelId.set(panel.id, panelOperations);
@@ -306,7 +374,7 @@ export const buildAppliedSGeometry = (
       const startDistance = segment.startDistance;
       const endDistance = segment.endDistance;
       const slotOffsetMm = connection.properties.slotOffsetMm ?? 0;
-      const pathD = buildSlotPathD(sourceBEdge, startDistance, endDistance, materialThicknessMm, bInwardNormal, slotOffsetMm);
+      const pathD = buildSlotPathD(sourceBEdge, startDistance, endDistance, wallThicknessMm, bInwardNormal, slotOffsetMm);
 
       if (!pathD) {
         throw new Error(`${connection.id} S-B edge cannot receive slots because its length is invalid.`);
@@ -319,7 +387,7 @@ export const buildAppliedSGeometry = (
         pathD,
         startDistance,
         endDistance,
-        widthMm: materialThicknessMm,
+        widthMm: wallThicknessMm,
       };
     });
 
