@@ -71,9 +71,11 @@ export const getTBConnectionViewModel = (
   getPanelDisplayLabel?: LabelResolver,
 ): ConnectionViewModel => {
   const thickness = resolveTBThickness(svgModel, assignments, connection, panelThicknessState);
-  const displayTabMm = connection.properties.isFingerWidthManual
-    ? connection.properties.fingerWidthMm
-    : thickness.autoFingerWidthMm;
+  const displayTabMm = !thickness.isComplete
+    ? null
+    : connection.properties.isFingerWidthManual
+      ? connection.properties.fingerWidthMm
+      : thickness.autoFingerWidthMm;
 
   const assignedEdges = Object.entries(assignments).flatMap(([edgeId, assignment]) => {
     const edgeAssignment = getBucketEdgeAssignment(assignment);
@@ -111,8 +113,8 @@ export const getTBConnectionViewModel = (
     },
     panelThicknesses: { panelAThicknessMm: thickness.panelAThicknessMm, panelBThicknessMm: thickness.panelBThicknessMm },
     diagnostics: [
-      ...(thickness.isComplete ? [] : ['Incomplete connection']),
-      connection.properties.isFingerWidthManual ? 'Manual tab value uses stored fingerWidthMm.' : 'Auto tab value uses 3 × min(panel A thickness, panel B thickness).',
+      ...(thickness.isComplete ? [] : ['Waiting for second edge.']),
+      connection.properties.isFingerWidthManual ? 'Manual tab value uses stored fingerWidthMm.' : (thickness.isComplete ? 'Auto tab value uses 3 × min(panel A thickness, panel B thickness).' : 'Automatic tab value is unavailable until the TB connection is complete.'),
     ],
     assignedEdges,
   };
@@ -126,7 +128,7 @@ export const getSConnectionViewModel = (
   getPanelDisplayLabel?: LabelResolver,
 ): ConnectionViewModel => {
   const thickness = resolveSThickness(svgModel, assignments, connection, panelThicknessState);
-  const displayTabMm = resolveSSlotLengthMm(connection, thickness);
+  const displayTabMm = thickness.isComplete ? resolveSSlotLengthMm(connection, thickness) : null;
 
   const assignedEdges = Object.entries(assignments).flatMap(([edgeId, assignment]) => (
     getBucketSlotAssignments(assignment)
@@ -163,8 +165,8 @@ export const getSConnectionViewModel = (
     },
     panelThicknesses: { panelAThicknessMm: thickness.panelAThicknessMm, panelBThicknessMm: thickness.panelBThicknessMm },
     diagnostics: [
-      ...(thickness.isComplete ? [] : ['Incomplete connection']),
-      connection.properties.isSlotLengthManual ? 'Manual tab value uses stored slotLengthMm.' : 'Auto tab value uses 3 × S-A panel thickness.',
+      ...(thickness.isComplete ? [] : ['Waiting for S-A/S-B.']),
+      connection.properties.isSlotLengthManual ? 'Manual tab value uses stored slotLengthMm.' : (thickness.isComplete ? 'Auto tab value uses 3 × S-A panel thickness.' : 'Automatic tab value is unavailable until S-A and S-B are assigned.'),
     ],
     assignedEdges,
   };
