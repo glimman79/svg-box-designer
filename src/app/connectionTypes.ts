@@ -13,7 +13,6 @@ export type SlotConnectionProperties = {
   isSlotLengthManual: boolean;
   materialThicknessMm: number;
   kerfMm: number;
-  playMm: number;
 };
 
 export type WallPatternType = 'UNIFORM' | 'ALTERNATING';
