@@ -1,16 +1,21 @@
 import type { EdgeRole, SlotRole, SourceBounds } from '../svgUtils';
 
 export type EdgeConnectionProperties = {
+  // Compatibility-only persisted legacy thickness; PM owns active TB thickness.
   materialThicknessMm: number;
+  // Persisted TB tab size; active for manual TB tab size only.
   fingerWidthMm: number;
   isFingerWidthManual: boolean;
 };
 
 export type SlotConnectionProperties = {
   slotOffsetMm: number;
+  // Compatibility-only persisted legacy slot width; PM owns active S slot width.
   slotWidthMm: number;
+  // Persisted S slot length; active for manual S slot length only.
   slotLengthMm: number;
   isSlotLengthManual: boolean;
+  // Compatibility-only persisted legacy thickness; PM owns active S thickness.
   materialThicknessMm: number;
   kerfMm: number;
 };
