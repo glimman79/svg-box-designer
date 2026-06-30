@@ -206,14 +206,14 @@ const manualMixedTbConnection = { id: 'E-mixed', prefix: 'E', properties: { mate
 assert.equal(recalculateAutomaticTBFingerWidths(mixedTbModel, mixedTbAssignments, { 'E-mixed': manualMixedTbConnection }, mixedTbState)['E-mixed'].properties.fingerWidthMm, 20, 'mixed TB manual finger size 20 remains unchanged');
 assert.equal(getPanelEdgeOperations(mixedTbModel.panels[0], mixedTbAssignments, { 'E-mixed': manualMixedTbConnection }, mixedTbState, mixedTbModel)[0].fingerWidthMm, 20, 'mixed TB manual operation finger size stays 20');
 const { recomputeAppliedTBGeometryForPanelManager } = module.exports;
-const mixedAppliedPathsBeforePmChange = buildAppliedEPanelPaths(mixedTbModel, mixedTbAssignments, { 'E-mixed': autoMixedTbConnection }, true, mixedTbState);
+const mixedAppliedPathsBeforePmChange = buildAppliedEPanelPaths(mixedTbModel, mixedTbAssignments, { 'E-mixed': autoMixedTbConnection }, mixedTbState);
 const mixedTbStateAfterPmApply = { defaultThicknessMm: 3, isApplied: true, isDirty: false, panels: { 'panel-1': { panelId: 'panel-1', thicknessMm: 10 }, 'panel-5': { panelId: 'panel-5', thicknessMm: 5 } } };
 const mixedRecomputedAfterPmApply = recomputeAppliedTBGeometryForPanelManager(mixedTbModel, mixedTbAssignments, { 'E-mixed': autoMixedTbConnection }, mixedTbStateAfterPmApply, mixedAppliedPathsBeforePmChange);
 assert.equal(mixedRecomputedAfterPmApply.connections['E-mixed'].properties.fingerWidthMm, 15, 'PM Apply recalculates automatic TB finger size from 9 to 15 without global Apply');
 assert.equal(getPanelEdgeOperations(mixedTbModel.panels[0], mixedTbAssignments, mixedRecomputedAfterPmApply.connections, mixedTbStateAfterPmApply, mixedTbModel)[0].insetDepthMm, 5, 'PM Apply recomputes TB joint depth from changed P5 thickness');
 assert.notDeepEqual(mixedRecomputedAfterPmApply.appliedEPanelPaths.map((path) => path.pathD), mixedAppliedPathsBeforePmChange.map((path) => path.pathD), 'PM Apply immediately rebuilds already-applied TB geometry');
 assert.equal(buildFinalGeometry(mixedTbModel, mixedRecomputedAfterPmApply.appliedEPanelPaths, []).contours.find((contour) => contour.panelId === 'panel-1')?.pathD, mixedRecomputedAfterPmApply.appliedEPanelPaths.find((path) => path.panelId === 'panel-1')?.pathD, 'Final Geometry consumes PM Apply recomputed TB geometry without another global Apply');
-const manualMixedAppliedPathsBeforePmChange = buildAppliedEPanelPaths(mixedTbModel, mixedTbAssignments, { 'E-mixed': manualMixedTbConnection }, true, mixedTbState);
+const manualMixedAppliedPathsBeforePmChange = buildAppliedEPanelPaths(mixedTbModel, mixedTbAssignments, { 'E-mixed': manualMixedTbConnection }, mixedTbState);
 const manualMixedRecomputedAfterPmApply = recomputeAppliedTBGeometryForPanelManager(mixedTbModel, mixedTbAssignments, { 'E-mixed': manualMixedTbConnection }, mixedTbStateAfterPmApply, manualMixedAppliedPathsBeforePmChange);
 assert.equal(manualMixedRecomputedAfterPmApply.connections['E-mixed'].properties.fingerWidthMm, 20, 'PM Apply preserves manual TB finger size 20');
 assert.equal(getPanelEdgeOperations(mixedTbModel.panels[0], mixedTbAssignments, manualMixedRecomputedAfterPmApply.connections, mixedTbStateAfterPmApply, mixedTbModel)[0].insetDepthMm, 5, 'PM Apply recomputes manual TB depths from changed P5 thickness');
@@ -471,7 +471,7 @@ const mixedTbBoundsAssignments = {
 };
 const mixedTbBoundsState = { defaultThicknessMm: 3, panels: { 'mixed-bounds-a': { panelId: 'mixed-bounds-a', thicknessMm: 10 }, 'mixed-bounds-b': { panelId: 'mixed-bounds-b', thicknessMm: 3 } } };
 const mixedTbBoundsConnection = { id: 'E-mixed-bounds', prefix: 'E', properties: { materialThicknessMm: 99, fingerWidthMm: 99, isFingerWidthManual: false } };
-const mixedTbBoundsPaths = buildAppliedEPanelPaths(mixedTbBoundsModel, mixedTbBoundsAssignments, { 'E-mixed-bounds': mixedTbBoundsConnection }, false, mixedTbBoundsState);
+const mixedTbBoundsPaths = buildAppliedEPanelPaths(mixedTbBoundsModel, mixedTbBoundsAssignments, { 'E-mixed-bounds': mixedTbBoundsConnection }, mixedTbBoundsState);
 assert.equal(mixedTbBoundsPaths.length, 2, 'mixed TB bounds test applies both panels');
 assert.deepEqual(pathBounds(mixedTbBoundsPaths[0].pathD), mixedTbBoundsPanelA.bounds, 'mixed TB panel A original bounds are preserved');
 assert.deepEqual(pathBounds(mixedTbBoundsPaths[1].pathD), mixedTbBoundsPanelB.bounds, 'mixed TB panel B original bounds are preserved');
@@ -1045,7 +1045,7 @@ const tbConnections = {
   E1: tbStarted.connections.E1,
   E2: { id: 'E2', prefix: 'E', properties: tbStarted.connections.E1.properties },
 };
-const tbAppliedWhileActive = buildAppliedEPanelPaths(modelForPanels([single]), tbAssignments, tbConnections, true);
+const tbAppliedWhileActive = buildAppliedEPanelPaths(modelForPanels([single]), tbAssignments, tbConnections);
 assert.equal(tbAppliedWhileActive.length, 1, 'Apply works while activeTBGroup is active');
 assertClosedPath(tbAppliedWhileActive[0].pathD, 'Apply while activeTBGroup is active produces applied geometry');
 

@@ -285,7 +285,7 @@ export const recomputeAppliedTBGeometryForPanelManager = (
   return {
     connections: nextConnections,
     appliedEPanelPaths: hasAppliedTBGeometry || hasTBAssignments
-      ? buildAppliedEPanelPaths(svgModel, assignments, nextConnections, true, panelManager)
+      ? buildAppliedEPanelPaths(svgModel, assignments, nextConnections, panelManager)
       : appliedEPanelPaths,
   };
 };
@@ -1314,7 +1314,7 @@ function App() {
         ? finishWGroupWorkflow(connections, edgeAssignments, activeWGroup, svgModel)
         : { connections, assignments: edgeAssignments };
       const nextConnections = recalculateAutomaticTBFingerWidths(svgModel, applyInputs.assignments, applyInputs.connections, panelManager);
-      const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, applyInputs.assignments, nextConnections, true, panelManager);
+      const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, applyInputs.assignments, nextConnections, panelManager);
       const nextAppliedSGeometry = buildAppliedSGeometry(svgModel, applyInputs.assignments, applyInputs.connections);
       const shouldRecordManufacturing = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
       if (shouldRecordManufacturing) {

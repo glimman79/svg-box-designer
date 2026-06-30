@@ -120,25 +120,50 @@ type TBConnectionThickness = {
   autoFingerWidthMm: number;
 };
 
+type AssignedTBEdge = { edgeId: string; role: EdgeRole };
+
+const getAssignedTBEdges = (
+  assignments: EdgeAssignmentRecord,
+  connectionId: string,
+): AssignedTBEdge[] => (
+  Object.entries(assignments).flatMap(([edgeId, bucket]) => {
+    const assignment = getBucketEdgeAssignment(bucket);
+    return assignment?.connectionId === connectionId && assignment.edgeRole
+      ? [{ edgeId, role: assignment.edgeRole }]
+      : [];
+  })
+);
+
+const getAssignedPanelForRole = (
+  svgModel: SvgDocumentModel,
+  assignedEdges: AssignedTBEdge[],
+  role: EdgeRole,
+): SvgPanel | null => {
+  const edgeId = assignedEdges.find((assignment) => assignment.role === role)?.edgeId;
+  return edgeId ? svgModel.panels.find((panel) => panel.edgeIds.includes(edgeId)) ?? null : null;
+};
+
+const getTBRoleThickness = (
+  thickness: TBConnectionThickness,
+  role: EdgeRole,
+): { ownerThicknessMm: number; receiverThicknessMm: number } => (
+  role === 'A'
+    ? { ownerThicknessMm: thickness.panelAThicknessMm, receiverThicknessMm: thickness.panelBThicknessMm }
+    : { ownerThicknessMm: thickness.panelBThicknessMm, receiverThicknessMm: thickness.panelAThicknessMm }
+);
+
 export const resolveTBThickness = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
   connection: EdgeConnectionDefinition,
   panelThicknessState?: PanelThicknessState,
 ): TBConnectionThickness => {
-  const assignedEdges = Object.entries(assignments).flatMap(([edgeId, bucket]) => {
-    const assignment = getBucketEdgeAssignment(bucket);
-    return assignment?.connectionId === connection.id ? [{ edgeId, role: assignment.edgeRole }] : [];
-  });
-  const panelForRole = (role: EdgeRole) => {
-    const edgeId = assignedEdges.find((assignment) => assignment.role === role)?.edgeId;
-    return edgeId ? svgModel.panels.find((panel) => panel.edgeIds.includes(edgeId)) ?? null : null;
-  };
-  const panelA = panelForRole('A');
-  const panelB = panelForRole('B');
-  const fallbackThickness = connection.properties.materialThicknessMm;
-  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState, fallbackThickness);
-  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState, fallbackThickness);
+  const assignedEdges = getAssignedTBEdges(assignments, connection.id);
+  const panelA = getAssignedPanelForRole(svgModel, assignedEdges, 'A');
+  const panelB = getAssignedPanelForRole(svgModel, assignedEdges, 'B');
+  const legacyThicknessMm = connection.properties.materialThicknessMm;
+  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState, legacyThicknessMm);
+  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState, legacyThicknessMm);
 
   return {
     panelAId: panelA?.id ?? null,
@@ -188,19 +213,19 @@ export const getPanelEdgeOperations = (
     const connectionThickness = svgModel && connection.prefix === 'E'
       ? resolveTBThickness(svgModel, assignments, connection, panelThicknessState)
       : null;
-    const ownPanelThickness = connectionThickness
-      ? (assignment.edgeRole === 'A' ? connectionThickness.panelAThicknessMm : connectionThickness.panelBThicknessMm)
-      : connection.properties.materialThicknessMm;
-    const receivingPanelThickness = connectionThickness
-      ? (assignment.edgeRole === 'A' ? connectionThickness.panelBThicknessMm : connectionThickness.panelAThicknessMm)
-      : connection.properties.materialThicknessMm;
+    const { ownerThicknessMm, receiverThicknessMm } = connectionThickness
+      ? getTBRoleThickness(connectionThickness, assignment.edgeRole)
+      : {
+          ownerThicknessMm: connection.properties.materialThicknessMm,
+          receiverThicknessMm: connection.properties.materialThicknessMm,
+        };
 
     return [{
       edgeId,
       connectionId: assignment.connectionId,
       role: assignment.edgeRole,
-      materialThicknessMm: ownPanelThickness,
-      insetDepthMm: receivingPanelThickness,
+      materialThicknessMm: ownerThicknessMm,
+      insetDepthMm: receiverThicknessMm,
       fingerWidthMm: connection.prefix !== 'E' || connection.properties.isFingerWidthManual || !connectionThickness
         ? connection.properties.fingerWidthMm
         : connectionThickness.autoFingerWidthMm,
@@ -212,7 +237,6 @@ export const buildAppliedEPanelPaths = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
-  shouldDebugApply = false,
   panelThicknessState?: PanelThicknessState,
 ): AppliedEPanelPath[] => {
   const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
@@ -249,7 +273,6 @@ export const buildAppliedEPanelPaths = (
       operations,
       insetContour,
       tabSegmentPlansByConnectionId,
-      shouldDebugApply,
     );
 
     if (!result.ok) {
@@ -410,15 +433,6 @@ export const buildTabSegmentPlansByConnectionId = (
     }
 
     const shortestLength = Math.min(...lengths);
-    const longestLength = Math.max(...lengths);
-
-    if (longestLength - shortestLength > cornerTouchTolerance) {
-      console.warn(`E connection ${connectionId} original side lengths differ (${lengths.join(', ')}); using shortest length.`, {
-        connectionId,
-        lengths,
-      });
-    }
-
     plansByConnectionId.set(connectionId, {
       connectionId,
       insetLength: shortestLength,
@@ -452,15 +466,6 @@ export const mergeTabSegmentPlansByConnectionId = (
 
   plansByConnectionId.forEach((groupedPlan, connectionId) => {
     const shortestLength = Math.min(...groupedPlan.insetLengths);
-    const longestLength = Math.max(...groupedPlan.insetLengths);
-
-    if (longestLength - shortestLength > cornerTouchTolerance) {
-      console.warn(`E connection ${connectionId} original side lengths differ (${groupedPlan.insetLengths.join(', ')}); using shortest length.`, {
-        connectionId,
-        lengths: groupedPlan.insetLengths,
-      });
-    }
-
     const sourcePlan = panelPlans
       .map((plans) => plans.get(connectionId))
       .find((plan) => plan && Math.abs(plan.insetLength - shortestLength) <= cornerTouchTolerance);
@@ -633,7 +638,6 @@ export const applyTabsToContour = (
   panel: SvgPanel,
   contour: PanelContour,
   tabOperations: PanelTabOperation[],
-  shouldDebugApply = false,
 ): PanelGeometryBuildResult => {
   if (tabOperations.length === 0) {
     return validatePanelContour(contour);
@@ -772,10 +776,9 @@ export const buildPanelGeometry = (
   operations: PanelEdgeOperation[],
   insetContour: PanelContour,
   tabSegmentPlansByConnectionId: Map<string, TabSegmentPlan>,
-  shouldDebugApply = false,
 ): PanelGeometryBuildResult => {
   const tabOperations = buildTabOperations(panel, operations, tabSegmentPlansByConnectionId);
-  const tabResult = applyTabsToContour(panel, insetContour, tabOperations, shouldDebugApply);
+  const tabResult = applyTabsToContour(panel, insetContour, tabOperations);
 
   if (!tabResult.ok) {
     return tabResult;
