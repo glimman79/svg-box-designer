@@ -440,6 +440,24 @@ const pathPoints = (pathD) => {
   for (let i = 0; i < nums.length; i += 2) pts.push({ x: nums[i], y: nums[i + 1] });
   return pts;
 };
+
+const mixedTbBoundsPanelA = panel('mixed-bounds-a', 0, 0, 100, 30);
+const mixedTbBoundsPanelB = panel('mixed-bounds-b', 0, 50, 100, 30);
+const mixedTbBoundsModel = modelForPanels([mixedTbBoundsPanelA, mixedTbBoundsPanelB]);
+const mixedTbBoundsAssignments = {
+  'mixed-bounds-a-top': { connectionId: 'E-mixed-bounds', edgeRole: 'A' },
+  'mixed-bounds-b-top': { connectionId: 'E-mixed-bounds', edgeRole: 'B' },
+};
+const mixedTbBoundsState = { defaultThicknessMm: 3, panels: { 'mixed-bounds-a': { panelId: 'mixed-bounds-a', thicknessMm: 10 }, 'mixed-bounds-b': { panelId: 'mixed-bounds-b', thicknessMm: 3 } } };
+const mixedTbBoundsConnection = { id: 'E-mixed-bounds', prefix: 'E', properties: { materialThicknessMm: 99, fingerWidthMm: 99, isFingerWidthManual: false } };
+const mixedTbBoundsPaths = buildAppliedEPanelPaths(mixedTbBoundsModel, mixedTbBoundsAssignments, { 'E-mixed-bounds': mixedTbBoundsConnection }, false, mixedTbBoundsState);
+assert.equal(mixedTbBoundsPaths.length, 2, 'mixed TB bounds test applies both panels');
+assert.deepEqual(pathBounds(mixedTbBoundsPaths[0].pathD), mixedTbBoundsPanelA.bounds, 'mixed TB panel A original bounds are preserved');
+assert.deepEqual(pathBounds(mixedTbBoundsPaths[1].pathD), mixedTbBoundsPanelB.bounds, 'mixed TB panel B original bounds are preserved');
+assert.ok(pathPoints(mixedTbBoundsPaths[0].pathD).some((point) => point.y === 3), 'mixed TB panel A selected edge uses receiving-panel depth 3');
+assert.ok(pathPoints(mixedTbBoundsPaths[1].pathD).some((point) => point.y === 60), 'mixed TB panel B selected edge uses receiving-panel depth 10');
+assert.ok(pathPoints(mixedTbBoundsPaths[0].pathD).some((point) => point.y === 0), 'mixed TB panel A tabs return to original edge line');
+assert.ok(pathPoints(mixedTbBoundsPaths[1].pathD).some((point) => point.y === 50), 'mixed TB panel B tabs return to original edge line');
 const assertNoInteriorSpur = (pathD) => {
   const pts = pathPoints(pathD).map((point) => `${point.x},${point.y}`);
   for (let i = 0; i < pts.length - 2; i += 1) assert.notEqual(pts[i], pts[i + 2], `interior backtrack spur at ${pts[i]}`);

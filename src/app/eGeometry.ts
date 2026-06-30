@@ -535,6 +535,10 @@ export const addContourPoint = (contour: PanelContour, point: Point) => {
   }
 };
 
+const getOperationDepthMm = (operation: Pick<PanelEdgeOperation, 'insetDepthMm' | 'materialThicknessMm'>): number => (
+  operation.insetDepthMm ?? operation.materialThicknessMm
+);
+
 export const isBBCorner = (
   sideIndex: number,
   sideCount: number,
@@ -554,11 +558,11 @@ export const addBBCornerJoin = (
   insetCorner: Point,
   previousInsetSide: ContourSide,
   currentInsetSide: ContourSide,
-  materialThicknessMm: number,
+  depthMm: number,
   contourWindingSign: number,
 ): void => {
-  const previousOutwardSide = offsetContourSide(previousInsetSide, -materialThicknessMm * contourWindingSign);
-  const currentOutwardSide = offsetContourSide(currentInsetSide, -materialThicknessMm * contourWindingSign);
+  const previousOutwardSide = offsetContourSide(previousInsetSide, -depthMm * contourWindingSign);
+  const currentOutwardSide = offsetContourSide(currentInsetSide, -depthMm * contourWindingSign);
 
   if (!previousOutwardSide || !currentOutwardSide) {
     addContourPoint(tabbedContour, insetCorner);
@@ -662,7 +666,7 @@ export const applyTabsToContour = (
           side.start,
           previousSide,
           side,
-          currentOperation.materialThicknessMm,
+          getOperationDepthMm(currentOperation),
           contourWindingSign,
         );
       } else {
@@ -677,7 +681,8 @@ export const applyTabsToContour = (
       return;
     }
 
-    const outwardSide = offsetContourSide(side, -operation.materialThicknessMm * contourWindingSign);
+    const operationDepthMm = getOperationDepthMm(operation);
+    const outwardSide = offsetContourSide(side, -operationDepthMm * contourWindingSign);
 
     if (!outwardSide) {
       addContourPoint(tabbedContour, side.end);
