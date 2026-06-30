@@ -25,7 +25,6 @@ const cloneDefaultSProperties = (): SlotConnectionProperties => ({
   isSlotLengthManual: false,
   materialThicknessMm: 3,
   kerfMm: 0.15,
-  playMm: 0,
 });
 
 export const getDefaultSlotRole = (assignments: EdgeAssignmentRecord, connectionId: string): SlotRole | null => {

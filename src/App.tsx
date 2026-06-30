@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
@@ -372,7 +372,6 @@ export const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
     isSlotLengthManual: false,
     materialThicknessMm: 3,
     kerfMm: 0.15,
-    playMm: 0,
   },
   W: {
     wallHeightMm: 30,
@@ -677,6 +676,40 @@ function App() {
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
   const selectedConnection = selectedLabelId ? connections[selectedLabelId] ?? null : null;
   const selectedEdge = svgModel.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
+
+  useEffect(() => {
+    setConnections((currentConnections) => {
+      const synchronizedConnections = recalculateAutomaticTBFingerWidths(
+        svgModel,
+        edgeAssignments,
+        recalculateAutomaticSSlotLengths(svgModel, edgeAssignments, currentConnections, panelManager),
+        panelManager,
+      );
+
+      const hasAutomaticPropertyChange = Object.keys(currentConnections).some((connectionId) => {
+        const currentConnection = currentConnections[connectionId];
+        const synchronizedConnection = synchronizedConnections[connectionId];
+
+        if (!currentConnection || !synchronizedConnection || currentConnection.prefix !== synchronizedConnection.prefix) {
+          return currentConnection !== synchronizedConnection;
+        }
+
+        if (currentConnection.prefix === 'E' && synchronizedConnection.prefix === 'E') {
+          return currentConnection.properties.fingerWidthMm !== synchronizedConnection.properties.fingerWidthMm;
+        }
+
+        if (currentConnection.prefix === 'S' && synchronizedConnection.prefix === 'S') {
+          return currentConnection.properties.slotLengthMm !== synchronizedConnection.properties.slotLengthMm
+            || currentConnection.properties.slotWidthMm !== synchronizedConnection.properties.slotWidthMm;
+        }
+
+        return false;
+      });
+
+      return hasAutomaticPropertyChange ? synchronizedConnections : currentConnections;
+    });
+  }, [connections, edgeAssignments, panelManager, svgModel]);
+
   const labelCounts = useMemo(() => {
     return availableLabels.reduce<Record<string, number>>((counts, label) => {
       counts[label] = Object.values(edgeAssignments).reduce((count, assignment) => (
@@ -1950,13 +1983,6 @@ function App() {
             <div className="property-grid">
               <NumericField id="slot-offset" label="Slot offset inward from selected S-B edge (mm)" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
               <NumericField id="slot-length" label="Slot length (mm)" min={0} value={properties.slotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
-            </div>
-          </section>
-
-          <section className="property-section" aria-labelledby="slot-advanced-properties">
-            <h4 id="slot-advanced-properties">Advanced</h4>
-            <div className="property-grid">
-              <NumericField id="slot-play" label="Play (mm)" min={0} value={properties.playMm} onChange={(playMm) => updateSlotProperties({ playMm })} />
             </div>
           </section>
         </div>
