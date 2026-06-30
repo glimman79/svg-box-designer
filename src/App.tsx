@@ -1502,10 +1502,6 @@ function App() {
         ...updates,
       };
 
-      if (updates.materialThicknessMm !== undefined && !currentSelectedConnection.properties.isFingerWidthManual) {
-        nextProperties.fingerWidthMm = updates.materialThicknessMm * 3;
-      }
-
       if (updates.fingerWidthMm !== undefined) {
         nextProperties.isFingerWidthManual = true;
       }
@@ -1860,7 +1856,7 @@ function App() {
         A: { panelId: tbThickness.panelAId, ownerThicknessMm: tbThickness.panelAThicknessMm, matingPanelId: tbThickness.panelBId, matingThicknessMm: tbThickness.panelBThicknessMm },
         B: { panelId: tbThickness.panelBId, ownerThicknessMm: tbThickness.panelBThicknessMm, matingPanelId: tbThickness.panelAId, matingThicknessMm: tbThickness.panelAThicknessMm },
       };
-      const tbFingerSizeMm = tbViewModel.displayTabMm;
+      const tbMode = tbViewModel.isTabManual ? 'Manual' : 'Auto';
       return (
         <div className="property-sections">
           <section className="property-section" aria-labelledby="edge-diagnostics">
@@ -1890,8 +1886,10 @@ function App() {
               <p className="muted">No edges assigned to this TB / Top Bottom label yet.</p>
             )}
             <dl>
-              <div><dt>Finger size mode</dt><dd>{selectedConnection.properties.isFingerWidthManual ? 'Manual' : 'Auto'}</dd></div>
-              <div><dt>Computed finger size</dt><dd>{formatCalculatedMm(tbFingerSizeMm)}</dd></div>
+              <div><dt>Mode</dt><dd>{tbMode}</dd></div>
+              <div><dt>Stored value</dt><dd>{formatCalculatedMm(tbViewModel.storedTabMm)}</dd></div>
+              <div><dt>Computed auto value</dt><dd>{formatCalculatedMm(tbViewModel.autoTabMm)}</dd></div>
+              <div><dt>Display value</dt><dd>{formatCalculatedMm(tbViewModel.displayTabMm)}</dd></div>
             </dl>
           </section>
 
@@ -1948,6 +1946,7 @@ function App() {
         autoSlotLengthMm: sViewModel.autoTabMm,
       };
       const displayedSlotLengthMm = sViewModel.displayTabMm;
+      const sMode = sViewModel.isTabManual ? 'Manual' : 'Auto';
       const assignedSEdges = svgModel.edges.filter((edge) => getBucketSlotAssignments(edgeAssignments[edge.id]).some((assignment) => assignment.connectionId === selectedConnection.id));
 
       return (
@@ -2000,6 +1999,16 @@ function App() {
             ) : (
               <p className="muted">No edges assigned to this S label yet. Select this label, then click the S-A and S-B edges in the drawing.</p>
             )}
+          </section>
+
+          <section className="property-section" aria-labelledby="slot-diagnostics">
+            <h4 id="slot-diagnostics">{selectedConnection.id} diagnostics</h4>
+            <dl>
+              <div><dt>Mode</dt><dd>{sMode}</dd></div>
+              <div><dt>Stored value</dt><dd>{formatCalculatedMm(sViewModel.storedTabMm)}</dd></div>
+              <div><dt>Computed auto value</dt><dd>{formatCalculatedMm(sViewModel.autoTabMm)}</dd></div>
+              <div><dt>Display value</dt><dd>{formatCalculatedMm(sViewModel.displayTabMm)}</dd></div>
+            </dl>
           </section>
 
           <section className="property-section" aria-labelledby="slot-basic-properties">

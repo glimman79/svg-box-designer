@@ -85,10 +85,6 @@ export const applySlotPropertyUpdates = (
 
   if (updates.materialThicknessMm !== undefined) {
     nextProperties.slotWidthMm = getDefaultSlotWidth(updates.materialThicknessMm);
-
-    if (!connection.properties.isSlotLengthManual) {
-      nextProperties.slotLengthMm = getDefaultSlotLength(updates.materialThicknessMm);
-    }
   }
 
   if (updates.slotLengthMm !== undefined) {
