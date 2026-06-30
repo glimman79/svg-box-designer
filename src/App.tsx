@@ -268,6 +268,28 @@ export const validatePanelManagerState = (panelManager: PanelManagerState): stri
     : 'Panel thickness must be a finite number greater than 0 mm.';
 };
 
+export const recomputeAppliedTBGeometryForPanelManager = (
+  svgModel: SvgDocumentModel,
+  assignments: EdgeAssignmentRecord,
+  connectionMap: ConnectionMap,
+  panelManager: PanelManagerState,
+  appliedEPanelPaths: AppliedEPanelPath[],
+) => {
+  const nextConnections = recalculateAutomaticTBFingerWidths(svgModel, assignments, connectionMap, panelManager);
+  const hasAppliedTBGeometry = appliedEPanelPaths.length > 0;
+  const hasTBAssignments = Object.values(assignments).some((bucket) => {
+    const assignment = getBucketEdgeAssignment(bucket);
+    return assignment ? nextConnections[assignment.connectionId]?.prefix === 'E' : false;
+  });
+
+  return {
+    connections: nextConnections,
+    appliedEPanelPaths: hasAppliedTBGeometry || hasTBAssignments
+      ? buildAppliedEPanelPaths(svgModel, assignments, nextConnections, true, panelManager)
+      : appliedEPanelPaths,
+  };
+};
+
 type NumericFieldProps = {
   id: string;
   label: string;
@@ -1392,7 +1414,9 @@ function App() {
     }
     pushUndoState();
     const appliedPanelManager = { ...panelManager, isApplied: true, isDirty: false };
-    setConnections((currentConnections) => recalculateAutomaticTBFingerWidths(svgModel, edgeAssignments, currentConnections, appliedPanelManager));
+    const recomputedTBGeometry = recomputeAppliedTBGeometryForPanelManager(svgModel, edgeAssignments, connections, appliedPanelManager, appliedEPanelPaths);
+    setConnections(recomputedTBGeometry.connections);
+    setAppliedEPanelPaths(recomputedTBGeometry.appliedEPanelPaths);
     setPanelManager(appliedPanelManager);
     setIsPanelManagerModalOpen(false);
     setActiveTool('select');
