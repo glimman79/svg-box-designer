@@ -4,6 +4,7 @@ import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacement
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
 import { exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
 import { buildAppliedSGeometry, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
+import { getConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge } from './app/connectionViewModel';
 import { buildKerfCompensatedPreviewFromFinalContours } from './app/manufacturingCompensation';
 import { buildFinalGeometry } from './app/finalGeometry';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
@@ -19,6 +20,7 @@ export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry'
 export { edgeMatchesContourSide, getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './app/sharedPanelGeometry';
 export type { PanelValidationResult } from './app/sharedPanelGeometry';
 export { exportFinalGeometrySvg, exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
+export { getConnectionViewModel, getSConnectionViewModel, getTBConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge } from './app/connectionViewModel';
 export { buildFinalGeometry } from './app/finalGeometry';
 export { buildAppliedSGeometry, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
 export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
@@ -1150,12 +1152,19 @@ function App() {
   };
 
   const assignSelectedLabelToEdge = (edgeId: string) => {
+    const assignedConnectionId = resolveAssignedTBOrSConnectionIdForEdge(edgeAssignments, edgeId, activeTool === 'S' ? 'S' : activeTool === 'TB' ? 'TB' : undefined);
+    setSelectedEdgeId(edgeId);
+
+    if (assignedConnectionId && connections[assignedConnectionId]?.prefix !== 'W') {
+      setSelectedLabelId(assignedConnectionId);
+      setErrorMessage('');
+      return;
+    }
+
     if (isProjectLocked) {
-      setSelectedEdgeId(edgeId);
       setErrorMessage('Apply Panel Manager before assigning edges.');
       return;
     }
-    setSelectedEdgeId(edgeId);
 
     if (!selectedLabelId) {
       setErrorMessage('Create and select a connection before clicking an edge.');
@@ -1839,12 +1848,19 @@ function App() {
 
     if (selectedConnection.prefix === 'E') {
       const assignedEEdges = svgModel.edges.filter((edge) => getBucketEdgeAssignment(edgeAssignments[edge.id])?.connectionId === selectedConnection.id);
-      const tbThickness = resolveTBThickness(svgModel, edgeAssignments, selectedConnection, panelManager);
+      const tbViewModel = getConnectionViewModel(svgModel, edgeAssignments, selectedConnection, panelManager, getPanelDisplayName);
+      const tbThickness = {
+        panelAId: tbViewModel.panelIds.panelAId,
+        panelBId: tbViewModel.panelIds.panelBId,
+        panelAThicknessMm: tbViewModel.panelThicknesses.panelAThicknessMm,
+        panelBThicknessMm: tbViewModel.panelThicknesses.panelBThicknessMm,
+        autoFingerWidthMm: tbViewModel.autoTabMm,
+      };
       const tbPanelByRole = {
         A: { panelId: tbThickness.panelAId, ownerThicknessMm: tbThickness.panelAThicknessMm, matingPanelId: tbThickness.panelBId, matingThicknessMm: tbThickness.panelBThicknessMm },
         B: { panelId: tbThickness.panelBId, ownerThicknessMm: tbThickness.panelBThicknessMm, matingPanelId: tbThickness.panelAId, matingThicknessMm: tbThickness.panelAThicknessMm },
       };
-      const tbFingerSizeMm = selectedConnection.properties.isFingerWidthManual ? selectedConnection.properties.fingerWidthMm : tbThickness.autoFingerWidthMm;
+      const tbFingerSizeMm = tbViewModel.displayTabMm;
       return (
         <div className="property-sections">
           <section className="property-section" aria-labelledby="edge-diagnostics">
@@ -1923,8 +1939,15 @@ function App() {
 
     if (selectedConnection.prefix === 'S') {
       const properties = selectedConnection.properties;
-      const sThickness = resolveSThickness(svgModel, edgeAssignments, selectedConnection, panelManager);
-      const displayedSlotLengthMm = resolveSSlotLengthMm(selectedConnection, sThickness);
+      const sViewModel = getConnectionViewModel(svgModel, edgeAssignments, selectedConnection, panelManager, getPanelDisplayName);
+      const sThickness = {
+        panelAId: sViewModel.panelIds.panelAId,
+        panelBId: sViewModel.panelIds.panelBId,
+        panelAThicknessMm: sViewModel.panelThicknesses.panelAThicknessMm,
+        panelBThicknessMm: sViewModel.panelThicknesses.panelBThicknessMm,
+        autoSlotLengthMm: sViewModel.autoTabMm,
+      };
+      const displayedSlotLengthMm = sViewModel.displayTabMm;
       const assignedSEdges = svgModel.edges.filter((edge) => getBucketSlotAssignments(edgeAssignments[edge.id]).some((assignment) => assignment.connectionId === selectedConnection.id));
 
       return (
@@ -2034,19 +2057,20 @@ function App() {
   const renderCompactControls = () => {
     if (selectedConnection?.prefix === 'E') {
       const properties = selectedConnection.properties;
+      const tbViewModel = getConnectionViewModel(svgModel, edgeAssignments, selectedConnection, panelManager, getPanelDisplayName);
 
       return (
         <div className="compact-property-controls" aria-label="Compact E controls">
           <span className="muted">PM thickness</span>
-          <NumericField id="compact-edge-tab-size" label="Tab" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
+          <NumericField id="compact-edge-tab-size" label="Tab" min={0} value={tbViewModel.displayTabMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
         </div>
       );
     }
 
     if (selectedConnection?.prefix === 'S' && (activeSGroup?.isActive || selectedConnection)) {
       const properties = selectedConnection.properties;
-      const sThickness = resolveSThickness(svgModel, edgeAssignments, selectedConnection, panelManager);
-      const displayedSlotLengthMm = resolveSSlotLengthMm(selectedConnection, sThickness);
+      const sViewModel = getConnectionViewModel(svgModel, edgeAssignments, selectedConnection, panelManager, getPanelDisplayName);
+      const displayedSlotLengthMm = sViewModel.displayTabMm;
       const controlsLabel = activeSGroup?.isActive && activeSGroup.connectionIds.includes(selectedConnection.id)
         ? 'Compact active S group controls'
         : 'Compact selected S controls';

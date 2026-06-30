@@ -74,7 +74,7 @@ const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
 const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
-const { getPanelEdgeOperations, recalculateAutomaticTBFingerWidths, resolveTBThickness, resolveSThickness, resolveSSlotLengthMm, recalculateAutomaticSSlotLengths, applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, exportManufacturingGeometrySvg, pathDToClosedContour } = module.exports;
+const { getConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge, getPanelEdgeOperations, recalculateAutomaticTBFingerWidths, resolveTBThickness, resolveSThickness, resolveSSlotLengthMm, recalculateAutomaticSSlotLengths, applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, exportManufacturingGeometrySvg, pathDToClosedContour } = module.exports;
 
 const buildKerfPreviewViaFinalContours = (svgModel, appliedEPanelPaths, appliedSGeometry, kerfMm, slotClearanceMm = 0) => {
   const finalGeometry = buildFinalGeometry(svgModel, appliedEPanelPaths, appliedSGeometry);
@@ -159,9 +159,19 @@ assert.equal(panelAOperation.materialThicknessMm, 18, 'TB tab thickness uses the
 assert.equal(panelAOperation.materialThicknessMm, 18, 'TB receiving slot width follows the tab panel thickness');
 assert.equal(panelAOperation.insetDepthMm, 10, 'TB joint depth/inset uses the receiving panel thickness');
 assert.equal(panelAOperation.fingerWidthMm, 30, 'TB automatic operation finger size follows PM thickness');
+const tbStaleDisplayState = { defaultThicknessMm: 3, panels: { 'panel-a': { panelId: 'panel-a', thicknessMm: 5 }, 'panel-b': { panelId: 'panel-b', thicknessMm: 8 } } };
+const tbStaleAutoConnection = { id: 'E-pm', prefix: 'E', properties: { materialThicknessMm: 3, fingerWidthMm: 9, isFingerWidthManual: false } };
+const tbStaleViewModel = getConnectionViewModel(tbPmModel, tbPmAssignments, tbStaleAutoConnection, tbStaleDisplayState, (panelId) => `Panel ${panelId}`);
+assert.equal(tbStaleViewModel.displayTabMm, 15, 'TB auto view model display ignores stale stored fingerWidthMm and uses PM-derived value');
+assert.equal(tbStaleViewModel.autoTabMm, 15, 'TB auto view model exposes computed auto finger width');
+assert.equal(tbStaleViewModel.storedTabMm, 9, 'TB auto view model keeps stale stored value separate from display value');
+assert.equal(getPanelEdgeOperations(tbPmModel.panels[0], tbPmAssignments, { 'E-pm': tbStaleAutoConnection }, tbStaleDisplayState, tbPmModel)[0].fingerWidthMm, 15, 'TB auto geometry uses same PM-derived value as view model');
 const tbPmChangedState = { defaultThicknessMm: 3, panels: { 'panel-a': { panelId: 'panel-a', thicknessMm: 18 }, 'panel-b': { panelId: 'panel-b', thicknessMm: 12 } } };
 assert.equal(recalculateAutomaticTBFingerWidths(tbPmModel, tbPmAssignments, { 'E-pm': tbPmConnection }, tbPmChangedState)['E-pm'].properties.fingerWidthMm, 36, 'TB automatic finger size recalculates when PM thickness changes');
 const manualTbConnection = { id: 'E-pm', prefix: 'E', properties: { materialThicknessMm: 3, fingerWidthMm: 22, isFingerWidthManual: true } };
+const tbManualViewModel = getConnectionViewModel(tbPmModel, tbPmAssignments, manualTbConnection, tbStaleDisplayState);
+assert.equal(tbManualViewModel.displayTabMm, 22, 'TB manual view model display uses stored manual fingerWidthMm');
+assert.equal(getPanelEdgeOperations(tbPmModel.panels[0], tbPmAssignments, { 'E-pm': manualTbConnection }, tbStaleDisplayState, tbPmModel)[0].fingerWidthMm, 22, 'TB manual geometry uses stored manual fingerWidthMm');
 assert.equal(recalculateAutomaticTBFingerWidths(tbPmModel, tbPmAssignments, { 'E-pm': manualTbConnection }, tbPmChangedState)['E-pm'].properties.fingerWidthMm, 22, 'TB manual finger size remains unchanged when PM thickness changes');
 const oldProjectThickness = resolveTBThickness(tbPmModel, tbPmAssignments, tbPmConnection, undefined);
 assert.equal(oldProjectThickness.panelAThicknessMm, 3, 'TB falls back to legacy materialThicknessMm when PM metadata is missing');
@@ -572,6 +582,22 @@ assert.equal(resolveSSlotLengthMm(manualDisplayConnection, manualDisplayThicknes
 const manualDisplayGeometry = buildAppliedSGeometry(sModel, sAssignments, { S1: manualDisplayConnection }, autoDisplayState);
 const expectedManualSegments = createTabSegmentPlan(100, 12).filter((_, segmentIndex) => segmentIndex % 2 === 1);
 assert.equal(manualDisplayGeometry[0].slotPaths[0].startDistance, expectedManualSegments[0].startDistance, 'manual S canvas geometry uses stored manual slot length after PM changes');
+const staleAutoSViewModel = getConnectionViewModel(sModel, sAssignments, staleAutoSConnection, autoDisplayState, (panelId) => `Panel ${panelId}`);
+assert.equal(staleAutoSViewModel.displayTabMm, 15, 'S auto view model display ignores stale stored slotLengthMm and uses PM-derived value');
+assert.equal(staleAutoSViewModel.autoTabMm, 15, 'S auto view model exposes computed auto slot length');
+assert.equal(staleAutoSViewModel.storedTabMm, 9, 'S auto view model keeps stale stored slot length separate from display value');
+const manualSViewModel = getConnectionViewModel(sModel, sAssignments, manualDisplayConnection, autoDisplayState);
+assert.equal(manualSViewModel.displayTabMm, 12, 'S manual view model display uses stored manual slotLengthMm');
+const selectionAssignments = {
+  'tb-a': { edgeAssignment: { connectionId: 'E-select', edgeRole: 'A' } },
+  'tb-b': { edgeAssignment: { connectionId: 'E-select', edgeRole: 'B' } },
+  's-a': { slotAssignments: [{ connectionId: 'S-select', slotRole: 'A' }] },
+  's-b': { slotAssignments: [{ connectionId: 'S-select', slotRole: 'B' }] },
+};
+assert.equal(resolveAssignedTBOrSConnectionIdForEdge(selectionAssignments, 's-a', 'S'), 'S-select', 'S-A edge selection resolves selectedLabelId to the S connection');
+assert.equal(resolveAssignedTBOrSConnectionIdForEdge(selectionAssignments, 's-b', 'S'), 'S-select', 'S-B edge selection resolves selectedLabelId to the same S connection');
+assert.equal(resolveAssignedTBOrSConnectionIdForEdge(selectionAssignments, 'tb-a', 'TB'), 'E-select', 'TB-A edge selection resolves selectedLabelId to the TB connection');
+assert.equal(resolveAssignedTBOrSConnectionIdForEdge(selectionAssignments, 'tb-b', 'TB'), 'E-select', 'TB-B edge selection resolves selectedLabelId to the same TB connection');
 
 const mixedSPanelA = panel('s-mixed-a', 250, 10, 200, 50);
 const mixedSPanelB = panel('s-mixed-b', 250, 100, 200, 50);
