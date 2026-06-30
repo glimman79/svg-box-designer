@@ -1280,7 +1280,7 @@ function App() {
           ),
         };
       });
-      setSelectedLabelId(nextEdgeLabel);
+      setSelectedLabelId(selectedLabelId);
       setActiveTBGroup((currentGroup) => appendAutoCreatedEToTBGroup(currentGroup, selectedLabelId, nextEdgeLabel));
       setExpandedTBGroups((currentGroups) => activeTBGroup?.connectionIds.includes(selectedLabelId) ? { ...currentGroups, [activeTBGroup.groupId]: true } : currentGroups);
     }
