@@ -159,6 +159,11 @@ assert.equal(panelAOperation.materialThicknessMm, 18, 'TB tab thickness uses the
 assert.equal(panelAOperation.materialThicknessMm, 18, 'TB receiving slot width follows the tab panel thickness');
 assert.equal(panelAOperation.insetDepthMm, 10, 'TB joint depth/inset uses the receiving panel thickness');
 assert.equal(panelAOperation.fingerWidthMm, 30, 'TB automatic operation finger size follows PM thickness');
+const tbTenFiveState = { defaultThicknessMm: 3, panels: { 'panel-a': { panelId: 'panel-a', thicknessMm: 10 }, 'panel-b': { panelId: 'panel-b', thicknessMm: 5 } } };
+const tbTenFiveOperation = getPanelEdgeOperations(tbPmModel.panels[0], tbPmAssignments, { 'E-pm': tbPmConnection }, tbTenFiveState, tbPmModel)[0];
+assert.equal(resolveTBThickness(tbPmModel, tbPmAssignments, tbPmConnection, tbTenFiveState).autoFingerWidthMm, 15, 'TB complete with PM 10/5 ignores stale materialThicknessMm 3 for automatic tab size');
+assert.equal(tbTenFiveOperation.materialThicknessMm, 10, 'TB complete with PM 10/5 uses owner PM thickness instead of stale materialThicknessMm 3');
+assert.equal(tbTenFiveOperation.insetDepthMm, 5, 'TB complete with PM 10/5 uses receiver PM thickness instead of stale materialThicknessMm 3');
 const tbStaleDisplayState = { defaultThicknessMm: 3, panels: { 'panel-a': { panelId: 'panel-a', thicknessMm: 5 }, 'panel-b': { panelId: 'panel-b', thicknessMm: 8 } } };
 const tbStaleAutoConnection = { id: 'E-pm', prefix: 'E', properties: { materialThicknessMm: 3, fingerWidthMm: 9, isFingerWidthManual: false } };
 const tbStaleViewModel = getConnectionViewModel(tbPmModel, tbPmAssignments, tbStaleAutoConnection, tbStaleDisplayState, (panelId) => `Panel ${panelId}`);
@@ -177,6 +182,8 @@ assert.equal(recalculateAutomaticTBFingerWidths(tbPmModel, tbPmAssignments, { 'E
 const oldProjectThickness = resolveTBThickness(tbPmModel, tbPmAssignments, tbPmConnection, undefined);
 assert.equal(oldProjectThickness.panelAThicknessMm, 3, 'TB preserves legacy fallback only when PM metadata is absent');
 assert.equal(oldProjectThickness.autoFingerWidthMm, 9, 'TB preserves legacy fallback only when PM metadata is absent');
+const missingPanelTbThickness = resolveTBThickness(tbPmModel, tbPmAssignments, tbPmConnection, { defaultThicknessMm: 3, panels: { 'panel-a': { panelId: 'panel-a', thicknessMm: 10 } } });
+assert.equal(missingPanelTbThickness.panelBThicknessMm, null, 'TB PM-resolved path does not fall back to legacy materialThicknessMm when a PM panel thickness is missing');
 
 
 const incompleteTbAssignments = {
@@ -620,7 +627,7 @@ const completeSConnection = { ...sConnection('S1'), properties: { ...sConnection
 const completeSThickness = resolveSThickness(sModel, sAssignments, completeSConnection, completeSState);
 const completeSGeometry = buildAppliedSGeometry(sModel, sAssignments, { S1: completeSConnection }, completeSState);
 assert.equal(completeSThickness.autoSlotLengthMm, 30, 'complete S auto tab length is 3 × S-A PM thickness 10 and ignores legacy materialThicknessMm 3');
-assert.equal(completeSGeometry[0].slotPaths[0].widthMm, 10, 'complete S slot width is S-A PM thickness 10');
+assert.equal(completeSGeometry[0].slotPaths[0].widthMm, 10, 'complete S slot width is S-A PM thickness 10 and ignores stale slotWidthMm 3');
 assert.match(completeSGeometry[0].panelPaths[0].pathD, /15/, 'complete S insert depth uses S-B PM thickness 5 from y=10 to y=15');
 const incompleteSAssignments = { 'sPanel-top': { connectionId: 'S1', slotRole: 'A' } };
 const incompleteSThickness = resolveSThickness(sModel, incompleteSAssignments, completeSConnection, completeSState);
@@ -639,6 +646,8 @@ assert.equal(resolveSThickness(sModel, {}, completeSConnection, completeSState).
 assert.throws(() => buildAppliedSGeometry(sModel, incompleteSAssignments, { S1: completeSConnection }, completeSState), /exactly one S-A edge and one S-B edge/, 'incomplete S does not generate fallback geometry');
 const manualCompleteSConnection = { ...completeSConnection, properties: { ...completeSConnection.properties, slotLengthMm: 25, isSlotLengthManual: true } };
 assert.equal(resolveSSlotLengthMm(manualCompleteSConnection, completeSThickness), 25, 'manual S slotLengthMm remains active for manual tab length');
+const missingPanelSThickness = resolveSThickness(sModel, sAssignments, completeSConnection, { defaultThicknessMm: 3, panels: { sPanel: { panelId: 'sPanel', thicknessMm: 10 } } });
+assert.equal(missingPanelSThickness.panelBThicknessMm, null, 'S PM-resolved path does not fall back to legacy materialThicknessMm when a PM panel thickness is missing');
 
 const selectionAssignments = {
   'tb-a': { edgeAssignment: { connectionId: 'E-select', edgeRole: 'A' } },
@@ -672,6 +681,7 @@ assert.equal(mixedSCase1Thickness.panelAThicknessMm, 18, 'mixed S case 1 wall th
 assert.equal(mixedSCase1Geometry[0].slotPaths[0].widthMm, 18, 'mixed S case 1 slot width resolves from S-A PM thickness 18');
 assert.equal(mixedSCase1Thickness.panelBThicknessMm, 10, 'mixed S case 1 insert depth resolves from S-B PM thickness 10');
 assert.equal(mixedSCase1Connections['S-mixed'].properties.slotLengthMm, 9, 'mixed S case 1 auto slot length stored field is not overwritten');
+assert.equal(mixedSCase1Connections['S-mixed'].properties.slotWidthMm, 3, 'mixed S case 1 auto slot width stored field is not overwritten');
 assert.equal(resolveSSlotLengthMm(mixedSCase1Connections['S-mixed'], mixedSCase1Thickness), 54, 'mixed S case 1 auto geometry slot length is 3 × S-A thickness');
 assert.match(mixedSCase1Geometry[0].panelPaths[0].pathD, /20/, 'mixed S case 1 S-A receiving inset depth uses S-B thickness 10 from y=10 to y=20');
 const mixedSCase2Assignments = { 's-mixed-c-top': { connectionId: 'S-mixed', slotRole: 'A' }, 's-mixed-a-top': { connectionId: 'S-mixed', slotRole: 'B' } };

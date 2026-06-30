@@ -242,8 +242,11 @@ export const resolveSThickness = (
   const bEdgeId = assignedEdges.find((assignment) => assignment.role === 'B')?.edgeId;
   const panelA = aEdgeId ? findPanelContainingEdge(svgModel, aEdgeId) : null;
   const panelB = bEdgeId ? findPanelContainingEdge(svgModel, bEdgeId) : null;
-  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState, connection.properties.materialThicknessMm);
-  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState, connection.properties.materialThicknessMm);
+  // Active PM-resolved S geometry must not use the legacy connection thickness.
+  // The fallback is retained only for pre-PM callers that provide no PM state.
+  const legacyFallbackThicknessMm = panelThicknessState ? undefined : connection.properties.materialThicknessMm;
+  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState, legacyFallbackThicknessMm);
+  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState, legacyFallbackThicknessMm);
   const isComplete = panelAThicknessMm !== null && panelBThicknessMm !== null;
 
   return {
@@ -265,27 +268,14 @@ export const resolveSSlotLengthMm = (
     : thickness.autoSlotLengthMm
 );
 
+// Compatibility shim: automatic S slot length/width are resolved from PM at geometry/view-model time.
+// Keep this exported no-op for older call sites without writing PM-derived values into persisted fields.
 export const recalculateAutomaticSSlotLengths = (
-  svgModel: SvgDocumentModel,
-  assignments: EdgeAssignmentRecord,
+  _svgModel: SvgDocumentModel,
+  _assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
-  panelThicknessState?: PanelThicknessState,
-): ConnectionMap => Object.fromEntries(
-  Object.entries(connectionMap).map(([connectionId, connection]) => {
-    if (connection.prefix !== 'S' || connection.properties.isSlotLengthManual) {
-      return [connectionId, connection];
-    }
-
-    const thickness = resolveSThickness(svgModel, assignments, connection, panelThicknessState);
-    return [connectionId, {
-      ...connection,
-      properties: {
-        ...connection.properties,
-        slotWidthMm: thickness.panelAThicknessMm ?? connection.properties.slotWidthMm,
-      },
-    }];
-  }),
-);
+  _panelThicknessState?: PanelThicknessState,
+): ConnectionMap => connectionMap;
 
 export const buildAppliedSGeometry = (
   svgModel: SvgDocumentModel,

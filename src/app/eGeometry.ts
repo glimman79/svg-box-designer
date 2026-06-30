@@ -161,8 +161,11 @@ export const resolveTBThickness = (
   const assignedEdges = getAssignedTBEdges(assignments, connection.id);
   const panelA = getAssignedPanelForRole(svgModel, assignedEdges, 'A');
   const panelB = getAssignedPanelForRole(svgModel, assignedEdges, 'B');
-  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState, connection.properties.materialThicknessMm);
-  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState, connection.properties.materialThicknessMm);
+  // Active PM-resolved TB geometry must not use the legacy connection thickness.
+  // The fallback is retained only for pre-PM callers that provide no PM state.
+  const legacyFallbackThicknessMm = panelThicknessState ? undefined : connection.properties.materialThicknessMm;
+  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState, legacyFallbackThicknessMm);
+  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState, legacyFallbackThicknessMm);
   const isComplete = panelAThicknessMm !== null && panelBThicknessMm !== null;
 
   return {
@@ -175,6 +178,8 @@ export const resolveTBThickness = (
   };
 };
 
+// Compatibility shim: automatic TB finger widths are resolved from PM at geometry/view-model time.
+// Keep this exported no-op for older call sites without writing PM-derived values into persisted fields.
 export const recalculateAutomaticTBFingerWidths = (
   _svgModel: SvgDocumentModel,
   _assignments: EdgeAssignmentRecord,
