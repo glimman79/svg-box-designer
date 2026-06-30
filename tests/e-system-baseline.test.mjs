@@ -191,7 +191,11 @@ assert.equal(incompleteTbThickness.autoFingerWidthMm, null, 'incomplete TB does 
 assert.equal(incompleteTbViewModel.assignedEdges[0].matingPanelId, null, 'incomplete TB diagnostics show mating panel Unknown');
 assert.equal(incompleteTbViewModel.assignedEdges[0].matingThicknessMm, null, 'incomplete TB diagnostics show mating thickness Unknown');
 assert.equal(getPanelEdgeOperations(tbPmModel.panels[0], incompleteTbAssignments, { 'E-pm': tbPmConnection }, tbPmState, tbPmModel).length, 0, 'incomplete TB does not generate fallback joint depth geometry');
-assert.ok(incompleteTbViewModel.diagnostics.includes('Incomplete connection'), 'incomplete TB diagnostics flag incomplete connection');
+const emptyTbViewModel = getConnectionViewModel(tbPmModel, {}, tbPmConnection, tbPmState);
+assert.equal(emptyTbViewModel.displayTabMm, null, 'TB with 0 assigned edges has empty tab value');
+assert.equal(resolveTBThickness(tbPmModel, {}, tbPmConnection, tbPmState).autoFingerWidthMm, null, 'TB with 0 assigned edges has no automatic tab value');
+assert.equal(incompleteTbViewModel.displayTabMm, null, 'incomplete TB view model has no automatic tab display value');
+assert.ok(incompleteTbViewModel.diagnostics.includes('Waiting for second edge.'), 'incomplete TB diagnostics wait for second edge');
 
 const mixedTbModel = {
   ...simpleModelForPanels([
@@ -624,10 +628,14 @@ const incompleteSViewModel = getConnectionViewModel(sModel, incompleteSAssignmen
 assert.equal(incompleteSThickness.panelAThicknessMm, 10, 'incomplete S keeps assigned S-A PM thickness');
 assert.equal(incompleteSThickness.panelBId, null, 'incomplete S reports missing S-B panel as unknown');
 assert.equal(incompleteSThickness.panelBThicknessMm, null, 'incomplete S reports missing S-B thickness as unknown');
-assert.equal(incompleteSThickness.autoSlotLengthMm, 30, 'incomplete S auto length uses S-A PM thickness and does not use fallback 9');
+assert.equal(incompleteSThickness.autoSlotLengthMm, null, 'incomplete S has no automatic tab length before S-A and S-B are assigned');
 assert.equal(incompleteSViewModel.assignedEdges[0].matingPanelId, null, 'incomplete S diagnostics show missing side Unknown');
 assert.equal(incompleteSViewModel.assignedEdges[0].matingThicknessMm, null, 'incomplete S diagnostics show missing mating thickness Unknown');
-assert.ok(incompleteSViewModel.diagnostics.includes('Incomplete connection'), 'incomplete S diagnostics flag incomplete connection');
+assert.equal(incompleteSViewModel.displayTabMm, null, 'incomplete S view model has no automatic tab display value');
+assert.ok(incompleteSViewModel.diagnostics.includes('Waiting for S-A/S-B.'), 'incomplete S diagnostics wait for S-A/S-B');
+const emptySViewModel = getConnectionViewModel(sModel, {}, completeSConnection, completeSState);
+assert.equal(emptySViewModel.displayTabMm, null, 'S with 0 assignments has empty tab value');
+assert.equal(resolveSThickness(sModel, {}, completeSConnection, completeSState).autoSlotLengthMm, null, 'S with 0 assignments has no automatic tab value');
 assert.throws(() => buildAppliedSGeometry(sModel, incompleteSAssignments, { S1: completeSConnection }, completeSState), /exactly one S-A edge and one S-B edge/, 'incomplete S does not generate fallback geometry');
 const manualCompleteSConnection = { ...completeSConnection, properties: { ...completeSConnection.properties, slotLengthMm: 25, isSlotLengthManual: true } };
 assert.equal(resolveSSlotLengthMm(manualCompleteSConnection, completeSThickness), 25, 'manual S slotLengthMm remains active for manual tab length');

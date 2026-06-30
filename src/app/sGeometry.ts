@@ -251,7 +251,7 @@ export const resolveSThickness = (
     panelBId: panelB?.id ?? null,
     panelAThicknessMm,
     panelBThicknessMm,
-    autoSlotLengthMm: panelAThicknessMm !== null ? panelAThicknessMm * 3 : null,
+    autoSlotLengthMm: isComplete && panelAThicknessMm !== null ? panelAThicknessMm * 3 : null,
     isComplete,
   };
 };

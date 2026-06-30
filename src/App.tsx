@@ -306,9 +306,11 @@ export const recomputeAppliedTBGeometryForPanelManager = (
 type NumericFieldProps = {
   id: string;
   label: string;
-  value: number;
+  value: number | null;
   min?: number;
   step?: number;
+  disabled?: boolean;
+  placeholder?: string;
   onChange: (value: number) => void;
   onFocus?: () => void;
 };
@@ -613,7 +615,7 @@ const getSharedEdgeProperties = (connections: ConnectionMap): EdgeConnectionProp
   return sharedConnection ? { ...sharedConnection.properties } : cloneDefaultProperties('E');
 };
 
-const NumericField = ({ id, label, value, min, step = 0.1, onChange, onFocus }: NumericFieldProps) => (
+const NumericField = ({ id, label, value, min, step = 0.1, disabled = false, placeholder, onChange, onFocus }: NumericFieldProps) => (
   <label className="property-field" htmlFor={id}>
     <span>{label}</span>
     <input
@@ -621,7 +623,9 @@ const NumericField = ({ id, label, value, min, step = 0.1, onChange, onFocus }: 
       type="number"
       min={min}
       step={step}
-      value={value}
+      value={value ?? ''}
+      disabled={disabled}
+      placeholder={placeholder}
       onFocus={onFocus}
       onChange={(event) => onChange(Number.isFinite(event.target.valueAsNumber) ? event.target.valueAsNumber : 0)}
     />
@@ -1885,7 +1889,7 @@ function App() {
             ) : (
               <p className="muted">No edges assigned to this TB / Top Bottom label yet.</p>
             )}
-            {tbViewModel.diagnostics.includes('Incomplete connection') ? <p className="muted">Incomplete connection</p> : null}
+            {tbViewModel.diagnostics.includes('Waiting for second edge.') ? <p className="muted">Waiting for second edge.</p> : null}
             <dl>
               <div><dt>Mode</dt><dd>{tbMode}</dd></div>
               <div><dt>Stored value</dt><dd>{formatCalculatedMm(tbViewModel.storedTabMm)}</dd></div>
@@ -1946,7 +1950,7 @@ function App() {
         panelBThicknessMm: sViewModel.panelThicknesses.panelBThicknessMm,
         autoSlotLengthMm: sViewModel.autoTabMm,
       };
-      const displayedSlotLengthMm = sViewModel.displayTabMm ?? selectedConnection.properties.slotLengthMm;
+      const displayedSlotLengthMm = sViewModel.displayTabMm;
       const sMode = sViewModel.isTabManual ? 'Manual' : 'Auto';
       const assignedSEdges = svgModel.edges.filter((edge) => getBucketSlotAssignments(edgeAssignments[edge.id]).some((assignment) => assignment.connectionId === selectedConnection.id));
 
@@ -2004,7 +2008,7 @@ function App() {
 
           <section className="property-section" aria-labelledby="slot-diagnostics">
             <h4 id="slot-diagnostics">{selectedConnection.id} diagnostics</h4>
-            {sViewModel.diagnostics.includes('Incomplete connection') ? <p className="muted">Incomplete connection</p> : null}
+            {sViewModel.diagnostics.includes('Waiting for S-A/S-B.') ? <p className="muted">Waiting for S-A/S-B.</p> : null}
             <dl>
               <div><dt>Mode</dt><dd>{sMode}</dd></div>
               <div><dt>Stored value</dt><dd>{formatCalculatedMm(sViewModel.storedTabMm)}</dd></div>
@@ -2017,7 +2021,7 @@ function App() {
             <h4 id="slot-basic-properties">Basic</h4>
             <div className="property-grid">
               <NumericField id="slot-offset" label="Slot offset inward from selected S-B edge (mm)" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
-              <NumericField id="slot-length" label="Slot length (mm)" min={0} value={displayedSlotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
+              <NumericField id="slot-length" label="Slot length (mm)" min={0} value={displayedSlotLengthMm} disabled={displayedSlotLengthMm === null} placeholder="Complete S connection" onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
             </div>
           </section>
         </div>
@@ -2073,7 +2077,7 @@ function App() {
       return (
         <div className="compact-property-controls" aria-label="Compact E controls">
           <span className="muted">PM thickness</span>
-          <NumericField id="compact-edge-tab-size" label="Tab" min={0} value={tbViewModel.displayTabMm ?? selectedConnection.properties.fingerWidthMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
+          <NumericField id="compact-edge-tab-size" label="Tab" min={0} value={tbViewModel.displayTabMm} disabled={tbViewModel.displayTabMm === null} placeholder="Complete TB connection" onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
         </div>
       );
     }
@@ -2081,14 +2085,14 @@ function App() {
     if (selectedConnection?.prefix === 'S' && (activeSGroup?.isActive || selectedConnection)) {
       const properties = selectedConnection.properties;
       const sViewModel = getConnectionViewModel(svgModel, edgeAssignments, selectedConnection, panelManager, getPanelDisplayName);
-      const displayedSlotLengthMm = sViewModel.displayTabMm ?? selectedConnection.properties.slotLengthMm;
+      const displayedSlotLengthMm = sViewModel.displayTabMm;
       const controlsLabel = activeSGroup?.isActive && activeSGroup.connectionIds.includes(selectedConnection.id)
         ? 'Compact active S group controls'
         : 'Compact selected S controls';
 
       return (
         <div className="compact-property-controls" aria-label={controlsLabel}>
-          <NumericField id="compact-slot-tab-size" label="Tab" min={0} value={displayedSlotLengthMm} onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
+          <NumericField id="compact-slot-tab-size" label="Tab" min={0} value={displayedSlotLengthMm} disabled={displayedSlotLengthMm === null} placeholder="Complete S connection" onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
           <NumericField id="compact-slot-offset" label="Offset" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
         </div>
       );
