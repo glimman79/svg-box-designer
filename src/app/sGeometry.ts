@@ -217,9 +217,10 @@ const buildSlotPathD = (
 export type SConnectionThickness = {
   panelAId: string | null;
   panelBId: string | null;
-  panelAThicknessMm: number;
-  panelBThicknessMm: number;
-  autoSlotLengthMm: number;
+  panelAThicknessMm: number | null;
+  panelBThicknessMm: number | null;
+  autoSlotLengthMm: number | null;
+  isComplete: boolean;
 };
 
 const getAssignedSEdges = (assignments: EdgeAssignmentRecord, connectionId: string) => (
@@ -241,23 +242,24 @@ export const resolveSThickness = (
   const bEdgeId = assignedEdges.find((assignment) => assignment.role === 'B')?.edgeId;
   const panelA = aEdgeId ? findPanelContainingEdge(svgModel, aEdgeId) : null;
   const panelB = bEdgeId ? findPanelContainingEdge(svgModel, bEdgeId) : null;
-  const legacyThicknessMm = connection.properties.materialThicknessMm;
-  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState, legacyThicknessMm);
-  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState, legacyThicknessMm);
+  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState, connection.properties.materialThicknessMm);
+  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState, connection.properties.materialThicknessMm);
+  const isComplete = panelAThicknessMm !== null && panelBThicknessMm !== null;
 
   return {
     panelAId: panelA?.id ?? null,
     panelBId: panelB?.id ?? null,
     panelAThicknessMm,
     panelBThicknessMm,
-    autoSlotLengthMm: panelAThicknessMm * 3,
+    autoSlotLengthMm: panelAThicknessMm !== null ? panelAThicknessMm * 3 : null,
+    isComplete,
   };
 };
 
 export const resolveSSlotLengthMm = (
   connection: SlotConnectionDefinition,
   thickness: SConnectionThickness,
-): number => (
+): number | null => (
   connection.properties.isSlotLengthManual
     ? connection.properties.slotLengthMm
     : thickness.autoSlotLengthMm
@@ -279,7 +281,7 @@ export const recalculateAutomaticSSlotLengths = (
       ...connection,
       properties: {
         ...connection.properties,
-        slotWidthMm: thickness.panelAThicknessMm,
+        slotWidthMm: thickness.panelAThicknessMm ?? connection.properties.slotWidthMm,
       },
     }];
   }),
@@ -349,9 +351,17 @@ export const buildAppliedSGeometry = (
     const originalSide = getContourEdgePoints(panel, sideIndex);
     const sideLength = getContourSideLength(originalSide);
     const sThickness = resolveSThickness(svgModel, assignments, connection, panelThicknessState);
+    if (!sThickness.isComplete || sThickness.panelAThicknessMm === null || sThickness.panelBThicknessMm === null) {
+      throw new Error(`${connection.id} incomplete connection: S-A and S-B panels must both resolve PM thickness.`);
+    }
+
     const wallThicknessMm = sThickness.panelAThicknessMm;
     const insertDepthMm = sThickness.panelBThicknessMm;
     const slotLengthMm = resolveSSlotLengthMm(connection, sThickness);
+
+    if (slotLengthMm === null) {
+      throw new Error(`${connection.id} incomplete connection: S tab/slot length cannot be resolved without PM thickness.`);
+    }
     const planSegments = createTabSegmentPlan(sideLength, slotLengthMm);
     const aSegments = getTabSegmentsForRole(planSegments, 'A');
     const bLength = Math.hypot(sourceBEdge.end.x - sourceBEdge.start.x, sourceBEdge.end.y - sourceBEdge.start.y);

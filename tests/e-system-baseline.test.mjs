@@ -175,9 +175,23 @@ assert.equal(tbManualViewModel.displayTabMm, 22, 'TB manual view model display u
 assert.equal(getPanelEdgeOperations(tbPmModel.panels[0], tbPmAssignments, { 'E-pm': manualTbConnection }, tbStaleDisplayState, tbPmModel)[0].fingerWidthMm, 22, 'TB manual geometry uses stored manual fingerWidthMm');
 assert.equal(recalculateAutomaticTBFingerWidths(tbPmModel, tbPmAssignments, { 'E-pm': manualTbConnection }, tbPmChangedState)['E-pm'].properties.fingerWidthMm, 22, 'TB manual finger size remains unchanged when PM thickness changes');
 const oldProjectThickness = resolveTBThickness(tbPmModel, tbPmAssignments, tbPmConnection, undefined);
-assert.equal(oldProjectThickness.panelAThicknessMm, 3, 'TB falls back to legacy materialThicknessMm when PM metadata is missing');
-assert.equal(oldProjectThickness.autoFingerWidthMm, 9, 'TB fallback preserves old project automatic finger size behavior without PM metadata');
+assert.equal(oldProjectThickness.panelAThicknessMm, 3, 'TB preserves legacy fallback only when PM metadata is absent');
+assert.equal(oldProjectThickness.autoFingerWidthMm, 9, 'TB preserves legacy fallback only when PM metadata is absent');
 
+
+const incompleteTbAssignments = {
+  'edge-a': { connectionId: 'E-pm', edgeRole: 'A' },
+};
+const incompleteTbThickness = resolveTBThickness(tbPmModel, incompleteTbAssignments, tbPmConnection, tbPmState);
+const incompleteTbViewModel = getConnectionViewModel(tbPmModel, incompleteTbAssignments, tbPmConnection, tbPmState, (panelId) => `Panel ${panelId}`);
+assert.equal(incompleteTbThickness.panelAThicknessMm, 18, 'incomplete TB keeps assigned owner PM thickness');
+assert.equal(incompleteTbThickness.panelBId, null, 'incomplete TB reports missing mating panel as unknown');
+assert.equal(incompleteTbThickness.panelBThicknessMm, null, 'incomplete TB reports missing mating thickness as unknown');
+assert.equal(incompleteTbThickness.autoFingerWidthMm, null, 'incomplete TB does not compute auto tab from 3 mm fallback');
+assert.equal(incompleteTbViewModel.assignedEdges[0].matingPanelId, null, 'incomplete TB diagnostics show mating panel Unknown');
+assert.equal(incompleteTbViewModel.assignedEdges[0].matingThicknessMm, null, 'incomplete TB diagnostics show mating thickness Unknown');
+assert.equal(getPanelEdgeOperations(tbPmModel.panels[0], incompleteTbAssignments, { 'E-pm': tbPmConnection }, tbPmState, tbPmModel).length, 0, 'incomplete TB does not generate fallback joint depth geometry');
+assert.ok(incompleteTbViewModel.diagnostics.includes('Incomplete connection'), 'incomplete TB diagnostics flag incomplete connection');
 
 const mixedTbModel = {
   ...simpleModelForPanels([
@@ -199,36 +213,36 @@ const mixedTbAssignments = {
   'edge-p1': { connectionId: 'E-mixed', edgeRole: 'A' },
   'edge-p5': { connectionId: 'E-mixed', edgeRole: 'B' },
 };
-const mixedTbState = { defaultThicknessMm: 3, panels: { 'panel-1': { panelId: 'panel-1', thicknessMm: 10 }, 'panel-5': { panelId: 'panel-5', thicknessMm: 3 } } };
+const mixedTbState = { defaultThicknessMm: 3, panels: { 'panel-1': { panelId: 'panel-1', thicknessMm: 10 }, 'panel-5': { panelId: 'panel-5', thicknessMm: 5 } } };
 const autoMixedTbConnection = { id: 'E-mixed', prefix: 'E', properties: { materialThicknessMm: 99, fingerWidthMm: 99, isFingerWidthManual: false } };
 const mixedTbThickness = resolveTBThickness(mixedTbModel, mixedTbAssignments, autoMixedTbConnection, mixedTbState);
 assert.equal(mixedTbThickness.panelAThicknessMm, 10, 'mixed TB P1 thickness resolves from PM instead of legacy materialThicknessMm');
-assert.equal(mixedTbThickness.panelBThicknessMm, 3, 'mixed TB P5 thickness resolves from PM instead of legacy materialThicknessMm');
-assert.equal(mixedTbThickness.autoFingerWidthMm, 9, 'mixed TB auto finger size is 3 × min(10, 3)');
+assert.equal(mixedTbThickness.panelBThicknessMm, 5, 'mixed TB P5 thickness resolves from PM instead of legacy materialThicknessMm');
+assert.equal(mixedTbThickness.autoFingerWidthMm, 15, 'mixed TB auto finger size is 3 × min(10, 5) and ignores legacy materialThicknessMm 99');
 const mixedP1Operation = getPanelEdgeOperations(mixedTbModel.panels[0], mixedTbAssignments, { 'E-mixed': autoMixedTbConnection }, mixedTbState, mixedTbModel)[0];
 const mixedP5Operation = getPanelEdgeOperations(mixedTbModel.panels[1], mixedTbAssignments, { 'E-mixed': autoMixedTbConnection }, mixedTbState, mixedTbModel)[0];
 assert.equal(mixedP1Operation.materialThicknessMm, 10, 'mixed TB geometry generated on P1 uses tab thickness 10');
-assert.equal(mixedP1Operation.insetDepthMm, 3, 'mixed TB geometry generated on P1 uses joint depth 3');
-assert.equal(mixedP1Operation.fingerWidthMm, 9, 'mixed TB geometry generated on P1 uses auto finger size 9');
-assert.equal(mixedP5Operation.materialThicknessMm, 3, 'mixed TB geometry generated on P5 uses tab thickness 3');
+assert.equal(mixedP1Operation.insetDepthMm, 5, 'mixed TB geometry generated on P1 uses joint depth 5');
+assert.equal(mixedP1Operation.fingerWidthMm, 15, 'mixed TB geometry generated on P1 uses auto finger size 15');
+assert.equal(mixedP5Operation.materialThicknessMm, 5, 'mixed TB geometry generated on P5 uses tab thickness 5');
 assert.equal(mixedP5Operation.insetDepthMm, 10, 'mixed TB geometry generated on P5 uses joint depth 10');
-assert.equal(mixedP5Operation.fingerWidthMm, 9, 'mixed TB geometry generated on P5 uses auto finger size 9');
+assert.equal(mixedP5Operation.fingerWidthMm, 15, 'mixed TB geometry generated on P5 uses auto finger size 15');
 const manualMixedTbConnection = { id: 'E-mixed', prefix: 'E', properties: { materialThicknessMm: 99, fingerWidthMm: 20, isFingerWidthManual: true } };
 assert.equal(recalculateAutomaticTBFingerWidths(mixedTbModel, mixedTbAssignments, { 'E-mixed': manualMixedTbConnection }, mixedTbState)['E-mixed'].properties.fingerWidthMm, 20, 'mixed TB manual finger size 20 remains unchanged');
 assert.equal(getPanelEdgeOperations(mixedTbModel.panels[0], mixedTbAssignments, { 'E-mixed': manualMixedTbConnection }, mixedTbState, mixedTbModel)[0].fingerWidthMm, 20, 'mixed TB manual operation finger size stays 20');
 const { recomputeAppliedTBGeometryForPanelManager } = module.exports;
 const mixedAppliedPathsBeforePmChange = buildAppliedEPanelPaths(mixedTbModel, mixedTbAssignments, { 'E-mixed': autoMixedTbConnection }, mixedTbState);
-const mixedTbStateAfterPmApply = { defaultThicknessMm: 3, isApplied: true, isDirty: false, panels: { 'panel-1': { panelId: 'panel-1', thicknessMm: 10 }, 'panel-5': { panelId: 'panel-5', thicknessMm: 5 } } };
+const mixedTbStateAfterPmApply = { defaultThicknessMm: 3, isApplied: true, isDirty: false, panels: { 'panel-1': { panelId: 'panel-1', thicknessMm: 10 }, 'panel-5': { panelId: 'panel-5', thicknessMm: 6 } } };
 const mixedRecomputedAfterPmApply = recomputeAppliedTBGeometryForPanelManager(mixedTbModel, mixedTbAssignments, { 'E-mixed': autoMixedTbConnection }, mixedTbStateAfterPmApply, mixedAppliedPathsBeforePmChange);
 assert.equal(mixedRecomputedAfterPmApply.connections['E-mixed'].properties.fingerWidthMm, 99, 'PM Apply does not write automatic TB finger size into stored field');
-assert.equal(getPanelEdgeOperations(mixedTbModel.panels[0], mixedTbAssignments, mixedRecomputedAfterPmApply.connections, mixedTbStateAfterPmApply, mixedTbModel)[0].fingerWidthMm, 15, 'PM Apply recalculates automatic TB geometry from PM thickness without stored write-back');
-assert.equal(getPanelEdgeOperations(mixedTbModel.panels[0], mixedTbAssignments, mixedRecomputedAfterPmApply.connections, mixedTbStateAfterPmApply, mixedTbModel)[0].insetDepthMm, 5, 'PM Apply recomputes TB joint depth from changed P5 thickness');
+assert.equal(getPanelEdgeOperations(mixedTbModel.panels[0], mixedTbAssignments, mixedRecomputedAfterPmApply.connections, mixedTbStateAfterPmApply, mixedTbModel)[0].fingerWidthMm, 18, 'PM Apply recalculates automatic TB geometry from PM thickness without stored write-back');
+assert.equal(getPanelEdgeOperations(mixedTbModel.panels[0], mixedTbAssignments, mixedRecomputedAfterPmApply.connections, mixedTbStateAfterPmApply, mixedTbModel)[0].insetDepthMm, 6, 'PM Apply recomputes TB joint depth from changed P5 thickness');
 assert.notDeepEqual(mixedRecomputedAfterPmApply.appliedEPanelPaths.map((path) => path.pathD), mixedAppliedPathsBeforePmChange.map((path) => path.pathD), 'PM Apply immediately rebuilds already-applied TB geometry');
 assert.equal(buildFinalGeometry(mixedTbModel, mixedRecomputedAfterPmApply.appliedEPanelPaths, []).contours.find((contour) => contour.panelId === 'panel-1')?.pathD, mixedRecomputedAfterPmApply.appliedEPanelPaths.find((path) => path.panelId === 'panel-1')?.pathD, 'Final Geometry consumes PM Apply recomputed TB geometry without another global Apply');
 const manualMixedAppliedPathsBeforePmChange = buildAppliedEPanelPaths(mixedTbModel, mixedTbAssignments, { 'E-mixed': manualMixedTbConnection }, mixedTbState);
 const manualMixedRecomputedAfterPmApply = recomputeAppliedTBGeometryForPanelManager(mixedTbModel, mixedTbAssignments, { 'E-mixed': manualMixedTbConnection }, mixedTbStateAfterPmApply, manualMixedAppliedPathsBeforePmChange);
 assert.equal(manualMixedRecomputedAfterPmApply.connections['E-mixed'].properties.fingerWidthMm, 20, 'PM Apply preserves manual TB finger size 20');
-assert.equal(getPanelEdgeOperations(mixedTbModel.panels[0], mixedTbAssignments, manualMixedRecomputedAfterPmApply.connections, mixedTbStateAfterPmApply, mixedTbModel)[0].insetDepthMm, 5, 'PM Apply recomputes manual TB depths from changed P5 thickness');
+assert.equal(getPanelEdgeOperations(mixedTbModel.panels[0], mixedTbAssignments, manualMixedRecomputedAfterPmApply.connections, mixedTbStateAfterPmApply, mixedTbModel)[0].insetDepthMm, 6, 'PM Apply recomputes manual TB depths from changed P5 thickness');
 
 const classifiedEContours = classifyAppliedContours([{ panelId: 'panel-e', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 10 }, erasePathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z', edgeIds: [] }], []);
 assert.equal(classifiedEContours.length, 1, 'AppliedEPanelPath produces one classified contour');
@@ -590,6 +604,34 @@ assert.equal(staleAutoSViewModel.autoTabMm, 15, 'S auto view model exposes compu
 assert.equal(staleAutoSViewModel.storedTabMm, 9, 'S auto view model keeps stale stored slot length separate from display value');
 const manualSViewModel = getConnectionViewModel(sModel, sAssignments, manualDisplayConnection, autoDisplayState);
 assert.equal(manualSViewModel.displayTabMm, 12, 'S manual view model display uses stored manual slotLengthMm');
+
+const completeSState = {
+  defaultThicknessMm: 3,
+  panels: {
+    sPanel: { panelId: 'sPanel', thicknessMm: 10 },
+    receiver: { panelId: 'receiver', thicknessMm: 5 },
+  },
+};
+const completeSConnection = { ...sConnection('S1'), properties: { ...sConnection('S1').properties, materialThicknessMm: 3, slotWidthMm: 3, slotLengthMm: 9, isSlotLengthManual: false } };
+const completeSThickness = resolveSThickness(sModel, sAssignments, completeSConnection, completeSState);
+const completeSGeometry = buildAppliedSGeometry(sModel, sAssignments, { S1: completeSConnection }, completeSState);
+assert.equal(completeSThickness.autoSlotLengthMm, 30, 'complete S auto tab length is 3 × S-A PM thickness 10 and ignores legacy materialThicknessMm 3');
+assert.equal(completeSGeometry[0].slotPaths[0].widthMm, 10, 'complete S slot width is S-A PM thickness 10');
+assert.match(completeSGeometry[0].panelPaths[0].pathD, /15/, 'complete S insert depth uses S-B PM thickness 5 from y=10 to y=15');
+const incompleteSAssignments = { 'sPanel-top': { connectionId: 'S1', slotRole: 'A' } };
+const incompleteSThickness = resolveSThickness(sModel, incompleteSAssignments, completeSConnection, completeSState);
+const incompleteSViewModel = getConnectionViewModel(sModel, incompleteSAssignments, completeSConnection, completeSState);
+assert.equal(incompleteSThickness.panelAThicknessMm, 10, 'incomplete S keeps assigned S-A PM thickness');
+assert.equal(incompleteSThickness.panelBId, null, 'incomplete S reports missing S-B panel as unknown');
+assert.equal(incompleteSThickness.panelBThicknessMm, null, 'incomplete S reports missing S-B thickness as unknown');
+assert.equal(incompleteSThickness.autoSlotLengthMm, 30, 'incomplete S auto length uses S-A PM thickness and does not use fallback 9');
+assert.equal(incompleteSViewModel.assignedEdges[0].matingPanelId, null, 'incomplete S diagnostics show missing side Unknown');
+assert.equal(incompleteSViewModel.assignedEdges[0].matingThicknessMm, null, 'incomplete S diagnostics show missing mating thickness Unknown');
+assert.ok(incompleteSViewModel.diagnostics.includes('Incomplete connection'), 'incomplete S diagnostics flag incomplete connection');
+assert.throws(() => buildAppliedSGeometry(sModel, incompleteSAssignments, { S1: completeSConnection }, completeSState), /exactly one S-A edge and one S-B edge/, 'incomplete S does not generate fallback geometry');
+const manualCompleteSConnection = { ...completeSConnection, properties: { ...completeSConnection.properties, slotLengthMm: 25, isSlotLengthManual: true } };
+assert.equal(resolveSSlotLengthMm(manualCompleteSConnection, completeSThickness), 25, 'manual S slotLengthMm remains active for manual tab length');
+
 const selectionAssignments = {
   'tb-a': { edgeAssignment: { connectionId: 'E-select', edgeRole: 'A' } },
   'tb-b': { edgeAssignment: { connectionId: 'E-select', edgeRole: 'B' } },

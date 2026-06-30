@@ -576,7 +576,7 @@ const formatEdgeRoleLabel = (role: EdgeRole | undefined) => {
   return 'No role';
 };
 
-const formatCalculatedMm = (value: number) => `${Number(value.toFixed(2)).toString()} mm`;
+const formatCalculatedMm = (value: number | null | undefined) => (Number.isFinite(value) ? `${Number((value as number).toFixed(2)).toString()} mm` : 'Unknown');
 const cloneDefaultProperties = <P extends LabelPrefix>(prefix: P): ConnectionPropertiesByPrefix[P] => ({
   ...defaultConnectionProperties[prefix],
 });
@@ -1876,7 +1876,7 @@ function App() {
                         <div><dt>Mating panel</dt><dd>{diagnostic.matingPanelId ? getPanelDisplayName(diagnostic.matingPanelId) : 'Unknown'}</dd></div>
                         <div><dt>Mating thickness</dt><dd>{formatCalculatedMm(diagnostic.matingThicknessMm)}</dd></div>
                         <div><dt>Tab thickness</dt><dd>{formatCalculatedMm(diagnostic.ownerThicknessMm)}</dd></div>
-                        <div><dt>Joint depth</dt><dd>{formatCalculatedMm(diagnostic.matingThicknessMm)}</dd></div>
+                        {diagnostic.matingThicknessMm !== null ? <div><dt>Joint depth</dt><dd>{formatCalculatedMm(diagnostic.matingThicknessMm)}</dd></div> : null}
                       </dl>
                     </li>
                   );
@@ -1885,6 +1885,7 @@ function App() {
             ) : (
               <p className="muted">No edges assigned to this TB / Top Bottom label yet.</p>
             )}
+            {tbViewModel.diagnostics.includes('Incomplete connection') ? <p className="muted">Incomplete connection</p> : null}
             <dl>
               <div><dt>Mode</dt><dd>{tbMode}</dd></div>
               <div><dt>Stored value</dt><dd>{formatCalculatedMm(tbViewModel.storedTabMm)}</dd></div>
@@ -1945,7 +1946,7 @@ function App() {
         panelBThicknessMm: sViewModel.panelThicknesses.panelBThicknessMm,
         autoSlotLengthMm: sViewModel.autoTabMm,
       };
-      const displayedSlotLengthMm = sViewModel.displayTabMm;
+      const displayedSlotLengthMm = sViewModel.displayTabMm ?? selectedConnection.properties.slotLengthMm;
       const sMode = sViewModel.isTabManual ? 'Manual' : 'Auto';
       const assignedSEdges = svgModel.edges.filter((edge) => getBucketSlotAssignments(edgeAssignments[edge.id]).some((assignment) => assignment.connectionId === selectedConnection.id));
 
@@ -1958,7 +1959,7 @@ function App() {
               <div><dt>S-B panel</dt><dd>{sThickness.panelBId ? `${getPanelDisplayName(sThickness.panelBId)} = ${formatCalculatedMm(sThickness.panelBThicknessMm)}` : formatCalculatedMm(sThickness.panelBThicknessMm)}</dd></div>
               <div><dt>Wall thickness</dt><dd>{formatCalculatedMm(sThickness.panelAThicknessMm)}</dd></div>
               <div><dt>Slot width</dt><dd>{formatCalculatedMm(sThickness.panelAThicknessMm)}</dd></div>
-              <div><dt>Insert depth</dt><dd>{formatCalculatedMm(sThickness.panelBThicknessMm)}</dd></div>
+              {sThickness.panelBThicknessMm !== null ? <div><dt>Insert depth</dt><dd>{formatCalculatedMm(sThickness.panelBThicknessMm)}</dd></div> : null}
             </dl>
           </section>
 
@@ -2003,6 +2004,7 @@ function App() {
 
           <section className="property-section" aria-labelledby="slot-diagnostics">
             <h4 id="slot-diagnostics">{selectedConnection.id} diagnostics</h4>
+            {sViewModel.diagnostics.includes('Incomplete connection') ? <p className="muted">Incomplete connection</p> : null}
             <dl>
               <div><dt>Mode</dt><dd>{sMode}</dd></div>
               <div><dt>Stored value</dt><dd>{formatCalculatedMm(sViewModel.storedTabMm)}</dd></div>
@@ -2071,7 +2073,7 @@ function App() {
       return (
         <div className="compact-property-controls" aria-label="Compact E controls">
           <span className="muted">PM thickness</span>
-          <NumericField id="compact-edge-tab-size" label="Tab" min={0} value={tbViewModel.displayTabMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
+          <NumericField id="compact-edge-tab-size" label="Tab" min={0} value={tbViewModel.displayTabMm ?? selectedConnection.properties.fingerWidthMm} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
         </div>
       );
     }
@@ -2079,7 +2081,7 @@ function App() {
     if (selectedConnection?.prefix === 'S' && (activeSGroup?.isActive || selectedConnection)) {
       const properties = selectedConnection.properties;
       const sViewModel = getConnectionViewModel(svgModel, edgeAssignments, selectedConnection, panelManager, getPanelDisplayName);
-      const displayedSlotLengthMm = sViewModel.displayTabMm;
+      const displayedSlotLengthMm = sViewModel.displayTabMm ?? selectedConnection.properties.slotLengthMm;
       const controlsLabel = activeSGroup?.isActive && activeSGroup.connectionIds.includes(selectedConnection.id)
         ? 'Compact active S group controls'
         : 'Compact selected S controls';
