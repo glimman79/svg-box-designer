@@ -901,7 +901,7 @@ workflowConnections.S1.properties.isSlotLengthManual = true;
 workflow = maybeAutoCreateNextSInGroup(workflowConnections, workflowAssign('S1'), workflowGroup, 'S1');
 workflowConnections = workflow.connections;
 workflowGroup = workflow.activeSGroup;
-assert.equal(workflow.selectedLabelId, 'S1', 'completing S1 auto-creates S2 without selecting it');
+assert.equal(workflow.selectedLabelId, 'S2', 'completing S1 auto-creates and selects S2');
 assert.equal(workflowConnections.S2.properties.materialThicknessMm, 6, 'S2 copies material thickness from S1');
 assert.equal(workflowConnections.S2.properties.slotWidthMm, 6, 'S2 copies tab size/slot width from S1');
 assert.equal(workflowConnections.S2.properties.slotOffsetMm, 4, 'S2 copies slot offset from S1');
@@ -914,7 +914,7 @@ for (const completedId of ['S2', 'S3']) {
   workflowGroup = workflow.activeSGroup;
 }
 assert.deepEqual(JSON.parse(JSON.stringify(workflowGroup.connectionIds)), ['S1', 'S2', 'S3', 'S4'], 'active group can continue through S4');
-assert.equal(workflow.selectedLabelId, 'S3', 'S3 remains selected after auto-creating S4');
+assert.equal(workflow.selectedLabelId, 'S4', 'S4 is selected after S3 completes');
 
 workflowGroup = finishSGroupWorkflow(workflowGroup);
 workflow = maybeAutoCreateNextSInGroup(workflowConnections, workflowAssign('S4'), workflowGroup, 'S4');
