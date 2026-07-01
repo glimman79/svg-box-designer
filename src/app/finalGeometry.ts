@@ -68,11 +68,11 @@ export const buildFinalGeometry = (
   appliedEPanelPaths.forEach((path) => replacementByPanelId.set(path.panelId, { pathD: path.pathD, finalSource: 'applied-panel' }));
   appliedSGeometry.flatMap((geometry) => geometry.panelPaths).forEach((path) => replacementByPanelId.set(path.panelId, { pathD: path.pathD, finalSource: 'applied-panel' }));
 
-  const contours: FinalGeometryContour[] = svgModel.panels.map((panel) => {
+  const contours: FinalGeometryContour[] = svgModel.panels.flatMap((panel) => {
     const replacement = replacementByPanelId.get(panel.id);
-    const pathD = replacement?.pathD ?? pointsToClosedPathD(panel.contour);
-
-    return {
+    const outerPanelContour = panel.outerContour ?? panel.contour;
+    const pathD = replacement?.pathD ?? pointsToClosedPathD(outerPanelContour);
+    const outerContour: FinalGeometryContour = {
       id: `final-panel:${panel.id}`,
       source: 'final-contour',
       finalSource: replacement?.finalSource ?? 'original-panel',
@@ -80,8 +80,21 @@ export const buildFinalGeometry = (
       panelId: panel.id,
       ownerPanelId: panel.id,
       pathD,
-      points: replacement ? pathDToClosedContourForFinalGeometry(pathD) ?? undefined : clonePoints(panel.contour),
+      points: replacement ? pathDToClosedContourForFinalGeometry(pathD) ?? undefined : clonePoints(outerPanelContour),
     };
+
+    const innerContours = (panel.innerContours ?? []).map((innerContour, index): FinalGeometryContour => ({
+      id: `final-panel-hole:${panel.id}:${index}`,
+      source: 'final-contour',
+      finalSource: 'original-panel',
+      kind: 'INNER',
+      panelId: panel.id,
+      ownerPanelId: panel.id,
+      pathD: pointsToClosedPathD(innerContour),
+      points: clonePoints(innerContour),
+    }));
+
+    return [outerContour, ...innerContours];
   });
 
   appliedSGeometry.flatMap((geometry) => geometry.slotPaths).forEach((slotPath, index) => {

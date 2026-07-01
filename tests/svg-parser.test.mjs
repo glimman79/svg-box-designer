@@ -122,6 +122,9 @@ const loadSrcModule = (relativePath) => {
 
 const { parseSvgDocument, applyAffineMatrixToPoint, formatImportDiagnosticMessage, multiplyAffineMatrices, parseMatrixTransform } = svgUtilsModule.exports;
 const { classifyImportedPanelContours } = loadSrcModule('src/app/contourClassification.ts');
+const { buildFinalGeometry } = loadSrcModule('src/app/finalGeometry.ts');
+const { buildKerfCompensatedPreviewFromFinalContours } = loadSrcModule('src/app/manufacturingCompensation.ts');
+const { exportFinalGeometrySvg, exportManufacturingGeometrySvg } = loadSrcModule('src/app/exportFinalGeometrySvg.ts');
 const round = (value) => Number(value.toFixed(6));
 const points = (model) => model.edges.map((edge) => [round(edge.start.x), round(edge.start.y), round(edge.end.x), round(edge.end.y)]);
 
@@ -176,6 +179,40 @@ const fiveHolePanel = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y
 assert.equal(fiveHolePanel.panels.length, 1, 'one panel with five holes creates one SvgPanel');
 assert.equal(fiveHolePanel.panels[0].innerContours.length, 5, 'one panel with five holes stores five inner contours');
 assert.equal(fiveHolePanel.panels[0].innerEdgeIds.length, 5, 'hole edges are stored separately from outer edgeIds');
+
+
+const getSvgPathDs = (svg) => [...svg.matchAll(/<path\b[^>]*\sd="([^"]*)"/g)].map((match) => match[1]);
+const assertImportedHolesSurvivePipeline = (model, expectedPanels, expectedHoles, expectedDepth, label) => {
+  assert.equal(model.panels.length, expectedPanels, `${label}: correct panel count`);
+  assert.equal(model.panels.reduce((total, panel) => total + panel.innerContours.length, 0), expectedHoles, `${label}: correct hole count`);
+  assert.equal(Math.max(...model.panels.map((panel) => panel.parentPanelId ? 2 : 0)), expectedDepth, `${label}: correct containment depth`);
+  model.panels.forEach((panel) => {
+    assert.equal(panel.innerEdgeIds.length, panel.innerContours.length, `${label}: ${panel.id} preserves hole edge id groups`);
+  });
+
+  const finalGeometry = buildFinalGeometry(model, [], []);
+  const finalHoles = finalGeometry.contours.filter((contour) => contour.kind === 'INNER' && contour.id.startsWith('final-panel-hole:'));
+  assert.equal(finalHoles.length, expectedHoles, `${label}: final geometry preserves imported holes`);
+  assert.equal(buildKerfCompensatedPreviewFromFinalContours(finalGeometry.contours, 0).contours.filter((contour) => contour.kind === 'INNER').length, expectedHoles, `${label}: rendering/manufacturing preview keeps holes visible`);
+
+  const exportedFinalPathDs = getSvgPathDs(exportFinalGeometrySvg(model, finalGeometry));
+  const exportedManufacturingPathDs = getSvgPathDs(exportManufacturingGeometrySvg(model, buildKerfCompensatedPreviewFromFinalContours(finalGeometry.contours, 0)));
+  assert.equal(exportedFinalPathDs.length, expectedPanels + expectedHoles, `${label}: final export contains outer and inner contours`);
+  assert.equal(exportedManufacturingPathDs.length, expectedPanels + expectedHoles, `${label}: manufacturing export contains outer and inner contours`);
+  finalHoles.forEach((hole) => {
+    assert.ok(exportedFinalPathDs.includes(hole.pathD), `${label}: final export preserves hole ${hole.id}`);
+    assert.ok(exportedManufacturingPathDs.includes(hole.pathD), `${label}: manufacturing export preserves hole ${hole.id}`);
+  });
+};
+
+const threeRectangularHoles = parseSvgDocument('<svg viewBox="0 0 120 80"><rect x="0" y="0" width="100" height="60"/><rect x="10" y="10" width="10" height="10"/><rect x="30" y="10" width="10" height="10"/><rect x="50" y="10" width="10" height="10"/></svg>');
+assertImportedHolesSurvivePipeline(threeRectangularHoles, 1, 3, 0, 'one rectangular panel with three rectangular holes');
+
+const circularHoles = parseSvgDocument('<svg viewBox="0 0 120 80"><rect x="0" y="0" width="100" height="60"/><path d="M 25 20 L 23.5355 23.5355 L 20 25 L 16.4645 23.5355 L 15 20 L 16.4645 16.4645 L 20 15 L 23.5355 16.4645 Z"/><path d="M 51 20 L 49.2426 24.2426 L 45 26 L 40.7574 24.2426 L 39 20 L 40.7574 15.7574 L 45 14 L 49.2426 15.7574 Z"/></svg>');
+assertImportedHolesSurvivePipeline(circularHoles, 1, 2, 0, 'one panel with circular holes');
+
+const panelSeparatedByHole = parseSvgDocument('<svg viewBox="0 0 120 120"><rect x="0" y="0" width="100" height="100"/><rect x="10" y="10" width="80" height="80"/><rect x="30" y="30" width="30" height="30"/></svg>');
+assertImportedHolesSurvivePipeline(panelSeparatedByHole, 2, 1, 2, 'one panel containing another panel separated by a hole');
 
 const fiveDeepNested = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="90" height="90"/><rect x="10" y="10" width="70" height="70"/><rect x="20" y="20" width="50" height="50"/><rect x="30" y="30" width="30" height="30"/><rect x="40" y="40" width="10" height="10"/></svg>');
 assert.equal(fiveDeepNested.panels.length, 3, 'five-deep nesting creates three real panels');

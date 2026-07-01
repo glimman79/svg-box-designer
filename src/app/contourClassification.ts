@@ -142,15 +142,27 @@ export const classifyContoursByContainment = (contours: ContourClassificationInp
 export const classifyFinalContours = (contours: FinalContour[]): ClassifiedContour[] => classifyContoursByContainment(contours);
 
 export const classifyImportedPanelContours = (svgModel: SvgDocumentModel): ClassifiedContour[] => classifyContoursByContainment(
-  svgModel.panels.map((panel) => ({
-    id: `final-panel:${panel.id}`,
-    source: 'final-contour' as const,
-    finalSource: 'original-panel' as const,
-    panelId: panel.id,
-    ownerPanelId: panel.id,
-    pathD: pointsToClosedPathD(panel.contour),
-    points: clonePoints(panel.contour),
-  })),
+  svgModel.panels.flatMap((panel) => [
+    {
+      id: `final-panel:${panel.id}`,
+      source: 'final-contour' as const,
+      finalSource: 'original-panel' as const,
+      panelId: panel.id,
+      ownerPanelId: panel.id,
+      pathD: pointsToClosedPathD(panel.outerContour ?? panel.contour),
+      points: clonePoints(panel.outerContour ?? panel.contour),
+    },
+    ...(panel.innerContours ?? []).map((innerContour, index) => ({
+      id: `final-panel-hole:${panel.id}:${index}`,
+      source: 'final-contour' as const,
+      finalSource: 'original-panel' as const,
+      kind: 'INNER' as const,
+      panelId: panel.id,
+      ownerPanelId: panel.id,
+      pathD: pointsToClosedPathD(innerContour),
+      points: clonePoints(innerContour),
+    })),
+  ]),
 );
 
 /**
