@@ -172,6 +172,30 @@ assert.equal(closedNotch.importDiagnostics.closedLoopsFound, 1, 'closed notched 
 const separatePanels = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="10" height="10"/><rect x="20" y="0" width="10" height="10"/></svg>');
 assert.equal(separatePanels.importDiagnostics.closedLoopsFound, 2, 'separate panels produce one closed topology loop per panel');
 
+const fiveHolePanel = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="90" height="90"/><rect x="5" y="5" width="5" height="5"/><rect x="15" y="5" width="5" height="5"/><rect x="25" y="5" width="5" height="5"/><rect x="35" y="5" width="5" height="5"/><rect x="45" y="5" width="5" height="5"/></svg>');
+assert.equal(fiveHolePanel.panels.length, 1, 'one panel with five holes creates one SvgPanel');
+assert.equal(fiveHolePanel.panels[0].innerContours.length, 5, 'one panel with five holes stores five inner contours');
+assert.equal(fiveHolePanel.panels[0].innerEdgeIds.length, 5, 'hole edges are stored separately from outer edgeIds');
+
+const fiveDeepNested = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="90" height="90"/><rect x="10" y="10" width="70" height="70"/><rect x="20" y="20" width="50" height="50"/><rect x="30" y="30" width="30" height="30"/><rect x="40" y="40" width="10" height="10"/></svg>');
+assert.equal(fiveDeepNested.panels.length, 3, 'five-deep nesting creates three real panels');
+assert.equal(fiveDeepNested.panels[1].parentPanelId, 'panel-1', 'depth-two panel parentPanelId points to root panel');
+assert.equal(fiveDeepNested.panels[2].parentPanelId, 'panel-2', 'depth-four panel parentPanelId points to depth-two panel');
+assert.equal(fiveDeepNested.panels[0].innerContours.length, 1, 'root panel owns its immediate hole');
+assert.equal(fiveDeepNested.panels[1].innerContours.length, 1, 'nested panel owns its immediate hole');
+
+const disjointWithNested = parseSvgDocument('<svg viewBox="0 0 200 100"><rect x="0" y="0" width="50" height="50"/><rect x="10" y="10" width="10" height="10"/><rect x="100" y="0" width="50" height="50"/></svg>');
+assert.equal(disjointWithNested.panels.length, 2, 'disjoint panels remain separate root panels while holes are not panels');
+assert.equal(disjointWithNested.panels[0].innerContours.length, 1, 'only the containing disjoint panel owns the hole');
+
+const touchingLoops = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="10" height="10"/><rect x="10" y="0" width="10" height="10"/></svg>');
+assert.equal(touchingLoops.importDiagnostics.touchingLoopsFound, 1, 'touching loops produce a containment diagnostic');
+assert.equal(touchingLoops.panels.length, 2, 'touching loops are not nested');
+
+const overlappingLoops = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="20" height="20"/><rect x="10" y="10" width="20" height="20"/></svg>');
+assert.equal(overlappingLoops.importDiagnostics.overlappingLoopsFound, 1, 'overlapping loops produce a containment diagnostic');
+assert.equal(overlappingLoops.panels.length, 2, 'overlapping loops are not nested');
+
 const isolatedLine = parseSvgDocument('<svg viewBox="0 0 100 100"><line x1="0" y1="0" x2="10" y2="0"/></svg>');
 assert.equal(isolatedLine.importDiagnostics.isolatedSegmentsFound, 1, 'one loose line is one isolated topology segment');
 
@@ -225,14 +249,18 @@ assert.equal(singleRectangleContours[0].depth, 0, 'single rectangle has depth 0'
 
 const nestedRectangles = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="90" height="90"/><rect x="10" y="10" width="20" height="20"/></svg>');
 const nestedClassifications = classifyImportedPanelContours(nestedRectangles);
+assert.equal(nestedRectangles.panels.length, 1, 'rectangle inside rectangle creates one real panel');
+assert.equal(nestedRectangles.panels[0].innerContours.length, 1, 'rectangle inside rectangle becomes one inner contour');
+assert.deepEqual(nestedRectangles.panels[0].edgeIds, nestedRectangles.panels[0].outerEdgeIds, 'panel edgeIds aliases outer edges only');
 assert.equal(nestedClassifications.find((contour) => contour.panelId === 'panel-1')?.kind, 'OUTER', 'outer rectangle remains OUTER');
-assert.equal(nestedClassifications.find((contour) => contour.panelId === 'panel-2')?.kind, 'INNER', 'rectangle inside rectangle is classified INNER');
 
 const threeDeepRectangles = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="90" height="90"/><rect x="10" y="10" width="60" height="60"/><rect x="20" y="20" width="20" height="20"/></svg>');
 const threeDeepClassifications = classifyImportedPanelContours(threeDeepRectangles);
-const nestedIsland = threeDeepClassifications.find((contour) => contour.panelId === 'panel-3');
-assert.equal(nestedIsland?.kind, 'INNER', 'nested rectangle inside another contour is classified INNER without depth parity');
+assert.equal(threeDeepRectangles.panels.length, 2, 'three nested rectangles create two real panels and one hole');
+assert.equal(threeDeepRectangles.panels[0].innerContours.length, 1, 'outer panel owns first hole contour');
+assert.equal(threeDeepRectangles.panels[1].parentPanelId, 'panel-1', 'nested island panel records nearest containing parent panel');
+assert.equal(threeDeepClassifications.find((contour) => contour.panelId === 'panel-2')?.kind, 'INNER', 'nested island panel remains classified by legacy contour classification');
 
 const lightburnNested = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="80" height="80"/><rect x="0" y="0" width="10" height="10" transform="matrix(1 0 0 1 20 20)"/></svg>');
-const lightburnNestedClassifications = classifyImportedPanelContours(lightburnNested);
-assert.equal(lightburnNestedClassifications.find((contour) => contour.panelId === 'panel-2')?.kind, 'INNER', 'LightBurn-style transformed rect inside larger panel is classified INNER');
+assert.equal(lightburnNested.panels.length, 1, 'LightBurn-style transformed rect inside larger panel creates one real panel');
+assert.equal(lightburnNested.panels[0].innerContours.length, 1, 'LightBurn-style transformed rect becomes one inner contour');
