@@ -155,7 +155,9 @@ assert.equal(mixed.panels.length, 2, 'only closed path and polygon become panels
 
 const looseRectangleEdges = parseSvgDocument('<svg viewBox="0 0 100 100"><line x1="0" y1="0" x2="10" y2="0"/><line x1="10" y1="0" x2="10" y2="10"/><line x1="10" y1="10" x2="0" y2="10"/><line x1="0" y1="10" x2="0" y2="0"/></svg>');
 assert.equal(looseRectangleEdges.edges.length, 4, 'loose rectangle edges still import as raw edges');
-assert.equal(looseRectangleEdges.panels.length, 0, 'loose rectangle edges do not reconstruct a panel');
+assert.equal(looseRectangleEdges.panels.length, 1, 'loose rectangle topology closed loop creates one panel');
+assert.deepEqual(JSON.parse(JSON.stringify(looseRectangleEdges.panels[0].contour)), [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }], 'loose rectangle panel contour preserves the ordered source vertices');
+assert.deepEqual(looseRectangleEdges.panels[0].edgeIds, looseRectangleEdges.importDiagnostics.chains[0].sourceEdgeIds, 'loose rectangle panel uses topology source segment ids');
 
 assert.equal(plain.importDiagnostics.openChainsFound, 0, 'closed rectangle has no open chains');
 assert.match(formatImportDiagnosticMessage(plain), /Closed loops: 1\nOpen chains: 0/, 'closed rectangle message reports topology counts');
@@ -176,10 +178,30 @@ assert.equal(isolatedLine.importDiagnostics.isolatedSegmentsFound, 1, 'one loose
 assert.equal(looseRectangleEdges.importDiagnostics.looseEdgesFound, 4, 'loose rectangle diagnostics count loose edges');
 assert.equal(looseRectangleEdges.importDiagnostics.chains.length, 1, 'loose rectangle diagnostics produce one chain');
 assert.equal(looseRectangleEdges.importDiagnostics.chains[0].status, 'ClosedLoop', 'loose rectangle is one closed topology chain only');
-assert.match(formatImportDiagnosticMessage(looseRectangleEdges), /Closed loops: 1\nOpen chains: 0/, 'loose closed candidate remains diagnostic-only');
+assert.match(formatImportDiagnosticMessage(looseRectangleEdges), /Panels detected: 1\nCreated from topology closed loops: 1\nOpen chains: 0/, 'loose closed candidate reports topology-created panel');
+
+
+const looseSteppedLoop = parseSvgDocument('<svg viewBox="0 0 100 100"><line x1="0" y1="0" x2="30" y2="0"/><line x1="30" y1="0" x2="30" y2="10"/><line x1="30" y1="10" x2="20" y2="10"/><line x1="20" y1="10" x2="20" y2="20"/><line x1="20" y1="20" x2="30" y2="20"/><line x1="30" y1="20" x2="30" y2="30"/><line x1="30" y1="30" x2="0" y2="30"/><line x1="0" y1="30" x2="0" y2="0"/></svg>');
+assert.equal(looseSteppedLoop.importDiagnostics.closedLoopsFound, 1, 'loose stepped loop is one topology closed loop');
+assert.equal(looseSteppedLoop.panels.length, 1, 'loose stepped topology closed loop creates one panel');
+assert.deepEqual(JSON.parse(JSON.stringify(looseSteppedLoop.panels[0].contour)), [{ x: 0, y: 0 }, { x: 30, y: 0 }, { x: 30, y: 10 }, { x: 20, y: 10 }, { x: 20, y: 20 }, { x: 30, y: 20 }, { x: 30, y: 30 }, { x: 0, y: 30 }], 'topology panel contour preserves every step vertex instead of using bounds');
+assert.equal(looseSteppedLoop.panels[0].contour.length > 4, true, 'loose stepped topology panel has more than four contour points');
+assert.deepEqual(JSON.parse(JSON.stringify(looseSteppedLoop.panels[0].bounds)), { minX: 0, maxX: 30, minY: 0, maxY: 30 }, 'loose stepped topology bounds are computed metadata');
+
+const multipleLooseLoops = parseSvgDocument('<svg viewBox="0 0 100 100"><line x1="0" y1="0" x2="10" y2="0"/><line x1="10" y1="0" x2="10" y2="10"/><line x1="10" y1="10" x2="0" y2="10"/><line x1="0" y1="10" x2="0" y2="0"/><line x1="20" y1="0" x2="30" y2="0"/><line x1="30" y1="0" x2="30" y2="10"/><line x1="30" y1="10" x2="20" y2="10"/><line x1="20" y1="10" x2="20" y2="0"/></svg>');
+assert.equal(multipleLooseLoops.importDiagnostics.closedLoopsFound, 2, 'multiple loose loops produce two topology closed loops');
+assert.equal(multipleLooseLoops.panels.length, 2, 'multiple loose topology loops create one panel per closed loop');
+
+const rawPolygonOnce = parseSvgDocument('<svg viewBox="0 0 100 100"><polygon points="0,0 10,0 10,10 0,10"/></svg>');
+assert.equal(rawPolygonOnce.panels.length, 1, 'raw closed polygon creates one panel only');
+assert.equal(rawPolygonOnce.importDiagnostics.topologyPanelsCreated, 0, 'raw closed polygon is not duplicated by topology panel creation');
+
+const selfIntersectingLooseLoop = parseSvgDocument('<svg viewBox="0 0 100 100"><line x1="0" y1="0" x2="10" y2="10"/><line x1="10" y1="10" x2="0" y2="10"/><line x1="0" y1="10" x2="10" y2="0"/><line x1="10" y1="0" x2="0" y2="0"/></svg>');
+assert.equal(selfIntersectingLooseLoop.importDiagnostics.selfIntersectionsFound, 1, 'self-intersecting loose loop reports one self-intersecting chain');
+assert.equal(selfIntersectingLooseLoop.panels.length, 0, 'self-intersecting loose loop does not create a panel');
 
 const smallGap = parseSvgDocument('<svg viewBox="0 0 100 100"><polyline points="0,0 10,0 10,10 0,10 0,0.03"/></svg>');
-assert.equal(smallGap.panels.length, 0, 'small-gap open contour creates no panel');
+assert.equal(smallGap.panels.length, 0, 'small-gap open contour creates no panel without endpoint snapping or repair');
 assert.equal(smallGap.importDiagnostics.chains[0].status, 'ClosedLoop', 'small-gap contour is classified closed by endpoint tolerance without modifying geometry');
 assert.equal(round(smallGap.importDiagnostics.chains[0].gapDistance), 0, 'small gap endpoints share one topology node');
 assert.match(formatImportDiagnosticMessage(smallGap), /Repairable chains: 0/, 'small-gap message does not report repair candidates');
