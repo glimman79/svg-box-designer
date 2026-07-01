@@ -87,6 +87,19 @@ export type SvgPanel = {
   edgeIds: string[];
 };
 
+export type RawImportedContour = {
+  source: string;
+  contour: Point[];
+  bounds?: SourceBounds;
+  edgeIds: string[];
+  metadata?: Record<string, unknown>;
+};
+
+export type RawImportedGeometry = {
+  contours: RawImportedContour[];
+  looseEdges: SvgEdge[];
+};
+
 export type EdgeRole = 'A' | 'B';
 export type SlotRole = 'A' | 'B';
 
@@ -330,18 +343,7 @@ const getMatchingVerticalSide = (
   && nearlyEqual(vertical.maxY, maxY)
 ));
 
-const boundsMatch = (first: SourceBounds, second: SourceBounds) => (
-  nearlyEqual(first.minX, second.minX)
-  && nearlyEqual(first.maxX, second.maxX)
-  && nearlyEqual(first.minY, second.minY)
-  && nearlyEqual(first.maxY, second.maxY)
-);
-
-const hasPanelWithBounds = (panels: SvgPanel[], bounds: SourceBounds) => (
-  panels.some((panel) => boundsMatch(panel.bounds, bounds))
-);
-
-export const assignPanelBoundsFromClosedLoops = (edges: SvgEdge[], panels: SvgPanel[] = []) => {
+export const assignPanelBoundsFromClosedLoops = (edges: SvgEdge[]) => {
   const candidateEdges = edges.map(getCandidatePanelEdge).filter((edge): edge is CandidatePanelEdge => Boolean(edge));
   const horizontalEdges = candidateEdges.filter((edge) => nearlyEqual(edge.minY, edge.maxY));
   const verticalEdges = candidateEdges.filter((edge) => nearlyEqual(edge.minX, edge.maxX));
@@ -382,19 +384,6 @@ export const assignPanelBoundsFromClosedLoops = (edges: SvgEdge[], panels: SvgPa
         }
       });
 
-      if (!hasPanelWithBounds(panels, panelBounds)) {
-        addPanel(
-          panels,
-          [
-            { x: panelBounds.minX, y: panelBounds.minY },
-            { x: panelBounds.maxX, y: panelBounds.minY },
-            { x: panelBounds.maxX, y: panelBounds.maxY },
-            { x: panelBounds.minX, y: panelBounds.maxY },
-          ],
-          panelBounds,
-          [topHorizontal.edge.id, rightVertical.edge.id, bottomHorizontal.edge.id, leftVertical.edge.id],
-        );
-      }
     });
   });
 };
@@ -446,7 +435,33 @@ const addPanel = (
 };
 
 
-const parsePathSegments = (pathData: string | null, source: string, edges: SvgEdge[], panels: SvgPanel[]) => {
+const addRawClosedContour = (
+  rawGeometry: RawImportedGeometry,
+  source: string,
+  contour: Point[],
+  bounds: SourceBounds | undefined,
+  edgeIds: string[],
+  metadata?: Record<string, unknown>,
+) => {
+  rawGeometry.contours.push({ source, contour, bounds, edgeIds, metadata });
+};
+
+const repairRawImportedGeometry = (rawGeometry: RawImportedGeometry): RawImportedGeometry => ({
+  contours: rawGeometry.contours,
+  looseEdges: rawGeometry.looseEdges,
+});
+
+const createSvgPanelsFromClosedContours = (rawGeometry: RawImportedGeometry): SvgPanel[] => {
+  const panels: SvgPanel[] = [];
+
+  rawGeometry.contours.forEach((contour) => {
+    addPanel(panels, contour.contour, contour.bounds, contour.edgeIds);
+  });
+
+  return panels;
+};
+
+const parsePathSegments = (pathData: string | null, source: string, edges: SvgEdge[], rawGeometry: RawImportedGeometry) => {
   if (!pathData) {
     return;
   }
@@ -474,16 +489,21 @@ const parsePathSegments = (pathData: string | null, source: string, edges: SvgEd
     const panelBounds = getPanelFigureBounds(subpathPoints);
     const edgeIds: string[] = [];
 
+    const addedEdges: SvgEdge[] = [];
+
     subpathEdges.forEach((edge) => {
       const addedEdge = addEdge(edges, source, edge.start, edge.end, panelBounds);
 
       if (addedEdge) {
         edgeIds.push(addedEdge.id);
+        addedEdges.push(addedEdge);
       }
     });
 
     if (isSubpathClosed) {
-      addPanel(panels, subpathContour, panelBounds, edgeIds);
+      addRawClosedContour(rawGeometry, source, subpathContour, panelBounds, edgeIds, { sourceType: 'path' });
+    } else {
+      rawGeometry.looseEdges.push(...addedEdges);
     }
 
     subpathEdges = [];
@@ -600,12 +620,16 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
     viewBox: svgElement.getAttribute('viewBox'),
   };
   const edges: SvgEdge[] = [];
-  const panels: SvgPanel[] = [];
+  const rawGeometry: RawImportedGeometry = { contours: [], looseEdges: [] };
 
   svgElement.querySelectorAll('line').forEach((line, elementIndex) => {
     const start = { x: svgNumber(line.getAttribute('x1')), y: svgNumber(line.getAttribute('y1')) };
     const end = { x: svgNumber(line.getAttribute('x2')), y: svgNumber(line.getAttribute('y2')) };
-    addEdge(edges, `line ${elementIndex + 1}`, start, end);
+    const edge = addEdge(edges, `line ${elementIndex + 1}`, start, end);
+
+    if (edge) {
+      rawGeometry.looseEdges.push(edge);
+    }
   });
 
   svgElement.querySelectorAll('polyline, polygon').forEach((shape, elementIndex) => {
@@ -635,7 +659,9 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
     }
 
     if (isPolygon || isClosedPolyline) {
-      addPanel(panels, points, panelBounds, edgeIds);
+      addRawClosedContour(rawGeometry, source, points, panelBounds, edgeIds, { sourceType: isPolygon ? 'polygon' : 'polyline' });
+    } else {
+      rawGeometry.looseEdges.push(...edgeIds.map((edgeId) => edges.find((edge) => edge.id === edgeId)).filter((edge): edge is SvgEdge => Boolean(edge)));
     }
   });
 
@@ -664,14 +690,15 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
       }
     });
 
-    addPanel(panels, corners, panelBounds, edgeIds);
+    addRawClosedContour(rawGeometry, `rect ${elementIndex + 1}`, corners, panelBounds, edgeIds, { sourceType: 'rect' });
   });
 
   svgElement.querySelectorAll('path').forEach((path, elementIndex) => {
-    parsePathSegments(path.getAttribute('d'), `path ${elementIndex + 1}`, edges, panels);
+    parsePathSegments(path.getAttribute('d'), `path ${elementIndex + 1}`, edges, rawGeometry);
   });
 
-  assignPanelBoundsFromClosedLoops(edges, panels);
+  const repairedGeometry = repairRawImportedGeometry(rawGeometry);
+  const panels = createSvgPanelsFromClosedContours(repairedGeometry);
 
   return {
     content: new XMLSerializer().serializeToString(svgElement),

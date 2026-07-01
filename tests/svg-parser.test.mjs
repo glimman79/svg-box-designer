@@ -151,6 +151,11 @@ assert.deepEqual(JSON.parse(JSON.stringify(points(grouped)[0])), [13, 24, 33, 24
 
 const mixed = parseSvgDocument('<svg viewBox="0 0 100 100"><path d="M 0 0 L 5 0 L 5 5 Z"/><polygon points="10,10 20,10 20,20"/><polyline points="30,30 40,30 40,40"/><line x1="50" y1="50" x2="60" y2="50"/></svg>');
 assert.equal(mixed.edges.length, 9, 'paths, polygons, polylines, and lines still parse');
+assert.equal(mixed.panels.length, 2, 'only closed path and polygon become panels in mixed import');
+
+const looseRectangleEdges = parseSvgDocument('<svg viewBox="0 0 100 100"><line x1="0" y1="0" x2="10" y2="0"/><line x1="10" y1="0" x2="10" y2="10"/><line x1="10" y1="10" x2="0" y2="10"/><line x1="0" y1="10" x2="0" y2="0"/></svg>');
+assert.equal(looseRectangleEdges.edges.length, 4, 'loose rectangle edges still import as raw edges');
+assert.equal(looseRectangleEdges.panels.length, 0, 'loose rectangle edges do not reconstruct a panel');
 
 console.log('svg parser rect matrix tests passed');
 
