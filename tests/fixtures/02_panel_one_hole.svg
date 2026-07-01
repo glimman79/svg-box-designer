@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 90">
+  <!-- Expected: 1 panel, 1 hole -->
+  <rect x="10" y="10" width="100" height="70"/>
+  <rect x="45" y="30" width="30" height="20"/>
+</svg>

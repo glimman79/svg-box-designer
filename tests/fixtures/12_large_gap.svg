@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 80">
+  <!-- Expected: large gap, should not be automatically repaired -->
+  <path d="M 10 10 L 90 10 L 90 60 L 10 60 L 10 25"/>
+</svg>

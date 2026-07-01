@@ -816,12 +816,31 @@ button:disabled {
   display: grid;
   gap: 18px;
   width: min(360px, 100%);
+  max-height: 90vh;
   padding: 22px;
   color: #e5e7eb;
   background: #111827;
   border: 1px solid #374151;
   border-radius: 16px;
   box-shadow: 0 22px 55px rgb(15 23 42 / 45%);
+}
+
+.panel-manager-modal {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(520px, 100%);
+}
+
+.panel-manager-modal-content {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.panel-manager-modal-content p:first-child {
+  margin-top: 0;
+}
+
+.panel-manager-modal-content p:last-child {
+  margin-bottom: 0;
 }
 
 .clear-dialog h2 {

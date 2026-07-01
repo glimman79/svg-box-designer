@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 120">
+  <!-- Expected: 1 panel, 5 holes -->
+  <rect x="10" y="10" width="160" height="100"/>
+  <rect x="30" y="30" width="18" height="18"/>
+  <rect x="70" y="30" width="18" height="18"/>
+  <rect x="110" y="30" width="18" height="18"/>
+  <rect x="50" y="70" width="18" height="18"/>
+  <rect x="90" y="70" width="18" height="18"/>
+</svg>
