@@ -205,6 +205,53 @@ const assertImportedHolesSurvivePipeline = (model, expectedPanels, expectedHoles
   });
 };
 
+
+const fixturePath = (name) => resolve(root, 'tests', 'fixtures', name);
+const parseFixture = (name) => parseSvgDocument(readFileSync(fixturePath(name), 'utf8'));
+const totalInnerContours = (model) => model.panels.reduce((total, panel) => total + panel.innerContours.length, 0);
+const assertAdvancedImportFixture = (name, expectedPanels, expectedHoles, expectedParents, label) => {
+  const model = parseFixture(name);
+  assert.equal(model.panels.length, expectedPanels, `${label}: stable panel count`);
+  assert.equal(totalInnerContours(model), expectedHoles, `${label}: stable total hole count`);
+  assert.deepEqual(Object.fromEntries(model.panels.map((panel) => [panel.id, panel.parentPanelId ?? null])), expectedParents, `${label}: correct parentPanelId relationships`);
+  assert.equal(model.importDiagnostics.possibleRepairCandidates, 0, `${label}: no repair candidates reported`);
+  assert.equal(model.importDiagnostics.unrepairedOpenContours, 0, `${label}: no unrepaired open contours reported`);
+  assert.match(formatImportDiagnosticMessage(model), /No repair has been performed\./, `${label}: no repair performed message remains stable`);
+
+  model.panels.forEach((panel) => {
+    assert.ok(panel.outerContour.length >= 3, `${label}: ${panel.id} has a populated outerContour`);
+    assert.deepEqual(panel.contour, panel.outerContour, `${label}: ${panel.id} contour alias remains outer-only`);
+    assert.deepEqual(panel.edgeIds, panel.outerEdgeIds, `${label}: ${panel.id} edgeIds alias remains outer-only`);
+    assert.equal(panel.innerContours.length, panel.innerEdgeIds.length, `${label}: ${panel.id} keeps one edge-id group per hole`);
+    panel.innerContours.forEach((innerContour, index) => {
+      assert.ok(innerContour.length >= 3, `${label}: ${panel.id} hole ${index + 1} has a populated inner contour`);
+      assert.ok(panel.innerEdgeIds[index].length >= 3, `${label}: ${panel.id} hole ${index + 1} has populated inner edge ids`);
+      panel.innerEdgeIds[index].forEach((edgeId) => {
+        assert.equal(panel.edgeIds.includes(edgeId), false, `${label}: ${panel.id} hole edge ${edgeId} is not exposed through outer-only edgeIds alias`);
+      });
+    });
+  });
+
+  const finalGeometry = buildFinalGeometry(model, [], []);
+  assert.equal(finalGeometry.contours.filter((contour) => contour.kind === 'OUTER').length, expectedPanels, `${label}: no holes appear as final outer panel contours`);
+  assert.equal(finalGeometry.contours.filter((contour) => contour.kind === 'INNER').length, expectedHoles, `${label}: holes remain final inner contours`);
+  return model;
+};
+
+const curvedNestedPanel = assertAdvancedImportFixture('16_curved_nested_panel.svg', 2, 1, { 'panel-1': null, 'panel-2': 'panel-1' }, 'fixture 16 curved nested panel');
+assert.equal(curvedNestedPanel.panels[0].innerContours.length, 1, 'fixture 16: root panel owns the curved/circular hole');
+assert.equal(curvedNestedPanel.panels[1].innerContours.length, 0, 'fixture 16: nested panel has no child holes');
+
+const manyNestedLevels = assertAdvancedImportFixture('17_many_nested_levels.svg', 4, 3, { 'panel-1': null, 'panel-2': 'panel-1', 'panel-3': 'panel-2', 'panel-4': 'panel-3' }, 'fixture 17 many nested levels');
+assert.deepEqual(JSON.parse(JSON.stringify(manyNestedLevels.panels.map((panel) => panel.innerContours.length))), [1, 1, 1, 0], 'fixture 17: each non-leaf panel owns exactly one immediate hole');
+
+const manySiblingHoles = assertAdvancedImportFixture('18_many_sibling_holes.svg', 6, 10, { 'panel-1': null, 'panel-2': 'panel-1', 'panel-3': 'panel-1', 'panel-4': 'panel-1', 'panel-5': 'panel-1', 'panel-6': 'panel-1' }, 'fixture 18 many sibling holes');
+assert.equal(manySiblingHoles.panels[0].innerContours.length, 10, 'fixture 18: root panel owns ten sibling holes');
+assert.equal(manySiblingHoles.panels.filter((panel) => panel.parentPanelId === 'panel-1').length, 5, 'fixture 18: five nested child panels are imported');
+
+const complexMixedLayout = assertAdvancedImportFixture('19_complex_mixed_layout.svg', 4, 4, { 'panel-1': null, 'panel-2': 'panel-1', 'panel-3': 'panel-2', 'panel-4': null }, 'fixture 19 complex mixed layout');
+assert.deepEqual(JSON.parse(JSON.stringify(complexMixedLayout.panels.map((panel) => panel.innerContours.length))), [1, 1, 0, 2], 'fixture 19: stable per-panel hole distribution');
+
 const threeRectangularHoles = parseSvgDocument('<svg viewBox="0 0 120 80"><rect x="0" y="0" width="100" height="60"/><rect x="10" y="10" width="10" height="10"/><rect x="30" y="10" width="10" height="10"/><rect x="50" y="10" width="10" height="10"/></svg>');
 assertImportedHolesSurvivePipeline(threeRectangularHoles, 1, 3, 0, 'one rectangular panel with three rectangular holes');
 

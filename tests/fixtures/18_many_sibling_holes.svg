@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 140">
+  <!-- Expected: 6 panels total, 10 holes on root panel, 5 nested child panels -->
+  <rect x="10" y="10" width="220" height="120"/>
+  <rect x="20" y="25" width="20" height="20"/>
+  <rect x="24" y="29" width="12" height="12"/>
+  <rect x="60" y="25" width="20" height="20"/>
+  <rect x="64" y="29" width="12" height="12"/>
+  <rect x="100" y="25" width="20" height="20"/>
+  <rect x="104" y="29" width="12" height="12"/>
+  <rect x="140" y="25" width="20" height="20"/>
+  <rect x="144" y="29" width="12" height="12"/>
+  <rect x="180" y="25" width="20" height="20"/>
+  <rect x="184" y="29" width="12" height="12"/>
+  <rect x="20" y="80" width="20" height="20"/>
+  <rect x="60" y="80" width="20" height="20"/>
+  <rect x="100" y="80" width="20" height="20"/>
+  <rect x="140" y="80" width="20" height="20"/>
+  <rect x="180" y="80" width="20" height="20"/>
+</svg>
