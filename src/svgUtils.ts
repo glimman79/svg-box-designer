@@ -82,8 +82,15 @@ export type SvgEdge = {
 
 export type SvgPanel = {
   id: string;
-  contour: Point[];
+  outerContour: Point[];
+  innerContours: Point[][];
+  outerEdgeIds: string[];
+  innerEdgeIds: string[][];
   bounds: SourceBounds;
+  parentPanelId?: string;
+  /** @deprecated Compatibility alias for outerContour. */
+  contour: Point[];
+  /** @deprecated Compatibility alias for outerEdgeIds. */
   edgeIds: string[];
 };
 
@@ -162,6 +169,8 @@ export type ImportDiagnosticChain = {
 
 export type ImportDiagnostics = {
   toleranceMm: number;
+  touchingLoopsFound: number;
+  overlappingLoopsFound: number;
   closedContoursFound: number;
   looseEdgesFound: number;
   openChainsFound: number;
@@ -498,27 +507,6 @@ const addEdge = (
   return edge;
 };
 
-const addPanel = (
-  panels: SvgPanel[],
-  contour: Point[],
-  bounds: SourceBounds | undefined,
-  edgeIds: string[],
-): SvgPanel | undefined => {
-  if (!bounds) {
-    return undefined;
-  }
-
-  const panel = {
-    id: `panel-${panels.length + 1}`,
-    contour,
-    bounds,
-    edgeIds,
-  };
-
-  panels.push(panel);
-
-  return panel;
-};
 
 
 const addRawClosedContour = (
@@ -708,6 +696,8 @@ const buildImportDiagnostics = (rawGeometry: RawImportedGeometry, allEdges: SvgE
     chains,
     topology,
     topologyPanelsCreated: 0,
+    touchingLoopsFound: 0,
+    overlappingLoopsFound: 0,
   };
 };
 
@@ -793,43 +783,217 @@ const buildContourFromTopologyClosedLoop = (chain: TopologyChain, topology: Topo
   return contour.slice(0, -1);
 };
 
-const createSvgPanelsFromClosedContours = (rawGeometry: RawImportedGeometry): SvgPanel[] => {
+
+type ClosedLoopClassification = 'PANEL' | 'HOLE';
+
+type ClosedLoop = {
+  id: string;
+  contour: Point[];
+  edgeIds: string[];
+  bounds: SourceBounds;
+  signedArea: number;
+  parentLoopId?: string;
+  classification: ClosedLoopClassification;
+  diagnostics: string[];
+};
+
+const getSignedArea = (contour: Point[]): number => (
+  contour.reduce((total, point, index) => {
+    const next = contour[(index + 1) % contour.length];
+    return total + (point.x * next.y - next.x * point.y);
+  }, 0) / 2
+);
+
+const boundsContainBounds = (outer: SourceBounds, inner: SourceBounds): boolean => (
+  inner.minX > outer.minX + closedLoopTolerance
+  && inner.maxX < outer.maxX - closedLoopTolerance
+  && inner.minY > outer.minY + closedLoopTolerance
+  && inner.maxY < outer.maxY - closedLoopTolerance
+);
+
+const boundsOverlap = (first: SourceBounds, second: SourceBounds): boolean => !(
+  first.maxX < second.minX - closedLoopTolerance
+  || second.maxX < first.minX - closedLoopTolerance
+  || first.maxY < second.minY - closedLoopTolerance
+  || second.maxY < first.minY - closedLoopTolerance
+);
+
+const boundsTouch = (first: SourceBounds, second: SourceBounds): boolean => boundsOverlap(first, second) && !boundsContainBounds(first, second) && !boundsContainBounds(second, first) && (
+  nearlyEqual(first.maxX, second.minX)
+  || nearlyEqual(second.maxX, first.minX)
+  || nearlyEqual(first.maxY, second.minY)
+  || nearlyEqual(second.maxY, first.minY)
+);
+
+const pointInContour = (point: Point, contour: Point[]): boolean => {
+  let inside = false;
+  for (let index = 0, previousIndex = contour.length - 1; index < contour.length; previousIndex = index++) {
+    const current = contour[index];
+    const previous = contour[previousIndex];
+    const intersects = ((current.y > point.y) !== (previous.y > point.y))
+      && point.x < ((previous.x - current.x) * (point.y - current.y)) / (previous.y - current.y) + current.x;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+};
+
+const contourContainsContour = (outer: ClosedLoop, inner: ClosedLoop): boolean => (
+  boundsContainBounds(outer.bounds, inner.bounds) && inner.contour.every((point) => pointInContour(point, outer.contour))
+);
+
+const getLoopDepth = (loop: ClosedLoop, loopById: Map<string, ClosedLoop>): number => {
+  let depth = 0;
+  let parentLoopId = loop.parentLoopId;
+  while (parentLoopId) {
+    depth += 1;
+    parentLoopId = loopById.get(parentLoopId)?.parentLoopId;
+  }
+  return depth;
+};
+
+const createSvgPanel = (
+  panels: SvgPanel[],
+  contour: Point[],
+  bounds: SourceBounds | undefined,
+  edgeIds: string[],
+  parentPanelId?: string,
+): SvgPanel | undefined => {
+  if (!bounds) {
+    return undefined;
+  }
+
+  const panel = {
+    id: `panel-${panels.length + 1}`,
+    outerContour: contour,
+    innerContours: [],
+    outerEdgeIds: edgeIds,
+    innerEdgeIds: [],
+    bounds,
+    ...(parentPanelId ? { parentPanelId } : {}),
+    contour,
+    edgeIds,
+  };
+
+  panels.push(panel);
+
+  return panel;
+};
+
+const buildContainmentTree = (loops: ClosedLoop[], diagnostics?: ImportDiagnostics): ClosedLoop[] => {
+  loops.forEach((loop) => {
+    const containers = loops.filter((candidate) => candidate.id !== loop.id && contourContainsContour(candidate, loop));
+    const parentLoop = containers.sort((first, second) => Math.abs(first.signedArea) - Math.abs(second.signedArea))[0];
+    loop.parentLoopId = parentLoop?.id;
+  });
+
+  loops.forEach((loop, index) => {
+    loops.slice(index + 1).forEach((other) => {
+      if (!boundsOverlap(loop.bounds, other.bounds) || contourContainsContour(loop, other) || contourContainsContour(other, loop)) return;
+      const message = boundsTouch(loop.bounds, other.bounds) ? 'Touching loop detected; no containment relationship was assigned.' : 'Overlapping loop detected; no containment relationship was assigned.';
+      loop.diagnostics.push(message);
+      other.diagnostics.push(message);
+      if (diagnostics) {
+        if (boundsTouch(loop.bounds, other.bounds)) diagnostics.touchingLoopsFound += 1;
+        else diagnostics.overlappingLoopsFound += 1;
+      }
+    });
+  });
+
+  const loopById = new Map(loops.map((loop) => [loop.id, loop]));
+  loops.forEach((loop) => {
+    const depth = getLoopDepth(loop, loopById);
+    loop.classification = depth % 2 === 0 ? 'PANEL' : 'HOLE';
+  });
+
+  return loops;
+};
+
+const buildPanelsFromClosedLoops = (loops: ClosedLoop[]): SvgPanel[] => {
   const panels: SvgPanel[] = [];
+  const loopById = new Map(loops.map((loop) => [loop.id, loop]));
+  const panelByLoopId = new Map<string, SvgPanel>();
+
+  loops.forEach((loop) => {
+    if (loop.classification !== 'PANEL') return;
+    let parentLoopId = loop.parentLoopId;
+    let parentPanelId: string | undefined;
+    while (parentLoopId) {
+      const parentLoop = loopById.get(parentLoopId);
+      if (parentLoop?.classification === 'PANEL') {
+        parentPanelId = panelByLoopId.get(parentLoop.id)?.id;
+        break;
+      }
+      parentLoopId = parentLoop?.parentLoopId;
+    }
+    const panel = createSvgPanel(panels, loop.contour, loop.bounds, loop.edgeIds, parentPanelId);
+    if (panel) panelByLoopId.set(loop.id, panel);
+  });
+
+  loops.forEach((loop) => {
+    if (loop.classification !== 'HOLE') return;
+    let parentLoopId = loop.parentLoopId;
+    while (parentLoopId) {
+      const parentLoop = loopById.get(parentLoopId);
+      if (parentLoop?.classification === 'PANEL') {
+        const panel = panelByLoopId.get(parentLoop.id);
+        if (panel) {
+          panel.innerContours.push(loop.contour);
+          panel.innerEdgeIds.push(loop.edgeIds);
+        }
+        break;
+      }
+      parentLoopId = parentLoop?.parentLoopId;
+    }
+  });
+
+  return panels;
+};
+
+const createSvgPanelsFromClosedContours = (rawGeometry: RawImportedGeometry): SvgPanel[] => {
+  const loops: ClosedLoop[] = [];
+  const addLoop = (contour: Point[], bounds: SourceBounds | undefined, edgeIds: string[]) => {
+    if (!bounds) return;
+    loops.push({
+      id: `loop-${loops.length + 1}`,
+      contour,
+      edgeIds,
+      bounds,
+      signedArea: getSignedArea(contour),
+      classification: 'PANEL',
+      diagnostics: [],
+    });
+  };
 
   rawGeometry.contours.forEach((contour) => {
-    addPanel(panels, contour.contour, contour.bounds, contour.edgeIds);
+    addLoop(contour.contour, contour.bounds, contour.edgeIds);
   });
 
   const diagnostics = rawGeometry.diagnostics;
   const topology = diagnostics?.topology;
-  if (!diagnostics || !topology) {
-    return panels;
+  if (diagnostics && topology) {
+    const rawContourEdgeIds = rawGeometry.contours.map((contour) => contour.edgeIds);
+    let topologyPanelsCreated = 0;
+
+    topology.chains
+      .filter((chain) => chain.classification === 'ClosedLoop')
+      .forEach((chain) => {
+        if (rawContourEdgeIds.some((edgeIds) => hasSameEdgeIds(edgeIds, chain.segmentIds))) {
+          return;
+        }
+
+        const contour = buildContourFromTopologyClosedLoop(chain, topology);
+        if (!contour) {
+          return;
+        }
+
+        addLoop(contour, getPanelFigureBounds(contour), chain.segmentIds);
+        topologyPanelsCreated += 1;
+      });
+
+    diagnostics.topologyPanelsCreated = topologyPanelsCreated;
   }
 
-  const rawContourEdgeIds = rawGeometry.contours.map((contour) => contour.edgeIds);
-  let topologyPanelsCreated = 0;
-
-  topology.chains
-    .filter((chain) => chain.classification === 'ClosedLoop')
-    .forEach((chain) => {
-      if (rawContourEdgeIds.some((edgeIds) => hasSameEdgeIds(edgeIds, chain.segmentIds))) {
-        return;
-      }
-
-      const contour = buildContourFromTopologyClosedLoop(chain, topology);
-      if (!contour) {
-        return;
-      }
-
-      const panel = addPanel(panels, contour, getPanelFigureBounds(contour), chain.segmentIds);
-      if (panel) {
-        topologyPanelsCreated += 1;
-      }
-    });
-
-  diagnostics.topologyPanelsCreated = topologyPanelsCreated;
-
-  return panels;
+  return buildPanelsFromClosedLoops(buildContainmentTree(loops, diagnostics));
 };
 
 const parsePathSegments = (pathData: string | null, source: string, edges: SvgEdge[], rawGeometry: RawImportedGeometry) => {
