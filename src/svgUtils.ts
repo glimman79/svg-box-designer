@@ -95,9 +95,34 @@ export type RawImportedContour = {
   metadata?: Record<string, unknown>;
 };
 
+export type ImportDiagnosticChainStatus = 'closed' | 'open-small-gap' | 'open-large-gap' | 'ambiguous' | 'isolated-edge' | 'unsupported';
+
+export type ImportDiagnosticChain = {
+  id: string;
+  segmentCount: number;
+  start: Point;
+  end: Point;
+  gapDistance: number;
+  bounds?: SourceBounds;
+  sourceEdgeIds: string[];
+  status: ImportDiagnosticChainStatus;
+};
+
+export type ImportDiagnostics = {
+  toleranceMm: number;
+  closedContoursFound: number;
+  looseEdgesFound: number;
+  openChainsFound: number;
+  endpointGaps: number[];
+  possibleRepairCandidates: number;
+  unrepairedOpenContours: number;
+  chains: ImportDiagnosticChain[];
+};
+
 export type RawImportedGeometry = {
   contours: RawImportedContour[];
   looseEdges: SvgEdge[];
+  diagnostics?: ImportDiagnostics;
 };
 
 export type EdgeRole = 'A' | 'B';
@@ -189,6 +214,7 @@ export type SvgDocumentModel = {
   height: number;
   edges: SvgEdge[];
   panels: SvgPanel[];
+  importDiagnostics?: ImportDiagnostics;
 };
 
 export type EdgeLabelPlacement = {
@@ -279,6 +305,8 @@ const getPanelFigureBounds = (points: Point[]): SourceBounds | undefined => {
 
   return hasArea && uniquePoints.size >= 3 ? bounds : undefined;
 };
+
+export const IMPORT_REPAIR_CANDIDATE_TOLERANCE_MM = 0.1;
 
 const closedLoopTolerance = 0.1;
 
@@ -446,9 +474,146 @@ const addRawClosedContour = (
   rawGeometry.contours.push({ source, contour, bounds, edgeIds, metadata });
 };
 
+
+const pointKey = (point: Point) => `${point.x},${point.y}`;
+
+const distanceBetweenPoints = (first: Point, second: Point): number => Math.hypot(first.x - second.x, first.y - second.y);
+
+const buildImportDiagnostics = (rawGeometry: RawImportedGeometry): ImportDiagnostics => {
+  const edgeById = new Map(rawGeometry.looseEdges.map((edge) => [edge.id, edge]));
+  const edgeIdsByEndpoint = new Map<string, string[]>();
+
+  rawGeometry.looseEdges.forEach((edge) => {
+    [edge.start, edge.end].forEach((point) => {
+      const key = pointKey(point);
+      edgeIdsByEndpoint.set(key, [...(edgeIdsByEndpoint.get(key) ?? []), edge.id]);
+    });
+  });
+
+  const visitedEdgeIds = new Set<string>();
+  const chains: ImportDiagnosticChain[] = [];
+
+  rawGeometry.looseEdges.forEach((seedEdge) => {
+    if (visitedEdgeIds.has(seedEdge.id)) {
+      return;
+    }
+
+    const componentEdgeIds: string[] = [];
+    const pendingEdgeIds = [seedEdge.id];
+    visitedEdgeIds.add(seedEdge.id);
+
+    while (pendingEdgeIds.length > 0) {
+      const edgeId = pendingEdgeIds.pop() as string;
+      const edge = edgeById.get(edgeId);
+
+      if (!edge) {
+        continue;
+      }
+
+      componentEdgeIds.push(edgeId);
+      [edge.start, edge.end].forEach((point) => {
+        (edgeIdsByEndpoint.get(pointKey(point)) ?? []).forEach((connectedEdgeId) => {
+          if (!visitedEdgeIds.has(connectedEdgeId)) {
+            visitedEdgeIds.add(connectedEdgeId);
+            pendingEdgeIds.push(connectedEdgeId);
+          }
+        });
+      });
+    }
+
+    const componentEdges = componentEdgeIds.map((edgeId) => edgeById.get(edgeId)).filter((edge): edge is SvgEdge => Boolean(edge));
+    const points = componentEdges.flatMap((edge) => [edge.start, edge.end]);
+    const bounds = getPointsBounds(points);
+    const endpointKeys = new Map<string, Point>();
+    componentEdges.forEach((edge) => {
+      endpointKeys.set(pointKey(edge.start), edge.start);
+      endpointKeys.set(pointKey(edge.end), edge.end);
+    });
+    const oddEndpointPoints = [...endpointKeys.entries()]
+      .filter(([key]) => (edgeIdsByEndpoint.get(key) ?? []).filter((edgeId) => componentEdgeIds.includes(edgeId)).length === 1)
+      .map(([, point]) => point);
+    const ambiguous = [...endpointKeys.keys()].some((key) => (edgeIdsByEndpoint.get(key) ?? []).filter((edgeId) => componentEdgeIds.includes(edgeId)).length > 2);
+    const start = oddEndpointPoints[0] ?? componentEdges[0]?.start ?? { x: 0, y: 0 };
+    const end = oddEndpointPoints[1] ?? componentEdges.at(-1)?.end ?? start;
+    const gapDistance = distanceBetweenPoints(start, end);
+    let status: ImportDiagnosticChainStatus = 'unsupported';
+
+    if (ambiguous) {
+      status = 'ambiguous';
+    } else if (componentEdges.length === 1 && oddEndpointPoints.length === 2) {
+      status = 'isolated-edge';
+    } else if (oddEndpointPoints.length === 0) {
+      status = 'closed';
+    } else if (oddEndpointPoints.length === 2) {
+      status = gapDistance <= IMPORT_REPAIR_CANDIDATE_TOLERANCE_MM ? 'open-small-gap' : 'open-large-gap';
+    }
+
+    chains.push({
+      id: `chain-${chains.length + 1}`,
+      segmentCount: componentEdges.length,
+      start,
+      end,
+      gapDistance,
+      bounds,
+      sourceEdgeIds: componentEdgeIds,
+      status,
+    });
+  });
+
+  const openChains = chains.filter((chain) => chain.status !== 'closed');
+  const repairCandidates = chains.filter((chain) => chain.status === 'open-small-gap');
+
+  return {
+    toleranceMm: IMPORT_REPAIR_CANDIDATE_TOLERANCE_MM,
+    closedContoursFound: rawGeometry.contours.length + chains.filter((chain) => chain.status === 'closed').length,
+    looseEdgesFound: rawGeometry.looseEdges.length,
+    openChainsFound: openChains.length,
+    endpointGaps: openChains.map((chain) => chain.gapDistance),
+    possibleRepairCandidates: repairCandidates.length,
+    unrepairedOpenContours: openChains.length,
+    chains,
+  };
+};
+
+export const formatImportDiagnosticMessage = (model: Pick<SvgDocumentModel, 'panels' | 'importDiagnostics'>): string => {
+  const panelCount = model.panels.length;
+  const diagnostics = model.importDiagnostics;
+
+  const lines = [`${panelCount === 0 ? 'No panels were' : `${panelCount} ${panelCount === 1 ? 'panel' : 'panels'}`} detected.`];
+
+  if (!diagnostics) {
+    lines.push('No open contours found.');
+    return lines.join(' ');
+  }
+
+  if (diagnostics.looseEdgesFound > 0) {
+    lines.push(`${diagnostics.looseEdgesFound} loose ${diagnostics.looseEdgesFound === 1 ? 'edge' : 'edges'} found.`);
+  }
+
+  if (diagnostics.openChainsFound === 0) {
+    lines.push('No open contours found.');
+    return lines.join(diagnostics.looseEdgesFound > 0 ? '\n' : ' ');
+  }
+
+  lines.push(`${diagnostics.openChainsFound} open ${diagnostics.openChainsFound === 1 ? 'contour' : 'contours'} found.`);
+
+  if (diagnostics.possibleRepairCandidates > 0) {
+    lines.push(`${diagnostics.possibleRepairCandidates} look repairable.`);
+  }
+
+  const smallestGap = diagnostics.endpointGaps.filter((gap) => Number.isFinite(gap) && gap > 0).sort((a, b) => a - b)[0];
+  if (smallestGap !== undefined && panelCount > 0) {
+    lines.push(`Smallest gap: ${smallestGap.toFixed(2)} mm.`);
+  }
+
+  lines.push('Repair has not been implemented yet.');
+  return lines.join('\n');
+};
+
 const repairRawImportedGeometry = (rawGeometry: RawImportedGeometry): RawImportedGeometry => ({
   contours: rawGeometry.contours,
   looseEdges: rawGeometry.looseEdges,
+  diagnostics: buildImportDiagnostics(rawGeometry),
 });
 
 const createSvgPanelsFromClosedContours = (rawGeometry: RawImportedGeometry): SvgPanel[] => {
@@ -707,6 +872,7 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
     ...getCanvasMetrics(svgElement),
     edges,
     panels,
+    importDiagnostics: repairedGeometry.diagnostics,
   };
 };
 

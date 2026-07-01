@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, formatImportDiagnosticMessage, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
 import { exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
 import { buildAppliedSGeometry, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
@@ -970,7 +970,7 @@ function App() {
     setExpandedTBGroups({});
     setExpandedSGroups({});
     setExpandedWGroups({});
-    setErrorMessage(parsedSvg.panels.length === 0 ? 'No panels were detected. Import a file with closed panels before using workflow tools.' : '');
+    setErrorMessage(formatImportDiagnosticMessage(parsedSvg));
     event.target.value = '';
   };
 
@@ -2223,7 +2223,7 @@ function App() {
         <div className="clear-dialog-backdrop" role="presentation">
           <div className="clear-dialog panel-manager-modal" role="dialog" aria-modal="true" aria-labelledby="panel-manager-title">
             <h2 id="panel-manager-title">Panel Manager</h2>
-            <p>{Object.keys(panelManager.panels).length} panels detected.</p>
+            {formatImportDiagnosticMessage(svgModel).split('\n').map((line) => <p key={line}>{line}</p>)}
             <p>Please assign panel thickness before continuing.</p>
             <div className="clear-dialog-actions">
               <button className="toolbar-button primary" type="button" onClick={() => { setIsPanelManagerModalOpen(false); setActiveTool('PM'); }}>OK</button>
