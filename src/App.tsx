@@ -2223,8 +2223,10 @@ function App() {
         <div className="clear-dialog-backdrop" role="presentation">
           <div className="clear-dialog panel-manager-modal" role="dialog" aria-modal="true" aria-labelledby="panel-manager-title">
             <h2 id="panel-manager-title">Panel Manager</h2>
-            {formatImportDiagnosticMessage(svgModel).split('\n').map((line) => <p key={line}>{line}</p>)}
-            <p>Please assign panel thickness before continuing.</p>
+            <div className="panel-manager-modal-content">
+              {formatImportDiagnosticMessage(svgModel).split('\n').map((line) => <p key={line}>{line}</p>)}
+              <p>Please assign panel thickness before continuing.</p>
+            </div>
             <div className="clear-dialog-actions">
               <button className="toolbar-button primary" type="button" onClick={() => { setIsPanelManagerModalOpen(false); setActiveTool('PM'); }}>OK</button>
             </div>

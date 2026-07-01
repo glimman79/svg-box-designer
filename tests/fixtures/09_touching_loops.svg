@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 130 70">
+  <!-- Expected diagnostic: touching loops -->
+  <rect x="10" y="10" width="50" height="50"/>
+  <rect x="60" y="10" width="50" height="50"/>
+</svg>

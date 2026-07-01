@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 80">
+  <!-- Expected: 2 independent panels -->
+  <rect x="10" y="10" width="50" height="50"/>
+  <rect x="100" y="10" width="50" height="50"/>
+</svg>

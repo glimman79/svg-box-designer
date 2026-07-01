@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 100">
+  <!-- Expected: 1 curved panel using native SVG Bezier curves -->
+  <path d="M 25 50 C 25 20 55 10 80 20 C 115 35 120 70 90 85 C 60 100 25 80 25 50 Z"/>
+</svg>
