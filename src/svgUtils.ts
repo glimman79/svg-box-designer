@@ -174,6 +174,7 @@ export type ImportDiagnostics = {
   selfIntersectionsFound: number;
   chains: ImportDiagnosticChain[];
   topology: TopologyGraph;
+  topologyPanelsCreated: number;
 };
 
 export type RawImportedGeometry = {
@@ -706,6 +707,7 @@ const buildImportDiagnostics = (rawGeometry: RawImportedGeometry, allEdges: SvgE
     selfIntersectionsFound: chains.filter((chain) => chain.classification === 'SelfIntersecting').length,
     chains,
     topology,
+    topologyPanelsCreated: 0,
   };
 };
 
@@ -714,6 +716,17 @@ export const formatImportDiagnosticMessage = (model: Pick<SvgDocumentModel, 'pan
 
   if (!diagnostics) {
     return 'Import complete. No topology diagnostics were produced. No repair has been performed.';
+  }
+
+  if (diagnostics.topologyPanelsCreated > 0) {
+    return [
+      'Import complete.',
+      `Panels detected: ${model.panels.length}`,
+      `Created from topology closed loops: ${diagnostics.topologyPanelsCreated}`,
+      `Open chains: ${diagnostics.openChainsFound}`,
+      `Branching: ${diagnostics.branchingChainsFound}`,
+      'No repair has been performed.',
+    ].join('\n');
   }
 
   return [
@@ -734,12 +747,87 @@ const repairRawImportedGeometry = (rawGeometry: RawImportedGeometry, edges: SvgE
   diagnostics: buildImportDiagnostics(rawGeometry, edges),
 });
 
+const pointKeysMatch = (first: Point, second: Point): boolean => first.x === second.x && first.y === second.y;
+
+const hasSameEdgeIds = (first: string[], second: string[]): boolean => {
+  if (first.length !== second.length) {
+    return false;
+  }
+
+  const firstSet = new Set(first);
+  return second.every((edgeId) => firstSet.has(edgeId));
+};
+
+const buildContourFromTopologyClosedLoop = (chain: TopologyChain, topology: TopologyGraph): Point[] | undefined => {
+  const segmentsById = new Map(topology.segments.map((segment) => [segment.id, segment]));
+  const contour: Point[] = [];
+  let currentNodeId = chain.startNodeId;
+
+  for (const segmentId of chain.segmentIds) {
+    const segment = segmentsById.get(segmentId);
+
+    if (!segment) {
+      return undefined;
+    }
+
+    const followsCurrentNode = segment.startNodeId === currentNodeId || segment.endNodeId === currentNodeId;
+    const orientedStart = segment.startNodeId === currentNodeId ? segment.start : segment.end;
+    const orientedEnd = segment.startNodeId === currentNodeId ? segment.end : segment.start;
+
+    if (!followsCurrentNode || (contour.length > 0 && !pointKeysMatch(contour[contour.length - 1], orientedStart))) {
+      return undefined;
+    }
+
+    if (contour.length === 0) {
+      contour.push(orientedStart);
+    }
+
+    contour.push(orientedEnd);
+    currentNodeId = segment.startNodeId === currentNodeId ? segment.endNodeId : segment.startNodeId;
+  }
+
+  if (contour.length < 4 || !pointKeysMatch(contour[0], contour[contour.length - 1])) {
+    return undefined;
+  }
+
+  return contour.slice(0, -1);
+};
+
 const createSvgPanelsFromClosedContours = (rawGeometry: RawImportedGeometry): SvgPanel[] => {
   const panels: SvgPanel[] = [];
 
   rawGeometry.contours.forEach((contour) => {
     addPanel(panels, contour.contour, contour.bounds, contour.edgeIds);
   });
+
+  const diagnostics = rawGeometry.diagnostics;
+  const topology = diagnostics?.topology;
+  if (!diagnostics || !topology) {
+    return panels;
+  }
+
+  const rawContourEdgeIds = rawGeometry.contours.map((contour) => contour.edgeIds);
+  let topologyPanelsCreated = 0;
+
+  topology.chains
+    .filter((chain) => chain.classification === 'ClosedLoop')
+    .forEach((chain) => {
+      if (rawContourEdgeIds.some((edgeIds) => hasSameEdgeIds(edgeIds, chain.segmentIds))) {
+        return;
+      }
+
+      const contour = buildContourFromTopologyClosedLoop(chain, topology);
+      if (!contour) {
+        return;
+      }
+
+      const panel = addPanel(panels, contour, getPanelFigureBounds(contour), chain.segmentIds);
+      if (panel) {
+        topologyPanelsCreated += 1;
+      }
+    });
+
+  diagnostics.topologyPanelsCreated = topologyPanelsCreated;
 
   return panels;
 };
