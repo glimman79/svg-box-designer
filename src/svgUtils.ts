@@ -95,14 +95,66 @@ export type RawImportedContour = {
   metadata?: Record<string, unknown>;
 };
 
-export type ImportDiagnosticChainStatus = 'closed' | 'open-small-gap' | 'open-large-gap' | 'ambiguous' | 'isolated-edge' | 'unsupported';
+export type ImportDiagnosticChainStatus = 'ClosedLoop' | 'OpenChain' | 'Branching' | 'IsolatedSegment' | 'SelfIntersecting' | 'Unknown';
+
+export type TopologyNode = {
+  id: string;
+  point: Point;
+  degree: number;
+  connectedSegmentIds: string[];
+  connectedNodeIds: string[];
+};
+
+export type TopologySegment = {
+  id: string;
+  sourceElementId: string;
+  start: Point;
+  end: Point;
+  startNodeId: string;
+  endNodeId: string;
+  length: number;
+};
+
+export type TopologyChainClassification = ImportDiagnosticChainStatus;
+
+export type TopologyChain = {
+  id: string;
+  componentId: string;
+  segmentIds: string[];
+  nodeIds: string[];
+  totalLength: number;
+  startNodeId: string;
+  endNodeId: string;
+  bounds?: SourceBounds;
+  classification: TopologyChainClassification;
+  gapDistance: number;
+  branchCount: number;
+  selfIntersectionCount: number;
+};
+
+export type TopologyComponent = {
+  id: string;
+  segmentIds: string[];
+  nodeIds: string[];
+  chainIds: string[];
+};
+
+export type TopologyGraph = {
+  toleranceMm: number;
+  segments: TopologySegment[];
+  nodes: TopologyNode[];
+  components: TopologyComponent[];
+  chains: TopologyChain[];
+};
 
 export type ImportDiagnosticChain = {
   id: string;
   segmentCount: number;
-  start: Point;
-  end: Point;
+  classification: ImportDiagnosticChainStatus;
+  startNodeId: string;
+  endNodeId: string;
   gapDistance: number;
+  branchCount: number;
   bounds?: SourceBounds;
   sourceEdgeIds: string[];
   status: ImportDiagnosticChainStatus;
@@ -116,7 +168,12 @@ export type ImportDiagnostics = {
   endpointGaps: number[];
   possibleRepairCandidates: number;
   unrepairedOpenContours: number;
+  closedLoopsFound: number;
+  branchingChainsFound: number;
+  isolatedSegmentsFound: number;
+  selfIntersectionsFound: number;
   chains: ImportDiagnosticChain[];
+  topology: TopologyGraph;
 };
 
 export type RawImportedGeometry = {
@@ -475,145 +532,206 @@ const addRawClosedContour = (
 };
 
 
-const pointKey = (point: Point) => `${point.x},${point.y}`;
-
 const distanceBetweenPoints = (first: Point, second: Point): number => Math.hypot(first.x - second.x, first.y - second.y);
 
-const buildImportDiagnostics = (rawGeometry: RawImportedGeometry): ImportDiagnostics => {
-  const edgeById = new Map(rawGeometry.looseEdges.map((edge) => [edge.id, edge]));
-  const edgeIdsByEndpoint = new Map<string, string[]>();
+const pointsWithinEndpointTolerance = (first: Point, second: Point) => distanceBetweenPoints(first, second) <= IMPORT_REPAIR_CANDIDATE_TOLERANCE_MM;
 
-  rawGeometry.looseEdges.forEach((edge) => {
-    [edge.start, edge.end].forEach((point) => {
-      const key = pointKey(point);
-      edgeIdsByEndpoint.set(key, [...(edgeIdsByEndpoint.get(key) ?? []), edge.id]);
-    });
+const linesIntersect = (a: SvgEdge | TopologySegment, b: SvgEdge | TopologySegment): boolean => {
+  const cross = (p: Point, q: Point, r: Point) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const between = (p: Point, q: Point, r: Point) => Math.min(p.x, r.x) - closedLoopTolerance <= q.x && q.x <= Math.max(p.x, r.x) + closedLoopTolerance
+    && Math.min(p.y, r.y) - closedLoopTolerance <= q.y && q.y <= Math.max(p.y, r.y) + closedLoopTolerance;
+  const d1 = cross(a.start, a.end, b.start);
+  const d2 = cross(a.start, a.end, b.end);
+  const d3 = cross(b.start, b.end, a.start);
+  const d4 = cross(b.start, b.end, a.end);
+
+  if (nearlyEqual(d1, 0) && between(a.start, b.start, a.end)) return true;
+  if (nearlyEqual(d2, 0) && between(a.start, b.end, a.end)) return true;
+  if (nearlyEqual(d3, 0) && between(b.start, a.start, b.end)) return true;
+  if (nearlyEqual(d4, 0) && between(b.start, a.end, b.end)) return true;
+  return (d1 > 0) !== (d2 > 0) && (d3 > 0) !== (d4 > 0);
+};
+
+export const buildTopologyGraph = (segments: SvgEdge[]): TopologyGraph => {
+  const nodes: TopologyNode[] = [];
+  const findOrCreateNode = (point: Point): TopologyNode => {
+    const existing = nodes.find((node) => pointsWithinEndpointTolerance(node.point, point));
+    if (existing) return existing;
+    const node: TopologyNode = { id: `node-${nodes.length + 1}`, point, degree: 0, connectedSegmentIds: [], connectedNodeIds: [] };
+    nodes.push(node);
+    return node;
+  };
+
+  const topologySegments = segments.map((segment) => {
+    const startNode = findOrCreateNode(segment.start);
+    const endNode = findOrCreateNode(segment.end);
+    const topologySegment: TopologySegment = {
+      id: segment.id,
+      sourceElementId: segment.source,
+      start: segment.start,
+      end: segment.end,
+      startNodeId: startNode.id,
+      endNodeId: endNode.id,
+      length: distanceBetweenPoints(segment.start, segment.end),
+    };
+    startNode.connectedSegmentIds.push(segment.id);
+    endNode.connectedSegmentIds.push(segment.id);
+    startNode.connectedNodeIds.push(endNode.id);
+    endNode.connectedNodeIds.push(startNode.id);
+    return topologySegment;
   });
 
-  const visitedEdgeIds = new Set<string>();
-  const chains: ImportDiagnosticChain[] = [];
+  nodes.forEach((node) => {
+    node.connectedSegmentIds = [...new Set(node.connectedSegmentIds)];
+    node.connectedNodeIds = [...new Set(node.connectedNodeIds.filter((nodeId) => nodeId !== node.id))];
+    node.degree = node.connectedSegmentIds.length;
+  });
 
-  rawGeometry.looseEdges.forEach((seedEdge) => {
-    if (visitedEdgeIds.has(seedEdge.id)) {
-      return;
-    }
-
-    const componentEdgeIds: string[] = [];
-    const pendingEdgeIds = [seedEdge.id];
-    visitedEdgeIds.add(seedEdge.id);
-
-    while (pendingEdgeIds.length > 0) {
-      const edgeId = pendingEdgeIds.pop() as string;
-      const edge = edgeById.get(edgeId);
-
-      if (!edge) {
-        continue;
-      }
-
-      componentEdgeIds.push(edgeId);
-      [edge.start, edge.end].forEach((point) => {
-        (edgeIdsByEndpoint.get(pointKey(point)) ?? []).forEach((connectedEdgeId) => {
-          if (!visitedEdgeIds.has(connectedEdgeId)) {
-            visitedEdgeIds.add(connectedEdgeId);
-            pendingEdgeIds.push(connectedEdgeId);
+  const segmentById = new Map(topologySegments.map((segment) => [segment.id, segment]));
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const components: TopologyComponent[] = [];
+  const visitedSegments = new Set<string>();
+  topologySegments.forEach((seed) => {
+    if (visitedSegments.has(seed.id)) return;
+    const segmentIds: string[] = [];
+    const nodeIds = new Set<string>();
+    const pending = [seed.id];
+    visitedSegments.add(seed.id);
+    while (pending.length) {
+      const segment = segmentById.get(pending.pop() as string);
+      if (!segment) continue;
+      segmentIds.push(segment.id);
+      [segment.startNodeId, segment.endNodeId].forEach((nodeId) => {
+        nodeIds.add(nodeId);
+        (nodeById.get(nodeId)?.connectedSegmentIds ?? []).forEach((nextId) => {
+          if (!visitedSegments.has(nextId)) {
+            visitedSegments.add(nextId);
+            pending.push(nextId);
           }
         });
       });
     }
-
-    const componentEdges = componentEdgeIds.map((edgeId) => edgeById.get(edgeId)).filter((edge): edge is SvgEdge => Boolean(edge));
-    const points = componentEdges.flatMap((edge) => [edge.start, edge.end]);
-    const bounds = getPointsBounds(points);
-    const endpointKeys = new Map<string, Point>();
-    componentEdges.forEach((edge) => {
-      endpointKeys.set(pointKey(edge.start), edge.start);
-      endpointKeys.set(pointKey(edge.end), edge.end);
-    });
-    const oddEndpointPoints = [...endpointKeys.entries()]
-      .filter(([key]) => (edgeIdsByEndpoint.get(key) ?? []).filter((edgeId) => componentEdgeIds.includes(edgeId)).length === 1)
-      .map(([, point]) => point);
-    const ambiguous = [...endpointKeys.keys()].some((key) => (edgeIdsByEndpoint.get(key) ?? []).filter((edgeId) => componentEdgeIds.includes(edgeId)).length > 2);
-    const start = oddEndpointPoints[0] ?? componentEdges[0]?.start ?? { x: 0, y: 0 };
-    const end = oddEndpointPoints[1] ?? componentEdges.at(-1)?.end ?? start;
-    const gapDistance = distanceBetweenPoints(start, end);
-    let status: ImportDiagnosticChainStatus = 'unsupported';
-
-    if (ambiguous) {
-      status = 'ambiguous';
-    } else if (componentEdges.length === 1 && oddEndpointPoints.length === 2) {
-      status = 'isolated-edge';
-    } else if (oddEndpointPoints.length === 0) {
-      status = 'closed';
-    } else if (oddEndpointPoints.length === 2) {
-      status = gapDistance <= IMPORT_REPAIR_CANDIDATE_TOLERANCE_MM ? 'open-small-gap' : 'open-large-gap';
-    }
-
-    chains.push({
-      id: `chain-${chains.length + 1}`,
-      segmentCount: componentEdges.length,
-      start,
-      end,
-      gapDistance,
-      bounds,
-      sourceEdgeIds: componentEdgeIds,
-      status,
-    });
+    components.push({ id: `component-${components.length + 1}`, segmentIds, nodeIds: [...nodeIds], chainIds: [] });
   });
 
-  const openChains = chains.filter((chain) => chain.status !== 'closed');
-  const repairCandidates = chains.filter((chain) => chain.status === 'open-small-gap');
+  const chains: TopologyChain[] = [];
+  components.forEach((component) => {
+    const componentSegments = component.segmentIds.map((id) => segmentById.get(id)).filter((segment): segment is TopologySegment => Boolean(segment));
+    const componentNodes = component.nodeIds.map((id) => nodeById.get(id)).filter((node): node is TopologyNode => Boolean(node));
+    const branchCount = componentNodes.filter((node) => node.degree > 2).length;
+    const degreeOneNodes = componentNodes.filter((node) => node.degree === 1);
+    const orderedSegmentIds: string[] = [];
+    const orderedNodeIds: string[] = [];
+    const used = new Set<string>();
+    let currentNodeId = (degreeOneNodes[0] ?? componentNodes[0])?.id ?? '';
+    orderedNodeIds.push(currentNodeId);
+    while (currentNodeId && used.size < componentSegments.length) {
+      const nextSegmentId = (nodeById.get(currentNodeId)?.connectedSegmentIds ?? []).find((id) => component.segmentIds.includes(id) && !used.has(id));
+      if (!nextSegmentId) break;
+      const nextSegment = segmentById.get(nextSegmentId);
+      if (!nextSegment) break;
+      used.add(nextSegmentId);
+      orderedSegmentIds.push(nextSegmentId);
+      currentNodeId = nextSegment.startNodeId === currentNodeId ? nextSegment.endNodeId : nextSegment.startNodeId;
+      orderedNodeIds.push(currentNodeId);
+    }
+    componentSegments.forEach((segment) => {
+      if (!used.has(segment.id)) orderedSegmentIds.push(segment.id);
+    });
+    const points = componentSegments.flatMap((segment) => [segment.start, segment.end]);
+    const startNodeId = orderedNodeIds[0] ?? component.nodeIds[0] ?? '';
+    const endNodeId = orderedNodeIds.at(-1) ?? startNodeId;
+    const startNode = nodeById.get(startNodeId);
+    const endNode = nodeById.get(endNodeId);
+    const selfIntersectionCount = componentSegments.reduce((count, first, firstIndex) => count + componentSegments.slice(firstIndex + 1).filter((second) => {
+      const sharesNode = first.startNodeId === second.startNodeId || first.startNodeId === second.endNodeId || first.endNodeId === second.startNodeId || first.endNodeId === second.endNodeId;
+      return !sharesNode && linesIntersect(first, second);
+    }).length, 0);
+    const gapDistance = startNode && endNode ? distanceBetweenPoints(startNode.point, endNode.point) : 0;
+    let classification: TopologyChainClassification = 'Unknown';
+    if (selfIntersectionCount > 0) classification = 'SelfIntersecting';
+    else if (componentSegments.length === 1) classification = 'IsolatedSegment';
+    else if (branchCount > 0) classification = 'Branching';
+    else if (startNodeId === endNodeId || (startNode && endNode && pointsWithinEndpointTolerance(startNode.point, endNode.point))) classification = 'ClosedLoop';
+    else if (degreeOneNodes.length === 2) classification = 'OpenChain';
+
+    const chain: TopologyChain = {
+      id: `chain-${chains.length + 1}`,
+      componentId: component.id,
+      segmentIds: orderedSegmentIds,
+      nodeIds: orderedNodeIds,
+      totalLength: componentSegments.reduce((total, segment) => total + segment.length, 0),
+      startNodeId,
+      endNodeId,
+      bounds: getPointsBounds(points),
+      classification,
+      gapDistance,
+      branchCount,
+      selfIntersectionCount,
+    };
+    chains.push(chain);
+    component.chainIds.push(chain.id);
+  });
+
+  return { toleranceMm: IMPORT_REPAIR_CANDIDATE_TOLERANCE_MM, segments: topologySegments, nodes, components, chains };
+};
+
+const buildImportDiagnostics = (rawGeometry: RawImportedGeometry, allEdges: SvgEdge[]): ImportDiagnostics => {
+  const topology = buildTopologyGraph(allEdges);
+  const chains = topology.chains.map((chain): ImportDiagnosticChain => ({
+    id: chain.id,
+    segmentCount: chain.segmentIds.length,
+    classification: chain.classification,
+    startNodeId: chain.startNodeId,
+    endNodeId: chain.endNodeId,
+    gapDistance: chain.gapDistance,
+    branchCount: chain.branchCount,
+    bounds: chain.bounds,
+    sourceEdgeIds: chain.segmentIds,
+    status: chain.classification,
+  }));
+  const openChains = chains.filter((chain) => chain.classification === 'OpenChain');
 
   return {
     toleranceMm: IMPORT_REPAIR_CANDIDATE_TOLERANCE_MM,
-    closedContoursFound: rawGeometry.contours.length + chains.filter((chain) => chain.status === 'closed').length,
+    closedContoursFound: chains.filter((chain) => chain.classification === 'ClosedLoop').length,
     looseEdgesFound: rawGeometry.looseEdges.length,
     openChainsFound: openChains.length,
     endpointGaps: openChains.map((chain) => chain.gapDistance),
-    possibleRepairCandidates: repairCandidates.length,
+    possibleRepairCandidates: 0,
     unrepairedOpenContours: openChains.length,
+    closedLoopsFound: chains.filter((chain) => chain.classification === 'ClosedLoop').length,
+    branchingChainsFound: chains.filter((chain) => chain.classification === 'Branching').length,
+    isolatedSegmentsFound: chains.filter((chain) => chain.classification === 'IsolatedSegment').length,
+    selfIntersectionsFound: chains.filter((chain) => chain.classification === 'SelfIntersecting').length,
     chains,
+    topology,
   };
 };
 
 export const formatImportDiagnosticMessage = (model: Pick<SvgDocumentModel, 'panels' | 'importDiagnostics'>): string => {
-  const panelCount = model.panels.length;
   const diagnostics = model.importDiagnostics;
 
-  const lines = [`${panelCount === 0 ? 'No panels were' : `${panelCount} ${panelCount === 1 ? 'panel' : 'panels'}`} detected.`];
-
   if (!diagnostics) {
-    lines.push('No open contours found.');
-    return lines.join(' ');
+    return 'Import complete. No topology diagnostics were produced. No repair has been performed.';
   }
 
-  if (diagnostics.looseEdgesFound > 0) {
-    lines.push(`${diagnostics.looseEdgesFound} loose ${diagnostics.looseEdgesFound === 1 ? 'edge' : 'edges'} found.`);
-  }
-
-  if (diagnostics.openChainsFound === 0) {
-    lines.push('No open contours found.');
-    return lines.join(diagnostics.looseEdgesFound > 0 ? '\n' : ' ');
-  }
-
-  lines.push(`${diagnostics.openChainsFound} open ${diagnostics.openChainsFound === 1 ? 'contour' : 'contours'} found.`);
-
-  if (diagnostics.possibleRepairCandidates > 0) {
-    lines.push(`${diagnostics.possibleRepairCandidates} look repairable.`);
-  }
-
-  const smallestGap = diagnostics.endpointGaps.filter((gap) => Number.isFinite(gap) && gap > 0).sort((a, b) => a - b)[0];
-  if (smallestGap !== undefined && panelCount > 0) {
-    lines.push(`Smallest gap: ${smallestGap.toFixed(2)} mm.`);
-  }
-
-  lines.push('Repair has not been implemented yet.');
-  return lines.join('\n');
+  return [
+    'Import complete.',
+    `Closed loops: ${diagnostics.closedLoopsFound}`,
+    `Open chains: ${diagnostics.openChainsFound}`,
+    `Branching: ${diagnostics.branchingChainsFound}`,
+    `Isolated: ${diagnostics.isolatedSegmentsFound}`,
+    `Self intersections: ${diagnostics.selfIntersectionsFound}`,
+    'Repairable chains: 0',
+    'No repair has been performed.',
+  ].join('\n');
 };
 
-const repairRawImportedGeometry = (rawGeometry: RawImportedGeometry): RawImportedGeometry => ({
+const repairRawImportedGeometry = (rawGeometry: RawImportedGeometry, edges: SvgEdge[]): RawImportedGeometry => ({
   contours: rawGeometry.contours,
   looseEdges: rawGeometry.looseEdges,
-  diagnostics: buildImportDiagnostics(rawGeometry),
+  diagnostics: buildImportDiagnostics(rawGeometry, edges),
 });
 
 const createSvgPanelsFromClosedContours = (rawGeometry: RawImportedGeometry): SvgPanel[] => {
@@ -862,7 +980,7 @@ export const parseSvgDocument = (svgText: string): SvgDocumentModel => {
     parsePathSegments(path.getAttribute('d'), `path ${elementIndex + 1}`, edges, rawGeometry);
   });
 
-  const repairedGeometry = repairRawImportedGeometry(rawGeometry);
+  const repairedGeometry = repairRawImportedGeometry(rawGeometry, edges);
   const panels = createSvgPanelsFromClosedContours(repairedGeometry);
 
   return {

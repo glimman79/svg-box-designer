@@ -158,30 +158,39 @@ assert.equal(looseRectangleEdges.edges.length, 4, 'loose rectangle edges still i
 assert.equal(looseRectangleEdges.panels.length, 0, 'loose rectangle edges do not reconstruct a panel');
 
 assert.equal(plain.importDiagnostics.openChainsFound, 0, 'closed rectangle has no open chains');
-assert.match(formatImportDiagnosticMessage(plain), /1 panel detected\. No open contours found\./, 'closed rectangle message reports no open contours');
+assert.match(formatImportDiagnosticMessage(plain), /Closed loops: 1\nOpen chains: 0/, 'closed rectangle message reports topology counts');
 
 const closedNotch = parseSvgDocument('<svg viewBox="0 0 100 100"><polygon points="0,0 20,0 20,10 10,10 10,20 0,20"/></svg>');
 assert.equal(closedNotch.panels.length, 1, 'closed notched polygon creates one panel');
 assert.equal(closedNotch.importDiagnostics.openChainsFound, 0, 'closed notched polygon has no open chains');
 
+assert.equal(plain.importDiagnostics.closedLoopsFound, 1, 'closed rectangle topology has one closed loop');
+assert.equal(closedNotch.importDiagnostics.closedLoopsFound, 1, 'closed notched polygon topology has one closed loop');
+
+const separatePanels = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="10" height="10"/><rect x="20" y="0" width="10" height="10"/></svg>');
+assert.equal(separatePanels.importDiagnostics.closedLoopsFound, 2, 'separate panels produce one closed topology loop per panel');
+
+const isolatedLine = parseSvgDocument('<svg viewBox="0 0 100 100"><line x1="0" y1="0" x2="10" y2="0"/></svg>');
+assert.equal(isolatedLine.importDiagnostics.isolatedSegmentsFound, 1, 'one loose line is one isolated topology segment');
+
 assert.equal(looseRectangleEdges.importDiagnostics.looseEdgesFound, 4, 'loose rectangle diagnostics count loose edges');
 assert.equal(looseRectangleEdges.importDiagnostics.chains.length, 1, 'loose rectangle diagnostics produce one chain');
-assert.equal(looseRectangleEdges.importDiagnostics.chains[0].status, 'closed', 'loose rectangle is a closed diagnostic chain only');
-assert.match(formatImportDiagnosticMessage(looseRectangleEdges), /No panels were detected\.\n4 loose edges found\.\nNo open contours found\./, 'loose closed candidate remains diagnostic-only');
+assert.equal(looseRectangleEdges.importDiagnostics.chains[0].status, 'ClosedLoop', 'loose rectangle is one closed topology chain only');
+assert.match(formatImportDiagnosticMessage(looseRectangleEdges), /Closed loops: 1\nOpen chains: 0/, 'loose closed candidate remains diagnostic-only');
 
 const smallGap = parseSvgDocument('<svg viewBox="0 0 100 100"><polyline points="0,0 10,0 10,10 0,10 0,0.03"/></svg>');
 assert.equal(smallGap.panels.length, 0, 'small-gap open contour creates no panel');
-assert.equal(smallGap.importDiagnostics.chains[0].status, 'open-small-gap', 'small-gap open contour is repair candidate');
-assert.equal(round(smallGap.importDiagnostics.chains[0].gapDistance), 0.03, 'small gap distance is reported');
-assert.match(formatImportDiagnosticMessage(smallGap), /1 look repairable\./, 'small-gap message reports repair candidate');
+assert.equal(smallGap.importDiagnostics.chains[0].status, 'ClosedLoop', 'small-gap contour is classified closed by endpoint tolerance without modifying geometry');
+assert.equal(round(smallGap.importDiagnostics.chains[0].gapDistance), 0, 'small gap endpoints share one topology node');
+assert.match(formatImportDiagnosticMessage(smallGap), /Repairable chains: 0/, 'small-gap message does not report repair candidates');
 
 const largeGap = parseSvgDocument('<svg viewBox="0 0 100 100"><polyline points="0,0 10,0 10,10 0,10 0,2"/></svg>');
 assert.equal(largeGap.panels.length, 0, 'large-gap open contour creates no panel');
-assert.equal(largeGap.importDiagnostics.chains[0].status, 'open-large-gap', 'large-gap open contour is not small-gap candidate');
+assert.equal(largeGap.importDiagnostics.chains[0].status, 'OpenChain', 'large-gap open contour is an open topology chain');
 
 const ambiguous = parseSvgDocument('<svg viewBox="0 0 100 100"><line x1="0" y1="0" x2="10" y2="0"/><line x1="10" y1="0" x2="20" y2="0"/><line x1="10" y1="0" x2="10" y2="10"/></svg>');
 assert.equal(ambiguous.panels.length, 0, 'ambiguous loose edges create no panel');
-assert.equal(ambiguous.importDiagnostics.chains[0].status, 'ambiguous', 'branching loose edge graph is ambiguous');
+assert.equal(ambiguous.importDiagnostics.chains[0].status, 'Branching', 'branching loose edge graph is classified branching');
 
 
 console.log('svg parser rect matrix tests passed');
