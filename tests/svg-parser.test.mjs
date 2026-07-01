@@ -120,7 +120,7 @@ const loadSrcModule = (relativePath) => {
   return loadedModule.exports;
 };
 
-const { parseSvgDocument, applyAffineMatrixToPoint, multiplyAffineMatrices, parseMatrixTransform } = svgUtilsModule.exports;
+const { parseSvgDocument, applyAffineMatrixToPoint, formatImportDiagnosticMessage, multiplyAffineMatrices, parseMatrixTransform } = svgUtilsModule.exports;
 const { classifyImportedPanelContours } = loadSrcModule('src/app/contourClassification.ts');
 const round = (value) => Number(value.toFixed(6));
 const points = (model) => model.edges.map((edge) => [round(edge.start.x), round(edge.start.y), round(edge.end.x), round(edge.end.y)]);
@@ -156,6 +156,33 @@ assert.equal(mixed.panels.length, 2, 'only closed path and polygon become panels
 const looseRectangleEdges = parseSvgDocument('<svg viewBox="0 0 100 100"><line x1="0" y1="0" x2="10" y2="0"/><line x1="10" y1="0" x2="10" y2="10"/><line x1="10" y1="10" x2="0" y2="10"/><line x1="0" y1="10" x2="0" y2="0"/></svg>');
 assert.equal(looseRectangleEdges.edges.length, 4, 'loose rectangle edges still import as raw edges');
 assert.equal(looseRectangleEdges.panels.length, 0, 'loose rectangle edges do not reconstruct a panel');
+
+assert.equal(plain.importDiagnostics.openChainsFound, 0, 'closed rectangle has no open chains');
+assert.match(formatImportDiagnosticMessage(plain), /1 panel detected\. No open contours found\./, 'closed rectangle message reports no open contours');
+
+const closedNotch = parseSvgDocument('<svg viewBox="0 0 100 100"><polygon points="0,0 20,0 20,10 10,10 10,20 0,20"/></svg>');
+assert.equal(closedNotch.panels.length, 1, 'closed notched polygon creates one panel');
+assert.equal(closedNotch.importDiagnostics.openChainsFound, 0, 'closed notched polygon has no open chains');
+
+assert.equal(looseRectangleEdges.importDiagnostics.looseEdgesFound, 4, 'loose rectangle diagnostics count loose edges');
+assert.equal(looseRectangleEdges.importDiagnostics.chains.length, 1, 'loose rectangle diagnostics produce one chain');
+assert.equal(looseRectangleEdges.importDiagnostics.chains[0].status, 'closed', 'loose rectangle is a closed diagnostic chain only');
+assert.match(formatImportDiagnosticMessage(looseRectangleEdges), /No panels were detected\.\n4 loose edges found\.\nNo open contours found\./, 'loose closed candidate remains diagnostic-only');
+
+const smallGap = parseSvgDocument('<svg viewBox="0 0 100 100"><polyline points="0,0 10,0 10,10 0,10 0,0.03"/></svg>');
+assert.equal(smallGap.panels.length, 0, 'small-gap open contour creates no panel');
+assert.equal(smallGap.importDiagnostics.chains[0].status, 'open-small-gap', 'small-gap open contour is repair candidate');
+assert.equal(round(smallGap.importDiagnostics.chains[0].gapDistance), 0.03, 'small gap distance is reported');
+assert.match(formatImportDiagnosticMessage(smallGap), /1 look repairable\./, 'small-gap message reports repair candidate');
+
+const largeGap = parseSvgDocument('<svg viewBox="0 0 100 100"><polyline points="0,0 10,0 10,10 0,10 0,2"/></svg>');
+assert.equal(largeGap.panels.length, 0, 'large-gap open contour creates no panel');
+assert.equal(largeGap.importDiagnostics.chains[0].status, 'open-large-gap', 'large-gap open contour is not small-gap candidate');
+
+const ambiguous = parseSvgDocument('<svg viewBox="0 0 100 100"><line x1="0" y1="0" x2="10" y2="0"/><line x1="10" y1="0" x2="20" y2="0"/><line x1="10" y1="0" x2="10" y2="10"/></svg>');
+assert.equal(ambiguous.panels.length, 0, 'ambiguous loose edges create no panel');
+assert.equal(ambiguous.importDiagnostics.chains[0].status, 'ambiguous', 'branching loose edge graph is ambiguous');
+
 
 console.log('svg parser rect matrix tests passed');
 
