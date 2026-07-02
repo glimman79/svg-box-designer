@@ -536,17 +536,6 @@ export const startWGroupWorkflow = (connections: ConnectionMap) => {
   };
 };
 
-const formatEdgeRoleLabel = (role: EdgeRole | undefined) => {
-  if (role === 'A') {
-    return 'A';
-  }
-
-  if (role === 'B') {
-    return 'B';
-  }
-
-  return 'No role';
-};
 
 const formatCalculatedMm = (value: number | null | undefined) => (Number.isFinite(value) ? `${Number((value as number).toFixed(2)).toString()} mm` : 'Unknown');
 const cloneDefaultProperties = <P extends LabelPrefix>(prefix: P): ConnectionPropertiesByPrefix[P] => ({
@@ -1929,55 +1918,13 @@ function App() {
     if (selectedConnection.prefix === 'E') {
       const assignedEEdges = svgModel.edges.filter((edge) => getBucketEdgeAssignment(edgeAssignments[edge.id])?.connectionId === selectedConnection.id);
       const tbViewModel = getConnectionViewModel(svgModel, edgeAssignments, selectedConnection, panelManager, getPanelDisplayName);
-      const tbThickness = {
-        panelAId: tbViewModel.panelIds.panelAId,
-        panelBId: tbViewModel.panelIds.panelBId,
-        panelAThicknessMm: tbViewModel.panelThicknesses.panelAThicknessMm,
-        panelBThicknessMm: tbViewModel.panelThicknesses.panelBThicknessMm,
-        autoFingerWidthMm: tbViewModel.autoTabMm,
-      };
-      const tbPanelByRole = {
-        A: { panelId: tbThickness.panelAId, ownerThicknessMm: tbThickness.panelAThicknessMm, matingPanelId: tbThickness.panelBId, matingThicknessMm: tbThickness.panelBThicknessMm },
-        B: { panelId: tbThickness.panelBId, ownerThicknessMm: tbThickness.panelBThicknessMm, matingPanelId: tbThickness.panelAId, matingThicknessMm: tbThickness.panelAThicknessMm },
-      };
-      const tbMode = tbViewModel.isTabManual ? 'Manual' : 'Auto';
+      const ownerPanelId = tbViewModel.panelIds.panelAId;
+      const matingPanelId = tbViewModel.panelIds.panelBId;
+      const ownerThicknessMm = tbViewModel.panelThicknesses.panelAThicknessMm;
+      const matingThicknessMm = tbViewModel.panelThicknesses.panelBThicknessMm;
+
       return (
         <div className="property-sections">
-          <section className="property-section" aria-labelledby="edge-diagnostics">
-            <h4 id="edge-diagnostics">{formatTBDisplayLabel(selectedConnection.id)} diagnostics</h4>
-            {assignedEEdges.length > 0 ? (
-              <ul className="calculated-edge-list">
-                {assignedEEdges.map((edge) => {
-                  const role = getBucketEdgeAssignment(edgeAssignments[edge.id])?.edgeRole ?? 'A';
-                  const diagnostic = tbPanelByRole[role];
-                  return (
-                    <li key={`${edge.id}-diagnostics`}>
-                      <strong>Edge {role}</strong>
-                      <dl>
-                        <div><dt>Edge id</dt><dd>{edge.id}</dd></div>
-                        <div><dt>Owner panel</dt><dd>{diagnostic.panelId ? getPanelDisplayName(diagnostic.panelId) : 'Unknown'}</dd></div>
-                        <div><dt>Owner thickness</dt><dd>{formatCalculatedMm(diagnostic.ownerThicknessMm)}</dd></div>
-                        <div><dt>Mating panel</dt><dd>{diagnostic.matingPanelId ? getPanelDisplayName(diagnostic.matingPanelId) : 'Unknown'}</dd></div>
-                        <div><dt>Mating thickness</dt><dd>{formatCalculatedMm(diagnostic.matingThicknessMm)}</dd></div>
-                        <div><dt>Tab thickness</dt><dd>{formatCalculatedMm(diagnostic.ownerThicknessMm)}</dd></div>
-                        {diagnostic.matingThicknessMm !== null ? <div><dt>Joint depth</dt><dd>{formatCalculatedMm(diagnostic.matingThicknessMm)}</dd></div> : null}
-                      </dl>
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <p className="muted">No edges assigned to this TB / Top Bottom label yet.</p>
-            )}
-            {tbViewModel.diagnostics.includes('Waiting for second edge.') ? <p className="muted">Waiting for second edge.</p> : null}
-            <dl>
-              <div><dt>Mode</dt><dd>{tbMode}</dd></div>
-              <div><dt>Stored value</dt><dd>{formatCalculatedMm(tbViewModel.storedTabMm)}</dd></div>
-              <div><dt>Computed auto value</dt><dd>{formatCalculatedMm(tbViewModel.autoTabMm)}</dd></div>
-              <div><dt>Display value</dt><dd>{formatCalculatedMm(tbViewModel.displayTabMm)}</dd></div>
-            </dl>
-          </section>
-
           <section className="property-section" aria-labelledby="edge-assigned-edges">
             <h4 id="edge-assigned-edges">Assigned edges</h4>
             {assignedEEdges.length > 0 ? (
@@ -1993,10 +1940,6 @@ function App() {
                       <div>
                         <dt>Edge length</dt>
                         <dd>{formatCalculatedMm(Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y))}</dd>
-                      </div>
-                      <div>
-                        <dt>Current role</dt>
-                        <dd>{formatEdgeRoleLabel(getBucketEdgeAssignment(edgeAssignments[edge.id])?.edgeRole)}</dd>
                       </div>
                     </dl>
                     <SelectField
@@ -2016,37 +1959,33 @@ function App() {
               <p className="muted">No edges assigned to this TB / Top Bottom label yet. Select this label, then click edges in the drawing.</p>
             )}
           </section>
+
+          <section className="property-section" aria-labelledby="edge-connection">
+            <h4 id="edge-connection">Connection</h4>
+            <dl>
+              <div><dt>Owner panel</dt><dd>{ownerPanelId ? getPanelDisplayName(ownerPanelId) : 'Unknown'}</dd></div>
+              <div><dt>Mating panel</dt><dd>{matingPanelId ? getPanelDisplayName(matingPanelId) : 'Unknown'}</dd></div>
+              <div><dt>Owner thickness</dt><dd>{formatCalculatedMm(ownerThicknessMm)}</dd></div>
+              <div><dt>Mating thickness</dt><dd>{formatCalculatedMm(matingThicknessMm)}</dd></div>
+              <div><dt>Joint depth</dt><dd>{formatCalculatedMm(matingThicknessMm)}</dd></div>
+            </dl>
+          </section>
         </div>
       );
     }
 
     if (selectedConnection.prefix === 'S') {
-      const properties = selectedConnection.properties;
       const sViewModel = getConnectionViewModel(svgModel, edgeAssignments, selectedConnection, panelManager, getPanelDisplayName);
       const sThickness = {
         panelAId: sViewModel.panelIds.panelAId,
         panelBId: sViewModel.panelIds.panelBId,
         panelAThicknessMm: sViewModel.panelThicknesses.panelAThicknessMm,
         panelBThicknessMm: sViewModel.panelThicknesses.panelBThicknessMm,
-        autoSlotLengthMm: sViewModel.autoTabMm,
       };
-      const displayedSlotLengthMm = sViewModel.displayTabMm;
-      const sMode = sViewModel.isTabManual ? 'Manual' : 'Auto';
       const assignedSEdges = svgModel.edges.filter((edge) => getBucketSlotAssignments(edgeAssignments[edge.id]).some((assignment) => assignment.connectionId === selectedConnection.id));
 
       return (
         <div className="property-sections">
-          <section className="property-section" aria-labelledby="slot-pm-thickness">
-            <h4 id="slot-pm-thickness">PM thickness</h4>
-            <dl>
-              <div><dt>S-A panel</dt><dd>{sThickness.panelAId ? `${getPanelDisplayName(sThickness.panelAId)} = ${formatCalculatedMm(sThickness.panelAThicknessMm)}` : formatCalculatedMm(sThickness.panelAThicknessMm)}</dd></div>
-              <div><dt>S-B panel</dt><dd>{sThickness.panelBId ? `${getPanelDisplayName(sThickness.panelBId)} = ${formatCalculatedMm(sThickness.panelBThicknessMm)}` : formatCalculatedMm(sThickness.panelBThicknessMm)}</dd></div>
-              <div><dt>Wall thickness</dt><dd>{formatCalculatedMm(sThickness.panelAThicknessMm)}</dd></div>
-              <div><dt>Slot width</dt><dd>{formatCalculatedMm(sThickness.panelAThicknessMm)}</dd></div>
-              {sThickness.panelBThicknessMm !== null ? <div><dt>Insert depth</dt><dd>{formatCalculatedMm(sThickness.panelBThicknessMm)}</dd></div> : null}
-            </dl>
-          </section>
-
           <section className="property-section" aria-labelledby="slot-assigned-edges">
             <h4 id="slot-assigned-edges">Assigned edges</h4>
             {assignedSEdges.length > 0 ? (
@@ -2062,10 +2001,6 @@ function App() {
                       <div>
                         <dt>Edge length</dt>
                         <dd>{formatCalculatedMm(Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y))}</dd>
-                      </div>
-                      <div>
-                        <dt>Current role</dt>
-                        <dd>{formatEdgeRoleLabel(getBucketSlotAssignments(edgeAssignments[edge.id]).find((assignment) => assignment.connectionId === selectedConnection.id)?.slotRole)}</dd>
                       </div>
                     </dl>
                     <SelectField
@@ -2086,23 +2021,14 @@ function App() {
             )}
           </section>
 
-          <section className="property-section" aria-labelledby="slot-diagnostics">
-            <h4 id="slot-diagnostics">{selectedConnection.id} diagnostics</h4>
-            {sViewModel.diagnostics.includes('Waiting for S-A/S-B.') ? <p className="muted">Waiting for S-A/S-B.</p> : null}
+          <section className="property-section" aria-labelledby="slot-connection">
+            <h4 id="slot-connection">Connection</h4>
             <dl>
-              <div><dt>Mode</dt><dd>{sMode}</dd></div>
-              <div><dt>Stored value</dt><dd>{formatCalculatedMm(sViewModel.storedTabMm)}</dd></div>
-              <div><dt>Computed auto value</dt><dd>{formatCalculatedMm(sViewModel.autoTabMm)}</dd></div>
-              <div><dt>Display value</dt><dd>{formatCalculatedMm(sViewModel.displayTabMm)}</dd></div>
+              <div><dt>S-A panel</dt><dd>{sThickness.panelAId ? getPanelDisplayName(sThickness.panelAId) : 'Unknown'}</dd></div>
+              <div><dt>S-B panel</dt><dd>{sThickness.panelBId ? getPanelDisplayName(sThickness.panelBId) : 'Unknown'}</dd></div>
+              <div><dt>Wall thickness</dt><dd>{formatCalculatedMm(sThickness.panelAThicknessMm)}</dd></div>
+              <div><dt>Insert depth</dt><dd>{formatCalculatedMm(sThickness.panelBThicknessMm)}</dd></div>
             </dl>
-          </section>
-
-          <section className="property-section" aria-labelledby="slot-basic-properties">
-            <h4 id="slot-basic-properties">Basic</h4>
-            <div className="property-grid">
-              <NumericField id="slot-offset" label="Slot offset inward from selected S-B edge (mm)" value={properties.slotOffsetMm} onChange={(slotOffsetMm) => updateSlotProperties({ slotOffsetMm })} />
-              <NumericField id="slot-length" label="Slot length (mm)" min={0} value={displayedSlotLengthMm} disabled={displayedSlotLengthMm === null} placeholder="Complete S connection" onChange={(slotLengthMm) => updateSlotProperties({ slotLengthMm })} />
-            </div>
           </section>
         </div>
       );
@@ -2609,7 +2535,7 @@ function App() {
 
               <div className="properties-card">
                 <div>
-                  <p className="eyebrow">Properties</p>
+                  <p className="eyebrow">Connection</p>
                   <h3>{selectedConnection ? `${activeTool === 'TB' ? formatTBDisplayLabel(selectedConnection.id) : selectedConnection.id} details` : 'No connection selected'}</h3>
                 </div>
                 {renderPropertiesPanel()}
