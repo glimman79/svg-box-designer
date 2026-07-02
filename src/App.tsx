@@ -9,7 +9,7 @@ import { buildKerfCompensatedPreviewFromFinalContours } from './app/manufacturin
 import { buildFinalGeometry } from './app/finalGeometry';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
-import { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
+import { appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
 import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildAppliedEPanelPaths, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
 import { buildPanelContainmentTree, createPanelManagerStateFromModel, defaultPanelManagerState, validatePanelManagerState } from './app/panelManagerModel';
 import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
@@ -27,7 +27,7 @@ export { buildFinalGeometry } from './app/finalGeometry';
 export { buildAppliedSGeometry, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
 export { buildPanelContainmentTree, createPanelManagerStateFromModel, defaultPanelManagerState, validatePanelManagerState } from './app/panelManagerModel';
 export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
-export { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getNextInternalELabel, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
+export { appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getNextInternalELabel, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
 // classifyAppliedContours is intentionally re-exported only as a compatibility/test helper.
 export { buildFinalContourList, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours } from './app/contourClassification';
@@ -834,9 +834,7 @@ function App() {
     return groups.sort((first, second) => getLabelNumber(first.labels[0] ?? 'E0') - getLabelNumber(second.labels[0] ?? 'E0'));
   }, [activeTBGroup, availableLabels, completedTBGroups, workflowGroupOrder]);
 
-  const tbDisplayLabelAliases = useMemo(() => Object.fromEntries(
-    tbLabelGroups.flatMap((group) => group.labels).map((label, index) => [label, `TB${index + 1}`]),
-  ), [tbLabelGroups]);
+  const tbDisplayLabelAliases = useMemo(() => buildTBDisplayLabelAliasMap(tbLabelGroups), [tbLabelGroups]);
   const formatTBDisplayLabel = (label: string | null | undefined) => (label ? tbDisplayLabelAliases[label] ?? label : 'None');
 
 
@@ -2216,7 +2214,7 @@ function App() {
       }];
     }).filter(([, assignment]) => Boolean((assignment as EdgeAssignmentBucket).edgeAssignment || (assignment as EdgeAssignmentBucket).slotAssignments?.length)));
   }, [activeTool, activeWGroup, connections, edgeAssignments]);
-  const tbCanvasLabelAliases = useMemo(() => buildTBCanvasLabelAliasMap(tbLabelGroups), [tbLabelGroups]);
+  const tbCanvasLabelAliases = tbDisplayLabelAliases;
   const labelPlacements = getEdgeLabelPlacements(svgModel.edges, displayEdgeAssignments, {
     fontSizePx: annotationFontSizePx,
     paddingXPx: annotationPaddingXPx,

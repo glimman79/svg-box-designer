@@ -1170,7 +1170,7 @@ const inactiveWDisplayAssignments = buildActiveWDisplayAssignments({}, wConnecti
 assert.equal(inactiveWDisplayAssignments['w1-top'], undefined, 'temporary W labels disappear after W group is inactive');
 console.log('W group V1 tests passed');
 
-const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, finishTBGroupWithTrailingCleanup, getTBGroupActionNumber, buildWorkflowHistoryItems, getWorkflowHistoryTool, getToolClickGroupStartKind, haveProjectSettingsChanged, startWGroupWorkflow } = module.exports;
+const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, finishTBGroupWithTrailingCleanup, getTBGroupActionNumber, buildWorkflowHistoryItems, getWorkflowHistoryTool, getToolClickGroupStartKind, haveProjectSettingsChanged, startWGroupWorkflow } = module.exports;
 
 
 assert.equal(getToolClickGroupStartKind('TB', null, null, null), 'TB', 'Clicking TB starts a TB group if none is active');
@@ -1210,7 +1210,21 @@ const tbFourChildGroup = appendAutoCreatedEToTBGroup(
 );
 const tbFourChildFinished = finishTBGroupWorkflow(tbFourChildGroup);
 assert.deepEqual([...tbFourChildFinished.connectionIds], ['E1', 'E2', 'E3', 'E4'], 'Finished TB group retains all child E connections as one group');
-assert.deepEqual(Object.keys(buildTBCanvasLabelAliasMap([{ labels: tbFourChildFinished.connectionIds }])).slice(0, 4), ['E1-A', 'E1-B', 'E2-A', 'E2-B'], 'TB canvas alias map keeps internal E connection ids as alias inputs');
+assert.deepEqual(JSON.parse(JSON.stringify(buildTBDisplayLabelAliasMap([{ labels: tbFourChildFinished.connectionIds }]))), {
+  E1: 'TB1',
+  'E1-A': 'TB1-A',
+  'E1-B': 'TB1-B',
+  E2: 'TB2',
+  'E2-A': 'TB2-A',
+  'E2-B': 'TB2-B',
+  E3: 'TB3',
+  'E3-A': 'TB3-A',
+  'E3-B': 'TB3-B',
+  E4: 'TB4',
+  'E4-A': 'TB4-A',
+  'E4-B': 'TB4-B',
+}, 'Shared TB display alias map uses connection identity for panel and role labels');
+assert.equal(buildTBCanvasLabelAliasMap([{ labels: ['E1', 'E2'] }])['E2-A'], 'TB2-A', 'TB canvas alias maps E2-A to TB2-A through the shared display alias map');
 
 const tbAssignments = {
   'p1-top': { edgeAssignment: { connectionId: 'E1', edgeRole: 'A' } },
