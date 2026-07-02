@@ -551,17 +551,17 @@ button:disabled {
 
 .edge-label-background {
   fill: #ffffff;
-  stroke: #cbd5e1;
+  stroke: #2563eb;
   stroke-width: 1;
   opacity: 0.96;
   vector-effect: non-scaling-stroke;
 }
 
 .edge-label-text {
-  fill: #000000;
-  font-size: 9px;
-  font-weight: 900;
-  letter-spacing: 0.02em;
+  fill: #1d4ed8;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 .visually-hidden {
@@ -1447,9 +1447,9 @@ button:disabled {
 
 .pm-tree {
   display: grid;
-  gap: 8px;
-  margin: 8px 0 0;
-  padding-left: 18px;
+  gap: 3px;
+  margin: 4px 0 0;
+  padding-left: 14px;
 }
 
 .pm-tree:first-child {
@@ -1458,32 +1458,73 @@ button:disabled {
 
 .pm-tree-item {
   display: grid;
-  gap: 6px;
+  gap: 3px;
 }
 
 .pm-tree-static {
   color: #9ca3af;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
+  line-height: 1.1;
+  padding: 1px 0;
 }
 
 .pm-tree-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   width: 100%;
-  padding: 8px 10px;
+  min-height: 0;
+  padding: 3px 5px;
   color: #e5e7eb;
   text-align: left;
   background: #111827;
   border: 1px solid #374151;
-  border-radius: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.pm-tree-panel-row {
+  justify-content: space-between;
+}
+
+.pm-tree-node-button {
+  display: inline-flex;
+  flex: 1 1 auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
   cursor: pointer;
 }
 
 .pm-tree-row span {
   color: #9ca3af;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
+}
+
+.pm-tree-row .property-field {
+  grid-template-columns: auto 64px;
+  gap: 5px;
+  align-items: center;
+  margin: 0;
+}
+
+.pm-tree-row .property-field span {
+  font-size: 0.64rem;
+}
+
+.pm-tree-row .property-field input {
+  min-height: 24px;
+  padding: 2px 5px;
+  font-size: 0.75rem;
+}
+
+.pm-tree-contours {
+  margin-top: 2px;
 }
 
 .pm-tree-row.active {
@@ -1498,4 +1539,11 @@ button:disabled {
 
 .inline-notice {
   margin: 10px 0;
+}
+
+.pm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
 }
