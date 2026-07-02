@@ -423,10 +423,10 @@ const minZoom = 0.1;
 const maxZoom = 20;
 const buttonZoomFactor = 1.25;
 const wheelZoomSensitivity = 0.0015;
-const labelFontSizePx = 7;
-const minLabelFontSizePx = 5;
-const labelPaddingXPx = 4;
-const labelPaddingYPx = 2;
+const labelFontSizePx = 13;
+const minLabelFontSizePx = 13;
+const labelPaddingXPx = 6;
+const labelPaddingYPx = 3;
 const labelEdgeOffsetPx = 6;
 
 const parseViewBox = (viewBox: string): CanvasViewBox => {
@@ -601,6 +601,19 @@ const NumericField = ({ id, label, value, min, step = 0.1, disabled = false, pla
       onChange={(event) => onChange(Number.isFinite(event.target.valueAsNumber) ? event.target.valueAsNumber : 0)}
     />
   </label>
+);
+
+const CanvasAnnotation = ({ label, x, y, width, height, scale, className = '' }: { label: string; x: number; y: number; width: number; height: number; scale: number; className?: string }) => (
+  <g className={`canvas-annotation edge-label${className ? ` ${className}` : ''}`} transform={`translate(${x} ${y}) scale(${scale})`}>
+    <rect className="edge-label-background" x={-width / 2} y={-height / 2} width={width} height={height} rx={5} />
+    <text className="edge-label-text" textAnchor="middle" dominantBaseline="middle">
+      {label.split('\n').map((displayLabel, index, allLabels) => (
+        <tspan key={`${displayLabel}-${index}`} x={0} dy={index === 0 ? `${-0.5 * (allLabels.length - 1)}em` : '1em'}>
+          {displayLabel}
+        </tspan>
+      ))}
+    </text>
+  </g>
 );
 
 const SelectField = ({ id, label, value, options, onChange }: SelectFieldProps) => (
@@ -828,7 +841,7 @@ function App() {
     return collectHoles(panelContainmentTree);
   }, [panelContainmentTree]);
   const panelManagerValidationMessage = validatePanelManagerState(panelManager);
-  const canApplyPanelManager = panelManager.isDirty && panelManagerValidationMessage === null;
+  const canApplyPanelManager = !panelManager.isApplied && panelManagerValidationMessage === null;
   const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections, workflowGroupOrder.manufacturing, panelManager.isApplied), [connections, panelManager.isApplied, sLabelGroups, tbLabelGroups, wLabelGroups, workflowGroupOrder]);
   const activeWConnection = activeWGroup?.isActive ? connections[activeWGroup.connectionId] : undefined;
   const hasPendingManufacturingSettings = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
@@ -1471,6 +1484,33 @@ function App() {
     });
   };
 
+  const acceptDefaultPanelThickness = () => {
+    const defaultThicknessMm = panelManager.defaultThicknessMm > 0
+      ? panelManager.defaultThicknessMm
+      : defaultConnectionProperties.E.materialThicknessMm;
+    setPanelManager((current) => ({
+      ...current,
+      defaultThicknessMm,
+      isApplied: false,
+      isDirty: true,
+      panels: Object.fromEntries(Object.keys(current.panels).map((panelId) => [panelId, { panelId, thicknessMm: defaultThicknessMm }])),
+    }));
+    setActivePanelId(null);
+    setActiveHoleId(null);
+    setErrorMessage('');
+  };
+
+  const finishPanelManager = () => {
+    setActiveTool('select');
+    setAssignmentTargetConnectionId(null);
+    setDisplayConnectionId(null);
+    setSelectedEdgeId(null);
+    setActivePanelId(null);
+    setActiveHoleId(null);
+    setIsPanelManagerModalOpen(false);
+    setErrorMessage('');
+  };
+
   const applyPanelManager = () => {
     const validationError = validatePanelManagerState(panelManager);
     if (validationError) {
@@ -1485,8 +1525,8 @@ function App() {
     setAppliedSGeometry(recomputedTBGeometry.appliedSGeometry);
     setPanelManager(appliedPanelManager);
     setIsPanelManagerModalOpen(false);
-    setActiveTool('select');
     setActivePanelId(null);
+    setActiveHoleId(null);
     setErrorMessage('');
   };
 
@@ -2158,50 +2198,49 @@ function App() {
     <ul className="pm-tree">
       {nodes.map((node) => (
         <li key={node.id} className="pm-tree-item">
-          <button
-            type="button"
-            className={`pm-tree-row pm-tree-panel-row${activePanelId === node.id ? ' active' : ''}`}
-            onClick={() => {
-              setActivePanelId(node.id);
-              setActiveHoleId(null);
-            }}
-          >
-            <strong>{node.label}</strong>
-            <span>{node.innerContourCount} inner {node.innerContourCount === 1 ? 'contour' : 'contours'}</span>
-            <span>{node.parentPanelId ? `Parent ${getPanelDisplayName(node.parentPanelId)}` : 'Root panel'}</span>
-          </button>
-          <NumericField
-            id={`pm-tree-thickness-${node.id}`}
-            label={`${node.label} thickness (mm)`}
-            min={0.01}
-            step={0.01}
-            value={panelManager.panels[node.id]?.thicknessMm ?? 0}
-            onFocus={() => {
-              setActivePanelId(node.id);
-              setActiveHoleId(null);
-            }}
-            onChange={(thicknessMm) => updatePanelThickness(node.id, thicknessMm)}
-          />
-          {node.holes.length > 0 && (
-            <ul className="pm-tree">
-              <li className="pm-tree-item pm-tree-static">Outer contour</li>
-              {node.holes.map((hole) => (
-                <li key={hole.id} className="pm-tree-item">
-                  <button
-                    type="button"
-                    className={`pm-tree-row pm-tree-hole-row${activeHoleId === hole.id ? ' active' : ''}`}
-                    onClick={() => {
-                      setActivePanelId(null);
-                      setActiveHoleId(hole.id);
-                    }}
-                  >
-                    <span>{hole.label}</span>
-                  </button>
-                  {hole.childPanels.length > 0 ? renderPanelTree(hole.childPanels) : null}
-                </li>
-              ))}
-            </ul>
-          )}
+          <div className={`pm-tree-row pm-tree-panel-row${activePanelId === node.id ? ' active' : ''}`}>
+            <button
+              type="button"
+              className="pm-tree-node-button"
+              onClick={() => {
+                setActivePanelId(node.id);
+                setActiveHoleId(null);
+              }}
+            >
+              <strong>{node.label}</strong>
+              <span>{node.parentPanelId ? `Child of ${getPanelDisplayName(node.parentPanelId)}` : 'Root'}</span>
+            </button>
+            <NumericField
+              id={`pm-tree-thickness-${node.id}`}
+              label="Thickness"
+              min={0}
+              step={0.01}
+              value={panelManager.panels[node.id]?.thicknessMm ?? 0}
+              onFocus={() => {
+                setActivePanelId(node.id);
+                setActiveHoleId(null);
+              }}
+              onChange={(thicknessMm) => updatePanelThickness(node.id, thicknessMm)}
+            />
+          </div>
+          <ul className="pm-tree pm-tree-contours">
+            <li className="pm-tree-item pm-tree-static">Outer contour</li>
+            {node.holes.map((hole) => (
+              <li key={hole.id} className="pm-tree-item">
+                <button
+                  type="button"
+                  className={`pm-tree-row pm-tree-hole-row${activeHoleId === hole.id ? ' active' : ''}`}
+                  onClick={() => {
+                    setActivePanelId(null);
+                    setActiveHoleId(hole.id);
+                  }}
+                >
+                  <span>{hole.label}</span>
+                </button>
+                {hole.childPanels.length > 0 ? renderPanelTree(hole.childPanels) : null}
+              </li>
+            ))}
+          </ul>
         </li>
       ))}
     </ul>
@@ -2264,7 +2303,7 @@ function App() {
               {formatImportDiagnosticMessage(svgModel).split('\n').map((line) => <p key={line}>{line}</p>)}
               <h3>Containment tree preview</h3>
               {panelContainmentTree.length > 0 ? renderPanelTree(panelContainmentTree) : <p>No panels detected.</p>}
-              <p>Please assign panel thickness before continuing.</p>
+              <p>Please assign panel thickness before continuing, or accept the project default thickness.</p>
             </div>
             <div className="clear-dialog-actions">
               <button className="toolbar-button primary" type="button" onClick={() => { setIsPanelManagerModalOpen(false); setActiveTool('PM'); }}>OK</button>
@@ -2313,7 +2352,11 @@ function App() {
               <p>Panels: {svgModel.panels.length}</p>
               {panelContainmentTree.length > 0 ? renderPanelTree(panelContainmentTree) : <p className="muted">No panels detected.</p>}
               {panelManagerValidationMessage ? <p className="notice inline-notice">{panelManagerValidationMessage}</p> : null}
-              <button className="toolbar-button primary" type="button" onClick={applyPanelManager} disabled={!canApplyPanelManager}>Apply</button>
+              <div className="pm-actions">
+                <button className="toolbar-button" type="button" onClick={acceptDefaultPanelThickness}>Accept default thickness</button>
+                <button className="toolbar-button primary" type="button" onClick={applyPanelManager} disabled={!canApplyPanelManager}>Apply</button>
+                <button className="toolbar-button" type="button" onClick={finishPanelManager} disabled={!panelManager.isApplied}>Finish PM</button>
+              </div>
             </div>
           )}
 
@@ -2587,10 +2630,7 @@ function App() {
                   {panelDisplayItems.map((panel) => (
                     <g key={panel.panelId}>
                       <path className={`panel-manager-panel-highlight${activePanelId === panel.panelId ? ' active' : ''}`} d={panel.pathD} />
-                      <g className="edge-label panel-manager-label" transform={`translate(${panel.centerX} ${panel.centerY}) scale(${labelScale})`}>
-                        <rect className="edge-label-background" x={-14} y={-10} width={28} height={20} rx={5} />
-                        <text className="edge-label-text" textAnchor="middle" dominantBaseline="middle">{panel.name}</text>
-                      </g>
+                      <CanvasAnnotation className="panel-manager-label" label={panel.name} x={panel.centerX} y={panel.centerY} width={30} height={20} scale={labelScale} />
                     </g>
                   ))}
                 </g>
@@ -2634,35 +2674,15 @@ function App() {
                         }}
                       />
                       {edgeLabelPlacements.map((labelPlacement) => (
-                        <g
-                          className="edge-label"
+                        <CanvasAnnotation
                           key={`${edge.id}-${labelPlacement.label}`}
-                          transform={`translate(${labelPlacement.x} ${labelPlacement.y}) scale(${labelScale})`}
-                        >
-                          <rect
-                            className="edge-label-background"
-                            x={-labelPlacement.width / 2}
-                            y={-labelPlacement.height / 2}
-                            width={labelPlacement.width}
-                            height={labelPlacement.height}
-                            rx={5}
-                          />
-                          <text
-                            className="edge-label-text"
-                            textAnchor="middle"
-                            dominantBaseline="middle"
-                          >
-                            {labelPlacement.label.split('\n').map((displayLabel, index, allLabels) => (
-                              <tspan
-                                key={displayLabel}
-                                x={0}
-                                dy={index === 0 ? `${-0.5 * (allLabels.length - 1)}em` : '1em'}
-                              >
-                                {displayLabel}
-                              </tspan>
-                            ))}
-                          </text>
-                        </g>
+                          label={labelPlacement.label}
+                          x={labelPlacement.x}
+                          y={labelPlacement.y}
+                          width={labelPlacement.width}
+                          height={labelPlacement.height}
+                          scale={labelScale}
+                        />
                       ))}
                     </g>
                   );
