@@ -1,5 +1,6 @@
 import { getBucketEdgeAssignment, getBucketSlotAssignments } from './assignmentBuckets';
 import type { AppliedSGeometry, ConnectionMap, SlotConnectionDefinition } from './connectionTypes';
+import { generatedManufacturingMetadata } from './manufacturingMetadata';
 import { addContourPoint, clipOriginalSegmentsToInsetSide, clonePanelContour, getPanelThickness, removeInteriorBacktrackSpurs, validatePanelContour } from './eGeometry';
 import type { PanelContour, PanelGeometryBuildResult, PanelThicknessState } from './eGeometry';
 import { findPanelContainingEdge } from './panelLookup';
@@ -397,6 +398,7 @@ export const buildAppliedSGeometry = (
         startDistance,
         endDistance,
         widthMm: wallThicknessMm,
+        manufacturing: generatedManufacturingMetadata(true),
       };
     });
 
@@ -433,9 +435,9 @@ export const buildAppliedSGeometry = (
       erasePathD: pointsToClosedPathD(panel.contour),
       pathD: pointsToClosedPathD(panelResult.contour),
       edgeIds: panel.edgeIds,
+      manufacturing: generatedManufacturingMetadata(false),
     });
   });
 
   return result;
 };
-

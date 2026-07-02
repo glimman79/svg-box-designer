@@ -440,6 +440,11 @@ const importedNestedContours = classifyImportedPanelContours(modelForPanels([
 ]));
 assert.equal(importedNestedContours.find((contour) => contour.panelId === 'imported-inner')?.kind, 'INNER', 'imported unknown contour inside another imported contour may classify INNER');
 
+const importedPanelWithHole = panel('imported-with-hole', 0, 0, 20, 20);
+importedPanelWithHole.innerContours = [[{ x: 5, y: 5 }, { x: 10, y: 5 }, { x: 10, y: 10 }, { x: 5, y: 10 }]];
+const importedFinalGeometry = buildFinalGeometry(modelForPanels([importedPanelWithHole]), [], []);
+assert.equal(JSON.stringify(importedFinalGeometry.contours.find((contour) => contour.finalSource === 'original-panel' && contour.kind === 'OUTER')?.manufacturing), JSON.stringify({ clearance: false, slotClearance: false }), 'imported outer contours are not manufacturing clearance eligible');
+assert.equal(JSON.stringify(importedFinalGeometry.contours.find((contour) => contour.finalSource === 'original-panel' && contour.kind === 'INNER')?.manufacturing), JSON.stringify({ clearance: false, slotClearance: false }), 'imported hole contours are not manufacturing clearance eligible');
 
 const finalOriginal = buildKerfPreviewViaFinalContours(modelForPanels([panel('original-only', 0, 0, 10, 8)]), [], [], 0.10);
 assertBoundsClose(boundsForPathD(finalOriginal.contours[0].pathD), { minX: -0.05, maxX: 10.05, minY: -0.05, maxY: 8.05 }, 'original panel only receives kerf');
@@ -452,6 +457,11 @@ assertBoundsClose(boundsForPathD(finalS.contours.find((contour) => contour.panel
 assertBoundsClose(boundsForPathD(finalS.contours.find((contour) => contour.finalSource === 's-slot').pathD), { minX: 2.05, maxX: 5.95, minY: 2.05, maxY: 4.95 }, 'S slot receives inward kerf when inside final panel');
 const mixedFinalList = buildFinalGeometry(modelForPanels([panel('original-mixed', 0, 0, 10, 8), panel('tb-mixed', 20, 0, 10, 8), panel('w-mixed', 40, 0, 10, 8), panel('s-mixed', 60, 0, 10, 8)]), [{ panelId: 'tb-mixed', eraseRect: { minX: 20, maxX: 30, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 20 0 L 31 0 L 31 8 L 20 8 Z', edgeIds: [] }, { panelId: 'w-mixed', eraseRect: { minX: 40, maxX: 50, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 40 0 L 51 0 L 51 8 L 40 8 Z', edgeIds: [] }], [{ connectionId: 'S-mixed', panelPaths: [{ panelId: 's-mixed', sourceEdgeId: 'edge-a', eraseRect: { minX: 60, maxX: 70, minY: 0, maxY: 8 }, erasePathD: '', pathD: 'M 60 0 L 71 0 L 71 8 L 60 8 Z', edgeIds: [] }], slotPaths: [{ connectionId: 'S-mixed', sourceAEdgeId: 'edge-a', sourceBEdgeId: 'edge-b', pathD: 'M 62 2 L 66 2 L 66 5 L 62 5 Z', startDistance: 2, endDistance: 6, widthMm: 3 }], edgeIds: [] }]);
 assert.deepEqual(mixedFinalList.contours.map((contour) => contour.panelId ?? contour.finalSource), ['original-mixed', 'tb-mixed', 'w-mixed', 's-mixed', 's-slot'], 'mixed drawing finalContourList contains original, TB, W, S and slot contours');
+assert.equal(JSON.stringify(mixedFinalList.contours.find((contour) => contour.panelId === 'tb-mixed')?.manufacturing), JSON.stringify({ clearance: true, slotClearance: false }), 'TB-generated applied-panel geometry is clearance eligible only');
+assert.equal(JSON.stringify(mixedFinalList.contours.find((contour) => contour.panelId === 's-mixed')?.manufacturing), JSON.stringify({ clearance: true, slotClearance: false }), 'S-generated panel replacement geometry is clearance eligible only');
+assert.equal(JSON.stringify(mixedFinalList.contours.find((contour) => contour.finalSource === 's-slot')?.manufacturing), JSON.stringify({ clearance: true, slotClearance: true }), 'S-generated slot contours are clearance and slot-clearance eligible');
+const classifiedMixedFinalContours = classifyFinalContours(mixedFinalList.contours);
+assert.equal(JSON.stringify(classifiedMixedFinalContours.find((contour) => contour.finalSource === 's-slot')?.manufacturing), JSON.stringify({ clearance: true, slotClearance: true }), 'classified final contours preserve manufacturing metadata');
 
 const mixedFinalGeometryBeforeManufacturing = JSON.stringify(mixedFinalList.contours);
 const mixedWithSlotClearance = buildKerfCompensatedPreviewFromFinalContours(mixedFinalList.contours, 0, 0.10);
@@ -460,6 +470,9 @@ assertBoundsClose(boundsForPathD(mixedWithSlotClearance.contours.find((contour) 
 assertBoundsClose(boundsForPathD(mixedWithSlotClearance.contours.find((contour) => contour.panelId === 'tb-mixed').pathD), { minX: 20, maxX: 31, minY: 0, maxY: 8 }, 'TB geometry unchanged by slot clearance');
 assertBoundsClose(boundsForPathD(mixedWithSlotClearance.contours.find((contour) => contour.panelId === 'w-mixed').pathD), { minX: 40, maxX: 51, minY: 0, maxY: 8 }, 'W geometry unchanged by slot clearance');
 assertBoundsClose(boundsForPathD(mixedWithSlotClearance.contours.find((contour) => contour.finalSource === 's-slot').pathD), { minX: 61.9, maxX: 66.1, minY: 1.9, maxY: 5.1 }, 'only S-slot contours receive slot clearance');
+assert.equal(JSON.stringify(mixedWithSlotClearance.finalContourList.find((contour) => contour.finalSource === 's-slot')?.manufacturing), JSON.stringify({ clearance: true, slotClearance: true }), 'preview manufacturing final contour list preserves metadata after slot clearance');
+const metadataOnlySlotClearance = applySlotClearance([{ id: 'metadata-slot', source: 'final-contour', finalSource: 'original-panel', kind: 'INNER', pathD: 'M 2 2 L 4 2 L 4 4 L 2 4 Z', manufacturing: { clearance: true, slotClearance: true } }], 0.10);
+assertBoundsClose(boundsForPathD(metadataOnlySlotClearance[0].pathD), { minX: 1.9, maxX: 4.1, minY: 1.9, maxY: 4.1 }, 'slot clearance eligibility uses manufacturing metadata');
 const tbApplyFinalGeometryZeroClearance = buildFinalGeometry(modelForPanels([panel('tb-apply', 0, 0, 10, 8)]), [{ panelId: 'tb-apply', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: 'M 0 0 L 12 0 L 12 8 L 0 8 Z', edgeIds: [] }], []);
 const tbApplyFinalGeometryPositiveClearance = buildFinalGeometry(modelForPanels([panel('tb-apply', 0, 0, 10, 8)]), [{ panelId: 'tb-apply', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: 'M 0 0 L 12 0 L 12 8 L 0 8 Z', edgeIds: [] }], []);
 assert.equal(JSON.stringify(tbApplyFinalGeometryPositiveClearance.contours), JSON.stringify(tbApplyFinalGeometryZeroClearance.contours), 'TB Apply produces identical geometry regardless of slotClearanceMm');

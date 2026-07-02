@@ -1,4 +1,5 @@
 import type { AppliedEPanelPath, ConnectionMap, EdgeConnectionDefinition } from './connectionTypes';
+import { generatedManufacturingMetadata } from './manufacturingMetadata';
 import { getBucketEdgeAssignment } from './assignmentBuckets';
 import type { EdgeAssignmentRecord, EdgeRole, Point, SvgDocumentModel, SvgPanel } from '../svgUtils';
 import {
@@ -280,6 +281,7 @@ export const buildAppliedEPanelPaths = (
       erasePathD: pointsToClosedPathD(panel.contour),
       pathD: pointsToClosedPathD(result.contour),
       edgeIds: panel.edgeIds,
+      manufacturing: generatedManufacturingMetadata(false),
     }];
   });
 };
@@ -787,4 +789,3 @@ export const buildPanelGeometry = (
 
   return { ok: true, contour: tabResult.contour };
 };
-

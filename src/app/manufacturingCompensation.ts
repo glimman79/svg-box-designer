@@ -1,5 +1,6 @@
 import type { ClassifiedContour, FinalContour } from './contourClassification';
 import { classifyFinalContours } from './contourClassification';
+import { cloneManufacturingMetadata } from './manufacturingMetadata';
 import { buildContourSides, cornerTouchTolerance, getContourSignedArea, lineIntersection, offsetContourSide, pointsMatch, pointsToClosedPathD } from './sharedGeometry';
 import type { PanelContour } from './sharedGeometry';
 import type { Point } from '../svgUtils';
@@ -137,20 +138,21 @@ export const compensateClassifiedContours = (contours: ClassifiedContour[], kerf
   const compensationMm = getKerfCompensationMm(kerfMm);
 
   if (compensationMm <= cornerTouchTolerance) {
-    return contours.map((contour) => ({ ...contour, points: contour.points?.map((point) => ({ ...point })) }));
+    return contours.map((contour) => ({ ...contour, manufacturing: cloneManufacturingMetadata(contour.manufacturing), points: contour.points?.map((point) => ({ ...point })) }));
   }
 
   return contours.map((contour) => {
     const points = contour.points ?? (contour.pathD ? pathDToClosedContour(contour.pathD) ?? undefined : undefined);
 
     if (!points) {
-      return { ...contour };
+      return { ...contour, manufacturing: cloneManufacturingMetadata(contour.manufacturing) };
     }
 
     const compensatedPoints = compensateContourPoints(points, contour.kind, compensationMm);
 
     return {
       ...contour,
+      manufacturing: cloneManufacturingMetadata(contour.manufacturing),
       points: compensatedPoints,
       pathD: pointsToClosedPathD(compensatedPoints),
     };
@@ -164,14 +166,18 @@ export const applySlotClearance = (
   if (slotClearanceMm <= cornerTouchTolerance) {
     return finalContourList.map((contour) => ({
       ...contour,
+      manufacturing: cloneManufacturingMetadata(contour.manufacturing),
       ...(contour.points ? { points: contour.points.map((point) => ({ ...point })) } : {}),
     }));
   }
 
   return finalContourList.map((contour) => {
-    if (contour.finalSource !== 's-slot') {
+    const isSlotClearanceEligible = contour.manufacturing?.slotClearance ?? contour.finalSource === 's-slot';
+
+    if (!isSlotClearanceEligible) {
       return {
         ...contour,
+        manufacturing: cloneManufacturingMetadata(contour.manufacturing),
         ...(contour.points ? { points: contour.points.map((point) => ({ ...point })) } : {}),
       };
     }
@@ -179,13 +185,14 @@ export const applySlotClearance = (
     const points = contour.points ?? (contour.pathD ? pathDToClosedContour(contour.pathD) ?? undefined : undefined);
 
     if (!points) {
-      return { ...contour };
+      return { ...contour, manufacturing: cloneManufacturingMetadata(contour.manufacturing) };
     }
 
     const clearedPoints = compensateContourPoints(points, 'OUTER', slotClearanceMm);
 
     return {
       ...contour,
+      manufacturing: cloneManufacturingMetadata(contour.manufacturing),
       points: clearedPoints,
       pathD: pointsToClosedPathD(clearedPoints),
     };
