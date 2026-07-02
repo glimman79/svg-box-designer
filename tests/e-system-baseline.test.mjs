@@ -1333,3 +1333,15 @@ const undoRestoredTB = cloneTBHistoryState(tbHistoryState);
 assert.equal(JSON.stringify(undoRestoredTB.activeTBGroup), JSON.stringify(tbAppended), 'Undo restores activeTBGroup');
 const redoRestoredTB = cloneTBHistoryState(undoRestoredTB);
 assert.equal(JSON.stringify(redoRestoredTB.activeTBGroup), JSON.stringify(tbAppended), 'Redo restores activeTBGroup');
+
+const uiCleanupStylesSource = readFileSync(resolve(root, 'src/styles.css'), 'utf8');
+assert.match(appSource, /<h3>Panels \(\{svgModel\.panels\.length\}\)<\/h3>/, 'PM right panel renders a compact panel count list');
+assert.doesNotMatch(appSource, /Panel containment tree/, 'PM right panel no longer labels itself as a containment tree');
+assert.match(appSource, /activePanelId === panel\.panelId \? <path className="panel-manager-panel-highlight active"/, 'PM canvas only renders a panel highlight for the single active panel');
+assert.match(appSource, /activeTool !== 'TB' && activeTool !== 'S'/, 'canvas labels are hidden outside the active TB/S tool contexts');
+assert.match(appSource, /setActiveTool\('select'\);\n    setErrorMessage\(''\);\n  };\n\n  const startSGroup/, 'Finish TB clears selection state and returns to Select');
+assert.match(appSource, /setActiveTool\('select'\);\n    setErrorMessage\(''\);\n  };\n\n  const activeToolbarFinish/, 'Finish S clears selection state and returns to Select');
+assert.match(appSource, /selectConnectionForDisplayAndAssignment\(null\);\n      setSelectedEdgeId\(null\);\n      setActiveTool\('select'\);/, 'Finish W clears selection state and returns to Select');
+assert.match(uiCleanupStylesSource, /\.edge-label-text \{[\s\S]*font-size: 11px;/, 'shared canvas labels use compact fixed screen text');
+assert.match(uiCleanupStylesSource, /\.annotation-leader \{[\s\S]*vector-effect: non-scaling-stroke;/, 'shared label component supports leader lines');
+console.log('UI finish cleanup, PM list, single highlight, and compact label source tests passed');

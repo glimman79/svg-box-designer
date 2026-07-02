@@ -423,11 +423,11 @@ const minZoom = 0.1;
 const maxZoom = 20;
 const buttonZoomFactor = 1.25;
 const wheelZoomSensitivity = 0.0015;
-const labelFontSizePx = 13;
-const minLabelFontSizePx = 13;
-const labelPaddingXPx = 6;
-const labelPaddingYPx = 3;
-const labelEdgeOffsetPx = 6;
+const labelFontSizePx = 11;
+const minLabelFontSizePx = 10;
+const labelPaddingXPx = 4;
+const labelPaddingYPx = 2;
+const labelEdgeOffsetPx = 4;
 
 const parseViewBox = (viewBox: string): CanvasViewBox => {
   const [x, y, width, height] = viewBox.split(/[\s,]+/).map(Number);
@@ -603,16 +603,19 @@ const NumericField = ({ id, label, value, min, step = 0.1, disabled = false, pla
   </label>
 );
 
-const CanvasAnnotation = ({ label, x, y, width, height, scale, className = '' }: { label: string; x: number; y: number; width: number; height: number; scale: number; className?: string }) => (
-  <g className={`canvas-annotation edge-label${className ? ` ${className}` : ''}`} transform={`translate(${x} ${y}) scale(${scale})`}>
-    <rect className="edge-label-background" x={-width / 2} y={-height / 2} width={width} height={height} rx={5} />
-    <text className="edge-label-text" textAnchor="middle" dominantBaseline="middle">
-      {label.split('\n').map((displayLabel, index, allLabels) => (
-        <tspan key={`${displayLabel}-${index}`} x={0} dy={index === 0 ? `${-0.5 * (allLabels.length - 1)}em` : '1em'}>
-          {displayLabel}
-        </tspan>
-      ))}
-    </text>
+const CanvasAnnotation = ({ label, x, y, width, height, scale, className = '', leaderTo }: { label: string; x: number; y: number; width: number; height: number; scale: number; className?: string; leaderTo?: Point }) => (
+  <g className={`canvas-annotation edge-label${className ? ` ${className}` : ''}`}>
+    {leaderTo ? <line className="annotation-leader" x1={leaderTo.x} y1={leaderTo.y} x2={x} y2={y} /> : null}
+    <g transform={`translate(${x} ${y}) scale(${scale})`}>
+      <rect className="edge-label-background" x={-width / 2} y={-height / 2} width={width} height={height} rx={3} />
+      <text className="edge-label-text" textAnchor="middle" dominantBaseline="middle">
+        {label.split('\n').map((displayLabel, index, allLabels) => (
+          <tspan key={`${displayLabel}-${index}`} x={0} dy={index === 0 ? `${-0.5 * (allLabels.length - 1)}em` : '1em'}>
+            {displayLabel}
+          </tspan>
+        ))}
+      </text>
+    </g>
   </g>
 );
 
@@ -1057,8 +1060,10 @@ function App() {
       ...currentGroups.filter((group) => group.groupId !== finishedGroup.groupId),
       finishedGroup,
     ]);
-    setAssignmentTargetConnectionId(nextWorkflow.selectedLabelId);
-    setDisplayConnectionId(nextWorkflow.removedConnectionId === displayConnectionId ? null : displayConnectionId);
+    setAssignmentTargetConnectionId(null);
+    setDisplayConnectionId(null);
+    setSelectedEdgeId(null);
+    setActiveTool('select');
     setErrorMessage('');
   };
 
@@ -1149,7 +1154,9 @@ function App() {
       const nextWorkflow = finishWGroupWorkflow(connections, edgeAssignments, activeWGroup, svgModel);
       setConnections(nextWorkflow.connections);
       setEdgeAssignments(nextWorkflow.assignments as Record<string, EdgeAssignmentBucket>);
-      selectConnectionForDisplayAndAssignment(nextWorkflow.selectedLabelId);
+      selectConnectionForDisplayAndAssignment(null);
+      setSelectedEdgeId(null);
+      setActiveTool('select');
       setActiveWGroup(nextWorkflow.activeWGroup);
       setExpandedWGroups((currentGroups) => ({ ...currentGroups, [activeWGroup.groupId]: false }));
       setErrorMessage('');
@@ -1167,8 +1174,10 @@ function App() {
     const nextWorkflow = finishSGroupWithTrailingCleanup(activeSGroup, connections, edgeAssignments, assignmentTargetConnectionId);
     setConnections(nextWorkflow.connections);
     setActiveSGroup(nextWorkflow.activeSGroup);
-    setAssignmentTargetConnectionId(nextWorkflow.selectedLabelId);
-    setDisplayConnectionId(nextWorkflow.removedConnectionId === displayConnectionId ? null : displayConnectionId);
+    setAssignmentTargetConnectionId(null);
+    setDisplayConnectionId(null);
+    setSelectedEdgeId(null);
+    setActiveTool('select');
     setErrorMessage('');
   };
 
@@ -2192,13 +2201,26 @@ function App() {
   const labelScreenFontSize = Math.max(minLabelFontSizePx, labelFontSizePx);
   const labelScale = Math.max(canvasViewBox.width / Math.max(canvasViewportSize.width, 1), minZoom);
   const labelEdgeOffset = labelEdgeOffsetPx * labelScale;
-  const displayEdgeAssignments = useMemo(
-    () => buildActiveWDisplayAssignments(edgeAssignments, connections, activeWGroup),
-    [activeWGroup, connections, edgeAssignments],
-  );
+  const displayEdgeAssignments = useMemo(() => {
+    if (activeTool === 'W') {
+      return buildActiveWDisplayAssignments(edgeAssignments, connections, activeWGroup);
+    }
+
+    if (activeTool !== 'TB' && activeTool !== 'S') {
+      return {};
+    }
+
+    return Object.fromEntries(Object.entries(edgeAssignments).map(([edgeId, assignment]) => {
+      const bucket = toEdgeAssignmentBucket(assignment) ?? {};
+      return [edgeId, {
+        ...(activeTool === 'TB' && bucket.edgeAssignment ? { edgeAssignment: bucket.edgeAssignment } : {}),
+        ...(activeTool === 'S' && bucket.slotAssignments?.length ? { slotAssignments: bucket.slotAssignments } : {}),
+      }];
+    }).filter(([, assignment]) => Boolean((assignment as EdgeAssignmentBucket).edgeAssignment || (assignment as EdgeAssignmentBucket).slotAssignments?.length)));
+  }, [activeTool, activeWGroup, connections, edgeAssignments]);
   const tbCanvasLabelAliases = useMemo(() => buildTBCanvasLabelAliasMap(tbLabelGroups), [tbLabelGroups]);
   const labelPlacements = getEdgeLabelPlacements(svgModel.edges, displayEdgeAssignments, {
-    fontSizePx: labelFontSizePx,
+    fontSizePx: labelScreenFontSize,
     paddingXPx: labelPaddingXPx,
     paddingYPx: labelPaddingYPx,
     edgeOffsetPx: labelEdgeOffset,
@@ -2218,56 +2240,46 @@ function App() {
     [appliedSGeometry],
   );
 
-  const renderPanelTree = (nodes: PanelTreePanelNode[]) => (
-    <ul className="pm-tree">
-      {nodes.map((node) => (
-        <li key={node.id} className="pm-tree-item">
-          <div className={`pm-tree-row pm-tree-panel-row${activePanelId === node.id ? ' active' : ''}`}>
-            <span className="pm-tree-branch" aria-hidden="true">├─</span>
-            <button
-              type="button"
-              className="pm-tree-node-button"
-              onClick={() => {
-                setActivePanelId(node.id);
-                setActiveHoleId(null);
-              }}
-            >
-              <strong>{node.label}{node.parentPanelId ? '' : ' (Root)'}</strong>
-            </button>
-            <NumericField
-              id={`pm-tree-thickness-${node.id}`}
-              label="Thickness"
-              min={0}
-              step={0.01}
-              value={panelManager.panels[node.id]?.thicknessMm ?? 0}
-              onFocus={() => {
-                setActivePanelId(node.id);
-                setActiveHoleId(null);
-              }}
-              onChange={(thicknessMm) => updatePanelThickness(node.id, thicknessMm)}
-            />
-          </div>
-          <ul className="pm-tree pm-tree-contours">
-            <li className="pm-tree-item pm-tree-static"><span className="pm-tree-branch" aria-hidden="true">├─</span>Outer contour</li>
-            {node.holes.map((hole) => (
-              <li key={hole.id} className="pm-tree-item">
+  const renderPanelList = () => (
+    <div className="pm-panel-list" aria-label={`Panels (${svgModel.panels.length})`}>
+      <h3>Panels ({svgModel.panels.length})</h3>
+      {svgModel.panels.length > 0 ? (
+        <ul>
+          {svgModel.panels.map((panel) => {
+            const panelName = getPanelDisplayName(panel.id);
+            const parentName = panel.parentPanelId ? getPanelDisplayName(panel.parentPanelId) : null;
+            return (
+              <li key={panel.id} className={activePanelId === panel.id ? 'active' : ''}>
                 <button
                   type="button"
-                  className={`pm-tree-row pm-tree-hole-row${activeHoleId === hole.id ? ' active' : ''}`}
                   onClick={() => {
-                    setActivePanelId(null);
-                    setActiveHoleId(hole.id);
+                    setActivePanelId(panel.id);
+                    setActiveHoleId(null);
                   }}
                 >
-                  <span className="pm-tree-branch" aria-hidden="true">├─</span><span>{hole.label}</span>
+                  <span>
+                    <strong>{panelName}</strong>
+                    {parentName ? <small>{panelName} in {parentName}</small> : null}
+                  </span>
                 </button>
-                {hole.childPanels.length > 0 ? renderPanelTree(hole.childPanels) : null}
+                <NumericField
+                  id={`pm-panel-thickness-${panel.id}`}
+                  label="Thickness"
+                  min={0}
+                  step={0.01}
+                  value={panelManager.panels[panel.id]?.thicknessMm ?? 0}
+                  onFocus={() => {
+                    setActivePanelId(panel.id);
+                    setActiveHoleId(null);
+                  }}
+                  onChange={(thicknessMm) => updatePanelThickness(panel.id, thicknessMm)}
+                />
               </li>
-            ))}
-          </ul>
-        </li>
-      ))}
-    </ul>
+            );
+          })}
+        </ul>
+      ) : <p className="muted">No panels detected.</p>}
+    </div>
   );
 
   return (
@@ -2369,9 +2381,7 @@ function App() {
 
           {activeTool === 'PM' && (
             <div className="active-tool-card">
-              <h3>Panel containment tree</h3>
-              <p className="muted">Only panel rows have thickness inputs; hole rows are compact text entries.</p>
-              {panelContainmentTree.length > 0 ? renderPanelTree(panelContainmentTree) : <p className="muted">No panels detected.</p>}
+              {renderPanelList()}
               {panelManagerValidationMessage ? <p className="notice inline-notice">{panelManagerValidationMessage}</p> : null}
               <div className="pm-actions">
                 <button className="toolbar-button" type="button" onClick={acceptDefaultPanelThickness}>Accept default thickness</button>
@@ -2650,8 +2660,8 @@ function App() {
                   ))}
                   {panelDisplayItems.map((panel) => (
                     <g key={panel.panelId}>
-                      <path className={`panel-manager-panel-highlight${activePanelId === panel.panelId ? ' active' : ''}`} d={panel.pathD} />
-                      <CanvasAnnotation className="panel-manager-label" label={panel.name} x={panel.labelX} y={panel.labelY - (14 * labelScale)} width={30} height={20} scale={labelScale} />
+                      {activePanelId === panel.panelId ? <path className="panel-manager-panel-highlight active" d={panel.pathD} /> : null}
+                      <CanvasAnnotation className="panel-manager-label" label={panel.name} x={panel.labelX} y={panel.labelY - (12 * labelScale)} width={24} height={15} scale={labelScale} leaderTo={{ x: panel.labelX, y: panel.labelY }} />
                     </g>
                   ))}
                 </g>
