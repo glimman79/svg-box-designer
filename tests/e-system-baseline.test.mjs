@@ -900,6 +900,26 @@ const tbAliasPlacements = getEdgeLabelPlacements([
   formatDisplayLabel: (label) => ({ 'E1-A': 'TB1-A' })[label] ?? label,
 });
 assert.equal(tbAliasPlacements[0].label, 'TB1-A', 'canvas display alias maps E1-A to TB1-A without changing assignments');
+const tbSmallAnnotationPlacements = getEdgeLabelPlacements([
+  { id: 'tb-small-edge', source: 'tb-small-edge', start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, panelBounds: { minX: 0, maxX: 100, minY: 0, maxY: 8 } },
+], { 'tb-small-edge': { connectionId: 'E1', edgeRole: 'A' } }, {
+  fontSizePx: 10,
+  paddingXPx: 2,
+  paddingYPx: 1,
+  edgeOffsetPx: 6,
+  labelScale: 1,
+  formatDisplayLabel: (label) => ({ 'E1-A': 'TB1-A' })[label] ?? label,
+  constrainToPanelBounds: false,
+});
+assert.equal(tbSmallAnnotationPlacements[0].width, 38, 'TB labels use shared small 10 px annotation sizing with minimal horizontal padding');
+assert.equal(tbSmallAnnotationPlacements[0].height, 12, 'TB labels use shared small annotation vertical padding');
+assert.ok(tbSmallAnnotationPlacements[0].y > 6, 'TB labels are offset off the selected edge instead of covering it');
+assert.deepEqual(JSON.parse(JSON.stringify(tbSmallAnnotationPlacements[0].leaderTo)), { x: 50, y: 0 }, 'TB offset labels include a leader pointer to the selected edge midpoint');
+const pmSmallAnnotationStyle = { fontSizePx: 10, paddingXPx: 2, paddingYPx: 1, edgeOffsetPx: 6, labelScale: 1, constrainToPanelBounds: false };
+const pmStylePlacement = getEdgeLabelPlacements([
+  { id: 'pm-style-edge', source: 'pm-style-edge', start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, panelBounds: { minX: 0, maxX: 100, minY: 0, maxY: 8 } },
+], { 'pm-style-edge': { slotAssignments: [{ connectionId: 'S1', slotRole: 'A' }] } }, pmSmallAnnotationStyle);
+assert.equal(pmStylePlacement[0].height, 12, 'PM-style small annotation sizing remains available to workflow labels');
 console.log('S group workflow and stacked label display tests passed');
 
 let workflowConnections = {};
@@ -1342,6 +1362,6 @@ assert.match(appSource, /activeTool !== 'TB' && activeTool !== 'S'/, 'canvas lab
 assert.match(appSource, /setActiveTool\('select'\);\n    setErrorMessage\(''\);\n  };\n\n  const startSGroup/, 'Finish TB clears selection state and returns to Select');
 assert.match(appSource, /setActiveTool\('select'\);\n    setErrorMessage\(''\);\n  };\n\n  const activeToolbarFinish/, 'Finish S clears selection state and returns to Select');
 assert.match(appSource, /selectConnectionForDisplayAndAssignment\(null\);\n      setSelectedEdgeId\(null\);\n      setActiveTool\('select'\);/, 'Finish W clears selection state and returns to Select');
-assert.match(uiCleanupStylesSource, /\.edge-label-text \{[\s\S]*font-size: 11px;/, 'shared canvas labels use compact fixed screen text');
+assert.match(uiCleanupStylesSource, /\.edge-label-text \{[\s\S]*font-size: 10px;/, 'shared canvas labels use compact fixed screen text');
 assert.match(uiCleanupStylesSource, /\.annotation-leader \{[\s\S]*vector-effect: non-scaling-stroke;/, 'shared label component supports leader lines');
 console.log('UI finish cleanup, PM list, single highlight, and compact label source tests passed');

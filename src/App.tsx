@@ -423,11 +423,10 @@ const minZoom = 0.1;
 const maxZoom = 20;
 const buttonZoomFactor = 1.25;
 const wheelZoomSensitivity = 0.0015;
-const labelFontSizePx = 11;
-const minLabelFontSizePx = 10;
-const labelPaddingXPx = 4;
-const labelPaddingYPx = 2;
-const labelEdgeOffsetPx = 4;
+const annotationFontSizePx = 10;
+const annotationPaddingXPx = 2;
+const annotationPaddingYPx = 1;
+const annotationEdgeOffsetPx = 6;
 
 const parseViewBox = (viewBox: string): CanvasViewBox => {
   const [x, y, width, height] = viewBox.split(/[\s,]+/).map(Number);
@@ -2198,9 +2197,8 @@ function App() {
     return null;
   };
 
-  const labelScreenFontSize = Math.max(minLabelFontSizePx, labelFontSizePx);
   const labelScale = Math.max(canvasViewBox.width / Math.max(canvasViewportSize.width, 1), minZoom);
-  const labelEdgeOffset = labelEdgeOffsetPx * labelScale;
+  const labelEdgeOffset = annotationEdgeOffsetPx * labelScale;
   const displayEdgeAssignments = useMemo(() => {
     if (activeTool === 'W') {
       return buildActiveWDisplayAssignments(edgeAssignments, connections, activeWGroup);
@@ -2220,12 +2218,13 @@ function App() {
   }, [activeTool, activeWGroup, connections, edgeAssignments]);
   const tbCanvasLabelAliases = useMemo(() => buildTBCanvasLabelAliasMap(tbLabelGroups), [tbLabelGroups]);
   const labelPlacements = getEdgeLabelPlacements(svgModel.edges, displayEdgeAssignments, {
-    fontSizePx: labelScreenFontSize,
-    paddingXPx: labelPaddingXPx,
-    paddingYPx: labelPaddingYPx,
+    fontSizePx: annotationFontSizePx,
+    paddingXPx: annotationPaddingXPx,
+    paddingYPx: annotationPaddingYPx,
     edgeOffsetPx: labelEdgeOffset,
     labelScale,
     formatDisplayLabel: (label) => tbCanvasLabelAliases[label] ?? label,
+    constrainToPanelBounds: false,
   });
   const labelPlacementsByEdgeId = labelPlacements.reduce((placementsByEdgeId, placement) => {
     placementsByEdgeId.set(placement.edgeId, [...(placementsByEdgeId.get(placement.edgeId) ?? []), placement]);
@@ -2713,6 +2712,7 @@ function App() {
                           width={labelPlacement.width}
                           height={labelPlacement.height}
                           scale={labelScale}
+                          leaderTo={labelPlacement.leaderTo}
                         />
                       ))}
                     </g>

@@ -291,6 +291,7 @@ export type EdgeLabelPlacement = {
   y: number;
   width: number;
   height: number;
+  leaderTo?: Point;
 };
 
 type EdgeLabelPlacementOptions = {
@@ -300,6 +301,7 @@ type EdgeLabelPlacementOptions = {
   edgeOffsetPx: number;
   labelScale?: number;
   formatDisplayLabel?: (label: string) => string;
+  constrainToPanelBounds?: boolean;
 };
 
 const defaultCanvas = {
@@ -1486,15 +1488,17 @@ export const getEdgeLabelPlacements = (
     const paddingY = options.paddingYPx * labelScale;
     let x = center.x + direction.x * baseDistance;
     let y = center.y + direction.y * baseDistance;
-    let clampedCenter = clampLabelCenterToPanelBounds(
-      x,
-      y,
-      renderedWidth,
-      renderedHeight,
-      paddingX,
-      paddingY,
-      edge.panelBounds,
-    );
+    let clampedCenter = options.constrainToPanelBounds === false
+      ? { x, y }
+      : clampLabelCenterToPanelBounds(
+        x,
+        y,
+        renderedWidth,
+        renderedHeight,
+        paddingX,
+        paddingY,
+        edge.panelBounds,
+      );
     x = clampedCenter.x;
     y = clampedCenter.y;
     let renderedBox = { x, y, width: renderedWidth, height: renderedHeight };
@@ -1504,15 +1508,17 @@ export const getEdgeLabelPlacements = (
       stackIndex += 1;
       x = center.x + direction.x * (baseDistance + stackStep * stackIndex);
       y = center.y + direction.y * (baseDistance + stackStep * stackIndex);
-      clampedCenter = clampLabelCenterToPanelBounds(
-        x,
-        y,
-        renderedWidth,
-        renderedHeight,
-        paddingX,
-        paddingY,
-        edge.panelBounds,
-      );
+      clampedCenter = options.constrainToPanelBounds === false
+        ? { x, y }
+        : clampLabelCenterToPanelBounds(
+          x,
+          y,
+          renderedWidth,
+          renderedHeight,
+          paddingX,
+          paddingY,
+          edge.panelBounds,
+        );
       x = clampedCenter.x;
       y = clampedCenter.y;
       renderedBox = { x, y, width: renderedWidth, height: renderedHeight };
@@ -1520,7 +1526,7 @@ export const getEdgeLabelPlacements = (
 
     placedBoxes.push(renderedBox);
 
-    return [{ edgeId: edge.id, label, x, y, width, height }];
+    return [{ edgeId: edge.id, label, x, y, width, height, leaderTo: center }];
   });
 };
 
