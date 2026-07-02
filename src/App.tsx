@@ -11,7 +11,9 @@ import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishS
 import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
 import { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
 import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildAppliedEPanelPaths, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
+import { buildPanelContainmentTree, createPanelManagerStateFromModel, defaultPanelManagerState, validatePanelManagerState } from './app/panelManagerModel';
 import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
+import type { PanelManagerState, PanelTreeHoleNode, PanelTreePanelNode } from './app/panelManagerModel';
 import { createTabSegmentPlan, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
 import { getContourEdgePoints, validateClosedPanel } from './app/sharedPanelGeometry';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
@@ -23,6 +25,7 @@ export { exportFinalGeometrySvg, exportManufacturingGeometrySvg } from './app/ex
 export { getConnectionViewModel, getSConnectionViewModel, getTBConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge } from './app/connectionViewModel';
 export { buildFinalGeometry } from './app/finalGeometry';
 export { buildAppliedSGeometry, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
+export { buildPanelContainmentTree, createPanelManagerStateFromModel, defaultPanelManagerState, validatePanelManagerState } from './app/panelManagerModel';
 export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 export { appendAutoCreatedEToTBGroup, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getNextInternalELabel, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
@@ -32,6 +35,7 @@ export { applySlotClearance, buildKerfCompensatedPreviewFromFinalContours, clean
 export type { ClassifiedContour, ClassifiedContourSource, ContourKind } from './app/contourClassification';
 export { applyTabsToContour, buildAppliedEPanelPaths, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, getPanelThickness, getPanelThicknessForEdge, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
+export type { PanelManagerState } from './app/panelManagerModel';
 export type { ActiveSGroup, ActiveTBGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
 
 type LabelPrefix = 'E' | 'S' | 'W' | 'C' | 'P';
@@ -44,25 +48,6 @@ type LabelGroup = {
 };
 
 type ActiveTool = 'select' | 'PM' | 'TB' | 'W' | 'S' | 'J' | 'P' | 'manufacturing';
-
-export type PanelMetadata = {
-  panelId: string;
-  thicknessMm: number;
-};
-
-export type PanelManagerState = {
-  panels: Record<string, PanelMetadata>;
-  defaultThicknessMm: number;
-  isApplied: boolean;
-  isDirty: boolean;
-};
-
-export const defaultPanelManagerState: PanelManagerState = {
-  panels: {},
-  defaultThicknessMm: 3,
-  isApplied: false,
-  isDirty: false,
-};
 
 type ProjectSettings = {
   kerfMm: number;
@@ -223,6 +208,20 @@ const getNextWorkflowGroupOrderIndex = (workflowGroupOrder: Record<string, numbe
   return orderIndexes.length > 0 ? Math.max(...orderIndexes) + 1 : 0;
 };
 
+const getPanelDisplayName = (panelId: string): string => {
+  const panelNumber = panelId.match(/^panel-(\d+)$/)?.[1];
+  return panelNumber ? `P${panelNumber}` : panelId;
+};
+
+const getPanelPathD = (panel: SvgDocumentModel['panels'][number]): string => {
+  if (panel.contour.length > 0) {
+    return pointsToClosedPathD(panel.contour);
+  }
+
+  const { minX, maxX, minY, maxY } = panel.bounds;
+  return `M ${minX} ${minY} L ${maxX} ${minY} L ${maxX} ${maxY} L ${minX} ${maxY} Z`;
+};
+
 const cloneHistoryState = (state: HistoryState): HistoryState => ({
   projectSettings: structuredClone(state.projectSettings ?? defaultProjectSettings),
   lastAppliedManufacturingSettings: state.lastAppliedManufacturingSettings ? structuredClone(state.lastAppliedManufacturingSettings) : null,
@@ -241,38 +240,6 @@ const cloneHistoryState = (state: HistoryState): HistoryState => ({
   workflowGroupOrder: structuredClone(state.workflowGroupOrder ?? {}),
   panelManager: structuredClone(state.panelManager ?? defaultPanelManagerState),
 });
-
-export const createPanelManagerStateFromModel = (svgModel: SvgDocumentModel, defaultThicknessMm = 3): PanelManagerState => ({
-  panels: Object.fromEntries(svgModel.panels.map((panel) => [panel.id, { panelId: panel.id, thicknessMm: defaultThicknessMm }])),
-  defaultThicknessMm,
-  isApplied: false,
-  isDirty: false,
-});
-
-
-const getPanelDisplayName = (panelId: string): string => {
-  const panelNumber = panelId.match(/^panel-(\d+)$/)?.[1];
-  return panelNumber ? `P${panelNumber}` : panelId;
-};
-
-const getPanelPathD = (panel: SvgDocumentModel['panels'][number]): string => {
-  if (panel.contour.length > 0) {
-    return pointsToClosedPathD(panel.contour);
-  }
-
-  const { minX, maxX, minY, maxY } = panel.bounds;
-  return `M ${minX} ${minY} L ${maxX} ${minY} L ${maxX} ${maxY} L ${minX} ${maxY} Z`;
-};
-
-export const validatePanelManagerState = (panelManager: PanelManagerState): string | null => {
-  const panels = Object.values(panelManager.panels);
-  if (panels.length === 0) {
-    return 'No panels were detected. Import a file with closed panels before using workflow tools.';
-  }
-  return panels.every((panel) => Number.isFinite(panel.thicknessMm) && panel.thicknessMm > 0)
-    ? null
-    : 'Panel thickness must be a finite number greater than 0 mm.';
-};
 
 export const recomputeAppliedTBGeometryForPanelManager = (
   svgModel: SvgDocumentModel,
@@ -682,6 +649,7 @@ function App() {
   const [panelManager, setPanelManager] = useState<PanelManagerState>(() => ({ ...createPanelManagerStateFromModel(parseSvgDocument(starterSvg)), isApplied: true }));
   const [isPanelManagerModalOpen, setIsPanelManagerModalOpen] = useState(false);
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
+  const [activeHoleId, setActiveHoleId] = useState<string | null>(null);
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
@@ -851,6 +819,16 @@ function App() {
     centerX: (panel.bounds.minX + panel.bounds.maxX) / 2,
     centerY: (panel.bounds.minY + panel.bounds.maxY) / 2,
   })), [svgModel]);
+  const panelContainmentTree = useMemo(() => buildPanelContainmentTree(svgModel), [svgModel]);
+  const panelTreeHoleItems = useMemo(() => {
+    const collectHoles = (nodes: PanelTreePanelNode[]): PanelTreeHoleNode[] => nodes.flatMap((node) => [
+      ...node.holes,
+      ...node.holes.flatMap((hole) => collectHoles(hole.childPanels)),
+    ]);
+    return collectHoles(panelContainmentTree);
+  }, [panelContainmentTree]);
+  const panelManagerValidationMessage = validatePanelManagerState(panelManager);
+  const canApplyPanelManager = panelManager.isDirty && panelManagerValidationMessage === null;
   const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections, workflowGroupOrder.manufacturing, panelManager.isApplied), [connections, panelManager.isApplied, sLabelGroups, tbLabelGroups, wLabelGroups, workflowGroupOrder]);
   const activeWConnection = activeWGroup?.isActive ? connections[activeWGroup.connectionId] : undefined;
   const hasPendingManufacturingSettings = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
@@ -954,6 +932,8 @@ function App() {
     setAssignmentTargetConnectionId(null);
     setDisplayConnectionId(null);
     setSelectedEdgeId(null);
+    setActivePanelId(null);
+    setActiveHoleId(null);
     setAppliedEPanelPaths([]);
     setAppliedSGeometry([]);
     setActiveSGroup(null);
@@ -1476,10 +1456,12 @@ function App() {
 
   const updatePanelThickness = (panelId: string, thicknessMm: number) => {
     setActivePanelId(panelId);
+    setActiveHoleId(null);
     setPanelManager((current) => {
       const currentThickness = current.panels[panelId]?.thicknessMm;
       return {
         ...current,
+        isApplied: currentThickness === thicknessMm ? current.isApplied : false,
         isDirty: currentThickness === thicknessMm ? current.isDirty : true,
         panels: {
           ...current.panels,
@@ -2172,6 +2154,58 @@ function App() {
     [appliedSGeometry],
   );
 
+  const renderPanelTree = (nodes: PanelTreePanelNode[]) => (
+    <ul className="pm-tree">
+      {nodes.map((node) => (
+        <li key={node.id} className="pm-tree-item">
+          <button
+            type="button"
+            className={`pm-tree-row pm-tree-panel-row${activePanelId === node.id ? ' active' : ''}`}
+            onClick={() => {
+              setActivePanelId(node.id);
+              setActiveHoleId(null);
+            }}
+          >
+            <strong>{node.label}</strong>
+            <span>{node.innerContourCount} inner {node.innerContourCount === 1 ? 'contour' : 'contours'}</span>
+            <span>{node.parentPanelId ? `Parent ${getPanelDisplayName(node.parentPanelId)}` : 'Root panel'}</span>
+          </button>
+          <NumericField
+            id={`pm-tree-thickness-${node.id}`}
+            label={`${node.label} thickness (mm)`}
+            min={0.01}
+            step={0.01}
+            value={panelManager.panels[node.id]?.thicknessMm ?? 0}
+            onFocus={() => {
+              setActivePanelId(node.id);
+              setActiveHoleId(null);
+            }}
+            onChange={(thicknessMm) => updatePanelThickness(node.id, thicknessMm)}
+          />
+          {node.holes.length > 0 && (
+            <ul className="pm-tree">
+              <li className="pm-tree-item pm-tree-static">Outer contour</li>
+              {node.holes.map((hole) => (
+                <li key={hole.id} className="pm-tree-item">
+                  <button
+                    type="button"
+                    className={`pm-tree-row pm-tree-hole-row${activeHoleId === hole.id ? ' active' : ''}`}
+                    onClick={() => {
+                      setActivePanelId(null);
+                      setActiveHoleId(hole.id);
+                    }}
+                  >
+                    <span>{hole.label}</span>
+                  </button>
+                  {hole.childPanels.length > 0 ? renderPanelTree(hole.childPanels) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
 
   return (
     <main className="app-shell">
@@ -2224,7 +2258,12 @@ function App() {
           <div className="clear-dialog panel-manager-modal" role="dialog" aria-modal="true" aria-labelledby="panel-manager-title">
             <h2 id="panel-manager-title">Panel Manager</h2>
             <div className="panel-manager-modal-content">
+              <h3>Import summary</h3>
+              <p>Panel count: {svgModel.panels.length}</p>
+              <p>Hole count: {svgModel.panels.reduce((total, panel) => total + panel.innerContours.length, 0)}</p>
               {formatImportDiagnosticMessage(svgModel).split('\n').map((line) => <p key={line}>{line}</p>)}
+              <h3>Containment tree preview</h3>
+              {panelContainmentTree.length > 0 ? renderPanelTree(panelContainmentTree) : <p>No panels detected.</p>}
               <p>Please assign panel thickness before continuing.</p>
             </div>
             <div className="clear-dialog-actions">
@@ -2269,14 +2308,12 @@ function App() {
 
           {activeTool === 'PM' && (
             <div className="active-tool-card">
-              <h3>Panel thickness</h3>
-              <p className="muted">PM is the owner of panel thickness. Downstream TB/S/W tools still use their existing thickness fields in this PR.</p>
-              <div className="property-grid">
-                {Object.values(panelManager.panels).map((panel) => (
-                  <NumericField key={panel.panelId} id={`pm-panel-${panel.panelId}`} label={`${getPanelDisplayName(panel.panelId)} Thickness`} min={0.01} step={0.01} value={panel.thicknessMm} onFocus={() => setActivePanelId(panel.panelId)} onChange={(thicknessMm) => updatePanelThickness(panel.panelId, thicknessMm)} />
-                ))}
-              </div>
-              <button className="toolbar-button primary" type="button" onClick={applyPanelManager} disabled={!panelManager.isDirty}>Apply</button>
+              <h3>Panel containment tree</h3>
+              <p className="muted">Only real panels have thickness inputs. Holes are listed as inner contours and never receive P labels or thickness inputs.</p>
+              <p>Panels: {svgModel.panels.length}</p>
+              {panelContainmentTree.length > 0 ? renderPanelTree(panelContainmentTree) : <p className="muted">No panels detected.</p>}
+              {panelManagerValidationMessage ? <p className="notice inline-notice">{panelManagerValidationMessage}</p> : null}
+              <button className="toolbar-button primary" type="button" onClick={applyPanelManager} disabled={!canApplyPanelManager}>Apply</button>
             </div>
           )}
 
@@ -2544,6 +2581,9 @@ function App() {
               </g>
               {isPanelManagerVisible && (
                 <g className="panel-manager-overlays" aria-hidden="true">
+                  {panelTreeHoleItems.map((hole) => (
+                    <path key={hole.id} className={`panel-manager-hole-highlight${activeHoleId === hole.id ? ' active' : ''}`} d={hole.pathD} />
+                  ))}
                   {panelDisplayItems.map((panel) => (
                     <g key={panel.panelId}>
                       <path className={`panel-manager-panel-highlight${activePanelId === panel.panelId ? ' active' : ''}`} d={panel.pathD} />
