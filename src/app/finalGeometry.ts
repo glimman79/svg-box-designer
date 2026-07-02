@@ -1,4 +1,5 @@
 import type { AppliedEPanelPath, AppliedSGeometry } from './connectionTypes';
+import { cloneManufacturingMetadata, generatedManufacturingMetadata, importedManufacturingMetadata } from './manufacturingMetadata';
 import { pointsToClosedPathD } from './sharedGeometry';
 import type { ContourDiagnostic, FinalContour, FinalContourSource } from './contourClassification';
 import { cornerTouchTolerance, getContourSignedArea } from './sharedGeometry';
@@ -64,9 +65,9 @@ export const buildFinalGeometry = (
   appliedEPanelPaths: AppliedEPanelPath[],
   appliedSGeometry: AppliedSGeometry[],
 ): FinalGeometry => {
-  const replacementByPanelId = new Map<string, { pathD: string; finalSource: FinalContourSource }>();
-  appliedEPanelPaths.forEach((path) => replacementByPanelId.set(path.panelId, { pathD: path.pathD, finalSource: 'applied-panel' }));
-  appliedSGeometry.flatMap((geometry) => geometry.panelPaths).forEach((path) => replacementByPanelId.set(path.panelId, { pathD: path.pathD, finalSource: 'applied-panel' }));
+  const replacementByPanelId = new Map<string, { pathD: string; finalSource: FinalContourSource; manufacturing: FinalContour['manufacturing'] }>();
+  appliedEPanelPaths.forEach((path) => replacementByPanelId.set(path.panelId, { pathD: path.pathD, finalSource: 'applied-panel', manufacturing: cloneManufacturingMetadata(path.manufacturing) ?? generatedManufacturingMetadata(false) }));
+  appliedSGeometry.flatMap((geometry) => geometry.panelPaths).forEach((path) => replacementByPanelId.set(path.panelId, { pathD: path.pathD, finalSource: 'applied-panel', manufacturing: cloneManufacturingMetadata(path.manufacturing) ?? generatedManufacturingMetadata(false) }));
 
   const contours: FinalGeometryContour[] = svgModel.panels.flatMap((panel) => {
     const replacement = replacementByPanelId.get(panel.id);
@@ -81,6 +82,7 @@ export const buildFinalGeometry = (
       ownerPanelId: panel.id,
       pathD,
       points: replacement ? pathDToClosedContourForFinalGeometry(pathD) ?? undefined : clonePoints(outerPanelContour),
+      manufacturing: cloneManufacturingMetadata(replacement?.manufacturing) ?? importedManufacturingMetadata(),
     };
 
     const innerContours = (panel.innerContours ?? []).map((innerContour, index): FinalGeometryContour => ({
@@ -92,6 +94,7 @@ export const buildFinalGeometry = (
       ownerPanelId: panel.id,
       pathD: pointsToClosedPathD(innerContour),
       points: clonePoints(innerContour),
+      manufacturing: importedManufacturingMetadata(),
     }));
 
     return [outerContour, ...innerContours];
@@ -106,6 +109,7 @@ export const buildFinalGeometry = (
       ownerPanelId: slotPath.sourceBEdgeId,
       pathD: slotPath.pathD,
       points: pathDToClosedContourForFinalGeometry(slotPath.pathD) ?? undefined,
+      manufacturing: cloneManufacturingMetadata(slotPath.manufacturing) ?? generatedManufacturingMetadata(true),
     });
   });
 

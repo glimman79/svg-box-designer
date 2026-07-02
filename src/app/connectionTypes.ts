@@ -1,3 +1,4 @@
+import type { ManufacturingMetadata } from './manufacturingMetadata';
 import type { EdgeRole, SlotRole, SourceBounds } from '../svgUtils';
 
 export type EdgeConnectionProperties = {
@@ -131,6 +132,7 @@ export type AppliedEPanelPath = {
   erasePathD: string;
   pathD: string;
   edgeIds: string[];
+  manufacturing?: ManufacturingMetadata;
 };
 
 export type AppliedSPanelPath = {
@@ -140,6 +142,7 @@ export type AppliedSPanelPath = {
   erasePathD: string;
   pathD: string;
   edgeIds: string[];
+  manufacturing?: ManufacturingMetadata;
 };
 
 export type AppliedSSlotPath = {
@@ -150,6 +153,7 @@ export type AppliedSSlotPath = {
   startDistance: number;
   endDistance: number;
   widthMm: number;
+  manufacturing?: ManufacturingMetadata;
 };
 
 export type AppliedSGeometry = {
