@@ -1411,15 +1411,15 @@ button:disabled {
 }
 
 .panel-manager-panel-highlight {
-  fill: transparent;
-  stroke: transparent;
+  fill: rgba(37, 99, 235, 0.07);
+  stroke: #2563eb;
   stroke-width: 1.5;
   vector-effect: non-scaling-stroke;
 }
 
 .panel-manager-panel-highlight.active {
-  fill: rgba(37, 99, 235, 0.12);
-  stroke: #2563eb;
+  fill: rgba(37, 99, 235, 0.14);
+  stroke: #60a5fa;
   stroke-dasharray: 5 3;
 }
 
@@ -1437,8 +1437,10 @@ button:disabled {
 }
 
 .panel-manager-label .edge-label-background {
-  fill: #eff6ff;
+  fill: rgba(239, 246, 255, 0.92);
   stroke: #2563eb;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
 }
 
 .panel-manager-label .edge-label-text {
@@ -1447,9 +1449,10 @@ button:disabled {
 
 .pm-tree {
   display: grid;
-  gap: 3px;
-  margin: 4px 0 0;
+  gap: 1px;
+  margin: 2px 0 0;
   padding-left: 14px;
+  list-style: none;
 }
 
 .pm-tree:first-child {
@@ -1458,28 +1461,33 @@ button:disabled {
 
 .pm-tree-item {
   display: grid;
-  gap: 3px;
+  gap: 1px;
+  min-width: 0;
 }
 
 .pm-tree-static {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  min-height: 22px;
   color: #9ca3af;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   line-height: 1.1;
   padding: 1px 0;
 }
 
 .pm-tree-row {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
   width: 100%;
-  min-height: 0;
-  padding: 3px 5px;
+  min-height: 22px;
+  padding: 1px 0;
   color: #e5e7eb;
   text-align: left;
-  background: #111827;
-  border: 1px solid #374151;
-  border-radius: 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
   cursor: pointer;
 }
 
@@ -1490,7 +1498,7 @@ button:disabled {
 .pm-tree-node-button {
   display: inline-flex;
   flex: 1 1 auto;
-  gap: 6px;
+  gap: 4px;
   align-items: center;
   min-width: 0;
   padding: 0;
@@ -1501,40 +1509,53 @@ button:disabled {
   cursor: pointer;
 }
 
+.pm-tree-branch {
+  flex: 0 0 auto;
+  color: #6b7280;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+}
+
 .pm-tree-row span {
   color: #9ca3af;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
+}
+
+.pm-tree-row strong {
+  font-size: 0.78rem;
 }
 
 .pm-tree-row .property-field {
-  grid-template-columns: auto 64px;
-  gap: 5px;
+  grid-template-columns: auto 58px;
+  gap: 4px;
   align-items: center;
   margin: 0;
 }
 
 .pm-tree-row .property-field span {
-  font-size: 0.64rem;
+  font-size: 0.62rem;
 }
 
 .pm-tree-row .property-field input {
-  min-height: 24px;
-  padding: 2px 5px;
-  font-size: 0.75rem;
+  min-height: 22px;
+  padding: 1px 4px;
+  font-size: 0.72rem;
 }
 
 .pm-tree-contours {
-  margin-top: 2px;
+  margin-top: 0;
 }
 
 .pm-tree-row.active {
-  border-color: #60a5fa;
-  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.35);
+  color: #bfdbfe;
+  background: rgba(37, 99, 235, 0.12);
+  outline: 1px solid rgba(96, 165, 250, 0.45);
 }
 
 .pm-tree-hole-row.active {
-  border-color: #f59e0b;
-  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35);
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.12);
+  outline-color: rgba(245, 158, 11, 0.45);
 }
 
 .inline-notice {

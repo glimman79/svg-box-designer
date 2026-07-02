@@ -652,6 +652,7 @@ function App() {
   const panStateRef = useRef<PanState | null>(null);
   const suppressEdgeClickRef = useRef(false);
   const [canvasViewBox, setCanvasViewBox] = useState<CanvasViewBox>(() => parseViewBox(svgModel.viewBox));
+  const [canvasViewportSize, setCanvasViewportSize] = useState({ width: 1, height: 1 });
   const [undoStack, setUndoStack] = useState<HistoryState[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryState[]>([]);
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
@@ -673,6 +674,31 @@ function App() {
     setDisplayConnectionId(connectionId);
   };
   const selectedEdge = svgModel.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
+
+  useLayoutEffect(() => {
+    const updateCanvasViewportSize = () => {
+      const svgElement = svgRef.current;
+      const fallbackViewBox = parseViewBox(svgModel.viewBox);
+      const nextSize = getCanvasViewportSize(fallbackViewBox);
+      setCanvasViewportSize((currentSize) => (
+        Math.abs(currentSize.width - nextSize.width) < 0.5 && Math.abs(currentSize.height - nextSize.height) < 0.5
+          ? currentSize
+          : nextSize
+      ));
+    };
+
+    updateCanvasViewportSize();
+    const svgElement = svgRef.current;
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateCanvasViewportSize);
+    if (canvasFrameRef.current) resizeObserver?.observe(canvasFrameRef.current);
+    if (svgElement) resizeObserver?.observe(svgElement);
+    window.addEventListener('resize', updateCanvasViewportSize);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateCanvasViewportSize);
+    };
+  }, [svgModel.viewBox]);
 
   useEffect(() => {
     setConnections((currentConnections) => {
@@ -829,8 +855,8 @@ function App() {
     panelId: panel.id,
     name: getPanelDisplayName(panel.id),
     pathD: getPanelPathD(panel),
-    centerX: (panel.bounds.minX + panel.bounds.maxX) / 2,
-    centerY: (panel.bounds.minY + panel.bounds.maxY) / 2,
+    labelX: (panel.bounds.minX + panel.bounds.maxX) / 2,
+    labelY: panel.bounds.minY,
   })), [svgModel]);
   const panelContainmentTree = useMemo(() => buildPanelContainmentTree(svgModel), [svgModel]);
   const panelTreeHoleItems = useMemo(() => {
@@ -2163,11 +2189,9 @@ function App() {
     return null;
   };
 
-  const baseViewBox = parseViewBox(svgModel.viewBox);
-  const labelZoom = Math.max(minZoom, baseViewBox.width / canvasViewBox.width);
   const labelScreenFontSize = Math.max(minLabelFontSizePx, labelFontSizePx);
-  const labelScale = labelScreenFontSize / labelZoom / labelFontSizePx;
-  const labelEdgeOffset = labelEdgeOffsetPx / labelZoom;
+  const labelScale = Math.max(canvasViewBox.width / Math.max(canvasViewportSize.width, 1), minZoom);
+  const labelEdgeOffset = labelEdgeOffsetPx * labelScale;
   const displayEdgeAssignments = useMemo(
     () => buildActiveWDisplayAssignments(edgeAssignments, connections, activeWGroup),
     [activeWGroup, connections, edgeAssignments],
@@ -2199,6 +2223,7 @@ function App() {
       {nodes.map((node) => (
         <li key={node.id} className="pm-tree-item">
           <div className={`pm-tree-row pm-tree-panel-row${activePanelId === node.id ? ' active' : ''}`}>
+            <span className="pm-tree-branch" aria-hidden="true">├─</span>
             <button
               type="button"
               className="pm-tree-node-button"
@@ -2207,8 +2232,7 @@ function App() {
                 setActiveHoleId(null);
               }}
             >
-              <strong>{node.label}</strong>
-              <span>{node.parentPanelId ? `Child of ${getPanelDisplayName(node.parentPanelId)}` : 'Root'}</span>
+              <strong>{node.label}{node.parentPanelId ? '' : ' (Root)'}</strong>
             </button>
             <NumericField
               id={`pm-tree-thickness-${node.id}`}
@@ -2224,7 +2248,7 @@ function App() {
             />
           </div>
           <ul className="pm-tree pm-tree-contours">
-            <li className="pm-tree-item pm-tree-static">Outer contour</li>
+            <li className="pm-tree-item pm-tree-static"><span className="pm-tree-branch" aria-hidden="true">├─</span>Outer contour</li>
             {node.holes.map((hole) => (
               <li key={hole.id} className="pm-tree-item">
                 <button
@@ -2235,7 +2259,7 @@ function App() {
                     setActiveHoleId(hole.id);
                   }}
                 >
-                  <span>{hole.label}</span>
+                  <span className="pm-tree-branch" aria-hidden="true">├─</span><span>{hole.label}</span>
                 </button>
                 {hole.childPanels.length > 0 ? renderPanelTree(hole.childPanels) : null}
               </li>
@@ -2301,9 +2325,7 @@ function App() {
               <p>Panel count: {svgModel.panels.length}</p>
               <p>Hole count: {svgModel.panels.reduce((total, panel) => total + panel.innerContours.length, 0)}</p>
               {formatImportDiagnosticMessage(svgModel).split('\n').map((line) => <p key={line}>{line}</p>)}
-              <h3>Containment tree preview</h3>
-              {panelContainmentTree.length > 0 ? renderPanelTree(panelContainmentTree) : <p>No panels detected.</p>}
-              <p>Please assign panel thickness before continuing, or accept the project default thickness.</p>
+              <p>Please assign panel thickness in the PM tool before continuing, or accept the project default thickness.</p>
             </div>
             <div className="clear-dialog-actions">
               <button className="toolbar-button primary" type="button" onClick={() => { setIsPanelManagerModalOpen(false); setActiveTool('PM'); }}>OK</button>
@@ -2348,8 +2370,7 @@ function App() {
           {activeTool === 'PM' && (
             <div className="active-tool-card">
               <h3>Panel containment tree</h3>
-              <p className="muted">Only real panels have thickness inputs. Holes are listed as inner contours and never receive P labels or thickness inputs.</p>
-              <p>Panels: {svgModel.panels.length}</p>
+              <p className="muted">Only panel rows have thickness inputs; hole rows are compact text entries.</p>
               {panelContainmentTree.length > 0 ? renderPanelTree(panelContainmentTree) : <p className="muted">No panels detected.</p>}
               {panelManagerValidationMessage ? <p className="notice inline-notice">{panelManagerValidationMessage}</p> : null}
               <div className="pm-actions">
@@ -2630,7 +2651,7 @@ function App() {
                   {panelDisplayItems.map((panel) => (
                     <g key={panel.panelId}>
                       <path className={`panel-manager-panel-highlight${activePanelId === panel.panelId ? ' active' : ''}`} d={panel.pathD} />
-                      <CanvasAnnotation className="panel-manager-label" label={panel.name} x={panel.centerX} y={panel.centerY} width={30} height={20} scale={labelScale} />
+                      <CanvasAnnotation className="panel-manager-label" label={panel.name} x={panel.labelX} y={panel.labelY - (14 * labelScale)} width={30} height={20} scale={labelScale} />
                     </g>
                   ))}
                 </g>
