@@ -423,10 +423,10 @@ const minZoom = 0.1;
 const maxZoom = 20;
 const buttonZoomFactor = 1.25;
 const wheelZoomSensitivity = 0.0015;
-const annotationFontSizePx = 10;
+const annotationFontSizePx = 9;
 const annotationPaddingXPx = 2;
 const annotationPaddingYPx = 1;
-const annotationEdgeOffsetPx = 6;
+const annotationEdgeOffsetPx = 7;
 
 const parseViewBox = (viewBox: string): CanvasViewBox => {
   const [x, y, width, height] = viewBox.split(/[\s,]+/).map(Number);

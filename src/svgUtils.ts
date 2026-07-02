@@ -310,10 +310,10 @@ const defaultCanvas = {
   height: 600,
 };
 
-const exportedLabelFontSize = 18;
-const exportedLabelPaddingX = 7;
-const exportedLabelPaddingY = 4;
-const exportedLabelEdgeOffset = 10;
+const exportedLabelFontSize = 9;
+const exportedLabelPaddingX = 3;
+const exportedLabelPaddingY = 2;
+const exportedLabelEdgeOffset = 8;
 
 const svgNumber = (value: string | null, fallback = 0) => {
   if (!value) {
@@ -1403,19 +1403,19 @@ const getEdgeLabelPlacementDirection = (edge: SvgEdge): Point => {
   const side = getPanelEdgeSide(edge, edge.panelBounds);
 
   if (side === 'top') {
-    return { x: 0, y: 1 };
-  }
-
-  if (side === 'bottom') {
     return { x: 0, y: -1 };
   }
 
+  if (side === 'bottom') {
+    return { x: 0, y: 1 };
+  }
+
   if (side === 'left') {
-    return { x: 1, y: 0 };
+    return { x: -1, y: 0 };
   }
 
   if (side === 'right') {
-    return { x: -1, y: 0 };
+    return { x: 1, y: 0 };
   }
 
   const tolerance = 0.1;
@@ -1423,10 +1423,10 @@ const getEdgeLabelPlacementDirection = (edge: SvgEdge): Point => {
   const isVertical = Math.abs(edge.end.x - edge.start.x) <= tolerance;
 
   if (isHorizontal || !isVertical) {
-    return { x: 0, y: 1 };
+    return { x: 0, y: -1 };
   }
 
-  return { x: 1, y: 0 };
+  return { x: -1, y: 0 };
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
@@ -1457,6 +1457,19 @@ const clampLabelCenterToPanelBounds = (
   };
 };
 
+const createLabelBox = (
+  center: Point,
+  width: number,
+  height: number,
+) => ({ x: center.x, y: center.y, width, height });
+
+const getTangentialDirection = (edge: SvgEdge): Point => {
+  const dx = edge.end.x - edge.start.x;
+  const dy = edge.end.y - edge.start.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return { x: dx / length, y: dy / length };
+};
+
 export const getEdgeLabelPlacements = (
   edges: SvgEdge[],
   edgeAssignments: EdgeAssignmentRecord,
@@ -1475,58 +1488,59 @@ export const getEdgeLabelPlacements = (
 
     const label = labels.join('\n');
     const maxLabelLength = Math.max(...labels.map((displayLabel) => displayLabel.length));
-    const width = maxLabelLength * options.fontSizePx * 0.68 + options.paddingXPx * 2;
+    const width = maxLabelLength * options.fontSizePx * 0.62 + options.paddingXPx * 2;
     const height = labels.length * options.fontSizePx + options.paddingYPx * 2;
     const renderedWidth = width * labelScale;
     const renderedHeight = height * labelScale;
+    const center = midpoint(edge);
     const direction = getEdgeLabelPlacementDirection(edge);
+    const tangent = getTangentialDirection(edge);
     const halfSizeAlongDirection = Math.abs(direction.x) > 0 ? renderedWidth / 2 : renderedHeight / 2;
     const baseDistance = options.edgeOffsetPx + halfSizeAlongDirection;
-    const center = midpoint(edge);
-    const stackStep = (Math.abs(direction.x) > 0 ? renderedWidth : renderedHeight) + 4 * labelScale;
+    const normalStep = Math.max(renderedWidth, renderedHeight) + 4 * labelScale;
+    const tangentStep = 6 * labelScale;
     const paddingX = options.paddingXPx * labelScale;
     const paddingY = options.paddingYPx * labelScale;
-    let x = center.x + direction.x * baseDistance;
-    let y = center.y + direction.y * baseDistance;
-    let clampedCenter = options.constrainToPanelBounds === false
-      ? { x, y }
-      : clampLabelCenterToPanelBounds(
-        x,
-        y,
-        renderedWidth,
-        renderedHeight,
-        paddingX,
-        paddingY,
-        edge.panelBounds,
-      );
-    x = clampedCenter.x;
-    y = clampedCenter.y;
-    let renderedBox = { x, y, width: renderedWidth, height: renderedHeight };
-    let stackIndex = 0;
 
-    while (placedBoxes.some((box) => labelBoxesOverlap(renderedBox, box)) && stackIndex < 12) {
-      stackIndex += 1;
-      x = center.x + direction.x * (baseDistance + stackStep * stackIndex);
-      y = center.y + direction.y * (baseDistance + stackStep * stackIndex);
-      clampedCenter = options.constrainToPanelBounds === false
-        ? { x, y }
-        : clampLabelCenterToPanelBounds(
-          x,
-          y,
+    const buildCandidate = (normalMultiplier: number, normalIndex: number, tangentIndex: number) => {
+      const candidate = {
+        x: center.x + direction.x * normalMultiplier * (baseDistance + normalStep * normalIndex) + tangent.x * tangentStep * tangentIndex,
+        y: center.y + direction.y * normalMultiplier * (baseDistance + normalStep * normalIndex) + tangent.y * tangentStep * tangentIndex,
+      };
+
+      return options.constrainToPanelBounds === true
+        ? clampLabelCenterToPanelBounds(
+          candidate.x,
+          candidate.y,
           renderedWidth,
           renderedHeight,
           paddingX,
           paddingY,
           edge.panelBounds,
-        );
-      x = clampedCenter.x;
-      y = clampedCenter.y;
-      renderedBox = { x, y, width: renderedWidth, height: renderedHeight };
+        )
+        : candidate;
+    };
+
+    const candidates: Point[] = [];
+
+    for (let normalIndex = 0; normalIndex < 12; normalIndex += 1) {
+      candidates.push(buildCandidate(1, normalIndex, 0));
     }
 
+    for (let normalIndex = 0; normalIndex < 8; normalIndex += 1) {
+      candidates.push(buildCandidate(1, normalIndex, normalIndex % 2 === 0 ? 1 : -1));
+    }
+
+    for (let normalIndex = 0; normalIndex < 8; normalIndex += 1) {
+      candidates.push(buildCandidate(-1, normalIndex, 0));
+      candidates.push(buildCandidate(-1, normalIndex, normalIndex % 2 === 0 ? 1 : -1));
+    }
+
+    const placement = candidates.find((candidate) => !placedBoxes.some((box) => labelBoxesOverlap(createLabelBox(candidate, renderedWidth, renderedHeight), box))) ?? candidates[0];
+    const renderedBox = createLabelBox(placement, renderedWidth, renderedHeight);
     placedBoxes.push(renderedBox);
 
-    return [{ edgeId: edge.id, label, x, y, width, height, leaderTo: center }];
+    return [{ edgeId: edge.id, label, x: placement.x, y: placement.y, width, height, leaderTo: center }];
   });
 };
 

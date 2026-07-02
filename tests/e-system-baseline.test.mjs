@@ -911,15 +911,49 @@ const tbSmallAnnotationPlacements = getEdgeLabelPlacements([
   formatDisplayLabel: (label) => ({ 'E1-A': 'TB1-A' })[label] ?? label,
   constrainToPanelBounds: false,
 });
-assert.equal(tbSmallAnnotationPlacements[0].width, 38, 'TB labels use shared small 10 px annotation sizing with minimal horizontal padding');
+assert.equal(tbSmallAnnotationPlacements[0].width, 35, 'TB labels use compact annotation sizing with minimal horizontal padding');
 assert.equal(tbSmallAnnotationPlacements[0].height, 12, 'TB labels use shared small annotation vertical padding');
-assert.ok(tbSmallAnnotationPlacements[0].y > 6, 'TB labels are offset off the selected edge instead of covering it');
+assert.ok(tbSmallAnnotationPlacements[0].y < -6, 'TB labels are offset outside the selected edge instead of covering it');
 assert.deepEqual(JSON.parse(JSON.stringify(tbSmallAnnotationPlacements[0].leaderTo)), { x: 50, y: 0 }, 'TB offset labels include a leader pointer to the selected edge midpoint');
-const pmSmallAnnotationStyle = { fontSizePx: 10, paddingXPx: 2, paddingYPx: 1, edgeOffsetPx: 6, labelScale: 1, constrainToPanelBounds: false };
+assert.equal(tbSmallAnnotationPlacements[0].label, 'TB1-A', 'TB label identity mapping remains correct after callout placement');
+const adjacentTbPlacements = getEdgeLabelPlacements([
+  { id: 'tb-adjacent-a', source: 'tb-adjacent-a', start: { x: 0, y: 0 }, end: { x: 12, y: 0 }, panelBounds: { minX: 0, maxX: 24, minY: 0, maxY: 8 } },
+  { id: 'tb-adjacent-b', source: 'tb-adjacent-b', start: { x: 12, y: 0 }, end: { x: 24, y: 0 }, panelBounds: { minX: 0, maxX: 24, minY: 0, maxY: 8 } },
+], {
+  'tb-adjacent-a': { connectionId: 'E1', edgeRole: 'A' },
+  'tb-adjacent-b': { connectionId: 'E2', edgeRole: 'A' },
+}, {
+  fontSizePx: 9,
+  paddingXPx: 2,
+  paddingYPx: 1,
+  edgeOffsetPx: 7,
+  labelScale: 1,
+  formatDisplayLabel: (label) => ({ 'E1-A': 'TB1-A', 'E2-A': 'TB2-A' })[label] ?? label,
+  constrainToPanelBounds: false,
+});
+const adjacentOverlap = Math.abs(adjacentTbPlacements[0].x - adjacentTbPlacements[1].x) < (adjacentTbPlacements[0].width + adjacentTbPlacements[1].width) / 2 + 2
+  && Math.abs(adjacentTbPlacements[0].y - adjacentTbPlacements[1].y) < (adjacentTbPlacements[0].height + adjacentTbPlacements[1].height) / 2 + 2;
+assert.equal(adjacentOverlap, false, 'adjacent TB callout labels avoid overlap');
+assert.ok(adjacentTbPlacements.every((placement) => placement.leaderTo && placement.y < -7), 'adjacent TB labels stay outside small edges with leaders');
+const verySmallTbPlacement = getEdgeLabelPlacements([
+  { id: 'tb-tiny-edge', source: 'tb-tiny-edge', start: { x: 0, y: 0 }, end: { x: 4, y: 0 }, panelBounds: { minX: 0, maxX: 4, minY: 0, maxY: 4 } },
+], { 'tb-tiny-edge': { connectionId: 'E2', edgeRole: 'A' } }, {
+  fontSizePx: 9,
+  paddingXPx: 2,
+  paddingYPx: 1,
+  edgeOffsetPx: 7,
+  labelScale: 1,
+  formatDisplayLabel: (label) => ({ 'E2-A': 'TB2-A' })[label] ?? label,
+  constrainToPanelBounds: false,
+});
+assert.equal(verySmallTbPlacement[0].label, 'TB2-A', 'TB2-A identity remains TB2-A on very small edges');
+assert.ok(verySmallTbPlacement[0].y < -7, 'very small edge labels are placed outside the feature instead of inside it');
+assert.deepEqual(JSON.parse(JSON.stringify(verySmallTbPlacement[0].leaderTo)), { x: 2, y: 0 }, 'very small edge labels draw a leader to the edge midpoint');
+const pmSmallAnnotationStyle = { fontSizePx: 9, paddingXPx: 2, paddingYPx: 1, edgeOffsetPx: 7, labelScale: 1, constrainToPanelBounds: false };
 const pmStylePlacement = getEdgeLabelPlacements([
   { id: 'pm-style-edge', source: 'pm-style-edge', start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, panelBounds: { minX: 0, maxX: 100, minY: 0, maxY: 8 } },
 ], { 'pm-style-edge': { slotAssignments: [{ connectionId: 'S1', slotRole: 'A' }] } }, pmSmallAnnotationStyle);
-assert.equal(pmStylePlacement[0].height, 12, 'PM-style small annotation sizing remains available to workflow labels');
+assert.equal(pmStylePlacement[0].height, 11, 'PM-style small annotation sizing remains available to workflow labels');
 console.log('S group workflow and stacked label display tests passed');
 
 let workflowConnections = {};
@@ -1376,6 +1410,6 @@ assert.match(appSource, /activeTool !== 'TB' && activeTool !== 'S'/, 'canvas lab
 assert.match(appSource, /setActiveTool\('select'\);\n    setErrorMessage\(''\);\n  };\n\n  const startSGroup/, 'Finish TB clears selection state and returns to Select');
 assert.match(appSource, /setActiveTool\('select'\);\n    setErrorMessage\(''\);\n  };\n\n  const activeToolbarFinish/, 'Finish S clears selection state and returns to Select');
 assert.match(appSource, /selectConnectionForDisplayAndAssignment\(null\);\n      setSelectedEdgeId\(null\);\n      setActiveTool\('select'\);/, 'Finish W clears selection state and returns to Select');
-assert.match(uiCleanupStylesSource, /\.edge-label-text \{[\s\S]*font-size: 10px;/, 'shared canvas labels use compact fixed screen text');
+assert.match(uiCleanupStylesSource, /\.edge-label-text \{[\s\S]*font-size: 9px;/, 'shared canvas labels use compact fixed screen text');
 assert.match(uiCleanupStylesSource, /\.annotation-leader \{[\s\S]*vector-effect: non-scaling-stroke;/, 'shared label component supports leader lines');
 console.log('UI finish cleanup, PM list, single highlight, and compact label source tests passed');
