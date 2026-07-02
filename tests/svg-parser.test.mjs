@@ -125,6 +125,7 @@ const { classifyImportedPanelContours } = loadSrcModule('src/app/contourClassifi
 const { buildFinalGeometry } = loadSrcModule('src/app/finalGeometry.ts');
 const { buildKerfCompensatedPreviewFromFinalContours } = loadSrcModule('src/app/manufacturingCompensation.ts');
 const { exportFinalGeometrySvg, exportManufacturingGeometrySvg } = loadSrcModule('src/app/exportFinalGeometrySvg.ts');
+const { createPanelManagerStateFromModel, validatePanelManagerState, buildPanelContainmentTree } = loadSrcModule('src/app/panelManagerModel.ts');
 const round = (value) => Number(value.toFixed(6));
 const points = (model) => model.edges.map((edge) => [round(edge.start.x), round(edge.start.y), round(edge.end.x), round(edge.end.y)]);
 
@@ -330,6 +331,18 @@ const singleRectangleContours = classifyImportedPanelContours(plain);
 assert.equal(singleRectangleContours.length, 1, 'single rectangle has one classified contour');
 assert.equal(singleRectangleContours[0].kind, 'OUTER', 'single rectangle is classified OUTER');
 assert.equal(singleRectangleContours[0].depth, 0, 'single rectangle has depth 0');
+
+const pmNestedPanels = parseSvgDocument('<svg viewBox="0 0 120 120"><rect x="0" y="0" width="100" height="100"/><rect x="10" y="10" width="80" height="80"/><rect x="30" y="30" width="30" height="30"/></svg>');
+const pmState = createPanelManagerStateFromModel(pmNestedPanels);
+assert.equal(Object.values(pmState.panels).every((panel) => panel.thicknessMm === 0), true, 'PM import default thickness starts at 0 for every real panel');
+assert.equal(validatePanelManagerState(pmState), 'Set thickness for all panels before applying Panel Manager.', 'PM validation blocks zero thickness panels');
+const validPmState = { ...pmState, panels: Object.fromEntries(Object.values(pmState.panels).map((panel) => [panel.panelId, { ...panel, thicknessMm: 3 }])) };
+assert.equal(validatePanelManagerState(validPmState), null, 'PM validation passes when every real panel has thickness > 0');
+const pmTree = buildPanelContainmentTree(pmNestedPanels);
+assert.equal(pmTree.length, 1, 'PM tree has one root panel for nested island fixture');
+assert.equal(pmTree[0].holes.length, 1, 'PM tree lists the owning panel hole');
+assert.equal(pmTree[0].holes[0].childPanels.length, 1, 'PM tree nests real child panel under the owning hole');
+assert.equal(pmTree[0].holes[0].childPanels[0].holes.length, 0, 'PM tree does not turn holes into panel thickness nodes');
 
 const nestedRectangles = parseSvgDocument('<svg viewBox="0 0 100 100"><rect x="0" y="0" width="90" height="90"/><rect x="10" y="10" width="20" height="20"/></svg>');
 const nestedClassifications = classifyImportedPanelContours(nestedRectangles);
