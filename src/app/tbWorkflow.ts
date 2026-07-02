@@ -128,9 +128,16 @@ export const getTBGroupActionNumber = (
   return activeGroupIndex >= 0 ? activeGroupIndex + 1 : tbGroups.length;
 };
 
-export const buildTBCanvasLabelAliasMap = (tbGroups: { labels: string[] }[]) => Object.fromEntries(
-  tbGroups.flatMap((group, groupIndex) => group.labels.flatMap((connectionId) => [
-    [`${connectionId}-A`, `TB${groupIndex + 1}-A`],
-    [`${connectionId}-B`, `TB${groupIndex + 1}-B`],
-  ])),
+export const buildTBDisplayLabelAliasMap = (tbGroups: { labels: string[] }[]) => Object.fromEntries(
+  tbGroups.flatMap((group) => group.labels).flatMap((connectionId, connectionIndex) => {
+    const displayConnectionId = `TB${connectionIndex + 1}`;
+
+    return [
+      [connectionId, displayConnectionId],
+      [`${connectionId}-A`, `${displayConnectionId}-A`],
+      [`${connectionId}-B`, `${displayConnectionId}-B`],
+    ];
+  }),
 );
+
+export const buildTBCanvasLabelAliasMap = buildTBDisplayLabelAliasMap;
