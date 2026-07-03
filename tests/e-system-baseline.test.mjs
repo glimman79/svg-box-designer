@@ -856,7 +856,20 @@ assert.ok(sharedBucketEGeometry[0].pathD.length > 0, 'shared edge bucket preserv
 assert.equal(sharedBucketSGeometry.length, 1, 'S2 geometry remains present when S2-B shares an edge with E3-B');
 assert.ok(sharedBucketSGeometry[0].slotPaths.length > 0, 'shared edge bucket preserves S-B slot geometry');
 assert.equal(sharedBucketSGeometry[0].edgeIds[1], 'receiver-top', 'S2-B remains assigned to the shared physical edge');
-console.log('E + S-B shared edge bucket tests passed');
+assert.equal(
+  JSON.stringify(svgUtilsModule.exports.getEdgeAssignmentDisplayLabels({
+    edgeAssignment: { connectionId: 'E2', edgeRole: 'B' },
+    slotAssignments: [{ connectionId: 'S1', slotRole: 'A' }],
+  })),
+  JSON.stringify(['E2-B', 'S1-A']),
+  'one physical edge can display TB and S workflow labels at the same time',
+);
+assert.equal(
+  resolveAssignedTBOrSConnectionIdForEdge({ 'multi-tool-edge': { edgeAssignment: { connectionId: 'E2', edgeRole: 'B' }, slotAssignments: [{ connectionId: 'S1', slotRole: 'A' }] } }, 'multi-tool-edge', 'S'),
+  'S1',
+  'S selection resolves the S assignment on a TB-shared edge instead of treating TB as exclusive ownership',
+);
+console.log('E + S shared edge bucket tests passed');
 
 const {
   startSGroupWorkflow,
