@@ -54,6 +54,7 @@ type ActiveTool = 'select' | 'PM' | 'TB' | 'W' | 'S' | 'J' | 'P' | 'manufacturin
 
 type ProjectSettings = {
   kerfMm: number;
+  clearanceMm: number;
   slotClearanceMm: number;
 };
 
@@ -196,6 +197,7 @@ export const getToolClickGroupStartKind = (
 
 const defaultProjectSettings: ProjectSettings = {
   kerfMm: 0.15,
+  clearanceMm: 0,
   slotClearanceMm: 0,
 };
 
@@ -203,7 +205,7 @@ const maxHistoryEntries = 10;
 
 export const haveProjectSettingsChanged = (currentSettings: ProjectSettings, appliedSettings: ProjectSettings | null): boolean => {
   const baseline = appliedSettings ?? defaultProjectSettings;
-  return currentSettings.kerfMm !== baseline.kerfMm || currentSettings.slotClearanceMm !== baseline.slotClearanceMm;
+  return currentSettings.kerfMm !== baseline.kerfMm || (currentSettings.clearanceMm ?? defaultProjectSettings.clearanceMm) !== (baseline.clearanceMm ?? defaultProjectSettings.clearanceMm) || currentSettings.slotClearanceMm !== baseline.slotClearanceMm;
 };
 
 const getNextWorkflowGroupOrderIndex = (workflowGroupOrder: Record<string, number>) => {
@@ -226,7 +228,7 @@ const getPanelPathD = (panel: SvgDocumentModel['panels'][number]): string => {
 };
 
 const cloneHistoryState = (state: HistoryState): HistoryState => ({
-  projectSettings: structuredClone(state.projectSettings ?? defaultProjectSettings),
+  projectSettings: { ...defaultProjectSettings, ...(structuredClone(state.projectSettings ?? defaultProjectSettings)) },
   lastAppliedManufacturingSettings: state.lastAppliedManufacturingSettings ? structuredClone(state.lastAppliedManufacturingSettings) : null,
   edgeAssignments: structuredClone(state.edgeAssignments),
   connections: structuredClone(state.connections),
@@ -923,7 +925,7 @@ function App() {
 
   const restoreHistoryState = (state: HistoryState) => {
     const snapshot = cloneHistoryState(state);
-    setProjectSettings(snapshot.projectSettings);
+    setProjectSettings({ ...defaultProjectSettings, ...snapshot.projectSettings });
     setLastAppliedManufacturingSettings(snapshot.lastAppliedManufacturingSettings);
     setEdgeAssignments(Object.fromEntries(Object.entries(snapshot.edgeAssignments).map(([edgeId, assignment]) => [edgeId, toEdgeAssignmentBucket(assignment) ?? {}])));
     setConnections(snapshot.connections);
@@ -1197,7 +1199,7 @@ function App() {
     const assignedConnectionId = resolveAssignedTBOrSConnectionIdForEdge(edgeAssignments, edgeId, activeTool === 'S' ? 'S' : activeTool === 'TB' ? 'TB' : undefined);
     setSelectedEdgeId(edgeId);
 
-    if (assignedConnectionId && connections[assignedConnectionId]?.prefix !== 'W') {
+    if (assignedConnectionId && assignedConnectionId === assignmentConnectionId && connections[assignedConnectionId]?.prefix !== 'W') {
       setDisplayConnectionId(assignedConnectionId);
       setErrorMessage('');
       return;
@@ -1281,13 +1283,8 @@ function App() {
         return;
       }
     } else if (connection.prefix === 'S') {
-      if (nextAssignment.slotRole === 'A' && (currentBucket.edgeAssignment || (currentBucket.slotAssignments?.length ?? 0) > 0)) {
-        setErrorMessage('S-A cannot share an edge with another assignment.');
-        return;
-      }
-
-      if (nextAssignment.slotRole === 'B' && (currentBucket.slotAssignments?.length ?? 0) > 0) {
-        setErrorMessage('This edge already has an S assignment.');
+      if (currentBucket.slotAssignments?.some((slotAssignment) => slotAssignment.connectionId === assignmentConnectionId)) {
+        setErrorMessage('This edge already has this S assignment.');
         return;
       }
     }
@@ -2135,13 +2132,7 @@ function App() {
       return {};
     }
 
-    return Object.fromEntries(Object.entries(edgeAssignments).map(([edgeId, assignment]) => {
-      const bucket = toEdgeAssignmentBucket(assignment) ?? {};
-      return [edgeId, {
-        ...(activeTool === 'TB' && bucket.edgeAssignment ? { edgeAssignment: bucket.edgeAssignment } : {}),
-        ...(activeTool === 'S' && bucket.slotAssignments?.length ? { slotAssignments: bucket.slotAssignments } : {}),
-      }];
-    }).filter(([, assignment]) => Boolean((assignment as EdgeAssignmentBucket).edgeAssignment || (assignment as EdgeAssignmentBucket).slotAssignments?.length)));
+    return edgeAssignments;
   }, [activeTool, activeWGroup, connections, edgeAssignments]);
   const tbCanvasLabelAliases = tbDisplayLabelAliases;
   const labelPlacements = getEdgeLabelPlacements(svgModel.edges, displayEdgeAssignments, {
@@ -2349,6 +2340,7 @@ function App() {
               <h3>Manufacturing settings</h3>
               <div className="property-grid">
                 <NumericField id="manufacturing-kerf" label="Kerf" min={0} value={projectSettings.kerfMm} onChange={(kerfMm) => updateProjectSettings({ kerfMm })} />
+                <NumericField id="manufacturing-clearance" label="Clearance" min={0} value={projectSettings.clearanceMm} onChange={(clearanceMm) => updateProjectSettings({ clearanceMm })} />
                 <NumericField id="manufacturing-slot-clearance" label="Slot clearance" min={0} value={projectSettings.slotClearanceMm} onChange={(slotClearanceMm) => updateProjectSettings({ slotClearanceMm })} />
               </div>
               <p className="muted">Kerf applies globally to the whole generated output.</p>
