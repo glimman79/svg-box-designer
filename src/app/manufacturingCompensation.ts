@@ -1,6 +1,6 @@
 import type { ClassifiedContour, FinalContour } from './contourClassification';
 import { classifyFinalContours } from './contourClassification';
-import { cloneManufacturingMetadata } from './manufacturingMetadata';
+import { cloneManufacturingMetadata, getManufacturingPipelineForGeometryType } from './manufacturingMetadata';
 import { buildContourSides, cornerTouchTolerance, getContourSignedArea, lineIntersection, offsetContourSide, pointsMatch, pointsToClosedPathD } from './sharedGeometry';
 import type { PanelContour } from './sharedGeometry';
 import type { Point } from '../svgUtils';
@@ -172,7 +172,7 @@ export const applySlotClearance = (
   }
 
   return finalContourList.map((contour) => {
-    const isSlotClearanceEligible = contour.manufacturing?.slotClearance ?? contour.finalSource === 's-slot';
+    const isSlotClearanceEligible = getManufacturingPipelineForGeometryType(contour.geometryType).slotClearance;
 
     if (!isSlotClearanceEligible) {
       return {

@@ -32,7 +32,9 @@ export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWRefe
 // classifyAppliedContours is intentionally re-exported only as a compatibility/test helper.
 export { buildFinalContourList, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours } from './app/contourClassification';
 export { applySlotClearance, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour } from './app/manufacturingCompensation';
+export { getManufacturingPipelineForGeometryType } from './app/manufacturingMetadata';
 export type { ClassifiedContour, ClassifiedContourSource, ContourKind } from './app/contourClassification';
+export type { FinalGeometryType } from './app/finalGeometryTypes';
 export type { ManufacturingMetadata } from './app/manufacturingMetadata';
 export { applyTabsToContour, buildAppliedEPanelPaths, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, getPanelThickness, getPanelThicknessForEdge, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
