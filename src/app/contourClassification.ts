@@ -2,6 +2,7 @@ import type { AppliedEPanelPath, AppliedSGeometry } from './connectionTypes';
 import { buildFinalGeometry } from './finalGeometry';
 import { cloneManufacturingMetadata, generatedManufacturingMetadata, importedManufacturingMetadata } from './manufacturingMetadata';
 import type { ManufacturingMetadata } from './manufacturingMetadata';
+import type { FinalGeometryType } from './finalGeometryTypes';
 import { cornerTouchTolerance, getContourSignedArea, pointsToClosedPathD } from './sharedGeometry';
 import type { Point, SvgDocumentModel } from '../svgUtils';
 
@@ -21,6 +22,8 @@ export type ClassifiedContour = {
   points?: Point[];
   depth?: number;
   finalSource?: FinalContourSource;
+  geometryType: FinalGeometryType;
+  /** @deprecated Compatibility-only hints derived from geometryType. */
   manufacturing?: ManufacturingMetadata;
   diagnostics?: string[];
 };
@@ -121,12 +124,13 @@ export const buildFinalContourList = (
   appliedSGeometry: AppliedSGeometry[],
 ): FinalContourListResult => buildFinalGeometry(svgModel, appliedEPanelPaths, appliedSGeometry);
 
-type ContourClassificationInput = Omit<ClassifiedContour, 'kind'> & Partial<Pick<ClassifiedContour, 'kind'>>;
+type ContourClassificationInput = Omit<ClassifiedContour, 'kind' | 'geometryType'> & Partial<Pick<ClassifiedContour, 'kind' | 'geometryType'>>;
 
 export const classifyContoursByContainment = (contours: ContourClassificationInput[]): ClassifiedContour[] => {
   const contoursWithPoints = contours.map((contour) => ({
     ...contour,
     source: 'final-contour' as const,
+    geometryType: contour.geometryType ?? 'UNKNOWN',
     manufacturing: cloneManufacturingMetadata(contour.manufacturing),
     points: contour.points ? clonePoints(contour.points) : (contour.pathD ? pathDToClosedContourForClassification(contour.pathD) ?? undefined : undefined),
   }));
@@ -155,7 +159,7 @@ export const classifyImportedPanelContours = (svgModel: SvgDocumentModel): Class
       ownerPanelId: panel.id,
       pathD: pointsToClosedPathD(panel.outerContour ?? panel.contour),
       points: clonePoints(panel.outerContour ?? panel.contour),
-      manufacturing: importedManufacturingMetadata(),
+      geometryType: 'IMPORTED_OUTER' as const, manufacturing: importedManufacturingMetadata(),
     },
     ...(panel.innerContours ?? []).map((innerContour, index) => ({
       id: `final-panel-hole:${panel.id}:${index}`,
@@ -166,7 +170,7 @@ export const classifyImportedPanelContours = (svgModel: SvgDocumentModel): Class
       ownerPanelId: panel.id,
       pathD: pointsToClosedPathD(innerContour),
       points: clonePoints(innerContour),
-      manufacturing: importedManufacturingMetadata(),
+      geometryType: 'IMPORTED_HOLE' as const, manufacturing: importedManufacturingMetadata(),
     })),
   ]),
 );
@@ -181,9 +185,9 @@ export const classifyAppliedContours = (
   appliedEPanelPaths: AppliedEPanelPath[],
   appliedSGeometry: AppliedSGeometry[],
 ): ClassifiedContour[] => classifyContoursByContainment([
-  ...appliedEPanelPaths.map((path): FinalContour => ({ id: `final-applied-panel:${path.panelId}`, source: 'final-contour', finalSource: 'applied-panel', kind: 'OUTER', panelId: path.panelId, ownerPanelId: path.panelId, pathD: path.pathD, points: pathDToClosedContourForClassification(path.pathD) ?? undefined, manufacturing: cloneManufacturingMetadata(path.manufacturing) ?? generatedManufacturingMetadata(false) })),
+  ...appliedEPanelPaths.map((path): FinalContour => ({ id: `final-applied-panel:${path.panelId}`, source: 'final-contour', finalSource: 'applied-panel', kind: 'OUTER', panelId: path.panelId, ownerPanelId: path.panelId, pathD: path.pathD, points: pathDToClosedContourForClassification(path.pathD) ?? undefined, geometryType: 'GENERATED_OUTER', manufacturing: cloneManufacturingMetadata(path.manufacturing) ?? generatedManufacturingMetadata(false) })),
   ...appliedSGeometry.flatMap((geometry) => [
-    ...geometry.panelPaths.map((path): FinalContour => ({ id: `final-applied-s-panel:${geometry.connectionId}:${path.panelId}`, source: 'final-contour', finalSource: 'applied-panel', kind: 'OUTER', panelId: path.panelId, ownerPanelId: path.panelId, pathD: path.pathD, points: pathDToClosedContourForClassification(path.pathD) ?? undefined, manufacturing: cloneManufacturingMetadata(path.manufacturing) ?? generatedManufacturingMetadata(false) })),
-    ...geometry.slotPaths.map((path, index): FinalContour => ({ id: `final-s-slot:${geometry.connectionId}:${index}`, source: 'final-contour', finalSource: 's-slot', kind: 'INNER', ownerPanelId: path.sourceBEdgeId, pathD: path.pathD, points: pathDToClosedContourForClassification(path.pathD) ?? undefined, manufacturing: cloneManufacturingMetadata(path.manufacturing) ?? generatedManufacturingMetadata(true) })),
+    ...geometry.panelPaths.map((path): FinalContour => ({ id: `final-applied-s-panel:${geometry.connectionId}:${path.panelId}`, source: 'final-contour', finalSource: 'applied-panel', kind: 'OUTER', panelId: path.panelId, ownerPanelId: path.panelId, pathD: path.pathD, points: pathDToClosedContourForClassification(path.pathD) ?? undefined, geometryType: 'GENERATED_OUTER', manufacturing: cloneManufacturingMetadata(path.manufacturing) ?? generatedManufacturingMetadata(false) })),
+    ...geometry.slotPaths.map((path, index): FinalContour => ({ id: `final-s-slot:${geometry.connectionId}:${index}`, source: 'final-contour', finalSource: 's-slot', kind: 'INNER', ownerPanelId: path.sourceBEdgeId, pathD: path.pathD, points: pathDToClosedContourForClassification(path.pathD) ?? undefined, geometryType: 'GENERATED_SLOT', manufacturing: cloneManufacturingMetadata(path.manufacturing) ?? generatedManufacturingMetadata(true) })),
   ]),
 ]);
