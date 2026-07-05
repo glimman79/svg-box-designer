@@ -159,84 +159,27 @@ export const compensateClassifiedContours = (contours: ClassifiedContour[], kerf
   });
 };
 
-const cloneFinalContourForManufacturing = (contour: FinalContour): FinalContour => ({
-  ...contour,
-  manufacturing: cloneManufacturingMetadata(contour.manufacturing),
-  ...(contour.points ? { points: contour.points.map((point) => ({ ...point })) } : {}),
-  ...(contour.clearanceSegments ? { clearanceSegments: [...contour.clearanceSegments] } : {}),
-});
-
-const compensateSelectedContourSegments = (
-  points: PanelContour,
-  selectedSegments: boolean[],
-  compensationMm: number,
-): PanelContour => {
-  if (compensationMm <= cornerTouchTolerance || selectedSegments.every((selected) => !selected)) {
-    return cloneContourPoints(points);
-  }
-
-  const windingSign = getContourSignedArea(points) >= 0 ? 1 : -1;
-  const signedOffset = -windingSign * compensationMm;
-
-  return buildContourSides(points).flatMap((side, sideIndex) => {
-    if (!selectedSegments[sideIndex]) {
-      return [{ ...side.start }, { ...side.end }];
-    }
-
-    const offsetSide = offsetContourSide(side, signedOffset);
-    return offsetSide ? [{ ...offsetSide.start }, { ...offsetSide.end }] : [{ ...side.start }, { ...side.end }];
-  }).filter((point, index, contour) => index === 0 || !pointsMatch(point, contour[index - 1]));
-};
-
-export const applyClearance = (
-  finalContourList: FinalContour[],
-  clearanceMm: number,
-): FinalContour[] => {
-  if (clearanceMm <= cornerTouchTolerance) {
-    return finalContourList.map(cloneFinalContourForManufacturing);
-  }
-
-  return finalContourList.map((contour) => {
-    const isClearanceEligible = getManufacturingPipelineForGeometryType(contour.geometryType).clearance;
-
-    if (!isClearanceEligible) {
-      return cloneFinalContourForManufacturing(contour);
-    }
-
-    const points = contour.points ?? (contour.pathD ? pathDToClosedContour(contour.pathD) ?? undefined : undefined);
-
-    if (!points) {
-      return { ...contour, manufacturing: cloneManufacturingMetadata(contour.manufacturing) };
-    }
-
-    const segmentMask = contour.clearanceSegments;
-    const clearedPoints = segmentMask && segmentMask.length === points.length
-      ? compensateSelectedContourSegments(points, segmentMask, clearanceMm)
-      : compensateContourPoints(points, 'OUTER', clearanceMm);
-
-    return {
-      ...contour,
-      manufacturing: cloneManufacturingMetadata(contour.manufacturing),
-      ...(segmentMask ? { clearanceSegments: [...segmentMask] } : {}),
-      points: clearedPoints,
-      pathD: pointsToClosedPathD(clearedPoints),
-    };
-  });
-};
-
 export const applySlotClearance = (
   finalContourList: FinalContour[],
   slotClearanceMm: number,
 ): FinalContour[] => {
   if (slotClearanceMm <= cornerTouchTolerance) {
-    return finalContourList.map(cloneFinalContourForManufacturing);
+    return finalContourList.map((contour) => ({
+      ...contour,
+      manufacturing: cloneManufacturingMetadata(contour.manufacturing),
+      ...(contour.points ? { points: contour.points.map((point) => ({ ...point })) } : {}),
+    }));
   }
 
   return finalContourList.map((contour) => {
     const isSlotClearanceEligible = getManufacturingPipelineForGeometryType(contour.geometryType).slotClearance;
 
     if (!isSlotClearanceEligible) {
-      return cloneFinalContourForManufacturing(contour);
+      return {
+        ...contour,
+        manufacturing: cloneManufacturingMetadata(contour.manufacturing),
+        ...(contour.points ? { points: contour.points.map((point) => ({ ...point })) } : {}),
+      };
     }
 
     const points = contour.points ?? (contour.pathD ? pathDToClosedContour(contour.pathD) ?? undefined : undefined);
@@ -260,10 +203,8 @@ export const buildKerfCompensatedPreviewFromFinalContours = (
   finalContourList: FinalContour[],
   kerfMm: number,
   slotClearanceMm = 0,
-  clearanceMm = 0,
 ): ManufacturingGeometry => {
-  const clearanceFinalContourList = applyClearance(finalContourList, clearanceMm);
-  const clearedFinalContourList = applySlotClearance(clearanceFinalContourList, slotClearanceMm);
+  const clearedFinalContourList = applySlotClearance(finalContourList, slotClearanceMm);
   const contours = compensateClassifiedContours(classifyFinalContours(clearedFinalContourList), kerfMm);
 
   return {

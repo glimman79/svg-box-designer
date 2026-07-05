@@ -15,26 +15,6 @@ export type FinalGeometry = {
 
 const clonePoints = (points: Point[]) => points.map((point) => ({ ...point }));
 
-const pointOnSegment = (point: Point, start: Point, end: Point) => {
-  const cross = ((point.y - start.y) * (end.x - start.x)) - ((point.x - start.x) * (end.y - start.y));
-  if (Math.abs(cross) > cornerTouchTolerance) return false;
-  const dot = ((point.x - start.x) * (end.x - start.x)) + ((point.y - start.y) * (end.y - start.y));
-  if (dot < -cornerTouchTolerance) return false;
-  const lengthSquared = ((end.x - start.x) ** 2) + ((end.y - start.y) ** 2);
-  return dot <= lengthSquared + cornerTouchTolerance;
-};
-
-const isSegmentOnOriginalContour = (start: Point, end: Point, originalContour: Point[]) => (
-  originalContour.some((originalStart, index) => {
-    const originalEnd = originalContour[(index + 1) % originalContour.length];
-    return pointOnSegment(start, originalStart, originalEnd) && pointOnSegment(end, originalStart, originalEnd);
-  })
-);
-
-const buildToolCreatedSegmentMask = (points: Point[] | undefined, originalContour: Point[]) => (
-  points?.map((point, index) => !isSegmentOnOriginalContour(point, points[(index + 1) % points.length], originalContour))
-);
-
 
 const pathDToClosedContourForFinalGeometry = (pathD: string): Point[] | null => {
   const tokens = pathD.match(/[a-zA-Z]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
@@ -106,9 +86,6 @@ export const buildFinalGeometry = (
       geometryType: replacement?.geometryType ?? 'IMPORTED_OUTER',
       manufacturing: manufacturingMetadataForGeometryType(replacement?.geometryType ?? 'IMPORTED_OUTER'),
     };
-    outerContour.clearanceSegments = replacement
-      ? buildToolCreatedSegmentMask(outerContour.points, outerPanelContour)
-      : outerPanelContour.map(() => false);
 
     const innerContours = (panel.innerContours ?? []).map((innerContour, index): FinalGeometryContour => ({
       id: `final-panel-hole:${panel.id}:${index}`,
