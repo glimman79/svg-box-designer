@@ -31,7 +31,7 @@ export { appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, buildTBCanvas
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
 // classifyAppliedContours is intentionally re-exported only as a compatibility/test helper.
 export { buildFinalContourList, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours } from './app/contourClassification';
-export { applySlotClearance, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour } from './app/manufacturingCompensation';
+export { applyClearanceStage, applySlotClearance, applySlotClearanceStage, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour, processManufacturingGeometry } from './app/manufacturingCompensation';
 export { getManufacturingPipelineForGeometryType } from './app/manufacturingMetadata';
 export type { ClassifiedContour, ClassifiedContourSource, ContourKind } from './app/contourClassification';
 export type { FinalGeometryType } from './app/finalGeometryTypes';

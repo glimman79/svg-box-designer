@@ -159,6 +159,10 @@ export const compensateClassifiedContours = (contours: ClassifiedContour[], kerf
   });
 };
 
+export const applyClearanceStage = (
+  finalContourList: FinalContour[],
+): FinalContour[] => finalContourList;
+
 export const applySlotClearance = (
   finalContourList: FinalContour[],
   slotClearanceMm: number,
@@ -199,16 +203,36 @@ export const applySlotClearance = (
   });
 };
 
-export const buildKerfCompensatedPreviewFromFinalContours = (
+export const applySlotClearanceStage = (
+  finalContourList: FinalContour[],
+  slotClearanceMm: number,
+): FinalContour[] => applySlotClearance(finalContourList, slotClearanceMm);
+
+const applyKerfStage = (
+  finalContourList: FinalContour[],
+  kerfMm: number,
+): ClassifiedContour[] => compensateClassifiedContours(classifyFinalContours(finalContourList), kerfMm);
+
+// Manufacturing pipeline order: future clearance -> slot clearance -> final kerf.
+// Kerf is intentionally the terminal stage; preview/export consume this result directly.
+export const processManufacturingGeometry = (
   finalContourList: FinalContour[],
   kerfMm: number,
   slotClearanceMm = 0,
 ): ManufacturingGeometry => {
-  const clearedFinalContourList = applySlotClearance(finalContourList, slotClearanceMm);
-  const contours = compensateClassifiedContours(classifyFinalContours(clearedFinalContourList), kerfMm);
+  const clearanceStageFinalContourList = applyClearanceStage(finalContourList);
+  const slotClearanceStageFinalContourList = applySlotClearanceStage(clearanceStageFinalContourList, slotClearanceMm);
+  const contours = applyKerfStage(slotClearanceStageFinalContourList, kerfMm);
 
   return {
-    finalContourList: clearedFinalContourList,
+    finalContourList: slotClearanceStageFinalContourList,
     contours,
   };
 };
+
+export const buildKerfCompensatedPreviewFromFinalContours = (
+  finalContourList: FinalContour[],
+  kerfMm: number,
+  slotClearanceMm = 0,
+): ManufacturingGeometry => processManufacturingGeometry(finalContourList, kerfMm, slotClearanceMm);
+
