@@ -159,27 +159,57 @@ export const compensateClassifiedContours = (contours: ClassifiedContour[], kerf
   });
 };
 
+const cloneFinalContourForManufacturing = (contour: FinalContour): FinalContour => ({
+  ...contour,
+  manufacturing: cloneManufacturingMetadata(contour.manufacturing),
+  ...(contour.points ? { points: contour.points.map((point) => ({ ...point })) } : {}),
+});
+
+export const applyClearance = (
+  finalContourList: FinalContour[],
+  clearanceMm: number,
+): FinalContour[] => {
+  if (clearanceMm <= cornerTouchTolerance) {
+    return finalContourList.map(cloneFinalContourForManufacturing);
+  }
+
+  return finalContourList.map((contour) => {
+    const isClearanceEligible = getManufacturingPipelineForGeometryType(contour.geometryType).clearance;
+
+    if (!isClearanceEligible) {
+      return cloneFinalContourForManufacturing(contour);
+    }
+
+    const points = contour.points ?? (contour.pathD ? pathDToClosedContour(contour.pathD) ?? undefined : undefined);
+
+    if (!points) {
+      return { ...contour, manufacturing: cloneManufacturingMetadata(contour.manufacturing) };
+    }
+
+    const clearedPoints = compensateContourPoints(points, 'OUTER', clearanceMm);
+
+    return {
+      ...contour,
+      manufacturing: cloneManufacturingMetadata(contour.manufacturing),
+      points: clearedPoints,
+      pathD: pointsToClosedPathD(clearedPoints),
+    };
+  });
+};
+
 export const applySlotClearance = (
   finalContourList: FinalContour[],
   slotClearanceMm: number,
 ): FinalContour[] => {
   if (slotClearanceMm <= cornerTouchTolerance) {
-    return finalContourList.map((contour) => ({
-      ...contour,
-      manufacturing: cloneManufacturingMetadata(contour.manufacturing),
-      ...(contour.points ? { points: contour.points.map((point) => ({ ...point })) } : {}),
-    }));
+    return finalContourList.map(cloneFinalContourForManufacturing);
   }
 
   return finalContourList.map((contour) => {
     const isSlotClearanceEligible = getManufacturingPipelineForGeometryType(contour.geometryType).slotClearance;
 
     if (!isSlotClearanceEligible) {
-      return {
-        ...contour,
-        manufacturing: cloneManufacturingMetadata(contour.manufacturing),
-        ...(contour.points ? { points: contour.points.map((point) => ({ ...point })) } : {}),
-      };
+      return cloneFinalContourForManufacturing(contour);
     }
 
     const points = contour.points ?? (contour.pathD ? pathDToClosedContour(contour.pathD) ?? undefined : undefined);
@@ -203,8 +233,10 @@ export const buildKerfCompensatedPreviewFromFinalContours = (
   finalContourList: FinalContour[],
   kerfMm: number,
   slotClearanceMm = 0,
+  clearanceMm = 0,
 ): ManufacturingGeometry => {
-  const clearedFinalContourList = applySlotClearance(finalContourList, slotClearanceMm);
+  const clearanceFinalContourList = applyClearance(finalContourList, clearanceMm);
+  const clearedFinalContourList = applySlotClearance(clearanceFinalContourList, slotClearanceMm);
   const contours = compensateClassifiedContours(classifyFinalContours(clearedFinalContourList), kerfMm);
 
   return {
