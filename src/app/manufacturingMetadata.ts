@@ -22,7 +22,7 @@ export const getManufacturingPipelineForGeometryType = (
     case 'GENERATED_OUTER':
       return { clearance: true, slotClearance: false, kerf: true };
     case 'GENERATED_SLOT':
-      return { clearance: true, slotClearance: true, kerf: true };
+      return { clearance: false, slotClearance: true, kerf: true };
     case 'IMPORTED_OUTER':
     case 'IMPORTED_HOLE':
     case 'UNKNOWN':

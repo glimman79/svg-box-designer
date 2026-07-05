@@ -197,8 +197,8 @@ export const getToolClickGroupStartKind = (
 
 const defaultProjectSettings: ProjectSettings = {
   kerfMm: 0.15,
-  clearanceMm: 0,
-  slotClearanceMm: 0,
+  clearanceMm: 0.1,
+  slotClearanceMm: 0.1,
 };
 
 const maxHistoryEntries = 10;

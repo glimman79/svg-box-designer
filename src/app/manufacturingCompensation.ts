@@ -163,7 +163,30 @@ const cloneFinalContourForManufacturing = (contour: FinalContour): FinalContour 
   ...contour,
   manufacturing: cloneManufacturingMetadata(contour.manufacturing),
   ...(contour.points ? { points: contour.points.map((point) => ({ ...point })) } : {}),
+  ...(contour.clearanceSegments ? { clearanceSegments: [...contour.clearanceSegments] } : {}),
 });
+
+const compensateSelectedContourSegments = (
+  points: PanelContour,
+  selectedSegments: boolean[],
+  compensationMm: number,
+): PanelContour => {
+  if (compensationMm <= cornerTouchTolerance || selectedSegments.every((selected) => !selected)) {
+    return cloneContourPoints(points);
+  }
+
+  const windingSign = getContourSignedArea(points) >= 0 ? 1 : -1;
+  const signedOffset = -windingSign * compensationMm;
+
+  return buildContourSides(points).flatMap((side, sideIndex) => {
+    if (!selectedSegments[sideIndex]) {
+      return [{ ...side.start }, { ...side.end }];
+    }
+
+    const offsetSide = offsetContourSide(side, signedOffset);
+    return offsetSide ? [{ ...offsetSide.start }, { ...offsetSide.end }] : [{ ...side.start }, { ...side.end }];
+  }).filter((point, index, contour) => index === 0 || !pointsMatch(point, contour[index - 1]));
+};
 
 export const applyClearance = (
   finalContourList: FinalContour[],
@@ -186,11 +209,15 @@ export const applyClearance = (
       return { ...contour, manufacturing: cloneManufacturingMetadata(contour.manufacturing) };
     }
 
-    const clearedPoints = compensateContourPoints(points, 'OUTER', clearanceMm);
+    const segmentMask = contour.clearanceSegments;
+    const clearedPoints = segmentMask && segmentMask.length === points.length
+      ? compensateSelectedContourSegments(points, segmentMask, clearanceMm)
+      : compensateContourPoints(points, 'OUTER', clearanceMm);
 
     return {
       ...contour,
       manufacturing: cloneManufacturingMetadata(contour.manufacturing),
+      ...(segmentMask ? { clearanceSegments: [...segmentMask] } : {}),
       points: clearedPoints,
       pathD: pointsToClosedPathD(clearedPoints),
     };
