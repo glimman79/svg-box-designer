@@ -31,7 +31,7 @@ export { appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, buildTBCanvas
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
 // classifyAppliedContours is intentionally re-exported only as a compatibility/test helper.
 export { buildFinalContourList, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours } from './app/contourClassification';
-export { applyClearance, applySlotClearance, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour } from './app/manufacturingCompensation';
+export { applySlotClearance, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour } from './app/manufacturingCompensation';
 export { getManufacturingPipelineForGeometryType } from './app/manufacturingMetadata';
 export type { ClassifiedContour, ClassifiedContourSource, ContourKind } from './app/contourClassification';
 export type { FinalGeometryType } from './app/finalGeometryTypes';
@@ -197,8 +197,8 @@ export const getToolClickGroupStartKind = (
 
 const defaultProjectSettings: ProjectSettings = {
   kerfMm: 0.15,
-  clearanceMm: 0.1,
-  slotClearanceMm: 0.1,
+  clearanceMm: 0,
+  slotClearanceMm: 0,
 };
 
 const maxHistoryEntries = 10;
@@ -839,8 +839,8 @@ function App() {
   );
 
   const kerfCompensatedAppliedPreview = useMemo(
-    () => buildKerfCompensatedPreviewFromFinalContours(finalGeometry.contours, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.clearanceMm),
-    [finalGeometry.contours, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.clearanceMm],
+    () => buildKerfCompensatedPreviewFromFinalContours(finalGeometry.contours, projectSettings.kerfMm, projectSettings.slotClearanceMm),
+    [finalGeometry.contours, projectSettings.kerfMm, projectSettings.slotClearanceMm],
   );
 
   const isProjectLocked = !panelManager.isApplied;
