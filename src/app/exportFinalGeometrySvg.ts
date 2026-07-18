@@ -1,5 +1,5 @@
 import type { FinalGeometry } from './finalGeometry';
-import type { ManufacturingGeometry } from './manufacturingCompensation';
+import type { ManufacturingGeometry } from './manufacturingGeometry';
 import type { SvgDocumentModel } from '../svgUtils';
 
 const escapeSvgAttribute = (value: string | number) => String(value)
@@ -8,7 +8,7 @@ const escapeSvgAttribute = (value: string | number) => String(value)
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;');
 
-const serializeContourSvg = (svgModel: SvgDocumentModel, contours: { pathD?: string }[]): string => {
+const serializeContourSvg = (svgModel: SvgDocumentModel, contours: ReadonlyArray<{ pathD?: string }>): string => {
   const rootViewBox = svgModel.rootAttributes.viewBox ?? svgModel.viewBox;
   const rootWidth = svgModel.rootAttributes.width;
   const rootHeight = svgModel.rootAttributes.height;

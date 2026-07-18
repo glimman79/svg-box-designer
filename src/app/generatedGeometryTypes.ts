@@ -1,6 +1,7 @@
 import type { SourceBounds } from '../svgUtils';
 import type { ManufacturingMetadata } from './manufacturingMetadata';
 import type { OperationKind } from './operationTypes';
+import type { ManufacturingClassification } from './finalGeometryTypes';
 
 export type GeneratedGeometryKind = 'PANEL_PATH' | 'SLOT_PATH';
 
@@ -36,7 +37,7 @@ export type GeneratedGeometryItem = {
   source: GeneratedGeometrySource;
   geometry: GeneratedPathPrimitive;
   behaviour: GeneratedGeometryBehaviour;
-  manufacturingClassification: 'GENERATED_OUTER' | 'GENERATED_SLOT';
+  manufacturingClassification: Extract<ManufacturingClassification, 'GENERATED_OUTER' | 'GENERATED_SLOT'>;
   manufacturing?: ManufacturingMetadata;
   pathD: string;
   diagnostics: string[];
