@@ -1,5 +1,7 @@
 import { getBucketEdgeAssignment, getBucketSlotAssignments } from './assignmentBuckets';
 import type { AppliedSGeometry, ConnectionMap, SlotConnectionDefinition } from './connectionTypes';
+import type { GeneratedGeometryItem } from './generatedGeometryTypes';
+import { getAppliedSGeometryFromItems } from './generatedGeometrySnapshot';
 import { generatedManufacturingMetadata } from './manufacturingMetadata';
 import { addContourPoint, clipOriginalSegmentsToInsetSide, clonePanelContour, getPanelThickness, removeInteriorBacktrackSpurs, validatePanelContour } from './eGeometry';
 import type { PanelContour, PanelGeometryBuildResult, PanelThicknessState } from './eGeometry';
@@ -12,6 +14,7 @@ import type { EdgeAssignmentRecord, Point, SvgDocumentModel, SvgEdge, SvgPanel }
 type SPanelOperation = {
   connectionId: string;
   sourceAEdgeId: string;
+  sourceBEdgeId: string;
   wallThicknessMm: number;
   insertDepthMm: number;
   aSegments: TabSegment[];
@@ -278,15 +281,15 @@ export const recalculateAutomaticSSlotLengths = (
   _panelThicknessState?: PanelThicknessState,
 ): ConnectionMap => connectionMap;
 
-export const buildAppliedSGeometry = (
+export const buildGeneratedSGeometryItems = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
   panelThicknessState?: PanelThicknessState,
-): AppliedSGeometry[] => {
+): GeneratedGeometryItem[] => {
   const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
   const sConnections = Object.values(connectionMap).filter((connection): connection is SlotConnectionDefinition => connection.prefix === 'S');
-  const result: AppliedSGeometry[] = [];
+  const result: GeneratedGeometryItem[] = [];
   const operationsByPanelId = new Map<string, { panel: SvgPanel; operations: SPanelOperation[] }>();
 
   sConnections.forEach((connection) => {
@@ -374,13 +377,14 @@ export const buildAppliedSGeometry = (
     panelOperations.operations.push({
       connectionId: connection.id,
       sourceAEdgeId,
+      sourceBEdgeId,
       wallThicknessMm,
       insertDepthMm,
       aSegments,
     });
     operationsByPanelId.set(panel.id, panelOperations);
 
-    const slotPaths = aSegments.map((segment) => {
+    const slotItems = aSegments.map((segment, segmentIndex): GeneratedGeometryItem => {
       const startDistance = segment.startDistance;
       const endDistance = segment.endDistance;
       const slotOffsetMm = connection.properties.slotOffsetMm ?? 0;
@@ -390,24 +394,15 @@ export const buildAppliedSGeometry = (
         throw new Error(`${connection.id} S-B edge cannot receive slots because its length is invalid.`);
       }
 
-      return {
-        connectionId: connection.id,
-        sourceAEdgeId,
-        sourceBEdgeId,
-        pathD,
-        startDistance,
-        endDistance,
-        widthMm: wallThicknessMm,
-        manufacturing: generatedManufacturingMetadata(true),
-      };
+      const operationId = `operation:S:${connection.id}`;
+      return { id: `generated:s-slot:${connection.id}:${segmentIndex}`, operationId, toolType: 'S', kind: 'SLOT_PATH', pathD,
+        source: { operationId, panelIds: [panel.id, bPanel.id], edgeIds: [sourceAEdgeId, sourceBEdgeId], connectionIds: [connection.id] },
+        geometry: { type: 'path', pathD, metrics: { startDistance, endDistance, widthMm: wallThicknessMm } },
+        behaviour: { assembly: 'slot-cutout', ownerPanelId: bPanel.id }, manufacturingClassification: 'GENERATED_SLOT',
+        manufacturing: generatedManufacturingMetadata(true), diagnostics: [] };
     });
 
-    result.push({
-      connectionId: connection.id,
-      panelPaths: [],
-      slotPaths,
-      edgeIds: [sourceAEdgeId, sourceBEdgeId],
-    });
+    result.push(...slotItems);
   });
 
   operationsByPanelId.forEach(({ panel, operations }) => {
@@ -419,25 +414,23 @@ export const buildAppliedSGeometry = (
     const ownerConnectionId = operations
       .map((operation) => operation.connectionId)
       .sort((first, second) => first.localeCompare(second))[0];
-    const ownerResult = result.find((geometry) => geometry.connectionId === ownerConnectionId);
-
-    if (!ownerResult) {
-      return;
-    }
-
-    ownerResult.panelPaths.push({
-      panelId: panel.id,
-      sourceEdgeId: operations
+    const sourceEdgeIds = operations
         .map((operation) => operation.sourceAEdgeId)
-        .sort((first, second) => first.localeCompare(second))
-        .join(' '),
-      eraseRect: panel.bounds,
-      erasePathD: pointsToClosedPathD(panel.contour),
-      pathD: pointsToClosedPathD(panelResult.contour),
-      edgeIds: panel.edgeIds,
-      manufacturing: generatedManufacturingMetadata(false),
-    });
+        .sort((first, second) => first.localeCompare(second));
+    const ownerOperation = operations.find((operation) => operation.connectionId === ownerConnectionId)!;
+    const operationId = `operation:S:${ownerConnectionId}`;
+    const pathD = pointsToClosedPathD(panelResult.contour);
+    result.push({ id: `generated:s-panel:${ownerConnectionId}:${panel.id}`, operationId, toolType: 'S', kind: 'PANEL_PATH', pathD,
+      source: { operationId, panelIds: [panel.id], edgeIds: [...panel.edgeIds], connectionIds: [ownerConnectionId] },
+      geometry: { type: 'path', pathD, sourcePathD: pointsToClosedPathD(panel.contour), sourceBounds: { ...panel.bounds }, references: { operationEdgeIds: sourceEdgeIds, connectionEdgeIds: [ownerOperation.sourceAEdgeId, ownerOperation.sourceBEdgeId] } },
+      behaviour: { assembly: 'panel-boundary', replacesPanelId: panel.id }, manufacturingClassification: 'GENERATED_OUTER',
+      manufacturing: generatedManufacturingMetadata(false), diagnostics: [] });
   });
 
   return result;
 };
+
+/** @deprecated Compatibility adapter for V1 callers. */
+export const buildAppliedSGeometry = (...args: Parameters<typeof buildGeneratedSGeometryItems>): AppliedSGeometry[] => (
+  getAppliedSGeometryFromItems(buildGeneratedSGeometryItems(...args))
+);

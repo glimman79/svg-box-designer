@@ -1,4 +1,6 @@
 import type { AppliedEPanelPath, ConnectionMap, EdgeConnectionDefinition } from './connectionTypes';
+import type { GeneratedGeometryItem } from './generatedGeometryTypes';
+import { getAppliedEPanelPathsFromItems } from './generatedGeometrySnapshot';
 import { generatedManufacturingMetadata } from './manufacturingMetadata';
 import { getBucketEdgeAssignment } from './assignmentBuckets';
 import type { EdgeAssignmentRecord, EdgeRole, Point, SvgDocumentModel, SvgPanel } from '../svgUtils';
@@ -229,12 +231,12 @@ export const getPanelEdgeOperations = (
   })
 );
 
-export const buildAppliedEPanelPaths = (
+export const buildGeneratedTBGeometryItems = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
   panelThicknessState?: PanelThicknessState,
-): AppliedEPanelPath[] => {
+): GeneratedGeometryItem[] => {
   const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
   const insetPanelOperations = svgModel.panels.flatMap((panel) => {
     const operations = getPanelEdgeOperations(panel, assignments, connectionMap, panelThicknessState, svgModel);
@@ -275,16 +277,23 @@ export const buildAppliedEPanelPaths = (
       return [];
     }
 
+    const connectionIds = [...new Set(operations.map((operation) => operation.connectionId))];
+    const operationId = `operation:TB:${connectionIds.join('+')}`;
+    const pathD = pointsToClosedPathD(result.contour);
     return [{
-      panelId: panel.id,
-      eraseRect: panel.bounds,
-      erasePathD: pointsToClosedPathD(panel.contour),
-      pathD: pointsToClosedPathD(result.contour),
-      edgeIds: panel.edgeIds,
-      manufacturing: generatedManufacturingMetadata(false),
+      id: `generated:panel:${panel.id}`, operationId, toolType: 'TB', kind: 'PANEL_PATH', pathD,
+      source: { operationId, panelIds: [panel.id], edgeIds: [...panel.edgeIds], connectionIds },
+      geometry: { type: 'path', pathD, sourcePathD: pointsToClosedPathD(panel.contour), sourceBounds: { ...panel.bounds } },
+      behaviour: { assembly: 'panel-boundary', replacesPanelId: panel.id },
+      manufacturingClassification: 'GENERATED_OUTER', manufacturing: generatedManufacturingMetadata(false), diagnostics: [],
     }];
   });
 };
+
+/** @deprecated Compatibility adapter for V1 callers. */
+export const buildAppliedEPanelPaths = (...args: Parameters<typeof buildGeneratedTBGeometryItems>): AppliedEPanelPath[] => (
+  getAppliedEPanelPathsFromItems(buildGeneratedTBGeometryItems(...args))
+);
 
 
 export const clonePanelContour = (panel: SvgPanel): PanelContour => (
