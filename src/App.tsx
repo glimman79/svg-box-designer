@@ -3,16 +3,16 @@ import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
 import { exportLabeledSvg, formatImportDiagnosticMessage, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
 import { exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
-import { buildAppliedSGeometry, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
+import { buildAppliedSGeometry, buildGeneratedSGeometryItems, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
 import { getConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge } from './app/connectionViewModel';
 import { buildKerfCompensatedPreviewFromFinalContours } from './app/manufacturingCompensation';
 import { buildFinalGeometry } from './app/finalGeometry';
-import { createGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
-import type { GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
+import { createGeneratedGeometrySnapshot, getAppliedEPanelPathsFromSnapshot, getAppliedSGeometryFromSnapshot } from './app/generatedGeometrySnapshot';
+import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
 import { appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
-import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildAppliedEPanelPaths, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
+import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildAppliedEPanelPaths, buildGeneratedTBGeometryItems, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
 import { buildPanelContainmentTree, createPanelManagerStateFromModel, defaultPanelManagerState, validatePanelManagerState } from './app/panelManagerModel';
 import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 import type { PanelManagerState, PanelTreeHoleNode, PanelTreePanelNode } from './app/panelManagerModel';
@@ -27,7 +27,7 @@ export { exportFinalGeometrySvg, exportManufacturingGeometrySvg } from './app/ex
 export { getConnectionViewModel, getSConnectionViewModel, getTBConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge } from './app/connectionViewModel';
 export { buildFinalGeometry } from './app/finalGeometry';
 export { createGeneratedGeometrySnapshot, getAppliedEPanelPathsFromSnapshot, getAppliedSGeometryFromSnapshot } from './app/generatedGeometrySnapshot';
-export { buildAppliedSGeometry, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
+export { buildAppliedSGeometry, buildGeneratedSGeometryItems, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
 export { buildPanelContainmentTree, createPanelManagerStateFromModel, defaultPanelManagerState, validatePanelManagerState } from './app/panelManagerModel';
 export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 export { appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getNextInternalELabel, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
@@ -41,7 +41,7 @@ export type { FinalGeometryType } from './app/finalGeometryTypes';
 export type { GeneratedGeometryItem, GeneratedGeometrySnapshot, GeneratedGeometrySnapshotMetadata } from './app/generatedGeometrySnapshot';
 export type { GeometryOperation, OperationSourceReference, OperationValidation, SOperation, TBOperation } from './app/operationTypes';
 export type { ManufacturingMetadata } from './app/manufacturingMetadata';
-export { applyTabsToContour, buildAppliedEPanelPaths, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, getPanelThickness, getPanelThicknessForEdge, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
+export { applyTabsToContour, buildAppliedEPanelPaths, buildGeneratedTBGeometryItems, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, getPanelThickness, getPanelThicknessForEdge, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 export type { PanelManagerState } from './app/panelManagerModel';
 export type { ActiveSGroup, ActiveTBGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
@@ -643,6 +643,7 @@ function App() {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
   const [appliedSGeometry, setAppliedSGeometry] = useState<AppliedSGeometry[]>([]);
+  const [generatedGeometryItems, setGeneratedGeometryItems] = useState<GeneratedGeometryItem[]>([]);
   const [activeSGroup, setActiveSGroup] = useState<ActiveSGroup | null>(null);
   const [activeTBGroup, setActiveTBGroup] = useState<ActiveTBGroup | null>(null);
   const [completedTBGroups, setCompletedTBGroups] = useState<ActiveTBGroup[]>([]);
@@ -841,8 +842,8 @@ function App() {
 
 
   const generatedGeometrySnapshot = useMemo(
-    () => createGeneratedGeometrySnapshot({ appliedEPanelPaths, appliedSGeometry }),
-    [appliedEPanelPaths, appliedSGeometry],
+    () => createGeneratedGeometrySnapshot({ generatedGeometry: generatedGeometryItems }),
+    [generatedGeometryItems],
   );
 
   const finalGeometry = useMemo(
@@ -945,8 +946,10 @@ function App() {
     setAssignmentTargetConnectionId(snapshot.assignmentTargetConnectionId ?? snapshot.selectedLabelId ?? null);
     setDisplayConnectionId(snapshot.displayConnectionId ?? snapshot.selectedLabelId ?? null);
     setSelectedEdgeId(snapshot.selectedEdgeId);
-    setAppliedEPanelPaths(snapshot.appliedEPanelPaths ?? []);
-    setAppliedSGeometry(snapshot.appliedSGeometry ?? []);
+    const restoredGeneratedSnapshot = snapshot.generatedGeometrySnapshot ?? createGeneratedGeometrySnapshot({ appliedEPanelPaths: snapshot.appliedEPanelPaths, appliedSGeometry: snapshot.appliedSGeometry });
+    setGeneratedGeometryItems([...restoredGeneratedSnapshot.generatedGeometry]);
+    setAppliedEPanelPaths(getAppliedEPanelPathsFromSnapshot(restoredGeneratedSnapshot));
+    setAppliedSGeometry(getAppliedSGeometryFromSnapshot(restoredGeneratedSnapshot));
     setActiveSGroup(snapshot.activeSGroup);
     setActiveTBGroup(snapshot.activeTBGroup);
     setCompletedTBGroups(snapshot.completedTBGroups);
@@ -982,6 +985,8 @@ function App() {
     setActiveHoleId(null);
     setAppliedEPanelPaths([]);
     setAppliedSGeometry([]);
+    setGeneratedGeometryItems([]);
+    setGeneratedGeometryItems([]);
     setActiveSGroup(null);
     setActiveTBGroup(null);
     setCompletedTBGroups([]);
@@ -1423,8 +1428,13 @@ function App() {
         ? finishWGroupWorkflow(connections, edgeAssignments, activeWGroup, svgModel)
         : { connections, assignments: edgeAssignments };
       const nextConnections = recalculateAutomaticTBFingerWidths(svgModel, applyInputs.assignments, recalculateAutomaticSSlotLengths(svgModel, applyInputs.assignments, applyInputs.connections, panelManager), panelManager);
-      const nextAppliedEPanelPaths = buildAppliedEPanelPaths(svgModel, applyInputs.assignments, nextConnections, panelManager);
-      const nextAppliedSGeometry = buildAppliedSGeometry(svgModel, applyInputs.assignments, nextConnections, panelManager);
+      const nextGeneratedGeometryItems = [
+        ...buildGeneratedTBGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
+        ...buildGeneratedSGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
+      ];
+      const nextGeneratedSnapshot = createGeneratedGeometrySnapshot({ generatedGeometry: nextGeneratedGeometryItems });
+      const nextAppliedEPanelPaths = getAppliedEPanelPathsFromSnapshot(nextGeneratedSnapshot);
+      const nextAppliedSGeometry = getAppliedSGeometryFromSnapshot(nextGeneratedSnapshot);
       const shouldRecordManufacturing = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
       if (shouldRecordManufacturing) {
         setLastAppliedManufacturingSettings(structuredClone(projectSettings));
@@ -1432,6 +1442,7 @@ function App() {
       setConnections(nextConnections);
       setAppliedEPanelPaths(nextAppliedEPanelPaths);
       setAppliedSGeometry(nextAppliedSGeometry);
+      setGeneratedGeometryItems(nextGeneratedGeometryItems);
       setErrorMessage('');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to apply geometry.');
@@ -1554,9 +1565,18 @@ function App() {
     pushUndoState();
     const appliedPanelManager = { ...panelManager, isApplied: true, isDirty: false };
     const recomputedTBGeometry = recomputeAppliedTBGeometryForPanelManager(svgModel, edgeAssignments, connections, appliedPanelManager, appliedEPanelPaths, appliedSGeometry);
+    const hasTBAssignments = Object.values(edgeAssignments).some((bucket) => {
+      const assignment = getBucketEdgeAssignment(bucket);
+      return assignment ? recomputedTBGeometry.connections[assignment.connectionId]?.prefix === 'E' : false;
+    });
+    const recomputedGeneratedItems = [
+      ...(appliedEPanelPaths.length > 0 || hasTBAssignments ? buildGeneratedTBGeometryItems(svgModel, edgeAssignments, recomputedTBGeometry.connections, appliedPanelManager) : []),
+      ...(appliedSGeometry.length > 0 ? buildGeneratedSGeometryItems(svgModel, edgeAssignments, recomputedTBGeometry.connections, appliedPanelManager) : []),
+    ];
     setConnections(recomputedTBGeometry.connections);
     setAppliedEPanelPaths(recomputedTBGeometry.appliedEPanelPaths);
     setAppliedSGeometry(recomputedTBGeometry.appliedSGeometry);
+    setGeneratedGeometryItems(recomputedGeneratedItems);
     setPanelManager(appliedPanelManager);
     setIsPanelManagerModalOpen(false);
     setActivePanelId(null);
