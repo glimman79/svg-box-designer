@@ -1,6 +1,5 @@
-import type { AppliedEPanelPath, AppliedSGeometry } from './connectionTypes';
 import type { GeneratedGeometrySnapshot } from './generatedGeometrySnapshot';
-import { getAppliedEPanelPathsFromSnapshot, getAppliedSGeometryFromSnapshot } from './generatedGeometrySnapshot';
+import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import { manufacturingMetadataForGeometryType } from './manufacturingMetadata';
 import { pointsToClosedPathD } from './sharedGeometry';
 import type { ContourDiagnostic, FinalContour, FinalContourSource } from './contourClassification';
@@ -65,18 +64,15 @@ const validateFinalGeometryContour = (contour: FinalGeometryContour): ContourDia
 
 export const buildFinalGeometry = (
   svgModel: SvgDocumentModel,
-  appliedEPanelPathsOrSnapshot: AppliedEPanelPath[] | GeneratedGeometrySnapshot,
-  appliedSGeometry: AppliedSGeometry[] = [],
+  generatedGeometryOrSnapshot: ReadonlyArray<GeneratedGeometryItem> | GeneratedGeometrySnapshot,
 ): FinalGeometry => {
-  const appliedEPanelPaths = Array.isArray(appliedEPanelPathsOrSnapshot)
-    ? appliedEPanelPathsOrSnapshot
-    : getAppliedEPanelPathsFromSnapshot(appliedEPanelPathsOrSnapshot);
-  const snapshotAppliedSGeometry = Array.isArray(appliedEPanelPathsOrSnapshot)
-    ? appliedSGeometry
-    : getAppliedSGeometryFromSnapshot(appliedEPanelPathsOrSnapshot);
+  const generatedGeometry: ReadonlyArray<GeneratedGeometryItem> = 'generatedGeometry' in generatedGeometryOrSnapshot
+    ? generatedGeometryOrSnapshot.generatedGeometry
+    : generatedGeometryOrSnapshot;
   const replacementByPanelId = new Map<string, { pathD: string; finalSource: FinalContourSource; geometryType: FinalGeometryType }>();
-  appliedEPanelPaths.forEach((path) => replacementByPanelId.set(path.panelId, { pathD: path.pathD, finalSource: 'applied-panel', geometryType: 'GENERATED_OUTER' }));
-  snapshotAppliedSGeometry.flatMap((geometry) => geometry.panelPaths).forEach((path) => replacementByPanelId.set(path.panelId, { pathD: path.pathD, finalSource: 'applied-panel', geometryType: 'GENERATED_OUTER' }));
+  generatedGeometry
+    .filter((item) => item.behaviour.assembly === 'panel-boundary' && !!item.behaviour.replacesPanelId)
+    .forEach((item) => replacementByPanelId.set(item.behaviour.replacesPanelId!, { pathD: item.geometry.pathD, finalSource: 'applied-panel', geometryType: item.manufacturingClassification }));
 
   const contours: FinalGeometryContour[] = svgModel.panels.flatMap((panel) => {
     const replacement = replacementByPanelId.get(panel.id);
@@ -111,17 +107,17 @@ export const buildFinalGeometry = (
     return [outerContour, ...innerContours];
   });
 
-  snapshotAppliedSGeometry.flatMap((geometry) => geometry.slotPaths).forEach((slotPath, index) => {
+  generatedGeometry.filter((item) => item.behaviour.assembly === 'slot-cutout').forEach((item) => {
     contours.push({
-      id: `final-s-slot:${slotPath.connectionId}:${index}`,
+      id: item.id.replace(/^generated:/, 'final-'),
       source: 'final-contour',
       finalSource: 's-slot',
       kind: 'INNER',
-      ownerPanelId: slotPath.sourceBEdgeId,
-      pathD: slotPath.pathD,
-      points: pathDToClosedContourForFinalGeometry(slotPath.pathD) ?? undefined,
-      geometryType: 'GENERATED_SLOT',
-      manufacturing: manufacturingMetadataForGeometryType('GENERATED_SLOT'),
+      ownerPanelId: item.behaviour.ownerPanelId,
+      pathD: item.geometry.pathD,
+      points: pathDToClosedContourForFinalGeometry(item.geometry.pathD) ?? undefined,
+      geometryType: item.manufacturingClassification,
+      manufacturing: manufacturingMetadataForGeometryType(item.manufacturingClassification),
     });
   });
 
