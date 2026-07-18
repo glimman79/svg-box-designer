@@ -7,6 +7,8 @@ import { buildAppliedSGeometry, recalculateAutomaticSSlotLengths, resolveSSlotLe
 import { getConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge } from './app/connectionViewModel';
 import { buildKerfCompensatedPreviewFromFinalContours } from './app/manufacturingCompensation';
 import { buildFinalGeometry } from './app/finalGeometry';
+import { createGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
+import type { GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
 import { appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
@@ -24,6 +26,7 @@ export type { PanelValidationResult } from './app/sharedPanelGeometry';
 export { exportFinalGeometrySvg, exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
 export { getConnectionViewModel, getSConnectionViewModel, getTBConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge } from './app/connectionViewModel';
 export { buildFinalGeometry } from './app/finalGeometry';
+export { createGeneratedGeometrySnapshot, getAppliedEPanelPathsFromSnapshot, getAppliedSGeometryFromSnapshot } from './app/generatedGeometrySnapshot';
 export { buildAppliedSGeometry, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
 export { buildPanelContainmentTree, createPanelManagerStateFromModel, defaultPanelManagerState, validatePanelManagerState } from './app/panelManagerModel';
 export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
@@ -35,6 +38,8 @@ export { applyClearanceStage, applySlotClearance, applySlotClearanceStage, build
 export { getManufacturingPipelineForGeometryType } from './app/manufacturingMetadata';
 export type { ClassifiedContour, ClassifiedContourSource, ContourKind } from './app/contourClassification';
 export type { FinalGeometryType } from './app/finalGeometryTypes';
+export type { GeneratedGeometryItem, GeneratedGeometrySnapshot, GeneratedGeometrySnapshotMetadata } from './app/generatedGeometrySnapshot';
+export type { GeometryOperation, OperationSourceReference, OperationValidation, SOperation, TBOperation } from './app/operationTypes';
 export type { ManufacturingMetadata } from './app/manufacturingMetadata';
 export { applyTabsToContour, buildAppliedEPanelPaths, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, getPanelThickness, getPanelThicknessForEdge, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
@@ -69,6 +74,7 @@ type HistoryState = {
   selectedEdgeId: string | null;
   appliedEPanelPaths?: AppliedEPanelPath[];
   appliedSGeometry?: AppliedSGeometry[];
+  generatedGeometrySnapshot?: GeneratedGeometrySnapshot;
   activeSGroup: ActiveSGroup | null;
   activeTBGroup: ActiveTBGroup | null;
   completedTBGroups: ActiveTBGroup[];
@@ -238,6 +244,7 @@ const cloneHistoryState = (state: HistoryState): HistoryState => ({
   selectedEdgeId: state.selectedEdgeId,
   ...(state.appliedEPanelPaths ? { appliedEPanelPaths: structuredClone(state.appliedEPanelPaths) } : {}),
   ...(state.appliedSGeometry ? { appliedSGeometry: structuredClone(state.appliedSGeometry) } : {}),
+  ...(state.generatedGeometrySnapshot ? { generatedGeometrySnapshot: structuredClone(state.generatedGeometrySnapshot) } : {}),
   activeSGroup: state.activeSGroup ? structuredClone(state.activeSGroup) : null,
   activeTBGroup: state.activeTBGroup ? structuredClone(state.activeTBGroup) : null,
   completedTBGroups: structuredClone(state.completedTBGroups ?? []),
@@ -833,9 +840,14 @@ function App() {
 
 
 
+  const generatedGeometrySnapshot = useMemo(
+    () => createGeneratedGeometrySnapshot({ appliedEPanelPaths, appliedSGeometry }),
+    [appliedEPanelPaths, appliedSGeometry],
+  );
+
   const finalGeometry = useMemo(
-    () => buildFinalGeometry(svgModel, appliedEPanelPaths, appliedSGeometry),
-    [appliedEPanelPaths, appliedSGeometry, svgModel],
+    () => buildFinalGeometry(svgModel, generatedGeometrySnapshot),
+    [generatedGeometrySnapshot, svgModel],
   );
 
   const kerfCompensatedAppliedPreview = useMemo(
@@ -915,6 +927,7 @@ function App() {
     selectedEdgeId,
     appliedEPanelPaths,
     appliedSGeometry,
+    generatedGeometrySnapshot,
     activeSGroup,
     activeTBGroup,
     completedTBGroups,

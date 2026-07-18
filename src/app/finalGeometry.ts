@@ -1,4 +1,6 @@
 import type { AppliedEPanelPath, AppliedSGeometry } from './connectionTypes';
+import type { GeneratedGeometrySnapshot } from './generatedGeometrySnapshot';
+import { getAppliedEPanelPathsFromSnapshot, getAppliedSGeometryFromSnapshot } from './generatedGeometrySnapshot';
 import { manufacturingMetadataForGeometryType } from './manufacturingMetadata';
 import { pointsToClosedPathD } from './sharedGeometry';
 import type { ContourDiagnostic, FinalContour, FinalContourSource } from './contourClassification';
@@ -63,12 +65,18 @@ const validateFinalGeometryContour = (contour: FinalGeometryContour): ContourDia
 
 export const buildFinalGeometry = (
   svgModel: SvgDocumentModel,
-  appliedEPanelPaths: AppliedEPanelPath[],
-  appliedSGeometry: AppliedSGeometry[],
+  appliedEPanelPathsOrSnapshot: AppliedEPanelPath[] | GeneratedGeometrySnapshot,
+  appliedSGeometry: AppliedSGeometry[] = [],
 ): FinalGeometry => {
+  const appliedEPanelPaths = Array.isArray(appliedEPanelPathsOrSnapshot)
+    ? appliedEPanelPathsOrSnapshot
+    : getAppliedEPanelPathsFromSnapshot(appliedEPanelPathsOrSnapshot);
+  const snapshotAppliedSGeometry = Array.isArray(appliedEPanelPathsOrSnapshot)
+    ? appliedSGeometry
+    : getAppliedSGeometryFromSnapshot(appliedEPanelPathsOrSnapshot);
   const replacementByPanelId = new Map<string, { pathD: string; finalSource: FinalContourSource; geometryType: FinalGeometryType }>();
   appliedEPanelPaths.forEach((path) => replacementByPanelId.set(path.panelId, { pathD: path.pathD, finalSource: 'applied-panel', geometryType: 'GENERATED_OUTER' }));
-  appliedSGeometry.flatMap((geometry) => geometry.panelPaths).forEach((path) => replacementByPanelId.set(path.panelId, { pathD: path.pathD, finalSource: 'applied-panel', geometryType: 'GENERATED_OUTER' }));
+  snapshotAppliedSGeometry.flatMap((geometry) => geometry.panelPaths).forEach((path) => replacementByPanelId.set(path.panelId, { pathD: path.pathD, finalSource: 'applied-panel', geometryType: 'GENERATED_OUTER' }));
 
   const contours: FinalGeometryContour[] = svgModel.panels.flatMap((panel) => {
     const replacement = replacementByPanelId.get(panel.id);
@@ -103,7 +111,7 @@ export const buildFinalGeometry = (
     return [outerContour, ...innerContours];
   });
 
-  appliedSGeometry.flatMap((geometry) => geometry.slotPaths).forEach((slotPath, index) => {
+  snapshotAppliedSGeometry.flatMap((geometry) => geometry.slotPaths).forEach((slotPath, index) => {
     contours.push({
       id: `final-s-slot:${slotPath.connectionId}:${index}`,
       source: 'final-contour',
