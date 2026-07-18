@@ -4,11 +4,11 @@ import { cloneManufacturingMetadata, getManufacturingPipelineForGeometryType } f
 import { buildContourSides, cornerTouchTolerance, getContourSignedArea, lineIntersection, offsetContourSide, pointsMatch, pointsToClosedPathD } from './sharedGeometry';
 import type { PanelContour } from './sharedGeometry';
 import type { Point } from '../svgUtils';
+import { createManufacturingGeometry } from './manufacturingGeometry';
+import type { ManufacturingGeometry } from './manufacturingGeometry';
+import type { FinalGeometry } from './finalGeometry';
 
-export type ManufacturingGeometry = {
-  finalContourList: FinalContour[];
-  contours: ClassifiedContour[];
-};
+export type { ManufacturingGeometry } from './manufacturingGeometry';
 
 export type KerfCompensationResult = ManufacturingGeometry;
 
@@ -159,9 +159,16 @@ export const compensateClassifiedContours = (contours: ClassifiedContour[], kerf
   });
 };
 
-export const applyClearanceStage = (
-  finalContourList: FinalContour[],
-): FinalContour[] => finalContourList;
+export const applyClearance = (manufacturingGeometry: ManufacturingGeometry): ManufacturingGeometry => {
+  // Foundation only: deliberately walk by manufacturing classification without moving geometry.
+  manufacturingGeometry.finalContourList.forEach((contour) => {
+    getManufacturingPipelineForGeometryType(contour.geometryType).clearance;
+  });
+  return manufacturingGeometry;
+};
+
+/** @deprecated Compatibility wrapper; use applyClearance(ManufacturingGeometry). */
+export const applyClearanceStage = (finalContourList: FinalContour[]): FinalContour[] => finalContourList;
 
 export const applySlotClearance = (
   finalContourList: FinalContour[],
@@ -216,15 +223,16 @@ const applyKerfStage = (
 // Manufacturing pipeline order: future clearance -> slot clearance -> final kerf.
 // Kerf is intentionally the terminal stage; preview/export consume this result directly.
 export const processManufacturingGeometry = (
-  finalContourList: FinalContour[],
+  finalGeometry: FinalGeometry,
   kerfMm: number,
   slotClearanceMm = 0,
 ): ManufacturingGeometry => {
-  const clearanceStageFinalContourList = applyClearanceStage(finalContourList);
-  const slotClearanceStageFinalContourList = applySlotClearanceStage(clearanceStageFinalContourList, slotClearanceMm);
+  const manufacturingGeometry = applyClearance(createManufacturingGeometry(finalGeometry));
+  const slotClearanceStageFinalContourList = applySlotClearanceStage(manufacturingGeometry.finalContourList, slotClearanceMm);
   const contours = applyKerfStage(slotClearanceStageFinalContourList, kerfMm);
 
   return {
+    ...manufacturingGeometry,
     finalContourList: slotClearanceStageFinalContourList,
     contours,
   };
@@ -234,5 +242,8 @@ export const buildKerfCompensatedPreviewFromFinalContours = (
   finalContourList: FinalContour[],
   kerfMm: number,
   slotClearanceMm = 0,
-): ManufacturingGeometry => processManufacturingGeometry(finalContourList, kerfMm, slotClearanceMm);
-
+): ManufacturingGeometry => processManufacturingGeometry(
+  { contours: finalContourList, diagnostics: [] },
+  kerfMm,
+  slotClearanceMm,
+);

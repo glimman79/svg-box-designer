@@ -4,3 +4,6 @@ export type FinalGeometryType =
   | 'GENERATED_OUTER'
   | 'GENERATED_SLOT'
   | 'UNKNOWN';
+
+/** Tool-agnostic classification consumed by manufacturing stages. */
+export type ManufacturingClassification = FinalGeometryType;

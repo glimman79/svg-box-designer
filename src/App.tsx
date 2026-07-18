@@ -5,7 +5,7 @@ import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBuck
 import { exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
 import { buildAppliedSGeometry, buildGeneratedSGeometryItems, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
 import { getConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge } from './app/connectionViewModel';
-import { buildKerfCompensatedPreviewFromFinalContours } from './app/manufacturingCompensation';
+import { processManufacturingGeometry } from './app/manufacturingCompensation';
 import { buildFinalGeometry as buildNativeFinalGeometry } from './app/finalGeometry';
 import { buildFinalGeometry } from './app/finalGeometryCompatibility';
 import { createGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
@@ -35,10 +35,12 @@ export { appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, buildTBCanvas
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
 // classifyAppliedContours is intentionally re-exported only as a compatibility/test helper.
 export { buildFinalContourList, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours } from './app/contourClassification';
-export { applyClearanceStage, applySlotClearance, applySlotClearanceStage, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour, processManufacturingGeometry } from './app/manufacturingCompensation';
+export { applyClearance, applyClearanceStage, applySlotClearance, applySlotClearanceStage, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour, processManufacturingGeometry } from './app/manufacturingCompensation';
+export { createManufacturingGeometry } from './app/manufacturingGeometry';
 export { getManufacturingPipelineForGeometryType } from './app/manufacturingMetadata';
 export type { ClassifiedContour, ClassifiedContourSource, ContourKind } from './app/contourClassification';
-export type { FinalGeometryType } from './app/finalGeometryTypes';
+export type { FinalGeometryType, ManufacturingClassification } from './app/finalGeometryTypes';
+export type { ManufacturingGeometry } from './app/manufacturingGeometry';
 export type { GeneratedGeometryItem, GeneratedGeometrySnapshot, GeneratedGeometrySnapshotMetadata } from './app/generatedGeometrySnapshot';
 export type { GeometryOperation, OperationSourceReference, OperationValidation, SOperation, TBOperation } from './app/operationTypes';
 export type { ManufacturingMetadata } from './app/manufacturingMetadata';
@@ -851,8 +853,8 @@ function App() {
   );
 
   const kerfCompensatedAppliedPreview = useMemo(
-    () => buildKerfCompensatedPreviewFromFinalContours(finalGeometry.contours, projectSettings.kerfMm, projectSettings.slotClearanceMm),
-    [finalGeometry.contours, projectSettings.kerfMm, projectSettings.slotClearanceMm],
+    () => processManufacturingGeometry(finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm),
+    [finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm],
   );
 
   const isProjectLocked = !panelManager.isApplied;

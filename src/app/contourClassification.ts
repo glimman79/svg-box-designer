@@ -39,8 +39,8 @@ export type ContourDiagnostic = {
 };
 
 export type FinalContourListResult = {
-  contours: FinalContour[];
-  diagnostics: ContourDiagnostic[];
+  readonly contours: ReadonlyArray<FinalContour>;
+  readonly diagnostics: ReadonlyArray<ContourDiagnostic>;
 };
 
 const clonePoints = (points: Point[]) => points.map((point) => ({ ...point }));

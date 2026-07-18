@@ -10,8 +10,8 @@ import type { Point, SvgDocumentModel } from '../svgUtils';
 export type FinalGeometryContour = FinalContour;
 
 export type FinalGeometry = {
-  contours: FinalGeometryContour[];
-  diagnostics: ContourDiagnostic[];
+  readonly contours: ReadonlyArray<FinalGeometryContour>;
+  readonly diagnostics: ReadonlyArray<ContourDiagnostic>;
 };
 
 const clonePoints = (points: Point[]) => points.map((point) => ({ ...point }));
@@ -121,5 +121,13 @@ export const buildFinalGeometry = (
     });
   });
 
-  return { contours, diagnostics: contours.flatMap(validateFinalGeometryContour) };
+  const diagnostics = contours.flatMap(validateFinalGeometryContour);
+  contours.forEach((contour) => {
+    contour.points?.forEach(Object.freeze);
+    if (contour.points) Object.freeze(contour.points);
+    if (contour.manufacturing) Object.freeze(contour.manufacturing);
+    Object.freeze(contour);
+  });
+  diagnostics.forEach(Object.freeze);
+  return Object.freeze({ contours: Object.freeze(contours), diagnostics: Object.freeze(diagnostics) });
 };
