@@ -20,10 +20,6 @@ export type GeneratedGeometrySnapshot = {
   metadata: GeneratedGeometrySnapshotMetadata;
   operations: ReadonlyArray<GeometryOperation>;
   generatedGeometry: ReadonlyArray<GeneratedGeometryItem>;
-  compatibility: {
-    appliedEPanelPaths: AppliedEPanelPath[];
-    appliedSGeometry: AppliedSGeometry[];
-  };
 };
 
 const clone = <T>(value: T): T => structuredClone(value);
@@ -102,10 +98,6 @@ export const createGeneratedGeometrySnapshot = ({
     metadata: Object.freeze({ snapshotId: `generated-geometry:${revision}:${importedGeometryRevision}:${assignmentRevision}:${operationRevision}`, revision, generatorVersion: generatedGeometrySnapshotVersion, createdTimestamp: new Date().toISOString(), importedGeometryRevision, assignmentRevision, operationRevision }),
     operations: Object.freeze(clone(operations)),
     generatedGeometry: Object.freeze(clone(generatedGeometry ?? [...tbItems, ...sItems])),
-    compatibility: Object.freeze({
-      appliedEPanelPaths: getAppliedEPanelPathsFromItems(generatedGeometry ?? [...tbItems, ...sItems]),
-      appliedSGeometry: getAppliedSGeometryFromItems(generatedGeometry ?? [...tbItems, ...sItems]),
-    }),
   });
 };
 

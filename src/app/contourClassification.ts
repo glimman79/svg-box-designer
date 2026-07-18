@@ -1,5 +1,5 @@
 import type { AppliedEPanelPath, AppliedSGeometry } from './connectionTypes';
-import { buildFinalGeometry } from './finalGeometry';
+import { buildFinalGeometry } from './finalGeometryCompatibility';
 import { cloneManufacturingMetadata, generatedManufacturingMetadata, importedManufacturingMetadata } from './manufacturingMetadata';
 import type { ManufacturingMetadata } from './manufacturingMetadata';
 import type { FinalGeometryType } from './finalGeometryTypes';

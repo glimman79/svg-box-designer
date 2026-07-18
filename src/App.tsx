@@ -6,8 +6,9 @@ import { exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
 import { buildAppliedSGeometry, buildGeneratedSGeometryItems, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
 import { getConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge } from './app/connectionViewModel';
 import { buildKerfCompensatedPreviewFromFinalContours } from './app/manufacturingCompensation';
-import { buildFinalGeometry } from './app/finalGeometry';
-import { createGeneratedGeometrySnapshot, getAppliedEPanelPathsFromSnapshot, getAppliedSGeometryFromSnapshot } from './app/generatedGeometrySnapshot';
+import { buildFinalGeometry as buildNativeFinalGeometry } from './app/finalGeometry';
+import { buildFinalGeometry } from './app/finalGeometryCompatibility';
+import { createGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
@@ -25,7 +26,7 @@ export { edgeMatchesContourSide, getContourEdgePoints, getTabSegmentsForRole, va
 export type { PanelValidationResult } from './app/sharedPanelGeometry';
 export { exportFinalGeometrySvg, exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
 export { getConnectionViewModel, getSConnectionViewModel, getTBConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge } from './app/connectionViewModel';
-export { buildFinalGeometry } from './app/finalGeometry';
+export { buildFinalGeometry } from './app/finalGeometryCompatibility';
 export { createGeneratedGeometrySnapshot, getAppliedEPanelPathsFromSnapshot, getAppliedSGeometryFromSnapshot } from './app/generatedGeometrySnapshot';
 export { buildAppliedSGeometry, buildGeneratedSGeometryItems, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
 export { buildPanelContainmentTree, createPanelManagerStateFromModel, defaultPanelManagerState, validatePanelManagerState } from './app/panelManagerModel';
@@ -641,8 +642,6 @@ function App() {
   const [assignmentTargetConnectionId, setAssignmentTargetConnectionId] = useState<string | null>(null);
   const [displayConnectionId, setDisplayConnectionId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [appliedEPanelPaths, setAppliedEPanelPaths] = useState<AppliedEPanelPath[]>([]);
-  const [appliedSGeometry, setAppliedSGeometry] = useState<AppliedSGeometry[]>([]);
   const [generatedGeometryItems, setGeneratedGeometryItems] = useState<GeneratedGeometryItem[]>([]);
   const [activeSGroup, setActiveSGroup] = useState<ActiveSGroup | null>(null);
   const [activeTBGroup, setActiveTBGroup] = useState<ActiveTBGroup | null>(null);
@@ -847,7 +846,7 @@ function App() {
   );
 
   const finalGeometry = useMemo(
-    () => buildFinalGeometry(svgModel, generatedGeometrySnapshot),
+    () => buildNativeFinalGeometry(svgModel, generatedGeometrySnapshot),
     [generatedGeometrySnapshot, svgModel],
   );
 
@@ -926,8 +925,6 @@ function App() {
     displayConnectionId,
     selectedLabelId: displayConnectionId,
     selectedEdgeId,
-    appliedEPanelPaths,
-    appliedSGeometry,
     generatedGeometrySnapshot,
     activeSGroup,
     activeTBGroup,
@@ -948,8 +945,6 @@ function App() {
     setSelectedEdgeId(snapshot.selectedEdgeId);
     const restoredGeneratedSnapshot = snapshot.generatedGeometrySnapshot ?? createGeneratedGeometrySnapshot({ appliedEPanelPaths: snapshot.appliedEPanelPaths, appliedSGeometry: snapshot.appliedSGeometry });
     setGeneratedGeometryItems([...restoredGeneratedSnapshot.generatedGeometry]);
-    setAppliedEPanelPaths(getAppliedEPanelPathsFromSnapshot(restoredGeneratedSnapshot));
-    setAppliedSGeometry(getAppliedSGeometryFromSnapshot(restoredGeneratedSnapshot));
     setActiveSGroup(snapshot.activeSGroup);
     setActiveTBGroup(snapshot.activeTBGroup);
     setCompletedTBGroups(snapshot.completedTBGroups);
@@ -983,9 +978,6 @@ function App() {
     setSelectedEdgeId(null);
     setActivePanelId(null);
     setActiveHoleId(null);
-    setAppliedEPanelPaths([]);
-    setAppliedSGeometry([]);
-    setGeneratedGeometryItems([]);
     setGeneratedGeometryItems([]);
     setActiveSGroup(null);
     setActiveTBGroup(null);
@@ -1432,16 +1424,11 @@ function App() {
         ...buildGeneratedTBGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
         ...buildGeneratedSGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
       ];
-      const nextGeneratedSnapshot = createGeneratedGeometrySnapshot({ generatedGeometry: nextGeneratedGeometryItems });
-      const nextAppliedEPanelPaths = getAppliedEPanelPathsFromSnapshot(nextGeneratedSnapshot);
-      const nextAppliedSGeometry = getAppliedSGeometryFromSnapshot(nextGeneratedSnapshot);
       const shouldRecordManufacturing = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
       if (shouldRecordManufacturing) {
         setLastAppliedManufacturingSettings(structuredClone(projectSettings));
       }
       setConnections(nextConnections);
-      setAppliedEPanelPaths(nextAppliedEPanelPaths);
-      setAppliedSGeometry(nextAppliedSGeometry);
       setGeneratedGeometryItems(nextGeneratedGeometryItems);
       setErrorMessage('');
     } catch (error) {
@@ -1484,8 +1471,7 @@ function App() {
     setAssignmentTargetConnectionId(null);
     setDisplayConnectionId(null);
     setSelectedEdgeId(null);
-    setAppliedEPanelPaths([]);
-    setAppliedSGeometry([]);
+    setGeneratedGeometryItems([]);
     setActiveSGroup(null);
     setActiveTBGroup(null);
     setCompletedTBGroups([]);
@@ -1564,18 +1550,16 @@ function App() {
     }
     pushUndoState();
     const appliedPanelManager = { ...panelManager, isApplied: true, isDirty: false };
-    const recomputedTBGeometry = recomputeAppliedTBGeometryForPanelManager(svgModel, edgeAssignments, connections, appliedPanelManager, appliedEPanelPaths, appliedSGeometry);
+    const nextConnections = recalculateAutomaticTBFingerWidths(svgModel, edgeAssignments, recalculateAutomaticSSlotLengths(svgModel, edgeAssignments, connections, appliedPanelManager), appliedPanelManager);
     const hasTBAssignments = Object.values(edgeAssignments).some((bucket) => {
       const assignment = getBucketEdgeAssignment(bucket);
-      return assignment ? recomputedTBGeometry.connections[assignment.connectionId]?.prefix === 'E' : false;
+      return assignment ? nextConnections[assignment.connectionId]?.prefix === 'E' : false;
     });
     const recomputedGeneratedItems = [
-      ...(appliedEPanelPaths.length > 0 || hasTBAssignments ? buildGeneratedTBGeometryItems(svgModel, edgeAssignments, recomputedTBGeometry.connections, appliedPanelManager) : []),
-      ...(appliedSGeometry.length > 0 ? buildGeneratedSGeometryItems(svgModel, edgeAssignments, recomputedTBGeometry.connections, appliedPanelManager) : []),
+      ...(generatedGeometryItems.some((item) => item.toolType === 'TB') || hasTBAssignments ? buildGeneratedTBGeometryItems(svgModel, edgeAssignments, nextConnections, appliedPanelManager) : []),
+      ...(generatedGeometryItems.some((item) => item.toolType === 'S') ? buildGeneratedSGeometryItems(svgModel, edgeAssignments, nextConnections, appliedPanelManager) : []),
     ];
-    setConnections(recomputedTBGeometry.connections);
-    setAppliedEPanelPaths(recomputedTBGeometry.appliedEPanelPaths);
-    setAppliedSGeometry(recomputedTBGeometry.appliedSGeometry);
+    setConnections(nextConnections);
     setGeneratedGeometryItems(recomputedGeneratedItems);
     setPanelManager(appliedPanelManager);
     setIsPanelManagerModalOpen(false);
@@ -1719,7 +1703,7 @@ function App() {
 
   const exportSvg = () => {
     // Export after Apply is clean laser geometry; export before Apply remains label/reference export.
-    const hasAppliedGeometry = appliedEPanelPaths.length > 0 || appliedSGeometry.length > 0;
+    const hasAppliedGeometry = generatedGeometryItems.length > 0;
     if (isProjectLocked) {
       setErrorMessage('Apply Panel Manager before exporting applied or manufacturing output.');
       return;
@@ -2182,12 +2166,12 @@ function App() {
     return placementsByEdgeId;
   }, new Map<string, typeof labelPlacements>());
   const appliedEEdgeIds = useMemo(
-    () => new Set(appliedEPanelPaths.flatMap((panelPath) => panelPath.edgeIds)),
-    [appliedEPanelPaths],
+    () => new Set(generatedGeometryItems.filter((item) => item.toolType === 'TB' && item.behaviour.assembly === 'panel-boundary').flatMap((item) => item.source.edgeIds)),
+    [generatedGeometryItems],
   );
   const appliedSPanelEdgeIds = useMemo(
-    () => new Set(appliedSGeometry.flatMap((geometry) => geometry.panelPaths.flatMap((panelPath) => panelPath.edgeIds))),
-    [appliedSGeometry],
+    () => new Set(generatedGeometryItems.filter((item) => item.toolType === 'S' && item.behaviour.assembly === 'panel-boundary').flatMap((item) => item.source.edgeIds)),
+    [generatedGeometryItems],
   );
 
   const renderPanelList = () => (
