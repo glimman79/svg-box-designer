@@ -74,7 +74,7 @@ const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
 const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
-const { getConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge, getPanelEdgeOperations, recalculateAutomaticTBFingerWidths, resolveTBThickness, resolveSThickness, resolveSSlotLengthMm, recalculateAutomaticSSlotLengths, applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, exportManufacturingGeometrySvg, pathDToClosedContour, getManufacturingPipelineForGeometryType, getManufacturingPolicy } = module.exports;
+const { getConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge, getPanelEdgeOperations, recalculateAutomaticTBFingerWidths, resolveTBThickness, resolveSThickness, resolveSSlotLengthMm, recalculateAutomaticSSlotLengths, applyClearance, applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createManufacturingGeometry, createTabSegmentPlan, exportFinalGeometrySvg, exportManufacturingGeometrySvg, pathDToClosedContour, getManufacturingPipelineForGeometryType, getManufacturingPolicy } = module.exports;
 
 const buildKerfPreviewViaFinalContours = (svgModel, appliedEPanelPaths, appliedSGeometry, kerfMm, slotClearanceMm = 0) => {
   const finalGeometry = buildFinalGeometry(svgModel, appliedEPanelPaths, appliedSGeometry);
@@ -83,6 +83,9 @@ const buildKerfPreviewViaFinalContours = (svgModel, appliedEPanelPaths, appliedS
 assert.equal(buildKerfCompensatedPreviewFromFinalContours.length, 2, 'kerf function accepts only finalContourList and kerfMm');
 assert.equal(module.exports.buildKerfCompensatedAppliedPreview, undefined, 'legacy kerf API accepting svgModel/applied geometry is not exported');
 assert.equal(applySlotClearance.length, 2, 'slot clearance helper accepts finalContourList and slotClearanceMm');
+assert.equal(getManufacturingPolicy('GENERATED_OUTER').compensationStrategy.name, 'offset', 'generated contours explicitly select OffsetStrategy');
+assert.equal(getManufacturingPolicy('GENERATED_SLOT').compensationStrategy.name, 'no-movement', 'generated slots select NoMovementStrategy');
+assert.equal(getManufacturingPolicy('IMPORTED_OUTER').compensationStrategy.name, 'no-movement', 'imported contours select NoMovementStrategy');
 const boundaryFinalContourList = [
   { id: 'boundary-outer', source: 'final-contour', finalSource: 'original-panel', kind: 'OUTER', geometryType: 'IMPORTED_OUTER', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z' },
   { id: 'boundary-inner', source: 'final-contour', finalSource: 's-slot', kind: 'INNER', geometryType: 'GENERATED_SLOT', pathD: 'M 2 2 L 4 2 L 4 4 L 2 4 Z' },
@@ -319,6 +322,18 @@ const assertBoundsClose = (actual, expected, message) => {
   assert.ok(Math.abs(actual.minY - expected.minY) < 0.000001, `${message} minY`);
   assert.ok(Math.abs(actual.maxY - expected.maxY) < 0.000001, `${message} maxY`);
 };
+
+const clearanceFinalGeometry = { contours: [
+  { id: 'clearance-generated', source: 'final-contour', finalSource: 'applied-panel', kind: 'OUTER', geometryType: 'GENERATED_OUTER', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z' },
+  { id: 'clearance-imported', source: 'final-contour', finalSource: 'original-panel', kind: 'OUTER', geometryType: 'IMPORTED_OUTER', pathD: 'M 20 0 L 30 0 L 30 10 L 20 10 Z' },
+  { id: 'clearance-slot', source: 'final-contour', finalSource: 's-slot', kind: 'INNER', geometryType: 'GENERATED_SLOT', pathD: 'M 2 2 L 4 2 L 4 4 L 2 4 Z' },
+], diagnostics: [] };
+const clearanceFinalBefore = JSON.stringify(clearanceFinalGeometry);
+const clearanceManufacturing = applyClearance(createManufacturingGeometry(clearanceFinalGeometry), 0.1);
+assertBoundsClose(boundsForPathD(clearanceManufacturing.finalContourList[0].pathD), { minX: -0.1, maxX: 10.1, minY: -0.1, maxY: 10.1 }, 'OffsetStrategy moves generated outer contour outward');
+assert.equal(clearanceManufacturing.finalContourList[1].pathD, clearanceFinalGeometry.contours[1].pathD, 'NoMovementStrategy preserves imported contour');
+assert.equal(clearanceManufacturing.finalContourList[2].pathD, clearanceFinalGeometry.contours[2].pathD, 'NoMovementStrategy preserves generated slot');
+assert.equal(JSON.stringify(clearanceFinalGeometry), clearanceFinalBefore, 'clearance mutates only ManufacturingGeometry and never FinalGeometry');
 
 const outerContour = { id: 'outer', kind: 'OUTER', source: 'applied-e-panel', pathD: 'M 0 0 L 10 0 L 10 8 L 0 8 Z' };
 const innerContour = { id: 'inner', kind: 'INNER', source: 'applied-s-slot', pathD: 'M 2 2 L 6 2 L 6 5 L 2 5 Z' };
