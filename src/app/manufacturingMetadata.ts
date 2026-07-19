@@ -1,4 +1,5 @@
 import type { FinalGeometryType } from './finalGeometryTypes';
+import { getManufacturingPolicy } from './manufacturingPolicy';
 
 /**
  * @deprecated Compatibility-only manufacturing hints. FinalGeometryType is the
@@ -18,17 +19,12 @@ export type ManufacturingPipelinePolicy = {
 export const getManufacturingPipelineForGeometryType = (
   geometryType: FinalGeometryType = 'UNKNOWN',
 ): ManufacturingPipelinePolicy => {
-  switch (geometryType) {
-    case 'GENERATED_OUTER':
-      return { clearance: true, slotClearance: false, kerf: true };
-    case 'GENERATED_SLOT':
-      return { clearance: true, slotClearance: true, kerf: true };
-    case 'IMPORTED_OUTER':
-    case 'IMPORTED_HOLE':
-    case 'UNKNOWN':
-    default:
-      return { clearance: false, slotClearance: false, kerf: true };
-  }
+  const policy = getManufacturingPolicy(geometryType);
+  return {
+    clearance: policy.allowClearance,
+    slotClearance: policy.allowSlotClearance,
+    kerf: policy.allowKerf,
+  };
 };
 
 /**
