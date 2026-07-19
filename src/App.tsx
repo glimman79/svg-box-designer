@@ -38,12 +38,14 @@ export { buildFinalContourList, classifyAppliedContours, classifyContoursByConta
 export { applyClearance, applyClearanceStage, applySlotClearance, applySlotClearanceStage, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour, processManufacturingGeometry } from './app/manufacturingCompensation';
 export { createManufacturingGeometry } from './app/manufacturingGeometry';
 export { getManufacturingPipelineForGeometryType } from './app/manufacturingMetadata';
+export { getManufacturingPolicy } from './app/manufacturingPolicy';
 export type { ClassifiedContour, ClassifiedContourSource, ContourKind } from './app/contourClassification';
 export type { FinalGeometryType, ManufacturingClassification } from './app/finalGeometryTypes';
 export type { ManufacturingGeometry } from './app/manufacturingGeometry';
 export type { GeneratedGeometryItem, GeneratedGeometrySnapshot, GeneratedGeometrySnapshotMetadata } from './app/generatedGeometrySnapshot';
 export type { GeometryOperation, OperationSourceReference, OperationValidation, SOperation, TBOperation } from './app/operationTypes';
 export type { ManufacturingMetadata } from './app/manufacturingMetadata';
+export type { ManufacturingCompensationStrategy, ManufacturingPolicy } from './app/manufacturingPolicy';
 export { applyTabsToContour, buildAppliedEPanelPaths, buildGeneratedTBGeometryItems, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, getPanelThickness, getPanelThicknessForEdge, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 export type { PanelManagerState } from './app/panelManagerModel';

@@ -74,7 +74,7 @@ const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
 const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
-const { getConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge, getPanelEdgeOperations, recalculateAutomaticTBFingerWidths, resolveTBThickness, resolveSThickness, resolveSSlotLengthMm, recalculateAutomaticSSlotLengths, applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, exportManufacturingGeometrySvg, pathDToClosedContour, getManufacturingPipelineForGeometryType } = module.exports;
+const { getConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge, getPanelEdgeOperations, recalculateAutomaticTBFingerWidths, resolveTBThickness, resolveSThickness, resolveSSlotLengthMm, recalculateAutomaticSSlotLengths, applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createTabSegmentPlan, exportFinalGeometrySvg, exportManufacturingGeometrySvg, pathDToClosedContour, getManufacturingPipelineForGeometryType, getManufacturingPolicy } = module.exports;
 
 const buildKerfPreviewViaFinalContours = (svgModel, appliedEPanelPaths, appliedSGeometry, kerfMm, slotClearanceMm = 0) => {
   const finalGeometry = buildFinalGeometry(svgModel, appliedEPanelPaths, appliedSGeometry);
@@ -466,6 +466,13 @@ assert.equal(JSON.stringify(getManufacturingPipelineForGeometryType('GENERATED_S
 assert.equal(JSON.stringify(getManufacturingPipelineForGeometryType('GENERATED_OUTER')), JSON.stringify( { clearance: true, slotClearance: false, kerf: true }), 'GENERATED_OUTER policy applies clearance then kerf');
 assert.equal(JSON.stringify(getManufacturingPipelineForGeometryType('IMPORTED_OUTER')), JSON.stringify( { clearance: false, slotClearance: false, kerf: true }), 'IMPORTED_OUTER policy applies kerf only');
 assert.equal(JSON.stringify(getManufacturingPipelineForGeometryType('UNKNOWN')), JSON.stringify( { clearance: false, slotClearance: false, kerf: true }), 'UNKNOWN policy fails safely to kerf only');
+const generatedSlotPolicy = getManufacturingPolicy('GENERATED_SLOT');
+assert.equal(generatedSlotPolicy, getManufacturingPolicy('GENERATED_SLOT'), 'policy lookup returns a shared cached instance');
+assert.equal(Object.isFrozen(generatedSlotPolicy), true, 'manufacturing policies are immutable');
+assert.equal(Object.isFrozen(generatedSlotPolicy.diagnostics), true, 'policy diagnostics are immutable');
+assert.equal(generatedSlotPolicy.allowSlotClearance, true, 'generated slots opt into slot clearance through policy');
+assert.equal(getManufacturingPolicy('IMPORTED_OUTER').allowSlotClearance, false, 'imported contours opt out of slot clearance through policy');
+assert.equal(getManufacturingPolicy('IMPORTED_HOLE').allowKerf, true, 'imported holes opt into kerf through policy');
 assert.equal(JSON.stringify(mixedFinalList.contours.find((contour) => contour.panelId === 'tb-mixed')?.manufacturing), JSON.stringify({ clearance: true, slotClearance: false }), 'TB-generated applied-panel geometry keeps deprecated compatibility metadata derived from type');
 assert.equal(JSON.stringify(mixedFinalList.contours.find((contour) => contour.panelId === 's-mixed')?.manufacturing), JSON.stringify({ clearance: true, slotClearance: false }), 'S-generated panel replacement geometry keeps deprecated compatibility metadata derived from type');
 assert.equal(JSON.stringify(mixedFinalList.contours.find((contour) => contour.finalSource === 's-slot')?.manufacturing), JSON.stringify({ clearance: true, slotClearance: true }), 'S-generated slot contours keep deprecated compatibility metadata derived from type');

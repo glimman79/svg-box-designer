@@ -1,6 +1,7 @@
 import type { ClassifiedContour, FinalContour } from './contourClassification';
 import { classifyFinalContours } from './contourClassification';
-import { cloneManufacturingMetadata, getManufacturingPipelineForGeometryType } from './manufacturingMetadata';
+import { cloneManufacturingMetadata } from './manufacturingMetadata';
+import { getManufacturingPolicy } from './manufacturingPolicy';
 import { buildContourSides, cornerTouchTolerance, getContourSignedArea, lineIntersection, offsetContourSide, pointsMatch, pointsToClosedPathD } from './sharedGeometry';
 import type { PanelContour } from './sharedGeometry';
 import type { Point } from '../svgUtils';
@@ -142,9 +143,10 @@ export const compensateClassifiedContours = (contours: ClassifiedContour[], kerf
   }
 
   return contours.map((contour) => {
+    const policy = getManufacturingPolicy(contour.geometryType);
     const points = contour.points ?? (contour.pathD ? pathDToClosedContour(contour.pathD) ?? undefined : undefined);
 
-    if (!points) {
+    if (!policy.allowKerf || !points) {
       return { ...contour, manufacturing: cloneManufacturingMetadata(contour.manufacturing) };
     }
 
@@ -162,7 +164,7 @@ export const compensateClassifiedContours = (contours: ClassifiedContour[], kerf
 export const applyClearance = (manufacturingGeometry: ManufacturingGeometry): ManufacturingGeometry => {
   // Foundation only: deliberately walk by manufacturing classification without moving geometry.
   manufacturingGeometry.finalContourList.forEach((contour) => {
-    getManufacturingPipelineForGeometryType(contour.geometryType).clearance;
+    getManufacturingPolicy(contour.geometryType).allowClearance;
   });
   return manufacturingGeometry;
 };
@@ -183,7 +185,7 @@ export const applySlotClearance = (
   }
 
   return finalContourList.map((contour) => {
-    const isSlotClearanceEligible = getManufacturingPipelineForGeometryType(contour.geometryType).slotClearance;
+    const isSlotClearanceEligible = getManufacturingPolicy(contour.geometryType).allowSlotClearance;
 
     if (!isSlotClearanceEligible) {
       return {
