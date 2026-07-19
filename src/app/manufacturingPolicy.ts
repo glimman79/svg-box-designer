@@ -1,6 +1,8 @@
 import type { ManufacturingClassification } from './finalGeometryTypes';
+import { noMovementStrategy, offsetStrategy } from './compensationStrategies';
+import type { CompensationStrategy } from './compensationStrategies';
 
-export type ManufacturingCompensationStrategy = 'fixed' | 'contour';
+export type ManufacturingCompensationStrategy = CompensationStrategy;
 
 /**
  * Tool-agnostic manufacturing capabilities for a classified contour.
@@ -17,7 +19,7 @@ export type ManufacturingPolicy = Readonly<{
   preserveDimensions: boolean;
   movable: boolean;
   editable: boolean;
-  compensationStrategy: ManufacturingCompensationStrategy;
+  compensationStrategy: CompensationStrategy;
   diagnostics: ReadonlyArray<string>;
 }>;
 
@@ -30,7 +32,7 @@ const fixedCutPolicy: ManufacturingPolicy = Object.freeze({
   preserveDimensions: true,
   movable: false,
   editable: true,
-  compensationStrategy: 'fixed',
+  compensationStrategy: noMovementStrategy,
   diagnostics: noDiagnostics,
 });
 
@@ -41,13 +43,14 @@ const generatedContourPolicy: ManufacturingPolicy = Object.freeze({
   preserveDimensions: false,
   movable: true,
   editable: true,
-  compensationStrategy: 'contour',
+  compensationStrategy: offsetStrategy,
   diagnostics: noDiagnostics,
 });
 
 const generatedSlotPolicy: ManufacturingPolicy = Object.freeze({
   ...generatedContourPolicy,
   allowSlotClearance: true,
+  compensationStrategy: noMovementStrategy,
 });
 
 /** The sole mapping from manufacturing classifications to behaviour. */

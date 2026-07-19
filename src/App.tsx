@@ -39,6 +39,7 @@ export { applyClearance, applyClearanceStage, applySlotClearance, applySlotClear
 export { createManufacturingGeometry } from './app/manufacturingGeometry';
 export { getManufacturingPipelineForGeometryType } from './app/manufacturingMetadata';
 export { getManufacturingPolicy } from './app/manufacturingPolicy';
+export { NoMovementStrategy, OffsetStrategy, noMovementStrategy, offsetStrategy } from './app/compensationStrategies';
 export type { ClassifiedContour, ClassifiedContourSource, ContourKind } from './app/contourClassification';
 export type { FinalGeometryType, ManufacturingClassification } from './app/finalGeometryTypes';
 export type { ManufacturingGeometry } from './app/manufacturingGeometry';
@@ -46,6 +47,7 @@ export type { GeneratedGeometryItem, GeneratedGeometrySnapshot, GeneratedGeometr
 export type { GeometryOperation, OperationSourceReference, OperationValidation, SOperation, TBOperation } from './app/operationTypes';
 export type { ManufacturingMetadata } from './app/manufacturingMetadata';
 export type { ManufacturingCompensationStrategy, ManufacturingPolicy } from './app/manufacturingPolicy';
+export type { CompensationStrategy, CompensationStrategyContext } from './app/compensationStrategies';
 export { applyTabsToContour, buildAppliedEPanelPaths, buildGeneratedTBGeometryItems, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, getPanelThickness, getPanelThicknessForEdge, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 export type { PanelManagerState } from './app/panelManagerModel';
@@ -855,8 +857,8 @@ function App() {
   );
 
   const kerfCompensatedAppliedPreview = useMemo(
-    () => processManufacturingGeometry(finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm),
-    [finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm],
+    () => processManufacturingGeometry(finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.clearanceMm),
+    [finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.clearanceMm],
   );
 
   const isProjectLocked = !panelManager.isApplied;
