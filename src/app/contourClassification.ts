@@ -25,6 +25,8 @@ export type ClassifiedContour = {
   geometryType: FinalGeometryType;
   /** @deprecated Compatibility-only hints derived from geometryType. */
   manufacturing?: ManufacturingMetadata;
+  /** One entry per contour segment; true means generator-modified design intent. */
+  compensationProfile?: ReadonlyArray<boolean>;
   diagnostics?: string[];
 };
 

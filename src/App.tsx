@@ -6,6 +6,7 @@ import { exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
 import { buildAppliedSGeometry, buildGeneratedSGeometryItems, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
 import { getConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge } from './app/connectionViewModel';
 import { processManufacturingGeometry } from './app/manufacturingCompensation';
+import { DEFAULT_PROJECT_SETTINGS } from './app/projectDefaults';
 import { buildFinalGeometry as buildNativeFinalGeometry } from './app/finalGeometry';
 import { buildFinalGeometry } from './app/finalGeometryCompatibility';
 import { createGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
@@ -210,11 +211,7 @@ export const getToolClickGroupStartKind = (
   return null;
 };
 
-const defaultProjectSettings: ProjectSettings = {
-  kerfMm: 0.15,
-  clearanceMm: 0,
-  slotClearanceMm: 0,
-};
+export const defaultProjectSettings: ProjectSettings = DEFAULT_PROJECT_SETTINGS;
 
 const maxHistoryEntries = 10;
 
@@ -2365,8 +2362,8 @@ function App() {
               <h3>Manufacturing settings</h3>
               <div className="property-grid">
                 <NumericField id="manufacturing-kerf" label="Kerf" min={0} value={projectSettings.kerfMm} onChange={(kerfMm) => updateProjectSettings({ kerfMm })} />
-                <NumericField id="manufacturing-clearance" label="Clearance" min={0} value={projectSettings.clearanceMm} onChange={(clearanceMm) => updateProjectSettings({ clearanceMm })} />
-                <NumericField id="manufacturing-slot-clearance" label="Slot clearance" min={0} value={projectSettings.slotClearanceMm} onChange={(slotClearanceMm) => updateProjectSettings({ slotClearanceMm })} />
+                <NumericField id="manufacturing-clearance" label="Clearance" value={projectSettings.clearanceMm} onChange={(clearanceMm) => updateProjectSettings({ clearanceMm })} />
+                <NumericField id="manufacturing-slot-clearance" label="Slot clearance" value={projectSettings.slotClearanceMm} onChange={(slotClearanceMm) => updateProjectSettings({ slotClearanceMm })} />
               </div>
               <p className="muted">Kerf applies globally to the whole generated output.</p>
               <p className="muted">Slot clearance applies only to S-generated slot contours before Kerf.</p>

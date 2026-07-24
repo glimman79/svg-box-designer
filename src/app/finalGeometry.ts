@@ -16,6 +16,23 @@ export type FinalGeometry = {
 
 const clonePoints = (points: Point[]) => points.map((point) => ({ ...point }));
 
+const pointOnImportedSegment = (point: Point, start: Point, end: Point) => {
+  const cross = (point.x - start.x) * (end.y - start.y) - (point.y - start.y) * (end.x - start.x);
+  return Math.abs(cross) <= cornerTouchTolerance
+    && point.x >= Math.min(start.x, end.x) - cornerTouchTolerance
+    && point.x <= Math.max(start.x, end.x) + cornerTouchTolerance
+    && point.y >= Math.min(start.y, end.y) - cornerTouchTolerance
+    && point.y <= Math.max(start.y, end.y) + cornerTouchTolerance;
+};
+
+const identifyModifiedProfile = (generated: Point[], imported: Point[]): boolean[] => generated.map((start, index) => {
+  const end = generated[(index + 1) % generated.length];
+  return !imported.some((importedStart, importedIndex) => {
+    const importedEnd = imported[(importedIndex + 1) % imported.length];
+    return pointOnImportedSegment(start, importedStart, importedEnd) && pointOnImportedSegment(end, importedStart, importedEnd);
+  });
+});
+
 
 const pathDToClosedContourForFinalGeometry = (pathD: string): Point[] | null => {
   const tokens = pathD.match(/[a-zA-Z]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
@@ -78,6 +95,7 @@ export const buildFinalGeometry = (
     const replacement = replacementByPanelId.get(panel.id);
     const outerPanelContour = panel.outerContour ?? panel.contour;
     const pathD = replacement?.pathD ?? pointsToClosedPathD(outerPanelContour);
+    const generatedPoints = replacement ? pathDToClosedContourForFinalGeometry(pathD) ?? undefined : undefined;
     const outerContour: FinalGeometryContour = {
       id: `final-panel:${panel.id}`,
       source: 'final-contour',
@@ -86,7 +104,8 @@ export const buildFinalGeometry = (
       panelId: panel.id,
       ownerPanelId: panel.id,
       pathD,
-      points: replacement ? pathDToClosedContourForFinalGeometry(pathD) ?? undefined : clonePoints(outerPanelContour),
+      points: generatedPoints ?? clonePoints(outerPanelContour),
+      ...(generatedPoints ? { compensationProfile: identifyModifiedProfile(generatedPoints, outerPanelContour) } : {}),
       geometryType: replacement?.geometryType ?? 'IMPORTED_OUTER',
       manufacturing: manufacturingMetadataForGeometryType(replacement?.geometryType ?? 'IMPORTED_OUTER'),
     };
@@ -108,6 +127,7 @@ export const buildFinalGeometry = (
   });
 
   generatedGeometry.filter((item) => item.behaviour.assembly === 'slot-cutout').forEach((item) => {
+    const slotPoints = pathDToClosedContourForFinalGeometry(item.geometry.pathD) ?? undefined;
     contours.push({
       id: item.id.replace(/^generated:/, 'final-'),
       source: 'final-contour',
@@ -115,7 +135,8 @@ export const buildFinalGeometry = (
       kind: 'INNER',
       ownerPanelId: item.behaviour.ownerPanelId,
       pathD: item.geometry.pathD,
-      points: pathDToClosedContourForFinalGeometry(item.geometry.pathD) ?? undefined,
+      points: slotPoints,
+      ...(slotPoints ? { compensationProfile: slotPoints.map(() => true) } : {}),
       geometryType: item.manufacturingClassification,
       manufacturing: manufacturingMetadataForGeometryType(item.manufacturingClassification),
     });

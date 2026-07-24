@@ -28,8 +28,8 @@ export class OffsetStrategy implements CompensationStrategy {
   readonly name = 'offset';
 
   validate({ contour, clearanceMm, services = geometryServices }: CompensationStrategyContext): ReadonlyArray<string> {
-    if (!Number.isFinite(clearanceMm) || clearanceMm < 0) return ['Clearance distance is invalid.'];
-    if (clearanceMm <= cornerTouchTolerance) return [];
+    if (!Number.isFinite(clearanceMm)) return ['Clearance distance is invalid.'];
+    if (Math.abs(clearanceMm) <= cornerTouchTolerance) return [];
     const area = services.signedArea(contour);
     if (area === null) return ['Unsupported or open contour geometry.'];
     if (Math.abs(area) <= cornerTouchTolerance) return ['Contour has zero area.'];
@@ -37,11 +37,11 @@ export class OffsetStrategy implements CompensationStrategy {
   }
 
   execute(context: CompensationStrategyContext): void {
-    if (context.clearanceMm <= cornerTouchTolerance) return;
+    if (Math.abs(context.clearanceMm) <= cornerTouchTolerance) return;
     const validation = this.validate(context);
     if (validation.length) { this.report(context, validation); return; }
     const services = context.services ?? geometryServices;
-    const offset = services.parallelProfile(context.contour, context.clearanceMm, context.contour.kind === 'OUTER' ? 'OUTWARD' : 'INWARD');
+    const offset = services.compensateProfile(context.contour, context.clearanceMm, 'OUTWARD');
     if (!offset) { this.report(context, ['Offset could not be produced safely.']); return; }
     services.replace(context.contour, offset);
   }
