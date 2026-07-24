@@ -40,6 +40,8 @@ export { createManufacturingGeometry } from './app/manufacturingGeometry';
 export { getManufacturingPipelineForGeometryType } from './app/manufacturingMetadata';
 export { getManufacturingPolicy } from './app/manufacturingPolicy';
 export { NoMovementStrategy, OffsetStrategy, noMovementStrategy, offsetStrategy } from './app/compensationStrategies';
+export { geometryServices } from './app/geometryServices';
+export type { GeometryServices, ProfileDirection, ProfileOrientation } from './app/geometryServices';
 export type { ClassifiedContour, ClassifiedContourSource, ContourKind } from './app/contourClassification';
 export type { FinalGeometryType, ManufacturingClassification } from './app/finalGeometryTypes';
 export type { ManufacturingGeometry } from './app/manufacturingGeometry';

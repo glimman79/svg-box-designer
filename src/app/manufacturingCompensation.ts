@@ -2,9 +2,9 @@ import type { ClassifiedContour, FinalContour } from './contourClassification';
 import { classifyFinalContours } from './contourClassification';
 import { cloneManufacturingMetadata } from './manufacturingMetadata';
 import { getManufacturingPolicy } from './manufacturingPolicy';
-import { cornerTouchTolerance, pointsToClosedPathD } from './sharedGeometry';
-import type { PanelContour } from './sharedGeometry';
-import { cleanContourPointsForOffset, offsetContourPoints, pathDToClosedContour } from './compensationStrategies';
+import { cornerTouchTolerance } from './sharedGeometry';
+import { geometryServices } from './geometryServices';
+import type { GeometryServices } from './geometryServices';
 import { createManufacturingGeometry } from './manufacturingGeometry';
 import type { ManufacturingGeometry } from './manufacturingGeometry';
 import type { FinalGeometry } from './finalGeometry';
@@ -15,47 +15,36 @@ export type KerfCompensationResult = ManufacturingGeometry;
 
 export const getKerfCompensationMm = (kerfMm: number) => Math.max(0, kerfMm) / 2;
 
-export { cleanContourPointsForOffset, pathDToClosedContour } from './compensationStrategies';
+export { cleanContourPointsForOffset, pathDToClosedContour } from './geometryServices';
+import { compensateContourPoints as compensatePolygonPoints } from './geometryServices';
+import type { PanelContour } from './sharedGeometry';
 
-export const compensateContourPoints = (points: PanelContour, contourKind: ClassifiedContour['kind'], compensationMm: number): PanelContour => {
-  if (compensationMm <= cornerTouchTolerance) {
-    return points.map((point) => ({ ...point }));
-  }
+/** @deprecated Polygon compatibility helper. Manufacturing stages use GeometryServices. */
+export const compensateContourPoints = (points: PanelContour, contourKind: ClassifiedContour['kind'], compensationMm: number): PanelContour => (
+  compensatePolygonPoints(points, contourKind === 'OUTER', compensationMm)
+);
 
-  return offsetContourPoints(points, contourKind === 'OUTER', compensationMm)
-    ?? points.map((point) => ({ ...point }));
-};
-
-export const compensateClassifiedContours = (contours: ClassifiedContour[], kerfMm: number): ClassifiedContour[] => {
+export const compensateClassifiedContours = (contours: ClassifiedContour[], kerfMm: number, services: GeometryServices = geometryServices): ClassifiedContour[] => {
   const compensationMm = getKerfCompensationMm(kerfMm);
 
   if (compensationMm <= cornerTouchTolerance) {
-    return contours.map((contour) => ({ ...contour, manufacturing: cloneManufacturingMetadata(contour.manufacturing), points: contour.points?.map((point) => ({ ...point })) }));
+    return contours.map((contour) => ({ ...services.clone(contour as FinalContour), manufacturing: cloneManufacturingMetadata(contour.manufacturing) }));
   }
 
   return contours.map((contour) => {
     const policy = getManufacturingPolicy(contour.geometryType);
-    const points = contour.points ?? (contour.pathD ? pathDToClosedContour(contour.pathD) ?? undefined : undefined);
-
-    if (!policy.allowKerf || !points) {
-      return { ...contour, manufacturing: cloneManufacturingMetadata(contour.manufacturing) };
+    if (!policy.allowKerf) {
+      return { ...services.clone(contour as FinalContour), manufacturing: cloneManufacturingMetadata(contour.manufacturing) };
     }
-
-    const compensatedPoints = compensateContourPoints(points, contour.kind, compensationMm);
-
-    return {
-      ...contour,
-      manufacturing: cloneManufacturingMetadata(contour.manufacturing),
-      points: compensatedPoints,
-      pathD: pointsToClosedPathD(compensatedPoints),
-    };
+    const compensated = services.parallelProfile(contour as FinalContour, compensationMm, contour.kind === 'OUTER' ? 'OUTWARD' : 'INWARD');
+    return { ...(compensated ?? services.clone(contour as FinalContour)), manufacturing: cloneManufacturingMetadata(contour.manufacturing) };
   });
 };
 
-export const applyClearance = (manufacturingGeometry: ManufacturingGeometry, clearanceMm = 0): ManufacturingGeometry => {
+export const applyClearance = (manufacturingGeometry: ManufacturingGeometry, clearanceMm = 0, services: GeometryServices = geometryServices): ManufacturingGeometry => {
   manufacturingGeometry.finalContourList.forEach((contour) => {
     const strategy = getManufacturingPolicy(contour.geometryType).compensationStrategy;
-    strategy.execute({ geometry: manufacturingGeometry, contour, clearanceMm });
+    strategy.execute({ geometry: manufacturingGeometry, contour, clearanceMm, services });
   });
   return manufacturingGeometry;
 };
@@ -66,40 +55,21 @@ export const applyClearanceStage = (finalContourList: FinalContour[]): FinalCont
 export const applySlotClearance = (
   finalContourList: FinalContour[],
   slotClearanceMm: number,
+  services: GeometryServices = geometryServices,
 ): FinalContour[] => {
   if (slotClearanceMm <= cornerTouchTolerance) {
-    return finalContourList.map((contour) => ({
-      ...contour,
-      manufacturing: cloneManufacturingMetadata(contour.manufacturing),
-      ...(contour.points ? { points: contour.points.map((point) => ({ ...point })) } : {}),
-    }));
+    return finalContourList.map((contour) => ({ ...services.clone(contour), manufacturing: cloneManufacturingMetadata(contour.manufacturing) }));
   }
 
   return finalContourList.map((contour) => {
     const isSlotClearanceEligible = getManufacturingPolicy(contour.geometryType).allowSlotClearance;
 
     if (!isSlotClearanceEligible) {
-      return {
-        ...contour,
-        manufacturing: cloneManufacturingMetadata(contour.manufacturing),
-        ...(contour.points ? { points: contour.points.map((point) => ({ ...point })) } : {}),
-      };
+      return { ...services.clone(contour), manufacturing: cloneManufacturingMetadata(contour.manufacturing) };
     }
 
-    const points = contour.points ?? (contour.pathD ? pathDToClosedContour(contour.pathD) ?? undefined : undefined);
-
-    if (!points) {
-      return { ...contour, manufacturing: cloneManufacturingMetadata(contour.manufacturing) };
-    }
-
-    const clearedPoints = compensateContourPoints(points, 'OUTER', slotClearanceMm);
-
-    return {
-      ...contour,
-      manufacturing: cloneManufacturingMetadata(contour.manufacturing),
-      points: clearedPoints,
-      pathD: pointsToClosedPathD(clearedPoints),
-    };
+    const cleared = services.parallelProfile(contour, slotClearanceMm, 'OUTWARD');
+    return { ...(cleared ?? services.clone(contour)), manufacturing: cloneManufacturingMetadata(contour.manufacturing) };
   });
 };
 
