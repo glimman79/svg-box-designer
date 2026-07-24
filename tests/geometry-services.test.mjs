@@ -27,6 +27,7 @@ const load = (relativePath) => {
 const { geometryServices } = load('src/app/geometryServices.ts');
 const { applyClearance, applySlotClearance, compensateClassifiedContours } = load('src/app/manufacturingCompensation.ts');
 const { createManufacturingGeometry } = load('src/app/manufacturingGeometry.ts');
+const { DEFAULT_PROJECT_SETTINGS } = load('src/app/projectDefaults.ts');
 
 const outer = {
   id: 'outer', source: 'final-contour', finalSource: 'applied-panel', kind: 'OUTER',
@@ -39,6 +40,10 @@ const slot = {
 
 const calls = [];
 const spyServices = {
+  compensateProfile(profile, distance, direction) {
+    calls.push(['compensateProfile', profile.id, distance, direction]);
+    return geometryServices.compensateProfile(profile, distance, direction);
+  },
   parallelProfile(profile, distance, direction) {
     calls.push(['parallelProfile', profile.id, distance, direction]);
     return geometryServices.parallelProfile(profile, distance, direction);
@@ -51,11 +56,11 @@ const spyServices = {
 };
 
 applyClearance(createManufacturingGeometry({ contours: [outer], diagnostics: [] }), 0.1, spyServices);
-assert.deepEqual(calls, [['signedArea', 'outer'], ['parallelProfile', 'outer', 0.1, 'OUTWARD'], ['replace', 'outer']], 'clearance delegates validation and profile construction to Geometry Services');
+assert.deepEqual(calls, [['signedArea', 'outer'], ['compensateProfile', 'outer', 0.1, 'OUTWARD'], ['replace', 'outer']], 'clearance delegates signed profile reconstruction to Geometry Services');
 
 calls.length = 0;
 applySlotClearance([slot], 0.1, spyServices);
-assert.deepEqual(calls, [['parallelProfile', 'slot', 0.1, 'OUTWARD']], 'slot clearance is a caller of the shared parallel profile operation');
+assert.deepEqual(calls, [['compensateProfile', 'slot', 0.1, 'OUTWARD']], 'slot clearance delegates signed profile reconstruction to Geometry Services');
 
 calls.length = 0;
 compensateClassifiedContours([{ ...outer }], 0.2, spyServices);
@@ -65,6 +70,23 @@ const serviceOutput = geometryServices.parallelProfile(outer, 0.1, 'OUTWARD');
 assert.equal(serviceOutput.pathD, 'M -0.1 -0.1 L 10.1 -0.1 L 10.1 10.1 L -0.1 10.1 Z', 'Geometry Services preserves the established polygon offset output');
 assert.equal(geometryServices.orientation(outer), 'COUNTER_CLOCKWISE', 'Geometry Services owns orientation queries');
 assert.equal(geometryServices.signedArea(outer), 100, 'Geometry Services owns signed-area queries');
+
+const selective = {
+  ...outer,
+  points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
+  compensationProfile: [false, true, false, false],
+};
+assert.equal(geometryServices.compensateProfile(selective, -0.1, 'OUTWARD').pathD, 'M 0 0 L 10.1 0 L 10.1 10 L 0 10 Z', 'negative clearance moves only the modified profile in the clearance-increasing direction');
+assert.equal(geometryServices.compensateProfile(selective, 0.1, 'OUTWARD').pathD, 'M 0 0 L 9.9 0 L 9.9 10 L 0 10 Z', 'positive clearance moves the modified profile in the opposite direction');
+assert.equal(geometryServices.compensateProfile(selective, -0.1, 'OUTWARD').points[2].y, 10, 'corner reconstruction reconnects the compensated profile to unchanged geometry');
+
+const signedSlot = { ...slot, compensationProfile: [true, true, true, true] };
+assert.equal(geometryServices.compensateProfile(signedSlot, -0.1, 'OUTWARD').pathD, 'M 1.9 1.9 L 4.1 1.9 L 4.1 4.1 L 1.9 4.1 Z', 'negative slot clearance increases slot clearance');
+assert.equal(geometryServices.compensateProfile(signedSlot, 0.1, 'OUTWARD').pathD, 'M 2.1 2.1 L 3.9 2.1 L 3.9 3.9 L 2.1 3.9 Z', 'positive slot clearance moves in the opposite direction');
+assert.deepEqual(DEFAULT_PROJECT_SETTINGS, { kerfMm: 0.15, clearanceMm: -0.10, slotClearanceMm: -0.10 }, 'new-project manufacturing defaults are centralized and signed');
+const appSource = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
+assert.doesNotMatch(appSource.match(/id="manufacturing-clearance"[^\n]*/)?.[0] ?? '', /min=\{0\}/, 'clearance UI accepts negative values');
+assert.doesNotMatch(appSource.match(/id="manufacturing-slot-clearance"[^\n]*/)?.[0] ?? '', /min=\{0\}/, 'slot clearance UI accepts negative values');
 
 for (const file of ['src/app/manufacturingCompensation.ts', 'src/app/compensationStrategies.ts']) {
   const source = readFileSync(resolve(root, file), 'utf8');

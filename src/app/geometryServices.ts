@@ -19,6 +19,7 @@ export type ProfileOrientation = 'CLOCKWISE' | 'COUNTER_CLOCKWISE' | 'DEGENERATE
  * not parse paths, inspect vertices, or choose an offset algorithm themselves.
  */
 export interface GeometryServices {
+  compensateProfile(profile: FinalContour, signedDistanceMm: number, directionWhenNegative: ProfileDirection): FinalContour | null;
   parallelProfile(profile: FinalContour, distanceMm: number, direction: ProfileDirection): FinalContour | null;
   offset(profile: FinalContour, distanceMm: number, direction: ProfileDirection): FinalContour | null;
   orientation(profile: FinalContour): ProfileOrientation | null;
@@ -103,12 +104,44 @@ const offsetContourPoints = (points: PanelContour, outward: boolean, distanceMm:
   return result;
 };
 
+const reconstructSelectiveProfile = (profile: FinalContour, signedDistanceMm: number, directionWhenNegative: ProfileDirection): FinalContour | null => {
+  const sourcePoints = profile.points ?? (profile.pathD ? pathDToClosedContour(profile.pathD) : null);
+  if (!sourcePoints) return null;
+  const points = cleanContourPointsForOffset(sourcePoints);
+  if (points.length !== profile.compensationProfile?.length || points.length < 3) return null;
+  if (Math.abs(signedDistanceMm) <= cornerTouchTolerance) return { ...profile, points: clonePoints(sourcePoints) };
+  const winding = getContourSignedArea(points) >= 0 ? 1 : -1;
+  const negativeDirectionSign = directionWhenNegative === 'OUTWARD' ? -1 : 1;
+  const directionSign = signedDistanceMm < 0 ? negativeDirectionSign : -negativeDirectionSign;
+  const signedOffset = Math.abs(signedDistanceMm) * winding * directionSign;
+  const sides = buildContourSides(points).map((side, index) => (
+    profile.compensationProfile?.[index] ? offsetContourSide(side, signedOffset) : side
+  ));
+  if (sides.some((side) => !side)) return null;
+  const rebuilt = (sides as NonNullable<(typeof sides)[number]>[]).map((side, index, allSides) => (
+    lineIntersection(allSides[(index + allSides.length - 1) % allSides.length], side)
+  ));
+  if (rebuilt.some((point) => !point)) return null;
+  const result = rebuilt as PanelContour;
+  return { ...profile, points: result, pathD: pointsToClosedPathD(result) };
+};
+
 /** @deprecated Polygon compatibility helper. New consumers must use GeometryServices. */
 export const compensateContourPoints = (points: PanelContour, outward: boolean, distanceMm: number): PanelContour => (
   offsetContourPoints(points, outward, distanceMm) ?? clonePoints(points)
 );
 
 class PolygonGeometryServices implements GeometryServices {
+  compensateProfile(profile: FinalContour, signedDistanceMm: number, directionWhenNegative: ProfileDirection): FinalContour | null {
+    if (!Number.isFinite(signedDistanceMm)) return null;
+    if (profile.compensationProfile) return reconstructSelectiveProfile(profile, signedDistanceMm, directionWhenNegative);
+    // Pre-V2.7 compatibility: a contour without profile provenance is one complete profile.
+    const direction = signedDistanceMm < 0
+      ? directionWhenNegative
+      : directionWhenNegative === 'OUTWARD' ? 'INWARD' : 'OUTWARD';
+    return this.parallelProfile(profile, Math.abs(signedDistanceMm), direction);
+  }
+
   parallelProfile(profile: FinalContour, distanceMm: number, direction: ProfileDirection): FinalContour | null {
     const points = profile.points ?? (profile.pathD ? pathDToClosedContour(profile.pathD) : null);
     if (!points) return null;
@@ -135,7 +168,7 @@ class PolygonGeometryServices implements GeometryServices {
   }
 
   clone(profile: FinalContour): FinalContour {
-    return { ...profile, ...(profile.points ? { points: clonePoints(profile.points) } : {}) };
+    return { ...profile, ...(profile.points ? { points: clonePoints(profile.points) } : {}), ...(profile.compensationProfile ? { compensationProfile: [...profile.compensationProfile] } : {}) };
   }
 
   replace(target: FinalContour, replacement: FinalContour): void {

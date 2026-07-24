@@ -57,7 +57,7 @@ export const applySlotClearance = (
   slotClearanceMm: number,
   services: GeometryServices = geometryServices,
 ): FinalContour[] => {
-  if (slotClearanceMm <= cornerTouchTolerance) {
+  if (Math.abs(slotClearanceMm) <= cornerTouchTolerance) {
     return finalContourList.map((contour) => ({ ...services.clone(contour), manufacturing: cloneManufacturingMetadata(contour.manufacturing) }));
   }
 
@@ -68,7 +68,7 @@ export const applySlotClearance = (
       return { ...services.clone(contour), manufacturing: cloneManufacturingMetadata(contour.manufacturing) };
     }
 
-    const cleared = services.parallelProfile(contour, slotClearanceMm, 'OUTWARD');
+    const cleared = services.compensateProfile(contour, slotClearanceMm, 'OUTWARD');
     return { ...(cleared ?? services.clone(contour)), manufacturing: cloneManufacturingMetadata(contour.manufacturing) };
   });
 };
