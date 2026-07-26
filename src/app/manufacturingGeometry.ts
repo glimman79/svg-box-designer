@@ -13,6 +13,7 @@ const cloneFinalContour = (contour: FinalContour): FinalContour => ({
   ...contour,
   manufacturing: cloneManufacturingMetadata(contour.manufacturing),
   ...(contour.points ? { points: contour.points.map((point) => ({ ...point })) } : {}),
+  ...(contour.compensationProfile ? { compensationProfile: [...contour.compensationProfile] } : {}),
   ...(contour.diagnostics ? { diagnostics: [...contour.diagnostics] } : {}),
 });
 

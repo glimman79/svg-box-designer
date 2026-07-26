@@ -1,4 +1,5 @@
 import type { FinalContour } from './contourClassification';
+import type { ProfileMaterialSide } from './contourClassification';
 import {
   buildContourSides,
   cornerTouchTolerance,
@@ -13,6 +14,18 @@ import type { Point } from '../svgUtils';
 
 export type ProfileDirection = 'OUTWARD' | 'INWARD';
 export type ProfileOrientation = 'CLOCKWISE' | 'COUNTER_CLOCKWISE' | 'DEGENERATE';
+export enum ProfileDisplacement {
+  REMOVE_MATERIAL = 'REMOVE_MATERIAL',
+  ADD_MATERIAL = 'ADD_MATERIAL',
+}
+
+/** Converts manufacturing intent to a contour-relative direction. */
+export const directionForOuterMaterialDisplacement = (
+  displacement: ProfileDisplacement,
+  _materialSide: ProfileMaterialSide = 'GENERATED_MATING',
+): ProfileDirection => (
+  displacement === ProfileDisplacement.REMOVE_MATERIAL ? 'INWARD' : 'OUTWARD'
+);
 
 /**
  * The permanent geometry-operation boundary. Callers pass domain geometry and do
@@ -107,15 +120,35 @@ const offsetContourPoints = (points: PanelContour, outward: boolean, distanceMm:
 const reconstructSelectiveProfile = (profile: FinalContour, signedDistanceMm: number, directionWhenNegative: ProfileDirection): FinalContour | null => {
   const sourcePoints = profile.points ?? (profile.pathD ? pathDToClosedContour(profile.pathD) : null);
   if (!sourcePoints) return null;
-  const points = cleanContourPointsForOffset(sourcePoints);
-  if (points.length !== profile.compensationProfile?.length || points.length < 3) return null;
+  if (sourcePoints.length !== profile.compensationProfile?.length) return null;
+  // Clean geometry and provenance together. Previously the points alone were
+  // cleaned, so their segment indexes no longer matched the generator mask.
+  const points = clonePoints(sourcePoints);
+  const selectedSegments = [...profile.compensationProfile];
+  let changed = true;
+  while (changed && points.length >= 3) {
+    changed = false;
+    for (let index = 0; index < points.length; index += 1) {
+      const previousIndex = (index + points.length - 1) % points.length;
+      const nextIndex = (index + 1) % points.length;
+      if (pointsMatch(points[previousIndex], points[index]) || pointsMatch(points[index], points[nextIndex])
+        || areCollinear(points[previousIndex], points[index], points[nextIndex])) {
+        selectedSegments[previousIndex] = selectedSegments[previousIndex] || selectedSegments[index];
+        points.splice(index, 1);
+        selectedSegments.splice(index, 1);
+        changed = true;
+        break;
+      }
+    }
+  }
+  if (points.length < 3) return null;
   if (Math.abs(signedDistanceMm) <= cornerTouchTolerance) return { ...profile, points: clonePoints(sourcePoints) };
   const winding = getContourSignedArea(points) >= 0 ? 1 : -1;
   const negativeDirectionSign = directionWhenNegative === 'OUTWARD' ? -1 : 1;
   const directionSign = signedDistanceMm < 0 ? negativeDirectionSign : -negativeDirectionSign;
   const signedOffset = Math.abs(signedDistanceMm) * winding * directionSign;
   const sides = buildContourSides(points).map((side, index) => (
-    profile.compensationProfile?.[index] ? offsetContourSide(side, signedOffset) : side
+    selectedSegments[index] ? offsetContourSide(side, signedOffset) : side
   ));
   if (sides.some((side) => !side)) return null;
   const rebuilt = (sides as NonNullable<(typeof sides)[number]>[]).map((side, index, allSides) => (
