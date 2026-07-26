@@ -106,6 +106,7 @@ export const buildFinalGeometry = (
       pathD,
       points: generatedPoints ?? clonePoints(outerPanelContour),
       ...(generatedPoints ? { compensationProfile: identifyModifiedProfile(generatedPoints, outerPanelContour) } : {}),
+      ...(replacement ? { profileMaterialSide: 'GENERATED_MATING' as const } : {}),
       geometryType: replacement?.geometryType ?? 'IMPORTED_OUTER',
       manufacturing: manufacturingMetadataForGeometryType(replacement?.geometryType ?? 'IMPORTED_OUTER'),
     };
@@ -137,6 +138,7 @@ export const buildFinalGeometry = (
       pathD: item.geometry.pathD,
       points: slotPoints,
       ...(slotPoints ? { compensationProfile: slotPoints.map(() => true) } : {}),
+      profileMaterialSide: 'FEMALE',
       geometryType: item.manufacturingClassification,
       manufacturing: manufacturingMetadataForGeometryType(item.manufacturingClassification),
     });

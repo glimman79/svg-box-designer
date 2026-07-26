@@ -56,7 +56,7 @@ const spyServices = {
 };
 
 applyClearance(createManufacturingGeometry({ contours: [outer], diagnostics: [] }), 0.1, spyServices);
-assert.deepEqual(calls, [['signedArea', 'outer'], ['compensateProfile', 'outer', 0.1, 'OUTWARD'], ['replace', 'outer']], 'clearance delegates signed profile reconstruction to Geometry Services');
+assert.deepEqual(calls, [['signedArea', 'outer'], ['compensateProfile', 'outer', 0.1, 'INWARD'], ['replace', 'outer']], 'clearance delegates explicit material-removal semantics to Geometry Services');
 
 calls.length = 0;
 applySlotClearance([slot], 0.1, spyServices);
@@ -80,9 +80,39 @@ assert.equal(geometryServices.compensateProfile(selective, -0.1, 'OUTWARD').path
 assert.equal(geometryServices.compensateProfile(selective, 0.1, 'OUTWARD').pathD, 'M 0 0 L 9.9 0 L 9.9 10 L 0 10 Z', 'positive clearance moves the modified profile in the opposite direction');
 assert.equal(geometryServices.compensateProfile(selective, -0.1, 'OUTWARD').points[2].y, 10, 'corner reconstruction reconnects the compensated profile to unchanged geometry');
 
+const clearanceSelective = (points, selected, value) => geometryServices.compensateProfile({
+  ...outer, points, pathD: undefined, compensationProfile: selected,
+}, value, 'INWARD');
+const horizontalTB = [
+  { x: 0, y: 0 }, { x: 3, y: 0 }, { x: 3, y: -2 }, { x: 5, y: -2 },
+  { x: 5, y: 0 }, { x: 8, y: 0 }, { x: 8, y: -2 }, { x: 10, y: -2 },
+  { x: 10, y: 10 }, { x: 0, y: 10 },
+];
+const selectedTBProfiles = [false, true, true, true, false, true, true, true, false, false];
+const horizontalNegative = clearanceSelective(horizontalTB, selectedTBProfiles, -0.9);
+const horizontalPositive = clearanceSelective(horizontalTB, selectedTBProfiles, 0.9);
+assert.equal(horizontalNegative.points[2].x, 3.9, 'horizontal TB side wall receives the full 0.90 mm');
+assert.equal(horizontalNegative.points[2].y, -1.1, 'negative clearance removes material from a horizontal TB face');
+assert.equal(horizontalPositive.points[2].y, -2.9, 'positive clearance adds material in the opposite direction');
+assert.deepEqual(horizontalNegative.points[0], horizontalTB[0], 'adjoining imported geometry remains fixed');
+
+const verticalTB = horizontalTB.map(({ x, y }) => ({ x: -y, y: x }));
+const verticalNegative = clearanceSelective(verticalTB, selectedTBProfiles, -0.9);
+assert.equal(verticalNegative.points[2].x, 1.1, 'vertical TB face has orientation-independent direction');
+assert.equal(verticalNegative.points[2].y, 3.9, 'vertical TB side wall receives the full 0.90 mm');
+
+const collinearAnchor = { ...outer,
+  points: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
+  compensationProfile: [false, true, false, false, false],
+};
+assert.ok(geometryServices.compensateProfile(collinearAnchor, -0.1, 'INWARD'), 'first/last profile provenance remains aligned across collinear generator anchors');
+assert.deepEqual(clearanceSelective(horizontalTB, selectedTBProfiles, 0).points, horizontalTB, 'zero clearance preserves exact geometry');
+
 const signedSlot = { ...slot, compensationProfile: [true, true, true, true] };
 assert.equal(geometryServices.compensateProfile(signedSlot, -0.1, 'OUTWARD').pathD, 'M 1.9 1.9 L 4.1 1.9 L 4.1 4.1 L 1.9 4.1 Z', 'negative slot clearance increases slot clearance');
 assert.equal(geometryServices.compensateProfile(signedSlot, 0.1, 'OUTWARD').pathD, 'M 2.1 2.1 L 3.9 2.1 L 3.9 3.9 L 2.1 3.9 Z', 'positive slot clearance moves in the opposite direction');
+assert.equal(geometryServices.compensateProfile(signedSlot, -0.9, 'OUTWARD').pathD, 'M 1.1 1.1 L 4.9 1.1 L 4.9 4.9 L 1.1 4.9 Z', 'whole-slot signed compensation remains unchanged');
+assert.equal(compensateClassifiedContours([{ ...outer }], 0.3)[0].pathD, 'M -0.15 -0.15 L 10.15 -0.15 L 10.15 10.15 L -0.15 10.15 Z', 'kerf direction and half-width remain unchanged');
 assert.deepEqual(DEFAULT_PROJECT_SETTINGS, { kerfMm: 0.15, clearanceMm: -0.10, slotClearanceMm: -0.10 }, 'new-project manufacturing defaults are centralized and signed');
 const appSource = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
 assert.doesNotMatch(appSource.match(/id="manufacturing-clearance"[^\n]*/)?.[0] ?? '', /min=\{0\}/, 'clearance UI accepts negative values');

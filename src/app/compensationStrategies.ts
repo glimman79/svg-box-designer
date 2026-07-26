@@ -2,7 +2,17 @@ import type { FinalContour } from './contourClassification';
 import type { ManufacturingGeometry } from './manufacturingGeometry';
 import { cornerTouchTolerance } from './sharedGeometry';
 import { geometryServices } from './geometryServices';
+import { directionForOuterMaterialDisplacement, ProfileDisplacement } from './geometryServices';
 import type { GeometryServices } from './geometryServices';
+
+export enum ClearanceEffect {
+  INCREASE_FIT = 'INCREASE_FIT',
+  DECREASE_FIT = 'DECREASE_FIT',
+}
+
+const displacementForClearance = (clearanceMm: number): ProfileDisplacement => (
+  clearanceMm < 0 ? ProfileDisplacement.REMOVE_MATERIAL : ProfileDisplacement.ADD_MATERIAL
+);
 
 export type CompensationStrategyContext = {
   geometry: ManufacturingGeometry;
@@ -41,8 +51,18 @@ export class OffsetStrategy implements CompensationStrategy {
     const validation = this.validate(context);
     if (validation.length) { this.report(context, validation); return; }
     const services = context.services ?? geometryServices;
-    const offset = services.compensateProfile(context.contour, context.clearanceMm, 'OUTWARD');
-    if (!offset) { this.report(context, ['Offset could not be produced safely.']); return; }
+    const displacement = displacementForClearance(context.clearanceMm);
+    const directionForNegative = directionForOuterMaterialDisplacement(
+      ProfileDisplacement.REMOVE_MATERIAL,
+      context.contour.profileMaterialSide,
+    );
+    const offset = services.compensateProfile(context.contour, context.clearanceMm, directionForNegative);
+    if (!offset) {
+      const groupIds = context.contour.compensationProfile
+        ?.map((selected, index) => selected ? index : -1).filter((index) => index >= 0).join(',') ?? 'none';
+      this.report(context, [`Clearance profile reconstruction failed safely (contour ${context.contour.id}; profile segments ${groupIds}; displacement ${displacement}).`]);
+      return;
+    }
     services.replace(context.contour, offset);
   }
 

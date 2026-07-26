@@ -7,6 +7,7 @@ import { cornerTouchTolerance, getContourSignedArea, pointsToClosedPathD } from 
 import type { Point, SvgDocumentModel } from '../svgUtils';
 
 export type ContourKind = 'OUTER' | 'INNER';
+export type ProfileMaterialSide = 'MALE' | 'FEMALE' | 'GENERATED_MATING';
 
 export type ClassifiedContourSource = 'final-contour';
 
@@ -27,6 +28,8 @@ export type ClassifiedContour = {
   manufacturing?: ManufacturingMetadata;
   /** One entry per contour segment; true means generator-modified design intent. */
   compensationProfile?: ReadonlyArray<boolean>;
+  /** Generator-authored semantic role; never inferred by manufacturing/rendering. */
+  profileMaterialSide?: ProfileMaterialSide;
   diagnostics?: string[];
 };
 
