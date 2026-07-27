@@ -137,6 +137,18 @@ const collinearAnchor = { ...outer,
   compensationProfile: [false, true, false, false, false],
 };
 assert.ok(geometryServices.compensateProfile(collinearAnchor, -0.1, 'INWARD'), 'first/last profile provenance remains aligned across collinear generator anchors');
+assert.deepEqual(roundedPoints(geometryServices.compensateProfile(collinearAnchor, -0.1, 'INWARD').points), [
+  { x: 0, y: 0 }, { x: 5, y: 0 }, { x: 5, y: 0.1 },
+  { x: 10, y: 0.1 }, { x: 10, y: 10 }, { x: 0, y: 10 },
+], 'a profile bounded by collinear unchanged segments reconstructs both parallel transitions');
+const verticalCollinearAnchor = {
+  ...collinearAnchor,
+  points: collinearAnchor.points.map(({ x, y }) => ({ x: -y, y: x })),
+};
+assert.deepEqual(roundedPoints(geometryServices.compensateProfile(verticalCollinearAnchor, -0.1, 'INWARD').points), [
+  { x: 0, y: 0 }, { x: 0, y: 5 }, { x: -0.1, y: 5 },
+  { x: -0.1, y: 10 }, { x: -10, y: 10 }, { x: -10, y: 0 },
+], 'parallel transition reconstruction is orientation-independent');
 assert.deepEqual(clearanceSelective(horizontalTB, selectedTBProfiles, 0).points, horizontalTB, 'zero clearance preserves exact geometry');
 assert.deepEqual(roundedPoints(horizontalPositive.points.map(({ x, y }, index) => ({ x: x + horizontalNegative.points[index].x - 2 * horizontalTB[index].x, y: y + horizontalNegative.points[index].y - 2 * horizontalTB[index].y }))), horizontalTB.map(() => ({ x: 0, y: 0 })), '+0.90 mm and -0.90 mm are coordinate-symmetric around the complete source profile');
 
