@@ -7,6 +7,9 @@ import { buildAppliedSGeometry, buildGeneratedSGeometryItems, recalculateAutomat
 import { getConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge } from './app/connectionViewModel';
 import { processManufacturingGeometry } from './app/manufacturingCompensation';
 import { DEFAULT_PROJECT_SETTINGS } from './app/projectDefaults';
+import type { ProjectSettings } from './app/projectSettings';
+import { normalizeProjectSettings } from './app/projectSettings';
+import type { GeneratedProfileId } from './app/generatedProfiles';
 import { buildFinalGeometry as buildNativeFinalGeometry } from './app/finalGeometry';
 import { buildFinalGeometry } from './app/finalGeometryCompatibility';
 import { createGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
@@ -38,6 +41,9 @@ export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWRefe
 export { buildFinalContourList, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours } from './app/contourClassification';
 export { applyClearance, applyClearanceStage, applySlotClearance, applySlotClearanceStage, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour, processManufacturingGeometry } from './app/manufacturingCompensation';
 export { createManufacturingGeometry } from './app/manufacturingGeometry';
+export { normalizeProjectSettings } from './app/projectSettings';
+export { createGeneratedProfileId } from './app/generatedProfiles';
+export type { GeneratedProfileGroup, GeneratedProfileId } from './app/generatedProfiles';
 export { getManufacturingPipelineForGeometryType } from './app/manufacturingMetadata';
 export { getManufacturingPolicy } from './app/manufacturingPolicy';
 export { NoMovementStrategy, OffsetStrategy, noMovementStrategy, offsetStrategy } from './app/compensationStrategies';
@@ -66,12 +72,6 @@ type LabelGroup = {
 };
 
 type ActiveTool = 'select' | 'PM' | 'TB' | 'W' | 'S' | 'J' | 'P' | 'manufacturing';
-
-type ProjectSettings = {
-  kerfMm: number;
-  clearanceMm: number;
-  slotClearanceMm: number;
-};
 
 type HistoryState = {
   projectSettings: ProjectSettings;
@@ -211,13 +211,13 @@ export const getToolClickGroupStartKind = (
   return null;
 };
 
-export const defaultProjectSettings: ProjectSettings = DEFAULT_PROJECT_SETTINGS;
+export const defaultProjectSettings: ProjectSettings = { ...DEFAULT_PROJECT_SETTINGS, selectedClearanceProfileIds: [] };
 
 const maxHistoryEntries = 10;
 
 export const haveProjectSettingsChanged = (currentSettings: ProjectSettings, appliedSettings: ProjectSettings | null): boolean => {
   const baseline = appliedSettings ?? defaultProjectSettings;
-  return currentSettings.kerfMm !== baseline.kerfMm || (currentSettings.clearanceMm ?? defaultProjectSettings.clearanceMm) !== (baseline.clearanceMm ?? defaultProjectSettings.clearanceMm) || currentSettings.slotClearanceMm !== baseline.slotClearanceMm;
+  return currentSettings.kerfMm !== baseline.kerfMm || (currentSettings.clearanceMm ?? defaultProjectSettings.clearanceMm) !== (baseline.clearanceMm ?? defaultProjectSettings.clearanceMm) || currentSettings.slotClearanceMm !== baseline.slotClearanceMm || currentSettings.selectedClearanceProfileIds.join('\0') !== baseline.selectedClearanceProfileIds.join('\0');
 };
 
 const getNextWorkflowGroupOrderIndex = (workflowGroupOrder: Record<string, number>) => {
@@ -673,6 +673,7 @@ function App() {
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
   const [activeHoleId, setActiveHoleId] = useState<string | null>(null);
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
+  const [isClearanceProfileSelectionActive, setIsClearanceProfileSelectionActive] = useState(false);
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
   const selectedLabelId = displayConnectionId;
@@ -856,9 +857,29 @@ function App() {
   );
 
   const kerfCompensatedAppliedPreview = useMemo(
-    () => processManufacturingGeometry(finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.clearanceMm),
-    [finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.clearanceMm],
+    () => processManufacturingGeometry(finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.clearanceMm, projectSettings.selectedClearanceProfileIds),
+    [finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.clearanceMm, projectSettings.selectedClearanceProfileIds],
   );
+  const selectableClearanceProfiles = useMemo(() => {
+    const selected = new Set(projectSettings.selectedClearanceProfileIds);
+    return finalGeometry.contours.flatMap((contour) => {
+      const paths = new Map<GeneratedProfileId, string[]>();
+      contour.segmentProfileIds?.forEach((id, index) => {
+        if (!id || !contour.points) return;
+        const start = contour.points[index];
+        const end = contour.points[(index + 1) % contour.points.length];
+        const values = paths.get(id) ?? [];
+        values.push(`M ${start.x} ${start.y} L ${end.x} ${end.y}`);
+        paths.set(id, values);
+      });
+      return [...paths].map(([id, parts]) => ({ id, contourId: contour.id, pathD: parts.join(' '), selected: selected.has(id), available: true }));
+    });
+  }, [finalGeometry, projectSettings.selectedClearanceProfileIds]);
+
+  const toggleClearanceProfile = (id: GeneratedProfileId) => {
+    const selected = projectSettings.selectedClearanceProfileIds;
+    updateProjectSettings({ selectedClearanceProfileIds: selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id] });
+  };
 
   const isProjectLocked = !panelManager.isApplied;
   const isPanelManagerVisible = activeTool === 'PM';
@@ -941,7 +962,7 @@ function App() {
 
   const restoreHistoryState = (state: HistoryState) => {
     const snapshot = cloneHistoryState(state);
-    setProjectSettings({ ...defaultProjectSettings, ...snapshot.projectSettings });
+    setProjectSettings(normalizeProjectSettings({ ...defaultProjectSettings, ...snapshot.projectSettings }).settings);
     setLastAppliedManufacturingSettings(snapshot.lastAppliedManufacturingSettings);
     setEdgeAssignments(Object.fromEntries(Object.entries(snapshot.edgeAssignments).map(([edgeId, assignment]) => [edgeId, toEdgeAssignmentBucket(assignment) ?? {}])));
     setConnections(snapshot.connections);
@@ -1575,7 +1596,7 @@ function App() {
 
   const updateProjectSettings = (updates: Partial<ProjectSettings>) => {
     pushUndoState();
-    setProjectSettings((currentSettings) => ({ ...currentSettings, ...updates }));
+    setProjectSettings((currentSettings) => normalizeProjectSettings({ ...currentSettings, ...updates }).settings);
     setErrorMessage('');
   };
 
@@ -2365,8 +2386,16 @@ function App() {
                 <NumericField id="manufacturing-clearance" label="Clearance" value={projectSettings.clearanceMm} onChange={(clearanceMm) => updateProjectSettings({ clearanceMm })} />
                 <NumericField id="manufacturing-slot-clearance" label="Slot clearance" value={projectSettings.slotClearanceMm} onChange={(slotClearanceMm) => updateProjectSettings({ slotClearanceMm })} />
               </div>
+              <div className="clearance-profile-actions">
+                <button className={`toolbar-button${isClearanceProfileSelectionActive ? ' primary' : ''}`} type="button" aria-pressed={isClearanceProfileSelectionActive} onClick={() => setIsClearanceProfileSelectionActive((active) => !active)}>Select profiles</button>
+                <span>{projectSettings.selectedClearanceProfileIds.length} selected</span>
+                <button className="toolbar-button" type="button" disabled={projectSettings.selectedClearanceProfileIds.length === 0} onClick={() => updateProjectSettings({ selectedClearanceProfileIds: [] })}>Clear selection</button>
+              </div>
               <p className="muted">Kerf applies globally to the whole generated output.</p>
               <p className="muted">Slot clearance applies only to S-generated slot contours before Kerf.</p>
+              {kerfCompensatedAppliedPreview.diagnostics.map((diagnostic, index) => (
+                <p className="notice inline-notice" key={`${diagnostic.id}:${diagnostic.code ?? index}`}>{diagnostic.message}</p>
+              ))}
             </div>
           )}
 
@@ -2660,6 +2689,13 @@ function App() {
                   );
                   })}
                 </g>
+              {isClearanceProfileSelectionActive && (
+                <g className="clearance-profile-overlays">
+                  {selectableClearanceProfiles.map((profile) => (
+                    <path key={`${profile.contourId}:${profile.id}`} className={`clearance-profile-hitbox${profile.selected ? ' selected' : ''}`} d={profile.pathD} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); toggleClearanceProfile(profile.id); }} />
+                  ))}
+                </g>
+              )}
             </svg>
           </div>
         </section>

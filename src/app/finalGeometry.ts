@@ -6,6 +6,7 @@ import type { ContourDiagnostic, FinalContour, FinalContourSource } from './cont
 import type { FinalGeometryType } from './finalGeometryTypes';
 import { cornerTouchTolerance, getContourSignedArea } from './sharedGeometry';
 import type { Point, SvgDocumentModel } from '../svgUtils';
+import type { GeneratedProfileGroup, GeneratedProfileId } from './generatedProfiles';
 
 export type FinalGeometryContour = FinalContour;
 
@@ -25,48 +26,31 @@ const pointOnImportedSegment = (point: Point, start: Point, end: Point) => {
     && point.y <= Math.max(start.y, end.y) + cornerTouchTolerance;
 };
 
-const identifyModifiedProfile = (generated: Point[], imported: Point[]): boolean[] => {
-  const modifiedSegments = generated.map((start, index) => {
-    const end = generated[(index + 1) % generated.length];
-    return !imported.some((importedStart, importedIndex) => {
-      const importedEnd = imported[(importedIndex + 1) % imported.length];
-      return pointOnImportedSegment(start, importedStart, importedEnd) && pointOnImportedSegment(end, importedStart, importedEnd);
+const identifyProfileGroups = (generated: Point[], imported: Point[], edgeIds: string[], groups: ReadonlyArray<GeneratedProfileGroup>): Array<GeneratedProfileId | null> => {
+  const result: Array<GeneratedProfileId | null> = generated.map(() => null);
+  const onAnyImportedEdge = (start: Point, end: Point) => imported.some((point, index) => pointOnImportedSegment(start, point, imported[(index + 1) % imported.length]) && pointOnImportedSegment(end, point, imported[(index + 1) % imported.length]));
+
+  groups.forEach((group) => {
+    const edgeIndex = edgeIds.indexOf(group.sourceEdgeId);
+    if (edgeIndex < 0) return;
+    const edgeStart = imported[edgeIndex];
+    const edgeEnd = imported[(edgeIndex + 1) % imported.length];
+    generated.forEach((start, index) => {
+      const end = generated[(index + 1) % generated.length];
+      if (pointOnImportedSegment(start, edgeStart, edgeEnd) && pointOnImportedSegment(end, edgeStart, edgeEnd)) result[index] = group.id;
+    });
+    generated.forEach((start, startIndex) => {
+      const end = generated[(startIndex + 1) % generated.length];
+      if (onAnyImportedEdge(start, end) || !onAnyImportedEdge(generated[(startIndex - 1 + generated.length) % generated.length], start)) return;
+      let index = startIndex;
+      while (index < generated.length && !onAnyImportedEdge(generated[index], generated[(index + 1) % generated.length])) index += 1;
+      const runEnd = generated[index % generated.length];
+      if (pointOnImportedSegment(start, edgeStart, edgeEnd) && pointOnImportedSegment(runEnd, edgeStart, edgeEnd)) {
+        for (let cursor = startIndex; cursor < index; cursor += 1) result[cursor] = group.id;
+      }
     });
   });
-
-  // A generated excursion and the replacement base on which it starts and ends
-  // are one profile.  Comparing segments alone used to classify those base
-  // pieces as imported merely because they remain collinear with the source
-  // edge.  Find the source edge from each excursion's attachment points, then
-  // authoritatively include every generated segment that replaces that edge.
-  const supportingImportedSegments = new Set<number>();
-  const visited = new Set<number>();
-  modifiedSegments.forEach((isModified, startIndex) => {
-    if (!isModified || visited.has(startIndex)) return;
-    const attachments: Point[] = [];
-    let index = startIndex;
-    while (modifiedSegments[index] && !visited.has(index)) {
-      visited.add(index);
-      attachments.push(generated[index], generated[(index + 1) % generated.length]);
-      index = (index + 1) % generated.length;
-    }
-    imported.forEach((importedStart, importedIndex) => {
-      const importedEnd = imported[(importedIndex + 1) % imported.length];
-      const distinctAttachments = attachments.filter((point, pointIndex) => (
-        pointOnImportedSegment(point, importedStart, importedEnd)
-        && attachments.findIndex((candidate) => Math.abs(candidate.x - point.x) <= cornerTouchTolerance
-          && Math.abs(candidate.y - point.y) <= cornerTouchTolerance) === pointIndex
-      ));
-      if (distinctAttachments.length >= 2) supportingImportedSegments.add(importedIndex);
-    });
-  });
-
-  return generated.map((start, index) => {
-    if (modifiedSegments[index]) return true;
-    const end = generated[(index + 1) % generated.length];
-    return [...supportingImportedSegments].some((importedIndex) => pointOnImportedSegment(start, imported[importedIndex], imported[(importedIndex + 1) % imported.length])
-      && pointOnImportedSegment(end, imported[importedIndex], imported[(importedIndex + 1) % imported.length]));
-  });
+  return result;
 };
 
 
@@ -122,10 +106,10 @@ export const buildFinalGeometry = (
   const generatedGeometry: ReadonlyArray<GeneratedGeometryItem> = 'generatedGeometry' in generatedGeometryOrSnapshot
     ? generatedGeometryOrSnapshot.generatedGeometry
     : generatedGeometryOrSnapshot;
-  const replacementByPanelId = new Map<string, { pathD: string; finalSource: FinalContourSource; geometryType: FinalGeometryType }>();
+  const replacementByPanelId = new Map<string, { pathD: string; finalSource: FinalContourSource; geometryType: FinalGeometryType; profileGroups: ReadonlyArray<GeneratedProfileGroup> }>();
   generatedGeometry
     .filter((item) => item.behaviour.assembly === 'panel-boundary' && !!item.behaviour.replacesPanelId)
-    .forEach((item) => replacementByPanelId.set(item.behaviour.replacesPanelId!, { pathD: item.geometry.pathD, finalSource: 'applied-panel', geometryType: item.manufacturingClassification }));
+    .forEach((item) => replacementByPanelId.set(item.behaviour.replacesPanelId!, { pathD: item.geometry.pathD, finalSource: 'applied-panel', geometryType: item.manufacturingClassification, profileGroups: item.profileGroups ?? [] }));
 
   const contours: FinalGeometryContour[] = svgModel.panels.flatMap((panel) => {
     const replacement = replacementByPanelId.get(panel.id);
@@ -141,7 +125,10 @@ export const buildFinalGeometry = (
       ownerPanelId: panel.id,
       pathD,
       points: generatedPoints ?? clonePoints(outerPanelContour),
-      ...(generatedPoints ? { compensationProfile: identifyModifiedProfile(generatedPoints, outerPanelContour) } : {}),
+      ...(generatedPoints ? (() => {
+        const segmentProfileIds = identifyProfileGroups(generatedPoints, outerPanelContour, panel.edgeIds, replacement?.profileGroups ?? []);
+        return { segmentProfileIds, compensationProfile: segmentProfileIds.map((id) => id !== null) };
+      })() : {}),
       ...(replacement ? { profileMaterialSide: 'GENERATED_MATING' as const } : {}),
       geometryType: replacement?.geometryType ?? 'IMPORTED_OUTER',
       manufacturing: manufacturingMetadataForGeometryType(replacement?.geometryType ?? 'IMPORTED_OUTER'),
@@ -180,11 +167,17 @@ export const buildFinalGeometry = (
     });
   });
 
-  const diagnostics = contours.flatMap(validateFinalGeometryContour);
+  const profileOccurrences = new Map<GeneratedProfileId, number>();
+  generatedGeometry.flatMap((item) => item.profileGroups ?? []).forEach((group) => profileOccurrences.set(group.id, (profileOccurrences.get(group.id) ?? 0) + 1));
+  const diagnostics = [
+    ...contours.flatMap(validateFinalGeometryContour),
+    ...[...profileOccurrences].filter(([, count]) => count > 1).map(([id]): ContourDiagnostic => ({ id, code: 'CLEARANCE_PROFILE_AMBIGUOUS', severity: 'error', message: `Generated Clearance profile identity ${id} appears more than once.` })),
+  ];
   contours.forEach((contour) => {
     contour.points?.forEach(Object.freeze);
     if (contour.points) Object.freeze(contour.points);
     if (contour.compensationProfile) Object.freeze(contour.compensationProfile);
+    if (contour.segmentProfileIds) Object.freeze(contour.segmentProfileIds);
     if (contour.manufacturing) Object.freeze(contour.manufacturing);
     Object.freeze(contour);
   });

@@ -2,6 +2,7 @@ import type { SourceBounds } from '../svgUtils';
 import type { ManufacturingMetadata } from './manufacturingMetadata';
 import type { OperationKind } from './operationTypes';
 import type { ManufacturingClassification } from './finalGeometryTypes';
+import type { GeneratedProfileGroup } from './generatedProfiles';
 
 export type GeneratedGeometryKind = 'PANEL_PATH' | 'SLOT_PATH';
 
@@ -41,4 +42,5 @@ export type GeneratedGeometryItem = {
   manufacturing?: ManufacturingMetadata;
   pathD: string;
   diagnostics: string[];
+  profileGroups?: ReadonlyArray<GeneratedProfileGroup>;
 };

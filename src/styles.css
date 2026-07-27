@@ -1646,3 +1646,8 @@ button:disabled {
   padding: 2px 4px;
   font-size: 0.72rem;
 }
+
+.clearance-profile-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.clearance-profile-hitbox { fill: none; stroke: rgba(14, 165, 233, 0.45); stroke-width: 10px; vector-effect: non-scaling-stroke; cursor: pointer; pointer-events: stroke; }
+.clearance-profile-hitbox:hover { stroke: rgba(56, 189, 248, 0.8); }
+.clearance-profile-hitbox.selected { stroke: rgba(245, 158, 11, 0.9); }
