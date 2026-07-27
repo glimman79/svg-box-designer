@@ -407,6 +407,7 @@ export const buildGeneratedSGeometryItems = (
   });
 
   operationsByPanelId.forEach(({ panel, operations }) => {
+    const profileBoundaryResult = buildSInsetPanelContour(panel, operations);
     const panelResult = buildSPanelContour(panel, operations);
     if (!panelResult.ok) {
       throw new Error(`${operations.map((operation) => operation.connectionId).join(', ')} S-A geometry failed: ${panelResult.reason}`);
@@ -429,6 +430,10 @@ export const buildGeneratedSGeometryItems = (
     result[result.length - 1].profileGroups = operations.map((operation) => createBoundaryProfileGroup({
       toolType: 'S', sourceOperationId: `operation:S:${operation.connectionId}`,
       connectionId: operation.connectionId, panelId: panel.id, sourceEdgeId: operation.sourceAEdgeId,
+      ...(profileBoundaryResult.ok ? {
+        attachmentStart: profileBoundaryResult.contour[panel.edgeIds.indexOf(operation.sourceAEdgeId)],
+        attachmentEnd: profileBoundaryResult.contour[(panel.edgeIds.indexOf(operation.sourceAEdgeId) + 1) % profileBoundaryResult.contour.length],
+      } : {}),
     }));
   });
 

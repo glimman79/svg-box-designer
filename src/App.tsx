@@ -674,6 +674,7 @@ function App() {
   const [activeHoleId, setActiveHoleId] = useState<string | null>(null);
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
   const [isClearanceProfileSelectionActive, setIsClearanceProfileSelectionActive] = useState(false);
+  const [hoveredClearanceProfileId, setHoveredClearanceProfileId] = useState<GeneratedProfileId | null>(null);
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
   const selectedLabelId = displayConnectionId;
@@ -2613,6 +2614,17 @@ function App() {
               onPointerCancel={handleCanvasPointerUp}
               onPointerLeave={handleCanvasPointerLeave}
             >
+              {isClearanceProfileSelectionActive && (
+                <g className="clearance-profile-underlays" aria-hidden="true">
+                  {selectableClearanceProfiles.map((profile) => (
+                    <path
+                      key={`${profile.contourId}:${profile.id}`}
+                      className={`clearance-profile-underlay${profile.selected ? ' selected' : ''}${hoveredClearanceProfileId === profile.id ? ' hovered' : ''}`}
+                      d={profile.pathD}
+                    />
+                  ))}
+                </g>
+              )}
               <g className="final-contour-kerf-layer">
                 {kerfCompensatedAppliedPreview.contours.map((contour) => (
                   <path
@@ -2690,9 +2702,17 @@ function App() {
                   })}
                 </g>
               {isClearanceProfileSelectionActive && (
-                <g className="clearance-profile-overlays">
+                <g className="clearance-profile-hit-targets">
                   {selectableClearanceProfiles.map((profile) => (
-                    <path key={`${profile.contourId}:${profile.id}`} className={`clearance-profile-hitbox${profile.selected ? ' selected' : ''}`} d={profile.pathD} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); toggleClearanceProfile(profile.id); }} />
+                    <path
+                      key={`${profile.contourId}:${profile.id}`}
+                      className="clearance-profile-hitbox"
+                      d={profile.pathD}
+                      onPointerEnter={() => setHoveredClearanceProfileId(profile.id)}
+                      onPointerLeave={() => setHoveredClearanceProfileId((id) => id === profile.id ? null : id)}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => { event.stopPropagation(); toggleClearanceProfile(profile.id); }}
+                    />
                   ))}
                 </g>
               )}

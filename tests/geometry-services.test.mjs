@@ -112,13 +112,25 @@ assert.equal(verticalNegative.points[2].x, 1.1, 'vertical TB face has orientatio
 assert.equal(verticalNegative.points[2].y, 3.9, 'vertical TB side wall receives the full 0.90 mm');
 
 const importedRectangle = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
-const finalGeometryFor = (imported, generated) => buildFinalGeometry({ panels: [{ id: 'panel', contour: imported, outerContour: imported, innerContours: [] }] }, [{
-  id: 'generated:panel', operationId: 'operation', toolType: 'TB', kind: 'PANEL_PATH', source: { operationId: 'operation', panelIds: ['panel'], edgeIds: [], connectionIds: [] },
+const finalGeometryFor = (imported, generated, profileEdges = [0]) => buildFinalGeometry({ panels: [{ id: 'panel', contour: imported, outerContour: imported, innerContours: [], edgeIds: imported.map((_, index) => `edge-${index}`) }] }, [{
+  id: 'generated:panel', operationId: 'operation', toolType: 'TB', kind: 'PANEL_PATH', source: { operationId: 'operation', panelIds: ['panel'], edgeIds: imported.map((_, index) => `edge-${index}`), connectionIds: [] },
   geometry: { type: 'path', pathD: `M ${generated.map(({ x, y }) => `${x} ${y}`).join(' L ')} Z` }, behaviour: { assembly: 'panel-boundary', replacesPanelId: 'panel' },
   manufacturingClassification: 'GENERATED_OUTER', pathD: `M ${generated.map(({ x, y }) => `${x} ${y}`).join(' L ')} Z`, diagnostics: [],
+  profileGroups: profileEdges.map((edgeIndex) => ({ id: `profile-${edgeIndex}`, kind: 'BOUNDARY_PROFILE', sourceOperationId: 'operation', connectionId: `connection-${edgeIndex}`, panelId: 'panel', sourceEdgeId: `edge-${edgeIndex}`, attachmentStart: imported[edgeIndex], attachmentEnd: imported[(edgeIndex + 1) % imported.length] })),
 }]).contours[0];
 assert.deepEqual(finalGeometryFor(importedRectangle, horizontalTB).compensationProfile, selectedTBProfiles, 'FinalGeometry authors complete horizontal profile membership including first, last, and replacement-base segments');
 assert.deepEqual(finalGeometryFor(importedRectangle.map(({ x, y }) => ({ x: -y, y: x })), verticalTB).compensationProfile, selectedTBProfiles, 'FinalGeometry authors the identical complete profile membership vertically');
+assert.deepEqual(finalGeometryFor([...importedRectangle].reverse(), [...horizontalTB].reverse(), [2]).segmentProfileIds.filter(Boolean), Array(9).fill('profile-2'), 'reversed source-edge direction preserves complete authored extent');
+
+const beginsWithFeature = [{ x: 0, y: 0 }, { x: 0, y: -2 }, { x: 2, y: -2 }, { x: 2, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+assert.equal(finalGeometryFor(importedRectangle, beginsWithFeature).segmentProfileIds.slice(0, 4).every((id) => id === 'profile-0'), true, 'a profile beginning with a feature spans both attachments');
+const endsWithFeature = [{ x: 0, y: 0 }, { x: 8, y: 0 }, { x: 8, y: -2 }, { x: 10, y: -2 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+assert.equal(finalGeometryFor(importedRectangle, endsWithFeature).segmentProfileIds.slice(0, 4).every((id) => id === 'profile-0'), true, 'a profile ending with a feature spans both attachments');
+
+const twoEdgeGenerated = [...horizontalTB.slice(0, 10), { x: 10, y: 4 }, { x: 12, y: 4 }, { x: 12, y: 7 }, { x: 10, y: 7 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+const twoEdgeProfiles = finalGeometryFor(importedRectangle, twoEdgeGenerated, [0, 1]).segmentProfileIds;
+assert.equal(twoEdgeProfiles.slice(0, 9).every((id) => id === 'profile-0'), true, 'multiple features and both terminal bases share the first source-edge identity');
+assert.equal(twoEdgeProfiles.slice(9, 14).every((id) => id === 'profile-1'), true, 'a neighboring source edge receives only its own identity');
 
 const collinearAnchor = { ...outer,
   points: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
@@ -137,6 +149,11 @@ assert.deepEqual(DEFAULT_PROJECT_SETTINGS, { kerfMm: 0.15, clearanceMm: 0, slotC
 const appSource = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
 assert.doesNotMatch(appSource.match(/id="manufacturing-clearance"[^\n]*/)?.[0] ?? '', /min=\{0\}/, 'clearance UI accepts negative values');
 assert.doesNotMatch(appSource.match(/id="manufacturing-slot-clearance"[^\n]*/)?.[0] ?? '', /min=\{0\}/, 'slot clearance UI accepts negative values');
+assert.ok(appSource.indexOf('clearance-profile-underlays') < appSource.indexOf('final-contour-kerf-layer'), 'profile indication is rendered below the manufacturing contour');
+assert.ok(appSource.indexOf('final-contour-kerf-layer') < appSource.indexOf('clearance-profile-hit-targets'), 'transparent hit targets are rendered above the manufacturing contour');
+const styleSource = readFileSync(resolve(root, 'src/styles.css'), 'utf8');
+assert.match(styleSource, /\.clearance-profile-hitbox \{[^}]*fill: none;[^}]*stroke: transparent;[^}]*pointer-events: stroke;/, 'hit target is wide, transparent, and pointer-enabled');
+assert.match(styleSource, /\.clearance-profile-underlay\.selected \{[^}]*rgba\([^)]*, 0\.48\)/, 'selected indication is a semi-transparent underlay');
 
 for (const file of ['src/app/manufacturingCompensation.ts', 'src/app/compensationStrategies.ts']) {
   const source = readFileSync(resolve(root, file), 'utf8');
