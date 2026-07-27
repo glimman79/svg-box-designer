@@ -25,13 +25,49 @@ const pointOnImportedSegment = (point: Point, start: Point, end: Point) => {
     && point.y <= Math.max(start.y, end.y) + cornerTouchTolerance;
 };
 
-const identifyModifiedProfile = (generated: Point[], imported: Point[]): boolean[] => generated.map((start, index) => {
-  const end = generated[(index + 1) % generated.length];
-  return !imported.some((importedStart, importedIndex) => {
-    const importedEnd = imported[(importedIndex + 1) % imported.length];
-    return pointOnImportedSegment(start, importedStart, importedEnd) && pointOnImportedSegment(end, importedStart, importedEnd);
+const identifyModifiedProfile = (generated: Point[], imported: Point[]): boolean[] => {
+  const modifiedSegments = generated.map((start, index) => {
+    const end = generated[(index + 1) % generated.length];
+    return !imported.some((importedStart, importedIndex) => {
+      const importedEnd = imported[(importedIndex + 1) % imported.length];
+      return pointOnImportedSegment(start, importedStart, importedEnd) && pointOnImportedSegment(end, importedStart, importedEnd);
+    });
   });
-});
+
+  // A generated excursion and the replacement base on which it starts and ends
+  // are one profile.  Comparing segments alone used to classify those base
+  // pieces as imported merely because they remain collinear with the source
+  // edge.  Find the source edge from each excursion's attachment points, then
+  // authoritatively include every generated segment that replaces that edge.
+  const supportingImportedSegments = new Set<number>();
+  const visited = new Set<number>();
+  modifiedSegments.forEach((isModified, startIndex) => {
+    if (!isModified || visited.has(startIndex)) return;
+    const attachments: Point[] = [];
+    let index = startIndex;
+    while (modifiedSegments[index] && !visited.has(index)) {
+      visited.add(index);
+      attachments.push(generated[index], generated[(index + 1) % generated.length]);
+      index = (index + 1) % generated.length;
+    }
+    imported.forEach((importedStart, importedIndex) => {
+      const importedEnd = imported[(importedIndex + 1) % imported.length];
+      const distinctAttachments = attachments.filter((point, pointIndex) => (
+        pointOnImportedSegment(point, importedStart, importedEnd)
+        && attachments.findIndex((candidate) => Math.abs(candidate.x - point.x) <= cornerTouchTolerance
+          && Math.abs(candidate.y - point.y) <= cornerTouchTolerance) === pointIndex
+      ));
+      if (distinctAttachments.length >= 2) supportingImportedSegments.add(importedIndex);
+    });
+  });
+
+  return generated.map((start, index) => {
+    if (modifiedSegments[index]) return true;
+    const end = generated[(index + 1) % generated.length];
+    return [...supportingImportedSegments].some((importedIndex) => pointOnImportedSegment(start, imported[importedIndex], imported[(importedIndex + 1) % imported.length])
+      && pointOnImportedSegment(end, imported[importedIndex], imported[(importedIndex + 1) % imported.length]));
+  });
+};
 
 
 const pathDToClosedContourForFinalGeometry = (pathD: string): Point[] | null => {
@@ -148,6 +184,7 @@ export const buildFinalGeometry = (
   contours.forEach((contour) => {
     contour.points?.forEach(Object.freeze);
     if (contour.points) Object.freeze(contour.points);
+    if (contour.compensationProfile) Object.freeze(contour.compensationProfile);
     if (contour.manufacturing) Object.freeze(contour.manufacturing);
     Object.freeze(contour);
   });

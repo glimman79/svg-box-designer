@@ -131,8 +131,12 @@ const reconstructSelectiveProfile = (profile: FinalContour, signedDistanceMm: nu
     for (let index = 0; index < points.length; index += 1) {
       const previousIndex = (index + points.length - 1) % points.length;
       const nextIndex = (index + 1) % points.length;
-      if (pointsMatch(points[previousIndex], points[index]) || pointsMatch(points[index], points[nextIndex])
-        || areCollinear(points[previousIndex], points[index], points[nextIndex])) {
+      const duplicateEndpoint = pointsMatch(points[previousIndex], points[index]) || pointsMatch(points[index], points[nextIndex]);
+      const removableCollinearPoint = areCollinear(points[previousIndex], points[index], points[nextIndex])
+        && selectedSegments[previousIndex] === selectedSegments[index];
+      // A collinear vertex at a provenance boundary is a real transition anchor:
+      // removing it would merge the selected exit with unchanged geometry.
+      if (duplicateEndpoint || removableCollinearPoint) {
         selectedSegments[previousIndex] = selectedSegments[previousIndex] || selectedSegments[index];
         points.splice(index, 1);
         selectedSegments.splice(index, 1);

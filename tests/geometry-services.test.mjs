@@ -28,6 +28,7 @@ const { geometryServices } = load('src/app/geometryServices.ts');
 const { applyClearance, applySlotClearance, compensateClassifiedContours } = load('src/app/manufacturingCompensation.ts');
 const { createManufacturingGeometry } = load('src/app/manufacturingGeometry.ts');
 const { DEFAULT_PROJECT_SETTINGS } = load('src/app/projectDefaults.ts');
+const { buildFinalGeometry } = load('src/app/finalGeometry.ts');
 
 const outer = {
   id: 'outer', source: 'final-contour', finalSource: 'applied-panel', kind: 'OUTER',
@@ -85,21 +86,39 @@ const clearanceSelective = (points, selected, value) => geometryServices.compens
 }, value, 'INWARD');
 const horizontalTB = [
   { x: 0, y: 0 }, { x: 3, y: 0 }, { x: 3, y: -2 }, { x: 5, y: -2 },
-  { x: 5, y: 0 }, { x: 8, y: 0 }, { x: 8, y: -2 }, { x: 10, y: -2 },
-  { x: 10, y: 10 }, { x: 0, y: 10 },
+  { x: 5, y: 0 }, { x: 8, y: 0 }, { x: 8, y: -2 }, { x: 9, y: -2 },
+  { x: 9, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 },
 ];
-const selectedTBProfiles = [false, true, true, true, false, true, true, true, false, false];
+const selectedTBProfiles = [true, true, true, true, true, true, true, true, true, false, false, false];
 const horizontalNegative = clearanceSelective(horizontalTB, selectedTBProfiles, -0.9);
 const horizontalPositive = clearanceSelective(horizontalTB, selectedTBProfiles, 0.9);
-assert.equal(horizontalNegative.points[2].x, 3.9, 'horizontal TB side wall receives the full 0.90 mm');
+const roundedPoints = (points) => points.map(({ x, y }) => ({ x: Number(x.toFixed(6)), y: Number(y.toFixed(6)) }));
+assert.deepEqual(roundedPoints(horizontalNegative.points), [
+  { x: 0, y: 0.9 }, { x: 3.9, y: 0.9 }, { x: 3.9, y: -1.1 }, { x: 4.1, y: -1.1 },
+  { x: 4.1, y: 0.9 }, { x: 8.9, y: 0.9 }, { x: 8.9, y: -1.1 }, { x: 8.1, y: -1.1 },
+  { x: 8.1, y: 0.9 }, { x: 10, y: 0.9 }, { x: 10, y: 10 }, { x: 0, y: 10 },
+], 'horizontal complete profile offsets entry, bases, walls, depth faces, and exit together');
 assert.equal(horizontalNegative.points[2].y, -1.1, 'negative clearance removes material from a horizontal TB face');
 assert.equal(horizontalPositive.points[2].y, -2.9, 'positive clearance adds material in the opposite direction');
-assert.deepEqual(horizontalNegative.points[0], horizontalTB[0], 'adjoining imported geometry remains fixed');
+assert.deepEqual(horizontalNegative.points.slice(10), horizontalTB.slice(10), 'neighboring imported edges remain fixed while transition endpoints are reconstructed');
+horizontalNegative.points.forEach((point, index, points) => {
+  assert.ok(Number.isFinite(point.x) && Number.isFinite(point.y), 'endpoint reconstruction emits no NaN values');
+  assert.notDeepEqual(point, points[(index + 1) % points.length], 'endpoint reconstruction emits no zero-length spikes');
+});
 
 const verticalTB = horizontalTB.map(({ x, y }) => ({ x: -y, y: x }));
 const verticalNegative = clearanceSelective(verticalTB, selectedTBProfiles, -0.9);
 assert.equal(verticalNegative.points[2].x, 1.1, 'vertical TB face has orientation-independent direction');
 assert.equal(verticalNegative.points[2].y, 3.9, 'vertical TB side wall receives the full 0.90 mm');
+
+const importedRectangle = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+const finalGeometryFor = (imported, generated) => buildFinalGeometry({ panels: [{ id: 'panel', contour: imported, outerContour: imported, innerContours: [] }] }, [{
+  id: 'generated:panel', operationId: 'operation', toolType: 'TB', kind: 'PANEL_PATH', source: { operationId: 'operation', panelIds: ['panel'], edgeIds: [], connectionIds: [] },
+  geometry: { type: 'path', pathD: `M ${generated.map(({ x, y }) => `${x} ${y}`).join(' L ')} Z` }, behaviour: { assembly: 'panel-boundary', replacesPanelId: 'panel' },
+  manufacturingClassification: 'GENERATED_OUTER', pathD: `M ${generated.map(({ x, y }) => `${x} ${y}`).join(' L ')} Z`, diagnostics: [],
+}]).contours[0];
+assert.deepEqual(finalGeometryFor(importedRectangle, horizontalTB).compensationProfile, selectedTBProfiles, 'FinalGeometry authors complete horizontal profile membership including first, last, and replacement-base segments');
+assert.deepEqual(finalGeometryFor(importedRectangle.map(({ x, y }) => ({ x: -y, y: x })), verticalTB).compensationProfile, selectedTBProfiles, 'FinalGeometry authors the identical complete profile membership vertically');
 
 const collinearAnchor = { ...outer,
   points: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
@@ -107,13 +126,14 @@ const collinearAnchor = { ...outer,
 };
 assert.ok(geometryServices.compensateProfile(collinearAnchor, -0.1, 'INWARD'), 'first/last profile provenance remains aligned across collinear generator anchors');
 assert.deepEqual(clearanceSelective(horizontalTB, selectedTBProfiles, 0).points, horizontalTB, 'zero clearance preserves exact geometry');
+assert.deepEqual(roundedPoints(horizontalPositive.points.map(({ x, y }, index) => ({ x: x + horizontalNegative.points[index].x - 2 * horizontalTB[index].x, y: y + horizontalNegative.points[index].y - 2 * horizontalTB[index].y }))), horizontalTB.map(() => ({ x: 0, y: 0 })), '+0.90 mm and -0.90 mm are coordinate-symmetric around the complete source profile');
 
 const signedSlot = { ...slot, compensationProfile: [true, true, true, true] };
 assert.equal(geometryServices.compensateProfile(signedSlot, -0.1, 'OUTWARD').pathD, 'M 1.9 1.9 L 4.1 1.9 L 4.1 4.1 L 1.9 4.1 Z', 'negative slot clearance increases slot clearance');
 assert.equal(geometryServices.compensateProfile(signedSlot, 0.1, 'OUTWARD').pathD, 'M 2.1 2.1 L 3.9 2.1 L 3.9 3.9 L 2.1 3.9 Z', 'positive slot clearance moves in the opposite direction');
 assert.equal(geometryServices.compensateProfile(signedSlot, -0.9, 'OUTWARD').pathD, 'M 1.1 1.1 L 4.9 1.1 L 4.9 4.9 L 1.1 4.9 Z', 'whole-slot signed compensation remains unchanged');
 assert.equal(compensateClassifiedContours([{ ...outer }], 0.3)[0].pathD, 'M -0.15 -0.15 L 10.15 -0.15 L 10.15 10.15 L -0.15 10.15 Z', 'kerf direction and half-width remain unchanged');
-assert.deepEqual(DEFAULT_PROJECT_SETTINGS, { kerfMm: 0.15, clearanceMm: -0.10, slotClearanceMm: -0.10 }, 'new-project manufacturing defaults are centralized and signed');
+assert.deepEqual(DEFAULT_PROJECT_SETTINGS, { kerfMm: 0.15, clearanceMm: 0, slotClearanceMm: -0.10 }, 'only new-project Clearance defaults to zero; Kerf and Slot Clearance defaults remain unchanged');
 const appSource = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
 assert.doesNotMatch(appSource.match(/id="manufacturing-clearance"[^\n]*/)?.[0] ?? '', /min=\{0\}/, 'clearance UI accepts negative values');
 assert.doesNotMatch(appSource.match(/id="manufacturing-slot-clearance"[^\n]*/)?.[0] ?? '', /min=\{0\}/, 'slot clearance UI accepts negative values');
