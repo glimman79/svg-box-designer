@@ -35,6 +35,20 @@ const identifyProfileGroups = (generated: Point[], imported: Point[], edgeIds: s
     if (edgeIndex < 0) return;
     const edgeStart = imported[edgeIndex];
     const edgeEnd = imported[(edgeIndex + 1) % imported.length];
+    const attachmentStart = group.attachmentStart ?? edgeStart;
+    const attachmentEnd = group.attachmentEnd ?? edgeEnd;
+    const startIndex = generated.findIndex((point) => (
+      Math.abs(point.x - attachmentStart.x) <= cornerTouchTolerance
+      && Math.abs(point.y - attachmentStart.y) <= cornerTouchTolerance
+    ));
+    const endIndex = generated.findIndex((point) => (
+      Math.abs(point.x - attachmentEnd.x) <= cornerTouchTolerance
+      && Math.abs(point.y - attachmentEnd.y) <= cornerTouchTolerance
+    ));
+    if (group.attachmentStart && group.attachmentEnd && startIndex >= 0 && endIndex >= 0 && startIndex !== endIndex) {
+      for (let index = startIndex; index !== endIndex; index = (index + 1) % generated.length) result[index] = group.id;
+      return;
+    }
     generated.forEach((start, index) => {
       const end = generated[(index + 1) % generated.length];
       if (pointOnImportedSegment(start, edgeStart, edgeEnd) && pointOnImportedSegment(end, edgeStart, edgeEnd)) result[index] = group.id;

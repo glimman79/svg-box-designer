@@ -290,6 +290,8 @@ export const buildGeneratedTBGeometryItems = (
       profileGroups: operations.map((operation) => createBoundaryProfileGroup({
         toolType: 'TB', sourceOperationId: operationId, connectionId: operation.connectionId,
         panelId: panel.id, sourceEdgeId: operation.edgeId,
+        attachmentStart: insetContour[panel.edgeIds.indexOf(operation.edgeId)],
+        attachmentEnd: insetContour[(panel.edgeIds.indexOf(operation.edgeId) + 1) % insetContour.length],
       })),
     }];
   });
