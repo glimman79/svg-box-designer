@@ -155,11 +155,31 @@ const reconstructSelectiveProfile = (profile: FinalContour, signedDistanceMm: nu
     selectedSegments[index] ? offsetContourSide(side, signedOffset) : side
   ));
   if (sides.some((side) => !side)) return null;
-  const rebuilt = (sides as NonNullable<(typeof sides)[number]>[]).map((side, index, allSides) => (
-    lineIntersection(allSides[(index + allSides.length - 1) % allSides.length], side)
-  ));
-  if (rebuilt.some((point) => !point)) return null;
-  const result = rebuilt as PanelContour;
+  const concreteSides = sides as NonNullable<(typeof sides)[number]>[];
+  const result: PanelContour = [];
+  let reconstructionFailed = false;
+  concreteSides.forEach((side, index, allSides) => {
+    const previousIndex = (index + allSides.length - 1) % allSides.length;
+    const previousSide = allSides[previousIndex];
+    const intersection = lineIntersection(previousSide, side);
+    if (intersection) {
+      result.push(intersection);
+      return;
+    }
+
+    // A selected run may start or end part-way along a straight source edge.
+    // Its displaced line is necessarily parallel to the unchanged neighbour,
+    // so there is no mathematical intersection. Preserve both endpoints and
+    // join them with the transition segment instead of treating that expected
+    // condition as a reconstruction failure.
+    if (selectedSegments[previousIndex] !== selectedSegments[index]) {
+      result.push({ ...previousSide.end }, { ...side.start });
+    } else {
+      reconstructionFailed = true;
+    }
+  });
+  if (reconstructionFailed) return null;
+  if (result.some((point, index) => pointsMatch(point, result[(index + 1) % result.length]))) return null;
   return { ...profile, points: result, pathD: pointsToClosedPathD(result) };
 };
 
