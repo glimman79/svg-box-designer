@@ -5,6 +5,7 @@ import type { ManufacturingMetadata } from './manufacturingMetadata';
 import type { FinalGeometryType } from './finalGeometryTypes';
 import { cornerTouchTolerance, getContourSignedArea, pointsToClosedPathD } from './sharedGeometry';
 import type { Point, SvgDocumentModel } from '../svgUtils';
+import type { GeneratedProfileId } from './generatedProfiles';
 
 export type ContourKind = 'OUTER' | 'INNER';
 export type ProfileMaterialSide = 'MALE' | 'FEMALE' | 'GENERATED_MATING';
@@ -28,6 +29,8 @@ export type ClassifiedContour = {
   manufacturing?: ManufacturingMetadata;
   /** One entry per contour segment; true means membership in a complete generator-modified profile, including its replacement base. */
   compensationProfile?: ReadonlyArray<boolean>;
+  /** Immutable generator-authored semantic membership, aligned one-to-one with segments. */
+  segmentProfileIds?: ReadonlyArray<GeneratedProfileId | null>;
   /** Generator-authored semantic role; never inferred by manufacturing/rendering. */
   profileMaterialSide?: ProfileMaterialSide;
   diagnostics?: string[];
@@ -41,6 +44,8 @@ export type FinalContour = Omit<ClassifiedContour, 'source' | 'depth'> & {
 export type ContourDiagnostic = {
   id: string;
   message: string;
+  code?: 'CLEARANCE_PROFILE_MISSING' | 'CLEARANCE_PROFILE_AMBIGUOUS' | 'CLEARANCE_PROFILE_PROVENANCE_INVALID';
+  severity?: 'warning' | 'error';
 };
 
 export type FinalContourListResult = {

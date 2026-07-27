@@ -205,7 +205,7 @@ class PolygonGeometryServices implements GeometryServices {
   }
 
   clone(profile: FinalContour): FinalContour {
-    return { ...profile, ...(profile.points ? { points: clonePoints(profile.points) } : {}), ...(profile.compensationProfile ? { compensationProfile: [...profile.compensationProfile] } : {}) };
+    return { ...profile, ...(profile.points ? { points: clonePoints(profile.points) } : {}), ...(profile.compensationProfile ? { compensationProfile: [...profile.compensationProfile] } : {}), ...(profile.segmentProfileIds ? { segmentProfileIds: [...profile.segmentProfileIds] } : {}) };
   }
 
   replace(target: FinalContour, replacement: FinalContour): void {

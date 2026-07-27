@@ -1,6 +1,7 @@
 import type { AppliedEPanelPath, AppliedSGeometry } from './connectionTypes';
 import type { GeometryOperation } from './operationTypes';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
+import { createBoundaryProfileGroup } from './generatedProfiles';
 
 export type { GeneratedGeometryItem, GeneratedGeometryKind, GeneratedGeometrySource } from './generatedGeometryTypes';
 
@@ -62,6 +63,7 @@ export const createGeneratedGeometrySnapshot = ({
     behaviour: { assembly: 'panel-boundary', replacesPanelId: path.panelId },
     manufacturingClassification: 'GENERATED_OUTER',
     diagnostics: [],
+    profileGroups: path.edgeIds.map((sourceEdgeId) => createBoundaryProfileGroup({ toolType: 'TB', sourceOperationId: operation?.id ?? `operation:TB:legacy:${path.panelId}`, connectionId: operation?.source.connectionId ?? 'legacy', panelId: path.panelId, sourceEdgeId })),
   });
   });
   const sItems = appliedSGeometry.flatMap((geometry) => {
@@ -78,6 +80,7 @@ export const createGeneratedGeometrySnapshot = ({
         manufacturing: path.manufacturing ? clone(path.manufacturing) : undefined,
         behaviour: { assembly: 'panel-boundary', replacesPanelId: path.panelId },
         manufacturingClassification: 'GENERATED_OUTER', diagnostics: [],
+        profileGroups: path.sourceEdgeId.split(' ').filter(Boolean).map((sourceEdgeId) => createBoundaryProfileGroup({ toolType: 'S', sourceOperationId: operation?.id ?? `operation:S:${geometry.connectionId}`, connectionId: geometry.connectionId, panelId: path.panelId, sourceEdgeId })),
       })),
       ...geometry.slotPaths.map((path, index): GeneratedGeometryItem => ({
         id: `generated:s-slot:${geometry.connectionId}:${index}`,

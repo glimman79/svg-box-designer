@@ -1,5 +1,6 @@
 import type { AppliedEPanelPath, ConnectionMap, EdgeConnectionDefinition } from './connectionTypes';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
+import { createBoundaryProfileGroup } from './generatedProfiles';
 import { getAppliedEPanelPathsFromItems } from './generatedGeometrySnapshot';
 import { generatedManufacturingMetadata } from './manufacturingMetadata';
 import { getBucketEdgeAssignment } from './assignmentBuckets';
@@ -286,6 +287,10 @@ export const buildGeneratedTBGeometryItems = (
       geometry: { type: 'path', pathD, sourcePathD: pointsToClosedPathD(panel.contour), sourceBounds: { ...panel.bounds } },
       behaviour: { assembly: 'panel-boundary', replacesPanelId: panel.id },
       manufacturingClassification: 'GENERATED_OUTER', manufacturing: generatedManufacturingMetadata(false), diagnostics: [],
+      profileGroups: operations.map((operation) => createBoundaryProfileGroup({
+        toolType: 'TB', sourceOperationId: operationId, connectionId: operation.connectionId,
+        panelId: panel.id, sourceEdgeId: operation.edgeId,
+      })),
     }];
   });
 };

@@ -1,6 +1,7 @@
 import { getBucketEdgeAssignment, getBucketSlotAssignments } from './assignmentBuckets';
 import type { AppliedSGeometry, ConnectionMap, SlotConnectionDefinition } from './connectionTypes';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
+import { createBoundaryProfileGroup } from './generatedProfiles';
 import { getAppliedSGeometryFromItems } from './generatedGeometrySnapshot';
 import { generatedManufacturingMetadata } from './manufacturingMetadata';
 import { addContourPoint, clipOriginalSegmentsToInsetSide, clonePanelContour, getPanelThickness, removeInteriorBacktrackSpurs, validatePanelContour } from './eGeometry';
@@ -425,6 +426,10 @@ export const buildGeneratedSGeometryItems = (
       geometry: { type: 'path', pathD, sourcePathD: pointsToClosedPathD(panel.contour), sourceBounds: { ...panel.bounds }, references: { operationEdgeIds: sourceEdgeIds, connectionEdgeIds: [ownerOperation.sourceAEdgeId, ownerOperation.sourceBEdgeId] } },
       behaviour: { assembly: 'panel-boundary', replacesPanelId: panel.id }, manufacturingClassification: 'GENERATED_OUTER',
       manufacturing: generatedManufacturingMetadata(false), diagnostics: [] });
+    result[result.length - 1].profileGroups = operations.map((operation) => createBoundaryProfileGroup({
+      toolType: 'S', sourceOperationId: `operation:S:${operation.connectionId}`,
+      connectionId: operation.connectionId, panelId: panel.id, sourceEdgeId: operation.sourceAEdgeId,
+    }));
   });
 
   return result;
