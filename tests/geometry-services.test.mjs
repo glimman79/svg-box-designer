@@ -119,6 +119,7 @@ const finalGeometryFor = (imported, generated, profileEdges = [0]) => buildFinal
   profileGroups: profileEdges.map((edgeIndex) => ({ id: `profile-${edgeIndex}`, kind: 'BOUNDARY_PROFILE', sourceOperationId: 'operation', connectionId: `connection-${edgeIndex}`, panelId: 'panel', sourceEdgeId: `edge-${edgeIndex}`, attachmentStart: imported[edgeIndex], attachmentEnd: imported[(edgeIndex + 1) % imported.length] })),
 }]).contours[0];
 assert.deepEqual(finalGeometryFor(importedRectangle, horizontalTB).compensationProfile, selectedTBProfiles, 'FinalGeometry authors complete horizontal profile membership including first, last, and replacement-base segments');
+assert.deepEqual(finalGeometryFor(importedRectangle, horizontalTB).segmentProfileIds.map(Boolean), selectedTBProfiles, 'available profile union is exactly the old automatic mask');
 assert.deepEqual(finalGeometryFor(importedRectangle.map(({ x, y }) => ({ x: -y, y: x })), verticalTB).compensationProfile, selectedTBProfiles, 'FinalGeometry authors the identical complete profile membership vertically');
 assert.deepEqual(finalGeometryFor([...importedRectangle].reverse(), [...horizontalTB].reverse(), [2]).segmentProfileIds.filter(Boolean), Array(9).fill('profile-2'), 'reversed source-edge direction preserves complete authored extent');
 
