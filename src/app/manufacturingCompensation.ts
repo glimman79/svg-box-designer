@@ -69,7 +69,10 @@ export const resolveClearanceProfileSelection = (manufacturingGeometry: Manufact
     else if (matched.size > 1 || authoredAmbiguousIds.has(id)) manufacturingGeometry.diagnostics.push({ id, code: 'CLEARANCE_PROFILE_AMBIGUOUS', severity: 'error', message: `Selected Clearance profile ${id} is ambiguous.` });
   });
   manufacturingGeometry.finalContourList.forEach((contour) => {
-    if (!contour.segmentProfileIds) { contour.compensationProfile = contour.compensationProfile?.map(() => false); return; }
+    // Profile selection only owns contours with authored profile IDs. Preserve
+    // the all-segment mask on S-generated slots for the independent Slot
+    // Clearance stage that follows.
+    if (!contour.segmentProfileIds) return;
     if (!contour.points || contour.segmentProfileIds.length !== contour.points.length) {
       contour.compensationProfile = contour.segmentProfileIds.map(() => false);
       manufacturingGeometry.diagnostics.push({ id: contour.id, code: 'CLEARANCE_PROFILE_PROVENANCE_INVALID', severity: 'error', message: 'Clearance profile provenance does not align with contour segments.' });
