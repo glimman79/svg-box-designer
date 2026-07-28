@@ -26,7 +26,43 @@ const pointOnImportedSegment = (point: Point, start: Point, end: Point) => {
     && point.y <= Math.max(start.y, end.y) + cornerTouchTolerance;
 };
 
-const identifyProfileGroups = (generated: Point[], imported: Point[], edgeIds: string[], groups: ReadonlyArray<GeneratedProfileGroup>): Array<GeneratedProfileId | null> => {
+// This is the automatic Clearance classifier from 8003f98, the last revision
+// before profile activation became user-selectable.  Its result is the
+// authoritative geometric definition; profile IDs must never broaden it.
+export const identifyAutomaticCompensationProfile = (generated: Point[], imported: Point[]): boolean[] => {
+  const modifiedSegments = generated.map((start, index) => {
+    const end = generated[(index + 1) % generated.length];
+    return !imported.some((importedStart, importedIndex) => pointOnImportedSegment(start, importedStart, imported[(importedIndex + 1) % imported.length])
+      && pointOnImportedSegment(end, importedStart, imported[(importedIndex + 1) % imported.length]));
+  });
+
+  const supportingImportedSegments = new Set<number>();
+  const visited = new Set<number>();
+  modifiedSegments.forEach((isModified, startIndex) => {
+    if (!isModified || visited.has(startIndex)) return;
+    const attachments: Point[] = [];
+    let index = startIndex;
+    while (modifiedSegments[index] && !visited.has(index)) {
+      visited.add(index);
+      attachments.push(generated[index], generated[(index + 1) % generated.length]);
+      index = (index + 1) % generated.length;
+    }
+    imported.forEach((importedStart, importedIndex) => {
+      const importedEnd = imported[(importedIndex + 1) % imported.length];
+      const distinctAttachments = attachments.filter((point, pointIndex) => pointOnImportedSegment(point, importedStart, importedEnd)
+        && attachments.findIndex((candidate) => Math.abs(candidate.x - point.x) <= cornerTouchTolerance
+          && Math.abs(candidate.y - point.y) <= cornerTouchTolerance) === pointIndex);
+      if (distinctAttachments.length >= 2) supportingImportedSegments.add(importedIndex);
+    });
+  });
+
+  return generated.map((start, index) => modifiedSegments[index] || [...supportingImportedSegments].some((importedIndex) => (
+    pointOnImportedSegment(start, imported[importedIndex], imported[(importedIndex + 1) % imported.length])
+    && pointOnImportedSegment(generated[(index + 1) % generated.length], imported[importedIndex], imported[(importedIndex + 1) % imported.length])
+  )));
+};
+
+const identifyProfileGroups = (generated: Point[], imported: Point[], edgeIds: string[], groups: ReadonlyArray<GeneratedProfileGroup>, automaticMask: ReadonlyArray<boolean>): Array<GeneratedProfileId | null> => {
   const result: Array<GeneratedProfileId | null> = generated.map(() => null);
   const onAnyImportedEdge = (start: Point, end: Point) => imported.some((point, index) => pointOnImportedSegment(start, point, imported[(index + 1) % imported.length]) && pointOnImportedSegment(end, point, imported[(index + 1) % imported.length]));
 
@@ -64,7 +100,10 @@ const identifyProfileGroups = (generated: Point[], imported: Point[], edgeIds: s
       }
     });
   });
-  return result;
+  // Attachment metadata supplies stable identity only.  Intersect it with the
+  // proven automatic mask so a bad/ambiguous contour walk cannot redefine a
+  // profile by crossing a seam or consuming an adjacent imported edge.
+  return result.map((id, index) => automaticMask[index] ? id : null);
 };
 
 
@@ -140,8 +179,9 @@ export const buildFinalGeometry = (
       pathD,
       points: generatedPoints ?? clonePoints(outerPanelContour),
       ...(generatedPoints ? (() => {
-        const segmentProfileIds = identifyProfileGroups(generatedPoints, outerPanelContour, panel.edgeIds, replacement?.profileGroups ?? []);
-        return { segmentProfileIds, compensationProfile: segmentProfileIds.map((id) => id !== null) };
+        const compensationProfile = identifyAutomaticCompensationProfile(generatedPoints, outerPanelContour);
+        const segmentProfileIds = identifyProfileGroups(generatedPoints, outerPanelContour, panel.edgeIds, replacement?.profileGroups ?? [], compensationProfile);
+        return { segmentProfileIds, compensationProfile };
       })() : {}),
       ...(replacement ? { profileMaterialSide: 'GENERATED_MATING' as const } : {}),
       geometryType: replacement?.geometryType ?? 'IMPORTED_OUTER',
