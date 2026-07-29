@@ -1,6 +1,5 @@
 import type { ClassifiedContour, FinalContour } from './contourClassification';
 import type { GeneratedProfileId } from './generatedProfiles';
-import type { GeneratedTapId } from './generatedTaps';
 import { classifyFinalContours } from './contourClassification';
 import { cloneManufacturingMetadata } from './manufacturingMetadata';
 import { getManufacturingPolicy } from './manufacturingPolicy';
@@ -56,13 +55,11 @@ export const applyProfileOffset = (manufacturingGeometry: ManufacturingGeometry,
 export const applyTapClearance = (
   manufacturingGeometry: ManufacturingGeometry,
   tapClearanceMm = -0.10,
-  selectedTapIds: ReadonlyArray<GeneratedTapId> = [],
   services: GeometryServices = geometryServices,
 ): ManufacturingGeometry => {
-  const selected = new Set(selectedTapIds);
   manufacturingGeometry.finalContourList.forEach((contour) => {
     if (!contour.segmentTapIds) return;
-    const tapMask = contour.segmentTapIds.map((id) => id !== null && selected.has(id));
+    const tapMask = contour.segmentTapIds.map((id) => id !== null);
     if (!tapMask.some(Boolean)) return;
     contour.compensationProfile = tapMask;
     getManufacturingPolicy(contour.geometryType).compensationStrategy.execute({ geometry: manufacturingGeometry, contour, profileOffsetMm: tapClearanceMm, services });
@@ -146,10 +143,9 @@ export const processManufacturingGeometry = (
   profileOffsetMm = 0,
   selectedProfileOffsetIds: ReadonlyArray<GeneratedProfileId> = [],
   tapClearanceMm = -0.10,
-  selectedTapIds: ReadonlyArray<GeneratedTapId> = [],
 ): ManufacturingGeometry => {
   const manufacturingGeometry = applyProfileOffset(resolveProfileOffsetProfileSelection(createManufacturingGeometry(finalGeometry), selectedProfileOffsetIds), profileOffsetMm);
-  applyTapClearance(manufacturingGeometry, tapClearanceMm, selectedTapIds);
+  applyTapClearance(manufacturingGeometry, tapClearanceMm);
   const slotClearanceStageFinalContourList = applySlotClearanceStage(manufacturingGeometry.finalContourList, slotClearanceMm);
   const contours = applyKerfStage(slotClearanceStageFinalContourList, kerfMm);
 
@@ -167,7 +163,6 @@ export const buildKerfCompensatedPreviewFromFinalContours = (
   profileOffsetMm = 0,
   selectedProfileOffsetIds: ReadonlyArray<GeneratedProfileId> = [],
   tapClearanceMm = -0.10,
-  selectedTapIds: ReadonlyArray<GeneratedTapId> = [],
 ): ManufacturingGeometry => processManufacturingGeometry(
   { contours: finalContourList, diagnostics: [] },
   kerfMm,
@@ -175,5 +170,4 @@ export const buildKerfCompensatedPreviewFromFinalContours = (
   profileOffsetMm,
   selectedProfileOffsetIds,
   tapClearanceMm,
-  selectedTapIds,
 );

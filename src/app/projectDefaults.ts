@@ -5,5 +5,4 @@ export const DEFAULT_PROJECT_SETTINGS = Object.freeze({
   slotClearanceMm: -0.10,
   selectedProfileOffsetIds: Object.freeze([]),
   tapClearanceMm: -0.10,
-  selectedTapIds: Object.freeze([]),
 });
