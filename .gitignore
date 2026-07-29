@@ -6,3 +6,4 @@ vite.config.js
 vite.config.d.ts
 
 .test-build
+.diagnostic-build
