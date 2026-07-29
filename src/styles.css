@@ -559,7 +559,7 @@ button:disabled {
 
 .edge-label-text {
   fill: #1d4ed8;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.01em;
 }
@@ -1647,7 +1647,19 @@ button:disabled {
   font-size: 0.72rem;
 }
 
-.profile-offset-profile-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.profile-offset-group { display: grid; gap: 10px; margin-top: 14px; padding: 12px; border: 1px solid #bfdbfe; border-radius: 12px; background: #f8fbff; }
+.profile-offset-group h4, .profile-offset-group p { margin: 0; }
+.profile-offset-heading { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; }
+.profile-offset-heading h4 { color: #0f172a; font-size: 0.9rem; }
+.profile-offset-heading p, .profile-offset-heading > span, .selected-profile-list p { color: #64748b; font-size: 0.72rem; }
+.profile-offset-heading > span { padding: 3px 7px; border-radius: 999px; background: #dbeafe; color: #1d4ed8; white-space: nowrap; }
+.profile-offset-profile-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.profile-offset-list { display: flex; align-items: center; justify-content: space-between; color: #475569; font-size: 0.74rem; }
+.selected-profile-list { display: grid; gap: 6px; padding-top: 9px; border-top: 1px solid #dbeafe; }
+.selected-profile-list > span { color: #334155; font-size: 0.74rem; font-weight: 700; }
+.selected-profile-list ul { display: flex; gap: 5px; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; }
+.selected-profile-list li { max-width: 100%; padding: 3px 6px; overflow: hidden; color: #1e40af; background: #dbeafe; border-radius: 6px; font-size: 0.66rem; text-overflow: ellipsis; white-space: nowrap; }
+.selected-profile-list p { margin: 0; }
 .profile-offset-profile-underlay { fill: none; stroke: transparent; stroke-width: 10px; vector-effect: non-scaling-stroke; pointer-events: none; }
 .profile-offset-profile-underlay.hovered { stroke: rgba(56, 189, 248, 0.28); }
 .profile-offset-profile-underlay.selected { stroke: rgba(245, 158, 11, 0.48); }
