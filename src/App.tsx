@@ -441,10 +441,10 @@ const minZoom = 0.1;
 const maxZoom = 20;
 const buttonZoomFactor = 1.25;
 const wheelZoomSensitivity = 0.0015;
-const annotationFontSizePx = 9;
-const annotationPaddingXPx = 2;
-const annotationPaddingYPx = 1;
-const annotationEdgeOffsetPx = 7;
+const annotationFontSizePx = 8;
+const annotationPaddingXPx = 1.5;
+const annotationPaddingYPx = 0.75;
+const annotationEdgeOffsetPx = 4;
 
 const parseViewBox = (viewBox: string): CanvasViewBox => {
   const [x, y, width, height] = viewBox.split(/[\s,]+/).map(Number);
@@ -608,6 +608,33 @@ const NumericField = ({ id, label, value, min, step = 0.1, disabled = false, pla
     />
   </label>
 );
+
+const FixedPrecisionNumericField = ({ value, precision = 2, ...props }: NumericFieldProps & { precision?: number }) => {
+  const [displayValue, setDisplayValue] = useState(value?.toFixed(precision) ?? '');
+
+  useEffect(() => setDisplayValue(value?.toFixed(precision) ?? ''), [precision, value]);
+
+  return (
+    <label className="property-field" htmlFor={props.id}>
+      <span>{props.label}</span>
+      <input
+        id={props.id}
+        type="number"
+        min={props.min}
+        step={props.step ?? 0.01}
+        value={displayValue}
+        disabled={props.disabled}
+        placeholder={props.placeholder}
+        onFocus={props.onFocus}
+        onBlur={() => setDisplayValue(value?.toFixed(precision) ?? '')}
+        onChange={(event) => {
+          setDisplayValue(event.target.value);
+          if (Number.isFinite(event.target.valueAsNumber)) props.onChange(event.target.valueAsNumber);
+        }}
+      />
+    </label>
+  );
+};
 
 const CanvasAnnotation = ({ label, x, y, width, height, scale, className = '', leaderTo }: { label: string; x: number; y: number; width: number; height: number; scale: number; className?: string; leaderTo?: Point }) => (
   <g className={`canvas-annotation edge-label${className ? ` ${className}` : ''}`}>
@@ -2176,7 +2203,16 @@ function App() {
       return {};
     }
 
-    return edgeAssignments;
+    return Object.fromEntries(Object.entries(edgeAssignments).flatMap(([edgeId, assignment]) => {
+      const bucket = toEdgeAssignmentBucket(assignment);
+      const displayBucket = activeTool === 'TB'
+        ? bucket?.edgeAssignment?.connectionId.startsWith('E') ? { edgeAssignment: bucket.edgeAssignment } : undefined
+        : bucket?.slotAssignments?.some((slotAssignment) => slotAssignment.connectionId.startsWith('S'))
+          ? { slotAssignments: bucket.slotAssignments.filter((slotAssignment) => slotAssignment.connectionId.startsWith('S')) }
+          : undefined;
+
+      return displayBucket ? [[edgeId, displayBucket]] : [];
+    }));
   }, [activeTool, activeWGroup, connections, edgeAssignments]);
   const tbCanvasLabelAliases = tbDisplayLabelAliases;
   const labelPlacements = getEdgeLabelPlacements(svgModel.edges, displayEdgeAssignments, {
@@ -2186,7 +2222,7 @@ function App() {
     edgeOffsetPx: labelEdgeOffset,
     labelScale,
     formatDisplayLabel: (label) => tbCanvasLabelAliases[label] ?? label,
-    constrainToPanelBounds: false,
+    constrainToPanelBounds: true,
   });
   const labelPlacementsByEdgeId = labelPlacements.reduce((placementsByEdgeId, placement) => {
     placementsByEdgeId.set(placement.edgeId, [...(placementsByEdgeId.get(placement.edgeId) ?? []), placement]);
@@ -2383,17 +2419,29 @@ function App() {
             <div className="active-tool-card manufacturing-card">
               <h3>Manufacturing settings</h3>
               <div className="property-grid">
-                <NumericField id="manufacturing-kerf" label="Kerf" min={0} value={projectSettings.kerfMm} onChange={(kerfMm) => updateProjectSettings({ kerfMm })} />
-                <NumericField id="manufacturing-profile-offset" label="Profile Offset" value={projectSettings.profileOffsetMm} onChange={(profileOffsetMm) => updateProjectSettings({ profileOffsetMm })} />
-                <NumericField id="manufacturing-slot-clearance" label="Slot clearance" value={projectSettings.slotClearanceMm} onChange={(slotClearanceMm) => updateProjectSettings({ slotClearanceMm })} />
-              </div>
-              <div className="profile-offset-profile-actions">
-                <button className={`toolbar-button${isProfileOffsetProfileSelectionActive ? ' primary' : ''}`} type="button" aria-pressed={isProfileOffsetProfileSelectionActive} onClick={() => setIsProfileOffsetProfileSelectionActive((active) => !active)}>Select profiles</button>
-                <span>{projectSettings.selectedProfileOffsetIds.length} selected</span>
-                <button className="toolbar-button" type="button" disabled={projectSettings.selectedProfileOffsetIds.length === 0} onClick={() => updateProjectSettings({ selectedProfileOffsetIds: [] })}>Clear selection</button>
+                <FixedPrecisionNumericField id="manufacturing-kerf" label="Kerf" min={0} value={projectSettings.kerfMm} onChange={(kerfMm) => updateProjectSettings({ kerfMm })} />
+                <FixedPrecisionNumericField id="manufacturing-slot-clearance" label="Slot Clearance" value={projectSettings.slotClearanceMm} onChange={(slotClearanceMm) => updateProjectSettings({ slotClearanceMm })} />
               </div>
               <p className="muted">Kerf applies globally to the whole generated output.</p>
               <p className="muted">Slot clearance applies only to S-generated slot contours before Kerf.</p>
+              <section className="profile-offset-group" aria-labelledby="profile-offset-heading">
+                <div className="profile-offset-heading">
+                  <div><h4 id="profile-offset-heading">Profile Offset</h4><p>Apply an offset to selected profiles.</p></div>
+                  <span>{projectSettings.selectedProfileOffsetIds.length} selected</span>
+                </div>
+                <FixedPrecisionNumericField id="manufacturing-profile-offset" label="Offset" value={projectSettings.profileOffsetMm} onChange={(profileOffsetMm) => updateProjectSettings({ profileOffsetMm })} />
+                <div className="profile-offset-profile-actions">
+                  <button className={`toolbar-button${isProfileOffsetProfileSelectionActive ? ' primary' : ''}`} type="button" aria-pressed={isProfileOffsetProfileSelectionActive} onClick={() => setIsProfileOffsetProfileSelectionActive((active) => !active)}>Select Profiles</button>
+                  <button className="toolbar-button" type="button" disabled={projectSettings.selectedProfileOffsetIds.length === 0} onClick={() => updateProjectSettings({ selectedProfileOffsetIds: [] })}>Clear Selection</button>
+                </div>
+                <div className="profile-offset-list"><span>Available Profiles</span><strong>{selectableProfileOffsetProfiles.length}</strong></div>
+                <div className="selected-profile-list">
+                  <span>Selected Profiles</span>
+                  {projectSettings.selectedProfileOffsetIds.length > 0
+                    ? <ul>{projectSettings.selectedProfileOffsetIds.map((id) => <li key={id}>{id}</li>)}</ul>
+                    : <p>None selected</p>}
+                </div>
+              </section>
               {kerfCompensatedAppliedPreview.diagnostics.map((diagnostic, index) => (
                 <p className="notice inline-notice" key={`${diagnostic.id}:${diagnostic.code ?? index}`}>{diagnostic.message}</p>
               ))}
