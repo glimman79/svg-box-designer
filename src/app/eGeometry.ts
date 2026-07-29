@@ -1,6 +1,8 @@
 import type { AppliedEPanelPath, ConnectionMap, EdgeConnectionDefinition } from './connectionTypes';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import { createBoundaryProfileGroup } from './generatedProfiles';
+import { createGeneratedTapId } from './generatedTaps';
+import type { GeneratedTapGroup } from './generatedTaps';
 import { getAppliedEPanelPathsFromItems } from './generatedGeometrySnapshot';
 import { generatedManufacturingMetadata } from './manufacturingMetadata';
 import { getBucketEdgeAssignment } from './assignmentBuckets';
@@ -267,19 +269,24 @@ export const buildGeneratedTBGeometryItems = (
 
 
   return insetPanelOperations.flatMap(({ panel, operations, insetContour }) => {
+    const connectionIds = [...new Set(operations.map((operation) => operation.connectionId))];
+    const operationId = `operation:TB:${connectionIds.join('+')}`;
+    const generatedTaps: GeneratedTapGroup[] = [];
     const result = buildPanelGeometry(
       panel,
       operations,
       insetContour,
       tabSegmentPlansByConnectionId,
+      (operation, points, tapIndex) => generatedTaps.push({
+        id: createGeneratedTapId({ toolType: 'TB', sourceOperationId: operationId, panelId: panel.id, sourceEdgeId: operation.edgeId, tapIndex }),
+        sourceOperationId: operationId, panelId: panel.id, sourceEdgeId: operation.edgeId, points,
+      }),
     );
 
     if (!result.ok) {
       return [];
     }
 
-    const connectionIds = [...new Set(operations.map((operation) => operation.connectionId))];
-    const operationId = `operation:TB:${connectionIds.join('+')}`;
     const pathD = pointsToClosedPathD(result.contour);
     return [{
       id: `generated:panel:${panel.id}`, operationId, toolType: 'TB', kind: 'PANEL_PATH', pathD,
@@ -293,6 +300,7 @@ export const buildGeneratedTBGeometryItems = (
         attachmentStart: insetContour[panel.edgeIds.indexOf(operation.edgeId)],
         attachmentEnd: insetContour[(panel.edgeIds.indexOf(operation.edgeId) + 1) % insetContour.length],
       })),
+      generatedTaps,
     }];
   });
 };
@@ -651,6 +659,7 @@ export const applyTabsToContour = (
   panel: SvgPanel,
   contour: PanelContour,
   tabOperations: PanelTabOperation[],
+  onGeneratedTap?: (operation: PanelTabOperation, points: readonly [Point, Point, Point, Point], tapIndex: number) => void,
 ): PanelGeometryBuildResult => {
   if (tabOperations.length === 0) {
     return validatePanelContour(contour);
@@ -715,11 +724,13 @@ export const applyTabsToContour = (
     const roleSegments = getRoleTabSegments(orientedSegments, operation.role);
     const segments = clipOriginalSegmentsToInsetSide(originalSide, side, roleSegments);
 
-    segments.forEach((segment) => {
+    segments.forEach((segment, tapIndex) => {
       const baseStart = interpolateSidePoint(side, segment.startDistance);
       const baseEnd = interpolateSidePoint(side, segment.endDistance);
       const tabStart = interpolateSidePoint(outwardSide, segment.startDistance);
       const tabEnd = interpolateSidePoint(outwardSide, segment.endDistance);
+
+      onGeneratedTap?.(operation, [baseStart, tabStart, tabEnd, baseEnd], tapIndex);
 
       addContourPoint(tabbedContour, baseStart);
       addContourPoint(tabbedContour, tabStart);
@@ -789,9 +800,10 @@ export const buildPanelGeometry = (
   operations: PanelEdgeOperation[],
   insetContour: PanelContour,
   tabSegmentPlansByConnectionId: Map<string, TabSegmentPlan>,
+  onGeneratedTap?: Parameters<typeof applyTabsToContour>[3],
 ): PanelGeometryBuildResult => {
   const tabOperations = buildTabOperations(panel, operations, tabSegmentPlansByConnectionId);
-  const tabResult = applyTabsToContour(panel, insetContour, tabOperations);
+  const tabResult = applyTabsToContour(panel, insetContour, tabOperations, onGeneratedTap);
 
   if (!tabResult.ok) {
     return tabResult;

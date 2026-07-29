@@ -4,9 +4,10 @@ import { manufacturingMetadataForGeometryType } from './manufacturingMetadata';
 import { pointsToClosedPathD } from './sharedGeometry';
 import type { ContourDiagnostic, FinalContour, FinalContourSource } from './contourClassification';
 import type { FinalGeometryType } from './finalGeometryTypes';
-import { cornerTouchTolerance, getContourSignedArea } from './sharedGeometry';
+import { cornerTouchTolerance, getContourSignedArea, pointsMatch } from './sharedGeometry';
 import type { Point, SvgDocumentModel } from '../svgUtils';
 import type { GeneratedProfileGroup, GeneratedProfileId } from './generatedProfiles';
+import type { GeneratedTapGroup, GeneratedTapId } from './generatedTaps';
 
 export type FinalGeometryContour = FinalContour;
 
@@ -106,6 +107,19 @@ const identifyProfileGroups = (generated: Point[], imported: Point[], edgeIds: s
   return result.map((id, index) => automaticMask[index] ? id : null);
 };
 
+const identifyGeneratedTaps = (generated: Point[], taps: ReadonlyArray<GeneratedTapGroup>): Array<GeneratedTapId | null> => {
+  const result: Array<GeneratedTapId | null> = generated.map(() => null);
+  taps.forEach((tap) => {
+    for (let tapSegment = 0; tapSegment < tap.points.length - 1; tapSegment += 1) {
+      const start = tap.points[tapSegment];
+      const end = tap.points[tapSegment + 1];
+      const index = generated.findIndex((point, pointIndex) => pointsMatch(point, start) && pointsMatch(generated[(pointIndex + 1) % generated.length], end));
+      if (index >= 0) result[index] = tap.id;
+    }
+  });
+  return result;
+};
+
 
 const pathDToClosedContourForFinalGeometry = (pathD: string): Point[] | null => {
   const tokens = pathD.match(/[a-zA-Z]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
@@ -159,10 +173,10 @@ export const buildFinalGeometry = (
   const generatedGeometry: ReadonlyArray<GeneratedGeometryItem> = 'generatedGeometry' in generatedGeometryOrSnapshot
     ? generatedGeometryOrSnapshot.generatedGeometry
     : generatedGeometryOrSnapshot;
-  const replacementByPanelId = new Map<string, { pathD: string; finalSource: FinalContourSource; geometryType: FinalGeometryType; profileGroups: ReadonlyArray<GeneratedProfileGroup> }>();
+  const replacementByPanelId = new Map<string, { pathD: string; finalSource: FinalContourSource; geometryType: FinalGeometryType; profileGroups: ReadonlyArray<GeneratedProfileGroup>; generatedTaps: ReadonlyArray<GeneratedTapGroup> }>();
   generatedGeometry
     .filter((item) => item.behaviour.assembly === 'panel-boundary' && !!item.behaviour.replacesPanelId)
-    .forEach((item) => replacementByPanelId.set(item.behaviour.replacesPanelId!, { pathD: item.geometry.pathD, finalSource: 'applied-panel', geometryType: item.manufacturingClassification, profileGroups: item.profileGroups ?? [] }));
+    .forEach((item) => replacementByPanelId.set(item.behaviour.replacesPanelId!, { pathD: item.geometry.pathD, finalSource: 'applied-panel', geometryType: item.manufacturingClassification, profileGroups: item.profileGroups ?? [], generatedTaps: item.generatedTaps ?? [] }));
 
   const contours: FinalGeometryContour[] = svgModel.panels.flatMap((panel) => {
     const replacement = replacementByPanelId.get(panel.id);
@@ -181,7 +195,8 @@ export const buildFinalGeometry = (
       ...(generatedPoints ? (() => {
         const compensationProfile = identifyAutomaticCompensationProfile(generatedPoints, outerPanelContour);
         const segmentProfileIds = identifyProfileGroups(generatedPoints, outerPanelContour, panel.edgeIds, replacement?.profileGroups ?? [], compensationProfile);
-        return { segmentProfileIds, compensationProfile };
+        const segmentTapIds = identifyGeneratedTaps(generatedPoints, replacement?.generatedTaps ?? []);
+        return { segmentProfileIds, segmentTapIds, compensationProfile };
       })() : {}),
       ...(replacement ? { profileMaterialSide: 'GENERATED_MATING' as const } : {}),
       geometryType: replacement?.geometryType ?? 'IMPORTED_OUTER',
@@ -232,6 +247,7 @@ export const buildFinalGeometry = (
     if (contour.points) Object.freeze(contour.points);
     if (contour.compensationProfile) Object.freeze(contour.compensationProfile);
     if (contour.segmentProfileIds) Object.freeze(contour.segmentProfileIds);
+    if (contour.segmentTapIds) Object.freeze(contour.segmentTapIds);
     if (contour.manufacturing) Object.freeze(contour.manufacturing);
     Object.freeze(contour);
   });

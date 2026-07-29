@@ -2,6 +2,8 @@ import { getBucketEdgeAssignment, getBucketSlotAssignments } from './assignmentB
 import type { AppliedSGeometry, ConnectionMap, SlotConnectionDefinition } from './connectionTypes';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import { createBoundaryProfileGroup } from './generatedProfiles';
+import { createGeneratedTapId } from './generatedTaps';
+import type { GeneratedTapGroup } from './generatedTaps';
 import { getAppliedSGeometryFromItems } from './generatedGeometrySnapshot';
 import { generatedManufacturingMetadata } from './manufacturingMetadata';
 import { addContourPoint, clipOriginalSegmentsToInsetSide, clonePanelContour, getPanelThickness, removeInteriorBacktrackSpurs, validatePanelContour } from './eGeometry';
@@ -84,6 +86,7 @@ const applySTabsToContour = (
   originalContour: PanelContour,
   insetContour: PanelContour,
   operations: SPanelOperation[],
+  onGeneratedTap?: (operation: SPanelOperation, points: readonly [Point, Point, Point, Point], tapIndex: number) => void,
 ): PanelGeometryBuildResult => {
   if (operations.length === 0) {
     return validatePanelContour(insetContour);
@@ -133,11 +136,13 @@ const applySTabsToContour = (
       : operation.aSegments;
     const segments = clipOriginalSegmentsToInsetSide(originalSide, insetSide, orientedSegments);
 
-    segments.forEach((segment) => {
+    segments.forEach((segment, tapIndex) => {
       const baseStart = interpolateSidePoint(insetSide, segment.startDistance);
       const baseEnd = interpolateSidePoint(insetSide, segment.endDistance);
       const tabStart = interpolateSidePoint(outwardSide, segment.startDistance);
       const tabEnd = interpolateSidePoint(outwardSide, segment.endDistance);
+
+      onGeneratedTap?.(operation, [baseStart, tabStart, tabEnd, baseEnd], tapIndex);
 
       addContourPoint(tabbedContour, baseStart);
       addContourPoint(tabbedContour, tabStart);
@@ -160,6 +165,7 @@ const applySTabsToContour = (
 const buildSPanelContour = (
   panel: SvgPanel,
   operations: SPanelOperation[],
+  onGeneratedTap?: Parameters<typeof applySTabsToContour>[4],
 ): PanelGeometryBuildResult => {
   const insetResult = buildSInsetPanelContour(panel, operations);
 
@@ -167,7 +173,7 @@ const buildSPanelContour = (
     return insetResult;
   }
 
-  return applySTabsToContour(panel, panel.contour, insetResult.contour, operations);
+  return applySTabsToContour(panel, panel.contour, insetResult.contour, operations, onGeneratedTap);
 };
 
 
@@ -408,7 +414,14 @@ export const buildGeneratedSGeometryItems = (
 
   operationsByPanelId.forEach(({ panel, operations }) => {
     const profileBoundaryResult = buildSInsetPanelContour(panel, operations);
-    const panelResult = buildSPanelContour(panel, operations);
+    const generatedTaps: GeneratedTapGroup[] = [];
+    const panelResult = buildSPanelContour(panel, operations, (operation, points, tapIndex) => {
+      const sourceOperationId = `operation:S:${operation.connectionId}`;
+      generatedTaps.push({
+        id: createGeneratedTapId({ toolType: 'S', sourceOperationId, panelId: panel.id, sourceEdgeId: operation.sourceAEdgeId, tapIndex }),
+        sourceOperationId, panelId: panel.id, sourceEdgeId: operation.sourceAEdgeId, points,
+      });
+    });
     if (!panelResult.ok) {
       throw new Error(`${operations.map((operation) => operation.connectionId).join(', ')} S-A geometry failed: ${panelResult.reason}`);
     }
@@ -427,6 +440,7 @@ export const buildGeneratedSGeometryItems = (
       geometry: { type: 'path', pathD, sourcePathD: pointsToClosedPathD(panel.contour), sourceBounds: { ...panel.bounds }, references: { operationEdgeIds: sourceEdgeIds, connectionEdgeIds: [ownerOperation.sourceAEdgeId, ownerOperation.sourceBEdgeId] } },
       behaviour: { assembly: 'panel-boundary', replacesPanelId: panel.id }, manufacturingClassification: 'GENERATED_OUTER',
       manufacturing: generatedManufacturingMetadata(false), diagnostics: [] });
+    result[result.length - 1].generatedTaps = generatedTaps;
     result[result.length - 1].profileGroups = operations.map((operation) => createBoundaryProfileGroup({
       toolType: 'S', sourceOperationId: `operation:S:${operation.connectionId}`,
       connectionId: operation.connectionId, panelId: panel.id, sourceEdgeId: operation.sourceAEdgeId,

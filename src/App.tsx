@@ -12,6 +12,7 @@ import { DEFAULT_PROJECT_SETTINGS } from './app/projectDefaults';
 import type { ProjectSettings } from './app/projectSettings';
 import { normalizeProjectSettings } from './app/projectSettings';
 import type { GeneratedProfileId } from './app/generatedProfiles';
+import type { GeneratedTapId } from './app/generatedTaps';
 import { buildFinalGeometry as buildNativeFinalGeometry } from './app/finalGeometry';
 import { buildFinalGeometry } from './app/finalGeometryCompatibility';
 import { createGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
@@ -41,11 +42,13 @@ export { appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, buildTBCanvas
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
 // classifyAppliedContours is intentionally re-exported only as a compatibility/test helper.
 export { buildFinalContourList, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours } from './app/contourClassification';
-export { applyProfileOffset, applyProfileOffsetStage, applySlotClearance, applySlotClearanceStage, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour, processManufacturingGeometry } from './app/manufacturingCompensation';
+export { applyProfileOffset, applyProfileOffsetStage, applyTapClearance, applySlotClearance, applySlotClearanceStage, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour, processManufacturingGeometry } from './app/manufacturingCompensation';
 export { createManufacturingGeometry } from './app/manufacturingGeometry';
 export { normalizeProjectSettings } from './app/projectSettings';
 export { createGeneratedProfileId } from './app/generatedProfiles';
 export type { GeneratedProfileGroup, GeneratedProfileId } from './app/generatedProfiles';
+export { createGeneratedTapId } from './app/generatedTaps';
+export type { GeneratedTapGroup, GeneratedTapId } from './app/generatedTaps';
 export { getManufacturingPipelineForGeometryType } from './app/manufacturingMetadata';
 export { getManufacturingPolicy } from './app/manufacturingPolicy';
 export { NoMovementStrategy, OffsetStrategy, noMovementStrategy, offsetStrategy } from './app/compensationStrategies';
@@ -213,13 +216,13 @@ export const getToolClickGroupStartKind = (
   return null;
 };
 
-export const defaultProjectSettings: ProjectSettings = { ...DEFAULT_PROJECT_SETTINGS, selectedProfileOffsetIds: [] };
+export const defaultProjectSettings: ProjectSettings = { ...DEFAULT_PROJECT_SETTINGS, selectedProfileOffsetIds: [], selectedTapIds: [] };
 
 const maxHistoryEntries = 10;
 
 export const haveProjectSettingsChanged = (currentSettings: ProjectSettings, appliedSettings: ProjectSettings | null): boolean => {
   const baseline = appliedSettings ?? defaultProjectSettings;
-  return currentSettings.kerfMm !== baseline.kerfMm || (currentSettings.profileOffsetMm ?? defaultProjectSettings.profileOffsetMm) !== (baseline.profileOffsetMm ?? defaultProjectSettings.profileOffsetMm) || currentSettings.slotClearanceMm !== baseline.slotClearanceMm || currentSettings.selectedProfileOffsetIds.join('\0') !== baseline.selectedProfileOffsetIds.join('\0');
+  return currentSettings.kerfMm !== baseline.kerfMm || (currentSettings.profileOffsetMm ?? defaultProjectSettings.profileOffsetMm) !== (baseline.profileOffsetMm ?? defaultProjectSettings.profileOffsetMm) || currentSettings.slotClearanceMm !== baseline.slotClearanceMm || currentSettings.selectedProfileOffsetIds.join('\0') !== baseline.selectedProfileOffsetIds.join('\0') || (currentSettings.tapClearanceMm ?? defaultProjectSettings.tapClearanceMm) !== (baseline.tapClearanceMm ?? defaultProjectSettings.tapClearanceMm) || (currentSettings.selectedTapIds ?? []).join('\0') !== (baseline.selectedTapIds ?? []).join('\0');
 };
 
 const getNextWorkflowGroupOrderIndex = (workflowGroupOrder: Record<string, number>) => {
@@ -736,6 +739,8 @@ function App() {
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
   const [isProfileOffsetProfileSelectionActive, setIsProfileOffsetProfileSelectionActive] = useState(false);
   const [hoveredProfileOffsetProfileId, setHoveredProfileOffsetProfileId] = useState<GeneratedProfileId | null>(null);
+  const [isTapSelectionActive, setIsTapSelectionActive] = useState(false);
+  const [hoveredTapId, setHoveredTapId] = useState<GeneratedTapId | null>(null);
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
   const selectedLabelId = displayConnectionId;
@@ -919,8 +924,8 @@ function App() {
   );
 
   const kerfCompensatedAppliedPreview = useMemo(
-    () => processManufacturingGeometry(finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.profileOffsetMm, projectSettings.selectedProfileOffsetIds),
-    [finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.profileOffsetMm, projectSettings.selectedProfileOffsetIds],
+    () => processManufacturingGeometry(finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.profileOffsetMm, projectSettings.selectedProfileOffsetIds, projectSettings.tapClearanceMm, projectSettings.selectedTapIds),
+    [finalGeometry, projectSettings],
   );
   const selectableProfileOffsetProfiles = useMemo(() => {
     const selected = new Set(projectSettings.selectedProfileOffsetIds);
@@ -941,6 +946,25 @@ function App() {
   const toggleProfileOffsetProfile = (id: GeneratedProfileId) => {
     const selected = projectSettings.selectedProfileOffsetIds;
     updateProjectSettings({ selectedProfileOffsetIds: selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id] });
+  };
+  const selectableTaps = useMemo(() => {
+    const selected = new Set(projectSettings.selectedTapIds);
+    return finalGeometry.contours.flatMap((contour) => {
+      const paths = new Map<GeneratedTapId, string[]>();
+      contour.segmentTapIds?.forEach((id, index) => {
+        if (!id || !contour.points) return;
+        const values = paths.get(id) ?? [];
+        const start = contour.points[index];
+        const end = contour.points[(index + 1) % contour.points.length];
+        values.push(`M ${start.x} ${start.y} L ${end.x} ${end.y}`);
+        paths.set(id, values);
+      });
+      return [...paths].map(([id, parts]) => ({ id, contourId: contour.id, pathD: parts.join(' '), selected: selected.has(id) }));
+    });
+  }, [finalGeometry, projectSettings.selectedTapIds]);
+  const toggleTap = (id: GeneratedTapId) => {
+    const selected = projectSettings.selectedTapIds;
+    updateProjectSettings({ selectedTapIds: selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id] });
   };
 
   const isProjectLocked = !panelManager.isApplied;
@@ -2484,6 +2508,24 @@ function App() {
                     : <p>None selected</p>}
                 </div>
               </section>
+              <section className="profile-offset-group" aria-labelledby="tap-clearance-heading">
+                <div className="profile-offset-heading">
+                  <div><h4 id="tap-clearance-heading">Tap Clearance</h4><p>Shrink or expand selected generated male tabs.</p></div>
+                  <span>{projectSettings.selectedTapIds.length} selected</span>
+                </div>
+                <FixedPrecisionNumericField id="manufacturing-tap-clearance" label="Offset" value={projectSettings.tapClearanceMm} onChange={(tapClearanceMm) => updateProjectSettings({ tapClearanceMm })} />
+                <div className="profile-offset-profile-actions">
+                  <button className={`toolbar-button${isTapSelectionActive ? ' primary' : ''}`} type="button" aria-pressed={isTapSelectionActive} onClick={() => setIsTapSelectionActive((active) => !active)}>Select Tabs</button>
+                  <button className="toolbar-button" type="button" disabled={projectSettings.selectedTapIds.length === 0} onClick={() => updateProjectSettings({ selectedTapIds: [] })}>Clear Selection</button>
+                </div>
+                <div className="profile-offset-list"><span>Available Tabs</span><strong>{selectableTaps.length}</strong></div>
+                <div className="selected-profile-list">
+                  <span>Selected Tabs</span>
+                  {projectSettings.selectedTapIds.length > 0
+                    ? <ul>{projectSettings.selectedTapIds.map((id) => <li key={id}>{id}</li>)}</ul>
+                    : <p>None selected</p>}
+                </div>
+              </section>
               {kerfCompensatedAppliedPreview.diagnostics.map((diagnostic, index) => (
                 <p className="notice inline-notice" key={`${diagnostic.id}:${diagnostic.code ?? index}`}>{diagnostic.message}</p>
               ))}
@@ -2715,6 +2757,11 @@ function App() {
                   ))}
                 </g>
               )}
+              {isTapSelectionActive && (
+                <g className="profile-offset-profile-underlays" aria-hidden="true">
+                  {selectableTaps.map((tap) => <path key={`${tap.contourId}:${tap.id}`} className={`profile-offset-profile-underlay${tap.selected ? ' selected' : ''}${hoveredTapId === tap.id ? ' hovered' : ''}`} d={tap.pathD} />)}
+                </g>
+              )}
               <g className="final-contour-kerf-layer">
                 {kerfCompensatedAppliedPreview.contours.map((contour) => (
                   <path
@@ -2803,6 +2850,15 @@ function App() {
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={(event) => { event.stopPropagation(); toggleProfileOffsetProfile(profile.id); }}
                     />
+                  ))}
+                </g>
+              )}
+              {isTapSelectionActive && (
+                <g className="profile-offset-profile-hit-targets">
+                  {selectableTaps.map((tap) => (
+                    <path key={`${tap.contourId}:${tap.id}`} className="profile-offset-profile-hitbox" d={tap.pathD}
+                      onPointerEnter={() => setHoveredTapId(tap.id)} onPointerLeave={() => setHoveredTapId((id) => id === tap.id ? null : id)}
+                      onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); toggleTap(tap.id); }} />
                   ))}
                 </g>
               )}
