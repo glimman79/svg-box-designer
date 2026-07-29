@@ -15,6 +15,9 @@ type Winding = 'clockwise' | 'counterclockwise';
 type Tool = 'TB' | 'S';
 
 const close = (a: Point, b: Point) => Math.abs(a.x - b.x) < 1e-7 && Math.abs(a.y - b.y) < 1e-7;
+const invariant: (condition: unknown, message: string) => asserts condition = (condition, message) => {
+  if (!condition) throw new Error(message);
+};
 const onSegment = (p: Point, a: Point, b: Point) => Math.abs((p.x - a.x) * (b.y - a.y) - (p.y - a.y) * (b.x - a.x)) < 1e-7
   && p.x >= Math.min(a.x, b.x) - 1e-7 && p.x <= Math.max(a.x, b.x) + 1e-7
   && p.y >= Math.min(a.y, b.y) - 1e-7 && p.y <= Math.max(a.y, b.y) + 1e-7;
@@ -59,6 +62,8 @@ const traceFixture = ({ name, tool, model, items, sourceEdge }: ReturnType<typeo
   const item = items.find((candidate) => candidate.kind === 'PANEL_PATH' && candidate.generatedTaps?.some((tap) => tap.sourceEdgeId === sourceEdge.id));
   if (!item) throw new Error(`${name}: generator emitted no owner panel item`);
   const snapshot = createGeneratedGeometrySnapshot({ generatedGeometry: items, revision: 1 });
+  const snapshotItem = snapshot.generatedGeometry.find((candidate) => candidate.id === item.id);
+  invariant(JSON.stringify(snapshotItem?.generatedTaps) === JSON.stringify(item.generatedTaps), `${name}: snapshot changed generated tap metadata`);
   const final = buildFinalGeometry(model, snapshot);
   const contour = final.contours.find((candidate) => candidate.panelId === item.behaviour.replacesPanelId)!;
   const manufacturing = createManufacturingGeometry(final).finalContourList.find((candidate) => candidate.id === contour.id)!;
@@ -92,6 +97,16 @@ const traceTap = (tap: GeneratedTapGroup, tapIndex: number, sourceStart: Point, 
   tap.segmentRoles.forEach((authoredRole, segmentIndex) => {
     const from = tap.points[segmentIndex]; const to = tap.points[segmentIndex + 1]; const finalIndex = locate(finalPoints, from, to);
     const onPanelBoundary = panel.contour.some((edgeStart, i) => onSegment(from, edgeStart, panel.contour[(i + 1) % panel.contour.length]) && onSegment(to, edgeStart, panel.contour[(i + 1) % panel.contour.length]));
+    const expectedRole = segmentIndex === 0
+      ? (onPanelBoundary ? 'source-boundary-start' : 'tap-side-start')
+      : segmentIndex === 1
+        ? 'tap-tip'
+        : (onPanelBoundary ? 'source-boundary-end' : 'tap-side-end');
+    invariant(authoredRole === expectedRole, `${tap.id} segment ${segmentIndex}: expected authored role ${expectedRole}, received ${authoredRole}`);
+    invariant(finalIndex >= 0, `${tap.id} segment ${segmentIndex}: missing from FinalGeometry`);
+    invariant(ids[finalIndex] === tap.id, `${tap.id} segment ${segmentIndex}: GeneratedTapId changed during propagation`);
+    invariant(roles[finalIndex] === authoredRole, `${tap.id} segment ${segmentIndex}: role changed during propagation`);
+    invariant(mask[finalIndex] === isTapClearanceEligibleRole(authoredRole), `${tap.id} segment ${segmentIndex}: Tap Clearance mask disagrees with authored eligibility`);
     console.log(`Segment ${segmentIndex}\nfrom: ${point(from)}\nto: ${point(to)}\nrole: ${authoredRole}\neligible: ${isTapClearanceEligibleRole(authoredRole)}\non original source boundary: ${onSegment(from, sourceStart, sourceEnd) && onSegment(to, sourceStart, sourceEnd)}\non any original panel boundary: ${onPanelBoundary}\ntouches source start: ${close(from, sourceStart) || close(to, sourceStart)}\ntouches source end: ${close(from, sourceEnd) || close(to, sourceEnd)}\nindex mapping: generator ${segmentIndex} -> snapshot ${segmentIndex} -> FinalGeometry ${finalIndex} -> ManufacturingGeometry ${finalIndex}\nfinal GeneratedTapId: ${finalIndex < 0 ? 'MISSING' : ids[finalIndex]}\nfinal role: ${finalIndex < 0 ? 'MISSING' : roles[finalIndex]}\nin Tap Clearance mask: ${finalIndex >= 0 && mask[finalIndex]}`);
   });
 };
