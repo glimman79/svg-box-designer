@@ -159,11 +159,11 @@ assert.equal(geometryServices.compensateProfile(signedSlot, -0.1, 'OUTWARD').pat
 assert.equal(geometryServices.compensateProfile(signedSlot, 0.1, 'OUTWARD').pathD, 'M 2.1 2.1 L 3.9 2.1 L 3.9 3.9 L 2.1 3.9 Z', 'positive slot clearance moves in the opposite direction');
 assert.equal(geometryServices.compensateProfile(signedSlot, -0.9, 'OUTWARD').pathD, 'M 1.1 1.1 L 4.9 1.1 L 4.9 4.9 L 1.1 4.9 Z', 'whole-slot signed compensation remains unchanged');
 assert.equal(compensateClassifiedContours([{ ...outer }], 0.3)[0].pathD, 'M -0.15 -0.15 L 10.15 -0.15 L 10.15 10.15 L -0.15 10.15 Z', 'kerf direction and half-width remain unchanged');
-assert.deepEqual(DEFAULT_PROJECT_SETTINGS, { kerfMm: 0.15, profileOffsetMm: 0, slotClearanceMm: -0.10, selectedProfileOffsetIds: [] }, 'only new-project Profile Offset defaults to zero; Kerf and Slot Clearance defaults remain unchanged');
+assert.deepEqual(DEFAULT_PROJECT_SETTINGS, { kerfMm: 0.15, profileOffsetMm: 0, slotClearanceMm: -0.10, selectedProfileOffsetIds: [], tapClearanceMm: -0.10, selectedTapIds: [] }, 'Tap Clearance defaults to -0.10 while every existing manufacturing default remains unchanged');
 const legacySettings = normalizeProjectSettings({ clearanceMm: 0.25, selectedClearanceProfileIds: ['profile-1'], kerfMm: 0.15, slotClearanceMm: -0.10 }).settings;
 const renamedSettings = normalizeProjectSettings({ profileOffsetMm: 0.25, selectedProfileOffsetIds: ['profile-1'], kerfMm: 0.15, slotClearanceMm: -0.10 }).settings;
 assert.deepEqual(legacySettings, renamedSettings, 'legacy Clearance project fields normalize to the renamed Profile Offset settings');
-assert.deepEqual(JSON.parse(JSON.stringify(legacySettings)), { kerfMm: 0.15, profileOffsetMm: 0.25, slotClearanceMm: -0.10, selectedProfileOffsetIds: ['profile-1'] }, 'saved settings use only Profile Offset field names');
+assert.deepEqual(JSON.parse(JSON.stringify(legacySettings)), { kerfMm: 0.15, profileOffsetMm: 0.25, slotClearanceMm: -0.10, selectedProfileOffsetIds: ['profile-1'], tapClearanceMm: -0.10, selectedTapIds: [] }, 'older settings gain default independent Tap Clearance fields');
 const legacyGeometry = applyProfileOffset(createManufacturingGeometry({ contours: [{ ...outer, compensationProfile: [true, true, true, true] }], diagnostics: [] }), legacySettings.profileOffsetMm);
 const renamedGeometry = applyProfileOffset(createManufacturingGeometry({ contours: [{ ...outer, compensationProfile: [true, true, true, true] }], diagnostics: [] }), renamedSettings.profileOffsetMm);
 assert.equal(JSON.stringify(legacyGeometry), JSON.stringify(renamedGeometry), 'legacy and renamed settings produce byte-for-byte identical geometry');

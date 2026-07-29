@@ -1,5 +1,6 @@
 import type { ClassifiedContour, FinalContour } from './contourClassification';
 import type { GeneratedProfileId } from './generatedProfiles';
+import type { GeneratedTapId } from './generatedTaps';
 import { classifyFinalContours } from './contourClassification';
 import { cloneManufacturingMetadata } from './manufacturingMetadata';
 import { getManufacturingPolicy } from './manufacturingPolicy';
@@ -47,6 +48,24 @@ export const applyProfileOffset = (manufacturingGeometry: ManufacturingGeometry,
     if (!contour.compensationProfile?.some(Boolean)) return;
     const strategy = getManufacturingPolicy(contour.geometryType).compensationStrategy;
     strategy.execute({ geometry: manufacturingGeometry, contour, profileOffsetMm, services });
+  });
+  return manufacturingGeometry;
+};
+
+/** Independent Tap Clearance mask built only from generator-authored IDs. */
+export const applyTapClearance = (
+  manufacturingGeometry: ManufacturingGeometry,
+  tapClearanceMm = -0.10,
+  selectedTapIds: ReadonlyArray<GeneratedTapId> = [],
+  services: GeometryServices = geometryServices,
+): ManufacturingGeometry => {
+  const selected = new Set(selectedTapIds);
+  manufacturingGeometry.finalContourList.forEach((contour) => {
+    if (!contour.segmentTapIds) return;
+    const tapMask = contour.segmentTapIds.map((id) => id !== null && selected.has(id));
+    if (!tapMask.some(Boolean)) return;
+    contour.compensationProfile = tapMask;
+    getManufacturingPolicy(contour.geometryType).compensationStrategy.execute({ geometry: manufacturingGeometry, contour, profileOffsetMm: tapClearanceMm, services });
   });
   return manufacturingGeometry;
 };
@@ -118,7 +137,7 @@ const applyKerfStage = (
   kerfMm: number,
 ): ClassifiedContour[] => compensateClassifiedContours(classifyFinalContours(finalContourList), kerfMm);
 
-// Manufacturing pipeline order: Profile Offset -> Slot Clearance -> final kerf.
+// Manufacturing pipeline order: Profile Offset -> Tap Clearance -> Slot Clearance -> final kerf.
 // Kerf is intentionally the terminal stage; preview/export consume this result directly.
 export const processManufacturingGeometry = (
   finalGeometry: FinalGeometry,
@@ -126,8 +145,11 @@ export const processManufacturingGeometry = (
   slotClearanceMm = 0,
   profileOffsetMm = 0,
   selectedProfileOffsetIds: ReadonlyArray<GeneratedProfileId> = [],
+  tapClearanceMm = -0.10,
+  selectedTapIds: ReadonlyArray<GeneratedTapId> = [],
 ): ManufacturingGeometry => {
   const manufacturingGeometry = applyProfileOffset(resolveProfileOffsetProfileSelection(createManufacturingGeometry(finalGeometry), selectedProfileOffsetIds), profileOffsetMm);
+  applyTapClearance(manufacturingGeometry, tapClearanceMm, selectedTapIds);
   const slotClearanceStageFinalContourList = applySlotClearanceStage(manufacturingGeometry.finalContourList, slotClearanceMm);
   const contours = applyKerfStage(slotClearanceStageFinalContourList, kerfMm);
 
@@ -144,10 +166,14 @@ export const buildKerfCompensatedPreviewFromFinalContours = (
   slotClearanceMm = 0,
   profileOffsetMm = 0,
   selectedProfileOffsetIds: ReadonlyArray<GeneratedProfileId> = [],
+  tapClearanceMm = -0.10,
+  selectedTapIds: ReadonlyArray<GeneratedTapId> = [],
 ): ManufacturingGeometry => processManufacturingGeometry(
   { contours: finalContourList, diagnostics: [] },
   kerfMm,
   slotClearanceMm,
   profileOffsetMm,
   selectedProfileOffsetIds,
+  tapClearanceMm,
+  selectedTapIds,
 );

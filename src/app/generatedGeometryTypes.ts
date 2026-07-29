@@ -3,6 +3,7 @@ import type { ManufacturingMetadata } from './manufacturingMetadata';
 import type { OperationKind } from './operationTypes';
 import type { ManufacturingClassification } from './finalGeometryTypes';
 import type { GeneratedProfileGroup } from './generatedProfiles';
+import type { GeneratedTapGroup } from './generatedTaps';
 
 export type GeneratedGeometryKind = 'PANEL_PATH' | 'SLOT_PATH';
 
@@ -43,4 +44,5 @@ export type GeneratedGeometryItem = {
   pathD: string;
   diagnostics: string[];
   profileGroups?: ReadonlyArray<GeneratedProfileGroup>;
+  generatedTaps?: ReadonlyArray<GeneratedTapGroup>;
 };
