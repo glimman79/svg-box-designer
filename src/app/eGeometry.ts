@@ -2,7 +2,7 @@ import type { AppliedEPanelPath, ConnectionMap, EdgeConnectionDefinition } from 
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import { createBoundaryProfileGroup } from './generatedProfiles';
 import { createGeneratedTapId } from './generatedTaps';
-import type { GeneratedTapGroup } from './generatedTaps';
+import type { GeneratedTapGroup, GeneratedTapSegmentRole } from './generatedTaps';
 import { getAppliedEPanelPathsFromItems } from './generatedGeometrySnapshot';
 import { generatedManufacturingMetadata } from './manufacturingMetadata';
 import { getBucketEdgeAssignment } from './assignmentBuckets';
@@ -277,9 +277,9 @@ export const buildGeneratedTBGeometryItems = (
       operations,
       insetContour,
       tabSegmentPlansByConnectionId,
-      (operation, points, tapIndex) => generatedTaps.push({
+      (operation, points, tapIndex, segmentRoles) => generatedTaps.push({
         id: createGeneratedTapId({ toolType: 'TB', sourceOperationId: operationId, panelId: panel.id, sourceEdgeId: operation.edgeId, tapIndex }),
-        sourceOperationId: operationId, panelId: panel.id, sourceEdgeId: operation.edgeId, points,
+        sourceOperationId: operationId, panelId: panel.id, sourceEdgeId: operation.edgeId, points, segmentRoles,
       }),
     );
 
@@ -659,7 +659,7 @@ export const applyTabsToContour = (
   panel: SvgPanel,
   contour: PanelContour,
   tabOperations: PanelTabOperation[],
-  onGeneratedTap?: (operation: PanelTabOperation, points: readonly [Point, Point, Point, Point], tapIndex: number) => void,
+  onGeneratedTap?: (operation: PanelTabOperation, points: readonly [Point, Point, Point, Point], tapIndex: number, roles: readonly [GeneratedTapSegmentRole, GeneratedTapSegmentRole, GeneratedTapSegmentRole]) => void,
 ): PanelGeometryBuildResult => {
   if (tabOperations.length === 0) {
     return validatePanelContour(contour);
@@ -730,7 +730,11 @@ export const applyTabsToContour = (
       const tabStart = interpolateSidePoint(outwardSide, segment.startDistance);
       const tabEnd = interpolateSidePoint(outwardSide, segment.endDistance);
 
-      onGeneratedTap?.(operation, [baseStart, tabStart, tabEnd, baseEnd], tapIndex);
+      onGeneratedTap?.(operation, [baseStart, tabStart, tabEnd, baseEnd], tapIndex, [
+        pointsMatch(baseStart, originalSide.start) ? 'source-boundary-start' : 'tap-side-start',
+        'tap-tip',
+        pointsMatch(baseEnd, originalSide.end) ? 'source-boundary-end' : 'tap-side-end',
+      ]);
 
       addContourPoint(tabbedContour, baseStart);
       addContourPoint(tabbedContour, tabStart);

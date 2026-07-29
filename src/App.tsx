@@ -2464,14 +2464,12 @@ function App() {
               <h3>Manufacturing settings</h3>
               <div className="property-grid">
                 <FixedPrecisionNumericField id="manufacturing-kerf" label="Kerf" min={0} value={projectSettings.kerfMm} onChange={(kerfMm) => updateProjectSettings({ kerfMm })} />
+                <FixedPrecisionNumericField id="manufacturing-tap-clearance" label="Tap Clearance" value={projectSettings.tapClearanceMm} onChange={(tapClearanceMm) => updateProjectSettings({ tapClearanceMm })} />
                 <FixedPrecisionNumericField id="manufacturing-slot-clearance" label="Slot Clearance" value={projectSettings.slotClearanceMm} onChange={(slotClearanceMm) => updateProjectSettings({ slotClearanceMm })} />
               </div>
               <p className="muted">Kerf applies globally to the whole generated output.</p>
+              <p className="muted">Tap Clearance applies automatically to all generator-authored male taps.</p>
               <p className="muted">Slot clearance applies only to S-generated slot contours before Kerf.</p>
-              <section className="profile-offset-group" aria-labelledby="tap-clearance-heading">
-                <h4 id="tap-clearance-heading">Tap Clearance</h4>
-                <FixedPrecisionNumericField id="manufacturing-tap-clearance" label="Offset" value={projectSettings.tapClearanceMm} onChange={(tapClearanceMm) => updateProjectSettings({ tapClearanceMm })} />
-              </section>
               <section className="profile-offset-group" aria-labelledby="profile-offset-heading">
                 <div className="profile-offset-heading">
                   <div><h4 id="profile-offset-heading">Profile Offset</h4><p>Apply an offset to selected profiles.</p></div>

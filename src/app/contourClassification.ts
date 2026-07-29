@@ -6,7 +6,7 @@ import type { FinalGeometryType } from './finalGeometryTypes';
 import { cornerTouchTolerance, getContourSignedArea, pointsToClosedPathD } from './sharedGeometry';
 import type { Point, SvgDocumentModel } from '../svgUtils';
 import type { GeneratedProfileId } from './generatedProfiles';
-import type { GeneratedTapId } from './generatedTaps';
+import type { GeneratedTapId, GeneratedTapSegmentRole } from './generatedTaps';
 
 export type ContourKind = 'OUTER' | 'INNER';
 export type ProfileMaterialSide = 'MALE' | 'FEMALE' | 'GENERATED_MATING';
@@ -34,6 +34,8 @@ export type ClassifiedContour = {
   segmentProfileIds?: ReadonlyArray<GeneratedProfileId | null>;
   /** Generator-authored tap membership aligned one-to-one with contour segments. */
   segmentTapIds?: ReadonlyArray<GeneratedTapId | null>;
+  /** Generator-authored Tap Clearance role aligned one-to-one with segments. */
+  segmentTapRoles?: ReadonlyArray<GeneratedTapSegmentRole | null>;
   /** Generator-authored semantic role; never inferred by manufacturing/rendering. */
   profileMaterialSide?: ProfileMaterialSide;
   diagnostics?: string[];

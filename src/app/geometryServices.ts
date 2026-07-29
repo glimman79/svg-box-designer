@@ -125,6 +125,12 @@ const reconstructSelectiveProfile = (profile: FinalContour, signedDistanceMm: nu
   // cleaned, so their segment indexes no longer matched the generator mask.
   const points = clonePoints(sourcePoints);
   const selectedSegments = [...profile.compensationProfile];
+  const protectedCornerAnchors = points.map((_, index) => {
+    const previousRole = profile.segmentTapRoles?.[(index + points.length - 1) % points.length];
+    const nextRole = profile.segmentTapRoles?.[index];
+    return previousRole === 'source-boundary-end' || nextRole === 'source-boundary-start'
+      || previousRole === 'corner-closure' || nextRole === 'corner-closure';
+  });
   let changed = true;
   while (changed && points.length >= 3) {
     changed = false;
@@ -136,10 +142,11 @@ const reconstructSelectiveProfile = (profile: FinalContour, signedDistanceMm: nu
         && selectedSegments[previousIndex] === selectedSegments[index];
       // A collinear vertex at a provenance boundary is a real transition anchor:
       // removing it would merge the selected exit with unchanged geometry.
-      if (duplicateEndpoint || removableCollinearPoint) {
+      if (duplicateEndpoint || (removableCollinearPoint && !protectedCornerAnchors[index])) {
         selectedSegments[previousIndex] = selectedSegments[previousIndex] || selectedSegments[index];
         points.splice(index, 1);
         selectedSegments.splice(index, 1);
+        protectedCornerAnchors.splice(index, 1);
         changed = true;
         break;
       }

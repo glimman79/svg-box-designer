@@ -3,7 +3,7 @@ import type { AppliedSGeometry, ConnectionMap, SlotConnectionDefinition } from '
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import { createBoundaryProfileGroup } from './generatedProfiles';
 import { createGeneratedTapId } from './generatedTaps';
-import type { GeneratedTapGroup } from './generatedTaps';
+import type { GeneratedTapGroup, GeneratedTapSegmentRole } from './generatedTaps';
 import { getAppliedSGeometryFromItems } from './generatedGeometrySnapshot';
 import { generatedManufacturingMetadata } from './manufacturingMetadata';
 import { addContourPoint, clipOriginalSegmentsToInsetSide, clonePanelContour, getPanelThickness, removeInteriorBacktrackSpurs, validatePanelContour } from './eGeometry';
@@ -86,7 +86,7 @@ const applySTabsToContour = (
   originalContour: PanelContour,
   insetContour: PanelContour,
   operations: SPanelOperation[],
-  onGeneratedTap?: (operation: SPanelOperation, points: readonly [Point, Point, Point, Point], tapIndex: number) => void,
+  onGeneratedTap?: (operation: SPanelOperation, points: readonly [Point, Point, Point, Point], tapIndex: number, roles: readonly [GeneratedTapSegmentRole, GeneratedTapSegmentRole, GeneratedTapSegmentRole]) => void,
 ): PanelGeometryBuildResult => {
   if (operations.length === 0) {
     return validatePanelContour(insetContour);
@@ -142,7 +142,11 @@ const applySTabsToContour = (
       const tabStart = interpolateSidePoint(outwardSide, segment.startDistance);
       const tabEnd = interpolateSidePoint(outwardSide, segment.endDistance);
 
-      onGeneratedTap?.(operation, [baseStart, tabStart, tabEnd, baseEnd], tapIndex);
+      onGeneratedTap?.(operation, [baseStart, tabStart, tabEnd, baseEnd], tapIndex, [
+        pointsMatch(baseStart, originalSide.start) ? 'source-boundary-start' : 'tap-side-start',
+        'tap-tip',
+        pointsMatch(baseEnd, originalSide.end) ? 'source-boundary-end' : 'tap-side-end',
+      ]);
 
       addContourPoint(tabbedContour, baseStart);
       addContourPoint(tabbedContour, tabStart);
@@ -415,11 +419,11 @@ export const buildGeneratedSGeometryItems = (
   operationsByPanelId.forEach(({ panel, operations }) => {
     const profileBoundaryResult = buildSInsetPanelContour(panel, operations);
     const generatedTaps: GeneratedTapGroup[] = [];
-    const panelResult = buildSPanelContour(panel, operations, (operation, points, tapIndex) => {
+    const panelResult = buildSPanelContour(panel, operations, (operation, points, tapIndex, segmentRoles) => {
       const sourceOperationId = `operation:S:${operation.connectionId}`;
       generatedTaps.push({
         id: createGeneratedTapId({ toolType: 'S', sourceOperationId, panelId: panel.id, sourceEdgeId: operation.sourceAEdgeId, tapIndex }),
-        sourceOperationId, panelId: panel.id, sourceEdgeId: operation.sourceAEdgeId, points,
+        sourceOperationId, panelId: panel.id, sourceEdgeId: operation.sourceAEdgeId, points, segmentRoles,
       });
     });
     if (!panelResult.ok) {

@@ -1,10 +1,21 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as numeric from '../.test-build/app/numericDraft.js';
 assert.equal(numeric.parseCompleteNumericDraft('0,78'), 0.78);
 assert.equal(numeric.parseCompleteNumericDraft('0.78'), 0.78);
 assert.equal(numeric.parseCompleteNumericDraft('-0,15'), -0.15);
 for (const incomplete of ['', '-', '+', '0,', '-0,']) assert.equal(numeric.parseCompleteNumericDraft(incomplete), null);
 assert.equal(numeric.formatFixedNumericValue(-0.1), '-0.10');
+
+const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+const kerfField = appSource.indexOf('id="manufacturing-kerf"');
+const tapField = appSource.indexOf('id="manufacturing-tap-clearance"');
+const slotField = appSource.indexOf('id="manufacturing-slot-clearance"');
+const helpText = appSource.indexOf('Kerf applies globally to the whole generated output.');
+const profileCard = appSource.indexOf('aria-labelledby="profile-offset-heading"');
+assert.ok(kerfField < tapField && tapField < slotField && slotField < helpText && helpText < profileCard, 'global fields, help, and Profile Offset card use the required order');
+assert.equal(appSource.includes('aria-labelledby="tap-clearance-heading"'), false, 'Tap Clearance has no separate bordered card');
+assert.equal(appSource.includes('id="manufacturing-tap-clearance" label="Offset"'), false, 'Tap Clearance has no internal Offset label');
 
 const layout = await import('../.test-build/app/labelLayout.js');
 const rectangle = (id, points, edgePrefix = id) => {
