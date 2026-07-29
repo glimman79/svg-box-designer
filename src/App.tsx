@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
-import { exportLabeledSvg, formatImportDiagnosticMessage, getEdgeAssignmentDisplayLabels, getEdgeLabelPlacements, parseSvgDocument } from './svgUtils';
+import { exportLabeledSvg, formatImportDiagnosticMessage, getEdgeAssignmentDisplayLabels, parseSvgDocument } from './svgUtils';
+import { layoutPanelLabels } from './app/labelLayout';
+import { formatFixedNumericValue, parseCompleteNumericDraft } from './app/numericDraft';
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './app/assignmentBuckets';
 import { exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
 import { buildAppliedSGeometry, buildGeneratedSGeometryItems, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
@@ -441,10 +443,10 @@ const minZoom = 0.1;
 const maxZoom = 20;
 const buttonZoomFactor = 1.25;
 const wheelZoomSensitivity = 0.0015;
-const annotationFontSizePx = 8;
-const annotationPaddingXPx = 1.5;
-const annotationPaddingYPx = 0.75;
-const annotationEdgeOffsetPx = 4;
+const annotationFontSizePx = 7;
+const annotationPaddingXPx = 1.25;
+const annotationPaddingYPx = 0.5;
+const annotationEdgeOffsetPx = 3;
 
 const parseViewBox = (viewBox: string): CanvasViewBox => {
   const [x, y, width, height] = viewBox.split(/[\s,]+/).map(Number);
@@ -610,26 +612,58 @@ const NumericField = ({ id, label, value, min, step = 0.1, disabled = false, pla
 );
 
 const FixedPrecisionNumericField = ({ value, precision = 2, ...props }: NumericFieldProps & { precision?: number }) => {
-  const [displayValue, setDisplayValue] = useState(value?.toFixed(precision) ?? '');
+  const formatValue = (numericValue: number | null) => formatFixedNumericValue(numericValue, precision);
+  const [displayValue, setDisplayValue] = useState(formatValue(value));
+  const editingRef = useRef(false);
+  const cancelledRef = useRef(false);
 
-  useEffect(() => setDisplayValue(value?.toFixed(precision) ?? ''), [precision, value]);
+  useEffect(() => {
+    if (!editingRef.current) setDisplayValue(formatValue(value));
+  }, [precision, value]);
+
+  const commitDraft = () => {
+    editingRef.current = false;
+    if (cancelledRef.current) {
+      cancelledRef.current = false;
+      setDisplayValue(formatValue(value));
+      return;
+    }
+
+    const parsed = parseCompleteNumericDraft(displayValue, props.min);
+    if (parsed !== null) {
+      props.onChange(parsed);
+      setDisplayValue(parsed.toFixed(precision));
+    } else {
+      setDisplayValue(formatValue(value));
+    }
+  };
 
   return (
     <label className="property-field" htmlFor={props.id}>
       <span>{props.label}</span>
       <input
         id={props.id}
-        type="number"
+        type="text"
+        inputMode="decimal"
         min={props.min}
         step={props.step ?? 0.01}
         value={displayValue}
         disabled={props.disabled}
         placeholder={props.placeholder}
-        onFocus={props.onFocus}
-        onBlur={() => setDisplayValue(value?.toFixed(precision) ?? '')}
-        onChange={(event) => {
-          setDisplayValue(event.target.value);
-          if (Number.isFinite(event.target.valueAsNumber)) props.onChange(event.target.valueAsNumber);
+        onFocus={(event) => {
+          editingRef.current = true;
+          cancelledRef.current = false;
+          props.onFocus?.();
+        }}
+        onBlur={commitDraft}
+        onChange={(event) => setDisplayValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur();
+          if (event.key === 'Escape') {
+            cancelledRef.current = true;
+            setDisplayValue(formatValue(value));
+            event.currentTarget.blur();
+          }
         }}
       />
     </label>
@@ -640,7 +674,7 @@ const CanvasAnnotation = ({ label, x, y, width, height, scale, className = '', l
   <g className={`canvas-annotation edge-label${className ? ` ${className}` : ''}`}>
     {leaderTo ? <line className="annotation-leader" x1={leaderTo.x} y1={leaderTo.y} x2={x} y2={y} /> : null}
     <g transform={`translate(${x} ${y}) scale(${scale})`}>
-      <rect className="edge-label-background" x={-width / 2} y={-height / 2} width={width} height={height} rx={3} />
+      <rect className="edge-label-background" x={-width / 2} y={-height / 2} width={width} height={height} rx={2} />
       <text className="edge-label-text" textAnchor="middle" dominantBaseline="middle">
         {label.split('\n').map((displayLabel, index, allLabels) => (
           <tspan key={`${displayLabel}-${index}`} x={0} dy={index === 0 ? `${-0.5 * (allLabels.length - 1)}em` : '1em'}>
@@ -2215,14 +2249,22 @@ function App() {
     }));
   }, [activeTool, activeWGroup, connections, edgeAssignments]);
   const tbCanvasLabelAliases = tbDisplayLabelAliases;
-  const labelPlacements = getEdgeLabelPlacements(svgModel.edges, displayEdgeAssignments, {
-    fontSizePx: annotationFontSizePx,
-    paddingXPx: annotationPaddingXPx,
-    paddingYPx: annotationPaddingYPx,
-    edgeOffsetPx: labelEdgeOffset,
+  const labelPlacements = layoutPanelLabels(svgModel.edges.flatMap((edge) => (
+    getEdgeAssignmentDisplayLabels(displayEdgeAssignments[edge.id]).map((label) => ({
+      edge,
+      label: tbCanvasLabelAliases[label] ?? label,
+    }))
+  )), svgModel.panels, {
+    edgeOffset: labelEdgeOffset,
     labelScale,
-    formatDisplayLabel: (label) => tbCanvasLabelAliases[label] ?? label,
-    constrainToPanelBounds: true,
+    measureLabel: (label) => {
+      const context = document.createElement('canvas').getContext('2d');
+      if (context) context.font = `700 ${annotationFontSizePx}px Inter, Arial, sans-serif`;
+      return {
+        width: (context?.measureText(label).width ?? label.length * annotationFontSizePx * 0.62) + annotationPaddingXPx * 2,
+        height: annotationFontSizePx + annotationPaddingYPx * 2,
+      };
+    },
   });
   const labelPlacementsByEdgeId = labelPlacements.reduce((placementsByEdgeId, placement) => {
     placementsByEdgeId.set(placement.edgeId, [...(placementsByEdgeId.get(placement.edgeId) ?? []), placement]);
