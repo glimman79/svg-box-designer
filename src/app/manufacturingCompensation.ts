@@ -42,16 +42,16 @@ export const compensateClassifiedContours = (contours: ClassifiedContour[], kerf
   });
 };
 
-export const applyClearance = (manufacturingGeometry: ManufacturingGeometry, clearanceMm = 0, services: GeometryServices = geometryServices): ManufacturingGeometry => {
+export const applyProfileOffset = (manufacturingGeometry: ManufacturingGeometry, profileOffsetMm = 0, services: GeometryServices = geometryServices): ManufacturingGeometry => {
   manufacturingGeometry.finalContourList.forEach((contour) => {
     if (!contour.compensationProfile?.some(Boolean)) return;
     const strategy = getManufacturingPolicy(contour.geometryType).compensationStrategy;
-    strategy.execute({ geometry: manufacturingGeometry, contour, clearanceMm, services });
+    strategy.execute({ geometry: manufacturingGeometry, contour, profileOffsetMm, services });
   });
   return manufacturingGeometry;
 };
 
-export const resolveClearanceProfileSelection = (manufacturingGeometry: ManufacturingGeometry, selectedIds: ReadonlyArray<GeneratedProfileId>): ManufacturingGeometry => {
+export const resolveProfileOffsetProfileSelection = (manufacturingGeometry: ManufacturingGeometry, selectedIds: ReadonlyArray<GeneratedProfileId>): ManufacturingGeometry => {
   const authoredAmbiguousIds = new Set(manufacturingGeometry.diagnostics.filter((diagnostic) => diagnostic.code === 'CLEARANCE_PROFILE_AMBIGUOUS').map((diagnostic) => diagnostic.id));
   const locations = new Map<GeneratedProfileId, Set<string>>();
   manufacturingGeometry.finalContourList.forEach((contour) => {
@@ -65,17 +65,17 @@ export const resolveClearanceProfileSelection = (manufacturingGeometry: Manufact
   const selected = new Set(selectedIds);
   selected.forEach((id) => {
     const matched = locations.get(id);
-    if (!matched) manufacturingGeometry.diagnostics.push({ id, code: 'CLEARANCE_PROFILE_MISSING', severity: 'warning', message: `Selected Clearance profile ${id} no longer exists.` });
-    else if (matched.size > 1 || authoredAmbiguousIds.has(id)) manufacturingGeometry.diagnostics.push({ id, code: 'CLEARANCE_PROFILE_AMBIGUOUS', severity: 'error', message: `Selected Clearance profile ${id} is ambiguous.` });
+    if (!matched) manufacturingGeometry.diagnostics.push({ id, code: 'CLEARANCE_PROFILE_MISSING', severity: 'warning', message: `Selected Profile Offset profile ${id} no longer exists.` });
+    else if (matched.size > 1 || authoredAmbiguousIds.has(id)) manufacturingGeometry.diagnostics.push({ id, code: 'CLEARANCE_PROFILE_AMBIGUOUS', severity: 'error', message: `Selected Profile Offset profile ${id} is ambiguous.` });
   });
   manufacturingGeometry.finalContourList.forEach((contour) => {
     // Profile selection only owns contours with authored profile IDs. Preserve
-    // the all-segment mask on S-generated slots for the independent Slot
-    // Clearance stage that follows.
+    // the all-segment mask on S-generated slots for the independent
+    // Slot Clearance stage that follows.
     if (!contour.segmentProfileIds) return;
     if (!contour.points || contour.segmentProfileIds.length !== contour.points.length) {
       contour.compensationProfile = contour.segmentProfileIds.map(() => false);
-      manufacturingGeometry.diagnostics.push({ id: contour.id, code: 'CLEARANCE_PROFILE_PROVENANCE_INVALID', severity: 'error', message: 'Clearance profile provenance does not align with contour segments.' });
+      manufacturingGeometry.diagnostics.push({ id: contour.id, code: 'CLEARANCE_PROFILE_PROVENANCE_INVALID', severity: 'error', message: 'Profile Offset profile provenance does not align with contour segments.' });
       return;
     }
     const ambiguous = contour.segmentProfileIds.some((id) => id && selected.has(id) && ((locations.get(id)?.size ?? 0) !== 1 || authoredAmbiguousIds.has(id)));
@@ -84,8 +84,8 @@ export const resolveClearanceProfileSelection = (manufacturingGeometry: Manufact
   return manufacturingGeometry;
 };
 
-/** @deprecated Compatibility wrapper; use applyClearance(ManufacturingGeometry). */
-export const applyClearanceStage = (finalContourList: FinalContour[]): FinalContour[] => finalContourList;
+/** @deprecated Compatibility wrapper; use applyProfileOffset(ManufacturingGeometry). */
+export const applyProfileOffsetStage = (finalContourList: FinalContour[]): FinalContour[] => finalContourList;
 
 export const applySlotClearance = (
   finalContourList: FinalContour[],
@@ -118,16 +118,16 @@ const applyKerfStage = (
   kerfMm: number,
 ): ClassifiedContour[] => compensateClassifiedContours(classifyFinalContours(finalContourList), kerfMm);
 
-// Manufacturing pipeline order: future clearance -> slot clearance -> final kerf.
+// Manufacturing pipeline order: Profile Offset -> Slot Clearance -> final kerf.
 // Kerf is intentionally the terminal stage; preview/export consume this result directly.
 export const processManufacturingGeometry = (
   finalGeometry: FinalGeometry,
   kerfMm: number,
   slotClearanceMm = 0,
-  clearanceMm = 0,
-  selectedClearanceProfileIds: ReadonlyArray<GeneratedProfileId> = [],
+  profileOffsetMm = 0,
+  selectedProfileOffsetIds: ReadonlyArray<GeneratedProfileId> = [],
 ): ManufacturingGeometry => {
-  const manufacturingGeometry = applyClearance(resolveClearanceProfileSelection(createManufacturingGeometry(finalGeometry), selectedClearanceProfileIds), clearanceMm);
+  const manufacturingGeometry = applyProfileOffset(resolveProfileOffsetProfileSelection(createManufacturingGeometry(finalGeometry), selectedProfileOffsetIds), profileOffsetMm);
   const slotClearanceStageFinalContourList = applySlotClearanceStage(manufacturingGeometry.finalContourList, slotClearanceMm);
   const contours = applyKerfStage(slotClearanceStageFinalContourList, kerfMm);
 
@@ -142,12 +142,12 @@ export const buildKerfCompensatedPreviewFromFinalContours = (
   finalContourList: FinalContour[],
   kerfMm: number,
   slotClearanceMm = 0,
-  clearanceMm = 0,
-  selectedClearanceProfileIds: ReadonlyArray<GeneratedProfileId> = [],
+  profileOffsetMm = 0,
+  selectedProfileOffsetIds: ReadonlyArray<GeneratedProfileId> = [],
 ): ManufacturingGeometry => processManufacturingGeometry(
   { contours: finalContourList, diagnostics: [] },
   kerfMm,
   slotClearanceMm,
-  clearanceMm,
-  selectedClearanceProfileIds,
+  profileOffsetMm,
+  selectedProfileOffsetIds,
 );

@@ -39,7 +39,7 @@ export { appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, buildTBCanvas
 export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
 // classifyAppliedContours is intentionally re-exported only as a compatibility/test helper.
 export { buildFinalContourList, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours } from './app/contourClassification';
-export { applyClearance, applyClearanceStage, applySlotClearance, applySlotClearanceStage, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour, processManufacturingGeometry } from './app/manufacturingCompensation';
+export { applyProfileOffset, applyProfileOffsetStage, applySlotClearance, applySlotClearanceStage, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour, processManufacturingGeometry } from './app/manufacturingCompensation';
 export { createManufacturingGeometry } from './app/manufacturingGeometry';
 export { normalizeProjectSettings } from './app/projectSettings';
 export { createGeneratedProfileId } from './app/generatedProfiles';
@@ -211,13 +211,13 @@ export const getToolClickGroupStartKind = (
   return null;
 };
 
-export const defaultProjectSettings: ProjectSettings = { ...DEFAULT_PROJECT_SETTINGS, selectedClearanceProfileIds: [] };
+export const defaultProjectSettings: ProjectSettings = { ...DEFAULT_PROJECT_SETTINGS, selectedProfileOffsetIds: [] };
 
 const maxHistoryEntries = 10;
 
 export const haveProjectSettingsChanged = (currentSettings: ProjectSettings, appliedSettings: ProjectSettings | null): boolean => {
   const baseline = appliedSettings ?? defaultProjectSettings;
-  return currentSettings.kerfMm !== baseline.kerfMm || (currentSettings.clearanceMm ?? defaultProjectSettings.clearanceMm) !== (baseline.clearanceMm ?? defaultProjectSettings.clearanceMm) || currentSettings.slotClearanceMm !== baseline.slotClearanceMm || currentSettings.selectedClearanceProfileIds.join('\0') !== baseline.selectedClearanceProfileIds.join('\0');
+  return currentSettings.kerfMm !== baseline.kerfMm || (currentSettings.profileOffsetMm ?? defaultProjectSettings.profileOffsetMm) !== (baseline.profileOffsetMm ?? defaultProjectSettings.profileOffsetMm) || currentSettings.slotClearanceMm !== baseline.slotClearanceMm || currentSettings.selectedProfileOffsetIds.join('\0') !== baseline.selectedProfileOffsetIds.join('\0');
 };
 
 const getNextWorkflowGroupOrderIndex = (workflowGroupOrder: Record<string, number>) => {
@@ -673,8 +673,8 @@ function App() {
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
   const [activeHoleId, setActiveHoleId] = useState<string | null>(null);
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
-  const [isClearanceProfileSelectionActive, setIsClearanceProfileSelectionActive] = useState(false);
-  const [hoveredClearanceProfileId, setHoveredClearanceProfileId] = useState<GeneratedProfileId | null>(null);
+  const [isProfileOffsetProfileSelectionActive, setIsProfileOffsetProfileSelectionActive] = useState(false);
+  const [hoveredProfileOffsetProfileId, setHoveredProfileOffsetProfileId] = useState<GeneratedProfileId | null>(null);
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
   const selectedLabelId = displayConnectionId;
@@ -858,11 +858,11 @@ function App() {
   );
 
   const kerfCompensatedAppliedPreview = useMemo(
-    () => processManufacturingGeometry(finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.clearanceMm, projectSettings.selectedClearanceProfileIds),
-    [finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.clearanceMm, projectSettings.selectedClearanceProfileIds],
+    () => processManufacturingGeometry(finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.profileOffsetMm, projectSettings.selectedProfileOffsetIds),
+    [finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.profileOffsetMm, projectSettings.selectedProfileOffsetIds],
   );
-  const selectableClearanceProfiles = useMemo(() => {
-    const selected = new Set(projectSettings.selectedClearanceProfileIds);
+  const selectableProfileOffsetProfiles = useMemo(() => {
+    const selected = new Set(projectSettings.selectedProfileOffsetIds);
     return finalGeometry.contours.flatMap((contour) => {
       const paths = new Map<GeneratedProfileId, string[]>();
       contour.segmentProfileIds?.forEach((id, index) => {
@@ -875,11 +875,11 @@ function App() {
       });
       return [...paths].map(([id, parts]) => ({ id, contourId: contour.id, pathD: parts.join(' '), selected: selected.has(id), available: true }));
     });
-  }, [finalGeometry, projectSettings.selectedClearanceProfileIds]);
+  }, [finalGeometry, projectSettings.selectedProfileOffsetIds]);
 
-  const toggleClearanceProfile = (id: GeneratedProfileId) => {
-    const selected = projectSettings.selectedClearanceProfileIds;
-    updateProjectSettings({ selectedClearanceProfileIds: selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id] });
+  const toggleProfileOffsetProfile = (id: GeneratedProfileId) => {
+    const selected = projectSettings.selectedProfileOffsetIds;
+    updateProjectSettings({ selectedProfileOffsetIds: selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id] });
   };
 
   const isProjectLocked = !panelManager.isApplied;
@@ -2384,13 +2384,13 @@ function App() {
               <h3>Manufacturing settings</h3>
               <div className="property-grid">
                 <NumericField id="manufacturing-kerf" label="Kerf" min={0} value={projectSettings.kerfMm} onChange={(kerfMm) => updateProjectSettings({ kerfMm })} />
-                <NumericField id="manufacturing-clearance" label="Clearance" value={projectSettings.clearanceMm} onChange={(clearanceMm) => updateProjectSettings({ clearanceMm })} />
+                <NumericField id="manufacturing-profile-offset" label="Profile Offset" value={projectSettings.profileOffsetMm} onChange={(profileOffsetMm) => updateProjectSettings({ profileOffsetMm })} />
                 <NumericField id="manufacturing-slot-clearance" label="Slot clearance" value={projectSettings.slotClearanceMm} onChange={(slotClearanceMm) => updateProjectSettings({ slotClearanceMm })} />
               </div>
-              <div className="clearance-profile-actions">
-                <button className={`toolbar-button${isClearanceProfileSelectionActive ? ' primary' : ''}`} type="button" aria-pressed={isClearanceProfileSelectionActive} onClick={() => setIsClearanceProfileSelectionActive((active) => !active)}>Select profiles</button>
-                <span>{projectSettings.selectedClearanceProfileIds.length} selected</span>
-                <button className="toolbar-button" type="button" disabled={projectSettings.selectedClearanceProfileIds.length === 0} onClick={() => updateProjectSettings({ selectedClearanceProfileIds: [] })}>Clear selection</button>
+              <div className="profile-offset-profile-actions">
+                <button className={`toolbar-button${isProfileOffsetProfileSelectionActive ? ' primary' : ''}`} type="button" aria-pressed={isProfileOffsetProfileSelectionActive} onClick={() => setIsProfileOffsetProfileSelectionActive((active) => !active)}>Select profiles</button>
+                <span>{projectSettings.selectedProfileOffsetIds.length} selected</span>
+                <button className="toolbar-button" type="button" disabled={projectSettings.selectedProfileOffsetIds.length === 0} onClick={() => updateProjectSettings({ selectedProfileOffsetIds: [] })}>Clear selection</button>
               </div>
               <p className="muted">Kerf applies globally to the whole generated output.</p>
               <p className="muted">Slot clearance applies only to S-generated slot contours before Kerf.</p>
@@ -2614,12 +2614,12 @@ function App() {
               onPointerCancel={handleCanvasPointerUp}
               onPointerLeave={handleCanvasPointerLeave}
             >
-              {isClearanceProfileSelectionActive && (
-                <g className="clearance-profile-underlays" aria-hidden="true">
-                  {selectableClearanceProfiles.map((profile) => (
+              {isProfileOffsetProfileSelectionActive && (
+                <g className="profile-offset-profile-underlays" aria-hidden="true">
+                  {selectableProfileOffsetProfiles.map((profile) => (
                     <path
                       key={`${profile.contourId}:${profile.id}`}
-                      className={`clearance-profile-underlay${profile.selected ? ' selected' : ''}${hoveredClearanceProfileId === profile.id ? ' hovered' : ''}`}
+                      className={`profile-offset-profile-underlay${profile.selected ? ' selected' : ''}${hoveredProfileOffsetProfileId === profile.id ? ' hovered' : ''}`}
                       d={profile.pathD}
                     />
                   ))}
@@ -2701,17 +2701,17 @@ function App() {
                   );
                   })}
                 </g>
-              {isClearanceProfileSelectionActive && (
-                <g className="clearance-profile-hit-targets">
-                  {selectableClearanceProfiles.map((profile) => (
+              {isProfileOffsetProfileSelectionActive && (
+                <g className="profile-offset-profile-hit-targets">
+                  {selectableProfileOffsetProfiles.map((profile) => (
                     <path
                       key={`${profile.contourId}:${profile.id}`}
-                      className="clearance-profile-hitbox"
+                      className="profile-offset-profile-hitbox"
                       d={profile.pathD}
-                      onPointerEnter={() => setHoveredClearanceProfileId(profile.id)}
-                      onPointerLeave={() => setHoveredClearanceProfileId((id) => id === profile.id ? null : id)}
+                      onPointerEnter={() => setHoveredProfileOffsetProfileId(profile.id)}
+                      onPointerLeave={() => setHoveredProfileOffsetProfileId((id) => id === profile.id ? null : id)}
                       onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => { event.stopPropagation(); toggleClearanceProfile(profile.id); }}
+                      onClick={(event) => { event.stopPropagation(); toggleProfileOffsetProfile(profile.id); }}
                     />
                   ))}
                 </g>

@@ -16,7 +16,7 @@ Final Geometry
 ↓
 Manufacturing Geometry (temporary working copy)
 ↓
-Clearance → Slot Clearance → Kerf
+Profile Offset → Slot Clearance → Kerf
 ↓
 Preview
 ↓
@@ -28,7 +28,7 @@ Export
 - Import parses the SVG into the original document model and preserves root attributes used later by export.
 - The workflow engine applies TB, W, S, and related operations to produce native `GeneratedGeometryItem` values.
 - `buildFinalGeometry(...)` assembles imported geometry with generated items (or their snapshot) without tool-specific or legacy applied-geometry knowledge.
-- Manufacturing creates a deep, order-preserving `ManufacturingGeometry` copy of Final Geometry on every run. Clearance walks classification policy without moving geometry; slot clearance and terminal kerf operate only on that workspace.
+- Manufacturing creates a deep, order-preserving `ManufacturingGeometry` copy of Final Geometry on every run. Profile Offset walks classification policy without moving geometry; slot clearance and terminal kerf operate only on that workspace.
 - Preview renders the manufacturing-compensated contours derived from Final Geometry.
 - Design export can serialize immutable Final Geometry via `exportFinalGeometrySvg(...)`; current manufacturing export serializes the exact Manufacturing Geometry used by preview.
 
