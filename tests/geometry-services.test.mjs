@@ -25,9 +25,10 @@ const load = (relativePath) => {
 };
 
 const { geometryServices } = load('src/app/geometryServices.ts');
-const { applyClearance, applySlotClearance, compensateClassifiedContours } = load('src/app/manufacturingCompensation.ts');
+const { applyProfileOffset, applySlotClearance, compensateClassifiedContours } = load('src/app/manufacturingCompensation.ts');
 const { createManufacturingGeometry } = load('src/app/manufacturingGeometry.ts');
 const { DEFAULT_PROJECT_SETTINGS } = load('src/app/projectDefaults.ts');
+const { normalizeProjectSettings } = load('src/app/projectSettings.ts');
 const { buildFinalGeometry } = load('src/app/finalGeometry.ts');
 
 const outer = {
@@ -56,8 +57,8 @@ const spyServices = {
   replace(target, replacement) { calls.push(['replace', target.id]); geometryServices.replace(target, replacement); },
 };
 
-applyClearance(createManufacturingGeometry({ contours: [outer], diagnostics: [] }), 0.1, spyServices);
-assert.deepEqual(calls, [['signedArea', 'outer'], ['compensateProfile', 'outer', 0.1, 'INWARD'], ['replace', 'outer']], 'clearance delegates explicit material-removal semantics to Geometry Services');
+applyProfileOffset(createManufacturingGeometry({ contours: [outer], diagnostics: [] }), 0.1, spyServices);
+assert.deepEqual(calls, [['signedArea', 'outer'], ['compensateProfile', 'outer', 0.1, 'INWARD'], ['replace', 'outer']], 'Profile Offset delegates explicit material-removal semantics to Geometry Services');
 
 calls.length = 0;
 applySlotClearance([slot], 0.1, spyServices);
@@ -77,11 +78,11 @@ const selective = {
   points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
   compensationProfile: [false, true, false, false],
 };
-assert.equal(geometryServices.compensateProfile(selective, -0.1, 'OUTWARD').pathD, 'M 0 0 L 10.1 0 L 10.1 10 L 0 10 Z', 'negative clearance moves only the modified profile in the clearance-increasing direction');
-assert.equal(geometryServices.compensateProfile(selective, 0.1, 'OUTWARD').pathD, 'M 0 0 L 9.9 0 L 9.9 10 L 0 10 Z', 'positive clearance moves the modified profile in the opposite direction');
+assert.equal(geometryServices.compensateProfile(selective, -0.1, 'OUTWARD').pathD, 'M 0 0 L 10.1 0 L 10.1 10 L 0 10 Z', 'negative Profile Offset moves only the modified profile in the offset-increasing direction');
+assert.equal(geometryServices.compensateProfile(selective, 0.1, 'OUTWARD').pathD, 'M 0 0 L 9.9 0 L 9.9 10 L 0 10 Z', 'positive Profile Offset moves the modified profile in the opposite direction');
 assert.equal(geometryServices.compensateProfile(selective, -0.1, 'OUTWARD').points[2].y, 10, 'corner reconstruction reconnects the compensated profile to unchanged geometry');
 
-const clearanceSelective = (points, selected, value) => geometryServices.compensateProfile({
+const profileOffsetSelective = (points, selected, value) => geometryServices.compensateProfile({
   ...outer, points, pathD: undefined, compensationProfile: selected,
 }, value, 'INWARD');
 const horizontalTB = [
@@ -90,16 +91,16 @@ const horizontalTB = [
   { x: 9, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 },
 ];
 const selectedTBProfiles = [true, true, true, true, true, true, true, true, true, false, false, false];
-const horizontalNegative = clearanceSelective(horizontalTB, selectedTBProfiles, -0.9);
-const horizontalPositive = clearanceSelective(horizontalTB, selectedTBProfiles, 0.9);
+const horizontalNegative = profileOffsetSelective(horizontalTB, selectedTBProfiles, -0.9);
+const horizontalPositive = profileOffsetSelective(horizontalTB, selectedTBProfiles, 0.9);
 const roundedPoints = (points) => points.map(({ x, y }) => ({ x: Number(x.toFixed(6)), y: Number(y.toFixed(6)) }));
 assert.deepEqual(roundedPoints(horizontalNegative.points), [
   { x: 0, y: 0.9 }, { x: 3.9, y: 0.9 }, { x: 3.9, y: -1.1 }, { x: 4.1, y: -1.1 },
   { x: 4.1, y: 0.9 }, { x: 8.9, y: 0.9 }, { x: 8.9, y: -1.1 }, { x: 8.1, y: -1.1 },
   { x: 8.1, y: 0.9 }, { x: 10, y: 0.9 }, { x: 10, y: 10 }, { x: 0, y: 10 },
 ], 'horizontal complete profile offsets entry, bases, walls, depth faces, and exit together');
-assert.equal(horizontalNegative.points[2].y, -1.1, 'negative clearance removes material from a horizontal TB face');
-assert.equal(horizontalPositive.points[2].y, -2.9, 'positive clearance adds material in the opposite direction');
+assert.equal(horizontalNegative.points[2].y, -1.1, 'negative Profile Offset removes material from a horizontal TB face');
+assert.equal(horizontalPositive.points[2].y, -2.9, 'positive Profile Offset adds material in the opposite direction');
 assert.deepEqual(horizontalNegative.points.slice(10), horizontalTB.slice(10), 'neighboring imported edges remain fixed while transition endpoints are reconstructed');
 horizontalNegative.points.forEach((point, index, points) => {
   assert.ok(Number.isFinite(point.x) && Number.isFinite(point.y), 'endpoint reconstruction emits no NaN values');
@@ -107,7 +108,7 @@ horizontalNegative.points.forEach((point, index, points) => {
 });
 
 const verticalTB = horizontalTB.map(({ x, y }) => ({ x: -y, y: x }));
-const verticalNegative = clearanceSelective(verticalTB, selectedTBProfiles, -0.9);
+const verticalNegative = profileOffsetSelective(verticalTB, selectedTBProfiles, -0.9);
 assert.equal(verticalNegative.points[2].x, 1.1, 'vertical TB face has orientation-independent direction');
 assert.equal(verticalNegative.points[2].y, 3.9, 'vertical TB side wall receives the full 0.90 mm');
 
@@ -150,7 +151,7 @@ assert.deepEqual(roundedPoints(geometryServices.compensateProfile(verticalCollin
   { x: 0, y: 0 }, { x: 0, y: 5 }, { x: -0.1, y: 5 },
   { x: -0.1, y: 10 }, { x: -10, y: 10 }, { x: -10, y: 0 },
 ], 'parallel transition reconstruction is orientation-independent');
-assert.deepEqual(clearanceSelective(horizontalTB, selectedTBProfiles, 0).points, horizontalTB, 'zero clearance preserves exact geometry');
+assert.deepEqual(profileOffsetSelective(horizontalTB, selectedTBProfiles, 0).points, horizontalTB, 'zero Profile Offset preserves exact geometry');
 assert.deepEqual(roundedPoints(horizontalPositive.points.map(({ x, y }, index) => ({ x: x + horizontalNegative.points[index].x - 2 * horizontalTB[index].x, y: y + horizontalNegative.points[index].y - 2 * horizontalTB[index].y }))), horizontalTB.map(() => ({ x: 0, y: 0 })), '+0.90 mm and -0.90 mm are coordinate-symmetric around the complete source profile');
 
 const signedSlot = { ...slot, compensationProfile: [true, true, true, true] };
@@ -158,15 +159,22 @@ assert.equal(geometryServices.compensateProfile(signedSlot, -0.1, 'OUTWARD').pat
 assert.equal(geometryServices.compensateProfile(signedSlot, 0.1, 'OUTWARD').pathD, 'M 2.1 2.1 L 3.9 2.1 L 3.9 3.9 L 2.1 3.9 Z', 'positive slot clearance moves in the opposite direction');
 assert.equal(geometryServices.compensateProfile(signedSlot, -0.9, 'OUTWARD').pathD, 'M 1.1 1.1 L 4.9 1.1 L 4.9 4.9 L 1.1 4.9 Z', 'whole-slot signed compensation remains unchanged');
 assert.equal(compensateClassifiedContours([{ ...outer }], 0.3)[0].pathD, 'M -0.15 -0.15 L 10.15 -0.15 L 10.15 10.15 L -0.15 10.15 Z', 'kerf direction and half-width remain unchanged');
-assert.deepEqual(DEFAULT_PROJECT_SETTINGS, { kerfMm: 0.15, clearanceMm: 0, slotClearanceMm: -0.10 }, 'only new-project Clearance defaults to zero; Kerf and Slot Clearance defaults remain unchanged');
+assert.deepEqual(DEFAULT_PROJECT_SETTINGS, { kerfMm: 0.15, profileOffsetMm: 0, slotClearanceMm: -0.10, selectedProfileOffsetIds: [] }, 'only new-project Profile Offset defaults to zero; Kerf and Slot Clearance defaults remain unchanged');
+const legacySettings = normalizeProjectSettings({ clearanceMm: 0.25, selectedClearanceProfileIds: ['profile-1'], kerfMm: 0.15, slotClearanceMm: -0.10 }).settings;
+const renamedSettings = normalizeProjectSettings({ profileOffsetMm: 0.25, selectedProfileOffsetIds: ['profile-1'], kerfMm: 0.15, slotClearanceMm: -0.10 }).settings;
+assert.deepEqual(legacySettings, renamedSettings, 'legacy Clearance project fields normalize to the renamed Profile Offset settings');
+assert.deepEqual(JSON.parse(JSON.stringify(legacySettings)), { kerfMm: 0.15, profileOffsetMm: 0.25, slotClearanceMm: -0.10, selectedProfileOffsetIds: ['profile-1'] }, 'saved settings use only Profile Offset field names');
+const legacyGeometry = applyProfileOffset(createManufacturingGeometry({ contours: [{ ...outer, compensationProfile: [true, true, true, true] }], diagnostics: [] }), legacySettings.profileOffsetMm);
+const renamedGeometry = applyProfileOffset(createManufacturingGeometry({ contours: [{ ...outer, compensationProfile: [true, true, true, true] }], diagnostics: [] }), renamedSettings.profileOffsetMm);
+assert.equal(JSON.stringify(legacyGeometry), JSON.stringify(renamedGeometry), 'legacy and renamed settings produce byte-for-byte identical geometry');
 const appSource = readFileSync(resolve(root, 'src/App.tsx'), 'utf8');
-assert.doesNotMatch(appSource.match(/id="manufacturing-clearance"[^\n]*/)?.[0] ?? '', /min=\{0\}/, 'clearance UI accepts negative values');
+assert.doesNotMatch(appSource.match(/id="manufacturing-profile-offset"[^\n]*/)?.[0] ?? '', /min=\{0\}/, 'Profile Offset UI accepts negative values');
 assert.doesNotMatch(appSource.match(/id="manufacturing-slot-clearance"[^\n]*/)?.[0] ?? '', /min=\{0\}/, 'slot clearance UI accepts negative values');
-assert.ok(appSource.indexOf('clearance-profile-underlays') < appSource.indexOf('final-contour-kerf-layer'), 'profile indication is rendered below the manufacturing contour');
-assert.ok(appSource.indexOf('final-contour-kerf-layer') < appSource.indexOf('clearance-profile-hit-targets'), 'transparent hit targets are rendered above the manufacturing contour');
+assert.ok(appSource.indexOf('profile-offset-profile-underlays') < appSource.indexOf('final-contour-kerf-layer'), 'profile indication is rendered below the manufacturing contour');
+assert.ok(appSource.indexOf('final-contour-kerf-layer') < appSource.indexOf('profile-offset-profile-hit-targets'), 'transparent hit targets are rendered above the manufacturing contour');
 const styleSource = readFileSync(resolve(root, 'src/styles.css'), 'utf8');
-assert.match(styleSource, /\.clearance-profile-hitbox \{[^}]*fill: none;[^}]*stroke: transparent;[^}]*pointer-events: stroke;/, 'hit target is wide, transparent, and pointer-enabled');
-assert.match(styleSource, /\.clearance-profile-underlay\.selected \{[^}]*rgba\([^)]*, 0\.48\)/, 'selected indication is a semi-transparent underlay');
+assert.match(styleSource, /\.profile-offset-profile-hitbox \{[^}]*fill: none;[^}]*stroke: transparent;[^}]*pointer-events: stroke;/, 'hit target is wide, transparent, and pointer-enabled');
+assert.match(styleSource, /\.profile-offset-profile-underlay\.selected \{[^}]*rgba\([^)]*, 0\.48\)/, 'selected indication is a semi-transparent underlay');
 
 for (const file of ['src/app/manufacturingCompensation.ts', 'src/app/compensationStrategies.ts']) {
   const source = readFileSync(resolve(root, file), 'utf8');

@@ -5,19 +5,19 @@ import { geometryServices } from './geometryServices';
 import { directionForOuterMaterialDisplacement, ProfileDisplacement } from './geometryServices';
 import type { GeometryServices } from './geometryServices';
 
-export enum ClearanceEffect {
+export enum ProfileOffsetEffect {
   INCREASE_FIT = 'INCREASE_FIT',
   DECREASE_FIT = 'DECREASE_FIT',
 }
 
-const displacementForClearance = (clearanceMm: number): ProfileDisplacement => (
-  clearanceMm < 0 ? ProfileDisplacement.REMOVE_MATERIAL : ProfileDisplacement.ADD_MATERIAL
+const displacementForProfileOffset = (profileOffsetMm: number): ProfileDisplacement => (
+  profileOffsetMm < 0 ? ProfileDisplacement.REMOVE_MATERIAL : ProfileDisplacement.ADD_MATERIAL
 );
 
 export type CompensationStrategyContext = {
   geometry: ManufacturingGeometry;
   contour: FinalContour;
-  clearanceMm: number;
+  profileOffsetMm: number;
   services?: GeometryServices;
 };
 
@@ -37,9 +37,9 @@ export class NoMovementStrategy implements CompensationStrategy {
 export class OffsetStrategy implements CompensationStrategy {
   readonly name = 'offset';
 
-  validate({ contour, clearanceMm, services = geometryServices }: CompensationStrategyContext): ReadonlyArray<string> {
-    if (!Number.isFinite(clearanceMm)) return ['Clearance distance is invalid.'];
-    if (Math.abs(clearanceMm) <= cornerTouchTolerance) return [];
+  validate({ contour, profileOffsetMm, services = geometryServices }: CompensationStrategyContext): ReadonlyArray<string> {
+    if (!Number.isFinite(profileOffsetMm)) return ['Profile Offset distance is invalid.'];
+    if (Math.abs(profileOffsetMm) <= cornerTouchTolerance) return [];
     const area = services.signedArea(contour);
     if (area === null) return ['Unsupported or open contour geometry.'];
     if (Math.abs(area) <= cornerTouchTolerance) return ['Contour has zero area.'];
@@ -47,20 +47,20 @@ export class OffsetStrategy implements CompensationStrategy {
   }
 
   execute(context: CompensationStrategyContext): void {
-    if (Math.abs(context.clearanceMm) <= cornerTouchTolerance) return;
+    if (Math.abs(context.profileOffsetMm) <= cornerTouchTolerance) return;
     const validation = this.validate(context);
     if (validation.length) { this.report(context, validation); return; }
     const services = context.services ?? geometryServices;
-    const displacement = displacementForClearance(context.clearanceMm);
+    const displacement = displacementForProfileOffset(context.profileOffsetMm);
     const directionForNegative = directionForOuterMaterialDisplacement(
       ProfileDisplacement.REMOVE_MATERIAL,
       context.contour.profileMaterialSide,
     );
-    const offset = services.compensateProfile(context.contour, context.clearanceMm, directionForNegative);
+    const offset = services.compensateProfile(context.contour, context.profileOffsetMm, directionForNegative);
     if (!offset) {
       const groupIds = context.contour.compensationProfile
         ?.map((selected, index) => selected ? index : -1).filter((index) => index >= 0).join(',') ?? 'none';
-      this.report(context, [`Clearance profile reconstruction failed safely (contour ${context.contour.id}; profile segments ${groupIds}; displacement ${displacement}).`]);
+      this.report(context, [`Profile Offset profile reconstruction failed safely (contour ${context.contour.id}; profile segments ${groupIds}; displacement ${displacement}).`]);
       return;
     }
     services.replace(context.contour, offset);

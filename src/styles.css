@@ -1647,9 +1647,9 @@ button:disabled {
   font-size: 0.72rem;
 }
 
-.clearance-profile-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
-.clearance-profile-underlay { fill: none; stroke: transparent; stroke-width: 10px; vector-effect: non-scaling-stroke; pointer-events: none; }
-.clearance-profile-underlay.hovered { stroke: rgba(56, 189, 248, 0.28); }
-.clearance-profile-underlay.selected { stroke: rgba(245, 158, 11, 0.48); }
-.clearance-profile-underlay.selected.hovered { stroke: rgba(245, 158, 11, 0.62); }
-.clearance-profile-hitbox { fill: none; stroke: transparent; stroke-width: 14px; vector-effect: non-scaling-stroke; cursor: pointer; pointer-events: stroke; }
+.profile-offset-profile-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.profile-offset-profile-underlay { fill: none; stroke: transparent; stroke-width: 10px; vector-effect: non-scaling-stroke; pointer-events: none; }
+.profile-offset-profile-underlay.hovered { stroke: rgba(56, 189, 248, 0.28); }
+.profile-offset-profile-underlay.selected { stroke: rgba(245, 158, 11, 0.48); }
+.profile-offset-profile-underlay.selected.hovered { stroke: rgba(245, 158, 11, 0.62); }
+.profile-offset-profile-hitbox { fill: none; stroke: transparent; stroke-width: 14px; vector-effect: non-scaling-stroke; cursor: pointer; pointer-events: stroke; }

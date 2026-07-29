@@ -74,7 +74,7 @@ const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
 const svgUtilsModule = { exports: {} };
 vm.runInNewContext(compiledSvgUtils, { module: svgUtilsModule, exports: svgUtilsModule.exports, console, DOMParser: class {}, XMLSerializer: class {} }, { filename: 'svgUtils.cjs' });
 
-const { getConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge, getPanelEdgeOperations, recalculateAutomaticTBFingerWidths, resolveTBThickness, resolveSThickness, resolveSSlotLengthMm, recalculateAutomaticSSlotLengths, applyClearance, applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createManufacturingGeometry, createTabSegmentPlan, exportFinalGeometrySvg, exportManufacturingGeometrySvg, pathDToClosedContour, getManufacturingPipelineForGeometryType, getManufacturingPolicy } = module.exports;
+const { getConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge, getPanelEdgeOperations, recalculateAutomaticTBFingerWidths, resolveTBThickness, resolveSThickness, resolveSSlotLengthMm, recalculateAutomaticSSlotLengths, applyProfileOffset, applySlotClearance, buildAppliedEPanelPaths, buildAppliedSGeometry, buildFinalGeometry, buildKerfCompensatedPreviewFromFinalContours, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, createManufacturingGeometry, createTabSegmentPlan, exportFinalGeometrySvg, exportManufacturingGeometrySvg, pathDToClosedContour, getManufacturingPipelineForGeometryType, getManufacturingPolicy } = module.exports;
 
 const buildKerfPreviewViaFinalContours = (svgModel, appliedEPanelPaths, appliedSGeometry, kerfMm, slotClearanceMm = 0) => {
   const finalGeometry = buildFinalGeometry(svgModel, appliedEPanelPaths, appliedSGeometry);
@@ -323,17 +323,17 @@ const assertBoundsClose = (actual, expected, message) => {
   assert.ok(Math.abs(actual.maxY - expected.maxY) < 0.000001, `${message} maxY`);
 };
 
-const clearanceFinalGeometry = { contours: [
-  { id: 'clearance-generated', source: 'final-contour', finalSource: 'applied-panel', kind: 'OUTER', geometryType: 'GENERATED_OUTER', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z' },
-  { id: 'clearance-imported', source: 'final-contour', finalSource: 'original-panel', kind: 'OUTER', geometryType: 'IMPORTED_OUTER', pathD: 'M 20 0 L 30 0 L 30 10 L 20 10 Z' },
-  { id: 'clearance-slot', source: 'final-contour', finalSource: 's-slot', kind: 'INNER', geometryType: 'GENERATED_SLOT', pathD: 'M 2 2 L 4 2 L 4 4 L 2 4 Z' },
+const profileOffsetFinalGeometry = { contours: [
+  { id: 'profile-offset-generated', source: 'final-contour', finalSource: 'applied-panel', kind: 'OUTER', geometryType: 'GENERATED_OUTER', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z' },
+  { id: 'profile-offset-imported', source: 'final-contour', finalSource: 'original-panel', kind: 'OUTER', geometryType: 'IMPORTED_OUTER', pathD: 'M 20 0 L 30 0 L 30 10 L 20 10 Z' },
+  { id: 'profile-offset-slot', source: 'final-contour', finalSource: 's-slot', kind: 'INNER', geometryType: 'GENERATED_SLOT', pathD: 'M 2 2 L 4 2 L 4 4 L 2 4 Z' },
 ], diagnostics: [] };
-const clearanceFinalBefore = JSON.stringify(clearanceFinalGeometry);
-const clearanceManufacturing = applyClearance(createManufacturingGeometry(clearanceFinalGeometry), 0.1);
-assertBoundsClose(boundsForPathD(clearanceManufacturing.finalContourList[0].pathD), { minX: -0.1, maxX: 10.1, minY: -0.1, maxY: 10.1 }, 'OffsetStrategy moves generated outer contour outward');
-assert.equal(clearanceManufacturing.finalContourList[1].pathD, clearanceFinalGeometry.contours[1].pathD, 'NoMovementStrategy preserves imported contour');
-assert.equal(clearanceManufacturing.finalContourList[2].pathD, clearanceFinalGeometry.contours[2].pathD, 'NoMovementStrategy preserves generated slot');
-assert.equal(JSON.stringify(clearanceFinalGeometry), clearanceFinalBefore, 'clearance mutates only ManufacturingGeometry and never FinalGeometry');
+const profileOffsetFinalBefore = JSON.stringify(profileOffsetFinalGeometry);
+const profileOffsetManufacturing = applyProfileOffset(createManufacturingGeometry(profileOffsetFinalGeometry), 0.1);
+assertBoundsClose(boundsForPathD(profileOffsetManufacturing.finalContourList[0].pathD), { minX: -0.1, maxX: 10.1, minY: -0.1, maxY: 10.1 }, 'OffsetStrategy moves generated outer contour outward');
+assert.equal(profileOffsetManufacturing.finalContourList[1].pathD, profileOffsetFinalGeometry.contours[1].pathD, 'NoMovementStrategy preserves imported contour');
+assert.equal(profileOffsetManufacturing.finalContourList[2].pathD, profileOffsetFinalGeometry.contours[2].pathD, 'NoMovementStrategy preserves generated slot');
+assert.equal(JSON.stringify(profileOffsetFinalGeometry), profileOffsetFinalBefore, 'Profile Offset mutates only ManufacturingGeometry and never FinalGeometry');
 
 const outerContour = { id: 'outer', kind: 'OUTER', source: 'applied-e-panel', pathD: 'M 0 0 L 10 0 L 10 8 L 0 8 Z' };
 const innerContour = { id: 'inner', kind: 'INNER', source: 'applied-s-slot', pathD: 'M 2 2 L 6 2 L 6 5 L 2 5 Z' };
@@ -442,7 +442,7 @@ const assertExportMatchesPreview = (name, kerfMm, slotClearanceMm) => {
   const exported = exportManufacturingGeometrySvg(exportPreviewModel, manufacturingGeometry);
   assert.deepEqual(exportedPathDs(exported), manufacturingGeometry.contours.map((contour) => contour.pathD ?? ''), `${name}: export serializes exactly the same ManufacturingGeometry contours as preview`);
 };
-assertExportMatchesPreview('zero-kerf-zero-clearance', 0, 0);
+assertExportMatchesPreview('zero-kerf-zero-profile-offset', 0, 0);
 assertExportMatchesPreview('positive-kerf', 0.10, 0);
 assertExportMatchesPreview('positive-slot-clearance', 0, 0.10);
 assertExportMatchesPreview('positive-kerf-and-slot-clearance', 0.10, 0.10);
@@ -477,8 +477,8 @@ assert.deepEqual(mixedFinalList.contours.map((contour) => contour.panelId ?? con
 assert.equal(mixedFinalList.contours.find((contour) => contour.panelId === 'tb-mixed')?.geometryType, 'GENERATED_OUTER', 'TB-generated applied-panel geometry is typed as generated outer');
 assert.equal(mixedFinalList.contours.find((contour) => contour.panelId === 's-mixed')?.geometryType, 'GENERATED_OUTER', 'S-generated panel replacement geometry is typed as generated outer');
 assert.equal(mixedFinalList.contours.find((contour) => contour.finalSource === 's-slot')?.geometryType, 'GENERATED_SLOT', 'S-generated slot contours are typed as generated slots');
-assert.equal(JSON.stringify(getManufacturingPipelineForGeometryType('GENERATED_SLOT')), JSON.stringify( { clearance: true, slotClearance: true, kerf: true }), 'GENERATED_SLOT policy applies clearance, slot clearance, then kerf');
-assert.equal(JSON.stringify(getManufacturingPipelineForGeometryType('GENERATED_OUTER')), JSON.stringify( { clearance: true, slotClearance: false, kerf: true }), 'GENERATED_OUTER policy applies clearance then kerf');
+assert.equal(JSON.stringify(getManufacturingPipelineForGeometryType('GENERATED_SLOT')), JSON.stringify( { clearance: true, slotClearance: true, kerf: true }), 'GENERATED_SLOT policy applies Profile Offset, Slot Clearance, then Kerf');
+assert.equal(JSON.stringify(getManufacturingPipelineForGeometryType('GENERATED_OUTER')), JSON.stringify( { clearance: true, slotClearance: false, kerf: true }), 'GENERATED_OUTER policy applies Profile Offset then Kerf');
 assert.equal(JSON.stringify(getManufacturingPipelineForGeometryType('IMPORTED_OUTER')), JSON.stringify( { clearance: false, slotClearance: false, kerf: true }), 'IMPORTED_OUTER policy applies kerf only');
 assert.equal(JSON.stringify(getManufacturingPipelineForGeometryType('UNKNOWN')), JSON.stringify( { clearance: false, slotClearance: false, kerf: true }), 'UNKNOWN policy fails safely to kerf only');
 const generatedSlotPolicy = getManufacturingPolicy('GENERATED_SLOT');
@@ -502,17 +502,17 @@ assertBoundsClose(boundsForPathD(mixedWithSlotClearance.contours.find((contour) 
 assertBoundsClose(boundsForPathD(mixedWithSlotClearance.contours.find((contour) => contour.panelId === 'w-mixed').pathD), { minX: 40, maxX: 51, minY: 0, maxY: 8 }, 'W geometry unchanged by slot clearance');
 assertBoundsClose(boundsForPathD(mixedWithSlotClearance.contours.find((contour) => contour.finalSource === 's-slot').pathD), { minX: 61.9, maxX: 66.1, minY: 1.9, maxY: 5.1 }, 'only S-slot contours receive slot clearance');
 const mixedWithSelectedProfileAndSlotClearance = buildKerfCompensatedPreviewFromFinalContours(mixedFinalList.contours, 0, -0.10, 0.25, ['profile-selection-must-not-own-slots']);
-assertBoundsClose(boundsForPathD(mixedWithSelectedProfileAndSlotClearance.contours.find((contour) => contour.finalSource === 's-slot').pathD), { minX: 61.9, maxX: 66.1, minY: 1.9, maxY: 5.1 }, 'Slot Clearance retains the last-known-working signed output and ignores Clearance profile selections');
-assert.equal(mixedWithSelectedProfileAndSlotClearance.contours.find((contour) => contour.panelId === 'original-mixed').pathD, mixedFinalList.contours.find((contour) => contour.panelId === 'original-mixed').pathD, 'Clearance profile selection remains unchanged for an unselected outer contour');
+assertBoundsClose(boundsForPathD(mixedWithSelectedProfileAndSlotClearance.contours.find((contour) => contour.finalSource === 's-slot').pathD), { minX: 61.9, maxX: 66.1, minY: 1.9, maxY: 5.1 }, 'Slot Clearance retains the last-known-working signed output and ignores Profile Offset profile selections');
+assert.equal(mixedWithSelectedProfileAndSlotClearance.contours.find((contour) => contour.panelId === 'original-mixed').pathD, mixedFinalList.contours.find((contour) => contour.panelId === 'original-mixed').pathD, 'Profile Offset profile selection remains unchanged for an unselected outer contour');
 const kerfWithoutProfileSelection = buildKerfCompensatedPreviewFromFinalContours(mixedFinalList.contours, 0.10, 0);
 const kerfWithUnmatchedProfileSelection = buildKerfCompensatedPreviewFromFinalContours(mixedFinalList.contours, 0.10, 0, 0.25, ['profile-selection-must-not-own-slots']);
-assert.deepEqual(kerfWithUnmatchedProfileSelection.contours.map(({ pathD }) => pathD), kerfWithoutProfileSelection.contours.map(({ pathD }) => pathD), 'Kerf output remains byte-for-byte identical when Clearance selects no generated profile');
+assert.deepEqual(kerfWithUnmatchedProfileSelection.contours.map(({ pathD }) => pathD), kerfWithoutProfileSelection.contours.map(({ pathD }) => pathD), 'Kerf output remains byte-for-byte identical when Profile Offset selects no generated profile');
 assert.equal(JSON.stringify(mixedWithSlotClearance.finalContourList.find((contour) => contour.finalSource === 's-slot')?.manufacturing), JSON.stringify({ clearance: true, slotClearance: true }), 'preview manufacturing final contour list preserves metadata after slot clearance');
 const metadataOnlySlotClearance = applySlotClearance([{ id: 'metadata-slot', source: 'final-contour', finalSource: 'original-panel', kind: 'INNER', geometryType: 'GENERATED_SLOT', pathD: 'M 2 2 L 4 2 L 4 4 L 2 4 Z', manufacturing: { clearance: false, slotClearance: false } }], 0.10);
 assertBoundsClose(boundsForPathD(metadataOnlySlotClearance[0].pathD), { minX: 1.9, maxX: 4.1, minY: 1.9, maxY: 4.1 }, 'slot clearance eligibility uses FinalGeometryType policy instead of manufacturing metadata');
-const tbApplyFinalGeometryZeroClearance = buildFinalGeometry(modelForPanels([panel('tb-apply', 0, 0, 10, 8)]), [{ panelId: 'tb-apply', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: 'M 0 0 L 12 0 L 12 8 L 0 8 Z', edgeIds: [] }], []);
-const tbApplyFinalGeometryPositiveClearance = buildFinalGeometry(modelForPanels([panel('tb-apply', 0, 0, 10, 8)]), [{ panelId: 'tb-apply', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: 'M 0 0 L 12 0 L 12 8 L 0 8 Z', edgeIds: [] }], []);
-assert.equal(JSON.stringify(tbApplyFinalGeometryPositiveClearance.contours), JSON.stringify(tbApplyFinalGeometryZeroClearance.contours), 'TB Apply produces identical geometry regardless of slotClearanceMm');
+const tbApplyFinalGeometryZeroProfileOffset = buildFinalGeometry(modelForPanels([panel('tb-apply', 0, 0, 10, 8)]), [{ panelId: 'tb-apply', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: 'M 0 0 L 12 0 L 12 8 L 0 8 Z', edgeIds: [] }], []);
+const tbApplyFinalGeometryPositiveProfileOffset = buildFinalGeometry(modelForPanels([panel('tb-apply', 0, 0, 10, 8)]), [{ panelId: 'tb-apply', eraseRect: { minX: 0, maxX: 10, minY: 0, maxY: 8 }, erasePathD: outerContour.pathD, pathD: 'M 0 0 L 12 0 L 12 8 L 0 8 Z', edgeIds: [] }], []);
+assert.equal(JSON.stringify(tbApplyFinalGeometryPositiveProfileOffset.contours), JSON.stringify(tbApplyFinalGeometryZeroProfileOffset.contours), 'TB Apply produces identical geometry regardless of slotClearanceMm');
 
 assert.equal(classifyContoursByContainment([{ id: 'outer-check', source: 'final-contour', finalSource: 'original-panel', kind: 'OUTER', pathD: 'M 0 0 L 20 0 L 20 20 L 0 20 Z' }, { id: 'inner-check', source: 'final-contour', finalSource: 's-slot', kind: 'INNER', pathD: 'M 5 5 L 10 5 L 10 10 L 5 10 Z' }]).find((contour) => contour.id === 'inner-check').kind, 'INNER', 'explicit INNER contour keeps role inside contour');
 assert.ok(classifyContoursByContainment([{ id: 'separate-a', source: 'final-contour', finalSource: 'original-panel', pathD: 'M 0 0 L 10 0 L 10 10 L 0 10 Z' }, { id: 'separate-b', source: 'final-contour', finalSource: 'original-panel', pathD: 'M 20 0 L 30 0 L 30 10 L 20 10 Z' }]).every((contour) => contour.kind === 'OUTER'), 'separate contours classify OUTER');
