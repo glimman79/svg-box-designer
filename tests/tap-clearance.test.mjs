@@ -34,27 +34,26 @@ const contour = {
   segmentTapIds: [null, tapOne, tapOne, tapOne, null, tapTwo, tapTwo, tapTwo, null, null, null, null],
 };
 const geometry = () => createManufacturingGeometry({ contours: [contour], diagnostics: [] });
-const unchanged = JSON.stringify(geometry().finalContourList);
 
-assert.equal(JSON.stringify(applyTapClearance(geometry(), -0.10, []).finalContourList), unchanged, 'zero selected taps is byte-for-byte unchanged');
-const one = applyTapClearance(geometry(), -0.10, [tapOne]).finalContourList[0];
-assert.notEqual(one.pathD, contour.pathD, 'one selected generated tap changes geometry');
-assert.deepEqual(Array.from(one.segmentTapIds), contour.segmentTapIds, 'GeneratedTapId provenance survives manufacturing');
-assert.equal(one.points[7].x, 8, 'an unselected neighboring tap remains unchanged');
-const multiple = applyTapClearance(geometry(), -0.10, [tapOne, tapTwo]).finalContourList[0];
-assert.notEqual(multiple.points[7].x, 8, 'multiple/all generated taps can be selected');
-assert.notEqual(multiple.points[3].x, 4, 'adjacent generated tap profiles are independently included in the tap mask');
-assert.notEqual(applyTapClearance(geometry(), 0.10, [tapOne]).finalContourList[0].pathD, one.pathD, 'positive Tap Clearance uses the opposite signed offset');
-assert.equal(applyTapClearance(geometry(), 0, [tapOne]).finalContourList[0].pathD, contour.pathD, 'zero Tap Clearance preserves exact geometry');
+const allTaps = applyTapClearance(geometry(), -0.10).finalContourList[0];
+assert.notEqual(allTaps.pathD, contour.pathD, 'Tap Clearance changes generated male taps automatically');
+assert.notEqual(allTaps.points[3].x, 4, 'the first GeneratedTapId receives Tap Clearance');
+assert.notEqual(allTaps.points[7].x, 8, 'the second GeneratedTapId receives Tap Clearance without selection');
+assert.deepEqual(Array.from(allTaps.segmentTapIds), contour.segmentTapIds, 'GeneratedTapId provenance survives manufacturing');
+assert.notEqual(applyTapClearance(geometry(), 0.10).finalContourList[0].pathD, allTaps.pathD, 'positive Tap Clearance uses the opposite signed offset');
+assert.equal(applyTapClearance(geometry(), 0).finalContourList[0].pathD, contour.pathD, 'zero Tap Clearance is identical to disabling the Tap stage');
 
-for (const label of ['imported protrusion', 'manually drawn tab', 'tab-like geometry', 'slot geometry', 'straight edge', 'copied geometry without GeneratedTapId']) {
-  const ineligible = createManufacturingGeometry({ contours: [{ ...contour, id: label, segmentTapIds: undefined }], diagnostics: [] });
+for (const label of ['imported geometry', 'manually created geometry', 'tab-like geometry', 'slot geometry', 'straight edge', 'copied geometry without GeneratedTapId']) {
+  const ineligible = createManufacturingGeometry({ contours: [{ ...contour, id: label, geometryType: label === 'slot geometry' ? 'GENERATED_SLOT' : contour.geometryType, segmentTapIds: undefined }], diagnostics: [] });
   const before = JSON.stringify(ineligible.finalContourList);
-  assert.equal(JSON.stringify(applyTapClearance(ineligible, -0.10, [tapOne]).finalContourList), before, `${label} is ignored without generator-authored provenance`);
+  assert.equal(JSON.stringify(applyTapClearance(ineligible, -0.10).finalContourList), before, `${label} is ignored without generator-authored provenance`);
 }
 
-const finalGeometry = { contours: [contour, { ...contour, id: 'slot', kind: 'INNER', geometryType: 'GENERATED_SLOT', segmentTapIds: undefined }], diagnostics: [] };
-const legacyPipeline = processManufacturingGeometry(finalGeometry, 0.15, -0.10, 0, []);
-const explicitNoTabs = processManufacturingGeometry(finalGeometry, 0.15, -0.10, 0, [], -0.10, []);
-assert.equal(JSON.stringify(explicitNoTabs), JSON.stringify(legacyPipeline), 'Profile Offset, Slot Clearance, and Kerf output is byte-for-byte identical with no selected taps');
+const slot = { ...contour, id: 'slot', kind: 'INNER', geometryType: 'GENERATED_SLOT', segmentTapIds: undefined, compensationProfile: points.map(() => true) };
+const finalGeometry = { contours: [contour, slot], diagnostics: [] };
+const zeroTapPipeline = processManufacturingGeometry(finalGeometry, 0.15, -0.10, 0, [], 0);
+const activeTapPipeline = processManufacturingGeometry(finalGeometry, 0.15, -0.10, 0, [], -0.10);
+assert.notEqual(activeTapPipeline.finalContourList[0].pathD, zeroTapPipeline.finalContourList[0].pathD, '-0.10 affects every generated tap in the complete pipeline');
+assert.equal(activeTapPipeline.finalContourList[1].pathD, zeroTapPipeline.finalContourList[1].pathD, 'Slot Clearance output remains unchanged by Tap Clearance');
+assert.equal(activeTapPipeline.contours[1].pathD, zeroTapPipeline.contours[1].pathD, 'Kerf output for slot geometry remains unchanged by Tap Clearance');
 console.log('Tap Clearance regression tests passed.');

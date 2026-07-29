@@ -1,5 +1,4 @@
 import type { GeneratedProfileId } from './generatedProfiles';
-import type { GeneratedTapId } from './generatedTaps';
 
 export type ProjectSettings = {
   kerfMm: number;
@@ -7,7 +6,6 @@ export type ProjectSettings = {
   slotClearanceMm: number;
   selectedProfileOffsetIds: GeneratedProfileId[];
   tapClearanceMm: number;
-  selectedTapIds: GeneratedTapId[];
 };
 
 type LegacyProjectSettings = Partial<ProjectSettings> & {
@@ -31,9 +29,6 @@ export const normalizeProjectSettings = (value: LegacyProjectSettings | null | u
     })
     : [];
   if (!Array.isArray(rawIds)) diagnostics.push('Profile Offset profile selections were not an array and were reset safely.');
-  const rawTapIds: unknown = value?.selectedTapIds ?? [];
-  const tapIds = Array.isArray(rawTapIds) ? rawTapIds.filter((id): id is GeneratedTapId => typeof id === 'string' && id.length > 0) : [];
-  if (!Array.isArray(rawTapIds)) diagnostics.push('Tap Clearance selections were not an array and were reset safely.');
   return {
     settings: {
       kerfMm: finiteOr(value?.kerfMm, 0.15),
@@ -41,7 +36,6 @@ export const normalizeProjectSettings = (value: LegacyProjectSettings | null | u
       slotClearanceMm: finiteOr(value?.slotClearanceMm, -0.10),
       selectedProfileOffsetIds: [...new Set(ids)],
       tapClearanceMm: finiteOr(value?.tapClearanceMm, -0.10),
-      selectedTapIds: [...new Set(tapIds)],
     },
     diagnostics,
   };
