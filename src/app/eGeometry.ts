@@ -39,6 +39,28 @@ const getPanelContourSidePoints = (panel: SvgPanel, contourIndex: number) => ({
   end: panel.contour[(contourIndex + 1) % panel.contour.length],
 });
 
+export const segmentLiesOnPanelBoundary = (panel: SvgPanel, start: Point, end: Point) => (
+  buildContourSides(panel.contour).some((boundarySide) => {
+    const sideX = boundarySide.end.x - boundarySide.start.x;
+    const sideY = boundarySide.end.y - boundarySide.start.y;
+    const sideLength = Math.hypot(sideX, sideY);
+
+    if (sideLength <= cornerTouchTolerance) {
+      return false;
+    }
+
+    return [start, end].every((point) => {
+      const pointX = point.x - boundarySide.start.x;
+      const pointY = point.y - boundarySide.start.y;
+      const crossDistance = Math.abs((pointX * sideY) - (pointY * sideX)) / sideLength;
+      const projectedDistance = ((pointX * sideX) + (pointY * sideY)) / sideLength;
+      return crossDistance <= cornerTouchTolerance
+        && projectedDistance >= -cornerTouchTolerance
+        && projectedDistance <= sideLength + cornerTouchTolerance;
+    });
+  })
+);
+
 const getRoleTabSegments = (
   segments: TabSegment[],
   role: EdgeRole,
@@ -731,9 +753,9 @@ export const applyTabsToContour = (
       const tabEnd = interpolateSidePoint(outwardSide, segment.endDistance);
 
       onGeneratedTap?.(operation, [baseStart, tabStart, tabEnd, baseEnd], tapIndex, [
-        pointsMatch(baseStart, originalSide.start) ? 'source-boundary-start' : 'tap-side-start',
+        segmentLiesOnPanelBoundary(panel, baseStart, tabStart) ? 'source-boundary-start' : 'tap-side-start',
         'tap-tip',
-        pointsMatch(baseEnd, originalSide.end) ? 'source-boundary-end' : 'tap-side-end',
+        segmentLiesOnPanelBoundary(panel, tabEnd, baseEnd) ? 'source-boundary-end' : 'tap-side-end',
       ]);
 
       addContourPoint(tabbedContour, baseStart);

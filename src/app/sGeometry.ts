@@ -6,7 +6,7 @@ import { createGeneratedTapId } from './generatedTaps';
 import type { GeneratedTapGroup, GeneratedTapSegmentRole } from './generatedTaps';
 import { getAppliedSGeometryFromItems } from './generatedGeometrySnapshot';
 import { generatedManufacturingMetadata } from './manufacturingMetadata';
-import { addContourPoint, clipOriginalSegmentsToInsetSide, clonePanelContour, getPanelThickness, removeInteriorBacktrackSpurs, validatePanelContour } from './eGeometry';
+import { addContourPoint, clipOriginalSegmentsToInsetSide, clonePanelContour, getPanelThickness, removeInteriorBacktrackSpurs, segmentLiesOnPanelBoundary, validatePanelContour } from './eGeometry';
 import type { PanelContour, PanelGeometryBuildResult, PanelThicknessState } from './eGeometry';
 import { findPanelContainingEdge } from './panelLookup';
 import { getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './sharedPanelGeometry';
@@ -143,9 +143,9 @@ const applySTabsToContour = (
       const tabEnd = interpolateSidePoint(outwardSide, segment.endDistance);
 
       onGeneratedTap?.(operation, [baseStart, tabStart, tabEnd, baseEnd], tapIndex, [
-        pointsMatch(baseStart, originalSide.start) ? 'source-boundary-start' : 'tap-side-start',
+        segmentLiesOnPanelBoundary(panel, baseStart, tabStart) ? 'source-boundary-start' : 'tap-side-start',
         'tap-tip',
-        pointsMatch(baseEnd, originalSide.end) ? 'source-boundary-end' : 'tap-side-end',
+        segmentLiesOnPanelBoundary(panel, tabEnd, baseEnd) ? 'source-boundary-end' : 'tap-side-end',
       ]);
 
       addContourPoint(tabbedContour, baseStart);
