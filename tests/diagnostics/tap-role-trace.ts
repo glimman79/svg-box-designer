@@ -71,6 +71,11 @@ const traceFixture = ({ name, tool, model, items, sourceEdge }: ReturnType<typeo
   console.log(`\n=== ${name} (${tool}) ===`);
   const authoredSegments = (item.generatedTaps?.length ?? 0) * 3;
   console.log(`stage counts: generator=${authoredSegments} authored tap segments; snapshot=${(snapshot.generatedGeometry.find((x) => x.id === item.id)?.generatedTaps?.length ?? 0) * 3} authored tap segments; FinalGeometry=${contour.points?.length ?? 0} segments/ids=${contour.segmentTapIds?.length ?? 0}/roles=${contour.segmentTapRoles?.length ?? 0}; ManufacturingGeometry=${manufacturing.points?.length ?? 0} segments/ids=${manufacturing.segmentTapIds?.length ?? 0}/roles=${manufacturing.segmentTapRoles?.length ?? 0}`);
+  for (const profile of item.profileGroups ?? []) {
+    const orderedTaps = (item.generatedTaps ?? []).filter((tap) => tap.sourceEdgeId === profile.sourceEdgeId);
+    console.log(`Profile ID: ${profile.id}\nGenerator: ${tool}\nOperation ID: ${profile.sourceOperationId}\nPanel ID: ${profile.panelId}\nSource edge ID: ${profile.sourceEdgeId}\nSource edge direction: ${point(sourceEdge.start)} -> ${point(sourceEdge.end)}\nProfile start attachment: ${profile.attachmentStart ? point(profile.attachmentStart) : 'MISSING'}\nProfile end attachment: ${profile.attachmentEnd ? point(profile.attachmentEnd) : 'MISSING'}\nOrdered tap IDs: [${orderedTaps.map((tap) => tap.id).join(', ')}]\nFirst tap ID: ${orderedTaps[0]?.id ?? 'MISSING'}\nLast tap ID: ${orderedTaps.at(-1)?.id ?? 'MISSING'}`);
+    orderedTaps.forEach((tap, tapIndex) => traceProfileTap(tap, tapIndex, orderedTaps.length));
+  }
   for (const [tapIndex, tap] of (item.generatedTaps ?? []).entries()) traceTap(tap, tapIndex, sourceEdge.start, sourceEdge.end, model.panels.find((panel) => panel.id === tap.panelId)!, contour.points ?? [], contour.segmentTapIds ?? [], contour.segmentTapRoles ?? [], finalMask);
   console.log(`complete final segment mask: [${finalMask.map((value) => value ? '1' : '0').join(', ')}]`);
   const svgDirectory = process.env.TAP_ROLE_DEBUG_SVG_DIR;
@@ -79,6 +84,15 @@ const traceFixture = ({ name, tool, model, items, sourceEdge }: ReturnType<typeo
     fs.mkdirSync(svgDirectory, { recursive: true });
     fs.writeFileSync(`${svgDirectory}/${name}.svg`, debugSvg(name, contour.points ?? [], contour.segmentTapRoles ?? [], finalMask));
   }
+};
+
+const traceProfileTap = (tap: GeneratedTapGroup, tapIndex: number, tapCount: number) => {
+  const first = tapIndex === 0;
+  const last = tapIndex === tapCount - 1;
+  const eligibility = tapCount === 1 ? [false, false] : [!first, !last];
+  console.log(`Tap index: ${tapIndex}\nGeneratedTapId: ${tap.id}\nIs first tap: ${first}\nIs last tap: ${last}\nStart wall segment: ${point(tap.points[0])} -> ${point(tap.points[1])}\nTip segment: ${point(tap.points[1])} -> ${point(tap.points[2])}\nEnd wall segment: ${point(tap.points[2])} -> ${point(tap.points[3])}\nPrevious profile element: ${first ? 'profile-start attachment' : `space after tap ${tapIndex - 1}`}\nNext profile element: ${last ? 'profile-end attachment' : `space before tap ${tapIndex + 1}`}`);
+  console.log(`Start wall: profile-${first ? 'exterior' : 'interior'}; intended eligible=${eligibility[0]}; proof=tap index ${tapIndex} of ${tapCount}`);
+  console.log(`End wall: profile-${last ? 'exterior' : 'interior'}; intended eligible=${eligibility[1]}; proof=tap index ${tapIndex} of ${tapCount}`);
 };
 
 const debugSvg = (name: string, points: readonly Point[], roles: readonly any[], mask: readonly boolean[]) => {
