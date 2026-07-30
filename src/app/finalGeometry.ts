@@ -6,7 +6,7 @@ import type { ContourDiagnostic, FinalContour, FinalContourSource } from './cont
 import type { FinalGeometryType } from './finalGeometryTypes';
 import { cornerTouchTolerance, getContourSignedArea, pointsMatch } from './sharedGeometry';
 import type { Point, SvgDocumentModel } from '../svgUtils';
-import type { GeneratedProfileGroup, GeneratedProfileId } from './generatedProfiles';
+import type { GeneratedProfile, GeneratedProfileGroup, GeneratedProfileId } from './generatedProfiles';
 import type { GeneratedTapGroup, GeneratedTapId, GeneratedTapSegmentRole } from './generatedTaps';
 
 export type FinalGeometryContour = FinalContour;
@@ -14,6 +14,8 @@ export type FinalGeometryContour = FinalContour;
 export type FinalGeometry = {
   readonly contours: ReadonlyArray<FinalGeometryContour>;
   readonly diagnostics: ReadonlyArray<ContourDiagnostic>;
+  /** Non-authoritative generator shadow; deliberately unused by FinalGeometry algorithms. */
+  readonly generatedProfiles: ReadonlyArray<GeneratedProfile>;
 };
 
 const clonePoints = (points: Point[]) => points.map((point) => ({ ...point }));
@@ -257,5 +259,13 @@ export const buildFinalGeometry = (
     Object.freeze(contour);
   });
   diagnostics.forEach(Object.freeze);
-  return Object.freeze({ contours: Object.freeze(contours), diagnostics: Object.freeze(diagnostics) });
+  const generatedProfiles = structuredClone(generatedGeometry.flatMap((item) => item.generatedProfiles ?? []));
+  generatedProfiles.forEach((profile) => {
+    profile.orderedElements.forEach((element) => { Object.freeze(element.start); Object.freeze(element.end); Object.freeze(element); });
+    profile.orderedTaps.forEach(Object.freeze);
+    Object.freeze(profile.sourceEdgeDirection.start); Object.freeze(profile.sourceEdgeDirection.end); Object.freeze(profile.sourceEdgeDirection);
+    Object.freeze(profile.attachmentStart); Object.freeze(profile.attachmentEnd);
+    Object.freeze(profile.orderedElements); Object.freeze(profile.orderedTaps); Object.freeze(profile);
+  });
+  return Object.freeze({ contours: Object.freeze(contours), diagnostics: Object.freeze(diagnostics), generatedProfiles: Object.freeze(generatedProfiles) });
 };

@@ -2,7 +2,7 @@ import type { SourceBounds } from '../svgUtils';
 import type { ManufacturingMetadata } from './manufacturingMetadata';
 import type { OperationKind } from './operationTypes';
 import type { ManufacturingClassification } from './finalGeometryTypes';
-import type { GeneratedProfileGroup } from './generatedProfiles';
+import type { GeneratedProfile, GeneratedProfileGroup } from './generatedProfiles';
 import type { GeneratedTapGroup } from './generatedTaps';
 
 export type GeneratedGeometryKind = 'PANEL_PATH' | 'SLOT_PATH';
@@ -44,5 +44,7 @@ export type GeneratedGeometryItem = {
   pathD: string;
   diagnostics: string[];
   profileGroups?: ReadonlyArray<GeneratedProfileGroup>;
+  /** Generator-owned shadow metadata; production algorithms must not consume this field. */
+  generatedProfiles?: ReadonlyArray<GeneratedProfile>;
   generatedTaps?: ReadonlyArray<GeneratedTapGroup>;
 };

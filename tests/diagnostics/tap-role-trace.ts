@@ -56,6 +56,32 @@ const fixture = (name: string, tool: Tool, orientation: Orientation, winding: Wi
   return { name, tool, model, items, sourceEdge: model.edges.find((edge) => edge.id === a.selectedEdgeId)! };
 };
 
+const adjacentTBFixture = () => {
+  const name = 'adjacent-multiple-profiles';
+  const owner = rectangle('adjacent-owner', 0, 0, 90, 60, 'counterclockwise', 0, false);
+  const mateA = rectangle('adjacent-mate-a', 120, 0, 90, 60, 'counterclockwise', 0, false);
+  const mateB = rectangle('adjacent-mate-b', 240, 0, 90, 60, 'counterclockwise', 0, false);
+  const edgeA = owner.panel.edgeIds[0]; const edgeB = owner.panel.edgeIds[1];
+  const connections: any = {
+    'TB-adjacent-a': { id: 'TB-adjacent-a', prefix: 'E', properties: { materialThicknessMm: 5, fingerWidthMm: 30, isFingerWidthManual: true } },
+    'TB-adjacent-b': { id: 'TB-adjacent-b', prefix: 'E', properties: { materialThicknessMm: 5, fingerWidthMm: 30, isFingerWidthManual: true } },
+  };
+  const assignments: any = {
+    [edgeA]: { edgeAssignment: { connectionId: 'TB-adjacent-a', edgeRole: 'A' } },
+    [mateA.panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'TB-adjacent-a', edgeRole: 'B' } },
+    [edgeB]: { edgeAssignment: { connectionId: 'TB-adjacent-b', edgeRole: 'A' } },
+    [mateB.panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'TB-adjacent-b', edgeRole: 'B' } },
+  };
+  const panels = [owner.panel, mateA.panel, mateB.panel];
+  const model: SvgDocumentModel = { content: '', innerMarkup: '', rootAttributes: { width: null, height: null, viewBox: null }, viewBox: '0 0 360 80', width: 360, height: 80, panels, edges: [...owner.edges, ...mateA.edges, ...mateB.edges] };
+  const pm = { defaultThicknessMm: 5, panels: Object.fromEntries(panels.map((panel) => [panel.id, { panelId: panel.id, thicknessMm: 5 }])) };
+  const items = buildGeneratedTBGeometryItems(model, assignments, connections, pm);
+  const item = items.find((candidate) => candidate.behaviour.replacesPanelId === owner.panel.id)!;
+  invariant(item.generatedProfiles?.length === 2, 'one panel must retain two distinct GeneratedProfiles');
+  invariant(close(item.generatedProfiles[0].attachmentEnd, item.generatedProfiles[1].attachmentStart), 'adjacent profiles must retain their shared attachment vertex');
+  return { name, tool: 'TB' as const, model, items, sourceEdge: model.edges.find((edge) => edge.id === edgeA)! };
+};
+
 const locate = (points: readonly Point[], start: Point, end: Point) => points.findIndex((p, i) => close(p, start) && close(points[(i + 1) % points.length], end));
 
 const traceFixture = ({ name, tool, model, items, sourceEdge }: ReturnType<typeof fixture>) => {
@@ -64,13 +90,27 @@ const traceFixture = ({ name, tool, model, items, sourceEdge }: ReturnType<typeo
   const snapshot = createGeneratedGeometrySnapshot({ generatedGeometry: items, revision: 1 });
   const snapshotItem = snapshot.generatedGeometry.find((candidate) => candidate.id === item.id);
   invariant(JSON.stringify(snapshotItem?.generatedTaps) === JSON.stringify(item.generatedTaps), `${name}: snapshot changed generated tap metadata`);
+  invariant(JSON.stringify(snapshotItem?.generatedProfiles) === JSON.stringify(item.generatedProfiles), `${name}: snapshot changed GeneratedProfile shadow`);
   const final = buildFinalGeometry(model, snapshot);
   const contour = final.contours.find((candidate) => candidate.panelId === item.behaviour.replacesPanelId)!;
   const manufacturing = createManufacturingGeometry(final).finalContourList.find((candidate) => candidate.id === contour.id)!;
+  const manufacturingGeometry = createManufacturingGeometry(final);
+  const ownerProfiles = (profiles: typeof final.generatedProfiles) => profiles.filter((profile) => profile.panelId === item.behaviour.replacesPanelId);
+  invariant(JSON.stringify(ownerProfiles(final.generatedProfiles)) === JSON.stringify(item.generatedProfiles), `${name}: FinalGeometry changed GeneratedProfile shadow`);
+  invariant(JSON.stringify(ownerProfiles(manufacturingGeometry.generatedProfiles)) === JSON.stringify(item.generatedProfiles), `${name}: ManufacturingGeometry changed GeneratedProfile shadow`);
   const finalMask = manufacturing.segmentTapIds?.map((id, i) => id !== null && isTapClearanceEligibleRole(manufacturing.segmentTapRoles?.[i] ?? null)) ?? [];
   console.log(`\n=== ${name} (${tool}) ===`);
   const authoredSegments = (item.generatedTaps?.length ?? 0) * 3;
   console.log(`stage counts: generator=${authoredSegments} authored tap segments; snapshot=${(snapshot.generatedGeometry.find((x) => x.id === item.id)?.generatedTaps?.length ?? 0) * 3} authored tap segments; FinalGeometry=${contour.points?.length ?? 0} segments/ids=${contour.segmentTapIds?.length ?? 0}/roles=${contour.segmentTapRoles?.length ?? 0}; ManufacturingGeometry=${manufacturing.points?.length ?? 0} segments/ids=${manufacturing.segmentTapIds?.length ?? 0}/roles=${manufacturing.segmentTapRoles?.length ?? 0}`);
+  for (const profile of item.generatedProfiles ?? []) {
+    invariant(profile.orderedTaps.every((tap, index) => tap.tapIndex === index && tap.totalTapCount === profile.orderedTaps.length), `${name}: tap ordering/count is not generator-authored`);
+    invariant(profile.orderedTaps.every((tap, index, taps) => tap.isFirstTap === (index === 0) && tap.isLastTap === (index === taps.length - 1) && tap.isMiddleTap === (index > 0 && index < taps.length - 1)), `${name}: first/middle/last identity is invalid`);
+    const legacy = item.profileGroups?.find((group) => group.id === profile.id);
+    invariant(!!legacy && JSON.stringify(legacy.attachmentStart) === JSON.stringify(profile.attachmentStart) && JSON.stringify(legacy.attachmentEnd) === JSON.stringify(profile.attachmentEnd), `${name}: attachments disagree with production metadata`);
+    const legacyTapIds = (item.generatedTaps ?? []).filter((tap) => tap.sourceEdgeId === profile.sourceEdgeId).map((tap) => tap.id);
+    invariant(JSON.stringify(legacyTapIds) === JSON.stringify(profile.orderedTaps.map((tap) => tap.id)), `${name}: ordered taps disagree with production metadata`);
+    console.log(`GeneratedProfile ${profile.id}\n  ordered taps: ${profile.orderedTaps.map((tap) => tap.id).join(', ')}\n  first tap: ${profile.orderedTaps.find((tap) => tap.isFirstTap)?.id ?? 'none'}\n  middle taps: ${profile.orderedTaps.filter((tap) => tap.isMiddleTap).map((tap) => tap.id).join(', ') || 'none'}\n  last tap: ${profile.orderedTaps.find((tap) => tap.isLastTap)?.id ?? 'none'}\n  attachments: ${point(profile.attachmentStart)} -> ${point(profile.attachmentEnd)}\n  segment references: ${profile.orderedElements.map((element) => `${element.id} [${element.kind}]`).join(', ')}`);
+  }
   for (const profile of item.profileGroups ?? []) {
     const orderedTaps = (item.generatedTaps ?? []).filter((tap) => tap.sourceEdgeId === profile.sourceEdgeId);
     console.log(`Profile ID: ${profile.id}\nGenerator: ${tool}\nOperation ID: ${profile.sourceOperationId}\nPanel ID: ${profile.panelId}\nSource edge ID: ${profile.sourceEdgeId}\nSource edge direction: ${point(sourceEdge.start)} -> ${point(sourceEdge.end)}\nProfile start attachment: ${profile.attachmentStart ? point(profile.attachmentStart) : 'MISSING'}\nProfile end attachment: ${profile.attachmentEnd ? point(profile.attachmentEnd) : 'MISSING'}\nOrdered tap IDs: [${orderedTaps.map((tap) => tap.id).join(', ')}]\nFirst tap ID: ${orderedTaps[0]?.id ?? 'MISSING'}\nLast tap ID: ${orderedTaps.at(-1)?.id ?? 'MISSING'}`);
@@ -136,4 +176,5 @@ const traceTap = (tap: GeneratedTapGroup, tapIndex: number, sourceStart: Point, 
   fixture('clockwise', 'TB', 'horizontal', 'clockwise', false, 'B'),
   fixture('s-counterclockwise', 'S', 'horizontal', 'counterclockwise', false, 'A'),
   fixture('s-clockwise-vertical', 'S', 'vertical', 'clockwise', true, 'A'),
+  adjacentTBFixture(),
 ].forEach(traceFixture);
