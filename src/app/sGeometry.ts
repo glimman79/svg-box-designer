@@ -1,7 +1,7 @@
 import { getBucketEdgeAssignment, getBucketSlotAssignments } from './assignmentBuckets';
 import type { AppliedSGeometry, ConnectionMap, SlotConnectionDefinition } from './connectionTypes';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
-import { createBoundaryProfileGroup } from './generatedProfiles';
+import { createBoundaryProfileGroup, createGeneratedProfile } from './generatedProfiles';
 import { createGeneratedTapId } from './generatedTaps';
 import type { GeneratedTapGroup, GeneratedTapSegmentRole } from './generatedTaps';
 import { getAppliedSGeometryFromItems } from './generatedGeometrySnapshot';
@@ -453,6 +453,16 @@ export const buildGeneratedSGeometryItems = (
         attachmentEnd: profileBoundaryResult.contour[(panel.edgeIds.indexOf(operation.sourceAEdgeId) + 1) % profileBoundaryResult.contour.length],
       } : {}),
     }));
+    if (profileBoundaryResult.ok) result[result.length - 1].generatedProfiles = operations.map((operation) => {
+      const edgeIndex = panel.edgeIds.indexOf(operation.sourceAEdgeId);
+      const sourceEdge = svgModel.edges.find((edge) => edge.id === operation.sourceAEdgeId)!;
+      return createGeneratedProfile({
+        toolType: 'S', connectionId: operation.connectionId, operationId: `operation:S:${operation.connectionId}`,
+        panelId: panel.id, sourceEdgeId: operation.sourceAEdgeId, sourceEdgeStart: sourceEdge.start, sourceEdgeEnd: sourceEdge.end,
+        attachmentStart: profileBoundaryResult.contour[edgeIndex], attachmentEnd: profileBoundaryResult.contour[(edgeIndex + 1) % profileBoundaryResult.contour.length],
+        taps: generatedTaps,
+      });
+    });
   });
 
   return result;

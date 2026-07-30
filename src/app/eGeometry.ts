@@ -1,6 +1,6 @@
 import type { AppliedEPanelPath, ConnectionMap, EdgeConnectionDefinition } from './connectionTypes';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
-import { createBoundaryProfileGroup } from './generatedProfiles';
+import { createBoundaryProfileGroup, createGeneratedProfile } from './generatedProfiles';
 import { createGeneratedTapId } from './generatedTaps';
 import type { GeneratedTapGroup, GeneratedTapSegmentRole } from './generatedTaps';
 import { getAppliedEPanelPathsFromItems } from './generatedGeometrySnapshot';
@@ -322,6 +322,16 @@ export const buildGeneratedTBGeometryItems = (
         attachmentStart: insetContour[panel.edgeIds.indexOf(operation.edgeId)],
         attachmentEnd: insetContour[(panel.edgeIds.indexOf(operation.edgeId) + 1) % insetContour.length],
       })),
+      generatedProfiles: operations.map((operation) => {
+        const edgeIndex = panel.edgeIds.indexOf(operation.edgeId);
+        const sourceEdge = edgesById.get(operation.edgeId)!;
+        return createGeneratedProfile({
+          toolType: 'TB', connectionId: operation.connectionId, operationId, panelId: panel.id, sourceEdgeId: operation.edgeId,
+          sourceEdgeStart: sourceEdge.start, sourceEdgeEnd: sourceEdge.end,
+          attachmentStart: insetContour[edgeIndex], attachmentEnd: insetContour[(edgeIndex + 1) % insetContour.length],
+          taps: generatedTaps,
+        });
+      }),
       generatedTaps,
     }];
   });

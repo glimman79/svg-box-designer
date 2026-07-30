@@ -165,7 +165,7 @@ export const buildKerfCompensatedPreviewFromFinalContours = (
   selectedProfileOffsetIds: ReadonlyArray<GeneratedProfileId> = [],
   tapClearanceMm = -0.10,
 ): ManufacturingGeometry => processManufacturingGeometry(
-  { contours: finalContourList, diagnostics: [] },
+  { contours: finalContourList, diagnostics: [], generatedProfiles: [] },
   kerfMm,
   slotClearanceMm,
   profileOffsetMm,
