@@ -2,12 +2,29 @@ import type { Point } from '../svgUtils';
 import type { GeneratedTapGroup, GeneratedTapId } from './generatedTaps';
 
 export type GeneratedProfileId = string & { readonly __brand: 'GeneratedProfileId' };
-export type GeneratedElementId = string & { readonly __brand: 'GeneratedElementId' };
+export type GeneratedProfileElementId = string & { readonly __brand: 'GeneratedProfileElementId' };
+export type GeometryProjectionId = string & { readonly __brand: 'GeometryProjectionId' };
 
 export type ProfileAttachmentPoint = Readonly<{ x: number; y: number }>;
-export type GeneratedSegmentReference = Readonly<{
-  id: GeneratedElementId;
-  kind: 'straight' | 'tap-start-wall' | 'tap-tip' | 'tap-end-wall';
+export type GeneratedProfileElementKind = 'boundary-run' | 'tap-leading-wall' | 'tap-tip' | 'tap-trailing-wall';
+
+/** A generator-authored semantic unit. It deliberately contains no contour geometry. */
+export type GeneratedProfileElement = Readonly<{
+  id: GeneratedProfileElementId;
+  profileId: GeneratedProfileId;
+  kind: GeneratedProfileElementKind;
+  profileOrder: number;
+  tapId?: GeneratedTapId;
+  geometryProjectionId: GeometryProjectionId;
+}>;
+
+/** Metadata connecting semantic identity to today's directed contour projection. */
+export type GeometryProjection = Readonly<{
+  id: GeometryProjectionId;
+  profileId: GeneratedProfileId;
+  elementId: GeneratedProfileElementId;
+  kind: 'current-contour-segment';
+  profileSegmentOrder: number;
   start: ProfileAttachmentPoint;
   end: ProfileAttachmentPoint;
 }>;
@@ -16,9 +33,9 @@ export type GeneratedProfileTap = Readonly<{
   id: GeneratedTapId;
   tapIndex: number;
   totalTapCount: number;
-  startWallReference: GeneratedElementId;
-  tipReference: GeneratedElementId;
-  endWallReference: GeneratedElementId;
+  leadingWallElementId: GeneratedProfileElementId;
+  tipElementId: GeneratedProfileElementId;
+  trailingWallElementId: GeneratedProfileElementId;
   isFirstTap: boolean;
   isMiddleTap: boolean;
   isLastTap: boolean;
@@ -34,10 +51,11 @@ export type GeneratedProfile = Readonly<{
   sourceEdgeDirection: Readonly<{ start: ProfileAttachmentPoint; end: ProfileAttachmentPoint }>;
   attachmentStart: ProfileAttachmentPoint;
   attachmentEnd: ProfileAttachmentPoint;
-  orderedElements: ReadonlyArray<GeneratedSegmentReference>;
+  orderedElements: ReadonlyArray<GeneratedProfileElement>;
+  geometryProjections: ReadonlyArray<GeometryProjection>;
   orderedTaps: ReadonlyArray<GeneratedProfileTap>;
-  leadingStraightSection: GeneratedElementId;
-  trailingStraightSection: GeneratedElementId;
+  leadingBoundaryRun: GeneratedProfileElementId;
+  trailingBoundaryRun: GeneratedProfileElementId;
 }>;
 
 export type GeneratedProfileGroup = Readonly<{
@@ -67,8 +85,8 @@ export const createBoundaryProfileGroup = (input: Omit<GeneratedProfileGroup, 'i
   ...(input.attachmentEnd ? { attachmentEnd: { ...input.attachmentEnd } } : {}), kind: 'BOUNDARY_PROFILE',
 });
 
-const elementId = (profileId: GeneratedProfileId, name: string): GeneratedElementId => `${profileId}:element:${name}` as GeneratedElementId;
-const segment = (id: GeneratedElementId, kind: GeneratedSegmentReference['kind'], start: Point, end: Point): GeneratedSegmentReference => ({ id, kind, start: { ...start }, end: { ...end } });
+const elementId = (profileId: GeneratedProfileId, name: string): GeneratedProfileElementId => `${profileId}:element:${name}` as GeneratedProfileElementId;
+const projectionId = (id: GeneratedProfileElementId): GeometryProjectionId => `${id}:projection:current-contour-segment` as GeometryProjectionId;
 
 /** Called only by generators while their ordered tap emission is still available. */
 export const createGeneratedProfile = (input: {
@@ -78,24 +96,38 @@ export const createGeneratedProfile = (input: {
 }): GeneratedProfile => {
   const id = createGeneratedProfileId({ ...input });
   const taps = input.taps.filter((tap) => tap.sourceEdgeId === input.sourceEdgeId);
-  const elements: GeneratedSegmentReference[] = [];
+  const elements: GeneratedProfileElement[] = [];
+  const geometryProjections: GeometryProjection[] = [];
+  const append = (elementIdValue: GeneratedProfileElementId, kind: GeneratedProfileElementKind, start: Point, end: Point, tapId?: GeneratedTapId) => {
+    const order = elements.length;
+    const projection = projectionId(elementIdValue);
+    elements.push({ id: elementIdValue, profileId: id, kind, profileOrder: order, ...(tapId ? { tapId } : {}), geometryProjectionId: projection });
+    geometryProjections.push({ id: projection, profileId: id, elementId: elementIdValue, kind: 'current-contour-segment', profileSegmentOrder: order, start: { ...start }, end: { ...end } });
+  };
   const leading = elementId(id, 'leading-straight');
-  elements.push(segment(leading, 'straight', input.attachmentStart, taps[0]?.points[0] ?? input.attachmentEnd));
+  append(leading, 'boundary-run', input.attachmentStart, taps[0]?.points[0] ?? input.attachmentEnd);
   const orderedTaps = taps.map((tap, tapIndex): GeneratedProfileTap => {
-    const startWallReference = elementId(id, `tap-${tapIndex}-start-wall`);
-    const tipReference = elementId(id, `tap-${tapIndex}-tip`);
-    const endWallReference = elementId(id, `tap-${tapIndex}-end-wall`);
-    elements.push(segment(startWallReference, 'tap-start-wall', tap.points[0], tap.points[1]));
-    elements.push(segment(tipReference, 'tap-tip', tap.points[1], tap.points[2]));
-    elements.push(segment(endWallReference, 'tap-end-wall', tap.points[2], tap.points[3]));
-    if (tapIndex < taps.length - 1) elements.push(segment(elementId(id, `between-${tapIndex}-${tapIndex + 1}`), 'straight', tap.points[3], taps[tapIndex + 1].points[0]));
-    return { id: tap.id, tapIndex, totalTapCount: taps.length, startWallReference, tipReference, endWallReference,
+    const leadingWallElementId = elementId(id, `tap-${tapIndex}-start-wall`);
+    const tipElementId = elementId(id, `tap-${tapIndex}-tip`);
+    const trailingWallElementId = elementId(id, `tap-${tapIndex}-end-wall`);
+    append(leadingWallElementId, 'tap-leading-wall', tap.points[0], tap.points[1], tap.id);
+    append(tipElementId, 'tap-tip', tap.points[1], tap.points[2], tap.id);
+    append(trailingWallElementId, 'tap-trailing-wall', tap.points[2], tap.points[3], tap.id);
+    if (tapIndex < taps.length - 1) append(elementId(id, `between-${tapIndex}-${tapIndex + 1}`), 'boundary-run', tap.points[3], taps[tapIndex + 1].points[0]);
+    return { id: tap.id, tapIndex, totalTapCount: taps.length, leadingWallElementId, tipElementId, trailingWallElementId,
       isFirstTap: tapIndex === 0, isMiddleTap: tapIndex > 0 && tapIndex < taps.length - 1, isLastTap: tapIndex === taps.length - 1 };
   });
   const trailing = elementId(id, 'trailing-straight');
-  elements.push(segment(trailing, 'straight', taps.at(-1)?.points[3] ?? input.attachmentStart, input.attachmentEnd));
-  return { id, generatorType: input.toolType, operationId: input.operationId, panelId: input.panelId, sourceEdgeId: input.sourceEdgeId,
+  append(trailing, 'boundary-run', taps.at(-1)?.points[3] ?? input.attachmentStart, input.attachmentEnd);
+  elements.forEach(Object.freeze);
+  geometryProjections.forEach((projection) => { Object.freeze(projection.start); Object.freeze(projection.end); Object.freeze(projection); });
+  orderedTaps.forEach(Object.freeze);
+  const profile: GeneratedProfile = { id, generatorType: input.toolType, operationId: input.operationId, panelId: input.panelId, sourceEdgeId: input.sourceEdgeId,
     sourceEdgeDirection: { start: { ...input.sourceEdgeStart }, end: { ...input.sourceEdgeEnd } },
     attachmentStart: { ...input.attachmentStart }, attachmentEnd: { ...input.attachmentEnd },
-    orderedElements: elements, orderedTaps, leadingStraightSection: leading, trailingStraightSection: trailing };
+    orderedElements: elements, geometryProjections, orderedTaps, leadingBoundaryRun: leading, trailingBoundaryRun: trailing };
+  Object.freeze(profile.sourceEdgeDirection.start); Object.freeze(profile.sourceEdgeDirection.end); Object.freeze(profile.sourceEdgeDirection);
+  Object.freeze(profile.attachmentStart); Object.freeze(profile.attachmentEnd);
+  Object.freeze(elements); Object.freeze(geometryProjections); Object.freeze(orderedTaps);
+  return Object.freeze(profile);
 };

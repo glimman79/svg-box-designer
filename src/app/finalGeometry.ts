@@ -261,11 +261,12 @@ export const buildFinalGeometry = (
   diagnostics.forEach(Object.freeze);
   const generatedProfiles = structuredClone(generatedGeometry.flatMap((item) => item.generatedProfiles ?? []));
   generatedProfiles.forEach((profile) => {
-    profile.orderedElements.forEach((element) => { Object.freeze(element.start); Object.freeze(element.end); Object.freeze(element); });
+    profile.orderedElements.forEach(Object.freeze);
+    profile.geometryProjections.forEach((projection) => { Object.freeze(projection.start); Object.freeze(projection.end); Object.freeze(projection); });
     profile.orderedTaps.forEach(Object.freeze);
     Object.freeze(profile.sourceEdgeDirection.start); Object.freeze(profile.sourceEdgeDirection.end); Object.freeze(profile.sourceEdgeDirection);
     Object.freeze(profile.attachmentStart); Object.freeze(profile.attachmentEnd);
-    Object.freeze(profile.orderedElements); Object.freeze(profile.orderedTaps); Object.freeze(profile);
+    Object.freeze(profile.orderedElements); Object.freeze(profile.geometryProjections); Object.freeze(profile.orderedTaps); Object.freeze(profile);
   });
   return Object.freeze({ contours: Object.freeze(contours), diagnostics: Object.freeze(diagnostics), generatedProfiles: Object.freeze(generatedProfiles) });
 };
