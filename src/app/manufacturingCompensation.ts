@@ -9,7 +9,7 @@ import type { GeometryServices } from './geometryServices';
 import { createManufacturingGeometry } from './manufacturingGeometry';
 import type { ManufacturingGeometry } from './manufacturingGeometry';
 import type { FinalGeometry } from './finalGeometry';
-import { isTapClearanceEligibleRole } from './generatedTaps';
+import { projectTapClearanceMask } from './tapClearance';
 
 export type { ManufacturingGeometry } from './manufacturingGeometry';
 
@@ -52,15 +52,14 @@ export const applyProfileOffset = (manufacturingGeometry: ManufacturingGeometry,
   return manufacturingGeometry;
 };
 
-/** Independent Tap Clearance mask built only from generator-authored ownership and roles. */
+/** Tap Clearance eligibility comes only from semantic GeneratedProfile elements. */
 export const applyTapClearance = (
   manufacturingGeometry: ManufacturingGeometry,
   tapClearanceMm = -0.10,
   services: GeometryServices = geometryServices,
 ): ManufacturingGeometry => {
   manufacturingGeometry.finalContourList.forEach((contour) => {
-    if (!contour.segmentTapIds || !contour.segmentTapRoles || contour.segmentTapIds.length !== contour.segmentTapRoles.length) return;
-    const tapMask = contour.segmentTapIds.map((id, index) => id !== null && isTapClearanceEligibleRole(contour.segmentTapRoles![index]));
+    const tapMask = projectTapClearanceMask(contour, manufacturingGeometry.generatedProfiles);
     if (!tapMask.some(Boolean)) return;
     contour.compensationProfile = tapMask;
     getManufacturingPolicy(contour.geometryType).compensationStrategy.execute({ geometry: manufacturingGeometry, contour, profileOffsetMm: tapClearanceMm, services });

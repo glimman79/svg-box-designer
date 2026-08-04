@@ -1,5 +1,6 @@
 import { createGeneratedProfile } from '../../src/app/generatedProfiles';
 import { createGeneratedTapId, isTapClearanceEligibleRole, type GeneratedTapGroup, type GeneratedTapSegmentRole } from '../../src/app/generatedTaps';
+import { resolveTapClearanceElementIds } from '../../src/app/tapClearance';
 import { resolveTapClearanceShadow, type TapClearanceShadowDecision } from './tap-clearance-shadow-resolver';
 
 const invariant: (condition: unknown, message: string) => asserts condition = (condition, message) => { if (!condition) throw new Error(message); };
@@ -36,18 +37,20 @@ let profiles = 0; let taps = 0; let walls = 0; let eligibleWalls = 0; let fixedW
 const mismatchCounts = new Map<string, number>(); const projectionFailures = new Map<string, number>(); let invariantSignature = '';
 names.forEach((name, fixtureIndex) => {
   const profile = profileFor(name, fixtureIndex); const before = JSON.stringify(profile); const decisions = resolveTapClearanceShadow(profile);
+  const productionElements = resolveTapClearanceElementIds(profile);
   invariant(JSON.stringify(profile) === before, `${name}: validation resolver mutated generator geometry`);
   const currentSignature = JSON.stringify(signature(decisions));
   if (name !== 'single-tap') { if (!invariantSignature) invariantSignature = currentSignature; else invariant(currentSignature === invariantSignature, `${name}: equivalent profile changed semantic decisions`); }
   profiles += 1; taps += profile.orderedTaps.length; if (profile.orderedTaps.length === 1) singles += 1;
   console.log(`\nProfile ID: ${profile.id}\nPanel: ${profile.panelId}\nGenerator: ${profile.generatorType}\nOperation: ${profile.operationId}\nSource edge: ${profile.sourceEdgeId}\nProfile direction: ${JSON.stringify(profile.sourceEdgeDirection)}\nAttachment start: ${JSON.stringify(profile.attachmentStart)}\nAttachment end: ${JSON.stringify(profile.attachmentEnd)}\nTap count: ${profile.orderedTaps.length}`);
   decisions.forEach((decision) => {
-    const production = isTapClearanceEligibleRole(productionRole(decision)); const match = production === decision.eligible;
+    const legacy = isTapClearanceEligibleRole(productionRole(decision));
+    const production = productionElements.has(decision.elementId); const match = production === decision.eligible;
     if (decision.wallPosition !== 'tip') { walls += 1; decision.eligible ? eligibleWalls += 1 : fixedWalls += 1; }
     match ? matches += 1 : mismatches += 1;
     if (!match) mismatchCounts.set(category(decision), (mismatchCounts.get(category(decision)) ?? 0) + 1);
     if (decision.projectionStatus !== 'ONE_PROJECTED_PRIMITIVE') projectionFailures.set(decision.projectionStatus, (projectionFailures.get(decision.projectionStatus) ?? 0) + 1);
-    console.log(`${decision.wallPosition === 'tip' ? 'Tip' : decision.wallPosition === 'leading' ? 'Leading wall' : 'Trailing wall'}:\n- Tap ID: ${decision.tapId}\n- Tap index: ${decision.tapIndex}\n- Position: ${decision.tapPosition}\n- element ID: ${decision.elementId}\n- semantic eligibility: ${decision.eligible}\n- reason: ${decision.reason}\n- projection status: ${decision.projectionStatus}\n- production eligibility: ${production}\n- ${match ? 'match' : `mismatch (${category(decision)})`}`);
+    console.log(`${decision.wallPosition === 'tip' ? 'Tip' : decision.wallPosition === 'leading' ? 'Leading wall' : 'Trailing wall'}:\n- Tap ID: ${decision.tapId}\n- Tap index: ${decision.tapIndex}\n- Position: ${decision.tapPosition}\n- element ID: ${decision.elementId}\n- semantic eligibility: ${decision.eligible}\n- reason: ${decision.reason}\n- projection status: ${decision.projectionStatus}\n- legacy role eligibility: ${legacy}\n- production semantic eligibility: ${production}\n- ${match ? 'match' : `mismatch (${category(decision)})`}`);
   });
 });
 
