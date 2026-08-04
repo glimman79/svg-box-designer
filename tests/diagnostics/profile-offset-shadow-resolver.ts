@@ -1,7 +1,8 @@
-import type { GeneratedProfile, GeneratedSegmentReference } from '../../src/app/generatedProfiles';
+import type { GeneratedProfile, GeneratedProfileElement, GeometryProjection } from '../../src/app/generatedProfiles';
 
 export type ShadowProfileOffsetDecision = Readonly<{
-  reference: GeneratedSegmentReference;
+  element: GeneratedProfileElement;
+  projection: GeometryProjection;
   eligible: true;
 }>;
 
@@ -15,7 +16,8 @@ export type ShadowProfileOffsetDecision = Readonly<{
  */
 export const resolveShadowProfileOffsetEligibility = (
   profile: GeneratedProfile,
-): ReadonlyArray<ShadowProfileOffsetDecision> => profile.orderedElements.map((reference) => ({
-  reference,
-  eligible: true,
-}));
+): ReadonlyArray<ShadowProfileOffsetDecision> => profile.orderedElements.map((element) => {
+  const projection = profile.geometryProjections.find((candidate) => candidate.id === element.geometryProjectionId);
+  if (!projection) throw new Error(`Missing geometry projection ${element.geometryProjectionId}`);
+  return { element, projection, eligible: true };
+});

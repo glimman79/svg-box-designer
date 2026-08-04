@@ -59,11 +59,11 @@ const adjacentFixture = (edgeCount: 2 | 4) => {
 
 const project = (profile: NonNullable<GeneratedGeometryItem['generatedProfiles']>[number], points: readonly Point[]) => {
   const mask = points.map(() => false);
-  for (const { reference, eligible } of resolveShadowProfileOffsetEligibility(profile)) {
+  for (const { projection, eligible } of resolveShadowProfileOffsetEligibility(profile)) {
     // A collapsed leading/trailing section is an attachment marker, not a
     // generated contour segment.
-    if (close(reference.start, reference.end)) continue;
-    const index = points.findIndex((start, candidate) => close(start, reference.start) && close(points[(candidate + 1) % points.length], reference.end));
+    if (close(projection.start, projection.end)) continue;
+    const index = points.findIndex((start, candidate) => close(start, projection.start) && close(points[(candidate + 1) % points.length], projection.end));
     if (index >= 0) mask[index] = eligible;
   }
   return mask;
@@ -95,12 +95,15 @@ for (const testCase of cases) {
         const differingKinds = new Set(production.flatMap((value, index) => {
           if (value === shadow[index]) return [];
           const start = contour.points![index]; const end = contour.points![(index + 1) % contour.points!.length];
-          return profile.orderedElements.filter((element) => close(element.start, start) && close(element.end, end)).map((element) => element.kind);
+          return profile.orderedElements.filter((element) => {
+            const projection = profile.geometryProjections.find((candidate) => candidate.id === element.geometryProjectionId);
+            return !!projection && close(projection.start, start) && close(projection.end, end);
+          }).map((element) => element.kind);
         }));
         const category = `production geometric filtering of ${[...differingKinds].join('/') || 'unmapped'} elements`;
         categories.set(category, (categories.get(category) ?? 0) + 1);
       }
-      console.log(`\nProfile ${profile.id}\nPanel: ${profile.panelId}\nGenerator: ${profile.generatorType}\nOperation: ${profile.operationId}\nSource edge: ${profile.sourceEdgeId} ${point(profile.sourceEdgeDirection.start)} -> ${point(profile.sourceEdgeDirection.end)}\nTap count: ${profile.orderedTaps.length}\nTap order: ${profile.orderedTaps.map((tap) => `${tap.tapIndex}:${tap.id}`).join(', ') || '(none)'}\nSegment references: ${profile.orderedElements.map((element) => `${element.id} [${element.kind}] ${point(element.start)} -> ${point(element.end)}`).join(', ')}\nProduction eligibility\n${marks(production)}\nShadow eligibility\n${marks(shadow)}\nFirst differing segment: ${firstDifference < 0 ? 'none' : `${firstDifference} ${point(contour.points[firstDifference])} -> ${point(contour.points[(firstDifference + 1) % contour.points.length])}; production=${production[firstDifference]}; shadow=${shadow[firstDifference]}`}\nRESULT\n${result}`);
+      console.log(`\nProfile ${profile.id}\nPanel: ${profile.panelId}\nGenerator: ${profile.generatorType}\nOperation: ${profile.operationId}\nSource edge: ${profile.sourceEdgeId} ${point(profile.sourceEdgeDirection.start)} -> ${point(profile.sourceEdgeDirection.end)}\nTap count: ${profile.orderedTaps.length}\nTap order: ${profile.orderedTaps.map((tap) => `${tap.tapIndex}:${tap.id}`).join(', ') || '(none)'}\nProfileElements: ${profile.orderedElements.map((element) => `${element.profileOrder}:${element.id} [${element.kind}] tap=${element.tapId ?? 'none'} -> ${element.geometryProjectionId}`).join(', ')}\nGeometry projections: ${profile.geometryProjections.map((projection) => `${projection.id} -> current contour segment ${point(projection.start)} -> ${point(projection.end)}`).join(', ')}\nProduction eligibility\n${marks(production)}\nShadow eligibility\n${marks(shadow)}\nFirst differing segment: ${firstDifference < 0 ? 'none' : `${firstDifference} ${point(contour.points[firstDifference])} -> ${point(contour.points[(firstDifference + 1) % contour.points.length])}; production=${production[firstDifference]}; shadow=${shadow[firstDifference]}`}\nRESULT\n${result}`);
     }
   }
 }
