@@ -9,7 +9,7 @@ import {
   pointsMatch,
   pointsToClosedPathD,
 } from './sharedGeometry';
-import type { PanelContour } from './sharedGeometry';
+import type { ContourSide, PanelContour } from './sharedGeometry';
 import type { Point } from '../svgUtils';
 
 export type ProfileDirection = 'OUTWARD' | 'INWARD';
@@ -49,6 +49,28 @@ const areCollinear = (previous: Point, current: Point, next: Point) => {
   const secondX = next.x - current.x;
   const secondY = next.y - current.y;
   return Math.abs(firstX * secondY - firstY * secondX) <= cornerTouchTolerance;
+};
+
+export const isRedundantContiguousCollinearJoin = (previousSide: ContourSide, currentSide: ContourSide) => {
+  const coordinates = [
+    previousSide.start.x, previousSide.start.y, previousSide.end.x, previousSide.end.y,
+    currentSide.start.x, currentSide.start.y, currentSide.end.x, currentSide.end.y,
+  ];
+  if (coordinates.some((coordinate) => !Number.isFinite(coordinate))) return false;
+  if (!pointsMatch(previousSide.end, currentSide.start)) return false;
+
+  const previousDx = previousSide.end.x - previousSide.start.x;
+  const previousDy = previousSide.end.y - previousSide.start.y;
+  const currentDx = currentSide.end.x - currentSide.start.x;
+  const currentDy = currentSide.end.y - currentSide.start.y;
+  const previousLength = Math.hypot(previousDx, previousDy);
+  const currentLength = Math.hypot(currentDx, currentDy);
+  if (previousLength <= cornerTouchTolerance || currentLength <= cornerTouchTolerance) return false;
+
+  const normalizedCross = Math.abs((previousDx * currentDy) - (previousDy * currentDx))
+    / (previousLength * currentLength);
+  const dotProduct = (previousDx * currentDx) + (previousDy * currentDy);
+  return normalizedCross <= cornerTouchTolerance && dotProduct > 0;
 };
 
 export const cleanContourPointsForOffset = (points: PanelContour): PanelContour => {
@@ -181,6 +203,12 @@ const reconstructSelectiveProfile = (profile: FinalContour, signedDistanceMm: nu
     // condition as a reconstruction failure.
     if (selectedSegments[previousIndex] !== selectedSegments[index]) {
       result.push({ ...previousSide.end }, { ...side.start });
+    } else if (!selectedSegments[previousIndex] && !selectedSegments[index]
+      && isRedundantContiguousCollinearJoin(previousSide, side)) {
+      // Protected semantic attachment anchors remain in the source metadata,
+      // but a contiguous straight-through unchanged vertex is numerically
+      // redundant and need not be emitted into the reconstructed contour.
+      // Omit the shared point; the adjacent sides describe one straight edge.
     } else {
       reconstructionFailed = true;
     }
