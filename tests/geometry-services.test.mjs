@@ -24,7 +24,7 @@ const load = (relativePath) => {
   return loadedModule.exports;
 };
 
-const { geometryServices } = load('src/app/geometryServices.ts');
+const { geometryServices, isRedundantContiguousCollinearJoin } = load('src/app/geometryServices.ts');
 const { applyProfileOffset, applySlotClearance, compensateClassifiedContours } = load('src/app/manufacturingCompensation.ts');
 const { createManufacturingGeometry } = load('src/app/manufacturingGeometry.ts');
 const { DEFAULT_PROJECT_SETTINGS } = load('src/app/projectDefaults.ts');
@@ -94,6 +94,82 @@ const selectedTBProfiles = [true, true, true, true, true, true, true, true, true
 const horizontalNegative = profileOffsetSelective(horizontalTB, selectedTBProfiles, -0.9);
 const horizontalPositive = profileOffsetSelective(horizontalTB, selectedTBProfiles, 0.9);
 const roundedPoints = (points) => points.map(({ x, y }) => ({ x: Number(x.toFixed(6)), y: Number(y.toFixed(6)) }));
+
+const partialTBB = [
+  { x: 0, y: 5 }, { x: 0, y: 0 }, { x: 22.5, y: 0 }, { x: 22.5, y: 5 },
+  { x: 37.5, y: 5 }, { x: 37.5, y: 0 }, { x: 52.5, y: 0 }, { x: 52.5, y: 5 },
+  { x: 67.5, y: 5 }, { x: 67.5, y: 0 }, { x: 90, y: 0 }, { x: 90, y: 5 },
+  { x: 90, y: 40 }, { x: 0, y: 40 },
+];
+const partialTBBMask = partialTBB.map((_, index) => index >= 1 && index <= 9);
+const partialTBBRoles = partialTBB.map(() => undefined);
+partialTBBRoles[0] = 'source-boundary-start';
+partialTBBRoles[10] = 'source-boundary-end';
+const compensatePartialTBB = (points, mask, value) => geometryServices.compensateProfile({
+  ...outer, points, pathD: undefined, compensationProfile: mask, segmentTapRoles: partialTBBRoles,
+}, value, 'INWARD');
+const expectedPartialTBBPositive = [
+  { x: 0, y: -0.9 }, { x: 23.4, y: -0.9 }, { x: 23.4, y: 4.1 },
+  { x: 36.6, y: 4.1 }, { x: 36.6, y: -0.9 }, { x: 53.4, y: -0.9 },
+  { x: 53.4, y: 4.1 }, { x: 66.6, y: 4.1 }, { x: 66.6, y: -0.9 },
+  { x: 90, y: -0.9 }, { x: 90, y: 40 }, { x: 0, y: 40 },
+];
+const partialTBBPositive = compensatePartialTBB(partialTBB, partialTBBMask, 0.9);
+assert.ok(partialTBBPositive, 'partial TB-B reconstruction accepts redundant protected unchanged anchors');
+assert.deepEqual(roundedPoints(partialTBBPositive.points), expectedPartialTBBPositive, 'partial TB-B +0.90 mm reconstructs the proven candidate contour');
+const partialTBBNegative = compensatePartialTBB(partialTBB, partialTBBMask, -0.9);
+assert.ok(partialTBBNegative, 'partial TB-B -0.90 mm reconstructs independently of offset direction');
+
+const signedArea = (points) => points.reduce((area, point, index) => {
+  const next = points[(index + 1) % points.length];
+  return area + point.x * next.y - next.x * point.y;
+}, 0) / 2;
+for (const candidate of [partialTBBPositive, partialTBBNegative]) {
+  assert.ok(candidate.points.length >= 3 && candidate.points.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y)), 'partial TB-B result has at least three finite points');
+  candidate.points.forEach((point, index) => assert.notDeepEqual(point, candidate.points[(index + 1) % candidate.points.length], 'partial TB-B result has no consecutive duplicate or zero-length side'));
+  assert.match(candidate.pathD, / Z$/, 'partial TB-B result is emitted as a closed contour');
+  assert.notEqual(signedArea(candidate.points), 0, 'partial TB-B result preserves non-zero winding');
+  assert.equal(Math.sign(signedArea(candidate.points)), Math.sign(signedArea(partialTBB)), 'partial TB-B result preserves source winding');
+}
+
+const transformFixture = (points, transform, reverse = false) => {
+  const transformed = points.map(transform);
+  return reverse ? [transformed[0], ...transformed.slice(1).reverse()] : transformed;
+};
+for (const [name, transform, reverse] of [
+  ['horizontal counter-clockwise', ({ x, y }) => ({ x, y }), false],
+  ['vertical counter-clockwise', ({ x, y }) => ({ x: -y, y: x }), false],
+  ['opposite horizontal side', ({ x, y }) => ({ x: 90 - x, y: 40 - y }), false],
+  ['horizontal clockwise', ({ x, y }) => ({ x, y }), true],
+  ['vertical clockwise', ({ x, y }) => ({ x: -y, y: x }), true],
+]) {
+  const points = transformFixture(partialTBB, transform, reverse);
+  const mask = reverse ? [partialTBBMask.at(-1), ...partialTBBMask.slice(0, -1).reverse()] : partialTBBMask;
+  const roles = points.map(() => undefined);
+  const sourceStart = points.findIndex((point) => point.x === transform(partialTBB[0]).x && point.y === transform(partialTBB[0]).y);
+  const sourceEnd = points.findIndex((point) => point.x === transform(partialTBB[11]).x && point.y === transform(partialTBB[11]).y);
+  roles[sourceStart] = 'source-boundary-start';
+  roles[(sourceEnd + points.length - 1) % points.length] = 'source-boundary-end';
+  for (const value of [0.9, -0.9]) {
+    const result = geometryServices.compensateProfile({ ...outer, points, pathD: undefined, compensationProfile: mask, segmentTapRoles: roles }, value, 'INWARD');
+    assert.ok(result, `${name} partial TB-B reconstructs at signed offset ${value}`);
+    assert.equal(Math.sign(signedArea(result.points)), Math.sign(signedArea(points)), `${name} preserves winding at signed offset ${value}`);
+  }
+}
+
+const side = (start, end) => ({ start, end });
+assert.equal(isRedundantContiguousCollinearJoin(side({ x: 0, y: 0 }, { x: 5, y: 0 }), side({ x: 5, y: 1 }, { x: 10, y: 1 })), false, 'parallel non-collinear unchanged sides remain unsafe');
+assert.equal(isRedundantContiguousCollinearJoin(side({ x: 0, y: 0 }, { x: 5, y: 0 }), side({ x: 6, y: 0 }, { x: 10, y: 0 })), false, 'disconnected collinear unchanged sides remain unsafe');
+assert.equal(isRedundantContiguousCollinearJoin(side({ x: 0, y: 0 }, { x: 5, y: 0 }), side({ x: 5, y: 0 }, { x: 0, y: 0 })), false, 'opposite-direction collinear unchanged sides remain unsafe');
+assert.equal(isRedundantContiguousCollinearJoin(side({ x: 5, y: 0 }, { x: 5, y: 0 }), side({ x: 5, y: 0 }, { x: 10, y: 0 })), false, 'zero-length unchanged sides remain unsafe');
+assert.equal(isRedundantContiguousCollinearJoin(side({ x: 0, y: 0 }, { x: 5, y: 0 }), side({ x: 5, y: 0 }, { x: Number.NaN, y: 0 })), false, 'non-finite unchanged sides remain unsafe');
+const unsupportedSelectedJoin = {
+  ...outer,
+  points: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
+  compensationProfile: [true, true, true, true, true],
+  segmentTapRoles: [undefined, 'source-boundary-start', undefined, undefined, undefined],
+};
+assert.equal(geometryServices.compensateProfile(unsupportedSelectedJoin, 0.9, 'INWARD'), null, 'unsupported selected/selected null intersection retains safe failure');
 assert.deepEqual(roundedPoints(horizontalNegative.points), [
   { x: 0, y: 0.9 }, { x: 3.9, y: 0.9 }, { x: 3.9, y: -1.1 }, { x: 4.1, y: -1.1 },
   { x: 4.1, y: 0.9 }, { x: 8.9, y: 0.9 }, { x: 8.9, y: -1.1 }, { x: 8.1, y: -1.1 },
