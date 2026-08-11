@@ -310,6 +310,14 @@ export const buildGeneratedTBGeometryItems = (
     }
 
     const pathD = pointsToClosedPathD(result.contour);
+    const tabOperations = buildTabOperations(panel, operations, tabSegmentPlansByConnectionId);
+    const operationsBySideIndex = new Map(tabOperations.map((operation) => [panel.edgeIds.indexOf(operation.edgeId), operation]));
+    const roleEffectiveGeometry = buildRoleEffectiveJunctionGeometry(insetContour, operationsBySideIndex);
+
+    if (!roleEffectiveGeometry.ok) {
+      return [];
+    }
+
     return [{
       id: `generated:panel:${panel.id}`, operationId, toolType: 'TB', kind: 'PANEL_PATH', pathD,
       source: { operationId, panelIds: [panel.id], edgeIds: [...panel.edgeIds], connectionIds },
@@ -319,8 +327,8 @@ export const buildGeneratedTBGeometryItems = (
       profileGroups: operations.map((operation) => createBoundaryProfileGroup({
         toolType: 'TB', sourceOperationId: operationId, connectionId: operation.connectionId,
         panelId: panel.id, sourceEdgeId: operation.edgeId,
-        attachmentStart: insetContour[panel.edgeIds.indexOf(operation.edgeId)],
-        attachmentEnd: insetContour[(panel.edgeIds.indexOf(operation.edgeId) + 1) % insetContour.length],
+        attachmentStart: roleEffectiveGeometry.junctions[panel.edgeIds.indexOf(operation.edgeId)],
+        attachmentEnd: roleEffectiveGeometry.junctions[(panel.edgeIds.indexOf(operation.edgeId) + 1) % insetContour.length],
       })),
       generatedProfiles: operations.map((operation) => {
         const edgeIndex = panel.edgeIds.indexOf(operation.edgeId);
@@ -328,7 +336,7 @@ export const buildGeneratedTBGeometryItems = (
         return createGeneratedProfile({
           toolType: 'TB', connectionId: operation.connectionId, operationId, panelId: panel.id, sourceEdgeId: operation.edgeId,
           sourceEdgeStart: sourceEdge.start, sourceEdgeEnd: sourceEdge.end,
-          attachmentStart: insetContour[edgeIndex], attachmentEnd: insetContour[(edgeIndex + 1) % insetContour.length],
+          attachmentStart: roleEffectiveGeometry.junctions[edgeIndex], attachmentEnd: roleEffectiveGeometry.junctions[(edgeIndex + 1) % insetContour.length],
           taps: generatedTaps,
         });
       }),
@@ -614,26 +622,10 @@ export const isBBCorner = (
 export const addBBCornerJoin = (
   tabbedContour: PanelContour,
   insetCorner: Point,
-  previousInsetSide: ContourSide,
-  currentInsetSide: ContourSide,
-  depthMm: number,
-  contourWindingSign: number,
+  previousOutwardSide: ContourSide,
+  currentOutwardSide: ContourSide,
+  outwardCorner: Point,
 ): void => {
-  const previousOutwardSide = offsetContourSide(previousInsetSide, -depthMm * contourWindingSign);
-  const currentOutwardSide = offsetContourSide(currentInsetSide, -depthMm * contourWindingSign);
-
-  if (!previousOutwardSide || !currentOutwardSide) {
-    addContourPoint(tabbedContour, insetCorner);
-    return;
-  }
-
-  const outwardCorner = lineIntersection(previousOutwardSide, currentOutwardSide);
-
-  if (!outwardCorner) {
-    addContourPoint(tabbedContour, insetCorner);
-    return;
-  }
-
   addContourPoint(tabbedContour, insetCorner);
   addContourPoint(tabbedContour, previousOutwardSide.end);
   addContourPoint(tabbedContour, outwardCorner);
@@ -687,6 +679,50 @@ export const removeInteriorBacktrackSpurs = (contour: PanelContour): PanelContou
   return cleanedContour;
 };
 
+type RoleEffectiveJunctionGeometry =
+  | { ok: true; sides: ContourSide[]; junctions: Point[] }
+  | { ok: false; reason: string };
+
+const buildRoleEffectiveJunctionGeometry = (
+  contour: PanelContour,
+  tabOperationsBySideIndex: Map<number, PanelTabOperation>,
+): RoleEffectiveJunctionGeometry => {
+  const contourSides = buildContourSides(contour);
+  const contourWindingSign = getContourSignedArea(contour) >= 0 ? 1 : -1;
+  const effectiveSides = contourSides.map((side, sideIndex) => {
+    const operation = tabOperationsBySideIndex.get(sideIndex);
+    return operation?.role === 'B'
+      ? offsetContourSide(side, -getOperationDepthMm(operation) * contourWindingSign)
+      : side;
+  });
+  const invalidSideIndex = effectiveSides.findIndex((side) => !side);
+
+  if (invalidSideIndex !== -1) {
+    return { ok: false, reason: `TB side ${invalidSideIndex} cannot generate its role-effective support line.` };
+  }
+
+  const sides = effectiveSides as ContourSide[];
+  const junctions = contourSides.map((side, sideIndex) => {
+    const previousSideIndex = (sideIndex + contourSides.length - 1) % contourSides.length;
+    return tabOperationsBySideIndex.has(previousSideIndex) && tabOperationsBySideIndex.has(sideIndex)
+      ? lineIntersection(sides[previousSideIndex], sides[sideIndex])
+      : side.start;
+  });
+  const invalidJunctionIndex = junctions.findIndex((junction) => (
+    !junction || !Number.isFinite(junction.x) || !Number.isFinite(junction.y)
+  ));
+
+  if (invalidJunctionIndex !== -1) {
+    const previousSideIndex = (invalidJunctionIndex + contourSides.length - 1) % contourSides.length;
+    return {
+      ok: false,
+      reason: `TB junction ${previousSideIndex}/${invalidJunctionIndex} cannot be generated because its role-effective support lines do not have a finite intersection.`,
+    };
+  }
+
+  return { ok: true, sides, junctions: junctions as Point[] };
+};
+
 export const applyTabsToContour = (
   panel: SvgPanel,
   contour: PanelContour,
@@ -708,34 +744,44 @@ export const applyTabsToContour = (
     }
   });
 
-  const contourWindingSign = getContourSignedArea(contour) >= 0 ? 1 : -1;
   const tabbedContour: PanelContour = [];
+  const roleEffectiveGeometry = buildRoleEffectiveJunctionGeometry(contour, tabOperationsBySideIndex);
+
+  if (!roleEffectiveGeometry.ok) {
+    return roleEffectiveGeometry;
+  }
+  const { sides: effectiveSides, junctions: effectiveJunctions } = roleEffectiveGeometry;
+  const contourWindingSign = getContourSignedArea(contour) >= 0 ? 1 : -1;
 
   contourSides.forEach((side, sideIndex) => {
     const operation = tabOperationsBySideIndex.get(sideIndex);
+    const nextSideIndex = (sideIndex + 1) % contourSides.length;
+    const effectiveEnd = isBBCorner(nextSideIndex, contourSides.length, tabOperationsBySideIndex)
+      ? side.end
+      : effectiveJunctions[nextSideIndex] as Point;
 
     if (isBBCorner(sideIndex, contourSides.length, tabOperationsBySideIndex)) {
-      const previousSide = contourSides[(sideIndex + contourSides.length - 1) % contourSides.length];
-      const currentOperation = tabOperationsBySideIndex.get(sideIndex);
+      const previousEffectiveSide = effectiveSides[(sideIndex + contourSides.length - 1) % contourSides.length];
+      const currentEffectiveSide = effectiveSides[sideIndex];
+      const effectiveJunction = effectiveJunctions[sideIndex];
 
-      if (currentOperation) {
+      if (previousEffectiveSide && currentEffectiveSide && effectiveJunction) {
         addBBCornerJoin(
           tabbedContour,
           side.start,
-          previousSide,
-          side,
-          getOperationDepthMm(currentOperation),
-          contourWindingSign,
+          previousEffectiveSide,
+          currentEffectiveSide,
+          effectiveJunction,
         );
       } else {
         addContourPoint(tabbedContour, side.start);
       }
     } else {
-      addContourPoint(tabbedContour, side.start);
+      addContourPoint(tabbedContour, effectiveJunctions[sideIndex] as Point);
     }
 
     if (!operation || operation.segments.length === 0) {
-      addContourPoint(tabbedContour, side.end);
+      addContourPoint(tabbedContour, effectiveEnd);
       return;
     }
 
@@ -774,7 +820,7 @@ export const applyTabsToContour = (
       addContourPoint(tabbedContour, baseEnd);
     });
 
-    addContourPoint(tabbedContour, side.end);
+    addContourPoint(tabbedContour, effectiveEnd);
   });
 
   const cleanedTabbedContour = removeInteriorBacktrackSpurs(tabbedContour);
