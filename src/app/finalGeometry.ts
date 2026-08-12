@@ -126,6 +126,18 @@ const identifyGeneratedTaps = (generated: Point[], taps: ReadonlyArray<Generated
   return { ids, roles };
 };
 
+const identifySourceEdges = (generated: Point[], imported: Point[], edgeIds: string[], profileIds: ReadonlyArray<GeneratedProfileId | null>): Array<string | null> => (
+  generated.map((start, index) => {
+    if (profileIds[index]) return null;
+    const end = generated[(index + 1) % generated.length];
+    const sourceIndex = imported.findIndex((sourceStart, importedIndex) => (
+      pointOnImportedSegment(start, sourceStart, imported[(importedIndex + 1) % imported.length])
+      && pointOnImportedSegment(end, sourceStart, imported[(importedIndex + 1) % imported.length])
+    ));
+    return sourceIndex >= 0 ? edgeIds[sourceIndex] ?? null : null;
+  })
+);
+
 
 const pathDToClosedContourForFinalGeometry = (pathD: string): Point[] | null => {
   const tokens = pathD.match(/[a-zA-Z]|[-+]?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
@@ -201,9 +213,11 @@ export const buildFinalGeometry = (
       ...(generatedPoints ? (() => {
         const compensationProfile = identifyAutomaticCompensationProfile(generatedPoints, outerPanelContour);
         const segmentProfileIds = identifyProfileGroups(generatedPoints, outerPanelContour, panel.edgeIds, replacement?.profileGroups ?? [], compensationProfile);
+        const segmentSourceEdgeIds = identifySourceEdges(generatedPoints, outerPanelContour, panel.edgeIds, segmentProfileIds);
         const tapSegments = identifyGeneratedTaps(generatedPoints, replacement?.generatedTaps ?? []);
-        return { segmentProfileIds, segmentTapIds: tapSegments.ids, segmentTapRoles: tapSegments.roles, compensationProfile };
+        return { segmentProfileIds, segmentSourceEdgeIds, segmentTapIds: tapSegments.ids, segmentTapRoles: tapSegments.roles, compensationProfile };
       })() : {}),
+      ...(!generatedPoints ? { segmentSourceEdgeIds: [...panel.edgeIds] } : {}),
       ...(replacement ? { profileMaterialSide: 'GENERATED_MATING' as const } : {}),
       geometryType: replacement?.geometryType ?? 'IMPORTED_OUTER',
       manufacturing: manufacturingMetadataForGeometryType(replacement?.geometryType ?? 'IMPORTED_OUTER'),
@@ -253,6 +267,7 @@ export const buildFinalGeometry = (
     if (contour.points) Object.freeze(contour.points);
     if (contour.compensationProfile) Object.freeze(contour.compensationProfile);
     if (contour.segmentProfileIds) Object.freeze(contour.segmentProfileIds);
+    if (contour.segmentSourceEdgeIds) Object.freeze(contour.segmentSourceEdgeIds);
     if (contour.segmentTapIds) Object.freeze(contour.segmentTapIds);
     if (contour.segmentTapRoles) Object.freeze(contour.segmentTapRoles);
     if (contour.manufacturing) Object.freeze(contour.manufacturing);
