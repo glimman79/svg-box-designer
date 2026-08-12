@@ -32,6 +32,8 @@ export type ClassifiedContour = {
   compensationProfile?: ReadonlyArray<boolean>;
   /** Immutable generator-authored semantic membership, aligned one-to-one with segments. */
   segmentProfileIds?: ReadonlyArray<GeneratedProfileId | null>;
+  /** Imported source-edge ownership aligned one-to-one with contour segments. Generated profiles take precedence. */
+  segmentSourceEdgeIds?: ReadonlyArray<string | null>;
   /** Generator-authored tap membership aligned one-to-one with contour segments. */
   segmentTapIds?: ReadonlyArray<GeneratedTapId | null>;
   /** Generator-authored Tap Clearance role aligned one-to-one with segments. */

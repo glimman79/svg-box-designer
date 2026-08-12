@@ -1,10 +1,12 @@
 import type { GeneratedProfileId } from './generatedProfiles';
+import type { ProfileOffsetSelectionTargetId } from './profileOffsetSelection';
+import { parseProfileOffsetSelectionTarget } from './profileOffsetSelection';
 
 export type ProjectSettings = {
   kerfMm: number;
   profileOffsetMm: number;
   slotClearanceMm: number;
-  selectedProfileOffsetIds: GeneratedProfileId[];
+  selectedProfileOffsetIds: ProfileOffsetSelectionTargetId[];
   tapClearanceMm: number;
 };
 
@@ -22,8 +24,8 @@ export const normalizeProjectSettings = (value: LegacyProjectSettings | null | u
   const diagnostics: string[] = [];
   const rawIds: unknown = value?.selectedProfileOffsetIds ?? value?.selectedClearanceProfileIds ?? [];
   const ids = Array.isArray(rawIds)
-    ? rawIds.filter((id): id is GeneratedProfileId => {
-      const valid = typeof id === 'string' && id.length > 0;
+    ? rawIds.filter((id): id is ProfileOffsetSelectionTargetId => {
+      const valid = typeof id === 'string' && parseProfileOffsetSelectionTarget(id) !== null;
       if (!valid) diagnostics.push('Discarded a malformed Profile Offset profile selection.');
       return valid;
     })

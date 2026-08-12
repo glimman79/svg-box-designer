@@ -18,6 +18,7 @@ const cloneFinalContour = (contour: FinalContour): FinalContour => ({
   ...(contour.points ? { points: contour.points.map((point) => ({ ...point })) } : {}),
   ...(contour.compensationProfile ? { compensationProfile: [...contour.compensationProfile] } : {}),
   ...(contour.segmentProfileIds ? { segmentProfileIds: [...contour.segmentProfileIds] } : {}),
+  ...(contour.segmentSourceEdgeIds ? { segmentSourceEdgeIds: [...contour.segmentSourceEdgeIds] } : {}),
   ...(contour.segmentTapIds ? { segmentTapIds: [...contour.segmentTapIds] } : {}),
   ...(contour.segmentTapRoles ? { segmentTapRoles: [...contour.segmentTapRoles] } : {}),
   ...(contour.diagnostics ? { diagnostics: [...contour.diagnostics] } : {}),

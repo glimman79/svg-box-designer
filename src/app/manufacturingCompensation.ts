@@ -1,5 +1,7 @@
 import type { ClassifiedContour, FinalContour } from './contourClassification';
 import type { GeneratedProfileId } from './generatedProfiles';
+import type { ProfileOffsetSelectionTargetId } from './profileOffsetSelection';
+import { createOrdinaryProfileOffsetTargetId, parseProfileOffsetSelectionTarget } from './profileOffsetSelection';
 import { classifyFinalContours } from './contourClassification';
 import { cloneManufacturingMetadata } from './manufacturingMetadata';
 import { getManufacturingPolicy } from './manufacturingPolicy';
@@ -67,7 +69,7 @@ export const applyTapClearance = (
   return manufacturingGeometry;
 };
 
-export const resolveProfileOffsetProfileSelection = (manufacturingGeometry: ManufacturingGeometry, selectedIds: ReadonlyArray<GeneratedProfileId>): ManufacturingGeometry => {
+export const resolveProfileOffsetProfileSelection = (manufacturingGeometry: ManufacturingGeometry, selectedIds: ReadonlyArray<ProfileOffsetSelectionTargetId | GeneratedProfileId>): ManufacturingGeometry => {
   const authoredAmbiguousIds = new Set(manufacturingGeometry.diagnostics.filter((diagnostic) => diagnostic.code === 'CLEARANCE_PROFILE_AMBIGUOUS').map((diagnostic) => diagnostic.id));
   const locations = new Map<GeneratedProfileId, Set<string>>();
   manufacturingGeometry.finalContourList.forEach((contour) => {
@@ -80,22 +82,31 @@ export const resolveProfileOffsetProfileSelection = (manufacturingGeometry: Manu
   });
   const selected = new Set(selectedIds);
   selected.forEach((id) => {
-    const matched = locations.get(id);
+    const target = parseProfileOffsetSelectionTarget(id);
+    if (!target || target.kind === 'ordinary-source-edge') return;
+    const generatedId = target.generatedProfileId;
+    const matched = locations.get(generatedId);
     if (!matched) manufacturingGeometry.diagnostics.push({ id, code: 'CLEARANCE_PROFILE_MISSING', severity: 'warning', message: `Selected Profile Offset profile ${id} no longer exists.` });
-    else if (matched.size > 1 || authoredAmbiguousIds.has(id)) manufacturingGeometry.diagnostics.push({ id, code: 'CLEARANCE_PROFILE_AMBIGUOUS', severity: 'error', message: `Selected Profile Offset profile ${id} is ambiguous.` });
+    else if (matched.size > 1 || authoredAmbiguousIds.has(generatedId)) manufacturingGeometry.diagnostics.push({ id, code: 'CLEARANCE_PROFILE_AMBIGUOUS', severity: 'error', message: `Selected Profile Offset profile ${id} is ambiguous.` });
   });
   manufacturingGeometry.finalContourList.forEach((contour) => {
-    // Profile selection only owns contours with authored profile IDs. Preserve
-    // the all-segment mask on S-generated slots for the independent
-    // Slot Clearance stage that follows.
-    if (!contour.segmentProfileIds) return;
-    if (!contour.points || contour.segmentProfileIds.length !== contour.points.length) {
-      contour.compensationProfile = contour.segmentProfileIds.map(() => false);
+    // Only outer contours carry selectable ownership provenance. S-generated
+    // slots therefore retain their independent Slot Clearance mask.
+    if (!contour.segmentProfileIds && !contour.segmentSourceEdgeIds) return;
+    const segmentCount = contour.points?.length ?? 0;
+    const profileIds = contour.segmentProfileIds ?? Array.from({ length: segmentCount }, () => null);
+    const sourceEdgeIds = contour.segmentSourceEdgeIds ?? Array.from({ length: segmentCount }, () => null);
+    if (!contour.points || profileIds.length !== segmentCount || sourceEdgeIds.length !== segmentCount) {
+      contour.compensationProfile = Array.from({ length: Math.max(profileIds.length, sourceEdgeIds.length) }, () => false);
       manufacturingGeometry.diagnostics.push({ id: contour.id, code: 'CLEARANCE_PROFILE_PROVENANCE_INVALID', severity: 'error', message: 'Profile Offset profile provenance does not align with contour segments.' });
       return;
     }
-    const ambiguous = contour.segmentProfileIds.some((id) => id && selected.has(id) && ((locations.get(id)?.size ?? 0) !== 1 || authoredAmbiguousIds.has(id)));
-    contour.compensationProfile = contour.segmentProfileIds.map((id) => !ambiguous && id !== null && selected.has(id));
+    const ambiguous = profileIds.some((id) => id && selected.has(id) && ((locations.get(id)?.size ?? 0) !== 1 || authoredAmbiguousIds.has(id)));
+    contour.compensationProfile = profileIds.map((profileId, index) => {
+      if (profileId) return !ambiguous && selected.has(profileId);
+      const sourceEdgeId = sourceEdgeIds[index];
+      return !!sourceEdgeId && !!contour.panelId && selected.has(createOrdinaryProfileOffsetTargetId(contour.panelId, sourceEdgeId));
+    });
   });
   return manufacturingGeometry;
 };
@@ -141,7 +152,7 @@ export const processManufacturingGeometry = (
   kerfMm: number,
   slotClearanceMm = 0,
   profileOffsetMm = 0,
-  selectedProfileOffsetIds: ReadonlyArray<GeneratedProfileId> = [],
+  selectedProfileOffsetIds: ReadonlyArray<ProfileOffsetSelectionTargetId | GeneratedProfileId> = [],
   tapClearanceMm = -0.10,
 ): ManufacturingGeometry => {
   const manufacturingGeometry = applyProfileOffset(resolveProfileOffsetProfileSelection(createManufacturingGeometry(finalGeometry), selectedProfileOffsetIds), profileOffsetMm);
@@ -161,7 +172,7 @@ export const buildKerfCompensatedPreviewFromFinalContours = (
   kerfMm: number,
   slotClearanceMm = 0,
   profileOffsetMm = 0,
-  selectedProfileOffsetIds: ReadonlyArray<GeneratedProfileId> = [],
+  selectedProfileOffsetIds: ReadonlyArray<ProfileOffsetSelectionTargetId | GeneratedProfileId> = [],
   tapClearanceMm = -0.10,
 ): ManufacturingGeometry => processManufacturingGeometry(
   { contours: finalContourList, diagnostics: [], generatedProfiles: [] },

@@ -12,6 +12,8 @@ import { DEFAULT_PROJECT_SETTINGS } from './app/projectDefaults';
 import type { ProjectSettings } from './app/projectSettings';
 import { normalizeProjectSettings } from './app/projectSettings';
 import type { GeneratedProfileId } from './app/generatedProfiles';
+import type { ProfileOffsetSelectionTargetId } from './app/profileOffsetSelection';
+import { createGeneratedProfileOffsetTargetId, createOrdinaryProfileOffsetTargetId } from './app/profileOffsetSelection';
 import { buildFinalGeometry as buildNativeFinalGeometry } from './app/finalGeometry';
 import { buildFinalGeometry } from './app/finalGeometryCompatibility';
 import { createGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
@@ -46,6 +48,8 @@ export { createManufacturingGeometry } from './app/manufacturingGeometry';
 export { normalizeProjectSettings } from './app/projectSettings';
 export { createGeneratedProfileId } from './app/generatedProfiles';
 export type { GeneratedProfileGroup, GeneratedProfileId } from './app/generatedProfiles';
+export { createGeneratedProfileOffsetTargetId, createOrdinaryProfileOffsetTargetId, parseProfileOffsetSelectionTarget } from './app/profileOffsetSelection';
+export type { ProfileOffsetSelectionTarget, ProfileOffsetSelectionTargetId } from './app/profileOffsetSelection';
 export { createGeneratedTapId } from './app/generatedTaps';
 export type { GeneratedTapGroup, GeneratedTapId } from './app/generatedTaps';
 export { getManufacturingPipelineForGeometryType } from './app/manufacturingMetadata';
@@ -737,7 +741,7 @@ function App() {
   const [activeHoleId, setActiveHoleId] = useState<string | null>(null);
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
   const [isProfileOffsetProfileSelectionActive, setIsProfileOffsetProfileSelectionActive] = useState(false);
-  const [hoveredProfileOffsetProfileId, setHoveredProfileOffsetProfileId] = useState<GeneratedProfileId | null>(null);
+  const [hoveredProfileOffsetProfileId, setHoveredProfileOffsetProfileId] = useState<ProfileOffsetSelectionTargetId | null>(null);
 
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
   const selectedLabelId = displayConnectionId;
@@ -927,20 +931,30 @@ function App() {
   const selectableProfileOffsetProfiles = useMemo(() => {
     const selected = new Set(projectSettings.selectedProfileOffsetIds);
     return finalGeometry.contours.flatMap((contour) => {
-      const paths = new Map<GeneratedProfileId, string[]>();
+      const paths = new Map<ProfileOffsetSelectionTargetId, string[]>();
       contour.segmentProfileIds?.forEach((id, index) => {
         if (!id || !contour.points) return;
+        const targetId = createGeneratedProfileOffsetTargetId(id);
         const start = contour.points[index];
         const end = contour.points[(index + 1) % contour.points.length];
-        const values = paths.get(id) ?? [];
+        const values = paths.get(targetId) ?? [];
         values.push(`M ${start.x} ${start.y} L ${end.x} ${end.y}`);
-        paths.set(id, values);
+        paths.set(targetId, values);
+      });
+      contour.segmentSourceEdgeIds?.forEach((sourceEdgeId, index) => {
+        if (!sourceEdgeId || !contour.panelId || !contour.points || contour.segmentProfileIds?.[index]) return;
+        const targetId = createOrdinaryProfileOffsetTargetId(contour.panelId, sourceEdgeId);
+        const start = contour.points[index];
+        const end = contour.points[(index + 1) % contour.points.length];
+        const values = paths.get(targetId) ?? [];
+        values.push(`M ${start.x} ${start.y} L ${end.x} ${end.y}`);
+        paths.set(targetId, values);
       });
       return [...paths].map(([id, parts]) => ({ id, contourId: contour.id, pathD: parts.join(' '), selected: selected.has(id), available: true }));
     });
   }, [finalGeometry, projectSettings.selectedProfileOffsetIds]);
 
-  const toggleProfileOffsetProfile = (id: GeneratedProfileId) => {
+  const toggleProfileOffsetProfile = (id: ProfileOffsetSelectionTargetId) => {
     const selected = projectSettings.selectedProfileOffsetIds;
     updateProjectSettings({ selectedProfileOffsetIds: selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id] });
   };

@@ -47,6 +47,11 @@ const generatedContourPolicy: ManufacturingPolicy = Object.freeze({
   diagnostics: noDiagnostics,
 });
 
+const importedOuterPolicy: ManufacturingPolicy = Object.freeze({
+  ...generatedContourPolicy,
+  diagnostics: noDiagnostics,
+});
+
 const generatedSlotPolicy: ManufacturingPolicy = Object.freeze({
   ...generatedContourPolicy,
   allowSlotClearance: true,
@@ -55,7 +60,7 @@ const generatedSlotPolicy: ManufacturingPolicy = Object.freeze({
 
 /** The sole mapping from manufacturing classifications to behaviour. */
 const policyByClassification: Readonly<Record<ManufacturingClassification, ManufacturingPolicy>> = Object.freeze({
-  IMPORTED_OUTER: fixedCutPolicy,
+  IMPORTED_OUTER: importedOuterPolicy,
   IMPORTED_HOLE: fixedCutPolicy,
   GENERATED_OUTER: generatedContourPolicy,
   GENERATED_SLOT: generatedSlotPolicy,
