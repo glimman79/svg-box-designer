@@ -69,8 +69,9 @@ export const isRedundantContiguousCollinearJoin = (previousSide: ContourSide, cu
 
   const normalizedCross = Math.abs((previousDx * currentDy) - (previousDy * currentDx))
     / (previousLength * currentLength);
-  const dotProduct = (previousDx * currentDx) + (previousDy * currentDy);
-  return normalizedCross <= cornerTouchTolerance && dotProduct > 0;
+  const normalizedDot = ((previousDx * currentDx) + (previousDy * currentDy))
+    / (previousLength * currentLength);
+  return normalizedCross <= cornerTouchTolerance && normalizedDot > 0;
 };
 
 export const cleanContourPointsForOffset = (points: PanelContour): PanelContour => {
@@ -203,10 +204,10 @@ const reconstructSelectiveProfile = (profile: FinalContour, signedDistanceMm: nu
     // condition as a reconstruction failure.
     if (selectedSegments[previousIndex] !== selectedSegments[index]) {
       result.push({ ...previousSide.end }, { ...side.start });
-    } else if (!selectedSegments[previousIndex] && !selectedSegments[index]
+    } else if (selectedSegments[previousIndex] === selectedSegments[index]
       && isRedundantContiguousCollinearJoin(previousSide, side)) {
       // Protected semantic attachment anchors remain in the source metadata,
-      // but a contiguous straight-through unchanged vertex is numerically
+      // but a contiguous straight-through same-selection vertex is numerically
       // redundant and need not be emitted into the reconstructed contour.
       // Omit the shared point; the adjacent sides describe one straight edge.
     } else {
