@@ -163,13 +163,41 @@ assert.equal(isRedundantContiguousCollinearJoin(side({ x: 0, y: 0 }, { x: 5, y: 
 assert.equal(isRedundantContiguousCollinearJoin(side({ x: 0, y: 0 }, { x: 5, y: 0 }), side({ x: 5, y: 0 }, { x: 0, y: 0 })), false, 'opposite-direction collinear unchanged sides remain unsafe');
 assert.equal(isRedundantContiguousCollinearJoin(side({ x: 5, y: 0 }, { x: 5, y: 0 }), side({ x: 5, y: 0 }, { x: 10, y: 0 })), false, 'zero-length unchanged sides remain unsafe');
 assert.equal(isRedundantContiguousCollinearJoin(side({ x: 0, y: 0 }, { x: 5, y: 0 }), side({ x: 5, y: 0 }, { x: Number.NaN, y: 0 })), false, 'non-finite unchanged sides remain unsafe');
-const unsupportedSelectedJoin = {
+const redundantSelectedJoin = {
   ...outer,
   points: [{ x: 0, y: 0 }, { x: 5, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
   compensationProfile: [true, true, true, true, true],
   segmentTapRoles: [undefined, 'source-boundary-start', undefined, undefined, undefined],
 };
-assert.equal(geometryServices.compensateProfile(unsupportedSelectedJoin, 0.9, 'INWARD'), null, 'unsupported selected/selected null intersection retains safe failure');
+assert.ok(geometryServices.compensateProfile(redundantSelectedJoin, 0.9, 'INWARD'), 'selected/selected redundant protected join reconstructs successfully');
+
+const canonicalTBB = [
+  { x: 0, y: 0 }, { x: 30, y: 0 }, { x: 30, y: -5 }, { x: 60, y: -5 }, { x: 60, y: 0 },
+  { x: 80, y: 0 }, { x: 90, y: 0 }, { x: 90, y: 5 }, { x: 90, y: 60 }, { x: 0, y: 60 },
+];
+const canonicalMask = canonicalTBB.map((_, index) => index === 6 || index === 7);
+const canonicalRoles = canonicalTBB.map(() => undefined);
+canonicalRoles[7] = 'source-boundary-start';
+for (const amount of [0.9, -0.9]) {
+  const reconstructed = geometryServices.compensateProfile({
+    ...outer, points: canonicalTBB, pathD: undefined, compensationProfile: canonicalMask, segmentTapRoles: canonicalRoles,
+  }, amount, 'INWARD');
+  assert.ok(reconstructed, `canonical TB-B [6,7] reconstructs at ${amount > 0 ? '+' : ''}${amount.toFixed(2)} mm`);
+  const expectedX = amount > 0 ? 89.1 : 90.9;
+  assert.ok(reconstructed.points.some((point, index, points) => point.x === expectedX
+    && points[(index + 1) % points.length].x === expectedX
+    && Math.abs(points[(index + 1) % points.length].y - point.y) === 60), 'selected boundary is one continuous displaced edge without its redundant anchor');
+}
+
+const multipleSelectedAnchors = {
+  ...outer,
+  points: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 7, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
+  compensationProfile: [true, true, true, true, true, true],
+  segmentTapRoles: [undefined, 'source-boundary-start', 'source-boundary-start', undefined, undefined, undefined],
+};
+const multipleResult = geometryServices.compensateProfile(multipleSelectedAnchors, 0.9, 'INWARD');
+assert.ok(multipleResult, 'a selected run reconstructs through multiple protected redundant collinear anchors');
+assert.equal(multipleResult.points.length, 4, 'multiple redundant selected joins are omitted from the numeric contour');
 assert.deepEqual(roundedPoints(horizontalNegative.points), [
   { x: 0, y: 0.9 }, { x: 3.9, y: 0.9 }, { x: 3.9, y: -1.1 }, { x: 4.1, y: -1.1 },
   { x: 4.1, y: 0.9 }, { x: 8.9, y: 0.9 }, { x: 8.9, y: -1.1 }, { x: 8.1, y: -1.1 },
