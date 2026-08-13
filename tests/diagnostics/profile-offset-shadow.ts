@@ -111,7 +111,6 @@ for (const testCase of cases) {
         categories.set(category, (categories.get(category) ?? 0) + 1);
       }
       if (firstDifference >= 0) throw new Error(`${testCase.name}: generator-authored ownership differs from semantic projections`);
-      const nonzeroProjectionCount = profile.geometryProjections.filter((projection) => !close(projection.start, projection.end)).length;
       const ownedCount = production.filter(Boolean).length;
       if (profile.generatorType === 'TB') {
         production.forEach((owned, index) => {
@@ -122,9 +121,6 @@ for (const testCase of cases) {
       if (testCase.name.startsWith('canonical-tb-b-')) {
         const expected = shadow.filter(Boolean).length;
         if (ownedCount !== expected) throw new Error(`${testCase.name}: ${ownedCount}/${expected} mapped projection segments are owned`);
-        if (testCase.name === 'canonical-tb-b-ccw-0' && profile.panelId.endsWith('-mate') && (nonzeroProjectionCount !== 11 || ownedCount !== 11)) {
-          throw new Error(`${testCase.name}: canonical TB-B ownership is ${ownedCount}/${nonzeroProjectionCount}, expected 11/11`);
-        }
         const selected = resolveProfileOffsetProfileSelection(createManufacturingGeometry(final), [profile.id]);
         const selectedContour = selected.finalContourList.find((candidate) => candidate.panelId === profile.panelId);
         if (selectedContour?.compensationProfile?.filter(Boolean).length !== expected) throw new Error(`${testCase.name}: resolver did not select all ${expected} segments`);

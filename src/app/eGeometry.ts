@@ -312,7 +312,7 @@ export const buildGeneratedTBGeometryItems = (
     const pathD = pointsToClosedPathD(result.contour);
     const tabOperations = buildTabOperations(panel, operations, tabSegmentPlansByConnectionId);
     const operationsBySideIndex = new Map(tabOperations.map((operation) => [panel.edgeIds.indexOf(operation.edgeId), operation]));
-    const roleEffectiveGeometry = buildRoleEffectiveJunctionGeometry(insetContour, operationsBySideIndex);
+    const roleEffectiveGeometry = buildRoleEffectiveJunctionGeometry(insetContour, operationsBySideIndex, panel.contour);
 
     if (!roleEffectiveGeometry.ok) {
       return [];
@@ -686,6 +686,7 @@ type RoleEffectiveJunctionGeometry =
 const buildRoleEffectiveJunctionGeometry = (
   contour: PanelContour,
   tabOperationsBySideIndex: Map<number, PanelTabOperation>,
+  sourceContour: PanelContour,
 ): RoleEffectiveJunctionGeometry => {
   const contourSides = buildContourSides(contour);
   const contourWindingSign = getContourSignedArea(contour) >= 0 ? 1 : -1;
@@ -706,7 +707,7 @@ const buildRoleEffectiveJunctionGeometry = (
     const previousSideIndex = (sideIndex + contourSides.length - 1) % contourSides.length;
     return tabOperationsBySideIndex.has(previousSideIndex) && tabOperationsBySideIndex.has(sideIndex)
       ? lineIntersection(sides[previousSideIndex], sides[sideIndex])
-      : side.start;
+      : sourceContour[sideIndex];
   });
   const invalidJunctionIndex = junctions.findIndex((junction) => (
     !junction || !Number.isFinite(junction.x) || !Number.isFinite(junction.y)
@@ -745,7 +746,7 @@ export const applyTabsToContour = (
   });
 
   const tabbedContour: PanelContour = [];
-  const roleEffectiveGeometry = buildRoleEffectiveJunctionGeometry(contour, tabOperationsBySideIndex);
+  const roleEffectiveGeometry = buildRoleEffectiveJunctionGeometry(contour, tabOperationsBySideIndex, panel.contour);
 
   if (!roleEffectiveGeometry.ok) {
     return roleEffectiveGeometry;
@@ -803,10 +804,17 @@ export const applyTabsToContour = (
     const segments = clipOriginalSegmentsToInsetSide(originalSide, side, roleSegments);
 
     segments.forEach((segment, tapIndex) => {
-      const baseStart = interpolateSidePoint(side, segment.startDistance);
-      const baseEnd = interpolateSidePoint(side, segment.endDistance);
-      const tabStart = interpolateSidePoint(outwardSide, segment.startDistance);
-      const tabEnd = interpolateSidePoint(outwardSide, segment.endDistance);
+      const previousSideIndex = (sideIndex + contourSides.length - 1) % contourSides.length;
+      const startsAtUnsharedJunction = segment.startDistance <= cornerTouchTolerance && !tabOperationsBySideIndex.has(previousSideIndex);
+      const endsAtUnsharedJunction = getContourSideLength(side) - segment.endDistance <= cornerTouchTolerance && !tabOperationsBySideIndex.has(nextSideIndex);
+      const baseStart = startsAtUnsharedJunction
+        ? effectiveJunctions[sideIndex] as Point
+        : interpolateSidePoint(side, segment.startDistance);
+      const baseEnd = endsAtUnsharedJunction
+        ? effectiveEnd
+        : interpolateSidePoint(side, segment.endDistance);
+      const tabStart = startsAtUnsharedJunction ? baseStart : interpolateSidePoint(outwardSide, segment.startDistance);
+      const tabEnd = endsAtUnsharedJunction ? baseEnd : interpolateSidePoint(outwardSide, segment.endDistance);
 
       onGeneratedTap?.(operation, [baseStart, tabStart, tabEnd, baseEnd], tapIndex, [
         segmentLiesOnPanelBoundary(panel, baseStart, tabStart) ? 'source-boundary-start' : 'tap-side-start',
