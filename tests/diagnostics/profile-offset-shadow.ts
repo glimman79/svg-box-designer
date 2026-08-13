@@ -2,6 +2,8 @@ import { buildGeneratedTBGeometryItems } from '../../src/app/eGeometry';
 import { buildGeneratedSGeometryItems } from '../../src/app/sGeometry';
 import { createGeneratedGeometrySnapshot } from '../../src/app/generatedGeometrySnapshot';
 import { buildFinalGeometry } from '../../src/app/finalGeometry';
+import { applyProfileOffset, resolveProfileOffsetProfileSelection } from '../../src/app/manufacturingCompensation';
+import { createManufacturingGeometry } from '../../src/app/manufacturingGeometry';
 import type { GeneratedGeometryItem } from '../../src/app/generatedGeometryTypes';
 import type { Point, SvgDocumentModel, SvgPanel } from '../../src/svgUtils';
 import { resolveShadowProfileOffsetEligibility } from './profile-offset-shadow-resolver';
@@ -74,6 +76,11 @@ const cases = [
   fixture('tb-counterclockwise-multiple', 'TB', 'counterclockwise', 0, false, 20),
   fixture('tb-clockwise-one', 'TB', 'clockwise', 2, false, 90),
   fixture('tb-reversed-source', 'TB', 'counterclockwise', 1, true, 30),
+  ...([0, 1, 2, 3] as const).flatMap((side) => ([
+    fixture(`canonical-tb-b-ccw-${side}`, 'TB', 'counterclockwise', side, false, 15),
+    fixture(`canonical-tb-b-cw-${side}`, 'TB', 'clockwise', side, false, 15),
+    fixture(`canonical-tb-b-reversed-${side}`, 'TB', 'counterclockwise', side, true, 15),
+  ])),
   fixture('s-counterclockwise-multiple', 'S', 'counterclockwise', 0, false, 20),
   fixture('s-clockwise-corner', 'S', 'clockwise', 3, true, 90),
   adjacentFixture(2), adjacentFixture(4),
@@ -102,6 +109,30 @@ for (const testCase of cases) {
         }));
         const category = `production geometric filtering of ${[...differingKinds].join('/') || 'unmapped'} elements`;
         categories.set(category, (categories.get(category) ?? 0) + 1);
+      }
+      if (firstDifference >= 0) throw new Error(`${testCase.name}: generator-authored ownership differs from semantic projections`);
+      const nonzeroProjectionCount = profile.geometryProjections.filter((projection) => !close(projection.start, projection.end)).length;
+      const ownedCount = production.filter(Boolean).length;
+      if (profile.generatorType === 'TB') {
+        production.forEach((owned, index) => {
+          if (!owned || !contour.segmentTapIds?.[index]) return;
+          if (!contour.segmentTapRoles?.[index]) throw new Error(`${testCase.name}: tap provenance is not segment-aligned`);
+        });
+      }
+      if (testCase.name.startsWith('canonical-tb-b-')) {
+        const expected = shadow.filter(Boolean).length;
+        if (ownedCount !== expected) throw new Error(`${testCase.name}: ${ownedCount}/${expected} mapped projection segments are owned`);
+        if (testCase.name === 'canonical-tb-b-ccw-0' && profile.panelId.endsWith('-mate') && (nonzeroProjectionCount !== 11 || ownedCount !== 11)) {
+          throw new Error(`${testCase.name}: canonical TB-B ownership is ${ownedCount}/${nonzeroProjectionCount}, expected 11/11`);
+        }
+        const selected = resolveProfileOffsetProfileSelection(createManufacturingGeometry(final), [profile.id]);
+        const selectedContour = selected.finalContourList.find((candidate) => candidate.panelId === profile.panelId);
+        if (selectedContour?.compensationProfile?.filter(Boolean).length !== expected) throw new Error(`${testCase.name}: resolver did not select all ${expected} segments`);
+        for (const amount of [0.9, -0.9]) {
+          const displaced = applyProfileOffset(resolveProfileOffsetProfileSelection(createManufacturingGeometry(final), [profile.id]), amount);
+          const displacedContour = displaced.finalContourList.find((candidate) => candidate.panelId === profile.panelId);
+          if (!displacedContour?.points || displacedContour.pathD === contour.pathD) throw new Error(`${testCase.name}: complete profile displacement ${amount} failed`);
+        }
       }
       console.log(`\nProfile ${profile.id}\nPanel: ${profile.panelId}\nGenerator: ${profile.generatorType}\nOperation: ${profile.operationId}\nSource edge: ${profile.sourceEdgeId} ${point(profile.sourceEdgeDirection.start)} -> ${point(profile.sourceEdgeDirection.end)}\nTap count: ${profile.orderedTaps.length}\nTap order: ${profile.orderedTaps.map((tap) => `${tap.tapIndex}:${tap.id}`).join(', ') || '(none)'}\nProfileElements: ${profile.orderedElements.map((element) => `${element.profileOrder}:${element.id} [${element.kind}] tap=${element.tapId ?? 'none'} -> ${element.geometryProjectionId}`).join(', ')}\nGeometry projections: ${profile.geometryProjections.map((projection) => `${projection.id} -> current contour segment ${point(projection.start)} -> ${point(projection.end)}`).join(', ')}\nProduction eligibility\n${marks(production)}\nShadow eligibility\n${marks(shadow)}\nFirst differing segment: ${firstDifference < 0 ? 'none' : `${firstDifference} ${point(contour.points[firstDifference])} -> ${point(contour.points[(firstDifference + 1) % contour.points.length])}; production=${production[firstDifference]}; shadow=${shadow[firstDifference]}`}\nRESULT\n${result}`);
     }

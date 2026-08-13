@@ -31,7 +31,8 @@ const pointOnImportedSegment = (point: Point, start: Point, end: Point) => {
 
 // This is the automatic Clearance classifier from 8003f98, the last revision
 // before profile activation became user-selectable.  Its result is the
-// authoritative geometric definition; profile IDs must never broaden it.
+// authoritative geometric definition for legacy automatic compensation. It is
+// intentionally independent from generator-authored profile ownership.
 export const identifyAutomaticCompensationProfile = (generated: Point[], imported: Point[]): boolean[] => {
   const modifiedSegments = generated.map((start, index) => {
     const end = generated[(index + 1) % generated.length];
@@ -65,11 +66,18 @@ export const identifyAutomaticCompensationProfile = (generated: Point[], importe
   )));
 };
 
-const identifyProfileGroups = (generated: Point[], imported: Point[], edgeIds: string[], groups: ReadonlyArray<GeneratedProfileGroup>, automaticMask: ReadonlyArray<boolean>): Array<GeneratedProfileId | null> => {
+const identifyProfileGroups = (
+  generated: Point[], imported: Point[], edgeIds: string[], groups: ReadonlyArray<GeneratedProfileGroup>,
+  profiles: ReadonlyArray<GeneratedProfile>,
+): { ids: Array<GeneratedProfileId | null>; diagnostics: ContourDiagnostic[] } => {
   const result: Array<GeneratedProfileId | null> = generated.map(() => null);
+  const diagnostics: ContourDiagnostic[] = [];
   const onAnyImportedEdge = (start: Point, end: Point) => imported.some((point, index) => pointOnImportedSegment(start, point, imported[(index + 1) % imported.length]) && pointOnImportedSegment(end, point, imported[(index + 1) % imported.length]));
 
   groups.forEach((group) => {
+    // Current generators provide projections below. Keep the attachment walk
+    // only for compatibility snapshots which predate GeneratedProfile.
+    if (profiles.some((profile) => profile.id === group.id)) return;
     const edgeIndex = edgeIds.indexOf(group.sourceEdgeId);
     if (edgeIndex < 0) return;
     const edgeStart = imported[edgeIndex];
@@ -103,10 +111,31 @@ const identifyProfileGroups = (generated: Point[], imported: Point[], edgeIds: s
       }
     });
   });
-  // Attachment metadata supplies stable identity only.  Intersect it with the
-  // proven automatic mask so a bad/ambiguous contour walk cannot redefine a
-  // profile by crossing a seam or consuming an adjacent imported edge.
-  return result.map((id, index) => automaticMask[index] ? id : null);
+  profiles.forEach((profile) => {
+    profile.geometryProjections.forEach((projection) => {
+      if (pointsMatch(projection.start, projection.end)) return;
+      const matches = generated.flatMap((start, index) => (
+        pointsMatch(start, projection.start)
+          && pointsMatch(generated[(index + 1) % generated.length], projection.end) ? [index] : []
+      ));
+      if (matches.length !== 1) {
+        diagnostics.push({
+          id: projection.id,
+          code: matches.length === 0 ? 'CLEARANCE_PROFILE_MISSING' : 'CLEARANCE_PROFILE_AMBIGUOUS',
+          severity: 'error',
+          message: `Generated profile projection ${projection.id} mapped to ${matches.length} final contour segments.`,
+        });
+        return;
+      }
+      const index = matches[0];
+      if (result[index] && result[index] !== profile.id) {
+        diagnostics.push({ id: projection.id, code: 'CLEARANCE_PROFILE_AMBIGUOUS', severity: 'error', message: `Generated profile projection ${projection.id} conflicts with ${result[index]}.` });
+        return;
+      }
+      result[index] = profile.id;
+    });
+  });
+  return { ids: result, diagnostics };
 };
 
 const identifyGeneratedTaps = (generated: Point[], taps: ReadonlyArray<GeneratedTapGroup>): { ids: Array<GeneratedTapId | null>; roles: Array<GeneratedTapSegmentRole | null> } => {
@@ -191,10 +220,12 @@ export const buildFinalGeometry = (
   const generatedGeometry: ReadonlyArray<GeneratedGeometryItem> = 'generatedGeometry' in generatedGeometryOrSnapshot
     ? generatedGeometryOrSnapshot.generatedGeometry
     : generatedGeometryOrSnapshot;
-  const replacementByPanelId = new Map<string, { pathD: string; finalSource: FinalContourSource; geometryType: FinalGeometryType; profileGroups: ReadonlyArray<GeneratedProfileGroup>; generatedTaps: ReadonlyArray<GeneratedTapGroup> }>();
+  const replacementByPanelId = new Map<string, { pathD: string; finalSource: FinalContourSource; geometryType: FinalGeometryType; profileGroups: ReadonlyArray<GeneratedProfileGroup>; generatedProfiles: ReadonlyArray<GeneratedProfile>; generatedTaps: ReadonlyArray<GeneratedTapGroup> }>();
   generatedGeometry
     .filter((item) => item.behaviour.assembly === 'panel-boundary' && !!item.behaviour.replacesPanelId)
-    .forEach((item) => replacementByPanelId.set(item.behaviour.replacesPanelId!, { pathD: item.geometry.pathD, finalSource: 'applied-panel', geometryType: item.manufacturingClassification, profileGroups: item.profileGroups ?? [], generatedTaps: item.generatedTaps ?? [] }));
+    .forEach((item) => replacementByPanelId.set(item.behaviour.replacesPanelId!, { pathD: item.geometry.pathD, finalSource: 'applied-panel', geometryType: item.manufacturingClassification, profileGroups: item.profileGroups ?? [], generatedProfiles: item.generatedProfiles ?? [], generatedTaps: item.generatedTaps ?? [] }));
+
+  const profileProjectionDiagnostics: ContourDiagnostic[] = [];
 
   const contours: FinalGeometryContour[] = svgModel.panels.flatMap((panel) => {
     const replacement = replacementByPanelId.get(panel.id);
@@ -212,7 +243,9 @@ export const buildFinalGeometry = (
       points: generatedPoints ?? clonePoints(outerPanelContour),
       ...(generatedPoints ? (() => {
         const compensationProfile = identifyAutomaticCompensationProfile(generatedPoints, outerPanelContour);
-        const segmentProfileIds = identifyProfileGroups(generatedPoints, outerPanelContour, panel.edgeIds, replacement?.profileGroups ?? [], compensationProfile);
+        const profileMembership = identifyProfileGroups(generatedPoints, outerPanelContour, panel.edgeIds, replacement?.profileGroups ?? [], replacement?.generatedProfiles ?? []);
+        profileProjectionDiagnostics.push(...profileMembership.diagnostics);
+        const segmentProfileIds = profileMembership.ids;
         const segmentSourceEdgeIds = identifySourceEdges(generatedPoints, outerPanelContour, panel.edgeIds, segmentProfileIds);
         const tapSegments = identifyGeneratedTaps(generatedPoints, replacement?.generatedTaps ?? []);
         return { segmentProfileIds, segmentSourceEdgeIds, segmentTapIds: tapSegments.ids, segmentTapRoles: tapSegments.roles, compensationProfile };
@@ -260,6 +293,7 @@ export const buildFinalGeometry = (
   generatedGeometry.flatMap((item) => item.profileGroups ?? []).forEach((group) => profileOccurrences.set(group.id, (profileOccurrences.get(group.id) ?? 0) + 1));
   const diagnostics = [
     ...contours.flatMap(validateFinalGeometryContour),
+    ...profileProjectionDiagnostics,
     ...[...profileOccurrences].filter(([, count]) => count > 1).map(([id]): ContourDiagnostic => ({ id, code: 'CLEARANCE_PROFILE_AMBIGUOUS', severity: 'error', message: `Generated Clearance profile identity ${id} appears more than once.` })),
   ];
   contours.forEach((contour) => {
