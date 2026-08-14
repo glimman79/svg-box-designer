@@ -25,13 +25,13 @@ const profile = (id: string, panelId: string, points: ReturnType<typeof basePoin
 };
 const contour = (panelId: string, points: ReturnType<typeof basePoints>): FinalContour => ({ id: `final-panel:${panelId}`, panelId, ownerPanelId: panelId, source: 'final-contour', finalSource: 'applied-panel', kind: 'OUTER', geometryType: 'GENERATED_OUTER', profileMaterialSide: 'GENERATED_MATING', points, pathD: path(points), compensationProfile: points.map(() => false) });
 
-// This reproduces the production identity failure without screen-position tests:
-// four profiles retain valid item-local projections, but their owning panel's
-// assembled FinalGeometry contour is a different replacement contour.
+// This synthetic fixture directly constructs independent GeneratedProfile projection
+// and FinalContour coordinates. Translations of +80/+100 intentionally verify that
+// Tap Clearance does not claim merely similar geometry.
 const fixtures = [
-  ['upper', 'upper-panel', 0, 0, 'TB'], ['lower', 'lower-panel', 20, 20, 'TB'],
-  ['left', 'left-panel', 40, 140, 'TB'], ['center-a', 'center-panel', 60, 160, 'TB'],
-  ['center-b', 'center-panel', 80, 160, 'S'], ['right', 'right-panel', 100, 200, 'S'],
+  ['upper', 'upper-panel', 0, 0, 'TB', 'match'], ['lower', 'lower-panel', 20, 20, 'TB', 'match'],
+  ['left', 'left-panel', 40, 140, 'TB', 'mismatch'], ['center-a', 'center-panel', 60, 160, 'TB', 'mismatch'],
+  ['center-b', 'center-panel', 80, 160, 'S', 'mismatch'], ['right', 'right-panel', 100, 200, 'S', 'mismatch'],
 ] as const;
 const profiles = fixtures.map(([id, panel, projectionX, , generator]) => profile(id, panel, basePoints(projectionX), generator));
 const contours = [...new Map(fixtures.map(([, panel, , finalX]) => [panel, contour(panel, basePoints(finalX))])).values()];
@@ -39,7 +39,7 @@ const finalGeometry = { contours, diagnostics: [], generatedProfiles: profiles }
 const manufacturing = createManufacturingGeometry(finalGeometry);
 invariant(JSON.stringify(manufacturing.generatedProfiles) === JSON.stringify(profiles), 'Manufacturing clone changed semantic shadow data');
 invariant(manufacturing.finalContourList.every((value, index) => value.id === contours[index].id && JSON.stringify(value.points) === JSON.stringify(contours[index].points)), 'Manufacturing clone changed contour identity or segment order');
-const productionMasks = new Map(profiles.map((value) => {
+const projectedMasks = new Map(profiles.map((value) => {
   const owner = manufacturing.finalContourList.find((candidate) => candidate.panelId === value.panelId)!;
   return [value.id, projectTapClearanceMask(owner, [value])] as const;
 }));
@@ -58,20 +58,26 @@ const slotSnapshot = JSON.stringify(applySlotClearance(manufacturing.finalContou
 invariant(tapSnapshot === slotSnapshot, 'zero Slot Clearance replaced Tap Clearance output');
 
 let eligibleProfiles = 0; let validLocalProjections = 0; let maskProfiles = 0; let serviceProfiles = 0; let changedProfiles = 0;
-console.log('Profile | Semantic eligible | Projected | Added to mask | Sent to Geometry Services | Coordinates changed | Result');
+console.log('Profile | Eligible | Projected | Expected relation | Result | Added to mask | Sent to Geometry Services | Coordinates changed');
 for (const value of profiles) {
   const owner = manufacturing.finalContourList.find((candidate) => candidate.panelId === value.panelId)!;
   const eligible = resolveTapClearanceElementIds(value); eligibleProfiles += eligible.size > 0 ? 1 : 0;
   const local = value.geometryProjections.filter((projection) => eligible.has(projection.elementId)); validLocalProjections += local.length === eligible.size ? 1 : 0;
-  const productionMask = productionMasks.get(value.id)!; const projected = productionMask.filter(Boolean).length;
+  const projectedMask = projectedMasks.get(value.id)!; const projected = projectedMask.filter(Boolean).length;
   const contributed = projected; if (contributed) maskProfiles += 1;
-  const call = calls.get(owner.id); const sent = call ? productionMask.filter((selected, index) => selected && call.mask[index]).length : 0; if (sent) serviceProfiles += 1;
+  const call = calls.get(owner.id); const sent = call ? projectedMask.filter((selected, index) => selected && call.mask[index]).length : 0; if (sent) serviceProfiles += 1;
   const source = contours.find((candidate) => candidate.id === owner.id)!; const changed = source.pathD === owner.pathD ? 0 : contributed; if (changed) changedProfiles += 1;
-  const result = projected === eligible.size ? (call?.result && changed ? 'PASS' : 'GEOMETRY_SERVICES_SAFE_FALLBACK') : 'PROJECTION_MISSING';
-  console.log(`${value.id} | ${eligible.size} | ${projected} | ${contributed} | ${sent} | ${changed} | ${result}`);
+  const expected = fixtures.find(([id]) => id === value.id)![5];
+  invariant(eligible.size > 0, `${value.id}: expected eligible tap-side-start/tap-side-end elements`);
+  if (expected === 'mismatch') invariant(projected === 0, `${value.id}: translated lookalike geometry was incorrectly claimed`);
+  else invariant(projected === eligible.size, `${value.id}: matching projection did not map every eligible element`);
+  const result = expected === 'mismatch'
+    ? 'EXPECTED_MISMATCH'
+    : call?.result && changed ? 'PASS' : 'GEOMETRY_SERVICES_SAFE_FALLBACK';
+  console.log(`${value.id} | ${eligible.size} | ${projected} | ${expected} | ${result} | ${contributed} | ${sent} | ${changed}`);
 }
 invariant(eligibleProfiles === 6 && validLocalProjections === 6, 'semantic or item-local projection baseline changed');
-invariant(maskProfiles === 2 && serviceProfiles === 2 && changedProfiles === 2, 'production failure signature changed');
+invariant(maskProfiles === 2 && serviceProfiles === 2 && changedProfiles === 2, 'synthetic match/mismatch signature changed');
 invariant(JSON.stringify(finalGeometry) === JSON.stringify({ contours, diagnostics: [], generatedProfiles: profiles }), 'diagnostic mutated FinalGeometry');
 invariant(profileOffsetSnapshot !== tapSnapshot, 'Tap Clearance did not create its isolated change');
 
@@ -88,7 +94,7 @@ const bProjections = b.geometryProjections.map((projection) => {
 const accumulated = projectTapClearanceMask(contour('accumulation-panel', accumulationPoints), [a, { ...b, geometryProjections: bProjections }]);
 invariant([1, 2, 3, 5, 6, 7].filter((index) => accumulated[index]).length === 4, 'multi-profile union lost a contribution');
 
-console.log(`\nTOTALS\nProfiles present: 6\nSemantically eligible profiles: ${eligibleProfiles}\nProfiles with valid item-local projections: ${validLocalProjections}\nProfiles contributing production masks: ${maskProfiles}\nProfiles reaching Geometry Services: ${serviceProfiles}\nProfiles producing changed coordinates: ${changedProfiles}`);
-console.log('First failure: left, center-a, center-b, right = PROJECTION_MISSING at FinalGeometry contour ownership; their item-local projection coordinates are absent from the assembled production contour.');
-console.log('Upper/lower pass because their generated-item projection and owning FinalGeometry/ManufacturingGeometry contour are the same replacement. Later zero Slot Clearance and Kerf are ruled out by immutable stage equality.');
-console.log('No production geometry or semantic policy was changed.');
+console.log(`\nTOTALS\nProfiles present: 6\nSemantically eligible profiles: ${eligibleProfiles}\nProfiles with valid item-local projections: ${validLocalProjections}\nProfiles contributing projected masks: ${maskProfiles}\nProfiles reaching Geometry Services: ${serviceProfiles}\nProfiles producing changed coordinates: ${changedProfiles}`);
+console.log('Translated controls (left, center-a, center-b, right) are intentionally rejected because their projection coordinates do not occur in the independently constructed synthetic final contours.');
+console.log('Matching controls (upper/lower) project every eligible element; Geometry Services safe-fallback coverage remains observable if compensation cannot reconstruct a contour.');
+console.log('This diagnostic directly creates a FinalGeometry-shaped fixture; it does not exercise generator-to-FinalGeometry assembly or production provenance construction.');
