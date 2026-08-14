@@ -4,6 +4,7 @@ import type { OperationKind } from './operationTypes';
 import type { ManufacturingClassification } from './finalGeometryTypes';
 import type { GeneratedProfile, GeneratedProfileGroup } from './generatedProfiles';
 import type { GeneratedTapGroup } from './generatedTaps';
+import type { SourceGeometryRelationship } from './geometryRelationships';
 
 export type GeneratedGeometryKind = 'PANEL_PATH' | 'SLOT_PATH';
 
@@ -47,4 +48,6 @@ export type GeneratedGeometryItem = {
   /** Generator-owned shadow metadata; production algorithms must not consume this field. */
   generatedProfiles?: ReadonlyArray<GeneratedProfile>;
   generatedTaps?: ReadonlyArray<GeneratedTapGroup>;
+  /** Explicit generator intent that cannot be recovered safely from contour provenance. */
+  sourceRelationships?: ReadonlyArray<SourceGeometryRelationship>;
 };
