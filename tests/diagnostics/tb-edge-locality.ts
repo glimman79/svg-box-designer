@@ -6,6 +6,13 @@ const epsilon = 1e-7;
 const close = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y) < epsilon;
 const assert = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
 const point = (value: Point) => `(${value.x},${value.y})`;
+const supportIntersection = (previous: { start: Point; end: Point }, current: { start: Point; end: Point }): Point => {
+  const px = previous.end.x - previous.start.x; const py = previous.end.y - previous.start.y;
+  const cx = current.end.x - current.start.x; const cy = current.end.y - current.start.y;
+  const denominator = px * cy - py * cx;
+  const t = ((current.start.x - previous.start.x) * cy - (current.start.y - previous.start.y) * cx) / denominator;
+  return { x: previous.start.x + t * px, y: previous.start.y + t * py };
+};
 
 const rectangle = (winding: 'CCW' | 'CW', reversedSourceSide = -1) => {
   const ccw = [{ x: 120, y: 0 }, { x: 210, y: 0 }, { x: 210, y: 40 }, { x: 120, y: 40 }];
@@ -42,8 +49,18 @@ const run = (name: string, roles: Partial<Record<number, EdgeRole>>, depth = 5, 
     const side = panel.edgeIds.indexOf(profile.sourceEdgeId); const previous = (side + 3) % 4; const next = (side + 1) % 4;
     const previousOperated = roles[previous] !== undefined; const nextOperated = roles[next] !== undefined;
     const sourceStart = panel.contour[side]; const sourceEnd = panel.contour[next];
-    if (!previousOperated) assert(close(profile.attachmentStart, sourceStart), `${name}: isolated start slid to ${point(profile.attachmentStart)}`);
-    if (!nextOperated) assert(close(profile.attachmentEnd, sourceEnd), `${name}: isolated end slid to ${point(profile.attachmentEnd)}`);
+    const windingSign = getContourSignedArea(panel.contour) >= 0 ? 1 : -1;
+    const selectedSupport = (index: number) => {
+      const start = panel.contour[index]; const end = panel.contour[(index + 1) % 4]; const role = roles[index];
+      if (role !== 'A') return { start, end };
+      const dx = end.x - start.x; const dy = end.y - start.y; const length = Math.hypot(dx, dy);
+      const shift = { x: -dy / length * depth * windingSign, y: dx / length * depth * windingSign };
+      return { start: { x: start.x + shift.x, y: start.y + shift.y }, end: { x: end.x + shift.x, y: end.y + shift.y } };
+    };
+    const expectedStart = supportIntersection(selectedSupport(previous), selectedSupport(side));
+    const expectedEnd = supportIntersection(selectedSupport(side), selectedSupport(next));
+    assert(close(profile.attachmentStart, expectedStart), `${name}: start ${point(profile.attachmentStart)} != selected-support intersection ${point(expectedStart)}`);
+    assert(close(profile.attachmentEnd, expectedEnd), `${name}: end ${point(profile.attachmentEnd)} != selected-support intersection ${point(expectedEnd)}`);
     const neighborSupports = [!previousOperated ? previous : -1, !nextOperated ? next : -1].filter((index) => index >= 0).map((index) => ({ start: panel.contour[index], end: panel.contour[(index + 1) % 4] }));
     const onSupport = (start: Point, end: Point, support: { start: Point; end: Point }) => {
       const dx = support.end.x - support.start.x; const dy = support.end.y - support.start.y;
@@ -61,9 +78,16 @@ const run = (name: string, roles: Partial<Record<number, EdgeRole>>, depth = 5, 
 const canonicalA = run('isolated-A-control', { 0: 'A' });
 const canonicalB = run('isolated-B-depth-5', { 0: 'B' });
 assert(canonicalB.item.geometry.type === 'path' && canonicalB.item.geometry.pathD === 'M 120 0 L 150 0 L 150 5 L 180 5 L 180 0 L 210 0 L 210 40 L 120 40 Z', `canonical B path mismatch: ${canonicalB.item.geometry.type === 'path' ? canonicalB.item.geometry.pathD : ''}`);
-assert(canonicalA.item.geometry.type === 'path' && canonicalA.item.geometry.pathD.length > 0, 'isolated A changed to empty geometry');
+assert(canonicalA.item.geometry.type === 'path' && canonicalA.item.geometry.pathD === 'M 120 5 L 150 5 L 150 0 L 180 0 L 180 5 L 210 5 L 210 40 L 120 40 Z', `canonical A path mismatch: ${canonicalA.item.geometry.type === 'path' ? canonicalA.item.geometry.pathD : ''}`);
+const canonicalAProfile = canonicalA.item.generatedProfiles?.[0];
+assert(!!canonicalAProfile && close(canonicalAProfile.attachmentStart, { x: 120, y: 5 }) && close(canonicalAProfile.attachmentEnd, { x: 210, y: 5 }), 'canonical A attachments do not use mixed selected-support intersections');
+const canonicalA3 = run('isolated-A-depth-3', { 0: 'A' }, 3);
+const canonicalA3Profile = canonicalA3.item.generatedProfiles?.[0];
+assert(!!canonicalA3Profile && close(canonicalA3Profile.attachmentStart, { x: 120, y: 3 }) && close(canonicalA3Profile.attachmentEnd, { x: 210, y: 3 }), 'depth-3 A attachments are incorrect');
 run('isolated-B-depth-3', { 0: 'B' }, 3);
 for (const winding of ['CCW', 'CW'] as const) for (let side = 0; side < 4; side += 1) {
+  run(`isolated-A-${winding}-side-${side}`, { [side]: 'A' }, 5, winding);
+  run(`isolated-A-reversed-source-${winding}-side-${side}`, { [side]: 'A' }, 5, winding, side);
   run(`isolated-B-${winding}-side-${side}`, { [side]: 'B' }, 5, winding);
   run(`isolated-B-reversed-source-${winding}-side-${side}`, { [side]: 'B' }, 5, winding, side);
 }
