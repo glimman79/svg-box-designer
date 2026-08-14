@@ -410,7 +410,9 @@ export const buildGeneratedSGeometryItems = (
         source: { operationId, panelIds: [panel.id, bPanel.id], edgeIds: [sourceAEdgeId, sourceBEdgeId], connectionIds: [connection.id] },
         geometry: { type: 'path', pathD, metrics: { startDistance, endDistance, widthMm: wallThicknessMm } },
         behaviour: { assembly: 'slot-cutout', ownerPanelId: bPanel.id }, manufacturingClassification: 'GENERATED_SLOT',
-        manufacturing: generatedManufacturingMetadata(true), diagnostics: [] };
+        manufacturing: generatedManufacturingMetadata(true), diagnostics: [],
+        sourceRelationships: [{ kind: 'references', operationId, panelId: bPanel.id, sourceEdgeId: sourceBEdgeId,
+          provenance: 'native-generator-intent', provenanceId: `reference:S:${connection.id}:${bPanel.id}:${sourceBEdgeId}` }] };
     });
 
     result.push(...slotItems);

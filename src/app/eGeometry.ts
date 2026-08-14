@@ -325,7 +325,7 @@ export const buildGeneratedTBGeometryItems = (
       behaviour: { assembly: 'panel-boundary', replacesPanelId: panel.id },
       manufacturingClassification: 'GENERATED_OUTER', manufacturing: generatedManufacturingMetadata(false), diagnostics: [],
       profileGroups: operations.map((operation) => createBoundaryProfileGroup({
-        toolType: 'TB', sourceOperationId: operationId, connectionId: operation.connectionId,
+        toolType: 'TB', sourceOperationId: `operation:TB:${operation.connectionId}`, connectionId: operation.connectionId,
         panelId: panel.id, sourceEdgeId: operation.edgeId,
         attachmentStart: roleEffectiveGeometry.junctions[panel.edgeIds.indexOf(operation.edgeId)],
         attachmentEnd: roleEffectiveGeometry.junctions[(panel.edgeIds.indexOf(operation.edgeId) + 1) % insetContour.length],
@@ -334,7 +334,7 @@ export const buildGeneratedTBGeometryItems = (
         const edgeIndex = panel.edgeIds.indexOf(operation.edgeId);
         const sourceEdge = edgesById.get(operation.edgeId)!;
         return createGeneratedProfile({
-          toolType: 'TB', connectionId: operation.connectionId, operationId, panelId: panel.id, sourceEdgeId: operation.edgeId,
+          toolType: 'TB', connectionId: operation.connectionId, operationId: `operation:TB:${operation.connectionId}`, panelId: panel.id, sourceEdgeId: operation.edgeId,
           sourceEdgeStart: sourceEdge.start, sourceEdgeEnd: sourceEdge.end,
           attachmentStart: roleEffectiveGeometry.junctions[edgeIndex], attachmentEnd: roleEffectiveGeometry.junctions[(edgeIndex + 1) % insetContour.length],
           taps: generatedTaps,
