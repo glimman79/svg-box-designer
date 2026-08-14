@@ -11,7 +11,8 @@ const basePoints = (x = 0) => [{ x, y: 0 }, { x: x + 2, y: 0 }, { x: x + 2, y: -
 
 const profile = (id: string, panelId: string, points: ReturnType<typeof basePoints>, generatorType: 'TB' | 'S' = 'TB'): GeneratedProfile => {
   const specs = [['boundary-0', 'boundary-run'], ['first-leading', 'tap-leading-wall'], ['first-tip', 'tap-tip'], ['first-trailing', 'tap-trailing-wall'], ['boundary-1', 'boundary-run'], ['last-leading', 'tap-leading-wall'], ['last-tip', 'tap-tip'], ['last-trailing', 'tap-trailing-wall'], ['boundary-2', 'boundary-run']] as const;
-  const elements = specs.map(([suffix, kind], profileOrder) => ({ id: `${id}:${suffix}`, profileId: id, kind, profileOrder, geometryProjectionId: `${id}:projection:${suffix}` }));
+  const elements = specs.map(([suffix, kind], profileOrder) => ({ id: `${id}:${suffix}`, profileId: id, kind, profileOrder, geometryProjectionId: `${id}:projection:${suffix}`,
+    ...(kind === 'tap-leading-wall' ? { segmentTapRole: 'tap-side-start' as const } : kind === 'tap-trailing-wall' ? { segmentTapRole: 'tap-side-end' as const } : kind === 'tap-tip' ? { segmentTapRole: 'tap-tip' as const } : {}) }));
   return {
     id, generatorType, operationId: `operation:${id}`, panelId, sourceEdgeId: `edge:${id}`,
     sourceEdgeDirection: { start: points[0], end: points[9] }, attachmentStart: points[0], attachmentEnd: points[9],

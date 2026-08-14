@@ -1,5 +1,5 @@
 import type { Point } from '../svgUtils';
-import type { GeneratedTapGroup, GeneratedTapId } from './generatedTaps';
+import type { GeneratedTapGroup, GeneratedTapId, GeneratedTapSegmentRole } from './generatedTaps';
 
 export type GeneratedProfileId = string & { readonly __brand: 'GeneratedProfileId' };
 export type GeneratedProfileElementId = string & { readonly __brand: 'GeneratedProfileElementId' };
@@ -15,6 +15,8 @@ export type GeneratedProfileElement = Readonly<{
   kind: GeneratedProfileElementKind;
   profileOrder: number;
   tapId?: GeneratedTapId;
+  /** Generator-authored role of this tap segment; absent for boundary runs. */
+  segmentTapRole?: GeneratedTapSegmentRole;
   geometryProjectionId: GeometryProjectionId;
 }>;
 
@@ -98,10 +100,10 @@ export const createGeneratedProfile = (input: {
   const taps = input.taps.filter((tap) => tap.sourceEdgeId === input.sourceEdgeId);
   const elements: GeneratedProfileElement[] = [];
   const geometryProjections: GeometryProjection[] = [];
-  const append = (elementIdValue: GeneratedProfileElementId, kind: GeneratedProfileElementKind, start: Point, end: Point, tapId?: GeneratedTapId) => {
+  const append = (elementIdValue: GeneratedProfileElementId, kind: GeneratedProfileElementKind, start: Point, end: Point, tapId?: GeneratedTapId, segmentTapRole?: GeneratedTapSegmentRole) => {
     const order = elements.length;
     const projection = projectionId(elementIdValue);
-    elements.push({ id: elementIdValue, profileId: id, kind, profileOrder: order, ...(tapId ? { tapId } : {}), geometryProjectionId: projection });
+    elements.push({ id: elementIdValue, profileId: id, kind, profileOrder: order, ...(tapId ? { tapId } : {}), ...(segmentTapRole ? { segmentTapRole } : {}), geometryProjectionId: projection });
     geometryProjections.push({ id: projection, profileId: id, elementId: elementIdValue, kind: 'current-contour-segment', profileSegmentOrder: order, start: { ...start }, end: { ...end } });
   };
   const leading = elementId(id, 'leading-straight');
@@ -110,9 +112,9 @@ export const createGeneratedProfile = (input: {
     const leadingWallElementId = elementId(id, `tap-${tapIndex}-start-wall`);
     const tipElementId = elementId(id, `tap-${tapIndex}-tip`);
     const trailingWallElementId = elementId(id, `tap-${tapIndex}-end-wall`);
-    append(leadingWallElementId, 'tap-leading-wall', tap.points[0], tap.points[1], tap.id);
-    append(tipElementId, 'tap-tip', tap.points[1], tap.points[2], tap.id);
-    append(trailingWallElementId, 'tap-trailing-wall', tap.points[2], tap.points[3], tap.id);
+    append(leadingWallElementId, 'tap-leading-wall', tap.points[0], tap.points[1], tap.id, tap.segmentRoles[0]);
+    append(tipElementId, 'tap-tip', tap.points[1], tap.points[2], tap.id, tap.segmentRoles[1]);
+    append(trailingWallElementId, 'tap-trailing-wall', tap.points[2], tap.points[3], tap.id, tap.segmentRoles[2]);
     if (tapIndex < taps.length - 1) append(elementId(id, `between-${tapIndex}-${tapIndex + 1}`), 'boundary-run', tap.points[3], taps[tapIndex + 1].points[0]);
     return { id: tap.id, tapIndex, totalTapCount: taps.length, leadingWallElementId, tipElementId, trailingWallElementId,
       isFirstTap: tapIndex === 0, isMiddleTap: tapIndex > 0 && tapIndex < taps.length - 1, isLastTap: tapIndex === taps.length - 1 };
