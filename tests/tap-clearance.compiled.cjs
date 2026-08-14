@@ -4,7 +4,8 @@ const { createManufacturingGeometry } = require('../.test-build/app/manufacturin
 const { resolveTapClearanceElementIds } = require('../.test-build/app/tapClearance.js');
 
 const points = [{ x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: -2 }, { x: 4, y: -2 }, { x: 4, y: 0 }, { x: 6, y: 0 }, { x: 6, y: -2 }, { x: 8, y: -2 }, { x: 8, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
-const element = (id, kind, order) => ({ id, profileId: 'profile', kind, profileOrder: order, geometryProjectionId: `projection:${id}` });
+const element = (id, kind, order) => ({ id, profileId: 'profile', kind, profileOrder: order, geometryProjectionId: `projection:${id}`,
+  ...(kind === 'tap-leading-wall' ? { segmentTapRole: 'tap-side-start' } : kind === 'tap-trailing-wall' ? { segmentTapRole: 'tap-side-end' } : kind === 'tap-tip' ? { segmentTapRole: 'tap-tip' } : {}) });
 const elementSpecs = [
   ['boundary-0', 'boundary-run'], ['first-leading', 'tap-leading-wall'], ['first-tip', 'tap-tip'], ['first-trailing', 'tap-trailing-wall'],
   ['boundary-1', 'boundary-run'], ['last-leading', 'tap-leading-wall'], ['last-tip', 'tap-tip'], ['last-trailing', 'tap-trailing-wall'], ['boundary-2', 'boundary-run'],
@@ -24,15 +25,22 @@ const contour = { id: 'panel', panelId: 'panel', source: 'final-contour', finalS
   segmentTapIds: points.map(() => null), segmentTapRoles: points.map(() => 'tap-tip') };
 const geometry = (profiles = [profile], currentContour = contour) => createManufacturingGeometry({ contours: [currentContour], diagnostics: [], generatedProfiles: profiles });
 
-assert.deepEqual([...resolveTapClearanceElementIds(profile)], ['first-trailing', 'last-leading']);
+assert.deepEqual([...resolveTapClearanceElementIds(profile)], ['first-leading', 'first-trailing', 'last-leading', 'last-trailing']);
 const compensated = applyTapClearance(geometry(), -0.1).finalContourList[0];
 assert.notEqual(compensated.pathD, contour.pathD, 'semantic inner walls receive Tap Clearance');
 assert.equal(applyTapClearance(geometry(), 0).finalContourList[0].pathD, contour.pathD);
 assert.equal(applyTapClearance(geometry([]), -0.1).finalContourList[0].pathD, contour.pathD, 'legacy segment roles do not grant eligibility');
 
-const single = { ...profile, orderedTaps: [{ ...profile.orderedTaps[0], totalTapCount: 1, isLastTap: true }] };
-assert.deepEqual([...resolveTapClearanceElementIds(single)], [], 'single-tap walls and tip are fixed by product policy');
-assert.equal(applyTapClearance(geometry([single]), -0.1).finalContourList[0].pathD, contour.pathD);
+const single = { ...profile, orderedElements: orderedElements.slice(0, 4), geometryProjections: geometryProjections.slice(0, 4), orderedTaps: [{ ...profile.orderedTaps[0], totalTapCount: 1, isLastTap: true }] };
+assert.deepEqual([...resolveTapClearanceElementIds(single)], ['first-leading', 'first-trailing'], 'one-tap fitting walls follow authored semantics while its tip remains fixed');
+assert.notEqual(applyTapClearance(geometry([single]), -0.1).finalContourList[0].pathD, contour.pathD);
+
+const tbBElements = orderedElements.map((value) => value.id === 'first-leading' ? { ...value, segmentTapRole: 'source-boundary-start' }
+  : value.id === 'last-trailing' ? { ...value, segmentTapRole: 'source-boundary-end' } : value);
+const tbB = { ...profile, orderedElements: tbBElements };
+assert.deepEqual([...resolveTapClearanceElementIds(tbB)], ['first-trailing', 'last-leading'], 'TB-B boundary terminals remain excluded while its fitting walls remain eligible');
+const tbBCompensated = applyTapClearance(geometry([tbB]), -0.1).finalContourList[0];
+assert.equal(tbBCompensated.points.length, contour.points.length, 'boundary-terminal semantics do not manufacture physical segments');
 
 const reversedPoints = [points[0], ...points.slice(1).reverse()];
 const reversedContour = { ...contour, points: reversedPoints, pathD: `M ${reversedPoints.map(({ x, y }) => `${x} ${y}`).join(' L ')} Z` };

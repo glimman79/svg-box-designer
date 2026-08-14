@@ -1,24 +1,17 @@
 import type { FinalContour } from './contourClassification';
 import type { GeneratedProfile, GeneratedProfileElementId } from './generatedProfiles';
+import { isTapClearanceEligibleRole } from './generatedTaps';
 
 /**
  * Resolves manufacturing intent before looking at projected contour geometry.
  *
- * A one-tap profile deliberately has no eligible elements.  Keeping both of
- * its terminal walls (and its tip) fixed is a product decision, not a geometry
- * fallback.
+ * Eligibility is generator-authored segment semantics, independent of a tap's
+ * position in the profile. Boundary and tip semantics remain fixed.
  */
 export const resolveTapClearanceElementIds = (profile: GeneratedProfile): ReadonlySet<GeneratedProfileElementId> => {
   const eligible = new Set<GeneratedProfileElementId>();
-  const tapCount = profile.orderedTaps.length;
-  if (tapCount <= 1) return eligible;
-
-  profile.orderedTaps.forEach((tap, tapIndex) => {
-    if (tap.tapIndex !== tapIndex || tap.totalTapCount !== tapCount) {
-      throw new Error(`${profile.id}: inconsistent generator-authored tap order`);
-    }
-    if (tapIndex > 0) eligible.add(tap.leadingWallElementId);
-    if (tapIndex < tapCount - 1) eligible.add(tap.trailingWallElementId);
+  profile.orderedElements.forEach((element) => {
+    if (isTapClearanceEligibleRole(element.segmentTapRole ?? null)) eligible.add(element.id);
   });
   return eligible;
 };
