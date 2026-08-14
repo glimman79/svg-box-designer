@@ -6,6 +6,7 @@ const epsilon = 1e-7;
 const close = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y) < epsilon;
 const assert = (condition: unknown, message: string) => { if (!condition) throw new Error(message); };
 const point = (value: Point) => `(${value.x},${value.y})`;
+const length = (start: Point, end: Point) => Math.hypot(end.x - start.x, end.y - start.y);
 const supportIntersection = (previous: { start: Point; end: Point }, current: { start: Point; end: Point }): Point => {
   const px = previous.end.x - previous.start.x; const py = previous.end.y - previous.start.y;
   const cx = current.end.x - current.start.x; const cy = current.end.y - current.start.y;
@@ -26,13 +27,13 @@ const rectangle = (winding: 'CCW' | 'CW', reversedSourceSide = -1) => {
   return { panel, edges };
 };
 
-const run = (name: string, roles: Partial<Record<number, EdgeRole>>, depth = 5, winding: 'CCW' | 'CW' = 'CCW', reversedSourceSide = -1) => {
+const run = (name: string, roles: Partial<Record<number, EdgeRole>>, depth = 5, winding: 'CCW' | 'CW' = 'CCW', reversedSourceSide = -1, fingerWidth = 30) => {
   const { panel, edges } = rectangle(winding, reversedSourceSide);
   const assignments: any = {}; const connections: any = {};
   Object.entries(roles).forEach(([rawSide, role]) => {
     const side = Number(rawSide); const id = `TB-${side}`;
     assignments[panel.edgeIds[side]] = { edgeAssignment: { connectionId: id, edgeRole: role } };
-    connections[id] = { id, prefix: 'W', properties: { materialThicknessMm: depth, fingerWidthMm: 30, isFingerWidthManual: true } };
+    connections[id] = { id, prefix: 'W', properties: { materialThicknessMm: depth, fingerWidthMm: fingerWidth, isFingerWidthManual: true } };
   });
   const model: SvgDocumentModel = { content: '', innerMarkup: '', rootAttributes: { width: null, height: null, viewBox: null }, viewBox: '0 0 240 80', width: 240, height: 80, panels: [panel], edges };
   const items = buildGeneratedTBGeometryItems(model, assignments, connections, { defaultThicknessMm: depth, panels: { panel: { panelId: 'panel', thicknessMm: depth } } });
@@ -70,6 +71,37 @@ const run = (name: string, roles: Partial<Record<number, EdgeRole>>, depth = 5, 
     const offending = profile.geometryProjections.filter((projection) => neighborSupports.some((support) => onSupport(projection.start, projection.end, support)));
     if (offending.length) console.log(name, path, offending.map(({ start, end }) => `${point(start)}>${point(end)}`));
     assert(offending.length === 0, `${name}: ${offending.length} generated segments lie on unoperated neighboring supports`);
+
+    if (Object.keys(roles).length === 1 && roles[side] === 'B') {
+      const taps = (item.generatedTaps ?? []).filter((tap) => tap.sourceEdgeId === profile.sourceEdgeId);
+      const first = taps[0]; const last = taps.at(-1);
+      if (!first || !last) throw new Error(`${name}: missing terminal tap semantics`);
+      assert(close(first.points[0], profile.attachmentStart) && close(first.points[1], profile.attachmentStart), `${name}: raw start base/tip did not resolve to J`);
+      assert(close(last.points[2], profile.attachmentEnd) && close(last.points[3], profile.attachmentEnd), `${name}: raw end tip/base did not resolve to J`);
+
+      const projectionByElementId = new Map(profile.geometryProjections.map((projection) => [projection.elementId, projection]));
+      const firstSemantic = profile.orderedTaps[0]; const lastSemantic = profile.orderedTaps.at(-1);
+      if (!firstSemantic || !lastSemantic) throw new Error(`${name}: missing stable profile tap semantics`);
+      const leadingBoundary = projectionByElementId.get(profile.leadingBoundaryRun)!;
+      const leadingWall = projectionByElementId.get(firstSemantic.leadingWallElementId)!;
+      const trailingWall = projectionByElementId.get(lastSemantic.trailingWallElementId)!;
+      const trailingBoundary = projectionByElementId.get(profile.trailingBoundaryRun)!;
+      assert(length(leadingBoundary.start, leadingBoundary.end) < epsilon, `${name}: leading boundary is non-zero before cleanup`);
+      assert(length(leadingWall.start, leadingWall.end) < epsilon, `${name}: leading terminal wall is non-zero before cleanup`);
+      assert(length(trailingWall.start, trailingWall.end) < epsilon, `${name}: trailing terminal wall is non-zero before cleanup`);
+      assert(length(trailingBoundary.start, trailingBoundary.end) < epsilon, `${name}: trailing boundary is non-zero before cleanup`);
+
+      const nonZeroWalls = taps.flatMap((tap) => [[tap.points[0], tap.points[1]], [tap.points[2], tap.points[3]]] as const)
+        .filter(([start, end]) => length(start, end) > epsilon);
+      assert(nonZeroWalls.every(([start, end]) => Math.abs(length(start, end) - depth) < epsilon), `${name}: an interior wall does not equal actual depth`);
+      if (name.includes('custom-width')) {
+        const interior = taps.find((tap, index) => index > 0 && index < taps.length - 1
+          && length(tap.points[0], tap.points[1]) > epsilon && length(tap.points[2], tap.points[3]) > epsilon);
+        if (!interior) throw new Error(`${name}: missing interior tap control`);
+        assert(Math.abs(length(interior.points[0], interior.points[1]) - depth) < epsilon, `${name}: interior leading wall does not equal actual depth`);
+        assert(Math.abs(length(interior.points[2], interior.points[3]) - depth) < epsilon, `${name}: interior trailing wall does not equal actual depth`);
+      }
+    }
     console.log(`${name} edge=${side} source=${point(sourceStart)}..${point(sourceEnd)} attachment=${point(profile.attachmentStart)}..${point(profile.attachmentEnd)} adjacent-operated=${previousOperated ? 'YES' : 'NO'}/${nextOperated ? 'YES' : 'NO'} terminal-segments=${profile.geometryProjections.filter((projection) => close(projection.start, sourceStart) || close(projection.end, sourceEnd)).length} neighbor-support-segments=${offending.length} PASS`);
   }
   return { item, panel };
@@ -85,6 +117,13 @@ const canonicalA3 = run('isolated-A-depth-3', { 0: 'A' }, 3);
 const canonicalA3Profile = canonicalA3.item.generatedProfiles?.[0];
 assert(!!canonicalA3Profile && close(canonicalA3Profile.attachmentStart, { x: 120, y: 3 }) && close(canonicalA3Profile.attachmentEnd, { x: 210, y: 3 }), 'depth-3 A attachments are incorrect');
 run('isolated-B-depth-3', { 0: 'B' }, 3);
+const terminalB24 = run('isolated-B-depth-2.4', { 0: 'B' }, 2.4);
+const terminalB55 = run('isolated-B-depth-5.5', { 0: 'B' }, 5.5);
+run('isolated-A-depth-2.4', { 0: 'A' }, 2.4);
+run('isolated-A-depth-5.5', { 0: 'A' }, 5.5);
+run('isolated-B-depth-3.25-custom-width', { 0: 'B' }, 3.25, 'CCW', -1, 10);
+assert(terminalB24.item.generatedTaps?.map((tap) => tap.id).join('|') === terminalB55.item.generatedTaps?.map((tap) => tap.id).join('|'), 'terminal GeneratedTap IDs changed with geometry depth');
+assert(terminalB24.item.generatedProfiles?.[0]?.orderedElements.map((element) => element.id).join('|') === terminalB55.item.generatedProfiles?.[0]?.orderedElements.map((element) => element.id).join('|'), 'terminal GeneratedProfile element IDs changed with geometry depth');
 for (const winding of ['CCW', 'CW'] as const) for (let side = 0; side < 4; side += 1) {
   run(`isolated-A-${winding}-side-${side}`, { [side]: 'A' }, 5, winding);
   run(`isolated-A-reversed-source-${winding}-side-${side}`, { [side]: 'A' }, 5, winding, side);

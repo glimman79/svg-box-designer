@@ -729,6 +729,37 @@ const buildRoleEffectiveJunctionGeometry = (
   return { ok: true, sides, junctions: junctions as Point[] };
 };
 
+type TapTerminalPoints = Readonly<{
+  baseStart: Point;
+  tabStart: Point;
+  tabEnd: Point;
+  baseEnd: Point;
+}>;
+
+const resolveOwnedTerminalTapPoints = (
+  points: TapTerminalPoints,
+  topology: Readonly<{
+    reachesStartTerminal: boolean;
+    reachesEndTerminal: boolean;
+    previousEdgeOperated: boolean;
+    nextEdgeOperated: boolean;
+    startJunction: Point;
+    endJunction: Point;
+  }>,
+): TapTerminalPoints => {
+  const ownsStartAtJunction = topology.reachesStartTerminal && !topology.previousEdgeOperated;
+  const ownsEndAtJunction = topology.reachesEndTerminal && !topology.nextEdgeOperated;
+
+  // An unoperated ordinary neighbor already terminates at the shared junction. A generated
+  // terminal interval therefore resolves there, rather than owning a connector on that support.
+  return {
+    baseStart: ownsStartAtJunction ? topology.startJunction : points.baseStart,
+    tabStart: ownsStartAtJunction ? topology.startJunction : points.tabStart,
+    tabEnd: ownsEndAtJunction ? topology.endJunction : points.tabEnd,
+    baseEnd: ownsEndAtJunction ? topology.endJunction : points.baseEnd,
+  };
+};
+
 export const applyTabsToContour = (
   panel: SvgPanel,
   contour: PanelContour,
@@ -810,16 +841,20 @@ export const applyTabsToContour = (
 
     segments.forEach((segment, tapIndex) => {
       const previousSideIndex = (sideIndex + contourSides.length - 1) % contourSides.length;
-      const startsAtUnsharedJunction = segment.startDistance <= cornerTouchTolerance && !tabOperationsBySideIndex.has(previousSideIndex);
-      const endsAtUnsharedJunction = getContourSideLength(side) - segment.endDistance <= cornerTouchTolerance && !tabOperationsBySideIndex.has(nextSideIndex);
-      const baseStart = startsAtUnsharedJunction
-        ? effectiveJunctions[sideIndex] as Point
-        : interpolateSidePoint(side, segment.startDistance);
-      const baseEnd = endsAtUnsharedJunction
-        ? effectiveEnd
-        : interpolateSidePoint(side, segment.endDistance);
-      const tabStart = startsAtUnsharedJunction ? baseStart : interpolateSidePoint(outwardSide, segment.startDistance);
-      const tabEnd = endsAtUnsharedJunction ? baseEnd : interpolateSidePoint(outwardSide, segment.endDistance);
+      const terminalPoints = resolveOwnedTerminalTapPoints({
+        baseStart: interpolateSidePoint(side, segment.startDistance),
+        tabStart: interpolateSidePoint(outwardSide, segment.startDistance),
+        tabEnd: interpolateSidePoint(outwardSide, segment.endDistance),
+        baseEnd: interpolateSidePoint(side, segment.endDistance),
+      }, {
+        reachesStartTerminal: segment.startDistance <= cornerTouchTolerance,
+        reachesEndTerminal: getContourSideLength(side) - segment.endDistance <= cornerTouchTolerance,
+        previousEdgeOperated: tabOperationsBySideIndex.has(previousSideIndex),
+        nextEdgeOperated: tabOperationsBySideIndex.has(nextSideIndex),
+        startJunction: effectiveJunctions[sideIndex] as Point,
+        endJunction: effectiveEnd,
+      });
+      const { baseStart, tabStart, tabEnd, baseEnd } = terminalPoints;
 
       onGeneratedTap?.(operation, [baseStart, tabStart, tabEnd, baseEnd], tapIndex, [
         segmentLiesOnPanelBoundary(panel, baseStart, tabStart) ? 'source-boundary-start' : 'tap-side-start',
