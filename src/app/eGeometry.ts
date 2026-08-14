@@ -703,11 +703,16 @@ const buildRoleEffectiveJunctionGeometry = (
   }
 
   const sides = effectiveSides as ContourSide[];
+  const sourceSides = buildContourSides(sourceContour);
   const junctions = contourSides.map((side, sideIndex) => {
     const previousSideIndex = (sideIndex + contourSides.length - 1) % contourSides.length;
-    return tabOperationsBySideIndex.has(previousSideIndex) && tabOperationsBySideIndex.has(sideIndex)
-      ? lineIntersection(sides[previousSideIndex], sides[sideIndex])
-      : sourceContour[sideIndex];
+    const previousSupport = tabOperationsBySideIndex.has(previousSideIndex)
+      ? sides[previousSideIndex]
+      : sourceSides[previousSideIndex];
+    const currentSupport = tabOperationsBySideIndex.has(sideIndex)
+      ? sides[sideIndex]
+      : sourceSides[sideIndex];
+    return lineIntersection(previousSupport, currentSupport);
   });
   const invalidJunctionIndex = junctions.findIndex((junction) => (
     !junction || !Number.isFinite(junction.x) || !Number.isFinite(junction.y)
