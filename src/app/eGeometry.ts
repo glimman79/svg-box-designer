@@ -747,16 +747,16 @@ const resolveOwnedTerminalTapPoints = (
     endJunction: Point;
   }>,
 ): TapTerminalPoints => {
-  const ownsStartAtJunction = topology.reachesStartTerminal && !topology.previousEdgeOperated;
-  const ownsEndAtJunction = topology.reachesEndTerminal && !topology.nextEdgeOperated;
+  const resolvesStartAtSharedJunction = topology.reachesStartTerminal && !topology.previousEdgeOperated;
+  const resolvesEndAtSharedJunction = topology.reachesEndTerminal && !topology.nextEdgeOperated;
 
-  // An unoperated ordinary neighbor already terminates at the shared junction. A generated
-  // terminal interval therefore resolves there, rather than owning a connector on that support.
+  // An adjacent unoperated edge already terminates at the shared junction J. Ownership-aware
+  // terminal resolution therefore gives the generated interval zero physical terminal extent.
   return {
-    baseStart: ownsStartAtJunction ? topology.startJunction : points.baseStart,
-    tabStart: ownsStartAtJunction ? topology.startJunction : points.tabStart,
-    tabEnd: ownsEndAtJunction ? topology.endJunction : points.tabEnd,
-    baseEnd: ownsEndAtJunction ? topology.endJunction : points.baseEnd,
+    baseStart: resolvesStartAtSharedJunction ? topology.startJunction : points.baseStart,
+    tabStart: resolvesStartAtSharedJunction ? topology.startJunction : points.tabStart,
+    tabEnd: resolvesEndAtSharedJunction ? topology.endJunction : points.tabEnd,
+    baseEnd: resolvesEndAtSharedJunction ? topology.endJunction : points.baseEnd,
   };
 };
 
