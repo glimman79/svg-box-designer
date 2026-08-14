@@ -86,10 +86,10 @@ const run = (name: string, roles: Partial<Record<number, EdgeRole>>, depth = 5, 
       const leadingWall = projectionByElementId.get(firstSemantic.leadingWallElementId)!;
       const trailingWall = projectionByElementId.get(lastSemantic.trailingWallElementId)!;
       const trailingBoundary = projectionByElementId.get(profile.trailingBoundaryRun)!;
-      assert(length(leadingBoundary.start, leadingBoundary.end) < epsilon, `${name}: leading boundary is non-zero before cleanup`);
-      assert(length(leadingWall.start, leadingWall.end) < epsilon, `${name}: leading terminal wall is non-zero before cleanup`);
-      assert(length(trailingWall.start, trailingWall.end) < epsilon, `${name}: trailing terminal wall is non-zero before cleanup`);
-      assert(length(trailingBoundary.start, trailingBoundary.end) < epsilon, `${name}: trailing boundary is non-zero before cleanup`);
+      assert(length(leadingBoundary.start, leadingBoundary.end) < epsilon, `${name}: leading boundary has non-zero physical terminal extent`);
+      assert(length(leadingWall.start, leadingWall.end) < epsilon, `${name}: leading wall has non-zero physical terminal extent`);
+      assert(length(trailingWall.start, trailingWall.end) < epsilon, `${name}: trailing wall has non-zero physical terminal extent`);
+      assert(length(trailingBoundary.start, trailingBoundary.end) < epsilon, `${name}: trailing boundary has non-zero physical terminal extent`);
 
       const nonZeroWalls = taps.flatMap((tap) => [[tap.points[0], tap.points[1]], [tap.points[2], tap.points[3]]] as const)
         .filter(([start, end]) => length(start, end) > epsilon);
@@ -102,7 +102,7 @@ const run = (name: string, roles: Partial<Record<number, EdgeRole>>, depth = 5, 
         assert(Math.abs(length(interior.points[2], interior.points[3]) - depth) < epsilon, `${name}: interior trailing wall does not equal actual depth`);
       }
     }
-    console.log(`${name} edge=${side} source=${point(sourceStart)}..${point(sourceEnd)} attachment=${point(profile.attachmentStart)}..${point(profile.attachmentEnd)} adjacent-operated=${previousOperated ? 'YES' : 'NO'}/${nextOperated ? 'YES' : 'NO'} terminal-segments=${profile.geometryProjections.filter((projection) => close(projection.start, sourceStart) || close(projection.end, sourceEnd)).length} neighbor-support-segments=${offending.length} PASS`);
+    console.log(`${name} edge=${side} source=${point(sourceStart)}..${point(sourceEnd)} attachment=${point(profile.attachmentStart)}..${point(profile.attachmentEnd)} adjacent-operated=${previousOperated ? 'YES' : 'NO'}/${nextOperated ? 'YES' : 'NO'} terminal-segments=${profile.geometryProjections.filter((projection) => close(projection.start, sourceStart) || close(projection.end, sourceEnd)).length} adjacent-unoperated-support-segments=${offending.length} PASS`);
   }
   return { item, panel };
 };
