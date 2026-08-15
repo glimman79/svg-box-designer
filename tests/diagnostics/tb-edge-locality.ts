@@ -68,6 +68,27 @@ const run = (name: string, roles: Partial<Record<number, EdgeRole>>, depth = 5, 
       const cross = (p: Point) => Math.abs((p.x - support.start.x) * dy - (p.y - support.start.y) * dx) < epsilon;
       return !close(start, end) && cross(start) && cross(end);
     };
+    const projectionByElementId = new Map(profile.geometryProjections.map((projection) => [projection.elementId, projection]));
+    const firstSemanticTap = profile.orderedTaps[0];
+    const lastSemanticTap = profile.orderedTaps.at(-1);
+    if (roles[previous] === 'B' && roles[side] === 'B') {
+      if (!firstSemanticTap) throw new Error(`${name}: missing first BB profile tap semantic`);
+      const leadingBoundary = projectionByElementId.get(profile.leadingBoundaryRun)!;
+      const leadingWall = projectionByElementId.get(firstSemanticTap.leadingWallElementId)!;
+      assert(close(leadingBoundary.start, profile.attachmentStart), `${name}: current BB leading boundary does not begin at J`);
+      assert(close(leadingBoundary.end, leadingWall.start), `${name}: current BB leading boundary does not end at C`);
+      assert(length(leadingBoundary.start, leadingBoundary.end) > epsilon, `${name}: current BB J→C run is not physical`);
+      assert(length(leadingWall.start, leadingWall.end) < epsilon, `${name}: current BB I→C terminal wall remains physical`);
+    }
+    if (roles[side] === 'B' && roles[next] === 'B') {
+      if (!lastSemanticTap) throw new Error(`${name}: missing last BB profile tap semantic`);
+      const trailingWall = projectionByElementId.get(lastSemanticTap.trailingWallElementId)!;
+      const trailingBoundary = projectionByElementId.get(profile.trailingBoundaryRun)!;
+      assert(length(trailingWall.start, trailingWall.end) < epsilon, `${name}: previous BB P→I terminal wall remains physical`);
+      assert(close(trailingBoundary.start, trailingWall.end), `${name}: previous BB trailing boundary does not begin at P`);
+      assert(close(trailingBoundary.end, profile.attachmentEnd), `${name}: previous BB trailing boundary does not end at J`);
+      assert(length(trailingBoundary.start, trailingBoundary.end) > epsilon, `${name}: previous BB P→J run is not physical`);
+    }
     const offending = profile.geometryProjections.filter((projection) => neighborSupports.some((support) => onSupport(projection.start, projection.end, support)));
     if (offending.length) console.log(name, path, offending.map(({ start, end }) => `${point(start)}>${point(end)}`));
     assert(offending.length === 0, `${name}: ${offending.length} generated segments lie on unoperated neighboring supports`);
@@ -79,7 +100,6 @@ const run = (name: string, roles: Partial<Record<number, EdgeRole>>, depth = 5, 
       assert(close(first.points[0], profile.attachmentStart) && close(first.points[1], profile.attachmentStart), `${name}: raw start base/tip did not resolve to J`);
       assert(close(last.points[2], profile.attachmentEnd) && close(last.points[3], profile.attachmentEnd), `${name}: raw end tip/base did not resolve to J`);
 
-      const projectionByElementId = new Map(profile.geometryProjections.map((projection) => [projection.elementId, projection]));
       const firstSemantic = profile.orderedTaps[0]; const lastSemantic = profile.orderedTaps.at(-1);
       if (!firstSemantic || !lastSemantic) throw new Error(`${name}: missing stable profile tap semantics`);
       const leadingBoundary = projectionByElementId.get(profile.leadingBoundaryRun)!;
@@ -135,5 +155,10 @@ run('non-adjacent-A-B', { 0: 'A', 2: 'B' });
 run('previous-neighbor-operated-only', { 0: 'A', 1: 'B' });
 run('next-neighbor-operated-only', { 0: 'B', 1: 'A' });
 for (const [name, first, second] of [['AA', 'A', 'A'], ['BB', 'B', 'B'], ['AB', 'A', 'B'], ['BA', 'B', 'A']] as const) run(name, { 0: first, 1: second });
+for (const winding of ['CCW', 'CW'] as const) for (const depth of [2.4, 3.25, 5.5]) for (let current = 0; current < 4; current += 1) {
+  const previous = (current + 3) % 4;
+  run(`BB-edge-local-${winding}-corner-${previous}-${current}-depth-${depth}`, { [previous]: 'B', [current]: 'B' }, depth, winding);
+}
+run('BB-edge-local-custom-width', { 0: 'B', 1: 'B' }, 3.25, 'CCW', -1, 10);
 run('four-operated-edges', { 0: 'A', 1: 'B', 2: 'A', 3: 'B' });
 console.log('TB edge-locality: PASS');
