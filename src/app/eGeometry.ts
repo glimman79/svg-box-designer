@@ -605,36 +605,7 @@ const getOperationDepthMm = (operation: Pick<PanelEdgeOperation, 'insetDepthMm' 
   operation.insetDepthMm ?? operation.materialThicknessMm
 );
 
-export const isBBCorner = (
-  sideIndex: number,
-  sideCount: number,
-  tabOperationsBySideIndex: Map<number, PanelTabOperation>,
-): boolean => {
-  const previousSideIndex = (sideIndex + sideCount - 1) % sideCount;
-  const previousOperation = tabOperationsBySideIndex.get(previousSideIndex);
-  const currentOperation = tabOperationsBySideIndex.get(sideIndex);
-
-  return previousOperation?.role === 'B' && currentOperation?.role === 'B';
-};
-
-// B-B corners need an explicit outward join because both adjacent B sides are inset before tabs are drawn.
-// Do not remove this as dead code; it preserves the outside corner when two B sides meet on the same panel.
-export const addBBCornerJoin = (
-  tabbedContour: PanelContour,
-  insetCorner: Point,
-  previousOutwardSide: ContourSide,
-  currentOutwardSide: ContourSide,
-  outwardCorner: Point,
-): void => {
-  addContourPoint(tabbedContour, insetCorner);
-  addContourPoint(tabbedContour, previousOutwardSide.end);
-  addContourPoint(tabbedContour, outwardCorner);
-  addContourPoint(tabbedContour, currentOutwardSide.start);
-  addContourPoint(tabbedContour, insetCorner);
-};
-
 // Cleans zero-area A-B-A backtracks, including seam backtracks across the implicit SVG close path.
-// This protects B-B corner joins from leaving interior spur lines.
 export const removeInteriorBacktrackSpurs = (contour: PanelContour): PanelContour => {
   const cleanedContour: PanelContour = [];
 
@@ -743,20 +714,29 @@ const resolveOwnedTerminalTapPoints = (
     reachesEndTerminal: boolean;
     previousEdgeOperated: boolean;
     nextEdgeOperated: boolean;
+    previousEdgeRole: EdgeRole | undefined;
+    currentEdgeRole: EdgeRole;
+    nextEdgeRole: EdgeRole | undefined;
     startJunction: Point;
     endJunction: Point;
   }>,
 ): TapTerminalPoints => {
   const resolvesStartAtSharedJunction = topology.reachesStartTerminal && !topology.previousEdgeOperated;
   const resolvesEndAtSharedJunction = topology.reachesEndTerminal && !topology.nextEdgeOperated;
+  const resolvesStartAtBBCorner = topology.reachesStartTerminal
+    && topology.previousEdgeRole === 'B' && topology.currentEdgeRole === 'B';
+  const resolvesEndAtBBCorner = topology.reachesEndTerminal
+    && topology.currentEdgeRole === 'B' && topology.nextEdgeRole === 'B';
 
-  // An adjacent unoperated edge already terminates at the shared junction J. Ownership-aware
-  // terminal resolution therefore gives the generated interval zero physical terminal extent.
+  // An adjacent unoperated edge already terminates at J. At a B/B junction, collapse only the
+  // inset-facing terminal wall so the current edge begins J→C and the previous edge ends P→J.
   return {
-    baseStart: resolvesStartAtSharedJunction ? topology.startJunction : points.baseStart,
+    baseStart: resolvesStartAtSharedJunction ? topology.startJunction
+      : resolvesStartAtBBCorner ? points.tabStart : points.baseStart,
     tabStart: resolvesStartAtSharedJunction ? topology.startJunction : points.tabStart,
     tabEnd: resolvesEndAtSharedJunction ? topology.endJunction : points.tabEnd,
-    baseEnd: resolvesEndAtSharedJunction ? topology.endJunction : points.baseEnd,
+    baseEnd: resolvesEndAtSharedJunction ? topology.endJunction
+      : resolvesEndAtBBCorner ? points.tabEnd : points.baseEnd,
   };
 };
 
@@ -787,35 +767,15 @@ export const applyTabsToContour = (
   if (!roleEffectiveGeometry.ok) {
     return roleEffectiveGeometry;
   }
-  const { sides: effectiveSides, junctions: effectiveJunctions } = roleEffectiveGeometry;
+  const { junctions: effectiveJunctions } = roleEffectiveGeometry;
   const contourWindingSign = getContourSignedArea(contour) >= 0 ? 1 : -1;
 
   contourSides.forEach((side, sideIndex) => {
     const operation = tabOperationsBySideIndex.get(sideIndex);
     const nextSideIndex = (sideIndex + 1) % contourSides.length;
-    const effectiveEnd = isBBCorner(nextSideIndex, contourSides.length, tabOperationsBySideIndex)
-      ? side.end
-      : effectiveJunctions[nextSideIndex] as Point;
+    const effectiveEnd = effectiveJunctions[nextSideIndex] as Point;
 
-    if (isBBCorner(sideIndex, contourSides.length, tabOperationsBySideIndex)) {
-      const previousEffectiveSide = effectiveSides[(sideIndex + contourSides.length - 1) % contourSides.length];
-      const currentEffectiveSide = effectiveSides[sideIndex];
-      const effectiveJunction = effectiveJunctions[sideIndex];
-
-      if (previousEffectiveSide && currentEffectiveSide && effectiveJunction) {
-        addBBCornerJoin(
-          tabbedContour,
-          side.start,
-          previousEffectiveSide,
-          currentEffectiveSide,
-          effectiveJunction,
-        );
-      } else {
-        addContourPoint(tabbedContour, side.start);
-      }
-    } else {
-      addContourPoint(tabbedContour, effectiveJunctions[sideIndex] as Point);
-    }
+    addContourPoint(tabbedContour, effectiveJunctions[sideIndex] as Point);
 
     if (!operation || operation.segments.length === 0) {
       addContourPoint(tabbedContour, effectiveEnd);
@@ -841,6 +801,10 @@ export const applyTabsToContour = (
 
     segments.forEach((segment, tapIndex) => {
       const previousSideIndex = (sideIndex + contourSides.length - 1) % contourSides.length;
+      const reachesStartBBCorner = segment.startDistance <= cornerTouchTolerance
+        && operation.role === 'B' && tabOperationsBySideIndex.get(previousSideIndex)?.role === 'B';
+      const reachesEndBBCorner = getContourSideLength(side) - segment.endDistance <= cornerTouchTolerance
+        && operation.role === 'B' && tabOperationsBySideIndex.get(nextSideIndex)?.role === 'B';
       const terminalPoints = resolveOwnedTerminalTapPoints({
         baseStart: interpolateSidePoint(side, segment.startDistance),
         tabStart: interpolateSidePoint(outwardSide, segment.startDistance),
@@ -851,15 +815,18 @@ export const applyTabsToContour = (
         reachesEndTerminal: getContourSideLength(side) - segment.endDistance <= cornerTouchTolerance,
         previousEdgeOperated: tabOperationsBySideIndex.has(previousSideIndex),
         nextEdgeOperated: tabOperationsBySideIndex.has(nextSideIndex),
+        previousEdgeRole: tabOperationsBySideIndex.get(previousSideIndex)?.role,
+        currentEdgeRole: operation.role,
+        nextEdgeRole: tabOperationsBySideIndex.get(nextSideIndex)?.role,
         startJunction: effectiveJunctions[sideIndex] as Point,
         endJunction: effectiveEnd,
       });
       const { baseStart, tabStart, tabEnd, baseEnd } = terminalPoints;
 
       onGeneratedTap?.(operation, [baseStart, tabStart, tabEnd, baseEnd], tapIndex, [
-        segmentLiesOnPanelBoundary(panel, baseStart, tabStart) ? 'source-boundary-start' : 'tap-side-start',
+        !reachesStartBBCorner && segmentLiesOnPanelBoundary(panel, baseStart, tabStart) ? 'source-boundary-start' : 'tap-side-start',
         'tap-tip',
-        segmentLiesOnPanelBoundary(panel, tabEnd, baseEnd) ? 'source-boundary-end' : 'tap-side-end',
+        !reachesEndBBCorner && segmentLiesOnPanelBoundary(panel, tabEnd, baseEnd) ? 'source-boundary-end' : 'tap-side-end',
       ]);
 
       addContourPoint(tabbedContour, baseStart);
