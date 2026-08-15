@@ -30,7 +30,7 @@ export type ShadowComposerDiagnostic = Readonly<{
   key: string; message: string;
 }>;
 export type ShadowCandidateSegment = Readonly<{
-  segmentIndex: number; start: Point; end: Point; sourceEdgeId: string; profileId: GeneratedProfileId | null;
+  segmentIndex: number; start: Point; end: Point; panelId: string; sourceEdgeId: string; profileId: GeneratedProfileId | null;
   operationId: string | null; elementId: GeneratedProfileElementId | null; projectionId: GeometryProjectionId | null;
   tapId: GeneratedTapId | null; tapRole: GeneratedTapSegmentRole | null; relationshipOrigin: 'unchanged' | 'replaces';
 }>;
@@ -98,13 +98,13 @@ export const composeShadowPanel = (panel: SvgPanel, relationships: GeometryRelat
   contributions.forEach((contribution, edgeIndex) => {
     const startJ = resolved[edgeIndex].point; const endJ = resolved[(edgeIndex + 1) % resolved.length].point;
     if (contribution.kind === 'unchanged') {
-      if (!same(startJ, endJ)) segments.push({ segmentIndex: segments.length, start: clonePoint(startJ), end: clonePoint(endJ), sourceEdgeId: contribution.sourceEdgeId,
+      if (!same(startJ, endJ)) segments.push({ segmentIndex: segments.length, start: clonePoint(startJ), end: clonePoint(endJ), panelId: contribution.panelId, sourceEdgeId: contribution.sourceEdgeId,
         profileId: null, operationId: null, elementId: null, projectionId: null, tapId: null, tapRole: null, relationshipOrigin: 'unchanged' });
       return;
     }
     contribution.geometry.forEach((part, partIndex) => {
       const start = partIndex === 0 ? startJ : part.start; const end = partIndex === contribution.geometry.length - 1 ? endJ : part.end;
-      if (!same(start, end)) segments.push({ segmentIndex: segments.length, start: clonePoint(start), end: clonePoint(end), sourceEdgeId: contribution.sourceEdgeId,
+      if (!same(start, end)) segments.push({ segmentIndex: segments.length, start: clonePoint(start), end: clonePoint(end), panelId: contribution.panelId, sourceEdgeId: contribution.sourceEdgeId,
         profileId: contribution.profileId, operationId: contribution.operationId, elementId: part.elementId, projectionId: part.projectionId,
         tapId: part.tapId, tapRole: part.tapRole, relationshipOrigin: 'replaces' });
     });
