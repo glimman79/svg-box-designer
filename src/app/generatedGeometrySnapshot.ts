@@ -2,6 +2,7 @@ import type { AppliedEPanelPath, AppliedSGeometry } from './connectionTypes';
 import type { GeometryOperation } from './operationTypes';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import { createBoundaryProfileGroup } from './generatedProfiles';
+import type { PanelCompositionModel } from './generatedGeometryAuthority';
 
 export type { GeneratedGeometryItem, GeneratedGeometryKind, GeneratedGeometrySource } from './generatedGeometryTypes';
 
@@ -16,7 +17,7 @@ export type GeneratedGeometrySnapshotMetadata = {
   assignmentRevision: number;
   operationRevision: number;
   /** Absent on pre-Phase-4 snapshots, which means legacy authority semantics. */
-  panelCompositionModel?: 'legacy' | 'relationship-composed-single-tool-v1';
+  panelCompositionModel?: PanelCompositionModel;
 };
 
 export type GeneratedGeometrySnapshot = {
@@ -46,7 +47,7 @@ export const createGeneratedGeometrySnapshot = ({
   importedGeometryRevision?: number;
   assignmentRevision?: number;
   operationRevision?: number;
-  panelCompositionModel?: 'legacy' | 'relationship-composed-single-tool-v1';
+  panelCompositionModel?: PanelCompositionModel;
 }): GeneratedGeometrySnapshot => {
   appliedEPanelPaths ??= [];
   appliedSGeometry ??= [];
