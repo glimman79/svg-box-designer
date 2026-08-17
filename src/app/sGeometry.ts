@@ -1,4 +1,4 @@
-import { getBucketEdgeAssignment, getBucketSlotAssignments } from './assignmentBuckets';
+import { getBucketSlotAssignments } from './assignmentBuckets';
 import type { AppliedSGeometry, ConnectionMap, SlotConnectionDefinition } from './connectionTypes';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import { createBoundaryProfileGroup, createGeneratedProfile } from './generatedProfiles';
@@ -343,13 +343,6 @@ export const buildGeneratedSGeometryItems = (
     const bValidation = validateClosedPanel(bPanel, edgesById);
     if (!bValidation.valid) {
       throw new Error(`${connection.id} S-B edge must be part of a valid closed panel so slot offset direction can be determined.`);
-    }
-
-    if (panel.edgeIds.some((edgeId) => {
-      const edgeConnectionId = getBucketEdgeAssignment(assignments[edgeId])?.connectionId;
-      return edgeConnectionId ? connectionMap[edgeConnectionId]?.prefix === 'E' : false;
-    })) {
-      throw new Error(`${connection.id} S-A panel conflicts with existing E-applied geometry on the same panel.`);
     }
 
     const sideIndex = panel.edgeIds.findIndex((edgeId) => edgeId === sourceAEdgeId);
