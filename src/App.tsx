@@ -18,6 +18,7 @@ import { buildFinalGeometry as buildNativeFinalGeometry } from './app/finalGeome
 import { buildFinalGeometry } from './app/finalGeometryCompatibility';
 import { createGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { selectGeneratedGeometryAuthority } from './app/generatedGeometryAuthority';
+import { collectSourceEdgeAuthoringClaims, deriveCanvasEdgeRelationshipState, deriveGeneratedCanvasEdgeRelationshipState, sourceEdgeRelationshipKey } from './app/canvasEdgeRelationships';
 import type { PanelCompositionAuthorityMode } from './app/generatedGeometryAuthority';
 import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
@@ -58,6 +59,8 @@ export { getManufacturingPipelineForGeometryType } from './app/manufacturingMeta
 export { getManufacturingPolicy } from './app/manufacturingPolicy';
 export { NoMovementStrategy, OffsetStrategy, noMovementStrategy, offsetStrategy } from './app/compensationStrategies';
 export { geometryServices } from './app/geometryServices';
+export { collectSourceEdgeAuthoringClaims, deriveCanvasEdgeRelationshipState, deriveGeneratedCanvasEdgeRelationshipState, sourceEdgeRelationshipKey } from './app/canvasEdgeRelationships';
+export type { CanvasEdgeRelationshipState } from './app/canvasEdgeRelationships';
 export type { GeometryServices, ProfileDirection, ProfileOrientation } from './app/geometryServices';
 export type { ClassifiedContour, ClassifiedContourSource, ContourKind } from './app/contourClassification';
 export type { FinalGeometryType, ManufacturingClassification } from './app/finalGeometryTypes';
@@ -1394,6 +1397,20 @@ function App() {
       return;
     }
 
+    const requestedRelationship = connection.prefix === 'E' || (connection.prefix === 'S' && nextSlotRole === 'A')
+      ? 'replaces' : connection.prefix === 'S' ? 'references' : null;
+    const sourcePanelId = panelIdByEdgeId.get(edgeId);
+    const currentRelationship = sourcePanelId
+      ? authoredCanvasEdgeRelationships.bySource.get(sourceEdgeRelationshipKey(sourcePanelId, edgeId))
+      : undefined;
+    const requestedOperationId = connection.prefix === 'E'
+      ? `operation:TB:${assignmentConnectionId}` : `operation:S:${assignmentConnectionId}`;
+    if (requestedRelationship === 'replaces' && currentRelationship?.replacementOwner
+      && currentRelationship.replacementOwner !== requestedOperationId) {
+      setErrorMessage('This edge already has a replacement assignment.');
+      return;
+    }
+
     pushUndoState();
 
     const currentBucket = toEdgeAssignmentBucket(edgeAssignments[edgeId]) ?? {};
@@ -2298,13 +2315,17 @@ function App() {
     placementsByEdgeId.set(placement.edgeId, [...(placementsByEdgeId.get(placement.edgeId) ?? []), placement]);
     return placementsByEdgeId;
   }, new Map<string, typeof labelPlacements>());
-  const appliedEEdgeIds = useMemo(
-    () => new Set(generatedGeometryItems.filter((item) => item.toolType === 'TB' && item.behaviour.assembly === 'panel-boundary').flatMap((item) => item.source.edgeIds)),
+  const authoredCanvasEdgeRelationships = useMemo(
+    () => deriveCanvasEdgeRelationshipState(collectSourceEdgeAuthoringClaims(svgModel, edgeAssignments, connections)),
+    [connections, edgeAssignments, svgModel],
+  );
+  const generatedCanvasEdgeRelationships = useMemo(
+    () => deriveGeneratedCanvasEdgeRelationshipState(generatedGeometryItems),
     [generatedGeometryItems],
   );
-  const appliedSPanelEdgeIds = useMemo(
-    () => new Set(generatedGeometryItems.filter((item) => item.toolType === 'S' && item.behaviour.assembly === 'panel-boundary').flatMap((item) => item.source.edgeIds)),
-    [generatedGeometryItems],
+  const panelIdByEdgeId = useMemo(
+    () => new Map(svgModel.panels.flatMap((panel) => panel.edgeIds.map((edgeId) => [edgeId, panel.id] as const))),
+    [svgModel],
   );
 
   const renderPanelList = () => (
@@ -2774,7 +2795,13 @@ function App() {
                   const label = labels[0];
                   const selected = selectedEdgeId === edge.id;
                   const edgeLabelPlacements = labelPlacementsByEdgeId.get(edge.id) ?? [];
-                  const showHighlight = (label || selected) && !appliedEEdgeIds.has(edge.id) && !appliedSPanelEdgeIds.has(edge.id);
+                  const panelId = panelIdByEdgeId.get(edge.id);
+                  const generatedRelationship = panelId
+                    ? generatedCanvasEdgeRelationships.bySource.get(sourceEdgeRelationshipKey(panelId, edge.id))
+                    : undefined;
+                  // Selection styling policy remains unchanged: an applied replacement hides the authoring overlay.
+                  // References are deliberately independent and never masquerade as replacement ownership.
+                  const showHighlight = (label || selected) && !generatedRelationship?.replacementOwner;
 
                   return (
                     <g key={edge.id}>
