@@ -918,7 +918,8 @@ function App() {
 
   // Explicit migration flag. The safe production default remains fully legacy.
   const panelCompositionAuthorityMode: PanelCompositionAuthorityMode =
-    import.meta.env.VITE_PANEL_COMPOSITION_AUTHORITY_MODE === 'single-tool' ? 'single-tool' : 'legacy';
+    import.meta.env.VITE_PANEL_COMPOSITION_AUTHORITY_MODE === 'mixed' ? 'mixed'
+      : import.meta.env.VITE_PANEL_COMPOSITION_AUTHORITY_MODE === 'single-tool' ? 'single-tool' : 'legacy';
   const generatedGeometryAuthority = useMemo(
     () => selectGeneratedGeometryAuthority(svgModel, generatedGeometryItems, panelCompositionAuthorityMode),
     [generatedGeometryItems, panelCompositionAuthorityMode, svgModel],
