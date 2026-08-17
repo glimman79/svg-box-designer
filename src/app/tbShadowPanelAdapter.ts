@@ -3,7 +3,7 @@
  * replacement contract consumed by the shadow panel composer.
  */
 import type { GeneratedProfile } from './generatedProfiles';
-import type { ShadowReplacedEdgeContribution } from './shadowPanelComposer';
+import type { PanelReplacedEdgeContribution } from './panelComposer';
 import { cornerTouchTolerance } from './sharedGeometry';
 import type { Point } from '../svgUtils';
 
@@ -17,7 +17,7 @@ const samePoint = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y) <= co
  */
 export const adaptTBProfilesToShadowContributions = (
   profiles: ReadonlyArray<GeneratedProfile>,
-): ReadonlyArray<ShadowReplacedEdgeContribution> => profiles.map((profile) => {
+): ReadonlyArray<PanelReplacedEdgeContribution> => profiles.map((profile) => {
   if (profile.generatorType !== 'TB') {
     throw new Error(`Profile ${profile.id} is not a TB profile.`);
   }
@@ -62,3 +62,6 @@ export const adaptTBProfilesToShadowContributions = (
     endPolicy: 'replace-terminal',
   };
 });
+
+/** Production-neutral name; the legacy export remains for diagnostic compatibility. */
+export const adaptTBProfilesToPanelContributions = adaptTBProfilesToShadowContributions;
