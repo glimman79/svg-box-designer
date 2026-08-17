@@ -17,6 +17,7 @@ import { createGeneratedProfileOffsetTargetId, createOrdinaryProfileOffsetTarget
 import { buildFinalGeometry as buildNativeFinalGeometry } from './app/finalGeometry';
 import { buildFinalGeometry } from './app/finalGeometryCompatibility';
 import { createGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
+import { assembleGeneratedGeometryDiagnostics } from './app/generatedGeometryAssembly';
 import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
@@ -913,6 +914,12 @@ function App() {
   const formatTBDisplayLabel = (label: string | null | undefined) => (label ? tbDisplayLabelAliases[label] ?? label : 'None');
 
 
+
+  // Development-only, non-authoritative observation at the production stream boundary.
+  // Its result is intentionally discarded and the snapshot receives the original array below.
+  useMemo(() => (import.meta.env.DEV
+    ? assembleGeneratedGeometryDiagnostics(svgModel, generatedGeometryItems)
+    : undefined), [generatedGeometryItems, svgModel]);
 
   const generatedGeometrySnapshot = useMemo(
     () => createGeneratedGeometrySnapshot({ generatedGeometry: generatedGeometryItems }),
