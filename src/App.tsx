@@ -17,7 +17,8 @@ import { createGeneratedProfileOffsetTargetId, createOrdinaryProfileOffsetTarget
 import { buildFinalGeometry as buildNativeFinalGeometry } from './app/finalGeometry';
 import { buildFinalGeometry } from './app/finalGeometryCompatibility';
 import { createGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
-import { assembleGeneratedGeometryDiagnostics } from './app/generatedGeometryAssembly';
+import { selectGeneratedGeometryAuthority } from './app/generatedGeometryAuthority';
+import type { PanelCompositionAuthorityMode } from './app/generatedGeometryAuthority';
 import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
@@ -915,15 +916,18 @@ function App() {
 
 
 
-  // Development-only, non-authoritative observation at the production stream boundary.
-  // Its result is intentionally discarded and the snapshot receives the original array below.
-  useMemo(() => (import.meta.env.DEV
-    ? assembleGeneratedGeometryDiagnostics(svgModel, generatedGeometryItems)
-    : undefined), [generatedGeometryItems, svgModel]);
+  // Explicit migration flag. The safe production default remains fully legacy.
+  const panelCompositionAuthorityMode: PanelCompositionAuthorityMode =
+    import.meta.env.VITE_PANEL_COMPOSITION_AUTHORITY_MODE === 'single-tool' ? 'single-tool' : 'legacy';
+  const generatedGeometryAuthority = useMemo(
+    () => selectGeneratedGeometryAuthority(svgModel, generatedGeometryItems, panelCompositionAuthorityMode),
+    [generatedGeometryItems, panelCompositionAuthorityMode, svgModel],
+  );
 
   const generatedGeometrySnapshot = useMemo(
-    () => createGeneratedGeometrySnapshot({ generatedGeometry: generatedGeometryItems }),
-    [generatedGeometryItems],
+    () => createGeneratedGeometrySnapshot({ generatedGeometry: [...generatedGeometryAuthority.generatedGeometry],
+      panelCompositionModel: generatedGeometryAuthority.panelCompositionModel }),
+    [generatedGeometryAuthority],
   );
 
   const finalGeometry = useMemo(

@@ -30,7 +30,7 @@ const normalized = (value: unknown) => JSON.stringify(value);
  * buildFinalGeometry's production API accepts generated items. Generator-owned
  * profiles/taps are transported unchanged; slots and all unrelated items stay
  * unchanged. The input array and its objects are never mutated. */
-export const createDiagnosticGeneratedGeometry = (
+export const packageComposedPanelGeometry = (
   items: ReadonlyArray<GeneratedGeometryItem>, candidate: PanelCandidate,
   ownerOperationIds: ReadonlyArray<string>,
 ): ReadonlyArray<GeneratedGeometryItem> => {
@@ -40,8 +40,8 @@ export const createDiagnosticGeneratedGeometry = (
   if (!owners.length) throw new Error(`No diagnostic packaging owners for ${panelId}.`);
   const pathD = pointsToClosedPathD([...points]);
   const diagnostic: GeneratedGeometryItem = {
-    ...owners[0], id: `diagnostic:composed-panel:${panelId}`, operationId: `diagnostic:composed:${panelId}`,
-    source: { operationId: `diagnostic:composed:${panelId}`, connectionIds: owners.flatMap((item) => item.source.connectionIds),
+    ...owners[0], id: `composed:panel:${panelId}`, operationId: `composed:${panelId}`,
+    source: { operationId: `composed:${panelId}`, connectionIds: owners.flatMap((item) => item.source.connectionIds),
       edgeIds: [...new Set(owners.flatMap((item) => item.source.edgeIds))], panelIds: [panelId] },
     geometry: { ...owners[0].geometry, pathD }, pathD,
     profileGroups: owners.flatMap((item) => item.profileGroups ?? []).sort((a, b) => a.id.localeCompare(b.id)),
@@ -57,6 +57,9 @@ export const createDiagnosticGeneratedGeometry = (
   return [...items.filter((item) => !(item.kind === 'PANEL_PATH' && item.behaviour.replacesPanelId === panelId)), diagnostic]
     .sort((a, b) => a.id.localeCompare(b.id));
 };
+
+/** Backwards-compatible Phase 3 name; authority and diagnostics intentionally share packaging. */
+export const createDiagnosticGeneratedGeometry = packageComposedPanelGeometry;
 
 export const runGeneratedGeometryDualRun = (svgModel: SvgDocumentModel, items: ReadonlyArray<GeneratedGeometryItem>,
   kerfMm = 0.12, slotClearanceMm = 0.08, profileOffsetMm = 0.04,

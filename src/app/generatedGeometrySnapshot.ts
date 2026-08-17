@@ -15,6 +15,8 @@ export type GeneratedGeometrySnapshotMetadata = {
   importedGeometryRevision: number;
   assignmentRevision: number;
   operationRevision: number;
+  /** Absent on pre-Phase-4 snapshots, which means legacy authority semantics. */
+  panelCompositionModel?: 'legacy' | 'relationship-composed-single-tool-v1';
 };
 
 export type GeneratedGeometrySnapshot = {
@@ -34,6 +36,7 @@ export const createGeneratedGeometrySnapshot = ({
   importedGeometryRevision = 1,
   assignmentRevision = 1,
   operationRevision = 1,
+  panelCompositionModel = 'legacy',
 }: {
   generatedGeometry?: GeneratedGeometryItem[];
   appliedEPanelPaths?: AppliedEPanelPath[];
@@ -43,6 +46,7 @@ export const createGeneratedGeometrySnapshot = ({
   importedGeometryRevision?: number;
   assignmentRevision?: number;
   operationRevision?: number;
+  panelCompositionModel?: 'legacy' | 'relationship-composed-single-tool-v1';
 }): GeneratedGeometrySnapshot => {
   appliedEPanelPaths ??= [];
   appliedSGeometry ??= [];
@@ -98,7 +102,7 @@ export const createGeneratedGeometrySnapshot = ({
   });
 
   return Object.freeze({
-    metadata: Object.freeze({ snapshotId: `generated-geometry:${revision}:${importedGeometryRevision}:${assignmentRevision}:${operationRevision}`, revision, generatorVersion: generatedGeometrySnapshotVersion, createdTimestamp: new Date().toISOString(), importedGeometryRevision, assignmentRevision, operationRevision }),
+    metadata: Object.freeze({ snapshotId: `generated-geometry:${revision}:${importedGeometryRevision}:${assignmentRevision}:${operationRevision}`, revision, generatorVersion: generatedGeometrySnapshotVersion, createdTimestamp: new Date().toISOString(), importedGeometryRevision, assignmentRevision, operationRevision, panelCompositionModel }),
     operations: Object.freeze(clone(operations)),
     generatedGeometry: Object.freeze(clone(generatedGeometry ?? [...tbItems, ...sItems])),
   });
