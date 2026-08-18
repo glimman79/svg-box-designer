@@ -1,5 +1,5 @@
 import type { ManufacturingMetadata } from './manufacturingMetadata';
-import type { EdgeRole, SlotRole, SourceBounds } from '../svgUtils';
+import type { SourceBounds } from '../svgUtils';
 
 export type EdgeConnectionProperties = {
   // Compatibility-only persisted legacy thickness; PM owns active TB thickness.
@@ -19,28 +19,6 @@ export type SlotConnectionProperties = {
   // Compatibility-only persisted legacy thickness; PM owns active S thickness.
   materialThicknessMm: number;
   kerfMm: number;
-};
-
-export type WallPatternType = 'UNIFORM' | 'ALTERNATING';
-
-export type WallReference = {
-  edgeId: string;
-  connectionId: string;
-  role: EdgeRole | SlotRole;
-  sourceType: 'E' | 'S';
-};
-
-export type WallConnectionProperties = {
-  wallHeightMm: number;
-  materialThicknessMm: number;
-  fingerWidthMm: number;
-  kerfMm: number;
-  playMm: number;
-  selectedEdgeIds: string[];
-  references: WallReference[];
-  referencePatternType: WallPatternType | null;
-  generatedPatternType: WallPatternType | null;
-  generatedConnectionIds: string[];
 };
 
 export type CornerConnectionProperties = {
@@ -64,7 +42,6 @@ export type PatternConnectionProperties = {
 export type ConnectionPropertiesByPrefix = {
   E: EdgeConnectionProperties;
   S: SlotConnectionProperties;
-  W: WallConnectionProperties;
   C: CornerConnectionProperties;
   P: PatternConnectionProperties;
 };
@@ -79,12 +56,6 @@ export type SlotConnectionDefinition = {
   id: string;
   prefix: 'S';
   properties: SlotConnectionProperties;
-};
-
-export type WallConnectionDefinition = {
-  id: string;
-  prefix: 'W';
-  properties: WallConnectionProperties;
 };
 
 export type CornerConnectionDefinition = {
@@ -102,7 +73,6 @@ export type PatternConnectionDefinition = {
 export type ConnectionDefinition =
   | EdgeConnectionDefinition
   | SlotConnectionDefinition
-  | WallConnectionDefinition
   | CornerConnectionDefinition
   | PatternConnectionDefinition;
 
@@ -117,12 +87,6 @@ export type ActiveSGroup = {
 export type ActiveTBGroup = {
   groupId: string;
   connectionIds: string[];
-  isActive: boolean;
-};
-
-export type ActiveWGroup = {
-  groupId: string;
-  connectionId: string;
   isActive: boolean;
 };
 
