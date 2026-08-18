@@ -41,13 +41,13 @@ const fixture = (name: string, tool: Tool, orientation: Orientation, winding: Wi
   const a = rectangle(`${name}-owner`, 0, 0, 90, 40, winding, selectedSide, reverseSource);
   const b = rectangle(`${name}-mate`, 120, 0, 90, 40, winding, selectedSide, false);
   const model: SvgDocumentModel = { content: '', innerMarkup: '', rootAttributes: { width: '240', height: '80', viewBox: '0 0 240 80' }, viewBox: '0 0 240 80', width: 240, height: 80, panels: [a.panel, b.panel], edges: [...a.edges, ...b.edges] };
-  const connectionId = `${tool}-${name}`;
+  const connectionId = tool === 'TB' ? 'TB1' : `${tool}-${name}`;
   const pm = { defaultThicknessMm: 5, panels: { [a.panel.id]: { panelId: a.panel.id, thicknessMm: 5 }, [b.panel.id]: { panelId: b.panel.id, thicknessMm: 5 } } };
   let assignments: any;
   let connections: any;
   if (tool === 'TB') {
     assignments = { [a.selectedEdgeId]: { edgeAssignment: { connectionId, edgeRole: role } }, [b.selectedEdgeId]: { edgeAssignment: { connectionId, edgeRole: role === 'A' ? 'B' : 'A' } } };
-    connections = { [connectionId]: { id: connectionId, prefix: 'E', properties: { materialThicknessMm: 5, fingerWidthMm: 30, isFingerWidthManual: true } } };
+    connections = { [connectionId]: { id: connectionId, prefix: 'TB', properties: { materialThicknessMm: 5, fingerWidthMm: 30, isFingerWidthManual: true } } };
   } else {
     assignments = { [a.selectedEdgeId]: { slotAssignments: [{ connectionId, slotRole: 'A' }] }, [b.selectedEdgeId]: { slotAssignments: [{ connectionId, slotRole: 'B' }] } };
     connections = { [connectionId]: { id: connectionId, prefix: 'S', properties: { materialThicknessMm: 5, slotLengthMm: 30, isSlotLengthManual: true, slotOffsetMm: 0 } } };
@@ -63,14 +63,14 @@ const adjacentTBFixture = () => {
   const mateB = rectangle('adjacent-mate-b', 240, 0, 90, 60, 'counterclockwise', 0, false);
   const edgeA = owner.panel.edgeIds[0]; const edgeB = owner.panel.edgeIds[1];
   const connections: any = {
-    'TB-adjacent-a': { id: 'TB-adjacent-a', prefix: 'E', properties: { materialThicknessMm: 5, fingerWidthMm: 30, isFingerWidthManual: true } },
-    'TB-adjacent-b': { id: 'TB-adjacent-b', prefix: 'E', properties: { materialThicknessMm: 5, fingerWidthMm: 30, isFingerWidthManual: true } },
+    TB1: { id: 'TB1', prefix: 'TB', properties: { materialThicknessMm: 5, fingerWidthMm: 30, isFingerWidthManual: true } },
+    TB2: { id: 'TB2', prefix: 'TB', properties: { materialThicknessMm: 5, fingerWidthMm: 30, isFingerWidthManual: true } },
   };
   const assignments: any = {
-    [edgeA]: { edgeAssignment: { connectionId: 'TB-adjacent-a', edgeRole: 'A' } },
-    [mateA.panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'TB-adjacent-a', edgeRole: 'B' } },
-    [edgeB]: { edgeAssignment: { connectionId: 'TB-adjacent-b', edgeRole: 'A' } },
-    [mateB.panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'TB-adjacent-b', edgeRole: 'B' } },
+    [edgeA]: { edgeAssignment: { connectionId: 'TB1', edgeRole: 'A' } },
+    [mateA.panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'TB1', edgeRole: 'B' } },
+    [edgeB]: { edgeAssignment: { connectionId: 'TB2', edgeRole: 'A' } },
+    [mateB.panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'TB2', edgeRole: 'B' } },
   };
   const panels = [owner.panel, mateA.panel, mateB.panel];
   const model: SvgDocumentModel = { content: '', innerMarkup: '', rootAttributes: { width: null, height: null, viewBox: null }, viewBox: '0 0 360 80', width: 360, height: 80, panels, edges: [...owner.edges, ...mateA.edges, ...mateB.edges] };
@@ -164,6 +164,11 @@ const traceTap = (tap: GeneratedTapGroup, tapIndex: number, sourceStart: Point, 
         ? 'tap-tip'
         : (onPanelBoundary ? 'source-boundary-end' : 'tap-side-end');
     invariant(authoredRole === expectedRole, `${tap.id} segment ${segmentIndex}: expected authored role ${expectedRole}, received ${authoredRole}`);
+    if (close(from, to)) {
+      invariant(finalIndex < 0, `${tap.id} segment ${segmentIndex}: collapsed terminal marker unexpectedly became FinalGeometry`);
+      console.log(`Segment ${segmentIndex}\nfrom: ${point(from)}\nto: ${point(to)}\nrole: ${authoredRole}\neligible: ${isTapClearanceEligibleRole(authoredRole)}\ncollapsed terminal marker: omitted from FinalGeometry as expected`);
+      return;
+    }
     invariant(finalIndex >= 0, `${tap.id} segment ${segmentIndex}: missing from FinalGeometry`);
     invariant(ids[finalIndex] === tap.id, `${tap.id} segment ${segmentIndex}: GeneratedTapId changed during propagation`);
     invariant(roles[finalIndex] === authoredRole, `${tap.id} segment ${segmentIndex}: role changed during propagation`);
