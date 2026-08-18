@@ -31,11 +31,12 @@ const rectangle = (id: string, x: number, y: number, winding: 'CCW'|'CW' = 'CCW'
 type Spec = { tb?: Record<number, EdgeRole>; s?: number[]; refs?: Array<{side:number; id:string}>; tbDepth?:number; sDepth?:number; fingerWidth?:number; slotLength?:number; winding?:'CCW'|'CW' };
 const generate = (name: string, spec: Spec) => {
   const owner = rectangle(name, 0, 0, spec.winding); const mates = (spec.s ?? []).map((_,i)=>rectangle(`${name}-mate-${i}`,180+i*150,0,spec.winding));
-  const panels = [owner.panel,...mates.map(x=>x.panel)]; const edges = [...owner.edges,...mates.flatMap(x=>x.edges)];
+  const tbMates = Object.keys(spec.tb ?? {}).map((_, i) => rectangle(`${name}-tb-mate-${i}`, 600 + i * 150, 0, spec.winding));
+  const panels = [owner.panel,...mates.map(x=>x.panel),...tbMates.map(x=>x.panel)]; const edges = [...owner.edges,...mates.flatMap(x=>x.edges),...tbMates.flatMap(x=>x.edges)];
   const model: SvgDocumentModel = {content:'',innerMarkup:'',rootAttributes:{width:null,height:null,viewBox:null},viewBox:'0 0 1000 120',width:1000,height:120,panels,edges};
   const tbAssignments:any={}, tbConnections:any={};
-  Object.entries(spec.tb ?? {}).forEach(([raw,role])=>{const side=+raw,id=`E-${name}-tb-${side}`;tbAssignments[owner.panel.edgeIds[side]]={edgeAssignment:{connectionId:id,edgeRole:role}};tbConnections[id]={id,prefix:'E',properties:{materialThicknessMm:spec.tbDepth??2.4,fingerWidthMm:spec.fingerWidth??30,isFingerWidthManual:spec.fingerWidth!==undefined}};});
-  const tbItems=buildGeneratedTBGeometryItems(model,tbAssignments,tbConnections,{defaultThicknessMm:spec.tbDepth??2.4,panels:{[owner.panel.id]:{panelId:owner.panel.id,thicknessMm:spec.tbDepth??2.4}}});
+  Object.entries(spec.tb ?? {}).forEach(([raw,role],i)=>{const side=+raw,id=`TB-${name}-tb-${side}`;tbAssignments[owner.panel.edgeIds[side]]={edgeAssignment:{connectionId:id,edgeRole:role}};tbAssignments[tbMates[i].panel.edgeIds[side]]={edgeAssignment:{connectionId:id,edgeRole:role==='A'?'B':'A'}};tbConnections[id]={id,prefix:'TB',properties:{materialThicknessMm:spec.tbDepth??2.4,fingerWidthMm:spec.fingerWidth??30,isFingerWidthManual:spec.fingerWidth!==undefined}};});
+  const tbItems=buildGeneratedTBGeometryItems(model,tbAssignments,tbConnections,{defaultThicknessMm:spec.tbDepth??2.4,panels:Object.fromEntries([owner.panel,...tbMates.map(x=>x.panel)].map(p=>[p.id,{panelId:p.id,thicknessMm:spec.tbDepth??2.4}]))});
   const sAssignments:any={},sConnections:any={};
   (spec.s??[]).forEach((side,i)=>{const id=`${name}-s-${side}`;sAssignments[owner.panel.edgeIds[side]]={slotAssignments:[{connectionId:id,slotRole:'A'}]};sAssignments[mates[i].panel.edgeIds[side]]={slotAssignments:[{connectionId:id,slotRole:'B'}]};sConnections[id]={id,prefix:'S',properties:{materialThicknessMm:spec.sDepth??2.4,slotLengthMm:spec.slotLength??20,isSlotLengthManual:spec.slotLength!==undefined,slotOffsetMm:1}};});
   const thickness={defaultThicknessMm:spec.sDepth??2.4,panels:Object.fromEntries(panels.map((p,i)=>[p.id,{panelId:p.id,thicknessMm:i?spec.sDepth??2.4:5}]))};
