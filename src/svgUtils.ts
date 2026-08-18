@@ -1,3 +1,5 @@
+import { hasConnectionLabelPrefix } from './app/connectionLabels';
+
 export type Point = {
   x: number;
   y: number;
@@ -221,11 +223,11 @@ export const toEdgeAssignmentBucket = (assignment: EdgeAssignment | EdgeAssignme
     return assignment;
   }
 
-  if (assignment.connectionId.startsWith('E')) {
+  if (hasConnectionLabelPrefix(assignment.connectionId, 'E', 'TB')) {
     return { edgeAssignment: assignment };
   }
 
-  if (assignment.connectionId.startsWith('S')) {
+  if (hasConnectionLabelPrefix(assignment.connectionId, 'S')) {
     return { slotAssignments: [assignment] };
   }
 
@@ -241,11 +243,11 @@ export const getBucketSlotAssignments = (assignment: EdgeAssignment | EdgeAssign
 );
 
 const getAssignmentDisplayLabel = (assignment: EdgeAssignment) => {
-  if (assignment.connectionId.startsWith('E') && assignment.edgeRole) {
+  if (hasConnectionLabelPrefix(assignment.connectionId, 'E', 'TB') && assignment.edgeRole) {
     return `${assignment.connectionId}-${assignment.edgeRole === 'A' ? 'A' : 'B'}`;
   }
 
-  if (assignment.connectionId.startsWith('S') && assignment.slotRole) {
+  if (hasConnectionLabelPrefix(assignment.connectionId, 'S') && assignment.slotRole) {
     return `${assignment.connectionId}-${assignment.slotRole === 'A' ? 'A' : 'B'}`;
   }
 

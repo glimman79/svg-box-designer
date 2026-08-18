@@ -4,6 +4,7 @@
   "version": "1.1.0",
   "type": "module",
   "scripts": {
+    "test:connection-labels": "rm -rf .test-build && tsc --ignoreConfig src/app/connectionLabels.ts --target es2022 --module esnext --moduleResolution bundler --outDir .test-build --skipLibCheck && node tests/connection-labels.test.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
