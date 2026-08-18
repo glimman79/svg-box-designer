@@ -24,19 +24,26 @@ const rectangle = (id: string, winding: 'CCW' | 'CW') => {
 
 const run = (name: string, roles: Partial<Record<number, EdgeRole>>, depth: number, winding: 'CCW' | 'CW', fingerWidth?: number) => {
   const { panel, edges } = rectangle(name, winding);
+  const matePanels: SvgPanel[] = []; const mateEdges: SvgDocumentModel['edges'] = [];
   const assignments: any = {}; const connections: any = {};
   Object.entries(roles).forEach(([rawSide, role]) => {
-    const side = Number(rawSide); const connectionId = `E-${name}-connection-${side}`;
+    const side = Number(rawSide); const connectionId = `TB-${name}-connection-${side}`;
+    const mate = rectangle(`${name}-tb-mate-${side}`, winding);
+    const translatedContour = mate.panel.contour.map(({ x, y }) => ({ x: x + 300 + side * 120, y }));
+    mate.panel.contour = translatedContour; mate.panel.outerContour = translatedContour;
+    mate.edges.forEach((edge, index) => { edge.start = translatedContour[index]; edge.end = translatedContour[(index + 1) % 4]; });
+    matePanels.push(mate.panel); mateEdges.push(...mate.edges);
     assignments[panel.edgeIds[side]] = { edgeAssignment: { connectionId, edgeRole: role } };
-    connections[connectionId] = { id: connectionId, prefix: 'E', properties: { materialThicknessMm: depth,
+    assignments[mate.panel.edgeIds[side]] = { edgeAssignment: { connectionId, edgeRole: role === 'A' ? 'B' : 'A' } };
+    connections[connectionId] = { id: connectionId, prefix: 'TB', properties: { materialThicknessMm: depth,
       fingerWidthMm: fingerWidth ?? 30, isFingerWidthManual: fingerWidth !== undefined } };
   });
   const model: SvgDocumentModel = { content: '', innerMarkup: '', rootAttributes: { width: null, height: null, viewBox: null },
-    viewBox: '0 0 240 80', width: 240, height: 80, panels: [panel], edges };
+    viewBox: '0 0 1000 80', width: 1000, height: 80, panels: [panel, ...matePanels], edges: [...edges, ...mateEdges] };
   const items = buildGeneratedTBGeometryItems(model, assignments, connections,
-    { defaultThicknessMm: depth, panels: { [panel.id]: { panelId: panel.id, thicknessMm: depth } } });
-  assert(items.length === 1, `${name}: production fixture failed`);
-  const frozen = JSON.stringify(items); const item = items[0];
+    { defaultThicknessMm: depth, panels: Object.fromEntries([panel, ...matePanels].map(({ id }) => [id, { panelId: id, thicknessMm: depth }])) });
+  const frozen = JSON.stringify(items); const item = items.find(({ source }) => source.panelIds.includes(panel.id));
+  assert(item, `${name}: production fixture failed`);
   assert(item.kind === 'PANEL_PATH' && item.geometry.type === 'path', `${name}: no production panel path`);
   const production = pathDToClosedContour(item.geometry.pathD);
   assert(production, `${name}: production contour did not parse`);

@@ -29,16 +29,24 @@ const rectangle = (winding: 'CCW' | 'CW', reversedSourceSide = -1) => {
 
 const run = (name: string, roles: Partial<Record<number, EdgeRole>>, depth = 5, winding: 'CCW' | 'CW' = 'CCW', reversedSourceSide = -1, fingerWidth = 30) => {
   const { panel, edges } = rectangle(winding, reversedSourceSide);
+  const matePanels: SvgPanel[] = []; const mateEdges: SvgDocumentModel['edges'] = [];
   const assignments: any = {}; const connections: any = {};
   Object.entries(roles).forEach(([rawSide, role]) => {
-    const side = Number(rawSide); const id = `E-${side}`;
+    const side = Number(rawSide); const id = `TB${side + 1}`; const mateId = `mate-${side}`;
+    const mateContour = panel.contour.map(({ x, y }) => ({ x: x + 300 + side * 120, y }));
+    const mateEdgeIds = mateContour.map((_, index) => `${mateId}-edge-${index}`);
+    matePanels.push({ id: mateId, contour: mateContour, outerContour: mateContour, innerContours: [], edgeIds: mateEdgeIds, outerEdgeIds: mateEdgeIds, innerEdgeIds: [], bounds: { minX: 420 + side * 120, minY: 0, maxX: 510 + side * 120, maxY: 40 } });
+    mateEdges.push(...mateContour.map((start, index) => ({ id: mateEdgeIds[index], source: mateId, start, end: mateContour[(index + 1) % 4] })));
     assignments[panel.edgeIds[side]] = { edgeAssignment: { connectionId: id, edgeRole: role } };
-    connections[id] = { id, prefix: 'E', properties: { materialThicknessMm: depth, fingerWidthMm: fingerWidth, isFingerWidthManual: true } };
+    assignments[mateEdgeIds[side]] = { edgeAssignment: { connectionId: id, edgeRole: role === 'A' ? 'B' : 'A' } };
+    connections[id] = { id, prefix: 'TB', properties: { materialThicknessMm: depth, fingerWidthMm: fingerWidth, isFingerWidthManual: true } };
   });
-  const model: SvgDocumentModel = { content: '', innerMarkup: '', rootAttributes: { width: null, height: null, viewBox: null }, viewBox: '0 0 240 80', width: 240, height: 80, panels: [panel], edges };
-  const items = buildGeneratedTBGeometryItems(model, assignments, connections, { defaultThicknessMm: depth, panels: { panel: { panelId: 'panel', thicknessMm: depth } } });
-  assert(items.length === 1, `${name}: generator produced no panel`);
-  const item = items[0]; const path = item.geometry.type === 'path' ? item.geometry.pathD : '';
+  const model: SvgDocumentModel = { content: '', innerMarkup: '', rootAttributes: { width: null, height: null, viewBox: null }, viewBox: '0 0 400 80', width: 400, height: 80, panels: [panel, ...matePanels], edges: [...edges, ...mateEdges] };
+  const panelState = Object.fromEntries([panel, ...matePanels].map(({ id }) => [id, { panelId: id, thicknessMm: depth }]));
+  const items = buildGeneratedTBGeometryItems(model, assignments, connections, { defaultThicknessMm: depth, panels: panelState });
+  const item = items.find(({ source }) => source.panelIds.includes(panel.id))!;
+  assert(item, `${name}: generator produced no owner panel`);
+  const path = item.geometry.type === 'path' ? item.geometry.pathD : '';
   const values = [...path.matchAll(/[ML]\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)/g)];
   const contour = values.map((match) => ({ x: Number(match[1]), y: Number(match[2]) }));
   assert(path.endsWith('Z'), `${name}: contour is not closed`);
