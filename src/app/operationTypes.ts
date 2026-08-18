@@ -1,5 +1,5 @@
 import type { EdgeRole, SlotRole } from '../svgUtils';
-import type { ConnectionDefinition, EdgeConnectionProperties, SlotConnectionProperties } from './connectionTypes';
+import type { ConnectionDefinition, SlotConnectionProperties, TBConnectionProperties } from './connectionTypes';
 
 export type OperationKind = 'TB' | 'S';
 
@@ -24,7 +24,7 @@ export type BaseOperation = {
 export type TBOperation = BaseOperation & {
   kind: 'TB';
   sourceRoles: EdgeRole[];
-  resolvedParameters: EdgeConnectionProperties;
+  resolvedParameters: TBConnectionProperties;
   constructionIntent: 'tabbed-panel-boundary';
 };
 
@@ -50,7 +50,7 @@ export const operationFromConnection = (
   source: OperationSourceReference,
   roles: Array<EdgeRole | SlotRole> = [],
 ): GeometryOperation | null => {
-  if (connection.prefix === 'E') {
+  if (connection.prefix === 'TB') {
     return {
       id: `operation:TB:${connection.id}`,
       kind: 'TB',

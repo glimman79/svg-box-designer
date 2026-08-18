@@ -41,7 +41,7 @@ export const collectSourceEdgeAuthoringClaims = (
     if (!panelId) return;
     const bucket = toEdgeAssignmentBucket(assignment);
     const edgeAssignment = bucket?.edgeAssignment;
-    if (edgeAssignment && connections[edgeAssignment.connectionId]?.prefix === 'E') claims.push({
+    if (edgeAssignment && connections[edgeAssignment.connectionId]?.prefix === 'TB') claims.push({
       kind: 'replaces', operationId: `operation:TB:${edgeAssignment.connectionId}`, panelId, sourceEdgeId,
       provenance: 'native-generator-intent', provenanceId: `authoring:TB:${edgeAssignment.connectionId}:${panelId}:${sourceEdgeId}`,
     });

@@ -1,4 +1,4 @@
-import type { AppliedEPanelPath, ConnectionMap, EdgeConnectionDefinition } from './connectionTypes';
+import type { AppliedEPanelPath, ConnectionMap, TBConnectionDefinition } from './connectionTypes';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import { createBoundaryProfileGroup, createGeneratedProfile } from './generatedProfiles';
 import { createGeneratedTapId } from './generatedTaps';
@@ -183,7 +183,7 @@ const getTBRoleThickness = (
 export const resolveTBThickness = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
-  connection: EdgeConnectionDefinition,
+  connection: TBConnectionDefinition,
   panelThicknessState?: PanelThicknessState,
 ): TBConnectionThickness => {
   const assignedEdges = getAssignedTBEdges(assignments, connection.id);
@@ -226,18 +226,18 @@ export const getPanelEdgeOperations = (
     const assignment = getBucketEdgeAssignment(assignments[edgeId]);
     const connection = assignment ? connectionMap[assignment.connectionId] : undefined;
 
-    if (!assignment || connection?.prefix !== 'E' || !assignment.edgeRole) {
+    if (!assignment || connection?.prefix !== 'TB' || !assignment.edgeRole) {
       return [];
     }
 
-    const connectionThickness = svgModel && connection.prefix === 'E'
+    const connectionThickness = svgModel
       ? resolveTBThickness(svgModel, assignments, connection, panelThicknessState)
       : null;
     const roleThickness = connectionThickness
       ? getTBRoleThickness(connectionThickness, assignment.edgeRole)
       : { ownerThicknessMm: connection.properties.materialThicknessMm, receiverThicknessMm: connection.properties.materialThicknessMm };
     const { ownerThicknessMm, receiverThicknessMm } = roleThickness;
-    const fingerWidthMm = connection.prefix !== 'E' || connection.properties.isFingerWidthManual || !connectionThickness
+    const fingerWidthMm = connection.properties.isFingerWidthManual || !connectionThickness
       ? connection.properties.fingerWidthMm
       : connectionThickness.autoFingerWidthMm;
 

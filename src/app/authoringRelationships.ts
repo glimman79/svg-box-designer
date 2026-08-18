@@ -22,7 +22,7 @@ export const collectSourceEdgeAuthoringClaims = (model: SvgDocumentModel, assign
     const panelId = panelByEdge.get(sourceEdgeId);
     if (!panelId) return;
     const edgeAssignment = getBucketEdgeAssignment(bucket);
-    if (edgeAssignment && connections[edgeAssignment.connectionId]?.prefix === 'E') {
+    if (edgeAssignment && connections[edgeAssignment.connectionId]?.prefix === 'TB') {
       const operationId = `operation:TB:${edgeAssignment.connectionId}`;
       claims.push(claim('replaces', operationId, 'TB', panelId, sourceEdgeId));
     }

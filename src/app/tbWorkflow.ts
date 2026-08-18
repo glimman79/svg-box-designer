@@ -1,16 +1,16 @@
 import { getBucketEdgeAssignment } from './assignmentBuckets';
 import type { EdgeAssignmentRecord } from '../svgUtils';
-import type { ActiveTBGroup, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties } from './connectionTypes';
+import type { ActiveTBGroup, ConnectionMap, TBConnectionDefinition, TBConnectionProperties } from './connectionTypes';
 import { getNextConnectionLabel } from './connectionLabels';
 
-export const getNextInternalELabel = (connections: ConnectionMap) => getNextConnectionLabel('E', Object.keys(connections));
+export const getNextTBLabel = (connections: ConnectionMap) => getNextConnectionLabel('TB', Object.keys(connections));
 
 export const getSharedTBEdgeProperties = (
   connections: ConnectionMap,
-  defaultProperties: EdgeConnectionProperties,
-): EdgeConnectionProperties => {
+  defaultProperties: TBConnectionProperties,
+): TBConnectionProperties => {
   const sharedConnection = Object.values(connections).find(
-    (connection): connection is EdgeConnectionDefinition => connection.prefix === 'E',
+    (connection): connection is TBConnectionDefinition => connection.prefix === 'TB',
   );
 
   return sharedConnection ? { ...sharedConnection.properties } : { ...defaultProperties };
@@ -18,18 +18,18 @@ export const getSharedTBEdgeProperties = (
 
 export const createTBConnectionDefinition = (
   id: string,
-  properties: EdgeConnectionProperties,
-): EdgeConnectionDefinition => ({
+  properties: TBConnectionProperties,
+): TBConnectionDefinition => ({
   id,
-  prefix: 'E',
+  prefix: 'TB',
   properties: { ...properties },
 });
 
 export const startTBGroupWorkflow = (
   connections: ConnectionMap,
-  defaultProperties: EdgeConnectionProperties,
+  defaultProperties: TBConnectionProperties,
 ) => {
-  const connectionId = getNextInternalELabel(connections);
+  const connectionId = getNextTBLabel(connections);
   const nextConnections = {
     ...connections,
     [connectionId]: createTBConnectionDefinition(
@@ -51,7 +51,7 @@ export const startTBGroupWorkflow = (
   };
 };
 
-export const appendAutoCreatedEToTBGroup = (
+export const appendAutoCreatedTBToTBGroup = (
   activeTBGroup: ActiveTBGroup | null,
   selectedLabelId: string,
   nextEdgeLabel: string,
