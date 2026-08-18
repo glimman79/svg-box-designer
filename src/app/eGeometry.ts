@@ -226,7 +226,7 @@ export const getPanelEdgeOperations = (
     const assignment = getBucketEdgeAssignment(assignments[edgeId]);
     const connection = assignment ? connectionMap[assignment.connectionId] : undefined;
 
-    if (!assignment || (connection?.prefix !== 'E' && connection?.prefix !== 'W') || !assignment.edgeRole) {
+    if (!assignment || connection?.prefix !== 'E' || !assignment.edgeRole) {
       return [];
     }
 

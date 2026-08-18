@@ -23,7 +23,6 @@ import type { PanelCompositionAuthorityMode } from './app/generatedGeometryAutho
 import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { validateGeometryAuthoring } from './app/authoringRelationships';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
-import { buildActiveWDisplayAssignments, finishWGroupWorkflow } from './app/wWorkflow';
 import { appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
 import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildAppliedEPanelPaths, buildGeneratedTBGeometryItems, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
 import { buildPanelContainmentTree, createPanelManagerStateFromModel, defaultPanelManagerState, validatePanelManagerState } from './app/panelManagerModel';
@@ -32,7 +31,7 @@ import type { PanelManagerState, PanelTreeHoleNode, PanelTreePanelNode } from '.
 import { createTabSegmentPlan, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
 import { getContourEdgePoints, validateClosedPanel } from './app/sharedPanelGeometry';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
-import type { ActiveSGroup, ActiveTBGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, EdgeConnectionDefinition, EdgeConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties, WallConnectionDefinition, WallConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
+import type { ActiveSGroup, ActiveTBGroup, AppliedEPanelPath, AppliedSGeometry, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, EdgeConnectionDefinition, EdgeConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties } from './app/connectionTypes';
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
 export { edgeMatchesContourSide, getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './app/sharedPanelGeometry';
 export type { PanelValidationResult } from './app/sharedPanelGeometry';
@@ -44,7 +43,6 @@ export { buildAppliedSGeometry, buildGeneratedSGeometryItems, recalculateAutomat
 export { buildPanelContainmentTree, createPanelManagerStateFromModel, defaultPanelManagerState, validatePanelManagerState } from './app/panelManagerModel';
 export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 export { appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getNextInternalELabel, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
-export { buildActiveWDisplayAssignments, classifyWReferencePattern, collectWReferences, finishWGroupWorkflow, generateWEdgeRoles, invertWPatternType } from './app/wWorkflow';
 // classifyAppliedContours is intentionally re-exported only as a compatibility/test helper.
 export { buildFinalContourList, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours } from './app/contourClassification';
 export { applyProfileOffset, applyProfileOffsetStage, applyTapClearance, applySlotClearance, applySlotClearanceStage, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour, processManufacturingGeometry } from './app/manufacturingCompensation';
@@ -74,9 +72,9 @@ export type { CompensationStrategy, CompensationStrategyContext } from './app/co
 export { applyTabsToContour, buildAppliedEPanelPaths, buildGeneratedTBGeometryItems, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, getPanelThickness, getPanelThicknessForEdge, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 export type { PanelManagerState } from './app/panelManagerModel';
-export type { ActiveSGroup, ActiveTBGroup, ActiveWGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties, WallPatternType, WallReference } from './app/connectionTypes';
+export type { ActiveSGroup, ActiveTBGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties } from './app/connectionTypes';
 
-type LabelPrefix = 'E' | 'S' | 'W' | 'C' | 'P';
+type LabelPrefix = 'E' | 'S' | 'C' | 'P';
 
 
 type LabelGroup = {
@@ -85,7 +83,7 @@ type LabelGroup = {
   description: string;
 };
 
-type ActiveTool = 'select' | 'PM' | 'TB' | 'W' | 'S' | 'J' | 'P' | 'manufacturing';
+type ActiveTool = 'select' | 'PM' | 'TB' | 'S' | 'J' | 'P' | 'manufacturing';
 
 type HistoryState = {
   projectSettings: ProjectSettings;
@@ -102,7 +100,6 @@ type HistoryState = {
   activeSGroup: ActiveSGroup | null;
   activeTBGroup: ActiveTBGroup | null;
   completedTBGroups: ActiveTBGroup[];
-  activeWGroup: ActiveWGroup | null;
   workflowGroupOrder: Record<string, number>;
   panelManager: PanelManagerState;
 };
@@ -112,7 +109,7 @@ type WorkflowHistoryGroup = { id: string; labels: string[]; isActive: boolean; o
 
 type WorkflowHistoryItem = {
   id: string;
-  kind: 'PM' | 'TB' | 'S' | 'W' | 'manufacturing';
+  kind: 'PM' | 'TB' | 'S' | 'manufacturing';
   name: string;
   labels: string[];
   isActive: boolean;
@@ -122,8 +119,6 @@ type WorkflowHistoryItem = {
 export const buildWorkflowHistoryItems = (
   tbGroups: WorkflowHistoryGroup[],
   sGroups: WorkflowHistoryGroup[],
-  wGroups: WorkflowHistoryGroup[],
-  connections: ConnectionMap,
   manufacturingOrderIndex?: number,
   includePanelManager = false,
 ): WorkflowHistoryItem[] => {
@@ -166,21 +161,6 @@ export const buildWorkflowHistoryItems = (
       childCount: group.labels.length,
       orderIndex: group.orderIndex,
     })),
-    ...wGroups.map((group, groupIndex) => {
-      const label = group.labels[0];
-      const connection = label ? connections[label] : undefined;
-      const selectedEdgeCount = connection?.prefix === 'W' ? connection.properties.selectedEdgeIds.length : group.labels.length;
-
-      return {
-        id: group.id,
-        kind: 'W' as const,
-        name: `W Group ${groupIndex + 1}`,
-        labels: group.labels,
-        isActive: group.isActive,
-        childCount: selectedEdgeCount,
-        orderIndex: group.orderIndex,
-      };
-    }),
   ];
 
   return orderedItems
@@ -208,18 +188,13 @@ export const getToolClickGroupStartKind = (
   tool: ActiveTool,
   activeTBGroup: ActiveTBGroup | null,
   activeSGroup: ActiveSGroup | null,
-  activeWGroup: ActiveWGroup | null,
-): 'TB' | 'S' | 'W' | null => {
+): 'TB' | 'S' | null => {
   if (tool === 'TB') {
     return activeTBGroup?.isActive ? null : 'TB';
   }
 
   if (tool === 'S') {
     return activeSGroup?.isActive ? null : 'S';
-  }
-
-  if (tool === 'W') {
-    return activeWGroup?.isActive ? null : 'W';
   }
 
   return null;
@@ -268,7 +243,6 @@ const cloneHistoryState = (state: HistoryState): HistoryState => ({
   activeSGroup: state.activeSGroup ? structuredClone(state.activeSGroup) : null,
   activeTBGroup: state.activeTBGroup ? structuredClone(state.activeTBGroup) : null,
   completedTBGroups: structuredClone(state.completedTBGroups ?? []),
-  activeWGroup: state.activeWGroup ? structuredClone(state.activeWGroup) : null,
   workflowGroupOrder: structuredClone(state.workflowGroupOrder ?? {}),
   panelManager: structuredClone(state.panelManager ?? defaultPanelManagerState),
 });
@@ -361,7 +335,6 @@ const emptySvgModel: SvgDocumentModel = {
 const labelGroups: LabelGroup[] = [
   { prefix: 'E', name: 'Edge connections', description: 'Reusable edge connection IDs' },
   { prefix: 'S', name: 'Slot connections', description: 'Reusable slot connection IDs' },
-  { prefix: 'W', name: 'Wall connections', description: 'Reusable wall connection IDs' },
   { prefix: 'C', name: 'Corner connections', description: 'Reusable corner connection IDs' },
   { prefix: 'P', name: 'Pattern connections', description: 'Reusable pattern connection IDs' },
 ];
@@ -379,18 +352,6 @@ export const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
     isSlotLengthManual: false,
     materialThicknessMm: 3,
     kerfMm: 0.15,
-  },
-  W: {
-    wallHeightMm: 30,
-    materialThicknessMm: 3,
-    fingerWidthMm: 9,
-    kerfMm: 0.15,
-    playMm: 0,
-    selectedEdgeIds: [],
-    references: [],
-    referencePatternType: null,
-    generatedPatternType: null,
-    generatedConnectionIds: [],
   },
   C: {
     cornerDepthMm: getDefaultCornerDepth(3),
@@ -539,34 +500,6 @@ const getDefaultEdgeRole = (assignments: EdgeAssignmentRecord, connectionId: str
   return 'A';
 };
 
-export const getWGroupActionNumber = (connections: ConnectionMap, activeWGroup: ActiveWGroup | null) => {
-  if (activeWGroup?.isActive) {
-    return getLabelNumber(activeWGroup.connectionId);
-  }
-
-  const wNumbers = Object.keys(connections)
-    .filter((label) => getLabelPrefix(label) === 'W')
-    .map(getLabelNumber)
-    .filter((value) => Number.isFinite(value));
-
-  return wNumbers.length > 0 ? Math.max(...wNumbers) + 1 : 1;
-};
-
-const createStandaloneWConnection = (id: string): WallConnectionDefinition => ({
-  id,
-  prefix: 'W',
-  properties: cloneDefaultProperties('W'),
-});
-
-export const startWGroupWorkflow = (connections: ConnectionMap) => {
-  const connectionId = getNextLabel('W', Object.keys(connections));
-
-  return {
-    connections: { ...connections, [connectionId]: createStandaloneWConnection(connectionId) },
-    selectedLabelId: connectionId,
-    activeWGroup: { groupId: `w-group-${connectionId}`, connectionId, isActive: true } satisfies ActiveWGroup,
-  };
-};
 
 
 const formatCalculatedMm = (value: number | null | undefined) => (Number.isFinite(value) ? `${Number((value as number).toFixed(2)).toString()} mm` : 'Unknown');
@@ -587,9 +520,6 @@ const createConnectionDefinition = (
     return { id, prefix, properties: cloneDefaultProperties(prefix) };
   }
 
-  if (prefix === 'W') {
-    return { id, prefix, properties: cloneDefaultProperties(prefix) };
-  }
 
   if (prefix === 'C') {
     return { id, prefix, properties: cloneDefaultProperties(prefix) };
@@ -724,7 +654,6 @@ function App() {
   const [activeSGroup, setActiveSGroup] = useState<ActiveSGroup | null>(null);
   const [activeTBGroup, setActiveTBGroup] = useState<ActiveTBGroup | null>(null);
   const [completedTBGroups, setCompletedTBGroups] = useState<ActiveTBGroup[]>([]);
-  const [activeWGroup, setActiveWGroup] = useState<ActiveWGroup | null>(null);
   const [workflowGroupOrder, setWorkflowGroupOrder] = useState<Record<string, number>>({});
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
@@ -739,7 +668,6 @@ function App() {
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
   const [expandedSGroups, setExpandedSGroups] = useState<Record<string, boolean>>({});
   const [expandedTBGroups, setExpandedTBGroups] = useState<Record<string, boolean>>({});
-  const [expandedWGroups, setExpandedWGroups] = useState<Record<string, boolean>>({});
   const [activeTool, setActiveTool] = useState<ActiveTool>('select');
   const [panelManager, setPanelManager] = useState<PanelManagerState>(() => ({ ...createPanelManagerStateFromModel(parseSvgDocument(starterSvg)), isApplied: true }));
   const [isPanelManagerModalOpen, setIsPanelManagerModalOpen] = useState(false);
@@ -834,18 +762,6 @@ function App() {
     }));
   }, [availableLabels]);
 
-  const wLabelGroups = useMemo(() => {
-    const wLabels = availableLabels
-      .filter((label) => getLabelPrefix(label) === 'W')
-      .sort((first, second) => getLabelNumber(first) - getLabelNumber(second));
-
-    return wLabels.map((label) => ({
-      id: `w-group-${label}`,
-      labels: [label],
-      isActive: activeWGroup?.connectionId === label && activeWGroup.isActive,
-      orderIndex: workflowGroupOrder[`w-group-${label}`],
-    }));
-  }, [activeWGroup, availableLabels, workflowGroupOrder]);
 
   const sLabelGroups = useMemo(() => {
     const sLabels = availableLabels
@@ -994,12 +910,9 @@ function App() {
   }, [panelContainmentTree]);
   const panelManagerValidationMessage = validatePanelManagerState(panelManager);
   const canApplyPanelManager = !panelManager.isApplied && panelManagerValidationMessage === null;
-  const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, wLabelGroups, connections, workflowGroupOrder.manufacturing, panelManager.isApplied), [connections, panelManager.isApplied, sLabelGroups, tbLabelGroups, wLabelGroups, workflowGroupOrder]);
-  const activeWConnection = activeWGroup?.isActive ? connections[activeWGroup.connectionId] : undefined;
+  const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, workflowGroupOrder.manufacturing, panelManager.isApplied), [connections, panelManager.isApplied, sLabelGroups, tbLabelGroups, workflowGroupOrder]);
   const hasPendingManufacturingSettings = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
-  const hasApplyInputs = hasPendingManufacturingSettings
-    || Object.keys(edgeAssignments).length > 0
-    || (activeWConnection?.prefix === 'W' && activeWConnection.properties.selectedEdgeIds.length > 0);
+  const hasApplyInputs = hasPendingManufacturingSettings || Object.keys(edgeAssignments).length > 0;
   const navigateToWorkflowHistoryItem = (item: WorkflowHistoryItem) => {
     const firstLabel = item.labels[0] ?? null;
     setActiveTool(getWorkflowHistoryTool(item));
@@ -1029,7 +942,6 @@ function App() {
       return;
     }
 
-    setExpandedWGroups((currentGroups) => ({ ...currentGroups, [item.id]: true }));
   };
 
   const hasAssignedEEdges = useMemo(() => {
@@ -1049,7 +961,6 @@ function App() {
     activeSGroup,
     activeTBGroup,
     completedTBGroups,
-    activeWGroup,
     workflowGroupOrder,
     panelManager,
   });
@@ -1068,7 +979,6 @@ function App() {
     setActiveSGroup(snapshot.activeSGroup);
     setActiveTBGroup(snapshot.activeTBGroup);
     setCompletedTBGroups(snapshot.completedTBGroups);
-    setActiveWGroup(snapshot.activeWGroup);
     setWorkflowGroupOrder(snapshot.workflowGroupOrder);
     setPanelManager(snapshot.panelManager);
     setIsPanelManagerModalOpen(!snapshot.panelManager.isApplied && Object.keys(snapshot.panelManager.panels).length > 0);
@@ -1102,7 +1012,6 @@ function App() {
     setActiveSGroup(null);
     setActiveTBGroup(null);
     setCompletedTBGroups([]);
-    setActiveWGroup(null);
     setWorkflowGroupOrder({});
     const nextPanelManager = createPanelManagerStateFromModel(parsedSvg);
     setPanelManager(nextPanelManager);
@@ -1112,7 +1021,6 @@ function App() {
     setRedoStack([]);
     setExpandedTBGroups({});
     setExpandedSGroups({});
-    setExpandedWGroups({});
     setErrorMessage(formatImportDiagnosticMessage(parsedSvg));
     event.target.value = '';
   };
@@ -1201,19 +1109,6 @@ function App() {
     setErrorMessage('');
   };
 
-  const startWGroup = () => {
-    pushUndoState();
-    const nextWorkflow = startWGroupWorkflow(connections);
-    setConnections(nextWorkflow.connections);
-    selectConnectionForDisplayAndAssignment(nextWorkflow.selectedLabelId);
-    setActiveWGroup(nextWorkflow.activeWGroup);
-    setWorkflowGroupOrder((currentOrder) => ({
-      ...currentOrder,
-      [nextWorkflow.activeWGroup.groupId]: currentOrder[nextWorkflow.activeWGroup.groupId] ?? getNextWorkflowGroupOrderIndex(currentOrder),
-    }));
-    setExpandedWGroups((currentGroups) => ({ ...currentGroups, [nextWorkflow.activeWGroup.groupId]: true }));
-    setErrorMessage('');
-  };
 
   const handleToolClick = (tool: ActiveTool) => {
     if (isProjectLocked && !['select', 'PM'].includes(tool)) {
@@ -1228,7 +1123,7 @@ function App() {
         : { ...currentOrder, manufacturing: getNextWorkflowGroupOrderIndex(currentOrder) });
     }
 
-    const groupStartKind = getToolClickGroupStartKind(tool, activeTBGroup, activeSGroup, activeWGroup);
+    const groupStartKind = getToolClickGroupStartKind(tool, activeTBGroup, activeSGroup);
 
     if (groupStartKind === 'TB') {
       startTBGroup();
@@ -1237,11 +1132,6 @@ function App() {
 
     if (groupStartKind === 'S') {
       startSGroup();
-      return;
-    }
-
-    if (groupStartKind === 'W') {
-      startWGroup();
       return;
     }
 
@@ -1257,34 +1147,8 @@ function App() {
       setErrorMessage('');
       return;
     }
-
-    if (tool === 'W' && activeWGroup?.isActive) {
-      selectConnectionForDisplayAndAssignment(activeWGroup.connectionId);
-      setExpandedWGroups((currentGroups) => ({ ...currentGroups, [activeWGroup.groupId]: true }));
-      setErrorMessage('');
-    }
   };
 
-  const finishWGroup = () => {
-    if (!activeWGroup?.isActive) {
-      return;
-    }
-
-    try {
-      pushUndoState();
-      const nextWorkflow = finishWGroupWorkflow(connections, edgeAssignments, activeWGroup, svgModel);
-      setConnections(nextWorkflow.connections);
-      setEdgeAssignments(nextWorkflow.assignments as Record<string, EdgeAssignmentBucket>);
-      selectConnectionForDisplayAndAssignment(null);
-      setSelectedEdgeId(null);
-      setActiveTool('select');
-      setActiveWGroup(nextWorkflow.activeWGroup);
-      setExpandedWGroups((currentGroups) => ({ ...currentGroups, [activeWGroup.groupId]: false }));
-      setErrorMessage('');
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to finish W group.');
-    }
-  };
 
   const finishSGroup = () => {
     if (!activeSGroup?.isActive) {
@@ -1306,9 +1170,7 @@ function App() {
     ? { label: 'Finish TB', onClick: finishTBGroup }
     : activeTool === 'S' && activeSGroup?.isActive
       ? { label: 'Finish S', onClick: finishSGroup }
-      : activeTool === 'W' && activeWGroup?.isActive
-        ? { label: 'Finish W', onClick: finishWGroup }
-        : null;
+      : null;
 
   const clearEdgeLabel = (edgeId: string) => {
     if (!edgeAssignments[edgeId]) {
@@ -1329,7 +1191,7 @@ function App() {
     const assignedConnectionId = resolveAssignedTBOrSConnectionIdForEdge(edgeAssignments, edgeId, activeTool === 'S' ? 'S' : activeTool === 'TB' ? 'TB' : undefined);
     setSelectedEdgeId(edgeId);
 
-    if (assignedConnectionId && assignedConnectionId === assignmentConnectionId && connections[assignedConnectionId]?.prefix !== 'W') {
+    if (assignedConnectionId && assignedConnectionId === assignmentConnectionId) {
       setDisplayConnectionId(assignedConnectionId);
       setErrorMessage('');
       return;
@@ -1351,35 +1213,6 @@ function App() {
       return;
     }
 
-    if (connection.prefix === 'W') {
-      if (!activeWGroup?.isActive || activeWGroup.connectionId !== connection.id) {
-        setErrorMessage('Start a W group before selecting wall edges.');
-        return;
-      }
-
-      pushUndoState();
-      setConnections((currentConnections) => {
-        const currentConnection = currentConnections[connection.id];
-        if (!currentConnection || currentConnection.prefix !== 'W') {
-          return currentConnections;
-        }
-        const selectedEdgeIds = currentConnection.properties.selectedEdgeIds.includes(edgeId)
-          ? currentConnection.properties.selectedEdgeIds.filter((selectedEdgeId) => selectedEdgeId !== edgeId)
-          : [...currentConnection.properties.selectedEdgeIds, edgeId];
-        return {
-          ...currentConnections,
-          [connection.id]: {
-            ...currentConnection,
-            properties: {
-              ...currentConnection.properties,
-              selectedEdgeIds,
-            },
-          },
-        };
-      });
-      setErrorMessage('');
-      return;
-    }
 
     const nextSlotRole = connection.prefix === 'S' ? getDefaultSlotRole(edgeAssignments, assignmentConnectionId) : null;
 
@@ -1550,9 +1383,7 @@ function App() {
       return;
     }
     try {
-      const applyInputs = activeWGroup?.isActive
-        ? finishWGroupWorkflow(connections, edgeAssignments, activeWGroup, svgModel)
-        : { connections, assignments: edgeAssignments };
+      const applyInputs = { connections, assignments: edgeAssignments };
       const nextConnections = recalculateAutomaticTBFingerWidths(svgModel, applyInputs.assignments, recalculateAutomaticSSlotLengths(svgModel, applyInputs.assignments, applyInputs.connections, panelManager), panelManager);
       validateGeometryAuthoring(svgModel, applyInputs.assignments, nextConnections, panelCompositionAuthorityMode);
       const nextGeneratedGeometryItems = [
@@ -1610,7 +1441,6 @@ function App() {
     setActiveSGroup(null);
     setActiveTBGroup(null);
     setCompletedTBGroups([]);
-    setActiveWGroup(null);
     setWorkflowGroupOrder({});
     setPanelManager(defaultPanelManagerState);
     setIsPanelManagerModalOpen(false);
@@ -1620,7 +1450,6 @@ function App() {
     setRedoStack([]);
     setExpandedTBGroups({});
     setExpandedSGroups({});
-    setExpandedWGroups({});
     setCanvasViewBox(parseViewBox(emptySvgModel.viewBox));
     setIsClearDialogOpen(false);
   };
@@ -1773,23 +1602,6 @@ function App() {
     });
   };
 
-  const updateWallProperties = (updates: Partial<WallConnectionProperties>) => {
-    if (!selectedConnection || selectedConnection.prefix !== 'W') {
-      return;
-    }
-
-    pushUndoState();
-    setConnections((currentConnections) => ({
-      ...currentConnections,
-      [selectedConnection.id]: {
-        ...selectedConnection,
-        properties: {
-          ...selectedConnection.properties,
-          ...updates,
-        },
-      },
-    }));
-  };
 
   const updateCornerProperties = (updates: Partial<CornerConnectionProperties>) => {
     if (!selectedConnection || selectedConnection.prefix !== 'C') {
@@ -2186,41 +1998,6 @@ function App() {
       );
     }
 
-    if (selectedConnection.prefix === 'W') {
-      const properties = selectedConnection.properties;
-      const selectedEdges = svgModel.edges.filter((edge) => properties.selectedEdgeIds.includes(edge.id));
-      return (
-        <div className="property-sections">
-          <section className="property-section" aria-labelledby="wall-assigned-edges">
-            <h4 id="wall-assigned-edges">W group metadata</h4>
-            {selectedEdges.length > 0 ? (
-              <ul className="calculated-edge-list">
-                {selectedEdges.map((edge) => (
-                  <li key={edge.id}>
-                    <strong>{edge.id}</strong>
-                    <dl>
-                      <div>
-                        <dt>Source</dt>
-                        <dd>{edge.source}</dd>
-                      </div>
-                      <div>
-                        <dt>References</dt>
-                        <dd>{getEdgeAssignmentDisplayLabels(edgeAssignments[edge.id]).join(', ') || 'None'}</dd>
-                      </div>
-                    </dl>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="muted">Start this W group, then click wall edges that already carry E or S references.</p>
-            )}
-            {properties.referencePatternType && properties.generatedPatternType && (
-              <p className="muted">Reference pattern: {properties.referencePatternType}; W role pattern: {properties.generatedPatternType}.</p>
-            )}
-          </section>
-        </div>
-      );
-    }
 
 
     return null;
@@ -2256,19 +2033,7 @@ function App() {
       );
     }
 
-    if (activeTool === 'W' && selectedConnection?.prefix === 'W') {
-      const properties = selectedConnection.properties;
-      const controlsLabel = activeWGroup?.isActive && activeWGroup.connectionId === selectedConnection.id
-        ? 'Compact active W group controls'
-        : 'Compact selected W controls';
 
-      return (
-        <div className="compact-property-controls" aria-label={controlsLabel}>
-          <NumericField id="compact-wall-material-thickness" label="Thickness" min={0} value={properties.materialThicknessMm} onChange={(materialThicknessMm) => updateWallProperties({ materialThicknessMm })} />
-          <NumericField id="compact-wall-tab-size" label="Tab" min={0} value={properties.fingerWidthMm} onChange={(fingerWidthMm) => updateWallProperties({ fingerWidthMm })} />
-        </div>
-      );
-    }
 
     return null;
   };
@@ -2276,10 +2041,6 @@ function App() {
   const labelScale = Math.max(canvasViewBox.width / Math.max(canvasViewportSize.width, 1), minZoom);
   const labelEdgeOffset = annotationEdgeOffsetPx * labelScale;
   const displayEdgeAssignments = useMemo(() => {
-    if (activeTool === 'W') {
-      return buildActiveWDisplayAssignments(edgeAssignments, connections, activeWGroup);
-    }
-
     if (activeTool !== 'TB' && activeTool !== 'S') {
       return {};
     }
@@ -2294,7 +2055,7 @@ function App() {
 
       return displayBucket ? [[edgeId, displayBucket]] : [];
     }));
-  }, [activeTool, activeWGroup, connections, edgeAssignments]);
+  }, [activeTool, edgeAssignments]);
   const tbCanvasLabelAliases = tbDisplayLabelAliases;
   const labelPlacements = layoutPanelLabels(svgModel.edges.flatMap((edge) => (
     getEdgeAssignmentDisplayLabels(displayEdgeAssignments[edge.id]).map((label) => ({
@@ -2443,7 +2204,6 @@ function App() {
           {([
             ['select', 'Select', 'Select and inspect existing edges'],
             ['TB', 'TB', 'Tab/box edge tool alias for Top/Bottom connections'],
-            ['W', 'W', 'Wall connection workflow'],
             ['S', 'S', 'Slot connection workflow'],
             ['J', 'J', 'Future joint tool placeholder'],
             ['P', 'P', 'Future pattern tool placeholder'],
@@ -2504,7 +2264,7 @@ function App() {
           {isProjectLocked && activeTool !== 'PM' && (
             <div className="active-tool-card">
               <h3>Project locked</h3>
-              <p className="muted">Apply Panel Manager before using TB, S, W, Manufacturing, edge assignment, export, or future tools.</p>
+              <p className="muted">Apply Panel Manager before using TB, S, Manufacturing, edge assignment, export, or future tools.</p>
             </div>
           )}
 
@@ -2550,7 +2310,7 @@ function App() {
             </div>
           )}
 
-          {!isProjectLocked && (activeTool === 'TB' || activeTool === 'S' || activeTool === 'W') && (
+          {!isProjectLocked && (activeTool === 'TB' || activeTool === 'S') && (
             <>
               <div className="active-label-card" aria-live="polite">
                 <span>Selected connection</span>
@@ -2567,7 +2327,7 @@ function App() {
                     <h3>{prefix === 'E' ? 'TB / Top Bottom' : `${prefix} = ${name}`}</h3>
                     <p>{prefix === 'E' ? 'Top/Bottom connections' : description}</p>
                   </div>
-                  {prefix !== 'E' && prefix !== 'S' && prefix !== 'W' && (
+                  {prefix !== 'E' && prefix !== 'S' && (
                     <div className="label-actions">
                       <button type="button" onClick={() => createLabel(prefix)}>
                         Add {getNextLabel(prefix, availableLabels)}
@@ -2652,45 +2412,6 @@ function App() {
                                     </button>
                                   </li>
                                 ))}
-                              </ul>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  ) : prefix === 'W' ? (
-                    <ul className="label-list s-group-list">
-                      {wLabelGroups.map((wGroup, groupIndex) => {
-                        const label = wGroup.labels[0];
-                        const isExpanded = wGroup.isActive || expandedWGroups[wGroup.id] === true;
-                        const connection = connections[label];
-                        const selectedCount = connection?.prefix === 'W' ? connection.properties.selectedEdgeIds.length : 0;
-                        return (
-                          <li key={wGroup.id}>
-                            <button
-                              type="button"
-                              className={`s-group-toggle${selectedLabelId === label ? ' selected-label' : ''}`}
-                              aria-expanded={isExpanded}
-                              onClick={() => setExpandedWGroups((currentGroups) => ({ ...currentGroups, [wGroup.id]: !isExpanded }))}
-                            >
-                              <strong>W Group {groupIndex + 1} ({selectedCount})</strong>
-                              <span>{isExpanded ? 'Hide' : 'Show'}</span>
-                            </button>
-                            {isExpanded && (
-                              <ul className="s-group-connection-list">
-                                <li>
-                                  <button
-                                    type="button"
-                                    className={selectedLabelId === label ? 'selected-label' : ''}
-                                    onClick={() => {
-                                      selectConnectionForDisplayAndAssignment(label);
-                                      setErrorMessage('');
-                                    }}
-                                  >
-                                    <strong>{label}</strong>
-                                    <span>{selectedCount} {selectedCount === 1 ? 'wall edge' : 'wall edges'}</span>
-                                  </button>
-                                </li>
                               </ul>
                             )}
                           </li>

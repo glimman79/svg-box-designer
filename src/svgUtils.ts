@@ -241,7 +241,7 @@ export const getBucketSlotAssignments = (assignment: EdgeAssignment | EdgeAssign
 );
 
 const getAssignmentDisplayLabel = (assignment: EdgeAssignment) => {
-  if ((assignment.connectionId.startsWith('E') || assignment.connectionId.startsWith('W')) && assignment.edgeRole) {
+  if (assignment.connectionId.startsWith('E') && assignment.edgeRole) {
     return `${assignment.connectionId}-${assignment.edgeRole === 'A' ? 'A' : 'B'}`;
   }
 

@@ -26,9 +26,9 @@ const run = (name: string, roles: Partial<Record<number, EdgeRole>>, depth: numb
   const { panel, edges } = rectangle(name, winding);
   const assignments: any = {}; const connections: any = {};
   Object.entries(roles).forEach(([rawSide, role]) => {
-    const side = Number(rawSide); const connectionId = `${name}-connection-${side}`;
+    const side = Number(rawSide); const connectionId = `E-${name}-connection-${side}`;
     assignments[panel.edgeIds[side]] = { edgeAssignment: { connectionId, edgeRole: role } };
-    connections[connectionId] = { id: connectionId, prefix: 'W', properties: { materialThicknessMm: depth,
+    connections[connectionId] = { id: connectionId, prefix: 'E', properties: { materialThicknessMm: depth,
       fingerWidthMm: fingerWidth ?? 30, isFingerWidthManual: fingerWidth !== undefined } };
   });
   const model: SvgDocumentModel = { content: '', innerMarkup: '', rootAttributes: { width: null, height: null, viewBox: null },

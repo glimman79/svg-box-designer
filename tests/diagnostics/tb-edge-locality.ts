@@ -31,9 +31,9 @@ const run = (name: string, roles: Partial<Record<number, EdgeRole>>, depth = 5, 
   const { panel, edges } = rectangle(winding, reversedSourceSide);
   const assignments: any = {}; const connections: any = {};
   Object.entries(roles).forEach(([rawSide, role]) => {
-    const side = Number(rawSide); const id = `TB-${side}`;
+    const side = Number(rawSide); const id = `E-${side}`;
     assignments[panel.edgeIds[side]] = { edgeAssignment: { connectionId: id, edgeRole: role } };
-    connections[id] = { id, prefix: 'W', properties: { materialThicknessMm: depth, fingerWidthMm: fingerWidth, isFingerWidthManual: true } };
+    connections[id] = { id, prefix: 'E', properties: { materialThicknessMm: depth, fingerWidthMm: fingerWidth, isFingerWidthManual: true } };
   });
   const model: SvgDocumentModel = { content: '', innerMarkup: '', rootAttributes: { width: null, height: null, viewBox: null }, viewBox: '0 0 240 80', width: 240, height: 80, panels: [panel], edges };
   const items = buildGeneratedTBGeometryItems(model, assignments, connections, { defaultThicknessMm: depth, panels: { panel: { panelId: 'panel', thicknessMm: depth } } });

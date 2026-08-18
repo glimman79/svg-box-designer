@@ -15,7 +15,7 @@ const thickness={defaultThicknessMm:3.25,panels:{owner:{panelId:'owner',thicknes
 const sAssignments:any={[owner.panel.edgeIds[1]]:{slotAssignments:[{connectionId:'S1',slotRole:'A'}]},[mate.panel.edgeIds[1]]:{slotAssignments:[{connectionId:'S1',slotRole:'B'}]}};
 const sItems=buildGeneratedSGeometryItems(model,sAssignments,{S1:{id:'S1',prefix:'S',properties:{materialThicknessMm:3.25,slotLengthMm:13,isSlotLengthManual:true,slotOffsetMm:1}}} as any,thickness);
 const tbAssignments:any={[owner.panel.edgeIds[0]]:{edgeAssignment:{connectionId:'E1',edgeRole:'A'}}};
-const tbItems=buildGeneratedTBGeometryItems(model,tbAssignments,{E1:{id:'E1',prefix:'W',properties:{materialThicknessMm:3.25,fingerWidthMm:12,isFingerWidthManual:true}}} as any,thickness);
+const tbItems=buildGeneratedTBGeometryItems(model,tbAssignments,{E1:{id:'E1',prefix:'E',properties:{materialThicknessMm:3.25,fingerWidthMm:12,isFingerWidthManual:true}}} as any,thickness);
 
 for (const [fixture, items, cohort] of [['S-only', sItems, 'S_ONLY'], ['TB-only', tbItems, 'TB_ONLY']] as const) {
   const baseline=selectGeneratedGeometryAuthority(model,items,'legacy');

@@ -95,7 +95,6 @@ assert.deepEqual(boundaryKerfPreview.contours.map((contour) => contour.id), boun
 assert.equal('appliedEPanelPaths' in boundaryKerfPreview, false, 'kerf result omits legacy appliedEPanelPaths');
 assert.equal('appliedSGeometry' in boundaryKerfPreview, false, 'kerf result omits legacy appliedSGeometry');
 const { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, defaultConnectionProperties } = module.exports;
-const { collectWReferences, classifyWReferencePattern, invertWPatternType, generateWEdgeRoles, finishWGroupWorkflow, buildActiveWDisplayAssignments, buildAppliedEPanelPaths: buildE } = module.exports;
 
 
 
@@ -1128,146 +1127,12 @@ assert.equal(updatedCompactEConnections.E1.properties.fingerWidthMm, 15, 'compac
 assert.equal(updatedCompactEConnections.E2.properties.fingerWidthMm, 15, 'compact E Tab update applies fingerWidthMm to E2');
 assert.equal(updatedCompactEConnections.E1.properties.isFingerWidthManual, true, 'compact E Tab marks finger width manual');
 
-assert.equal(defaultConnectionProperties.W.wallHeightMm, 30, 'W defaults include wall height');
-assert.equal(defaultConnectionProperties.W.materialThicknessMm, 3, 'W defaults include material thickness');
-assert.equal(defaultConnectionProperties.W.kerfMm, 0.15, 'W defaults include kerf');
-assert.equal(defaultConnectionProperties.W.playMm, 0, 'W defaults include play');
 console.log('Active S group compact offset update tests passed');
-console.log('W placeholder defaults tests passed');
 
 
-const wallPanels = [
-  panel('w1', 20, 20, 100, 80),
-  panel('w2', 140, 20, 100, 80),
-  panel('w3', 20, 120, 100, 80),
-  panel('w4', 140, 120, 100, 80),
-];
-const wallModel = modelForPanels(wallPanels);
-const selectedWallEdges = wallPanels.map((p) => `${p.id}-top`);
-const selectedWallPanelEdges = wallPanels.flatMap((p) => [`${p.id}-top`, `${p.id}-bottom`]);
-const wAssignmentsUniformE = Object.fromEntries(wallPanels.map((p, index) => [
-  `${p.id}-right`,
-  { edgeAssignment: { connectionId: `E${index + 1}`, edgeRole: 'A' } },
-]));
-const wUniformRefs = collectWReferences(selectedWallEdges, wAssignmentsUniformE, wallModel);
-assert.equal(wUniformRefs.length, 4, 'W can read same-panel E references when selected W edges are unassigned');
-const samePanelWRefs = collectWReferences(['w1-top', 'w1-bottom'], wAssignmentsUniformE, wallModel);
-assert.equal(samePanelWRefs.length, 1, 'two selected W edges on the same panel count as one panel reference');
-assert.equal(samePanelWRefs[0].connectionId, 'E1', 'same-panel selected W edges share the panel reference');
-const multiEdgePanelWRefs = collectWReferences(selectedWallPanelEdges, wAssignmentsUniformE, wallModel);
-assert.equal(multiEdgePanelWRefs.length, 4, 'four panels with two selected W edges each collect one reference per selected panel');
-assert.deepEqual(Array.from(wUniformRefs, (ref) => ref.connectionId), ['E1', 'E2', 'E3', 'E4'], 'W stores local panel references as a collection');
-assert.equal(classifyWReferencePattern(wUniformRefs), 'UNIFORM', 'W classification uses complete group uniform reference set');
-assert.equal(invertWPatternType('UNIFORM'), 'ALTERNATING', 'uniform references invert to alternating W pattern');
-assert.deepEqual(generateWEdgeRoles(selectedWallEdges, 'ALTERNATING'), ['A', 'B', 'A', 'B'], 'alternating W generation assigns W edge roles');
 
-const wAssignmentsAlternatingE = Object.fromEntries(wallPanels.map((p, index) => [
-  `${p.id}-right`,
-  { edgeAssignment: { connectionId: `E${index + 1}`, edgeRole: index % 2 === 1 ? 'B' : 'A' } },
-]));
-const wAlternatingRefs = collectWReferences(selectedWallEdges, wAssignmentsAlternatingE, wallModel);
-assert.equal(classifyWReferencePattern(wAlternatingRefs), 'ALTERNATING', 'W classification uses complete group alternating reference set');
-assert.equal(invertWPatternType('ALTERNATING'), 'UNIFORM', 'alternating references invert to uniform W pattern');
-assert.deepEqual(generateWEdgeRoles(selectedWallEdges, 'UNIFORM'), ['A', 'A', 'A', 'A'], 'uniform W generation assigns W edge roles');
-assert.equal(classifyWReferencePattern([wAlternatingRefs[0]]), 'UNIFORM', 'single-edge classification would differ, proving tests cover complete-group behavior');
 
-const wAssignmentsAlternatingEStartingB = Object.fromEntries(wallPanels.map((p, index) => [
-  `${p.id}-right`,
-  { edgeAssignment: { connectionId: `E${index + 1}`, edgeRole: index % 2 === 1 ? 'A' : 'B' } },
-]));
-const wAlternatingRefsStartingB = collectWReferences(selectedWallEdges, wAssignmentsAlternatingEStartingB, wallModel);
-assert.equal(classifyWReferencePattern(wAlternatingRefsStartingB), 'ALTERNATING', 'W classification preserves mixed E references that start with B');
-
-const wAssignmentsS = Object.fromEntries(wallPanels.map((p, index) => [
-  `${p.id}-right`,
-  { slotAssignments: [{ connectionId: `S${index + 1}`, slotRole: 'B' }] },
-]));
-const wSRefs = collectWReferences(selectedWallEdges, wAssignmentsS, wallModel);
-assert.equal(wSRefs.length, 4, 'W can read same-panel S references when selected W edges are unassigned');
-assert.equal(classifyWReferencePattern(wSRefs), 'UNIFORM', 'S-B/S-B/S-B/S-B is a uniform W reference pattern');
-
-const wConnections = {
-  W1: {
-    id: 'W1',
-    prefix: 'W',
-    properties: {
-      materialThicknessMm: 4,
-      fingerWidthMm: 11,
-      selectedEdgeIds: selectedWallEdges,
-      references: [],
-      referencePatternType: null,
-      generatedPatternType: null,
-      generatedConnectionIds: [],
-    },
-  },
-};
-const finishedW = finishWGroupWorkflow(wConnections, wAssignmentsUniformE, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true }, wallModel);
-assert.equal(finishedW.connections.E1, undefined, 'Finish W does not create a generated E connection');
-assert.equal(finishedW.connections.W1.properties.materialThicknessMm, 4, 'W material thickness stays on W and is independent from E/S settings');
-assert.equal(finishedW.connections.W1.properties.fingerWidthMm, 11, 'W tab size stays on W and is independent from E/S tab size');
-assert.equal(finishedW.connections.W1.properties.generatedConnectionIds.length, 0, 'W does not store generated E labels');
-assert.deepEqual(selectedWallEdges.map((edgeId) => finishedW.assignments[edgeId].edgeAssignment.connectionId), Array(selectedWallEdges.length).fill('W1'), 'Finish W stores W-prefixed edge assignments');
-assert.deepEqual(selectedWallEdges.map((edgeId) => finishedW.assignments[edgeId].edgeAssignment.edgeRole), ['A', 'B', 'A', 'B'], 'W generated assignments are E-compatible W assignments');
-assert.deepEqual(selectedWallEdges.map((edgeId) => svgUtilsModule.exports.getEdgeAssignmentDisplayLabel(finishedW.assignments[edgeId])), ['W1-A', 'W1-B', 'W1-A', 'W1-B'], 'Final labels remain W-prefixed after Finish');
-
-const finishedMixedEW = finishWGroupWorkflow(wConnections, wAssignmentsAlternatingE, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true }, wallModel);
-assert.equal(finishedMixedEW.connections.E1, undefined, 'mixed E Finish W does not create a generated E connection');
-assert.deepEqual(selectedWallEdges.map((edgeId) => finishedMixedEW.assignments[edgeId].edgeAssignment.connectionId), Array(selectedWallEdges.length).fill('W1'), 'mixed E Finish W stores W-prefixed edge assignments');
-assert.deepEqual(selectedWallEdges.map((edgeId) => finishedMixedEW.assignments[edgeId].edgeAssignment.edgeRole), ['A', 'B', 'A', 'B'], 'mixed E references A/B/A/B generate copied W roles A/B/A/B');
-assert.deepEqual(selectedWallEdges.map((edgeId) => svgUtilsModule.exports.getEdgeAssignmentDisplayLabel(finishedMixedEW.assignments[edgeId])), ['W1-A', 'W1-B', 'W1-A', 'W1-B'], 'mixed E final labels remain W-prefixed');
-assert.equal(finishedMixedEW.connections.W1.properties.generatedConnectionIds.length, 0, 'mixed E Finish W does not store generated E labels');
-assert.equal(finishedMixedEW.connections.W1.properties.generatedPatternType, 'ALTERNATING', 'mixed E Finish W keeps copied role pattern instead of collapsing to uniform');
-
-const finishedMixedEStartingBW = finishWGroupWorkflow(wConnections, wAssignmentsAlternatingEStartingB, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true }, wallModel);
-assert.deepEqual(selectedWallEdges.map((edgeId) => finishedMixedEStartingBW.assignments[edgeId].edgeAssignment.edgeRole), ['B', 'A', 'B', 'A'], 'mixed E references B/A/B/A generate copied W roles B/A/B/A');
-assert.deepEqual(selectedWallEdges.map((edgeId) => svgUtilsModule.exports.getEdgeAssignmentDisplayLabel(finishedMixedEStartingBW.assignments[edgeId])), ['W1-B', 'W1-A', 'W1-B', 'W1-A'], 'mixed E labels remain W-prefixed when starting with B');
-assert.equal(finishedMixedEStartingBW.connections.E1, undefined, 'mixed E starting B Finish W does not create a generated E connection');
-
-const multiEdgeWConnections = {
-  W1: {
-    ...wConnections.W1,
-    properties: {
-      ...wConnections.W1.properties,
-      selectedEdgeIds: selectedWallPanelEdges,
-    },
-  },
-};
-const finishedMultiEdgeW = finishWGroupWorkflow(multiEdgeWConnections, wAssignmentsUniformE, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true }, wallModel);
-assert.deepEqual(Array.from(finishedMultiEdgeW.connections.W1.properties.references, (ref) => ref.connectionId), ['E1', 'E2', 'E3', 'E4'], 'W finish stores one reference per selected panel when multiple W edges are selected per panel');
-assert.deepEqual(selectedWallPanelEdges.map((edgeId) => finishedMultiEdgeW.assignments[edgeId].edgeAssignment.connectionId), Array(selectedWallPanelEdges.length).fill('W1'), 'W assignments apply to all selected W edges');
-assert.deepEqual(selectedWallPanelEdges.map((edgeId) => finishedMultiEdgeW.assignments[edgeId].edgeAssignment.edgeRole), ['A', 'B', 'A', 'B', 'A', 'B', 'A', 'B'], 'W roles cover all selected W edges');
-const finishedMultiEdgeMixedEW = finishWGroupWorkflow(multiEdgeWConnections, wAssignmentsAlternatingE, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true }, wallModel);
-assert.deepEqual(selectedWallPanelEdges.map((edgeId) => finishedMultiEdgeMixedEW.assignments[edgeId].edgeAssignment.edgeRole), ['A', 'A', 'B', 'B', 'A', 'A', 'B', 'B'], 'mixed E panel reference role applies to all selected W edges on that panel');
-const manualEquivalentAssignments = Object.fromEntries(selectedWallEdges.map((edgeId, index) => [edgeId, { connectionId: 'E1', edgeRole: index % 2 === 1 ? 'B' : 'A' }]));
-const generatedAssignments = Object.fromEntries(selectedWallEdges.map((edgeId) => [edgeId, finishedW.assignments[edgeId].edgeAssignment]));
-const generatedPaths = buildAppliedEPanelPaths(wallModel, generatedAssignments, finishedW.connections);
-const manualPaths = buildAppliedEPanelPaths(wallModel, manualEquivalentAssignments, { E1: { id: 'E1', prefix: 'E', properties: { materialThicknessMm: 4, fingerWidthMm: 11, isFingerWidthManual: true } } });
-assert.deepEqual(generatedPaths.map((path) => path.pathD), manualPaths.map((path) => path.pathD), 'W assignments pass through existing E geometry like equivalent manual E setup');
-assert.equal(exportFinalGeometrySvg(wallModel, buildFinalGeometry(wallModel, generatedPaths, [])), exportFinalGeometrySvg(wallModel, buildFinalGeometry(wallModel, manualPaths, [])), 'W export geometry matches equivalent manual E setup');
-assert.throws(
-  () => finishWGroupWorkflow(wConnections, {}, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true }, wallModel),
-  /has 0 E\/S reference labels/,
-  '0 references on a selected W panel fails',
-);
-assert.throws(
-  () => collectWReferences(['w1-top'], {
-    'w1-right': { edgeAssignment: { connectionId: 'E1', edgeRole: 'A' } },
-    'w1-bottom': { slotAssignments: [{ connectionId: 'S1', slotRole: 'B' }] },
-  }, wallModel, 'W1'),
-  /multiple E\/S reference labels/,
-  'multiple references on the same selected W panel fails',
-);
-const wDisplayAssignments = buildActiveWDisplayAssignments({}, wConnections, { groupId: 'w-group-W1', connectionId: 'W1', isActive: true });
-assert.equal(wDisplayAssignments['w1-top'].edgeAssignment.connectionId, 'W1', 'temporary W label is visible during active W group');
-assert.equal(wDisplayAssignments['w1-top'].edgeAssignment.edgeRole, undefined, 'temporary W display label has no A/B role');
-assert.deepEqual(selectedWallEdges.slice(0, 3).map((edgeId) => svgUtilsModule.exports.getEdgeAssignmentDisplayLabel(wDisplayAssignments[edgeId])), ['W1', 'W1', 'W1'], 'temporary W labels render as W1 without A/B');
-assert.equal(wConnections.W1.properties.selectedEdgeIds.includes('w1-top'), true, 'temporary W display label uses selected W edges from connection state');
-assert.equal({}['w1-top'], undefined, 'temporary W labels are not written to edgeAssignments');
-const inactiveWDisplayAssignments = buildActiveWDisplayAssignments({}, wConnections, { groupId: 'w-group-W1', connectionId: 'W1', isActive: false });
-assert.equal(inactiveWDisplayAssignments['w1-top'], undefined, 'temporary W labels disappear after W group is inactive');
-console.log('W group V1 tests passed');
-
-const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, finishTBGroupWithTrailingCleanup, getTBGroupActionNumber, buildWorkflowHistoryItems, getWorkflowHistoryTool, getToolClickGroupStartKind, haveProjectSettingsChanged, startWGroupWorkflow } = module.exports;
+const { startTBGroupWorkflow, appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, buildTBCanvasLabelAliasMap, finishTBGroupWorkflow, finishTBGroupWithTrailingCleanup, getTBGroupActionNumber, buildWorkflowHistoryItems, getWorkflowHistoryTool, getToolClickGroupStartKind, haveProjectSettingsChanged } = module.exports;
 
 
 assert.equal(getToolClickGroupStartKind('TB', null, null, null), 'TB', 'Clicking TB starts a TB group if none is active');
@@ -1276,9 +1141,6 @@ assert.equal(getToolClickGroupStartKind('TB', activeTBClickGroup, null, null), n
 assert.equal(getToolClickGroupStartKind('S', null, null, null), 'S', 'Clicking S starts an S group if none is active');
 const activeSClickGroup = startSGroupWorkflow({}).activeSGroup;
 assert.equal(getToolClickGroupStartKind('S', null, activeSClickGroup, null), null, 'Clicking S again does not create another active S group');
-assert.equal(getToolClickGroupStartKind('W', null, null, null), 'W', 'Clicking W starts a W group if none is active');
-const activeWClickGroup = startWGroupWorkflow({}).activeWGroup;
-assert.equal(getToolClickGroupStartKind('W', null, null, activeWClickGroup), null, 'Clicking W again does not create another active W group');
 assert.equal(getToolClickGroupStartKind('select', null, null, null), null, 'Clicking Select does not start any group');
 assert.equal(getToolClickGroupStartKind('J', null, null, null), null, 'Clicking J does not start any group');
 assert.equal(getToolClickGroupStartKind('P', null, null, null), null, 'Clicking P does not start any group');
@@ -1379,74 +1241,26 @@ const workflowHistoryConnections = {
   E3: { id: 'E3', prefix: 'E', properties: tbStarted.connections.E1.properties },
   S1: { id: 'S1', prefix: 'S', properties: defaultConnectionProperties.S },
   S2: { id: 'S2', prefix: 'S', properties: defaultConnectionProperties.S },
-  W1: { id: 'W1', prefix: 'W', properties: { ...defaultConnectionProperties.W, selectedEdgeIds: ['p1-left', 'p1-right'] } },
 };
 const workflowHistoryItems = buildWorkflowHistoryItems(
   [{ id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: tbFinished.isActive, orderIndex: 0 }],
-  [{ id: 's-group-S1', labels: ['S1', 'S2'], isActive: true, orderIndex: 2 }],
-  [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 1 }],
-  workflowHistoryConnections,
+  [{ id: 's-group-S1', labels: ['S1', 'S2'], isActive: true, orderIndex: 1 }],
 );
 assert.equal(workflowHistoryItems.filter((item) => item.kind === 'manufacturing').length, 0, 'Workflow History omits Manufacturing until the first MFG tool click is recorded');
+assert.equal(JSON.stringify(workflowHistoryItems.map((item) => item.kind)), JSON.stringify(['TB', 'S']), 'Workflow History preserves supported tool creation order');
 
 assert.equal(haveProjectSettingsChanged({ kerfMm: 0.15, slotClearanceMm: 0 }, null), false, 'Default Manufacturing settings are not a completed operation');
 assert.equal(haveProjectSettingsChanged({ kerfMm: 0.2, slotClearanceMm: 0 }, null), true, 'Changing Kerf before Apply is a pending Manufacturing operation');
 assert.equal(haveProjectSettingsChanged({ kerfMm: 0.2, slotClearanceMm: 0.08 }, { kerfMm: 0.2, slotClearanceMm: 0 }), true, 'Changing Slot Clearance after a Kerf Apply is a pending Manufacturing operation');
 assert.equal(haveProjectSettingsChanged({ kerfMm: 0.2, slotClearanceMm: 0.08 }, { kerfMm: 0.2, slotClearanceMm: 0.08 }), false, 'Repeated Apply without Manufacturing changes does not add work');
 
-const workflowHistoryItemsWithFirstMfgClick = buildWorkflowHistoryItems(
-  [{ id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: tbFinished.isActive, orderIndex: 1 }],
-  [{ id: 's-group-S1', labels: ['S1', 'S2'], isActive: true, orderIndex: 3 }],
-  [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 2 }],
-  workflowHistoryConnections,
-  0,
-);
-assert.equal(workflowHistoryItemsWithFirstMfgClick.filter((item) => item.kind === 'manufacturing').length, 1, 'First Manufacturing tool click creates an MFG history item before Apply');
-assert.equal(JSON.stringify(workflowHistoryItemsWithFirstMfgClick.map((item) => item.kind)), JSON.stringify(['manufacturing', 'TB', 'W', 'S']), 'MFG history item keeps chronological order from the first Manufacturing tool click');
-
 const workflowHistoryItemsWithMfg = buildWorkflowHistoryItems(
   [{ id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: tbFinished.isActive, orderIndex: 0 }],
-  [{ id: 's-group-S1', labels: ['S1', 'S2'], isActive: true, orderIndex: 2 }],
-  [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 1 }],
-  workflowHistoryConnections,
-  3,
+  [{ id: 's-group-S1', labels: ['S1', 'S2'], isActive: true, orderIndex: 1 }],
+  2,
 );
-assert.equal(workflowHistoryItemsWithMfg.filter((item) => item.kind === 'manufacturing').length, 1, 'First Manufacturing tool click creates one MFG item');
-assert.equal(workflowHistoryItemsWithMfg[3].name, 'MFG', 'MFG history item appears at its original Manufacturing click order');
-assert.equal(getWorkflowHistoryTool(workflowHistoryItemsWithMfg[3]), 'manufacturing', 'Clicking MFG navigates to the Manufacturing tool');
-assert.equal(getToolClickGroupStartKind(getWorkflowHistoryTool(workflowHistoryItemsWithMfg[3]), null, null, null), null, 'Clicking MFG from history does not start a TB/S/W group');
-assert.equal(JSON.stringify(workflowHistoryItemsWithMfg.filter((item) => item.kind !== 'manufacturing').map((item) => item.name)), JSON.stringify(['TB Group 1', 'W Group 1', 'S Group 1']), 'Workflow History displays TB, W, and S groups by creation order');
-assert.equal(workflowHistoryItemsWithMfg.filter((item) => item.kind === 'TB').length, 1, 'Workflow History shows one TB group for one TB workflow, not one group per E label');
-assert.equal(JSON.stringify(workflowHistoryItemsWithMfg.filter((item) => item.kind !== 'manufacturing').map((item) => item.childCount)), JSON.stringify([2, 2, 2]), 'Workflow History includes available child connection counts');
-assert.equal(workflowHistoryItemsWithMfg.filter((item) => item.kind !== 'manufacturing')[2].isActive, true, 'Workflow History exposes active group state for navigation');
-const workflowHistoryItemsWithRepeatedMfg = buildWorkflowHistoryItems(
-  [{ id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: tbFinished.isActive, orderIndex: 0 }],
-  [{ id: 's-group-S1', labels: ['S1', 'S2'], isActive: true, orderIndex: 2 }],
-  [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 1 }],
-  workflowHistoryConnections,
-  3,
-);
-assert.equal(workflowHistoryItemsWithRepeatedMfg.filter((item) => item.kind === 'manufacturing').length, 1, 'Repeated Manufacturing tool clicks reuse the same MFG item');
-assert.equal(JSON.stringify(workflowHistoryItemsWithRepeatedMfg.map((item) => item.kind)), JSON.stringify(['TB', 'W', 'S', 'manufacturing']), 'Repeated Manufacturing clicks never duplicate or move MFG');
-
-const workflowHistoryCreationOrderItems = buildWorkflowHistoryItems(
-  [
-    { id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: false, orderIndex: 0 },
-    { id: 'tb-group-E3', labels: ['E3'], isActive: true, orderIndex: 3 },
-  ],
-  [{ id: 's-group-S1', labels: ['S1'], isActive: false, orderIndex: 2 }],
-  [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 1 }],
-  workflowHistoryConnections,
-);
-assert.equal(JSON.stringify(workflowHistoryCreationOrderItems.filter((item) => item.kind !== 'manufacturing').map((item) => item.kind)), JSON.stringify(['TB', 'W', 'S', 'TB']), 'Workflow History preserves TB, W, S, TB creation order instead of sorting by type');
-
-const workflowHistoryFallbackItems = buildWorkflowHistoryItems(
-  [{ id: tbFinished.groupId, labels: [...tbFinished.connectionIds], isActive: false, orderIndex: 0 }],
-  [{ id: 's-group-S1', labels: ['S1'], isActive: false }],
-  [{ id: 'w-group-W1', labels: ['W1'], isActive: false, orderIndex: 1 }],
-  workflowHistoryConnections,
-);
-assert.equal(JSON.stringify(workflowHistoryFallbackItems.filter((item) => item.kind !== 'manufacturing').map((item) => item.kind)), JSON.stringify(['TB', 'W', 'S']), 'Workflow History places old unordered groups after ordered groups');
+assert.equal(JSON.stringify(workflowHistoryItemsWithMfg.map((item) => item.kind)), JSON.stringify(['TB', 'S', 'manufacturing']), 'Manufacturing history preserves its click order');
+assert.equal(getWorkflowHistoryTool(workflowHistoryItemsWithMfg[2]), 'manufacturing', 'Clicking MFG navigates to the Manufacturing tool');
 
 const cloneTBHistoryState = (state) => structuredClone(state);
 const tbHistoryState = {
@@ -1458,7 +1272,6 @@ const tbHistoryState = {
   appliedSGeometry: [],
   activeSGroup: null,
   activeTBGroup: tbAppended,
-  activeWGroup: null,
 };
 const undoRestoredTB = cloneTBHistoryState(tbHistoryState);
 assert.equal(JSON.stringify(undoRestoredTB.activeTBGroup), JSON.stringify(tbAppended), 'Undo restores activeTBGroup');
@@ -1472,7 +1285,6 @@ assert.match(appSource, /activePanelId === panel\.panelId \? <path className="pa
 assert.match(appSource, /activeTool !== 'TB' && activeTool !== 'S'/, 'canvas labels are hidden outside the active TB/S tool contexts');
 assert.match(appSource, /setActiveTool\('select'\);\n    setErrorMessage\(''\);\n  };\n\n  const startSGroup/, 'Finish TB clears selection state and returns to Select');
 assert.match(appSource, /setActiveTool\('select'\);\n    setErrorMessage\(''\);\n  };\n\n  const activeToolbarFinish/, 'Finish S clears selection state and returns to Select');
-assert.match(appSource, /selectConnectionForDisplayAndAssignment\(null\);\n      setSelectedEdgeId\(null\);\n      setActiveTool\('select'\);/, 'Finish W clears selection state and returns to Select');
 assert.match(uiCleanupStylesSource, /\.edge-label-text \{[\s\S]*font-size: 9px;/, 'shared canvas labels use compact fixed screen text');
 assert.match(uiCleanupStylesSource, /\.annotation-leader \{[\s\S]*vector-effect: non-scaling-stroke;/, 'shared label component supports leader lines');
 console.log('UI finish cleanup, PM list, single highlight, and compact label source tests passed');
