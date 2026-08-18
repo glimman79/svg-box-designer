@@ -32,6 +32,7 @@ import { createTabSegmentPlan, pointsToClosedPathD, projectPointDistanceOnSide }
 import { getContourEdgePoints, validateClosedPanel } from './app/sharedPanelGeometry';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
 import type { ActiveSGroup, ActiveTBGroup, AppliedEPanelPath, AppliedSGeometry, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, EdgeConnectionDefinition, EdgeConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties } from './app/connectionTypes';
+import { getNextConnectionLabel, parseConnectionLabel } from './app/connectionLabels';
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
 export { edgeMatchesContourSide, getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './app/sharedPanelGeometry';
 export type { PanelValidationResult } from './app/sharedPanelGeometry';
@@ -381,9 +382,9 @@ const starterSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 260
   <line x1="70" y1="130" x2="350" y2="130" stroke="#000000" stroke-width="1"/>
 </svg>`;
 
-const getLabelPrefix = (label: string) => label.charAt(0) as LabelPrefix;
+const getLabelPrefix = (label: string) => parseConnectionLabel(label)?.prefix;
 
-const getLabelNumber = (label: string) => Number.parseInt(label.slice(1), 10);
+const getLabelNumber = (label: string) => parseConnectionLabel(label)?.number ?? Number.NaN;
 
 const getSGroupDisplayName = (groupIndex: number) => `S Group ${groupIndex + 1}`;
 
@@ -398,17 +399,10 @@ const getSGroupActionNumber = (connections: ConnectionMap, activeSGroup: ActiveS
   return Object.keys(connections).some((label) => getLabelPrefix(label) === 'S') ? 2 : 1;
 };
 
-const getNextLabel = (prefix: LabelPrefix, labels: string[]) => {
-  const usedNumbers = labels
-    .filter((label) => getLabelPrefix(label) === prefix)
-    .map((label) => Number.parseInt(label.slice(1), 10))
-    .filter((value) => Number.isFinite(value));
-
-  return `${prefix}${usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1}`;
-};
+const getNextLabel = (prefix: LabelPrefix, labels: string[]) => getNextConnectionLabel(prefix, labels);
 
 const getFollowingEdgeLabel = (label: string) => {
-  const labelNumber = Number.parseInt(label.slice(1), 10);
+  const labelNumber = getLabelNumber(label);
 
   if (getLabelPrefix(label) !== 'E' || !Number.isFinite(labelNumber)) {
     return null;
@@ -473,7 +467,7 @@ function getDefaultCornerDepth(materialThicknessMm: number) {
 }
 
 const getFollowingSlotLabel = (label: string) => {
-  const labelNumber = Number.parseInt(label.slice(1), 10);
+  const labelNumber = getLabelNumber(label);
 
   if (getLabelPrefix(label) !== 'S' || !Number.isFinite(labelNumber)) {
     return null;

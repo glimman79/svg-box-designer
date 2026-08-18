@@ -1,18 +1,9 @@
 import { getBucketEdgeAssignment } from './assignmentBuckets';
 import type { EdgeAssignmentRecord } from '../svgUtils';
 import type { ActiveTBGroup, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties } from './connectionTypes';
+import { getNextConnectionLabel } from './connectionLabels';
 
-const getLabelPrefix = (label: string) => label.charAt(0);
-const getLabelNumber = (label: string) => Number.parseInt(label.slice(1), 10);
-
-export const getNextInternalELabel = (connections: ConnectionMap) => {
-  const usedNumbers = Object.keys(connections)
-    .filter((label) => getLabelPrefix(label) === 'E')
-    .map(getLabelNumber)
-    .filter((value) => Number.isFinite(value));
-
-  return `E${usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1}`;
-};
+export const getNextInternalELabel = (connections: ConnectionMap) => getNextConnectionLabel('E', Object.keys(connections));
 
 export const getSharedTBEdgeProperties = (
   connections: ConnectionMap,

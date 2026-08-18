@@ -2,17 +2,9 @@ import type { SlotRole } from '../svgUtils';
 import type { EdgeAssignmentRecord } from '../svgUtils';
 import { getBucketSlotAssignments } from './assignmentBuckets';
 import type { ActiveSGroup, ConnectionMap, SlotConnectionDefinition, SlotConnectionProperties } from './connectionTypes';
+import { getNextConnectionLabel } from './connectionLabels';
 
-const getLabelPrefix = (label: string) => label.charAt(0);
-
-const getNextSLabel = (labels: string[]) => {
-  const usedNumbers = labels
-    .filter((label) => getLabelPrefix(label) === 'S')
-    .map((label) => Number.parseInt(label.slice(1), 10))
-    .filter((value) => Number.isFinite(value));
-
-  return `S${usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1}`;
-};
+const getNextSLabel = (labels: string[]) => getNextConnectionLabel('S', labels);
 
 const getDefaultSlotLength = (materialThicknessMm: number) => materialThicknessMm * 3;
 

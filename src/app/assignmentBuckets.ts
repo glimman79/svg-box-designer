@@ -1,4 +1,5 @@
 import type { EdgeAssignment, EdgeAssignmentBucket } from '../svgUtils';
+import { hasConnectionLabelPrefix } from './connectionLabels';
 
 export const isEdgeAssignmentBucket = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined): assignment is EdgeAssignmentBucket => (
   !!assignment && ('edgeAssignment' in assignment || 'slotAssignments' in assignment)
@@ -13,11 +14,11 @@ export const toEdgeAssignmentBucket = (assignment: EdgeAssignment | EdgeAssignme
     return assignment;
   }
 
-  if (assignment.connectionId.startsWith('E')) {
+  if (hasConnectionLabelPrefix(assignment.connectionId, 'E', 'TB')) {
     return { edgeAssignment: assignment };
   }
 
-  if (assignment.connectionId.startsWith('S')) {
+  if (hasConnectionLabelPrefix(assignment.connectionId, 'S')) {
     return { slotAssignments: [assignment] };
   }
 
