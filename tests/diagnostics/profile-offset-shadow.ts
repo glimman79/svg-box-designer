@@ -31,12 +31,12 @@ const fixture = (name: string, tool: Tool, winding: Winding, side: number, rever
   const mate = rectangle(`${name}-mate`, 120, 0, 90, 40, winding);
   const panels = [owner.panel, mate.panel];
   const model: SvgDocumentModel = { content: '', innerMarkup: '', rootAttributes: { width: null, height: null, viewBox: null }, viewBox: '0 0 240 80', width: 240, height: 80, panels, edges: [...owner.edges, ...mate.edges] };
-  const connectionId = `${tool}-${name}`;
+  const connectionId = tool === 'TB' ? 'TB1' : `${tool}-${name}`;
   const assignments: any = tool === 'TB'
     ? { [owner.panel.edgeIds[side]]: { edgeAssignment: { connectionId, edgeRole: 'A' } }, [mate.panel.edgeIds[side]]: { edgeAssignment: { connectionId, edgeRole: 'B' } } }
     : { [owner.panel.edgeIds[side]]: { slotAssignments: [{ connectionId, slotRole: 'A' }] }, [mate.panel.edgeIds[side]]: { slotAssignments: [{ connectionId, slotRole: 'B' }] } };
   const connections: any = tool === 'TB'
-    ? { [connectionId]: { id: connectionId, prefix: 'E', properties: { materialThicknessMm: 5, fingerWidthMm, isFingerWidthManual: true } } }
+    ? { [connectionId]: { id: connectionId, prefix: 'TB', properties: { materialThicknessMm: 5, fingerWidthMm, isFingerWidthManual: true } } }
     : { [connectionId]: { id: connectionId, prefix: 'S', properties: { materialThicknessMm: 5, slotLengthMm: fingerWidthMm, isSlotLengthManual: true, slotOffsetMm: 0 } } };
   const panelManager = { defaultThicknessMm: 5, panels: Object.fromEntries(panels.map((panel) => [panel.id, { panelId: panel.id, thicknessMm: 5 }])) };
   const items = tool === 'TB' ? buildGeneratedTBGeometryItems(model, assignments, connections, panelManager) : buildGeneratedSGeometryItems(model, assignments, connections, panelManager);
@@ -49,8 +49,8 @@ const adjacentFixture = (edgeCount: 2 | 4) => {
   const panels = [owner.panel, ...mates.map((mate) => mate.panel)];
   const assignments: any = {}; const connections: any = {};
   for (let index = 0; index < edgeCount; index += 1) {
-    const id = `TB-${edgeCount}-edge-${index}`;
-    connections[id] = { id, prefix: 'E', properties: { materialThicknessMm: 5, fingerWidthMm: 30, isFingerWidthManual: true } };
+    const id = `TB${index + 1}`;
+    connections[id] = { id, prefix: 'TB', properties: { materialThicknessMm: 5, fingerWidthMm: 30, isFingerWidthManual: true } };
     assignments[owner.panel.edgeIds[index]] = { edgeAssignment: { connectionId: id, edgeRole: 'A' } };
     assignments[mates[index].panel.edgeIds[0]] = { edgeAssignment: { connectionId: id, edgeRole: 'B' } };
   }
