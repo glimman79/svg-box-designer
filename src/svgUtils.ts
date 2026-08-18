@@ -223,7 +223,7 @@ export const toEdgeAssignmentBucket = (assignment: EdgeAssignment | EdgeAssignme
     return assignment;
   }
 
-  if (hasConnectionLabelPrefix(assignment.connectionId, 'E', 'TB')) {
+  if (hasConnectionLabelPrefix(assignment.connectionId, 'TB')) {
     return { edgeAssignment: assignment };
   }
 
@@ -243,7 +243,7 @@ export const getBucketSlotAssignments = (assignment: EdgeAssignment | EdgeAssign
 );
 
 const getAssignmentDisplayLabel = (assignment: EdgeAssignment) => {
-  if (hasConnectionLabelPrefix(assignment.connectionId, 'E', 'TB') && assignment.edgeRole) {
+  if (hasConnectionLabelPrefix(assignment.connectionId, 'TB') && assignment.edgeRole) {
     return `${assignment.connectionId}-${assignment.edgeRole === 'A' ? 'A' : 'B'}`;
   }
 

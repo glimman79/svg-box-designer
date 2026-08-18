@@ -19,19 +19,19 @@ const panelManager = (...panels: SvgPanel[]) => ({ defaultThicknessMm: 5, panels
 const tbOwner = rectangle('tb-owner', 0); const tbMate1 = rectangle('tb-mate-1', 120); const tbMate2 = rectangle('tb-mate-2', 240);
 const tbModel = makeModel(tbOwner, tbMate1, tbMate2);
 const tbAssignments: any = {
-  [tbOwner.panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'T1', edgeRole: 'A' } },
-  [tbMate1.panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'T1', edgeRole: 'B' } },
-  [tbOwner.panel.edgeIds[2]]: { edgeAssignment: { connectionId: 'T2', edgeRole: 'A' } },
-  [tbMate2.panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'T2', edgeRole: 'B' } },
+  [tbOwner.panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'TB1', edgeRole: 'A' } },
+  [tbMate1.panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'TB1', edgeRole: 'B' } },
+  [tbOwner.panel.edgeIds[2]]: { edgeAssignment: { connectionId: 'TB2', edgeRole: 'A' } },
+  [tbMate2.panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'TB2', edgeRole: 'B' } },
 };
-const tbConnections: any = Object.fromEntries(['T1', 'T2'].map((id) => [id, { id, prefix: 'E', properties: { materialThicknessMm: 5, fingerWidthMm: 20, isFingerWidthManual: true } }]));
+const tbConnections: any = Object.fromEntries(['TB1', 'TB2'].map((id) => [id, { id, prefix: 'TB', properties: { materialThicknessMm: 5, fingerWidthMm: 20, isFingerWidthManual: true } }]));
 const tbItems = buildGeneratedTBGeometryItems(tbModel, tbAssignments, tbConnections, panelManager(...tbModel.panels));
 const tbFrozen = JSON.stringify(tbItems); const tbAudit = auditGeneratedGeometryRelationships(tbItems);
 assert(JSON.stringify(tbItems) === tbFrozen, 'relationship audit mutated TB physical output');
 const tbOwnerView = tbAudit.sources.find(({ source }) => source.panelId === tbOwner.panel.id && source.sourceEdgeId === tbOwner.panel.edgeIds[0]);
-assert(tbOwnerView?.replacementOwner === 'operation:TB:T1', 'TB replacement did not retain edge-local logical operation identity');
+assert(tbOwnerView?.replacementOwner === 'operation:TB:TB1', 'TB replacement did not retain edge-local logical operation identity');
 assert(tbAudit.sources.filter(({ source }) => source.panelId === tbOwner.panel.id).length === 2, 'TB audit claimed untouched closure edges');
-assert(tbAudit.operations.some(({ operationId, replaces }) => operationId === 'operation:TB:T2' && replaces.some(({ sourceEdgeId }) => sourceEdgeId === tbOwner.panel.edgeIds[2])), 'second TB operation missing');
+assert(tbAudit.operations.some(({ operationId, replaces }) => operationId === 'operation:TB:TB2' && replaces.some(({ sourceEdgeId }) => sourceEdgeId === tbOwner.panel.edgeIds[2])), 'second TB operation missing');
 
 // Real S: A replaces, B explicitly references, every independent slot is created.
 const sA = rectangle('s-a', 0); const sB = rectangle('s-b', 140); const sModel = makeModel(sA, sB);

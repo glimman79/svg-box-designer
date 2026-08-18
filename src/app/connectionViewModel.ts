@@ -1,5 +1,5 @@
 import { getBucketEdgeAssignment, getBucketSlotAssignments } from './assignmentBuckets';
-import type { EdgeConnectionDefinition, SlotConnectionDefinition } from './connectionTypes';
+import type { SlotConnectionDefinition, TBConnectionDefinition } from './connectionTypes';
 import { resolveTBThickness } from './eGeometry';
 import type { PanelThicknessState } from './eGeometry';
 import { resolveSSlotLengthMm, resolveSThickness } from './sGeometry';
@@ -66,7 +66,7 @@ export const resolveAssignedTBOrSConnectionIdForEdge = (
 export const getTBConnectionViewModel = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
-  connection: EdgeConnectionDefinition,
+  connection: TBConnectionDefinition,
   panelThicknessState?: PanelThicknessState,
   getPanelDisplayLabel?: LabelResolver,
 ): ConnectionViewModel => {
@@ -175,11 +175,11 @@ export const getSConnectionViewModel = (
 export const getConnectionViewModel = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
-  connection: EdgeConnectionDefinition | SlotConnectionDefinition,
+  connection: TBConnectionDefinition | SlotConnectionDefinition,
   panelThicknessState?: PanelThicknessState,
   getPanelDisplayLabel?: LabelResolver,
 ): ConnectionViewModel => (
-  connection.prefix === 'E'
+  connection.prefix === 'TB'
     ? getTBConnectionViewModel(svgModel, assignments, connection, panelThicknessState, getPanelDisplayLabel)
     : getSConnectionViewModel(svgModel, assignments, connection, panelThicknessState, getPanelDisplayLabel)
 );

@@ -17,20 +17,20 @@ const rectangle = (id: string, edgePrefix = id) => {
   return { id, contour, outerContour: contour, innerContours: [], edgeIds, outerEdgeIds: edgeIds, innerEdgeIds: [], bounds: { minX: 0, minY: 0, maxX: 10, maxY: 10 } };
 };
 
-const base = [claim('replaces', 'operation:TB:E1', 'P', 'edge-0')];
-assert.equal(view(deriveCanvasEdgeRelationshipState(base), 'P', 'edge-0')?.replacementOwner, 'operation:TB:E1', 'single TB owner');
+const base = [claim('replaces', 'operation:TB:TB1', 'P', 'edge-0')];
+assert.equal(view(deriveCanvasEdgeRelationshipState(base), 'P', 'edge-0')?.replacementOwner, 'operation:TB:TB1', 'single TB owner');
 assert.equal(view(deriveCanvasEdgeRelationshipState([claim('replaces', 'operation:S:S1', 'P', 'edge-1')]), 'P', 'edge-1')?.replacementOwner, 'operation:S:S1', 'single S-A owner');
 assert.deepEqual(view(deriveCanvasEdgeRelationshipState([claim('references', 'operation:S:S1', 'P', 'edge-0')]), 'P', 'edge-0'), {
   source: { panelId: 'P', sourceEdgeId: 'edge-0' }, replacementOwner: null, replacementClaimants: [], references: ['operation:S:S1'],
 }, 'S-B is reference-only');
 
 const mixedClaims = [
-  claim('replaces', 'operation:TB:E1', 'P', 'edge-0'), claim('references', 'operation:S:S1', 'P', 'edge-0'),
+  claim('replaces', 'operation:TB:TB1', 'P', 'edge-0'), claim('references', 'operation:S:S1', 'P', 'edge-0'),
   claim('replaces', 'operation:S:S1', 'P', 'edge-1'),
   claim('references', 'future-ref-2', 'P', 'edge-0'), claim('references', 'future-ref-1', 'P', 'edge-0'),
 ];
 const mixed = deriveCanvasEdgeRelationshipState(mixedClaims);
-assert.equal(view(mixed, 'P', 'edge-0')?.replacementOwner, 'operation:TB:E1', 'TB remains owner with S-B reference');
+assert.equal(view(mixed, 'P', 'edge-0')?.replacementOwner, 'operation:TB:TB1', 'TB remains owner with S-B reference');
 assert.deepEqual(view(mixed, 'P', 'edge-0')?.references, ['future-ref-1', 'future-ref-2', 'operation:S:S1'], 'multiple references are retained deterministically');
 assert.equal(view(mixed, 'P', 'edge-1')?.replacementOwner, 'operation:S:S1', 'S-A owns its different edge');
 assert.equal(view(mixed, 'P', 'edge-2'), undefined, 'unchanged edge remains unowned');
@@ -46,7 +46,7 @@ assert.equal(view(deriveCanvasEdgeRelationshipState([claim('replaces', 'future-w
 assert.equal(view(deriveCanvasEdgeRelationshipState([claim('references', 'future-reader', 'P', 'edge-2')]), 'P', 'edge-2')?.replacementOwner, null, 'unknown reference does not own');
 assert.equal(deriveCanvasEdgeRelationshipState([claim('replaces', 'A', 'P', 'edge-0'), claim('replaces', 'B', 'P', 'edge-0')]).index.diagnostics[0]?.kind, 'replacement-conflict', 'same-edge replacements conflict');
 
-const afterRemove = deriveCanvasEdgeRelationshipState(mixedClaims.filter((entry) => entry.operationId !== 'operation:TB:E1'));
+const afterRemove = deriveCanvasEdgeRelationshipState(mixedClaims.filter((entry) => entry.operationId !== 'operation:TB:TB1'));
 assert.equal(view(afterRemove, 'P', 'edge-0')?.replacementOwner, null, 'removing TB clears only TB ownership');
 assert.equal(view(afterRemove, 'P', 'edge-1')?.replacementOwner, 'operation:S:S1', 'removing TB preserves S ownership');
 const moved = deriveCanvasEdgeRelationshipState([claim('replaces', 'S', 'P', 'edge-2')]);
@@ -55,13 +55,13 @@ assert.equal(view(moved, 'P', 'edge-2')?.replacementOwner, 'S', 'changed assignm
 
 const panel = rectangle('P'); const mate = rectangle('Q');
 const model: any = { panels: [panel, mate], edges: [] };
-const connections: any = { E1: { id: 'E1', prefix: 'E', properties: {} }, S1: { id: 'S1', prefix: 'S', properties: {} } };
+const connections: any = { TB1: { id: 'TB1', prefix: 'TB', properties: {} }, S1: { id: 'S1', prefix: 'S', properties: {} } };
 const assignments: any = {
-  [panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'E1', edgeRole: 'A' }, slotAssignments: [{ connectionId: 'S1', slotRole: 'B' }] },
+  [panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'TB1', edgeRole: 'A' }, slotAssignments: [{ connectionId: 'S1', slotRole: 'B' }] },
   [panel.edgeIds[1]]: { slotAssignments: [{ connectionId: 'S1', slotRole: 'A' }] },
 };
 const authored = deriveCanvasEdgeRelationshipState(collectSourceEdgeAuthoringClaims(model, assignments, connections));
-assert.equal(view(authored, 'P', panel.edgeIds[0])?.replacementOwner, 'operation:TB:E1', 'normal authoring TB owner');
+assert.equal(view(authored, 'P', panel.edgeIds[0])?.replacementOwner, 'operation:TB:TB1', 'normal authoring TB owner');
 assert.deepEqual(view(authored, 'P', panel.edgeIds[0])?.references, ['operation:S:S1'], 'normal authoring S-B reference');
 assert.equal(view(authored, 'P', panel.edgeIds[1])?.replacementOwner, 'operation:S:S1', 'normal authoring S-A owner');
 
@@ -70,13 +70,13 @@ const generated: any[] = [{
   source: { operationId: 'composed', panelIds: ['P'], edgeIds: [...panel.edgeIds], connectionIds: [] },
   behaviour: { assembly: 'panel-boundary', replacesPanelId: 'P' }, geometry: { type: 'path', pathD: '' }, pathD: '', diagnostics: [], manufacturingClassification: 'GENERATED_OUTER',
   generatedProfiles: [
-    { id: 'profile-tb', operationId: 'operation:TB:E1', panelId: 'P', sourceEdgeId: panel.edgeIds[0] },
+    { id: 'profile-tb', operationId: 'operation:TB:TB1', panelId: 'P', sourceEdgeId: panel.edgeIds[0] },
     { id: 'profile-s', operationId: 'operation:S:S1', panelId: 'P', sourceEdgeId: panel.edgeIds[1] },
   ],
   sourceRelationships: [claim('references', 'operation:S:S1', 'P', panel.edgeIds[0])],
 }];
 const applied = deriveGeneratedCanvasEdgeRelationshipState(generated);
-assert.equal(view(applied, 'P', panel.edgeIds[0])?.replacementOwner, 'operation:TB:E1');
+assert.equal(view(applied, 'P', panel.edgeIds[0])?.replacementOwner, 'operation:TB:TB1');
 assert.equal(view(applied, 'P', panel.edgeIds[1])?.replacementOwner, 'operation:S:S1');
 assert.equal(view(applied, 'P', panel.edgeIds[2]), undefined, 'broad PANEL_PATH source.edgeIds does not leak ownership');
 assert.deepEqual(applied.index.sources, deriveGeneratedCanvasEdgeRelationshipState(structuredClone(generated)).index.sources, 'snapshot restore reconstructs state');

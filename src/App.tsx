@@ -23,7 +23,7 @@ import type { PanelCompositionAuthorityMode } from './app/generatedGeometryAutho
 import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { validateGeometryAuthoring } from './app/authoringRelationships';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
-import { appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
+import { appendAutoCreatedTBToTBGroup, buildTBDisplayLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
 import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildAppliedEPanelPaths, buildGeneratedTBGeometryItems, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
 import { buildPanelContainmentTree, createPanelManagerStateFromModel, defaultPanelManagerState, validatePanelManagerState } from './app/panelManagerModel';
 import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
@@ -31,7 +31,7 @@ import type { PanelManagerState, PanelTreeHoleNode, PanelTreePanelNode } from '.
 import { createTabSegmentPlan, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
 import { getContourEdgePoints, validateClosedPanel } from './app/sharedPanelGeometry';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
-import type { ActiveSGroup, ActiveTBGroup, AppliedEPanelPath, AppliedSGeometry, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, EdgeConnectionDefinition, EdgeConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties } from './app/connectionTypes';
+import type { ActiveSGroup, ActiveTBGroup, AppliedEPanelPath, AppliedSGeometry, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, TBConnectionDefinition, TBConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties } from './app/connectionTypes';
 import { getNextConnectionLabel, parseConnectionLabel } from './app/connectionLabels';
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
 export { edgeMatchesContourSide, getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './app/sharedPanelGeometry';
@@ -43,7 +43,7 @@ export { createGeneratedGeometrySnapshot, getAppliedEPanelPathsFromSnapshot, get
 export { buildAppliedSGeometry, buildGeneratedSGeometryItems, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
 export { buildPanelContainmentTree, createPanelManagerStateFromModel, defaultPanelManagerState, validatePanelManagerState } from './app/panelManagerModel';
 export { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, createCopiedSConnection, createStandaloneSConnection, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, isCompleteSConnection, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
-export { appendAutoCreatedEToTBGroup, buildTBDisplayLabelAliasMap, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getNextInternalELabel, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
+export { appendAutoCreatedTBToTBGroup, buildTBDisplayLabelAliasMap, buildTBCanvasLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, getNextTBLabel, getTBGroupActionNumber, startTBGroupWorkflow } from './app/tbWorkflow';
 // classifyAppliedContours is intentionally re-exported only as a compatibility/test helper.
 export { buildFinalContourList, classifyAppliedContours, classifyContoursByContainment, classifyFinalContours, classifyImportedPanelContours } from './app/contourClassification';
 export { applyProfileOffset, applyProfileOffsetStage, applyTapClearance, applySlotClearance, applySlotClearanceStage, buildKerfCompensatedPreviewFromFinalContours, cleanContourPointsForOffset, compensateClassifiedContours, compensateContourPoints, getKerfCompensationMm, pathDToClosedContour, processManufacturingGeometry } from './app/manufacturingCompensation';
@@ -73,9 +73,9 @@ export type { CompensationStrategy, CompensationStrategyContext } from './app/co
 export { applyTabsToContour, buildAppliedEPanelPaths, buildGeneratedTBGeometryItems, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, getPanelThickness, getPanelThicknessForEdge, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 export type { PanelManagerState } from './app/panelManagerModel';
-export type { ActiveSGroup, ActiveTBGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties, TBConnectionDefinition, TBConnectionProperties } from './app/connectionTypes';
+export type { ActiveSGroup, ActiveTBGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, TBConnectionDefinition, TBConnectionProperties } from './app/connectionTypes';
 
-type LabelPrefix = 'E' | 'S' | 'C' | 'P';
+type LabelPrefix = 'TB' | 'S' | 'C' | 'P';
 
 
 type LabelGroup = {
@@ -265,7 +265,7 @@ export const recomputeAppliedTBGeometryForPanelManager = (
   const hasAppliedTBGeometry = appliedEPanelPaths.length > 0;
   const hasTBAssignments = Object.values(assignments).some((bucket) => {
     const assignment = getBucketEdgeAssignment(bucket);
-    return assignment ? nextConnections[assignment.connectionId]?.prefix === 'E' : false;
+    return assignment ? nextConnections[assignment.connectionId]?.prefix === 'TB' : false;
   });
 
   const hasAppliedSGeometry = appliedSGeometry.length > 0;
@@ -334,7 +334,7 @@ const emptySvgModel: SvgDocumentModel = {
 };
 
 const labelGroups: LabelGroup[] = [
-  { prefix: 'E', name: 'Edge connections', description: 'Reusable edge connection IDs' },
+  { prefix: 'TB', name: 'Edge connections', description: 'Reusable edge connection IDs' },
   { prefix: 'S', name: 'Slot connections', description: 'Reusable slot connection IDs' },
   { prefix: 'C', name: 'Corner connections', description: 'Reusable corner connection IDs' },
   { prefix: 'P', name: 'Pattern connections', description: 'Reusable pattern connection IDs' },
@@ -404,11 +404,11 @@ const getNextLabel = (prefix: LabelPrefix, labels: string[]) => getNextConnectio
 const getFollowingEdgeLabel = (label: string) => {
   const labelNumber = getLabelNumber(label);
 
-  if (getLabelPrefix(label) !== 'E' || !Number.isFinite(labelNumber)) {
+  if (getLabelPrefix(label) !== 'TB' || !Number.isFinite(labelNumber)) {
     return null;
   }
 
-  return `E${labelNumber + 1}`;
+  return `TB${labelNumber + 1}`;
 };
 
 const minZoom = 0.1;
@@ -509,9 +509,9 @@ const cloneDefaultProperties = <P extends LabelPrefix>(prefix: P): ConnectionPro
 const createConnectionDefinition = (
   id: string,
   prefix: LabelPrefix,
-  edgeProperties?: EdgeConnectionProperties,
+  edgeProperties?: TBConnectionProperties,
 ): ConnectionDefinition => {
-  if (prefix === 'E') {
+  if (prefix === 'TB') {
     return { id, prefix, properties: edgeProperties ? { ...edgeProperties } : cloneDefaultProperties(prefix) };
   }
 
@@ -527,12 +527,12 @@ const createConnectionDefinition = (
   return { id, prefix, properties: cloneDefaultProperties(prefix) };
 };
 
-const getSharedEdgeProperties = (connections: ConnectionMap): EdgeConnectionProperties => {
+const getSharedTBProperties = (connections: ConnectionMap): TBConnectionProperties => {
   const sharedConnection = Object.values(connections).find(
-    (connection): connection is EdgeConnectionDefinition => connection.prefix === 'E',
+    (connection): connection is TBConnectionDefinition => connection.prefix === 'TB',
   );
 
-  return sharedConnection ? { ...sharedConnection.properties } : cloneDefaultProperties('E');
+  return sharedConnection ? { ...sharedConnection.properties } : cloneDefaultProperties('TB');
 };
 
 const NumericField = ({ id, label, value, min, step = 0.1, disabled = false, placeholder, onChange, onFocus }: NumericFieldProps) => (
@@ -727,7 +727,7 @@ function App() {
           return currentConnection !== synchronizedConnection;
         }
 
-        if (currentConnection.prefix === 'E' && synchronizedConnection.prefix === 'E') {
+        if (currentConnection.prefix === 'TB' && synchronizedConnection.prefix === 'TB') {
           return currentConnection.properties.fingerWidthMm !== synchronizedConnection.properties.fingerWidthMm;
         }
 
@@ -798,28 +798,28 @@ function App() {
   }, [activeSGroup, availableLabels, workflowGroupOrder]);
 
   const tbLabelGroups = useMemo(() => {
-    const eLabels = availableLabels
-      .filter((label) => getLabelPrefix(label) === 'E')
+    const tbLabels = availableLabels
+      .filter((label) => getLabelPrefix(label) === 'TB')
       .sort((first, second) => getLabelNumber(first) - getLabelNumber(second));
 
-    if (eLabels.length === 0) {
+    if (tbLabels.length === 0) {
       return [];
     }
 
     const finishedGroups = completedTBGroups.map((group) => ({
       id: group.groupId,
-      labels: group.connectionIds.filter((label) => eLabels.includes(label)),
+      labels: group.connectionIds.filter((label) => tbLabels.includes(label)),
       isActive: false,
       orderIndex: workflowGroupOrder[group.groupId],
     })).filter((group) => group.labels.length > 0);
     const shouldUseActiveTBGroup = !!activeTBGroup && (activeTBGroup.isActive || !finishedGroups.some((group) => group.id === activeTBGroup.groupId));
     const activeIds = shouldUseActiveTBGroup ? activeTBGroup.connectionIds : [];
-    const activeLabels = activeIds.filter((label) => eLabels.includes(label));
+    const activeLabels = activeIds.filter((label) => tbLabels.includes(label));
     const groupedActive = new Set([...finishedGroups.flatMap((group) => group.labels), ...activeLabels]);
-    const standaloneLabels = eLabels.filter((label) => !groupedActive.has(label));
+    const standalontbLabels = tbLabels.filter((label) => !groupedActive.has(label));
     const groups = [
       ...finishedGroups,
-      ...standaloneLabels.map((label) => ({ id: `tb-group-${label}`, labels: [label], isActive: false, orderIndex: workflowGroupOrder[`tb-group-${label}`] })),
+      ...standalontbLabels.map((label) => ({ id: `tb-group-${label}`, labels: [label], isActive: false, orderIndex: workflowGroupOrder[`tb-group-${label}`] })),
     ];
 
     if (activeLabels.length > 0) {
@@ -827,7 +827,7 @@ function App() {
       groups.push({ id, labels: activeLabels, isActive: activeTBGroup?.isActive ?? false, orderIndex: workflowGroupOrder[id] });
     }
 
-    return groups.sort((first, second) => getLabelNumber(first.labels[0] ?? 'E0') - getLabelNumber(second.labels[0] ?? 'E0'));
+    return groups.sort((first, second) => getLabelNumber(first.labels[0] ?? 'TB0') - getLabelNumber(second.labels[0] ?? 'TB0'));
   }, [activeTBGroup, availableLabels, completedTBGroups, workflowGroupOrder]);
 
   const tbDisplayLabelAliases = useMemo(() => buildTBDisplayLabelAliasMap(tbLabelGroups), [tbLabelGroups]);
@@ -943,8 +943,8 @@ function App() {
 
   };
 
-  const hasAssignedEEdges = useMemo(() => {
-    return Object.values(edgeAssignments).some((assignment) => getBucketEdgeAssignment(assignment)?.connectionId.startsWith('E'));
+  const hasAssignedTBEdges = useMemo(() => {
+    return Object.values(edgeAssignments).some((assignment) => getBucketEdgeAssignment(assignment)?.connectionId.startsWith('TB'));
   }, [edgeAssignments]);
 
   const getCurrentHistoryState = (): HistoryState => cloneHistoryState({
@@ -1052,7 +1052,7 @@ function App() {
       [nextLabel]: createConnectionDefinition(
         nextLabel,
         prefix,
-        prefix === 'E' ? getSharedEdgeProperties(currentConnections) : undefined,
+        prefix === 'TB' ? getSharedTBProperties(currentConnections) : undefined,
       ),
     }));
     selectConnectionForDisplayAndAssignment(nextLabel);
@@ -1230,13 +1230,13 @@ function App() {
       return;
     }
 
-    const requestedRelationship = connection.prefix === 'E' || (connection.prefix === 'S' && nextSlotRole === 'A')
+    const requestedRelationship = connection.prefix === 'TB' || (connection.prefix === 'S' && nextSlotRole === 'A')
       ? 'replaces' : connection.prefix === 'S' ? 'references' : null;
     const sourcePanelId = panelIdByEdgeId.get(edgeId);
     const currentRelationship = sourcePanelId
       ? authoredCanvasEdgeRelationships.bySource.get(sourceEdgeRelationshipKey(sourcePanelId, edgeId))
       : undefined;
-    const requestedOperationId = connection.prefix === 'E'
+    const requestedOperationId = connection.prefix === 'TB'
       ? `operation:TB:${assignmentConnectionId}` : `operation:S:${assignmentConnectionId}`;
     if (requestedRelationship === 'replaces' && currentRelationship?.replacementOwner
       && currentRelationship.replacementOwner !== requestedOperationId) {
@@ -1249,11 +1249,11 @@ function App() {
     const currentBucket = toEdgeAssignmentBucket(edgeAssignments[edgeId]) ?? {};
     const nextAssignment: EdgeAssignment = {
       connectionId: assignmentConnectionId,
-      ...(connection.prefix === 'E' ? { edgeRole: getDefaultEdgeRole(edgeAssignments, assignmentConnectionId) } : {}),
+      ...(connection.prefix === 'TB' ? { edgeRole: getDefaultEdgeRole(edgeAssignments, assignmentConnectionId) } : {}),
       ...(connection.prefix === 'S' && nextSlotRole ? { slotRole: nextSlotRole } : {}),
     };
 
-    if (connection.prefix === 'E') {
+    if (connection.prefix === 'TB') {
       if (currentBucket.edgeAssignment) {
         setErrorMessage('This edge already has a TB assignment.');
         return;
@@ -1267,7 +1267,7 @@ function App() {
 
     const nextAssignments = {
       ...edgeAssignments,
-      [edgeId]: connection.prefix === 'E'
+      [edgeId]: connection.prefix === 'TB'
         ? { ...currentBucket, edgeAssignment: nextAssignment }
         : { ...currentBucket, slotAssignments: [...(currentBucket.slotAssignments ?? []), nextAssignment] },
     };
@@ -1282,7 +1282,7 @@ function App() {
     ), 0);
     const nextEdgeLabel = selectedLabelAssignmentCount === 2 ? getFollowingEdgeLabel(assignmentConnectionId) : null;
 
-    if (connection.prefix === 'E' && nextEdgeLabel) {
+    if (connection.prefix === 'TB' && nextEdgeLabel) {
       setConnections((currentConnections) => {
         if (currentConnections[nextEdgeLabel]) {
           return currentConnections;
@@ -1292,14 +1292,14 @@ function App() {
           ...currentConnections,
           [nextEdgeLabel]: createConnectionDefinition(
             nextEdgeLabel,
-            'E',
-            getSharedEdgeProperties(currentConnections),
+            'TB',
+            getSharedTBProperties(currentConnections),
           ),
         };
       });
       setAssignmentTargetConnectionId(nextEdgeLabel);
       setDisplayConnectionId(assignmentConnectionId);
-      setActiveTBGroup((currentGroup) => appendAutoCreatedEToTBGroup(currentGroup, assignmentConnectionId, nextEdgeLabel));
+      setActiveTBGroup((currentGroup) => appendAutoCreatedTBToTBGroup(currentGroup, assignmentConnectionId, nextEdgeLabel));
       setExpandedTBGroups((currentGroups) => activeTBGroup?.connectionIds.includes(assignmentConnectionId) ? { ...currentGroups, [activeTBGroup.groupId]: true } : currentGroups);
     }
 
@@ -1327,7 +1327,7 @@ function App() {
     const assignment = bucket?.edgeAssignment;
     const connection = assignment ? connections[assignment.connectionId] : undefined;
 
-    if (!bucket || !assignment || connection?.prefix !== 'E' || assignment.edgeRole === edgeRole) {
+    if (!bucket || !assignment || connection?.prefix !== 'TB' || assignment.edgeRole === edgeRole) {
       return;
     }
 
@@ -1516,7 +1516,7 @@ function App() {
     const nextConnections = recalculateAutomaticTBFingerWidths(svgModel, edgeAssignments, recalculateAutomaticSSlotLengths(svgModel, edgeAssignments, connections, appliedPanelManager), appliedPanelManager);
     const hasTBAssignments = Object.values(edgeAssignments).some((bucket) => {
       const assignment = getBucketEdgeAssignment(bucket);
-      return assignment ? nextConnections[assignment.connectionId]?.prefix === 'E' : false;
+      return assignment ? nextConnections[assignment.connectionId]?.prefix === 'TB' : false;
     });
     const recomputedGeneratedItems = [
       ...(generatedGeometryItems.some((item) => item.toolType === 'TB') || hasTBAssignments ? buildGeneratedTBGeometryItems(svgModel, edgeAssignments, nextConnections, appliedPanelManager) : []),
@@ -1537,8 +1537,8 @@ function App() {
     setErrorMessage('');
   };
 
-  const updateEdgeProperties = (updates: Partial<EdgeConnectionProperties>) => {
-    if (!selectedConnection || selectedConnection.prefix !== 'E') {
+  const updateEdgeProperties = (updates: Partial<TBConnectionProperties>) => {
+    if (!selectedConnection || selectedConnection.prefix !== 'TB') {
       return;
     }
 
@@ -1546,11 +1546,11 @@ function App() {
     setConnections((currentConnections) => {
       const currentSelectedConnection = currentConnections[selectedConnection.id];
 
-      if (!currentSelectedConnection || currentSelectedConnection.prefix !== 'E') {
+      if (!currentSelectedConnection || currentSelectedConnection.prefix !== 'TB') {
         return currentConnections;
       }
 
-      const nextProperties: EdgeConnectionProperties = {
+      const nextProperties: TBConnectionProperties = {
         ...currentSelectedConnection.properties,
         ...updates,
       };
@@ -1562,7 +1562,7 @@ function App() {
       return Object.fromEntries(
         Object.entries(currentConnections).map(([connectionId, connection]) => [
           connectionId,
-          connection.prefix === 'E'
+          connection.prefix === 'TB'
             ? {
                 ...connection,
                 properties: {
@@ -1872,14 +1872,14 @@ function App() {
   };
 
   const renderPropertiesPanel = () => {
-    const activeConnectionPrefix = activeTool === 'TB' ? 'E' : activeTool;
+    const activeConnectionPrefix = activeTool === 'TB' ? 'TB' : activeTool;
 
     if (!selectedConnection || selectedConnection.prefix !== activeConnectionPrefix) {
       return <p className="muted">Select a {activeTool === 'TB' ? 'TB / Top Bottom' : activeTool} connection to inspect this tool.</p>;
     }
 
-    if (selectedConnection.prefix === 'E') {
-      const assignedEEdges = svgModel.edges.filter((edge) => getBucketEdgeAssignment(edgeAssignments[edge.id])?.connectionId === selectedConnection.id);
+    if (selectedConnection.prefix === 'TB') {
+      const assignedTBEdges = svgModel.edges.filter((edge) => getBucketEdgeAssignment(edgeAssignments[edge.id])?.connectionId === selectedConnection.id);
       const tbViewModel = getConnectionViewModel(svgModel, edgeAssignments, selectedConnection, panelManager, getPanelDisplayName);
       const ownerPanelId = tbViewModel.panelIds.panelAId;
       const matingPanelId = tbViewModel.panelIds.panelBId;
@@ -1890,9 +1890,9 @@ function App() {
         <div className="property-sections">
           <section className="property-section" aria-labelledby="edge-assigned-edges">
             <h4 id="edge-assigned-edges">Assigned edges</h4>
-            {assignedEEdges.length > 0 ? (
+            {assignedTBEdges.length > 0 ? (
               <ul className="calculated-edge-list">
-                {assignedEEdges.map((edge) => (
+                {assignedTBEdges.map((edge) => (
                   <li key={edge.id}>
                     <strong>{edge.id}</strong>
                     <dl>
@@ -2004,7 +2004,7 @@ function App() {
   };
 
   const renderCompactControls = () => {
-    if (selectedConnection?.prefix === 'E') {
+    if (selectedConnection?.prefix === 'TB') {
       const properties = selectedConnection.properties;
       const tbViewModel = getConnectionViewModel(svgModel, edgeAssignments, selectedConnection, panelManager, getPanelDisplayName);
 
@@ -2047,7 +2047,7 @@ function App() {
     return Object.fromEntries(Object.entries(edgeAssignments).flatMap(([edgeId, assignment]) => {
       const bucket = toEdgeAssignmentBucket(assignment);
       const displayBucket = activeTool === 'TB'
-        ? bucket?.edgeAssignment?.connectionId.startsWith('E') ? { edgeAssignment: bucket.edgeAssignment } : undefined
+        ? bucket?.edgeAssignment?.connectionId.startsWith('TB') ? { edgeAssignment: bucket.edgeAssignment } : undefined
         : bucket?.slotAssignments?.some((slotAssignment) => slotAssignment.connectionId.startsWith('S'))
           ? { slotAssignments: bucket.slotAssignments.filter((slotAssignment) => slotAssignment.connectionId.startsWith('S')) }
           : undefined;
@@ -2318,15 +2318,15 @@ function App() {
 
               <div className="label-manager">
                 {labelsByGroup
-                  .filter(({ prefix }) => (activeTool === 'TB' ? prefix === 'E' : prefix === activeTool))
+                  .filter(({ prefix }) => (activeTool === 'TB' ? prefix === 'TB' : prefix === activeTool))
                   .map(({ prefix, name, description, labels: groupLabels }) => (
               <section className="label-group" key={prefix} aria-label={name}>
                 <div className="label-group-header">
                   <div>
-                    <h3>{prefix === 'E' ? 'TB / Top Bottom' : `${prefix} = ${name}`}</h3>
-                    <p>{prefix === 'E' ? 'Top/Bottom connections' : description}</p>
+                    <h3>{prefix === 'TB' ? 'TB / Top Bottom' : `${prefix} = ${name}`}</h3>
+                    <p>{prefix === 'TB' ? 'Top/Bottom connections' : description}</p>
                   </div>
-                  {prefix !== 'E' && prefix !== 'S' && (
+                  {prefix !== 'TB' && prefix !== 'S' && (
                     <div className="label-actions">
                       <button type="button" onClick={() => createLabel(prefix)}>
                         Add {getNextLabel(prefix, availableLabels)}
@@ -2336,7 +2336,7 @@ function App() {
                 </div>
 
                 {groupLabels.length > 0 ? (
-                  prefix === 'E' ? (
+                  prefix === 'TB' ? (
                     <ul className="label-list s-group-list">
                       {tbLabelGroups.map((tbGroup, groupIndex) => {
                         const isExpanded = tbGroup.isActive || expandedTBGroups[tbGroup.id] === true;
@@ -2437,7 +2437,7 @@ function App() {
                     </ul>
                   )
                 ) : (
-                  <p className="empty-labels">No {prefix === 'E' ? 'TB / Top Bottom' : prefix} connections yet.</p>
+                  <p className="empty-labels">No {prefix === 'TB' ? 'TB / Top Bottom' : prefix} connections yet.</p>
                 )}
               </section>
             ))}
