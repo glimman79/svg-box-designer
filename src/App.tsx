@@ -72,7 +72,7 @@ export type { CompensationStrategy, CompensationStrategyContext } from './app/co
 export { applyTabsToContour, buildAppliedEPanelPaths, buildGeneratedTBGeometryItems, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, getPanelThickness, getPanelThicknessForEdge, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
 export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
 export type { PanelManagerState } from './app/panelManagerModel';
-export type { ActiveSGroup, ActiveTBGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties } from './app/connectionTypes';
+export type { ActiveSGroup, ActiveTBGroup, AppliedEPanelPath, AppliedSGeometry, AppliedSPanelPath, AppliedSSlotPath, ConnectionDefinition, ConnectionMap, EdgeConnectionDefinition, EdgeConnectionProperties, TBConnectionDefinition, TBConnectionProperties } from './app/connectionTypes';
 
 type LabelPrefix = 'E' | 'S' | 'C' | 'P';
 
@@ -341,6 +341,11 @@ const labelGroups: LabelGroup[] = [
 
 export const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
   E: {
+    materialThicknessMm: 3,
+    fingerWidthMm: 9,
+    isFingerWidthManual: false,
+  },
+  TB: {
     materialThicknessMm: 3,
     fingerWidthMm: 9,
     isFingerWidthManual: false,
