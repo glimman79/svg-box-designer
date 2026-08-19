@@ -35,23 +35,46 @@ export const packageComposedPanelGeometry = (
   ownerOperationIds: ReadonlyArray<string>,
 ): ReadonlyArray<GeneratedGeometryItem> => {
   const { panelId, points } = candidate;
-  const owners = items.filter((item) => item.kind === 'PANEL_PATH' && item.behaviour.replacesPanelId === panelId
-    && ownerOperationIds.includes(item.operationId)).sort((a, b) => a.id.localeCompare(b.id));
+  const carriersById = new Map<string, GeneratedGeometryItem>();
+  items.filter((item) => item.kind === 'PANEL_PATH' && item.behaviour.assembly === 'panel-boundary'
+    && item.behaviour.replacesPanelId === panelId
+    && !item.id.startsWith('composed:panel:') && !item.operationId.startsWith('composed:')
+    && (item.generatedProfiles ?? []).some((profile) => profile.panelId === panelId
+      && ownerOperationIds.includes(profile.operationId)))
+    .forEach((item) => {
+      const existing = carriersById.get(item.id);
+      if (existing && normalized(existing) !== normalized(item)) {
+        throw new Error(`Conflicting diagnostic packaging carrier ${item.id} for ${panelId}.`);
+      }
+      carriersById.set(item.id, item);
+    });
+  const owners = [...carriersById.values()].sort((a, b) => a.id.localeCompare(b.id));
   if (!owners.length) throw new Error(`No diagnostic packaging owners for ${panelId}.`);
+  const uniqueMetadata = <T extends { id: string }>(values: ReadonlyArray<T>, kind: string): ReadonlyArray<T> => {
+    const byId = new Map<string, T>();
+    values.forEach((value) => {
+      const existing = byId.get(value.id);
+      if (existing && normalized(existing) !== normalized(value)) {
+        throw new Error(`Conflicting ${kind} ${value.id} for ${panelId}.`);
+      }
+      byId.set(value.id, value);
+    });
+    return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+  };
   const pathD = pointsToClosedPathD([...points]);
   const diagnostic: GeneratedGeometryItem = {
     ...owners[0], id: `composed:panel:${panelId}`, operationId: `composed:${panelId}`,
     source: { operationId: `composed:${panelId}`, connectionIds: owners.flatMap((item) => item.source.connectionIds),
       edgeIds: [...new Set(owners.flatMap((item) => item.source.edgeIds))], panelIds: [panelId] },
     geometry: { ...owners[0].geometry, pathD }, pathD,
-    profileGroups: owners.flatMap((item) => item.profileGroups ?? []).sort((a, b) => a.id.localeCompare(b.id)),
-    generatedProfiles: owners.flatMap((item) => item.generatedProfiles ?? []).sort((a, b) => a.id.localeCompare(b.id)).map((profile) => ({ ...profile,
+    profileGroups: uniqueMetadata(owners.flatMap((item) => item.profileGroups ?? []), 'profile group'),
+    generatedProfiles: uniqueMetadata(owners.flatMap((item) => item.generatedProfiles ?? []), 'generated profile').map((profile) => ({ ...profile,
       geometryProjections: profile.geometryProjections.map((projection) => {
         const segment = candidate.segments.find((value) => value.projectionId === projection.id);
         return segment ? { ...projection, start: { ...segment.start }, end: { ...segment.end } } : projection;
       }),
     })),
-    generatedTaps: owners.flatMap((item) => item.generatedTaps ?? []).sort((a, b) => a.id.localeCompare(b.id)),
+    generatedTaps: uniqueMetadata(owners.flatMap((item) => item.generatedTaps ?? []), 'generated tap'),
     diagnostics: [],
   };
   return [...items.filter((item) => !(item.kind === 'PANEL_PATH' && item.behaviour.replacesPanelId === panelId)), diagnostic]
