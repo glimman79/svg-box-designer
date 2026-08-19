@@ -3,7 +3,7 @@ import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import type { GeneratedProfileElementId, GeneratedProfileId, GeometryProjectionId } from './generatedProfiles';
 import type { GeneratedTapId, GeneratedTapSegmentRole } from './generatedTaps';
 import type { GeometryRelationshipIndex } from './geometryRelationships';
-import { cornerTouchTolerance, lineIntersection } from './sharedGeometry';
+import { cornerTouchTolerance, lineIntersection, pointsMatch } from './sharedGeometry';
 import type { ContourSide } from './sharedGeometry';
 import type { Point, SvgPanel } from '../svgUtils';
 
@@ -42,6 +42,23 @@ const finiteSide = (side: ContourSide) => [side.start.x, side.start.y, side.end.
 const same = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y) <= cornerTouchTolerance;
 const clonePoint = (point: Point): Point => ({ x: point.x, y: point.y });
 
+/**
+ * Keep a generator's terminal representation when resolving its support lines
+ * produces the same geometric point.  The preceding contribution's end is
+ * canonical because it is the terminal already emitted by traversal; the
+ * following generated start is the fallback.  Thus generated/generated
+ * joins are deterministic, either mixed join preserves its sole generated
+ * terminal, and original/original joins retain the computed intersection.
+ * A terminal which is materially different never overrides the intersection.
+ */
+const preserveGeneratedTerminal = (computed: Point, previous: PanelContribution, current: PanelContribution): Point => {
+  const previousEnd = previous.kind === 'replaced' ? previous.geometry[previous.geometry.length - 1]?.end : undefined;
+  if (previousEnd && pointsMatch(computed, previousEnd)) return previousEnd;
+  const currentStart = current.kind === 'replaced' ? current.geometry[0]?.start : undefined;
+  if (currentStart && pointsMatch(computed, currentStart)) return currentStart;
+  return computed;
+};
+
 
 export const composePanel = (panel: SvgPanel, relationships: GeometryRelationshipIndex,
   replacements: ReadonlyArray<PanelReplacedEdgeContribution>, createdFeatures: ReadonlyArray<GeneratedGeometryItem> = []): PanelCandidate => {
@@ -68,7 +85,8 @@ export const composePanel = (panel: SvgPanel, relationships: GeometryRelationshi
   const blocking = diagnostics.length > 0;
   const junctions = blocking ? [] : contributions.map((current, index) => {
     const previous = contributions[(index + contributions.length - 1) % contributions.length];
-    const point = finiteSide(previous.endSupport) && finiteSide(current.startSupport) ? lineIntersection(previous.endSupport, current.startSupport) : null;
+    const intersection = finiteSide(previous.endSupport) && finiteSide(current.startSupport) ? lineIntersection(previous.endSupport, current.startSupport) : null;
+    const point = intersection ? preserveGeneratedTerminal(intersection, previous, current) : null;
     if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) diagnostics.push({ kind: 'invalid-junction', key: `${panel.id}\u0000${previous.sourceEdgeId}\u0000${current.sourceEdgeId}`, message: `Adjacent attachment supports do not have one finite intersection.` });
     return point ? { beforeEdgeId: previous.sourceEdgeId, afterEdgeId: current.sourceEdgeId, point } : null;
   });

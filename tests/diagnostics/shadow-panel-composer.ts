@@ -50,4 +50,35 @@ const simple=(edge:number,operationId:string):ShadowReplacedEdgeContribution=>{c
 const mixedIndex=buildGeometryRelationshipIndex([source('replaces','A','generic',box.panel.edgeIds[0]),source('replaces','B','generic',box.panel.edgeIds[1]),source('references','R','generic',box.panel.edgeIds[1])]);
 const mixed=composeShadowPanel(box.panel,mixedIndex,[simple(1,'B'),simple(0,'A')]);
 assert(!mixed.diagnostics.length&&mixed.segments.filter(x=>x.relationshipOrigin==='replaces').length===2,'different edge owners were not composed');
+
+// Junction representation precedence: preceding generated end, then following
+// generated start, otherwise the support intersection. Original terminals are
+// never representation authorities.
+const terminalContribution = (edge:number, operationId:string, start:{x:number;y:number}, end:{x:number;y:number}) => {
+  const contribution = simple(edge, operationId);
+  return {...contribution, geometry:[{...contribution.geometry[0],start,end}]} as ShadowReplacedEdgeContribution;
+};
+const composeTerminals = (relationships:GeometryRelationship[], contributions:ShadowReplacedEdgeContribution[]) =>
+  composeShadowPanel(box.panel,buildGeometryRelationshipIndex(relationships),contributions);
+const near = 1e-12;
+const originalToGenerated = composeTerminals(
+  [source('replaces','A','generic',box.panel.edgeIds[0])],
+  [terminalContribution(0,'A',{x:0,y:near},{x:100,y:0})]);
+assert(originalToGenerated.junctions[0].point.y===near,'original -> generated did not preserve generated start exactly');
+const generatedToOriginal = composeTerminals(
+  [source('replaces','D','generic',box.panel.edgeIds[3])],
+  [terminalContribution(3,'D',{x:0,y:70},{x:near,y:0})]);
+assert(generatedToOriginal.junctions[0].point.x===near,'generated -> original did not preserve generated end exactly');
+const generatedToGenerated = composeTerminals(
+  [source('replaces','A','generic',box.panel.edgeIds[0]),source('replaces','B','generic',box.panel.edgeIds[1])],
+  [terminalContribution(0,'A',{x:0,y:0},{x:100-near,y:0}),terminalContribution(1,'B',{x:100,y:near},{x:100,y:70})]);
+assert(generatedToGenerated.junctions[1].point.x===100-near&&generatedToGenerated.junctions[1].point.y===0,
+  'generated -> generated did not deterministically prefer preceding end');
+const material = composeTerminals(
+  [source('replaces','A','generic',box.panel.edgeIds[0])],
+  [terminalContribution(0,'A',{x:0,y:1},{x:100,y:0})]);
+assert(material.junctions[0].point.x===0&&material.junctions[0].point.y===0,
+  'materially different generated terminal disabled composer intersection');
+const originals = composeShadowPanel(box.panel,baseIndex,[]);
+assert(JSON.stringify(originals.points)===JSON.stringify(box.panel.outerContour),'original/original boundary representation changed');
 console.log('Shadow panel composer S-A: PASS');
