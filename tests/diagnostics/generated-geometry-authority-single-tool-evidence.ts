@@ -74,6 +74,7 @@ const fixtures: EvidenceFixture[] = [
   tbFixture('TB CASE 2 adjacent AA/AB', [{ id: 'tb-adjacent', edges: [0, 1], roles: ['A', 'B'] }], false),
   tbFixture('TB CASE 3 non-adjacent BA/BB reversed', [{ id: 'tb-opposite', edges: [0, 2], roles: ['B', 'B'], reverse: true }], true),
   tbFixture('TB CASE 4 three edges CCW', [{ id: 'tb-three', edges: [0, 1, 2], roles: ['A', 'B', 'A'], winding: 'CCW' }], false),
+  tbFixture('TB CASE 4 three edges CW control', [{ id: 'tb-three-cw', edges: [0, 1, 2], roles: ['A', 'B', 'A'], winding: 'CW' }], false),
   tbFixture('TB CASE 5 all four edges', [{ id: 'tb-four', edges: [0, 1, 2, 3], roles: ['A', 'A', 'B', 'B'] }], true),
   tbFixture('TB CASE 6 multiple panels', [{ id: 'tb-p1', edges: [0, 1] }, { id: 'tb-p2', edges: [1, 3], reverse: true }], false),
   sFixture('S CASE 1 one connection automatic zero offset', [{ id: 's-one', edges: [0] }], false, [0]),
@@ -110,6 +111,13 @@ const verify = (fixture: EvidenceFixture) => {
     same(stableIds([selected], 'generatedProfiles'), stableIds([oracle], 'generatedProfiles'), `${fixture.name}/${panelId}: profile lineage differs`);
     same(stableIds([selected], 'generatedTaps'), stableIds([oracle], 'generatedTaps'), `${fixture.name}/${panelId}: tap lineage differs`);
     same(selected.profileGroups, oracle.profileGroups, `${fixture.name}/${panelId}: profile groups/attachments differ`);
+    if (fixture.name === 'TB CASE 4 three edges CCW' && panelId === 'tb-three') {
+      const profile = selected.generatedProfiles?.find((value) => value.id
+        === 'profile:TB:TB2:tb-three:tb-three-edge-1:boundary-profile');
+      const projection = profile?.geometryProjections.find((value) => value.id.endsWith(
+        ':element:tap-0-tip:projection:current-contour-segment'));
+      same(projection?.start, { x: 23.2, y: 80 }, `${fixture.name}: generator-authored TB2 projection coordinate was rewritten`);
+    }
   });
   same(stableIds(composed.generatedGeometry, 'generatedProfiles'), stableIds(fixture.raw, 'generatedProfiles'), `${fixture.name}: profile IDs differ`);
   same(stableIds(composed.generatedGeometry, 'generatedTaps'), stableIds(fixture.raw, 'generatedTaps'), `${fixture.name}: tap IDs differ`);
