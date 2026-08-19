@@ -1,14 +1,6 @@
 import type { ManufacturingMetadata } from './manufacturingMetadata';
 import type { SourceBounds } from '../svgUtils';
 
-export type EdgeConnectionProperties = {
-  // Compatibility-only persisted legacy thickness; PM owns active TB thickness.
-  materialThicknessMm: number;
-  // Persisted TB tab size; active for manual TB tab size only.
-  fingerWidthMm: number;
-  isFingerWidthManual: boolean;
-};
-
 export type TBConnectionProperties = {
   // Compatibility-only persisted legacy thickness; PM owns active TB thickness.
   materialThicknessMm: number;
@@ -48,17 +40,10 @@ export type PatternConnectionProperties = {
 };
 
 export type ConnectionPropertiesByPrefix = {
-  E: EdgeConnectionProperties;
   TB: TBConnectionProperties;
   S: SlotConnectionProperties;
   C: CornerConnectionProperties;
   P: PatternConnectionProperties;
-};
-
-export type EdgeConnectionDefinition = {
-  id: string;
-  prefix: 'E';
-  properties: EdgeConnectionProperties;
 };
 
 export type TBConnectionDefinition = {
@@ -86,7 +71,6 @@ export type PatternConnectionDefinition = {
 };
 
 export type ConnectionDefinition =
-  | EdgeConnectionDefinition
   | TBConnectionDefinition
   | SlotConnectionDefinition
   | CornerConnectionDefinition
