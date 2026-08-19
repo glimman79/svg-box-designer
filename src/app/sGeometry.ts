@@ -1,10 +1,9 @@
 import { getBucketSlotAssignments } from './assignmentBuckets';
-import type { AppliedSGeometry, ConnectionMap, SlotConnectionDefinition } from './connectionTypes';
+import type { ConnectionMap, SlotConnectionDefinition } from './connectionTypes';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import { createBoundaryProfileGroup, createGeneratedProfile } from './generatedProfiles';
 import { createGeneratedTapId } from './generatedTaps';
 import type { GeneratedTapGroup, GeneratedTapSegmentRole } from './generatedTaps';
-import { getAppliedSGeometryFromItems } from './generatedGeometrySnapshot';
 import { generatedManufacturingMetadata } from './manufacturingMetadata';
 import { addContourPoint, clipOriginalSegmentsToInsetSide, clonePanelContour, getPanelThickness, removeInteriorBacktrackSpurs, segmentLiesOnPanelBoundary, validatePanelContour } from './eGeometry';
 import type { PanelContour, PanelGeometryBuildResult, PanelThicknessState } from './eGeometry';
@@ -464,6 +463,3 @@ export const buildGeneratedSGeometryItems = (
 };
 
 /** @deprecated Compatibility adapter for V1 callers. */
-export const buildAppliedSGeometry = (...args: Parameters<typeof buildGeneratedSGeometryItems>): AppliedSGeometry[] => (
-  getAppliedSGeometryFromItems(buildGeneratedSGeometryItems(...args))
-);
