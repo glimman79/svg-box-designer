@@ -79,8 +79,12 @@ const fixtures: EvidenceFixture[] = [
   tbFixture('TB CASE 6 multiple panels', [{ id: 'tb-p1', edges: [0, 1] }, { id: 'tb-p2', edges: [1, 3], reverse: true }], false),
   sFixture('S CASE 1 one connection automatic zero offset', [{ id: 's-one', edges: [0] }], false, [0]),
   sFixture('S CASE 1 one connection manual positive offset', [{ id: 's-one-manual', edges: [1] }], true, [1.25]),
+  sFixture('S adjacent CW A normal B normal', [{ id: 's-adjacent-normal', edges: [0, 1] }], false, [-1, 1]),
+  sFixture('S adjacent CW A reversed B normal', [{ id: 's-adjacent-a-reversed', edges: [0, 1], reverseA: true }], false, [-1, 1]),
+  sFixture('S adjacent CW A normal B reversed', [{ id: 's-adjacent-b-reversed', edges: [0, 1], reverseB: true }], false, [-1, 1]),
   sFixture('S CASE 2 adjacent reversed A/B', [{ id: 's-adjacent', edges: [0, 1], reverseA: true, reverseB: true }], false, [-1, 1]),
-  sFixture('S CASE 3 non-adjacent', [{ id: 's-opposite', edges: [0, 2] }], true, [0, -1.1]),
+  sFixture('S CASE 3 non-adjacent reversed A/B', [{ id: 's-opposite', edges: [0, 2], reverseA: true, reverseB: true }], true, [0, -1.1]),
+  sFixture('S adjacent CCW reversed A/B', [{ id: 's-adjacent-ccw', edges: [0, 1], winding: 'CCW', reverseA: true, reverseB: true }], false, [-1, 1]),
   sFixture('S CASE 4 three edges CCW', [{ id: 's-three', edges: [0, 1, 2], winding: 'CCW', reverseB: true }], false, [-.8, 0, .8]),
   sFixture('S CASE 5 all four edges', [{ id: 's-four', edges: [0, 1, 2, 3], reverseA: true }], true, [-1.2, 0, 1.2]),
   sFixture('S CASE 6 multiple panels', [{ id: 's-p1', edges: [0, 1] }, { id: 's-p2', edges: [1, 3], reverseA: true }], false, [-.7, .7]),
@@ -110,6 +114,8 @@ const verify = (fixture: EvidenceFixture) => {
     // composed traversal may choose a different, equivalent path start point.
     same(stableIds([selected], 'generatedProfiles'), stableIds([oracle], 'generatedProfiles'), `${fixture.name}/${panelId}: profile lineage differs`);
     same(stableIds([selected], 'generatedTaps'), stableIds([oracle], 'generatedTaps'), `${fixture.name}/${panelId}: tap lineage differs`);
+    same(selected.generatedProfiles, oracle.generatedProfiles, `${fixture.name}/${panelId}: generated profiles/projections differ`);
+    same(selected.generatedTaps, oracle.generatedTaps, `${fixture.name}/${panelId}: generated taps differ`);
     same(selected.profileGroups, oracle.profileGroups, `${fixture.name}/${panelId}: profile groups/attachments differ`);
     if (fixture.name === 'TB CASE 4 three edges CCW' && panelId === 'tb-three') {
       const profile = selected.generatedProfiles?.find((value) => value.id
