@@ -9,6 +9,7 @@ import type { EdgeAssignmentRecord, EdgeRole, Point, SvgDocumentModel, SvgPanel 
 import {
   addContourPoint,
   buildContourSides,
+  clipAndRebaseDistanceIntervalsToProjectedSide,
   cornerTouchTolerance,
   createTabSegmentPlan,
   getContourSideLength,
@@ -20,7 +21,6 @@ import {
   offsetContourSide,
   pointsMatch,
   pointsToClosedPathD,
-  projectPointDistanceOnSide,
   removeInteriorBacktrackSpurs,
 } from './sharedGeometry';
 import type { ContourSide, PanelContour, TabSegment } from './sharedGeometry';
@@ -440,29 +440,6 @@ export const mergeTabSegmentPlansByConnectionId = (
   return mergedPlansByConnectionId;
 };
 
-export const clipOriginalSegmentsToInsetSide = (
-  originalSide: ContourSide,
-  insetSide: ContourSide,
-  segments: TabSegment[],
-): TabSegment[] => {
-  const trimStart = projectPointDistanceOnSide(originalSide, insetSide.start);
-  const trimEnd = projectPointDistanceOnSide(originalSide, insetSide.end);
-
-  return segments.flatMap((segment) => {
-    const clippedStart = Math.max(segment.startDistance, trimStart);
-    const clippedEnd = Math.min(segment.endDistance, trimEnd);
-
-    if (clippedEnd <= clippedStart) {
-      return [];
-    }
-
-    return [{
-      startDistance: clippedStart - trimStart,
-      endDistance: clippedEnd - trimStart,
-    }];
-  });
-};
-
 export const buildTabOperations = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
@@ -642,7 +619,7 @@ export const applyTabsToContour = (
       ? mirrorSegments(operation.segments, originalSideLength)
       : operation.segments;
     const roleSegments = getRoleTabSegments(orientedSegments, operation.role);
-    const segments = clipOriginalSegmentsToInsetSide(originalSide, side, roleSegments);
+    const segments = clipAndRebaseDistanceIntervalsToProjectedSide(originalSide, side, roleSegments);
 
     segments.forEach((segment, tapIndex) => {
       const previousSideIndex = (sideIndex + contourSides.length - 1) % contourSides.length;

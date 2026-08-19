@@ -12,6 +12,11 @@ export type TabSegment = {
   endDistance: number;
 };
 
+export type DistanceInterval = {
+  startDistance: number;
+  endDistance: number;
+};
+
 export const cornerTouchTolerance = 0.01;
 
 export const pointsMatch = (first: Point, second: Point) => (
@@ -168,6 +173,35 @@ export const projectPointDistanceOnSide = (side: ContourSide, point: Point): num
   const sideUnitY = (side.end.y - side.start.y) / sideLength;
 
   return ((point.x - side.start.x) * sideUnitX) + ((point.y - side.start.y) * sideUnitY);
+};
+
+/**
+ * Clips intervals measured from sourceSide.start along the source direction to a
+ * parallel, same-direction target side, then rebases survivors to the projected
+ * target start. Survivor order is preserved, and zero-length intersections are
+ * discarded exactly without tolerance.
+ */
+export const clipAndRebaseDistanceIntervalsToProjectedSide = (
+  sourceSide: ContourSide,
+  targetSide: ContourSide,
+  intervals: DistanceInterval[],
+): DistanceInterval[] => {
+  const trimStart = projectPointDistanceOnSide(sourceSide, targetSide.start);
+  const trimEnd = projectPointDistanceOnSide(sourceSide, targetSide.end);
+
+  return intervals.flatMap((interval) => {
+    const clippedStart = Math.max(interval.startDistance, trimStart);
+    const clippedEnd = Math.min(interval.endDistance, trimEnd);
+
+    if (clippedEnd <= clippedStart) {
+      return [];
+    }
+
+    return [{
+      startDistance: clippedStart - trimStart,
+      endDistance: clippedEnd - trimStart,
+    }];
+  });
 };
 
 export const getContourSideCanonicalOrientation = (side: ContourSide): 'horizontal' | 'vertical' => {

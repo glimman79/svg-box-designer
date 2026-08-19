@@ -5,8 +5,7 @@ import { createBoundaryProfileGroup, createGeneratedProfile } from './generatedP
 import { createGeneratedTapId } from './generatedTaps';
 import type { GeneratedTapGroup, GeneratedTapSegmentRole } from './generatedTaps';
 import { generatedManufacturingMetadata } from './manufacturingMetadata';
-import { clipOriginalSegmentsToInsetSide } from './tbGeometry';
-import { addContourPoint, removeInteriorBacktrackSpurs } from './sharedGeometry';
+import { addContourPoint, clipAndRebaseDistanceIntervalsToProjectedSide, removeInteriorBacktrackSpurs } from './sharedGeometry';
 import type { PanelContour } from './sharedGeometry';
 import { clonePanelContour, segmentLiesOnPanelBoundary, validatePanelContour } from './sharedPanelGeometry';
 import type { PanelGeometryBuildResult } from './sharedPanelGeometry';
@@ -138,7 +137,7 @@ const applySTabsToContour = (
     const orientedSegments = reversedFromCanonical
       ? mirrorSegments(operation.aSegments, originalSideLength)
       : operation.aSegments;
-    const segments = clipOriginalSegmentsToInsetSide(originalSide, insetSide, orientedSegments);
+    const segments = clipAndRebaseDistanceIntervalsToProjectedSide(originalSide, insetSide, orientedSegments);
 
     segments.forEach((segment, tapIndex) => {
       const baseStart = interpolateSidePoint(insetSide, segment.startDistance);
