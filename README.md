@@ -54,6 +54,10 @@ Build for production:
 npm run build
 ```
 
+### Panel-composition authority
+
+The optional build-time environment variable `VITE_PANEL_COMPOSITION_AUTHORITY_MODE` accepts `legacy`, `single-tool`, or `mixed`. Missing, empty, and whitespace-only values use the production default, `single-tool`. Set it explicitly to `legacy` for the migration rollback path or to `mixed` for the existing mixed-authority opt-in. Invalid nonempty values fall back to `legacy` and produce a developer-console diagnostic identifying the variable and supplied value.
+
 ## Usage
 
 1. Start the app with `npm run dev`.

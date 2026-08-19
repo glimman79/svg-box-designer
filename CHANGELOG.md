@@ -1,5 +1,9 @@
 # Changelog
 
+## Authority Step C
+
+- Promoted single-tool panel-composition authority to the production default while retaining explicit legacy rollback, explicit mixed opt-in, fail-closed selection, and snapshot-compatible lazy migration.
+
 ## V1.1
 
 - Stable PM importer workflow.
