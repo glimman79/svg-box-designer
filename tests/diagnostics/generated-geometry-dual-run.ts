@@ -1,4 +1,4 @@
-import { buildGeneratedTBGeometryItems } from '../../src/app/eGeometry';
+import { buildGeneratedTBGeometryItems } from '../../src/app/tbGeometry';
 import { runGeneratedGeometryDualRun } from '../../src/app/generatedGeometryDualRun';
 import { buildGeneratedSGeometryItems } from '../../src/app/sGeometry';
 import type { SvgDocumentModel, SvgPanel } from '../../src/svgUtils';

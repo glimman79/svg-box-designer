@@ -4,7 +4,7 @@ import {
   buildTabOperations,
   buildTabSegmentPlansByConnectionId,
   type PanelEdgeOperation,
-} from '../../src/app/eGeometry';
+} from '../../src/app/tbGeometry';
 import { getContourSignedArea } from '../../src/app/sharedGeometry';
 import type { EdgeRole, Point, SvgPanel } from '../../src/svgUtils';
 

@@ -1,4 +1,4 @@
-import { buildGeneratedTBGeometryItems } from '../../src/app/eGeometry';
+import { buildGeneratedTBGeometryItems } from '../../src/app/tbGeometry';
 import { getContourSignedArea } from '../../src/app/sharedGeometry';
 import type { EdgeRole, Point, SvgDocumentModel, SvgPanel } from '../../src/svgUtils';
 

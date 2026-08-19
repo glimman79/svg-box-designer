@@ -23,9 +23,9 @@ import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/gen
 import { validateGeometryAuthoring } from './app/authoringRelationships';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { appendAutoCreatedTBToTBGroup, buildTBDisplayLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
-import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildGeneratedTBGeometryItems, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
+import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildGeneratedTBGeometryItems, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/tbGeometry';
 import { buildPanelContainmentTree, createPanelManagerStateFromModel, defaultPanelManagerState, validatePanelManagerState } from './app/panelManagerModel';
-import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
+import type { PanelContour, PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/tbGeometry';
 import type { PanelManagerState, PanelTreeHoleNode, PanelTreePanelNode } from './app/panelManagerModel';
 import { createTabSegmentPlan, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
 import { getContourEdgePoints, validateClosedPanel } from './app/sharedPanelGeometry';
@@ -68,8 +68,8 @@ export type { GeometryOperation, OperationSourceReference, OperationValidation, 
 export type { ManufacturingMetadata } from './app/manufacturingMetadata';
 export type { ManufacturingCompensationStrategy, ManufacturingPolicy } from './app/manufacturingPolicy';
 export type { CompensationStrategy, CompensationStrategyContext } from './app/compensationStrategies';
-export { applyTabsToContour, buildGeneratedTBGeometryItems, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, getPanelThickness, getPanelThicknessForEdge, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/eGeometry';
-export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/eGeometry';
+export { applyTabsToContour, buildGeneratedTBGeometryItems, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, getPanelThickness, getPanelThicknessForEdge, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/tbGeometry';
+export type { PanelEdgeOperation, PanelGeometryBuildResult, TabSegmentPlan } from './app/tbGeometry';
 export type { PanelManagerState } from './app/panelManagerModel';
 export type { ActiveSGroup, ActiveTBGroup, ConnectionDefinition, ConnectionMap, TBConnectionDefinition, TBConnectionProperties } from './app/connectionTypes';
 

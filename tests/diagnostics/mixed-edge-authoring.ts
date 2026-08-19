@@ -1,6 +1,6 @@
 import { collectSourceEdgeAuthoringClaims, validateAuthorityModeForAuthoringClaims, validateGeometryAuthoring,
   validateSourceEdgeReplacementClaims } from '../../src/app/authoringRelationships';
-import { buildGeneratedTBGeometryItems } from '../../src/app/eGeometry';
+import { buildGeneratedTBGeometryItems } from '../../src/app/tbGeometry';
 import { selectGeneratedGeometryAuthority } from '../../src/app/generatedGeometryAuthority';
 import { createGeneratedGeometrySnapshot } from '../../src/app/generatedGeometrySnapshot';
 import { buildFinalGeometry } from '../../src/app/finalGeometry';

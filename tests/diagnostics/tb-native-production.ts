@@ -1,4 +1,4 @@
-import { buildGeneratedTBGeometryItems } from '../../src/app/eGeometry';
+import { buildGeneratedTBGeometryItems } from '../../src/app/tbGeometry';
 import { startTBGroupWorkflow } from '../../src/app/tbWorkflow';
 import type { SvgDocumentModel, SvgPanel } from '../../src/svgUtils';
 
