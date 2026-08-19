@@ -17,6 +17,7 @@ import { createGeneratedProfileOffsetTargetId, createOrdinaryProfileOffsetTarget
 import { buildFinalGeometry as buildNativeFinalGeometry } from './app/finalGeometry';
 import { createGeneratedGeometrySnapshot, restoreGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { selectGeneratedGeometryAuthority } from './app/generatedGeometryAuthority';
+import { resolvePanelCompositionAuthorityMode } from './app/panelCompositionAuthorityMode';
 import { collectSourceEdgeAuthoringClaims, deriveCanvasEdgeRelationshipState, deriveGeneratedCanvasEdgeRelationshipState, sourceEdgeRelationshipKey } from './app/canvasEdgeRelationships';
 import type { PanelCompositionAuthorityMode, PanelCompositionModel } from './app/generatedGeometryAuthority';
 import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
@@ -58,6 +59,10 @@ export type { GeneratedTapGroup, GeneratedTapId } from './app/generatedTaps';
 export { getManufacturingPipelineForGeometryType } from './app/manufacturingMetadata';
 export { getManufacturingPolicy } from './app/manufacturingPolicy';
 export { NoMovementStrategy, OffsetStrategy, noMovementStrategy, offsetStrategy } from './app/compensationStrategies';
+
+const requestedPanelCompositionAuthorityMode = resolvePanelCompositionAuthorityMode(
+  import.meta.env.VITE_PANEL_COMPOSITION_AUTHORITY_MODE,
+);
 export { geometryServices } from './app/geometryServices';
 export { collectSourceEdgeAuthoringClaims, deriveCanvasEdgeRelationshipState, deriveGeneratedCanvasEdgeRelationshipState, sourceEdgeRelationshipKey } from './app/canvasEdgeRelationships';
 export type { CanvasEdgeRelationshipState } from './app/canvasEdgeRelationships';
@@ -791,10 +796,7 @@ function App() {
 
 
 
-  // Explicit migration flag. The safe production default remains fully legacy.
-  const panelCompositionAuthorityMode: PanelCompositionAuthorityMode =
-    import.meta.env.VITE_PANEL_COMPOSITION_AUTHORITY_MODE === 'mixed' ? 'mixed'
-      : import.meta.env.VITE_PANEL_COMPOSITION_AUTHORITY_MODE === 'single-tool' ? 'single-tool' : 'legacy';
+  const panelCompositionAuthorityMode: PanelCompositionAuthorityMode = requestedPanelCompositionAuthorityMode;
   const generatedGeometrySnapshot = useMemo(
     () => createGeneratedGeometrySnapshot({ generatedGeometry: [...generatedGeometryItems],
       panelCompositionModel: generatedGeometryCompositionModel }),
