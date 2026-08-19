@@ -7,6 +7,7 @@ import { generatedManufacturingMetadata } from './manufacturingMetadata';
 import { getBucketEdgeAssignment } from './assignmentBuckets';
 import type { EdgeAssignmentRecord, EdgeRole, Point, SvgDocumentModel, SvgPanel } from '../svgUtils';
 import {
+  addContourPoint,
   buildContourSides,
   cornerTouchTolerance,
   createTabSegmentPlan,
@@ -20,45 +21,18 @@ import {
   pointsMatch,
   pointsToClosedPathD,
   projectPointDistanceOnSide,
+  removeInteriorBacktrackSpurs,
 } from './sharedGeometry';
-import type { ContourSide, TabSegment } from './sharedGeometry';
-import { validateClosedPanel } from './sharedPanelGeometry';
-
-type PanelPoint = Point;
-
-export type PanelThicknessMetadata = { panelId: string; thicknessMm: number };
-
-export type PanelThicknessState = { panels?: Record<string, PanelThicknessMetadata>; defaultThicknessMm?: number };
-
-export type PanelContour = PanelPoint[];
-
+import type { ContourSide, PanelContour, TabSegment } from './sharedGeometry';
+import { clonePanelContour, segmentLiesOnPanelBoundary, validateClosedPanel, validatePanelContour } from './sharedPanelGeometry';
+import type { PanelGeometryBuildResult } from './sharedPanelGeometry';
+import { getPanelThickness } from './panelThickness';
+import type { PanelThicknessState } from './panelThickness';
 
 const getPanelContourSidePoints = (panel: SvgPanel, contourIndex: number) => ({
   start: panel.contour[contourIndex],
   end: panel.contour[(contourIndex + 1) % panel.contour.length],
 });
-
-export const segmentLiesOnPanelBoundary = (panel: SvgPanel, start: Point, end: Point) => (
-  buildContourSides(panel.contour).some((boundarySide) => {
-    const sideX = boundarySide.end.x - boundarySide.start.x;
-    const sideY = boundarySide.end.y - boundarySide.start.y;
-    const sideLength = Math.hypot(sideX, sideY);
-
-    if (sideLength <= cornerTouchTolerance) {
-      return false;
-    }
-
-    return [start, end].every((point) => {
-      const pointX = point.x - boundarySide.start.x;
-      const pointY = point.y - boundarySide.start.y;
-      const crossDistance = Math.abs((pointX * sideY) - (pointY * sideX)) / sideLength;
-      const projectedDistance = ((pointX * sideX) + (pointY * sideY)) / sideLength;
-      return crossDistance <= cornerTouchTolerance
-        && projectedDistance >= -cornerTouchTolerance
-        && projectedDistance <= sideLength + cornerTouchTolerance;
-    });
-  })
-);
 
 const getRoleTabSegments = (
   segments: TabSegment[],
@@ -102,30 +76,6 @@ export type PanelTabOperation = {
   insetDepthMm?: number;
   insetLength: number;
   segments: TabSegment[];
-};
-
-export type PanelGeometryBuildResult =
-  | { ok: true; contour: PanelContour }
-  | { ok: false; reason: string };
-
-
-
-export const getPanelThickness = (
-  panelId: string | null | undefined,
-  panelThicknessState?: PanelThicknessState,
-  fallbackThicknessMm?: number,
-): number | null => {
-  const pmThickness = panelId ? panelThicknessState?.panels?.[panelId]?.thicknessMm : undefined;
-
-  if (Number.isFinite(pmThickness) && (pmThickness as number) > 0) {
-    return pmThickness as number;
-  }
-
-  if (!panelThicknessState && Number.isFinite(fallbackThicknessMm) && (fallbackThicknessMm as number) > 0) {
-    return fallbackThicknessMm as number;
-  }
-
-  return null;
 };
 
 export const getPanelThicknessForEdge = (
@@ -344,51 +294,6 @@ export const buildGeneratedTBGeometryItems = (
   });
 };
 
-export const clonePanelContour = (panel: SvgPanel): PanelContour => (
-  panel.contour.map((point) => ({ x: point.x, y: point.y }))
-);
-
-
-export const validatePanelContour = (contour: PanelContour): PanelGeometryBuildResult => {
-  if (contour.length < 3) {
-    return { ok: false, reason: 'Panel contour must contain at least 3 points.' };
-  }
-
-  for (let contourIndex = 0; contourIndex < contour.length; contourIndex += 1) {
-    const point = contour[contourIndex];
-
-    if (!point) {
-      return { ok: false, reason: `Panel contour point ${contourIndex} is undefined.` };
-    }
-
-    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
-      return { ok: false, reason: `Panel contour point ${contourIndex} must have finite coordinates.` };
-    }
-
-    const nextPoint = contour[(contourIndex + 1) % contour.length];
-
-    if (!nextPoint) {
-      return { ok: false, reason: 'Panel contour closed path cannot be generated because a side endpoint is missing.' };
-    }
-
-    if (Math.hypot(nextPoint.x - point.x, nextPoint.y - point.y) <= cornerTouchTolerance) {
-      return { ok: false, reason: `Panel contour point ${contourIndex} duplicates the next consecutive point.` };
-    }
-  }
-
-  if (Math.abs(getContourSignedArea(contour)) <= cornerTouchTolerance) {
-    return { ok: false, reason: 'Panel contour polygon area must be greater than tolerance.' };
-  }
-
-  const closedPathD = pointsToClosedPathD(contour);
-
-  if (!closedPathD.endsWith(' Z')) {
-    return { ok: false, reason: 'Panel contour closed path cannot be generated.' };
-  }
-
-  return { ok: true, contour };
-};
-
 export const buildContourSideOffsetPlan = (
   panel: SvgPanel,
   operations: PanelEdgeOperation[],
@@ -586,62 +491,9 @@ export const buildTabOperations = (
   })
 );
 
-export const addContourPoint = (contour: PanelContour, point: Point) => {
-  const previousPoint = contour[contour.length - 1];
-
-  if (!previousPoint || !pointsMatch(previousPoint, point)) {
-    contour.push(point);
-  }
-};
-
 const getOperationDepthMm = (operation: Pick<PanelEdgeOperation, 'insetDepthMm' | 'materialThicknessMm'>): number => (
   operation.insetDepthMm ?? operation.materialThicknessMm
 );
-
-// Cleans zero-area A-B-A backtracks, including seam backtracks across the implicit SVG close path.
-export const removeInteriorBacktrackSpurs = (contour: PanelContour): PanelContour => {
-  const cleanedContour: PanelContour = [];
-
-  contour.forEach((point) => {
-    addContourPoint(cleanedContour, point);
-
-    while (
-      cleanedContour.length >= 3
-      && pointsMatch(cleanedContour[cleanedContour.length - 3], cleanedContour[cleanedContour.length - 1])
-    ) {
-      cleanedContour.splice(cleanedContour.length - 2, 2);
-    }
-  });
-
-  let removedClosedSpur = true;
-
-  while (removedClosedSpur && cleanedContour.length >= 3) {
-    removedClosedSpur = false;
-
-    if (
-      cleanedContour.length >= 4
-      && pointsMatch(cleanedContour[cleanedContour.length - 2], cleanedContour[1])
-      && pointsMatch(cleanedContour[cleanedContour.length - 1], cleanedContour[0])
-    ) {
-      cleanedContour.pop();
-      cleanedContour.shift();
-      removedClosedSpur = true;
-      continue;
-    }
-
-    if (pointsMatch(cleanedContour[cleanedContour.length - 1], cleanedContour[1])) {
-      cleanedContour.shift();
-      removedClosedSpur = true;
-    }
-
-    if (cleanedContour.length >= 3 && pointsMatch(cleanedContour[cleanedContour.length - 2], cleanedContour[0])) {
-      cleanedContour.pop();
-      removedClosedSpur = true;
-    }
-  }
-
-  return cleanedContour;
-};
 
 type RoleEffectiveJunctionGeometry =
   | { ok: true; sides: ContourSide[]; junctions: Point[] }
