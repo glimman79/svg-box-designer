@@ -5,6 +5,7 @@ import type { FinalGeometry } from './finalGeometry';
 import { assembleGeneratedGeometryDiagnostics } from './generatedGeometryAssembly';
 import type { PanelAssemblyComparisonStatus } from './generatedGeometryAssembly';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
+import { geometryRelationshipKey } from './geometryRelationships';
 import type { PanelCandidate } from './panelComposer';
 import { processManufacturingGeometry } from './manufacturingCompensation';
 import type { ManufacturingGeometry } from './manufacturingCompensation';
@@ -62,6 +63,9 @@ export const packageComposedPanelGeometry = (
     return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
   };
   const pathD = pointsToClosedPathD([...points]);
+  const sourceRelationships = uniqueMetadata(owners.flatMap((item) => item.sourceRelationships ?? [])
+    .map((relationship) => ({ ...relationship, id: geometryRelationshipKey(relationship) })), 'source relationship')
+    .map(({ id: _id, ...relationship }) => relationship);
   const diagnostic: GeneratedGeometryItem = {
     ...owners[0], id: `composed:panel:${panelId}`, operationId: `composed:${panelId}`,
     source: { operationId: `composed:${panelId}`, connectionIds: owners.flatMap((item) => item.source.connectionIds),
@@ -78,6 +82,7 @@ export const packageComposedPanelGeometry = (
       }),
     })),
     generatedTaps: uniqueMetadata(owners.flatMap((item) => item.generatedTaps ?? []), 'generated tap'),
+    sourceRelationships,
     diagnostics: [],
   };
   return [...items.filter((item) => !(item.kind === 'PANEL_PATH' && item.behaviour.replacesPanelId === panelId)), diagnostic]
