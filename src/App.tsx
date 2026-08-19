@@ -341,11 +341,6 @@ const labelGroups: LabelGroup[] = [
 ];
 
 export const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
-  E: {
-    materialThicknessMm: 3,
-    fingerWidthMm: 9,
-    isFingerWidthManual: false,
-  },
   TB: {
     materialThicknessMm: 3,
     fingerWidthMm: 9,
@@ -1061,7 +1056,7 @@ function App() {
 
   const startTBGroup = () => {
     pushUndoState();
-    const nextWorkflow = startTBGroupWorkflow(connections, defaultConnectionProperties.E);
+    const nextWorkflow = startTBGroupWorkflow(connections, defaultConnectionProperties.TB);
     setConnections(nextWorkflow.connections);
     selectConnectionForDisplayAndAssignment(nextWorkflow.selectedLabelId);
     setActiveTool(nextWorkflow.activeTool);
@@ -1481,7 +1476,7 @@ function App() {
   const acceptDefaultPanelThickness = () => {
     const defaultThicknessMm = panelManager.defaultThicknessMm > 0
       ? panelManager.defaultThicknessMm
-      : defaultConnectionProperties.E.materialThicknessMm;
+      : defaultConnectionProperties.TB.materialThicknessMm;
     setPanelManager((current) => ({
       ...current,
       defaultThicknessMm,
@@ -2009,7 +2004,7 @@ function App() {
       const tbViewModel = getConnectionViewModel(svgModel, edgeAssignments, selectedConnection, panelManager, getPanelDisplayName);
 
       return (
-        <div className="compact-property-controls" aria-label="Compact E controls">
+        <div className="compact-property-controls" aria-label="Compact TB controls">
           <span className="muted">PM thickness</span>
           <NumericField id="compact-edge-tab-size" label="Tab" min={0} value={tbViewModel.displayTabMm} disabled={tbViewModel.displayTabMm === null} placeholder="Complete TB connection" onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
         </div>
