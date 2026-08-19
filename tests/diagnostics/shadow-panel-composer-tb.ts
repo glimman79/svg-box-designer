@@ -35,8 +35,7 @@ const run = (name: string, roles: Partial<Record<number, EdgeRole>>, depth: numb
     matePanels.push(mate.panel); mateEdges.push(...mate.edges);
     assignments[panel.edgeIds[side]] = { edgeAssignment: { connectionId, edgeRole: role } };
     assignments[mate.panel.edgeIds[side]] = { edgeAssignment: { connectionId, edgeRole: role === 'A' ? 'B' : 'A' } };
-    connections[connectionId] = { id: connectionId, prefix: 'TB', properties: { materialThicknessMm: depth,
-      fingerWidthMm: fingerWidth ?? 30, isFingerWidthManual: fingerWidth !== undefined } };
+    connections[connectionId] = { id: connectionId, prefix: 'TB', properties: { fingerWidthMm: fingerWidth ?? 30, isFingerWidthManual: fingerWidth !== undefined } };
   });
   const model: SvgDocumentModel = { content: '', innerMarkup: '', rootAttributes: { width: null, height: null, viewBox: null },
     viewBox: '0 0 1000 80', width: 1000, height: 80, panels: [panel, ...matePanels], edges: [...edges, ...mateEdges] };

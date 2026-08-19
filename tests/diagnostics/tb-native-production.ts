@@ -24,7 +24,7 @@ const model: SvgDocumentModel = {
   viewBox: '0 0 200 50', width: 200, height: 50,
   panels: [first.panel, second.panel], edges: [...first.edges, ...second.edges],
 };
-const workflow = startTBGroupWorkflow({}, { materialThicknessMm: 3, fingerWidthMm: 9, isFingerWidthManual: false });
+const workflow = startTBGroupWorkflow({}, { fingerWidthMm: 9, isFingerWidthManual: false });
 assert(workflow.selectedLabelId === 'TB1', 'native TB allocation did not produce TB1');
 assert(workflow.connections.TB1?.prefix === 'TB', 'native TB connection did not use the TB prefix');
 

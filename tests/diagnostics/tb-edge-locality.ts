@@ -39,7 +39,7 @@ const run = (name: string, roles: Partial<Record<number, EdgeRole>>, depth = 5, 
     mateEdges.push(...mateContour.map((start, index) => ({ id: mateEdgeIds[index], source: mateId, start, end: mateContour[(index + 1) % 4] })));
     assignments[panel.edgeIds[side]] = { edgeAssignment: { connectionId: id, edgeRole: role } };
     assignments[mateEdgeIds[side]] = { edgeAssignment: { connectionId: id, edgeRole: role === 'A' ? 'B' : 'A' } };
-    connections[id] = { id, prefix: 'TB', properties: { materialThicknessMm: depth, fingerWidthMm: fingerWidth, isFingerWidthManual: true } };
+    connections[id] = { id, prefix: 'TB', properties: { fingerWidthMm: fingerWidth, isFingerWidthManual: true } };
   });
   const model: SvgDocumentModel = { content: '', innerMarkup: '', rootAttributes: { width: null, height: null, viewBox: null }, viewBox: '0 0 400 80', width: 400, height: 80, panels: [panel, ...matePanels], edges: [...edges, ...mateEdges] };
   const panelState = Object.fromEntries([panel, ...matePanels].map(({ id }) => [id, { panelId: id, thicknessMm: depth }]));

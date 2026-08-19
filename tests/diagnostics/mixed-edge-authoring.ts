@@ -17,8 +17,8 @@ const owner = rectangle('owner', 0), mate = rectangle('mate', 180);
 const model: SvgDocumentModel = { content: '', innerMarkup: '', rootAttributes: { width: null, height: null, viewBox: null }, viewBox: '0 0 400 100',
   width: 400, height: 100, panels: [owner.panel, mate.panel], edges: [...owner.edges, ...mate.edges] };
 const thickness = { defaultThicknessMm: 3, panels: { owner: { panelId: 'owner', thicknessMm: 5 }, mate: { panelId: 'mate', thicknessMm: 3 } } };
-const connections: any = { TB1: { id: 'TB1', prefix: 'TB', properties: { materialThicknessMm: 3, fingerWidthMm: 12, isFingerWidthManual: true } },
-  S1: { id: 'S1', prefix: 'S', properties: { materialThicknessMm: 3, slotWidthMm: 3, slotLengthMm: 12, isSlotLengthManual: true, slotOffsetMm: 1, kerfMm: 0 } } };
+const connections: any = { TB1: { id: 'TB1', prefix: 'TB', properties: { fingerWidthMm: 12, isFingerWidthManual: true } },
+  S1: { id: 'S1', prefix: 'S', properties: { slotLengthMm: 12, isSlotLengthManual: true, slotOffsetMm: 1, kerfMm: 0 } } };
 const assignments: any = {
   [owner.panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'TB1', edgeRole: 'A' } },
   [mate.panel.edgeIds[1]]: { edgeAssignment: { connectionId: 'TB1', edgeRole: 'B' } },

@@ -253,18 +253,15 @@ export const resolveSThickness = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
   connection: SlotConnectionDefinition,
-  panelThicknessState?: PanelThicknessState,
+  panelThicknessState: PanelThicknessState,
 ): SConnectionThickness => {
   const assignedEdges = getAssignedSEdges(assignments, connection.id);
   const aEdgeId = assignedEdges.find((assignment) => assignment.role === 'A')?.edgeId;
   const bEdgeId = assignedEdges.find((assignment) => assignment.role === 'B')?.edgeId;
   const panelA = aEdgeId ? findPanelContainingEdge(svgModel, aEdgeId) : null;
   const panelB = bEdgeId ? findPanelContainingEdge(svgModel, bEdgeId) : null;
-  // Active PM-resolved S geometry must not use the legacy connection thickness.
-  // The fallback is retained only for pre-PM callers that provide no PM state.
-  const legacyFallbackThicknessMm = panelThicknessState ? undefined : connection.properties.materialThicknessMm;
-  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState, legacyFallbackThicknessMm);
-  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState, legacyFallbackThicknessMm);
+  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState);
+  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState);
   const isComplete = panelAThicknessMm !== null && panelBThicknessMm !== null;
 
   return {
@@ -299,7 +296,7 @@ export const buildGeneratedSGeometryItems = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
-  panelThicknessState?: PanelThicknessState,
+  panelThicknessState: PanelThicknessState,
 ): GeneratedGeometryItem[] => {
   const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
   const sConnections = Object.values(connectionMap).filter((connection): connection is SlotConnectionDefinition => connection.prefix === 'S');

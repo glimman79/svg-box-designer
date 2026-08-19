@@ -20,7 +20,7 @@ const run = (name:string, sides:number[], depth:number, clockwise=false, slotLen
   const owner=rectangle(`${name}-owner`,0,0,clockwise);
   const mates=sides.map((_,i)=>rectangle(`${name}-mate-${i}`,140+i*120,0,clockwise));
   const panels=[owner.panel,...mates.map(x=>x.panel)]; const assignments:any={}; const connections:any={};
-  sides.forEach((side,i)=>{const id=`${name}-${i}`; assignments[owner.panel.edgeIds[side]]={slotAssignments:[{connectionId:id,slotRole:'A'}]}; assignments[mates[i].panel.edgeIds[side]]={slotAssignments:[{connectionId:id,slotRole:'B'}]}; connections[id]={id,prefix:'S',properties:{materialThicknessMm:5,slotLengthMm:slotLength,isSlotLengthManual:true,slotOffsetMm:1}};});
+  sides.forEach((side,i)=>{const id=`${name}-${i}`; assignments[owner.panel.edgeIds[side]]={slotAssignments:[{connectionId:id,slotRole:'A'}]}; assignments[mates[i].panel.edgeIds[side]]={slotAssignments:[{connectionId:id,slotRole:'B'}]}; connections[id]={id,prefix:'S',properties:{slotLengthMm:slotLength,isSlotLengthManual:true,slotOffsetMm:1}};});
   const model:SvgDocumentModel={content:'',innerMarkup:'',rootAttributes:{width:null,height:null,viewBox:null},viewBox:'0 0 800 100',width:800,height:100,panels,edges:[...owner.edges,...mates.flatMap(x=>x.edges)]};
   const thickness={defaultThicknessMm:5,panels:Object.fromEntries(panels.map((p,i)=>[p.id,{panelId:p.id,thicknessMm:i?depth:5}]))};
   const items=buildGeneratedSGeometryItems(model,assignments,connections,thickness); const frozen=JSON.stringify(items);

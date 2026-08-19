@@ -24,7 +24,7 @@ const tbAssignments: any = {
   [tbOwner.panel.edgeIds[2]]: { edgeAssignment: { connectionId: 'TB2', edgeRole: 'A' } },
   [tbMate2.panel.edgeIds[0]]: { edgeAssignment: { connectionId: 'TB2', edgeRole: 'B' } },
 };
-const tbConnections: any = Object.fromEntries(['TB1', 'TB2'].map((id) => [id, { id, prefix: 'TB', properties: { materialThicknessMm: 5, fingerWidthMm: 20, isFingerWidthManual: true } }]));
+const tbConnections: any = Object.fromEntries(['TB1', 'TB2'].map((id) => [id, { id, prefix: 'TB', properties: { fingerWidthMm: 20, isFingerWidthManual: true } }]));
 const tbItems = buildGeneratedTBGeometryItems(tbModel, tbAssignments, tbConnections, panelManager(...tbModel.panels));
 const tbFrozen = JSON.stringify(tbItems); const tbAudit = auditGeneratedGeometryRelationships(tbItems);
 assert(JSON.stringify(tbItems) === tbFrozen, 'relationship audit mutated TB physical output');
@@ -36,7 +36,7 @@ assert(tbAudit.operations.some(({ operationId, replaces }) => operationId === 'o
 // Real S: A replaces, B explicitly references, every independent slot is created.
 const sA = rectangle('s-a', 0); const sB = rectangle('s-b', 140); const sModel = makeModel(sA, sB);
 const sAssignments: any = { [sA.panel.edgeIds[0]]: { slotAssignments: [{ connectionId: 'S1', slotRole: 'A' }] }, [sB.panel.edgeIds[0]]: { slotAssignments: [{ connectionId: 'S1', slotRole: 'B' }] } };
-const sConnections: any = { S1: { id: 'S1', prefix: 'S', properties: { materialThicknessMm: 5, slotLengthMm: 20, isSlotLengthManual: true, slotOffsetMm: 0 } } };
+const sConnections: any = { S1: { id: 'S1', prefix: 'S', properties: { slotLengthMm: 20, isSlotLengthManual: true, slotOffsetMm: 0 } } };
 const sItems = buildGeneratedSGeometryItems(sModel, sAssignments, sConnections, panelManager(...sModel.panels));
 const sFrozen = JSON.stringify(sItems); const sAudit = auditGeneratedGeometryRelationships(sItems);
 assert(JSON.stringify(sItems) === sFrozen, 'relationship audit mutated S physical output');

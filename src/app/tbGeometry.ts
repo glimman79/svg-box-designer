@@ -81,11 +81,10 @@ export type PanelTabOperation = {
 export const getPanelThicknessForEdge = (
   svgModel: SvgDocumentModel,
   edgeId: string,
-  panelThicknessState?: PanelThicknessState,
-  fallbackThicknessMm?: number,
+  panelThicknessState: PanelThicknessState,
 ): number | null => {
   const panel = svgModel.panels.find((candidate) => candidate.edgeIds.includes(edgeId));
-  return getPanelThickness(panel?.id, panelThicknessState, fallbackThicknessMm);
+  return getPanelThickness(panel?.id, panelThicknessState);
 };
 
 type TBConnectionThickness = {
@@ -133,16 +132,13 @@ export const resolveTBThickness = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
   connection: TBConnectionDefinition,
-  panelThicknessState?: PanelThicknessState,
+  panelThicknessState: PanelThicknessState,
 ): TBConnectionThickness => {
   const assignedEdges = getAssignedTBEdges(assignments, connection.id);
   const panelA = getAssignedPanelForRole(svgModel, assignedEdges, 'A');
   const panelB = getAssignedPanelForRole(svgModel, assignedEdges, 'B');
-  // Active PM-resolved TB geometry must not use the legacy connection thickness.
-  // The fallback is retained only for pre-PM callers that provide no PM state.
-  const legacyFallbackThicknessMm = panelThicknessState ? undefined : connection.properties.materialThicknessMm;
-  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState, legacyFallbackThicknessMm);
-  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState, legacyFallbackThicknessMm);
+  const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState);
+  const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState);
   const isComplete = panelAThicknessMm !== null && panelBThicknessMm !== null;
 
   return {
@@ -168,8 +164,8 @@ export const getPanelEdgeOperations = (
   panel: SvgPanel,
   assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
-  panelThicknessState?: PanelThicknessState,
-  svgModel?: SvgDocumentModel,
+  panelThicknessState: PanelThicknessState,
+  svgModel: SvgDocumentModel,
 ): PanelEdgeOperation[] => (
   panel.edgeIds.flatMap((edgeId) => {
     const assignment = getBucketEdgeAssignment(assignments[edgeId]);
@@ -179,14 +175,10 @@ export const getPanelEdgeOperations = (
       return [];
     }
 
-    const connectionThickness = svgModel
-      ? resolveTBThickness(svgModel, assignments, connection, panelThicknessState)
-      : null;
-    const roleThickness = connectionThickness
-      ? getTBRoleThickness(connectionThickness, assignment.edgeRole)
-      : { ownerThicknessMm: connection.properties.materialThicknessMm, receiverThicknessMm: connection.properties.materialThicknessMm };
+    const connectionThickness = resolveTBThickness(svgModel, assignments, connection, panelThicknessState);
+    const roleThickness = getTBRoleThickness(connectionThickness, assignment.edgeRole);
     const { ownerThicknessMm, receiverThicknessMm } = roleThickness;
-    const fingerWidthMm = connection.properties.isFingerWidthManual || !connectionThickness
+    const fingerWidthMm = connection.properties.isFingerWidthManual
       ? connection.properties.fingerWidthMm
       : connectionThickness.autoFingerWidthMm;
 
@@ -209,7 +201,7 @@ export const buildGeneratedTBGeometryItems = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
-  panelThicknessState?: PanelThicknessState,
+  panelThicknessState: PanelThicknessState,
 ): GeneratedGeometryItem[] => {
   const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
   const insetPanelOperations = svgModel.panels.flatMap((panel) => {

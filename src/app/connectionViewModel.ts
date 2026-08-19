@@ -67,7 +67,7 @@ export const getTBConnectionViewModel = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
   connection: TBConnectionDefinition,
-  panelThicknessState?: PanelThicknessState,
+  panelThicknessState: PanelThicknessState,
   getPanelDisplayLabel?: LabelResolver,
 ): ConnectionViewModel => {
   const thickness = resolveTBThickness(svgModel, assignments, connection, panelThicknessState);
@@ -124,7 +124,7 @@ export const getSConnectionViewModel = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
   connection: SlotConnectionDefinition,
-  panelThicknessState?: PanelThicknessState,
+  panelThicknessState: PanelThicknessState,
   getPanelDisplayLabel?: LabelResolver,
 ): ConnectionViewModel => {
   const thickness = resolveSThickness(svgModel, assignments, connection, panelThicknessState);
@@ -176,7 +176,7 @@ export const getConnectionViewModel = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
   connection: TBConnectionDefinition | SlotConnectionDefinition,
-  panelThicknessState?: PanelThicknessState,
+  panelThicknessState: PanelThicknessState,
   getPanelDisplayLabel?: LabelResolver,
 ): ConnectionViewModel => (
   connection.prefix === 'TB'
