@@ -15,10 +15,10 @@ import type { GeneratedProfileId } from './app/generatedProfiles';
 import type { ProfileOffsetSelectionTargetId } from './app/profileOffsetSelection';
 import { createGeneratedProfileOffsetTargetId, createOrdinaryProfileOffsetTargetId } from './app/profileOffsetSelection';
 import { buildFinalGeometry as buildNativeFinalGeometry } from './app/finalGeometry';
-import { createGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
+import { createGeneratedGeometrySnapshot, restoreGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { selectGeneratedGeometryAuthority } from './app/generatedGeometryAuthority';
 import { collectSourceEdgeAuthoringClaims, deriveCanvasEdgeRelationshipState, deriveGeneratedCanvasEdgeRelationshipState, sourceEdgeRelationshipKey } from './app/canvasEdgeRelationships';
-import type { PanelCompositionAuthorityMode } from './app/generatedGeometryAuthority';
+import type { PanelCompositionAuthorityMode, PanelCompositionModel } from './app/generatedGeometryAuthority';
 import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { validateGeometryAuthoring } from './app/authoringRelationships';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
@@ -605,6 +605,8 @@ function App() {
   const [displayConnectionId, setDisplayConnectionId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [generatedGeometryItems, setGeneratedGeometryItems] = useState<GeneratedGeometryItem[]>([]);
+  // Non-legacy marks arrays already selected at Apply or restored from history; they are never raw generator input.
+  const [generatedGeometryCompositionModel, setGeneratedGeometryCompositionModel] = useState<PanelCompositionModel>('legacy');
   const [activeSGroup, setActiveSGroup] = useState<ActiveSGroup | null>(null);
   const [activeTBGroup, setActiveTBGroup] = useState<ActiveTBGroup | null>(null);
   const [completedTBGroups, setCompletedTBGroups] = useState<ActiveTBGroup[]>([]);
@@ -793,15 +795,10 @@ function App() {
   const panelCompositionAuthorityMode: PanelCompositionAuthorityMode =
     import.meta.env.VITE_PANEL_COMPOSITION_AUTHORITY_MODE === 'mixed' ? 'mixed'
       : import.meta.env.VITE_PANEL_COMPOSITION_AUTHORITY_MODE === 'single-tool' ? 'single-tool' : 'legacy';
-  const generatedGeometryAuthority = useMemo(
-    () => selectGeneratedGeometryAuthority(svgModel, generatedGeometryItems, panelCompositionAuthorityMode),
-    [generatedGeometryItems, panelCompositionAuthorityMode, svgModel],
-  );
-
   const generatedGeometrySnapshot = useMemo(
-    () => createGeneratedGeometrySnapshot({ generatedGeometry: [...generatedGeometryAuthority.generatedGeometry],
-      panelCompositionModel: generatedGeometryAuthority.panelCompositionModel }),
-    [generatedGeometryAuthority],
+    () => createGeneratedGeometrySnapshot({ generatedGeometry: [...generatedGeometryItems],
+      panelCompositionModel: generatedGeometryCompositionModel }),
+    [generatedGeometryCompositionModel, generatedGeometryItems],
   );
 
   const finalGeometry = useMemo(
@@ -927,8 +924,9 @@ function App() {
     setAssignmentTargetConnectionId(snapshot.assignmentTargetConnectionId ?? snapshot.selectedLabelId ?? null);
     setDisplayConnectionId(snapshot.displayConnectionId ?? snapshot.selectedLabelId ?? null);
     setSelectedEdgeId(snapshot.selectedEdgeId);
-    const restoredGeneratedSnapshot = snapshot.generatedGeometrySnapshot;
+    const restoredGeneratedSnapshot = restoreGeneratedGeometrySnapshot(snapshot.generatedGeometrySnapshot);
     setGeneratedGeometryItems([...restoredGeneratedSnapshot.generatedGeometry]);
+    setGeneratedGeometryCompositionModel(restoredGeneratedSnapshot.panelCompositionModel);
     setActiveSGroup(snapshot.activeSGroup);
     setActiveTBGroup(snapshot.activeTBGroup);
     setCompletedTBGroups(snapshot.completedTBGroups);
@@ -962,6 +960,7 @@ function App() {
     setActivePanelId(null);
     setActiveHoleId(null);
     setGeneratedGeometryItems([]);
+    setGeneratedGeometryCompositionModel('legacy');
     setActiveSGroup(null);
     setActiveTBGroup(null);
     setCompletedTBGroups([]);
@@ -1343,12 +1342,18 @@ function App() {
         ...buildGeneratedTBGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
         ...buildGeneratedSGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
       ];
+      const authority = selectGeneratedGeometryAuthority(svgModel, nextGeneratedGeometryItems, panelCompositionAuthorityMode);
+      if (!authority.ok) {
+        const reasons = authority.blockingDecisions.map((decision) => `${decision.panelId}: ${decision.reason}`).join('; ');
+        throw new Error(`Unable to compose panel geometry: ${reasons}`);
+      }
       const shouldRecordManufacturing = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
       if (shouldRecordManufacturing) {
         setLastAppliedManufacturingSettings(structuredClone(projectSettings));
       }
       setConnections(nextConnections);
-      setGeneratedGeometryItems(nextGeneratedGeometryItems);
+      setGeneratedGeometryItems([...authority.generatedGeometry]);
+      setGeneratedGeometryCompositionModel(authority.panelCompositionModel);
       setErrorMessage('');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to apply geometry.');
@@ -1391,6 +1396,7 @@ function App() {
     setDisplayConnectionId(null);
     setSelectedEdgeId(null);
     setGeneratedGeometryItems([]);
+    setGeneratedGeometryCompositionModel('legacy');
     setActiveSGroup(null);
     setActiveTBGroup(null);
     setCompletedTBGroups([]);
@@ -1477,7 +1483,13 @@ function App() {
       ...(generatedGeometryItems.some((item) => item.toolType === 'S') ? buildGeneratedSGeometryItems(svgModel, edgeAssignments, nextConnections, appliedPanelManager) : []),
     ];
     setConnections(nextConnections);
-    setGeneratedGeometryItems(recomputedGeneratedItems);
+    const authority = selectGeneratedGeometryAuthority(svgModel, recomputedGeneratedItems, panelCompositionAuthorityMode);
+    if (!authority.ok) {
+      setErrorMessage(`Unable to compose panel geometry: ${authority.blockingDecisions.map((decision) => `${decision.panelId}: ${decision.reason}`).join('; ')}`);
+      return;
+    }
+    setGeneratedGeometryItems([...authority.generatedGeometry]);
+    setGeneratedGeometryCompositionModel(authority.panelCompositionModel);
     setPanelManager(appliedPanelManager);
     setIsPanelManagerModalOpen(false);
     setActivePanelId(null);

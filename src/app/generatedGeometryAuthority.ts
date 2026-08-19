@@ -19,13 +19,14 @@ export type PanelAuthorityDecision = Readonly<{ panelId: string; relationshipOwn
   downstreamEquivalenceGate: 'APPROVED' | 'NOT_APPROVED' | 'FAILED'; snapshotMarker: PanelCompositionModel }>;
 export type GeneratedGeometryAuthoritySelection = Readonly<{ generatedGeometry: ReadonlyArray<GeneratedGeometryItem>;
   decisions: ReadonlyArray<PanelAuthorityDecision>; diagnostics: GeneratedGeometryAssemblyDiagnostics;
-  panelCompositionModel: PanelCompositionModel }>;
+  panelCompositionModel: PanelCompositionModel; ok: boolean;
+  blockingDecisions: ReadonlyArray<PanelAuthorityDecision> }>;
 
 const blockedReason = (status: PanelAssemblyComparisonStatus): PanelAuthorityDecision['reason'] => status === 'BLOCKED_CONFLICT'
   ? 'REPLACEMENT_CONFLICT' : status === 'BLOCKED_MISSING_CONTRIBUTION' ? 'MISSING_CONTRIBUTION'
     : status === 'BLOCKED_INVALID_JUNCTION' ? 'INVALID_JUNCTION' : 'UNSUPPORTED_CONTRIBUTOR';
 
-/** Panel-atomic migration gate. A future fully-authoritative phase should fail closed instead of falling back. */
+/** Project-atomic migration gate. Raw generator output is the only valid input. */
 export const selectGeneratedGeometryAuthority = (svgModel: SvgDocumentModel,
   generatedGeometryItems: ReadonlyArray<GeneratedGeometryItem>, mode: PanelCompositionAuthorityMode = 'legacy',
   diagnostics = assembleGeneratedGeometryDiagnostics(svgModel, generatedGeometryItems),
@@ -68,12 +69,20 @@ export const selectGeneratedGeometryAuthority = (svgModel: SvgDocumentModel,
       downstreamEquivalenceGate: downstreamGate, snapshotMarker: authority === 'COMPOSED' && cohort === 'MIXED'
         ? 'relationship-composed-mixed-v1' : authority === 'COMPOSED' ? 'relationship-composed-single-tool-v1' : 'legacy' });
   }).sort((a, b) => a.panelId.localeCompare(b.panelId));
+  const blockingDecisions = decisions.filter((decision) => mode === 'mixed'
+    ? decision.authority !== 'COMPOSED'
+    : mode === 'single-tool' && decision.cohort !== 'MIXED' && decision.authority !== 'COMPOSED');
+  if (blockingDecisions.length) {
+    return Object.freeze({ ok: false, generatedGeometry: Object.freeze([]), decisions: Object.freeze(decisions), diagnostics,
+      blockingDecisions: Object.freeze(blockingDecisions), panelCompositionModel: 'legacy' });
+  }
   for (const decision of decisions.filter((value) => value.authority === 'COMPOSED')) {
     const count = selected.filter((item) => item.kind === 'PANEL_PATH' && item.behaviour.replacesPanelId === decision.panelId).length;
     if (count !== 1) throw new Error(`Composed authority invariant failed for ${decision.panelId}: ${count} boundaries.`);
   }
   const mixedAuthority = decisions.some((value) => value.authority === 'COMPOSED' && value.cohort === 'MIXED');
-  return Object.freeze({ generatedGeometry: Object.freeze(selected), decisions: Object.freeze(decisions), diagnostics,
+  return Object.freeze({ ok: true, generatedGeometry: Object.freeze(selected), decisions: Object.freeze(decisions), diagnostics,
+    blockingDecisions: Object.freeze([]),
     panelCompositionModel: mixedAuthority ? 'relationship-composed-mixed-v1'
       : decisions.some((value) => value.authority === 'COMPOSED') ? 'relationship-composed-single-tool-v1' : 'legacy' });
 };
