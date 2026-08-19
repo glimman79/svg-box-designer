@@ -1,5 +1,3 @@
-import type { ManufacturingMetadata } from './manufacturingMetadata';
-import type { SourceBounds } from '../svgUtils';
 
 export type TBConnectionProperties = {
   // Compatibility-only persisted legacy thickness; PM owns active TB thickness.
@@ -88,41 +86,4 @@ export type ActiveTBGroup = {
   groupId: string;
   connectionIds: string[];
   isActive: boolean;
-};
-
-export type AppliedEPanelPath = {
-  panelId: string;
-  eraseRect: SourceBounds;
-  erasePathD: string;
-  pathD: string;
-  edgeIds: string[];
-  manufacturing?: ManufacturingMetadata;
-};
-
-export type AppliedSPanelPath = {
-  panelId: string;
-  sourceEdgeId: string;
-  eraseRect: SourceBounds;
-  erasePathD: string;
-  pathD: string;
-  edgeIds: string[];
-  manufacturing?: ManufacturingMetadata;
-};
-
-export type AppliedSSlotPath = {
-  connectionId: string;
-  sourceAEdgeId: string;
-  sourceBEdgeId: string;
-  pathD: string;
-  startDistance: number;
-  endDistance: number;
-  widthMm: number;
-  manufacturing?: ManufacturingMetadata;
-};
-
-export type AppliedSGeometry = {
-  connectionId: string;
-  panelPaths: AppliedSPanelPath[];
-  slotPaths: AppliedSSlotPath[];
-  edgeIds: string[];
 };

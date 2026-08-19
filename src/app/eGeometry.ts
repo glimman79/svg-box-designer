@@ -1,9 +1,8 @@
-import type { AppliedEPanelPath, ConnectionMap, TBConnectionDefinition } from './connectionTypes';
+import type { ConnectionMap, TBConnectionDefinition } from './connectionTypes';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import { createBoundaryProfileGroup, createGeneratedProfile } from './generatedProfiles';
 import { createGeneratedTapId } from './generatedTaps';
 import type { GeneratedTapGroup, GeneratedTapSegmentRole } from './generatedTaps';
-import { getAppliedEPanelPathsFromItems } from './generatedGeometrySnapshot';
 import { generatedManufacturingMetadata } from './manufacturingMetadata';
 import { getBucketEdgeAssignment } from './assignmentBuckets';
 import type { EdgeAssignmentRecord, EdgeRole, Point, SvgDocumentModel, SvgPanel } from '../svgUtils';
@@ -344,12 +343,6 @@ export const buildGeneratedTBGeometryItems = (
     }];
   });
 };
-
-/** @deprecated Compatibility adapter for V1 callers. */
-export const buildAppliedEPanelPaths = (...args: Parameters<typeof buildGeneratedTBGeometryItems>): AppliedEPanelPath[] => (
-  getAppliedEPanelPathsFromItems(buildGeneratedTBGeometryItems(...args))
-);
-
 
 export const clonePanelContour = (panel: SvgPanel): PanelContour => (
   panel.contour.map((point) => ({ x: point.x, y: point.y }))

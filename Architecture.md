@@ -42,6 +42,4 @@ Final Geometry owns permanent design intent and is read-only. Manufacturing Geom
 
 `GeneratedGeometryItem` is the sole generated runtime model. Preview and export share the Final Geometry handoff, and history reconstructs it from `GeneratedGeometrySnapshot.generatedGeometry`.
 
-Legacy `AppliedEPanelPath` and `AppliedSGeometry` conversions remain only in compatibility adapters for the old public API, tests, and migration of older history records. They are created lazily when those adapters are explicitly requested and are not part of Final Geometry assembly.
-
-`buildFinalContourList(...)` remains available as a named final-contour helper in `src/app/contourClassification.ts` because it is part of the Version 1.0 architecture surface, but tests and runtime code validate the Final Geometry pipeline directly.
+Native `GeneratedGeometryItem[]` is the canonical generated-state representation. History stores `GeneratedGeometrySnapshot` records and Final Geometry consumes those native snapshots directly.
