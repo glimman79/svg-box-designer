@@ -26,6 +26,18 @@ type SPanelOperation = {
   aSegments: TabSegment[];
 };
 
+export const getSContourPlacementSegment = (segment: TabSegment, side: ContourSide): TabSegment => {
+  if (!isContourSideReversedFromCanonical(side)) {
+    return segment;
+  }
+
+  const sideLength = getContourSideLength(side);
+  return {
+    startDistance: sideLength - segment.endDistance,
+    endDistance: sideLength - segment.startDistance,
+  };
+};
+
 const buildSInsetPanelContour = (
   panel: SvgPanel,
   operations: SPanelOperation[],
@@ -200,27 +212,27 @@ const getContourSideInwardNormal = (side: ContourSide, contour: PanelContour): P
 };
 
 const buildSlotPathD = (
-  edge: SvgEdge,
+  side: ContourSide,
   startDistance: number,
   endDistance: number,
   widthMm: number,
   offsetNormal: Point,
   offsetDistance: number,
 ): string | null => {
-  const edgeLength = Math.hypot(edge.end.x - edge.start.x, edge.end.y - edge.start.y);
+  const sideLength = getContourSideLength(side);
 
-  if (edgeLength <= cornerTouchTolerance) {
+  if (sideLength <= cornerTouchTolerance) {
     return null;
   }
 
-  const ux = (edge.end.x - edge.start.x) / edgeLength;
-  const uy = (edge.end.y - edge.start.y) / edgeLength;
+  const ux = (side.end.x - side.start.x) / sideLength;
+  const uy = (side.end.y - side.start.y) / sideLength;
   const nx = -uy;
   const ny = ux;
   const halfWidth = widthMm / 2;
   const baselineStart = {
-    x: edge.start.x + (offsetNormal.x * offsetDistance),
-    y: edge.start.y + (offsetNormal.y * offsetDistance),
+    x: side.start.x + (offsetNormal.x * offsetDistance),
+    y: side.start.y + (offsetNormal.y * offsetDistance),
   };
   const p0 = { x: baselineStart.x + (ux * startDistance), y: baselineStart.y + (uy * startDistance) };
   const p1 = { x: baselineStart.x + (ux * endDistance), y: baselineStart.y + (uy * endDistance) };
@@ -362,9 +374,9 @@ export const buildGeneratedSGeometryItems = (
     }
     const planSegments = createTabSegmentPlan(sideLength, slotLengthMm);
     const aSegments = getTabSegmentsForRole(planSegments, 'A');
-    const bLength = Math.hypot(sourceBEdge.end.x - sourceBEdge.start.x, sourceBEdge.end.y - sourceBEdge.start.y);
     const bSideIndex = bPanel.edgeIds.findIndex((edgeId) => edgeId === sourceBEdgeId);
     const bOriginalSide = getContourEdgePoints(bPanel, bSideIndex);
+    const bLength = getContourSideLength(bOriginalSide);
     const bInwardNormal = getContourSideInwardNormal(bOriginalSide, bPanel.contour);
 
     if (!bInwardNormal) {
@@ -391,8 +403,9 @@ export const buildGeneratedSGeometryItems = (
     const slotItems = aSegments.map((segment, segmentIndex): GeneratedGeometryItem => {
       const startDistance = segment.startDistance;
       const endDistance = segment.endDistance;
+      const placementSegment = getSContourPlacementSegment(segment, bOriginalSide);
       const slotOffsetMm = connection.properties.slotOffsetMm ?? 0;
-      const pathD = buildSlotPathD(sourceBEdge, startDistance, endDistance, wallThicknessMm, bInwardNormal, slotOffsetMm);
+      const pathD = buildSlotPathD(bOriginalSide, placementSegment.startDistance, placementSegment.endDistance, wallThicknessMm, bInwardNormal, slotOffsetMm);
 
       if (!pathD) {
         throw new Error(`${connection.id} S-B edge cannot receive slots because its length is invalid.`);
