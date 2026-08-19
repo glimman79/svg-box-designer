@@ -5,8 +5,13 @@ import { createBoundaryProfileGroup, createGeneratedProfile } from './generatedP
 import { createGeneratedTapId } from './generatedTaps';
 import type { GeneratedTapGroup, GeneratedTapSegmentRole } from './generatedTaps';
 import { generatedManufacturingMetadata } from './manufacturingMetadata';
-import { addContourPoint, clipOriginalSegmentsToInsetSide, clonePanelContour, getPanelThickness, removeInteriorBacktrackSpurs, segmentLiesOnPanelBoundary, validatePanelContour } from './tbGeometry';
-import type { PanelContour, PanelGeometryBuildResult, PanelThicknessState } from './tbGeometry';
+import { clipOriginalSegmentsToInsetSide } from './tbGeometry';
+import { addContourPoint, removeInteriorBacktrackSpurs } from './sharedGeometry';
+import type { PanelContour } from './sharedGeometry';
+import { clonePanelContour, segmentLiesOnPanelBoundary, validatePanelContour } from './sharedPanelGeometry';
+import type { PanelGeometryBuildResult } from './sharedPanelGeometry';
+import { getPanelThickness } from './panelThickness';
+import type { PanelThicknessState } from './panelThickness';
 import { findPanelContainingEdge } from './panelLookup';
 import { getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './sharedPanelGeometry';
 import { buildContourSides, cornerTouchTolerance, createTabSegmentPlan, getContourSideLength, getContourSignedArea, interpolateSidePoint, isContourSideReversedFromCanonical, lineIntersection, mirrorSegments, offsetContourSide, pointsMatch, pointsToClosedPathD } from './sharedGeometry';

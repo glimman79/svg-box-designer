@@ -19,6 +19,59 @@ export const pointsMatch = (first: Point, second: Point) => (
   && Math.abs(first.y - second.y) <= cornerTouchTolerance
 );
 
+export const addContourPoint = (contour: PanelContour, point: Point) => {
+  const previousPoint = contour[contour.length - 1];
+
+  if (!previousPoint || !pointsMatch(previousPoint, point)) {
+    contour.push(point);
+  }
+};
+
+// Cleans zero-area A-B-A backtracks, including seam backtracks across the implicit SVG close path.
+export const removeInteriorBacktrackSpurs = (contour: PanelContour): PanelContour => {
+  const cleanedContour: PanelContour = [];
+
+  contour.forEach((point) => {
+    addContourPoint(cleanedContour, point);
+
+    while (
+      cleanedContour.length >= 3
+      && pointsMatch(cleanedContour[cleanedContour.length - 3], cleanedContour[cleanedContour.length - 1])
+    ) {
+      cleanedContour.splice(cleanedContour.length - 2, 2);
+    }
+  });
+
+  let removedClosedSpur = true;
+
+  while (removedClosedSpur && cleanedContour.length >= 3) {
+    removedClosedSpur = false;
+
+    if (
+      cleanedContour.length >= 4
+      && pointsMatch(cleanedContour[cleanedContour.length - 2], cleanedContour[1])
+      && pointsMatch(cleanedContour[cleanedContour.length - 1], cleanedContour[0])
+    ) {
+      cleanedContour.pop();
+      cleanedContour.shift();
+      removedClosedSpur = true;
+      continue;
+    }
+
+    if (pointsMatch(cleanedContour[cleanedContour.length - 1], cleanedContour[1])) {
+      cleanedContour.shift();
+      removedClosedSpur = true;
+    }
+
+    if (cleanedContour.length >= 3 && pointsMatch(cleanedContour[cleanedContour.length - 2], cleanedContour[0])) {
+      cleanedContour.pop();
+      removedClosedSpur = true;
+    }
+  }
+
+  return cleanedContour;
+};
+
 export const pointsToClosedPathD = (points: Point[]) => (
   `${points
     .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
