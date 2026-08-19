@@ -4,6 +4,10 @@ import { selectGeneratedGeometryAuthority } from '../../src/app/generatedGeometr
 import { buildGeneratedTBGeometryItems } from '../../src/app/tbGeometry';
 import { buildGeneratedSGeometryItems } from '../../src/app/sGeometry';
 import { pathDToClosedContour } from '../../src/app/geometryServices';
+import { buildFinalGeometry } from '../../src/app/finalGeometry';
+import { processManufacturingGeometry } from '../../src/app/manufacturingCompensation';
+import { createGeneratedGeometrySnapshot, restoreGeneratedGeometrySnapshot } from '../../src/app/generatedGeometrySnapshot';
+import { cornerTouchTolerance } from '../../src/app/sharedGeometry';
 import type { GeneratedGeometryItem } from '../../src/app/generatedGeometryTypes';
 import type { Point, SvgDocumentModel } from '../../src/svgUtils';
 import { makeEvidenceRectangle, makeMixedFixture } from './helpers/mixed-evidence-fixture';
@@ -13,12 +17,13 @@ const same = (a: unknown, b: unknown, message: string) => assert(JSON.stringify(
 const distanceToLine = (p: Point, a: Point, b: Point) => Math.abs((b.x-a.x)*(a.y-p.y)-(a.x-p.x)*(b.y-a.y))/Math.hypot(b.x-a.x,b.y-a.y);
 const projection = (p: Point, a: Point, b: Point) => ((p.x-a.x)*(b.x-a.x)+(p.y-a.y)*(b.y-a.y))/((b.x-a.x)**2+(b.y-a.y)**2);
 const centroid = (points: readonly Point[]) => ({x:points.reduce((n,p)=>n+p.x,0)/points.length,y:points.reduce((n,p)=>n+p.y,0)/points.length});
+const close=(actual:number,expected:number,message:string)=>assert(Math.abs(actual-expected)<=cornerTouchTolerance,`${message}: expected ${expected}, got ${actual}`);
 const thicknessFor = (model: SvgDocumentModel) => ({defaultThicknessMm:3.2,panels:Object.fromEntries(model.panels.map((p,i)=>[p.id,{panelId:p.id,thicknessMm:[5.4,3.2,4.1][i%3]}]))});
 
 type Replacement='none'|'TB'|'S';
 type Topology='isolated'|'same-panel';
-const buildCase = (name: string, replacement: Replacement, fingerWidth=9.5, topology:Topology='isolated') => {
-  const f=makeMixedFixture({name,tbEdges:[0],sEdges:[1],manualTB:true,manualS:true});
+const buildCase = (name: string, replacement: Replacement, fingerWidth=9.5, topology:Topology='isolated', rotationDegrees=0, slotOffset=0) => {
+  const f=makeMixedFixture({name,tbEdges:[0],sEdges:[1],manualTB:true,manualS:true,rotationDegrees,slotOffset});
   const slot=f.s.find(x=>x.kind==='SLOT_PATH'); assert(slot,`${name}: missing SLOT_PATH`);
   const ref=slot.sourceRelationships?.find(x=>x.kind==='references'); assert(ref,`${name}: missing REFERENCES`);
   const target=f.model.edges.find(x=>x.source===ref.panelId&&x.id===ref.sourceEdgeId); assert(target,`${name}: imported source edge absent`);
@@ -28,7 +33,7 @@ const buildCase = (name: string, replacement: Replacement, fingerWidth=9.5, topo
     // Never borrow a generated mate as a spare. Separately appended same-tool
     // batches can otherwise leave duplicate, incomplete whole-panel legacy
     // carriers; that packaging question is deliberately outside B2B.
-    const spare=makeEvidenceRectangle(`${name}-${replacement}-fresh-spare`,800,420,120,80);
+    const spare=makeEvidenceRectangle(`${name}-${replacement}-fresh-spare`,800,420,120,80,'CW',false,{rotationDegrees});
     f.model={...f.model,panels:[...f.model.panels,spare.panel],edges:[...f.model.edges,...spare.edges]};
     const sparePanel=spare.panel;
     const targetIndex=targetPanel.edgeIds.indexOf(ref.sourceEdgeId); const spareEdge=sparePanel.edgeIds[(targetIndex+1)%4];
@@ -72,7 +77,8 @@ const buildCase = (name: string, replacement: Replacement, fingerWidth=9.5, topo
   const points=pathDToClosedContour(selectedSlot.pathD); assert(points&&points.length>=4,`${name}: slot contour unreadable`);
   const c=centroid(points); const along=projection(c,target.start,target.end); const distances=points.map(p=>distanceToLine(p,target.start,target.end));
   assert(along>=-1e-9&&along<=1+1e-9,`${name}: slot lies outside imported source-edge span`);
-  assert(Math.min(...distances)>1e-6&&Math.max(...distances)-Math.min(...distances)<1e-7,`${name}: slot is not at a stable normal offset from imported source edge`);
+  if(slotOffset===0) assert(Math.min(...distances)>1e-6&&Math.max(...distances)-Math.min(...distances)<1e-7,`${name}: slot is not at a stable normal offset from imported source edge`);
+  else close(distanceToLine(c,target.start,target.end),Math.abs(slotOffset),`${name}: slot centroid is not at requested source-normal offset`);
   const replacementProfile=added.flatMap(x=>x.generatedProfiles??[]).find(p=>p.panelId===ref.panelId&&p.sourceEdgeId===ref.sourceEdgeId);
   if(replacementProfile){
     same(replacementProfile.sourceEdgeDirection,{start:target.start,end:target.end},`${name}: replacement does not identify same imported edge`);
@@ -80,11 +86,12 @@ const buildCase = (name: string, replacement: Replacement, fingerWidth=9.5, topo
   }
   const created=index.features.filter(x=>x.feature.panelId===ref.panelId&&x.feature.kind==='SLOT_PATH');
   assert(created.length>0,`${name}: SLOT_PATH creation ownership absent`);
+  assert(created.every(x=>x.creator===ref.operationId),`${name}: SLOT_PATH creator is not the referencing S operation`);
   assert(source.replacementClaimants.length===(replacement==='none'?0:1),`${name}: unexpected replacement claimants`);
   assert(!index.diagnostics.some(x=>x.kind==='replacement-conflict'),`${name}: valid case has replacement conflict`);
   same(auditGeneratedGeometryRelationships([...raw].reverse()),index,`${name}: relationship input order changed normalized index`);
   console.log(`TOPOLOGY ${name} | target=${ref.panelId}/${ref.sourceEdgeId} | replacement=${source.replacementOwner??'none'} | references=${source.references.join(',')} | created=${created.map(x=>`${x.creator}:${x.feature.featureId}`).join(',')} | spare=${replacement==='none'?'none':`${name}-${replacement}-fresh-spare`} | same-panel=${topology==='same-panel'}`);
-  return {f,slot,ref,target,selectedSlot,source,added,along,distances,index};
+  return {f,slot,ref,target,selectedSlot,source,added,along,distances,index,selected,points,c};
 };
 const idFor=(items:readonly GeneratedGeometryItem[],edgeId:string)=>items.flatMap(x=>x.generatedProfiles??[]).find(p=>p.sourceEdgeId===edgeId)?.operationId;
 
@@ -102,6 +109,59 @@ same(Bvariant.selectedSlot.pathD,B.selectedSlot.pathD,'Case B: finger-width vari
 same(Bvariant.along,B.along,'Case B: finger-width variation changed source-relative placement');
 assert(JSON.stringify(Bvariant.added)!==JSON.stringify(B.added),'Case B: replacement variant did not actually change');
 console.log('REPLACEMENT INDEPENDENCE | PASS | TB contour changed; S-B source-relative SLOT_PATH did not');
+
+// B2C arbitrary-angle closure.  The fixture and its fresh replacement mate are
+// transformed together; no generator or production transform accommodation is used.
+const arbitraryAngle=27, arbitraryOffset=2.75;
+const arbitraryBase=buildCase('case-B-arbitrary','TB',9.5,'isolated',0,arbitraryOffset);
+const arbitrary=buildCase('case-B-arbitrary','TB',9.5,'isolated',arbitraryAngle,arbitraryOffset);
+const arbitraryVariant=buildCase('case-B-arbitrary','TB',18.75,'isolated',arbitraryAngle,arbitraryOffset);
+const radians=arbitraryAngle*Math.PI/180;
+const rotate=(p:Point):Point=>({x:p.x*Math.cos(radians)-p.y*Math.sin(radians),y:p.x*Math.sin(radians)+p.y*Math.cos(radians)});
+const vector=(a:Point,b:Point):Point=>({x:b.x-a.x,y:b.y-a.y});
+const dot=(a:Point,b:Point)=>a.x*b.x+a.y*b.y;
+const unit=(p:Point):Point=>{const length=Math.hypot(p.x,p.y);return{x:p.x/length,y:p.y/length};};
+const sourceVector=vector(arbitrary.target.start,arbitrary.target.end), tangent=unit(sourceVector);
+const targetPanel=arbitrary.f.model.panels.find(p=>p.id===arbitrary.ref.panelId)!;
+const area=targetPanel.contour.reduce((sum,p,i)=>{const q=targetPanel.contour[(i+1)%targetPanel.contour.length];return sum+p.x*q.y-q.x*p.y;},0)/2;
+const inward:Point=area>=0?{x:-tangent.y,y:tangent.x}:{x:tangent.y,y:-tangent.x};
+const signedOffset=dot(vector(arbitrary.target.start,arbitrary.c),inward);
+close(signedOffset,arbitraryOffset,'arbitrary Case B signed source-normal slotOffset');
+close(arbitrary.along,arbitraryBase.along,'arbitrary Case B longitudinal source projection');
+close(distanceToLine(arbitrary.c,arbitrary.target.start,arbitrary.target.end),Math.abs(arbitraryOffset),'arbitrary Case B perpendicular source distance');
+close(arbitrary.selectedSlot.geometry.metrics?.widthMm??NaN,5.4,'arbitrary Case B slot width from S-A thickness');
+assert(arbitrary.selectedSlot.source.panelIds.some(id=>thicknessFor(arbitrary.f.model).panels[id]?.thicknessMm===4.1),'arbitrary Case B does not retain S-B insertion-depth panel provenance');
+const rotatedBasePoints=arbitraryBase.points.map(rotate);
+arbitrary.points.forEach((point,index)=>{close(point.x,rotatedBasePoints[index].x,`arbitrary slot point ${index} x`);close(point.y,rotatedBasePoints[index].y,`arbitrary slot point ${index} y`);});
+close(arbitrary.target.start.x,rotate(arbitraryBase.target.start).x,'rotated source start x');
+close(arbitrary.target.start.y,rotate(arbitraryBase.target.start).y,'rotated source start y');
+close(arbitrary.target.end.x,rotate(arbitraryBase.target.end).x,'rotated source end x');
+close(arbitrary.target.end.y,rotate(arbitraryBase.target.end).y,'rotated source end y');
+same(arbitraryVariant.selectedSlot.pathD,arbitrary.selectedSlot.pathD,'arbitrary Case B replacement variation moved world-space S-B SLOT_PATH');
+close(arbitraryVariant.along,arbitrary.along,'arbitrary Case B replacement variation moved longitudinal datum');
+same(arbitraryVariant.distances,arbitrary.distances,'arbitrary Case B replacement variation moved perpendicular datum');
+assert(JSON.stringify(arbitraryVariant.added)!==JSON.stringify(arbitrary.added),'arbitrary Case B TB replacement did not materially change');
+same(arbitraryVariant.selectedSlot.id,arbitrary.selectedSlot.id,'arbitrary Case B slot identity changed');
+same(arbitraryVariant.selectedSlot.operationId,arbitrary.selectedSlot.operationId,'arbitrary Case B operation identity changed');
+same(arbitraryVariant.selectedSlot.source,arbitrary.selectedSlot.source,'arbitrary Case B source provenance changed');
+same(arbitraryVariant.selectedSlot.sourceRelationships,arbitrary.selectedSlot.sourceRelationships,'arbitrary Case B source relationships changed');
+const metadata=(items:readonly GeneratedGeometryItem[])=>items.map(item=>({id:item.id,operationId:item.operationId,
+  profiles:item.generatedProfiles?.map(x=>x.id),taps:item.generatedTaps?.map(x=>x.id),groups:item.profileGroups?.map(x=>x.id),relationships:item.sourceRelationships}));
+assert(metadata(arbitrary.selected.generatedGeometry).some(x=>(x.profiles?.length??0)>0&&(x.taps?.length??0)>0&&(x.groups?.length??0)>0),'arbitrary Case B missing profile/tap/group identity evidence');
+const finalGeometry=buildFinalGeometry(arbitrary.f.model,arbitrary.selected.generatedGeometry);
+assert(finalGeometry.contours.length>0&&!finalGeometry.diagnostics.some(x=>x.severity==='error'),'arbitrary Case B FinalGeometry invalid');
+const selectedProfileIds=finalGeometry.generatedProfiles.map(x=>x.id);
+const manufacturing=processManufacturingGeometry(finalGeometry,.16,.10,-.045,selectedProfileIds,.065);
+assert(manufacturing.contours.length>0&&!manufacturing.diagnostics.some(x=>x.severity==='error'),'arbitrary Case B nonzero manufacturing invalid');
+same(manufacturing.generatedProfiles.map(x=>x.id),selectedProfileIds,'arbitrary manufacturing changed profile identity');
+const snapshot=createGeneratedGeometrySnapshot({generatedGeometry:[...arbitrary.selected.generatedGeometry],panelCompositionModel:arbitrary.selected.panelCompositionModel});
+const restored=restoreGeneratedGeometrySnapshot(structuredClone(snapshot));
+same(restored.generatedGeometry,arbitrary.selected.generatedGeometry,'arbitrary snapshot changed authoritative geometry or metadata');
+same(restored.panelCompositionModel,arbitrary.selected.panelCompositionModel,'arbitrary snapshot changed panelCompositionModel');
+const restoredFinal=buildFinalGeometry(arbitrary.f.model,restored.generatedGeometry);
+same(restoredFinal,finalGeometry,'arbitrary snapshot changed FinalGeometry');
+same(processManufacturingGeometry(restoredFinal,.16,.10,-.045,selectedProfileIds,.065),manufacturing,'arbitrary snapshot changed manufacturing output');
+console.log(`ARBITRARY ROTATION | PASS | angle=${arbitraryAngle} | sourceVectorBefore=${JSON.stringify(vector(arbitraryBase.target.start,arbitraryBase.target.end))} | sourceVectorAfter=${JSON.stringify(sourceVector)} | longitudinal=${arbitrary.along} | perpendicular=${signedOffset} | width=${arbitrary.selectedSlot.geometry.metrics?.widthMm} | insertionDepth=4.1 | FinalGeometry=PASS | manufacturing=PASS | restore=PASS`);
 
 const conflict=makeMixedFixture({name:'case-F',tbEdges:[0],sEdges:[0]});
 const conflictIndex=auditGeneratedGeometryRelationships(conflict.raw);

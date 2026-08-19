@@ -6,27 +6,33 @@ import type { SvgDocumentModel, SvgPanel } from '../../../src/svgUtils';
 export type Winding = 'CW' | 'CCW';
 export type MixedSpec = Readonly<{ name: string; tbEdges: readonly number[]; sEdges: readonly number[];
   winding?: Winding; reverseTB?: boolean; reverseSA?: boolean; reverseSB?: boolean; manualTB?: boolean;
-  manualS?: boolean; slotOffset?: number; x?: number; y?: number; width?: number; height?: number }>;
+  manualS?: boolean; slotOffset?: number; x?: number; y?: number; width?: number; height?: number;
+  rotationDegrees?: number; translation?: Readonly<{x:number;y:number}> }>;
 
-export const makeEvidenceRectangle = (id: string, x: number, y: number, width: number, height: number, winding: Winding = 'CW', reverse = false) => {
-  const cw = [{x,y},{x:x+width,y},{x:x+width,y:y+height},{x,y:y+height}];
+export const makeEvidenceRectangle = (id: string, x: number, y: number, width: number, height: number, winding: Winding = 'CW', reverse = false,
+  transform: Readonly<{rotationDegrees?:number;translation?:Readonly<{x:number;y:number}>}> = {}) => {
+  const radians=(transform.rotationDegrees??0)*Math.PI/180, translation=transform.translation??{x:0,y:0};
+  const apply=(point:{x:number;y:number})=>({x:point.x*Math.cos(radians)-point.y*Math.sin(radians)+translation.x,
+    y:point.x*Math.sin(radians)+point.y*Math.cos(radians)+translation.y});
+  const cw = [{x,y},{x:x+width,y},{x:x+width,y:y+height},{x,y:y+height}].map(apply);
   const contour = winding === 'CW' ? cw : [cw[0],cw[3],cw[2],cw[1]];
   const edgeIds = contour.map((_,i)=>`${id}-edge-${i}`);
   const panel: SvgPanel = {id,contour,outerContour:contour,edgeIds,outerEdgeIds:edgeIds,innerContours:[],innerEdgeIds:[],
-    bounds:{minX:x,maxX:x+width,minY:y,maxY:y+height}};
+    bounds:{minX:Math.min(...contour.map(p=>p.x)),maxX:Math.max(...contour.map(p=>p.x)),minY:Math.min(...contour.map(p=>p.y)),maxY:Math.max(...contour.map(p=>p.y))}};
   return {panel,edges:contour.map((start,i)=>({id:edgeIds[i],source:id,start:reverse?contour[(i+1)%4]:start,end:reverse?start:contour[(i+1)%4]}))};
 };
 
 export const makeMixedFixture = (spec: MixedSpec) => {
   const winding=spec.winding??'CW', width=spec.width??120, height=spec.height??80, x=spec.x??20, y=spec.y??20;
-  const owner=makeEvidenceRectangle(`${spec.name}-owner`,x,y,width,height,winding,false);
+  const transform={rotationDegrees:spec.rotationDegrees,translation:spec.translation};
+  const owner=makeEvidenceRectangle(`${spec.name}-owner`,x,y,width,height,winding,false,transform);
   const rectangles=[owner]; const tbAssignments:any={},sAssignments:any={},tbConnections:any={},sConnections:any={};
-  spec.tbEdges.forEach((edge,index)=>{const id=`${spec.name}-TB-${index}`; const mate=makeEvidenceRectangle(`${id}-mate`,x+220,y+index*130,width,height,winding,!!spec.reverseTB); rectangles.push(mate);
+  spec.tbEdges.forEach((edge,index)=>{const id=`${spec.name}-TB-${index}`; const mate=makeEvidenceRectangle(`${id}-mate`,x+220,y+index*130,width,height,winding,!!spec.reverseTB,transform); rectangles.push(mate);
     tbAssignments[owner.panel.edgeIds[edge]]={edgeAssignment:{connectionId:id,edgeRole:index%2?'B':'A'}};
     tbAssignments[mate.panel.edgeIds[(edge+2)%4]]={edgeAssignment:{connectionId:id,edgeRole:index%2?'A':'B'}};
     tbConnections[id]={id,prefix:'TB',properties:{fingerWidthMm:11.3+index,isFingerWidthManual:!!spec.manualTB}};});
   spec.sEdges.forEach((edge,index)=>{const id=`${spec.name}-S-${index}`;
-    const mate=makeEvidenceRectangle(`${id}-mate`,x+500,y+index*130,width,height,winding,!!spec.reverseSB); rectangles.push(mate);
+    const mate=makeEvidenceRectangle(`${id}-mate`,x+500,y+index*130,width,height,winding,!!spec.reverseSB,transform); rectangles.push(mate);
     // The owner panel is the A side; its independently reversed edge record is substituted below.
     if(spec.reverseSA){const prior=owner.edges[edge]; owner.edges[edge]={...prior,start:prior.end,end:prior.start};}
     sAssignments[owner.panel.edgeIds[edge]]={slotAssignments:[{connectionId:id,slotRole:'A'}]};
