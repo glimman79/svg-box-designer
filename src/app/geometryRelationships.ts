@@ -56,7 +56,9 @@ export type GeometryRelationshipIndex = Readonly<{
 
 const sourceKey = ({ panelId, sourceEdgeId }: SourceGeometryKey) => `${panelId}\u0000${sourceEdgeId}`;
 const featureKey = ({ featureId, panelId, kind }: GeneratedFeatureKey) => `${panelId}\u0000${kind}\u0000${featureId}`;
-const relationshipKey = (relationship: GeometryRelationship) => relationship.kind === 'creates'
+/** Stable semantic identity for a relationship claim. Provenance describes the
+ * claim and is deliberately not part of its identity. */
+export const geometryRelationshipKey = (relationship: GeometryRelationship) => relationship.kind === 'creates'
   ? `creates\u0000${relationship.operationId}\u0000${featureKey({ featureId: relationship.featureId, panelId: relationship.panelId, kind: relationship.featureKind })}`
   : `${relationship.kind}\u0000${relationship.operationId}\u0000${sourceKey(relationship)}`;
 const compare = (a: string, b: string) => a.localeCompare(b);
@@ -64,11 +66,11 @@ const freezeList = <T>(values: T[]): ReadonlyArray<T> => Object.freeze(values.ma
 
 /** Normalizes semantic claims only. It neither resolves conflicts nor participates in contour assembly. */
 export const buildGeometryRelationshipIndex = (input: ReadonlyArray<GeometryRelationship>, initialDiagnostics: ReadonlyArray<RelationshipDiagnostic> = []): GeometryRelationshipIndex => {
-  const ordered = [...input].sort((a, b) => compare(relationshipKey(a), relationshipKey(b)) || compare(a.provenance, b.provenance) || compare(a.provenanceId, b.provenanceId));
+  const ordered = [...input].sort((a, b) => compare(geometryRelationshipKey(a), geometryRelationshipKey(b)) || compare(a.provenance, b.provenance) || compare(a.provenanceId, b.provenanceId));
   const unique = new Map<string, GeometryRelationship>();
   const diagnostics: RelationshipDiagnostic[] = [...initialDiagnostics];
   ordered.forEach((relationship) => {
-    const key = relationshipKey(relationship);
+    const key = geometryRelationshipKey(relationship);
     const prior = unique.get(key);
     if (!prior) unique.set(key, relationship);
     else if (prior.provenance !== relationship.provenance || prior.provenanceId !== relationship.provenanceId) diagnostics.push({
