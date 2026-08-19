@@ -61,9 +61,9 @@ const conflictS=buildGeneratedSGeometryItems(model,conflictAssignments,{S2:{id:'
 const conflictItems=[...tbItems,...conflictS];
 const conflictAuthority=selectGeneratedGeometryAuthority(model,conflictItems,'single-tool');
 assert(conflictAuthority.decisions.find(x=>x.panelId==='owner')?.reason==='REPLACEMENT_CONFLICT','conflict did not block authority');
-assert(JSON.stringify(conflictAuthority.generatedGeometry)===JSON.stringify(conflictItems),'conflict fallback was not panel-atomic legacy');
+assert(conflictAuthority.ok && JSON.stringify(conflictAuthority.generatedGeometry) === JSON.stringify(conflictItems),'single-tool mode changed mixed-not-enabled fallback');
 const enabledS=selectGeneratedGeometryAuthority(model,sItems,'single-tool');
 assert(sItems.filter(x=>x.kind==='SLOT_PATH').every(slot=>enabledS.generatedGeometry.some(x=>x.id===slot.id&&x.pathD===slot.pathD)),'CREATES changed');
 const semanticIds=(items:ReadonlyArray<any>)=>{ const ids:string[]=[]; const visit=(value:any):void=>{ if(!value||typeof value!=='object')return; if(typeof value.id==='string')ids.push(value.id); Object.values(value).forEach(visit); }; items.forEach(item=>{visit(item.generatedProfiles);visit(item.generatedTaps);}); return ids.sort(); };
 assert(JSON.stringify(semanticIds(sItems))===JSON.stringify(semanticIds(enabledS.generatedGeometry)),'semantic IDs changed');
-console.log('conflict=LEGACY slots=UNCHANGED semantic-ids=STABLE rollback=PASS history-verbatim=PASS');
+console.log('mixed-not-enabled=LEGACY slots=UNCHANGED semantic-ids=STABLE rollback=PASS history-verbatim=PASS');

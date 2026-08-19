@@ -49,3 +49,11 @@ export const createGeneratedGeometrySnapshot = ({
     generatedGeometry: Object.freeze(clone(generatedGeometry)),
   });
 };
+
+/** History snapshots contain already-selected authority output and must be restored verbatim. */
+export const restoreGeneratedGeometrySnapshot = (snapshot: GeneratedGeometrySnapshot): Readonly<{
+  generatedGeometry: ReadonlyArray<GeneratedGeometryItem>; panelCompositionModel: PanelCompositionModel;
+}> => Object.freeze({
+  generatedGeometry: Object.freeze(clone(snapshot.generatedGeometry)),
+  panelCompositionModel: snapshot.metadata.panelCompositionModel ?? 'legacy',
+});

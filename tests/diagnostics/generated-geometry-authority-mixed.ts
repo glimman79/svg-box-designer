@@ -44,11 +44,11 @@ const conflictS=buildGeneratedSGeometryItems(model,conflictAssignments,{S2:{id:'
 const conflictItems=[...tbItems,...conflictS];
 const conflict=selectGeneratedGeometryAuthority(model,conflictItems,'mixed');
 assert(conflict.decisions.find(value=>value.panelId==='owner')?.reason==='REPLACEMENT_CONFLICT','same-edge conflict was not rejected');
-assert(JSON.stringify(conflict.generatedGeometry)===JSON.stringify(conflictItems),'conflict fallback was not complete legacy');
+assert(!conflict.ok && conflict.generatedGeometry.length === 0,'conflict did not fail closed');
 
 const snapshot=createGeneratedGeometrySnapshot({generatedGeometry:[...enabled.generatedGeometry],panelCompositionModel:enabled.panelCompositionModel});
 assert(snapshot.metadata.panelCompositionModel==='relationship-composed-mixed-v1','mixed snapshot did not retain marker');
 assert(JSON.stringify(snapshot.generatedGeometry)===JSON.stringify(enabled.generatedGeometry),'mixed snapshot did not restore authoritative array');
 const oldSnapshot=createGeneratedGeometrySnapshot({generatedGeometry:[...baseline.generatedGeometry]});
 assert(oldSnapshot.metadata.panelCompositionModel==='legacy','legacy snapshot compatibility changed');
-console.log('mixed authority=PASS single-tool-superset=PASS conflict-fallback=PASS slots=PASS downstream=PASS snapshot=PASS rollback=PASS order=PASS');
+console.log('mixed authority=PASS single-tool-superset=PASS conflict-fail-closed=PASS slots=PASS downstream=PASS snapshot=PASS rollback=PASS order=PASS');
