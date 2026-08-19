@@ -1,4 +1,4 @@
-import { buildGeneratedTBGeometryItems } from '../../src/app/eGeometry';
+import { buildGeneratedTBGeometryItems } from '../../src/app/tbGeometry';
 import { buildFinalGeometry } from '../../src/app/finalGeometry';
 import { assembleGeneratedGeometryDiagnostics } from '../../src/app/generatedGeometryAssembly';
 import { createGeneratedGeometrySnapshot } from '../../src/app/generatedGeometrySnapshot';

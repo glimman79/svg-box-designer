@@ -1,4 +1,4 @@
-import { buildGeneratedTBGeometryItems } from '../../src/app/eGeometry';
+import { buildGeneratedTBGeometryItems } from '../../src/app/tbGeometry';
 import { runGeneratedGeometryDualRun } from '../../src/app/generatedGeometryDualRun';
 import { selectGeneratedGeometryAuthority } from '../../src/app/generatedGeometryAuthority';
 import { buildFinalGeometry } from '../../src/app/finalGeometry';

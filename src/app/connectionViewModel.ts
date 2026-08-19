@@ -1,7 +1,7 @@
 import { getBucketEdgeAssignment, getBucketSlotAssignments } from './assignmentBuckets';
 import type { SlotConnectionDefinition, TBConnectionDefinition } from './connectionTypes';
-import { resolveTBThickness } from './eGeometry';
-import type { PanelThicknessState } from './eGeometry';
+import { resolveTBThickness } from './tbGeometry';
+import type { PanelThicknessState } from './tbGeometry';
 import { resolveSSlotLengthMm, resolveSThickness } from './sGeometry';
 import type { EdgeAssignmentRecord, EdgeRole, SlotRole, SvgDocumentModel } from '../svgUtils';
 

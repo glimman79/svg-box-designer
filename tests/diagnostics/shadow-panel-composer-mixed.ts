@@ -3,7 +3,7 @@
  * adapted and composed against one stable source ring. This is deliberately
  * not an oracle comparison with production's whole-panel last-wins assembly.
  */
-import { buildGeneratedTBGeometryItems } from '../../src/app/eGeometry';
+import { buildGeneratedTBGeometryItems } from '../../src/app/tbGeometry';
 import { buildGeneratedSGeometryItems } from '../../src/app/sGeometry';
 import { auditGeneratedGeometryRelationships, buildGeometryRelationshipIndex } from '../../src/app/geometryRelationships';
 import type { GeometryRelationship } from '../../src/app/geometryRelationships';

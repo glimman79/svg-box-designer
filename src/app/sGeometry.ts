@@ -5,8 +5,8 @@ import { createBoundaryProfileGroup, createGeneratedProfile } from './generatedP
 import { createGeneratedTapId } from './generatedTaps';
 import type { GeneratedTapGroup, GeneratedTapSegmentRole } from './generatedTaps';
 import { generatedManufacturingMetadata } from './manufacturingMetadata';
-import { addContourPoint, clipOriginalSegmentsToInsetSide, clonePanelContour, getPanelThickness, removeInteriorBacktrackSpurs, segmentLiesOnPanelBoundary, validatePanelContour } from './eGeometry';
-import type { PanelContour, PanelGeometryBuildResult, PanelThicknessState } from './eGeometry';
+import { addContourPoint, clipOriginalSegmentsToInsetSide, clonePanelContour, getPanelThickness, removeInteriorBacktrackSpurs, segmentLiesOnPanelBoundary, validatePanelContour } from './tbGeometry';
+import type { PanelContour, PanelGeometryBuildResult, PanelThicknessState } from './tbGeometry';
 import { findPanelContainingEdge } from './panelLookup';
 import { getContourEdgePoints, getTabSegmentsForRole, validateClosedPanel } from './sharedPanelGeometry';
 import { buildContourSides, cornerTouchTolerance, createTabSegmentPlan, getContourSideLength, getContourSignedArea, interpolateSidePoint, isContourSideReversedFromCanonical, lineIntersection, mirrorSegments, offsetContourSide, pointsMatch, pointsToClosedPathD } from './sharedGeometry';

@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 
 const root = resolve(__dirname, '../..');
-const source = readFileSync(resolve(root, 'src/app/eGeometry.ts'), 'utf8');
+const source = readFileSync(resolve(root, 'src/app/tbGeometry.ts'), 'utf8');
 const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
@@ -16,6 +16,6 @@ const mockRequire = (id) => {
   return require(id);
 };
 
-vm.runInNewContext(compiled, { require: mockRequire, module: moduleShim, exports: moduleShim.exports, console }, { filename: 'eGeometry.cjs' });
+vm.runInNewContext(compiled, { require: mockRequire, module: moduleShim, exports: moduleShim.exports, console }, { filename: 'tbGeometry.cjs' });
 
 module.exports = moduleShim.exports;
