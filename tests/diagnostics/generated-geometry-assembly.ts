@@ -15,9 +15,9 @@ const owner=rectangle('owner',0),mate=rectangle('mate',180); const panels=[owner
 const model:SvgDocumentModel={content:'',innerMarkup:'',rootAttributes:{width:null,height:null,viewBox:null},viewBox:'0 0 400 100',width:400,height:100,panels,edges:[...owner.edges,...mate.edges]};
 const thickness={defaultThicknessMm:3.25,panels:{owner:{panelId:'owner',thicknessMm:5},mate:{panelId:'mate',thicknessMm:3.25}}};
 const sAssignments:any={[owner.panel.edgeIds[1]]:{slotAssignments:[{connectionId:'S1',slotRole:'A'}]},[mate.panel.edgeIds[1]]:{slotAssignments:[{connectionId:'S1',slotRole:'B'}]}};
-const sItems=buildGeneratedSGeometryItems(model,sAssignments,{S1:{id:'S1',prefix:'S',properties:{materialThicknessMm:3.25,slotLengthMm:13,isSlotLengthManual:true,slotOffsetMm:1}}} as any,thickness);
+const sItems=buildGeneratedSGeometryItems(model,sAssignments,{S1:{id:'S1',prefix:'S',properties:{slotLengthMm:13,isSlotLengthManual:true,slotOffsetMm:1}}} as any,thickness);
 const tbAssignments:any={[owner.panel.edgeIds[0]]:{edgeAssignment:{connectionId:'TB1',edgeRole:'A'}},[mate.panel.edgeIds[0]]:{edgeAssignment:{connectionId:'TB1',edgeRole:'B'}}};
-const tbItems=buildGeneratedTBGeometryItems(model,tbAssignments,{TB1:{id:'TB1',prefix:'TB',properties:{materialThicknessMm:3.25,fingerWidthMm:12,isFingerWidthManual:true}}} as any,thickness)
+const tbItems=buildGeneratedTBGeometryItems(model,tbAssignments,{TB1:{id:'TB1',prefix:'TB',properties:{fingerWidthMm:12,isFingerWidthManual:true}}} as any,thickness)
   .filter(item=>item.behaviour.replacesPanelId===owner.panel.id);
 
 const sResult=assembleGeneratedGeometryDiagnostics(model,sItems); const tbResult=assembleGeneratedGeometryDiagnostics(model,tbItems);
@@ -39,7 +39,7 @@ assert(JSON.stringify(processManufacturingGeometry(finalBefore,0.12,0.08,0.04,[]
 const normalized=(result:ReturnType<typeof assembleGeneratedGeometryDiagnostics>)=>JSON.stringify(result.panelCandidates);
 assert(normalized(assembleGeneratedGeometryDiagnostics(model,[...mixedItems].reverse()))===normalized(mixed),'candidate depends on generated item order');
 const conflictSAssignments:any={[owner.panel.edgeIds[0]]:{slotAssignments:[{connectionId:'S2',slotRole:'A'}]},[mate.panel.edgeIds[0]]:{slotAssignments:[{connectionId:'S2',slotRole:'B'}]}};
-const conflictS=buildGeneratedSGeometryItems(model,conflictSAssignments,{S2:{id:'S2',prefix:'S',properties:{materialThicknessMm:3.25,slotLengthMm:13,isSlotLengthManual:true,slotOffsetMm:1}}} as any,thickness);
+const conflictS=buildGeneratedSGeometryItems(model,conflictSAssignments,{S2:{id:'S2',prefix:'S',properties:{slotLengthMm:13,isSlotLengthManual:true,slotOffsetMm:1}}} as any,thickness);
 const conflict=assembleGeneratedGeometryDiagnostics(model,[...tbItems,...conflictS]);
 assert(conflict.comparisonResults.some(x=>x.panelId==='owner'&&x.status==='BLOCKED_CONFLICT')&&!conflict.panelCandidates.some(x=>x.panelId==='owner'),'conflict was not atomic');
 const replacement=(operationId:string,edge:string):SourceGeometryRelationship=>({kind:'replaces',operationId,panelId:'owner',sourceEdgeId:edge,provenance:'native-generator-intent',provenanceId:`test:${operationId}:${edge}`});

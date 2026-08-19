@@ -4,6 +4,8 @@ import { pointsToClosedPathD } from './sharedGeometry';
 export type PanelMetadata = { panelId: string; thicknessMm: number };
 export type PanelManagerState = { panels: Record<string, PanelMetadata>; defaultThicknessMm: number; isApplied: boolean; isDirty: boolean };
 
+export const DEFAULT_PANEL_THICKNESS_MM = 3;
+
 export const defaultPanelManagerState: PanelManagerState = { panels: {}, defaultThicknessMm: 0, isApplied: false, isDirty: false };
 
 export const createPanelManagerStateFromModel = (svgModel: SvgDocumentModel, defaultThicknessMm = 0): PanelManagerState => ({

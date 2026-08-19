@@ -36,8 +36,8 @@ const fixture = (name: string, tool: Tool, winding: Winding, side: number, rever
     ? { [owner.panel.edgeIds[side]]: { edgeAssignment: { connectionId, edgeRole: 'A' } }, [mate.panel.edgeIds[side]]: { edgeAssignment: { connectionId, edgeRole: 'B' } } }
     : { [owner.panel.edgeIds[side]]: { slotAssignments: [{ connectionId, slotRole: 'A' }] }, [mate.panel.edgeIds[side]]: { slotAssignments: [{ connectionId, slotRole: 'B' }] } };
   const connections: any = tool === 'TB'
-    ? { [connectionId]: { id: connectionId, prefix: 'TB', properties: { materialThicknessMm: 5, fingerWidthMm, isFingerWidthManual: true } } }
-    : { [connectionId]: { id: connectionId, prefix: 'S', properties: { materialThicknessMm: 5, slotLengthMm: fingerWidthMm, isSlotLengthManual: true, slotOffsetMm: 0 } } };
+    ? { [connectionId]: { id: connectionId, prefix: 'TB', properties: { fingerWidthMm, isFingerWidthManual: true } } }
+    : { [connectionId]: { id: connectionId, prefix: 'S', properties: { slotLengthMm: fingerWidthMm, isSlotLengthManual: true, slotOffsetMm: 0 } } };
   const panelManager = { defaultThicknessMm: 5, panels: Object.fromEntries(panels.map((panel) => [panel.id, { panelId: panel.id, thicknessMm: 5 }])) };
   const items = tool === 'TB' ? buildGeneratedTBGeometryItems(model, assignments, connections, panelManager) : buildGeneratedSGeometryItems(model, assignments, connections, panelManager);
   return { name, model, items };
@@ -50,7 +50,7 @@ const adjacentFixture = (edgeCount: 2 | 4) => {
   const assignments: any = {}; const connections: any = {};
   for (let index = 0; index < edgeCount; index += 1) {
     const id = `TB${index + 1}`;
-    connections[id] = { id, prefix: 'TB', properties: { materialThicknessMm: 5, fingerWidthMm: 30, isFingerWidthManual: true } };
+    connections[id] = { id, prefix: 'TB', properties: { fingerWidthMm: 30, isFingerWidthManual: true } };
     assignments[owner.panel.edgeIds[index]] = { edgeAssignment: { connectionId: id, edgeRole: 'A' } };
     assignments[mates[index].panel.edgeIds[0]] = { edgeAssignment: { connectionId: id, edgeRole: 'B' } };
   }

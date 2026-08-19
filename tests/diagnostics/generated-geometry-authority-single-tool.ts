@@ -13,9 +13,9 @@ const owner=rectangle('owner',0),mate=rectangle('mate',180); const panels=[owner
 const model:SvgDocumentModel={content:'',innerMarkup:'',rootAttributes:{width:null,height:null,viewBox:null},viewBox:'0 0 400 100',width:400,height:100,panels,edges:[...owner.edges,...mate.edges]};
 const thickness={defaultThicknessMm:3.25,panels:{owner:{panelId:'owner',thicknessMm:5},mate:{panelId:'mate',thicknessMm:3.25}}};
 const sAssignments:any={[owner.panel.edgeIds[1]]:{slotAssignments:[{connectionId:'S1',slotRole:'A'}]},[mate.panel.edgeIds[1]]:{slotAssignments:[{connectionId:'S1',slotRole:'B'}]}};
-const sItems=buildGeneratedSGeometryItems(model,sAssignments,{S1:{id:'S1',prefix:'S',properties:{materialThicknessMm:3.25,slotLengthMm:13,isSlotLengthManual:true,slotOffsetMm:1}}} as any,thickness);
+const sItems=buildGeneratedSGeometryItems(model,sAssignments,{S1:{id:'S1',prefix:'S',properties:{slotLengthMm:13,isSlotLengthManual:true,slotOffsetMm:1}}} as any,thickness);
 const tbAssignments:any={[owner.panel.edgeIds[0]]:{edgeAssignment:{connectionId:'TB1',edgeRole:'A'}},[mate.panel.edgeIds[0]]:{edgeAssignment:{connectionId:'TB1',edgeRole:'B'}}};
-const tbItems=buildGeneratedTBGeometryItems(model,tbAssignments,{TB1:{id:'TB1',prefix:'TB',properties:{materialThicknessMm:3.25,fingerWidthMm:12,isFingerWidthManual:true}}} as any,thickness)
+const tbItems=buildGeneratedTBGeometryItems(model,tbAssignments,{TB1:{id:'TB1',prefix:'TB',properties:{fingerWidthMm:12,isFingerWidthManual:true}}} as any,thickness)
   .filter(item=>item.behaviour.replacesPanelId===owner.panel.id);
 
 for (const [fixture, items, cohort] of [['S-only', sItems, 'S_ONLY'], ['TB-only', tbItems, 'TB_ONLY']] as const) {
@@ -57,7 +57,7 @@ console.log('Generated geometry Phase 3 dual run: PASS');
 console.log('Generated geometry Phase 4 single-tool authority: PASS');
 
 const conflictAssignments:any={[owner.panel.edgeIds[0]]:{slotAssignments:[{connectionId:'S2',slotRole:'A'}]},[mate.panel.edgeIds[0]]:{slotAssignments:[{connectionId:'S2',slotRole:'B'}]}};
-const conflictS=buildGeneratedSGeometryItems(model,conflictAssignments,{S2:{id:'S2',prefix:'S',properties:{materialThicknessMm:3.25,slotLengthMm:13,isSlotLengthManual:true,slotOffsetMm:1}}} as any,thickness);
+const conflictS=buildGeneratedSGeometryItems(model,conflictAssignments,{S2:{id:'S2',prefix:'S',properties:{slotLengthMm:13,isSlotLengthManual:true,slotOffsetMm:1}}} as any,thickness);
 const conflictItems=[...tbItems,...conflictS];
 const conflictAuthority=selectGeneratedGeometryAuthority(model,conflictItems,'single-tool');
 assert(conflictAuthority.decisions.find(x=>x.panelId==='owner')?.reason==='REPLACEMENT_CONFLICT','conflict did not block authority');

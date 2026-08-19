@@ -47,10 +47,10 @@ const fixture = (name: string, tool: Tool, orientation: Orientation, winding: Wi
   let connections: any;
   if (tool === 'TB') {
     assignments = { [a.selectedEdgeId]: { edgeAssignment: { connectionId, edgeRole: role } }, [b.selectedEdgeId]: { edgeAssignment: { connectionId, edgeRole: role === 'A' ? 'B' : 'A' } } };
-    connections = { [connectionId]: { id: connectionId, prefix: 'TB', properties: { materialThicknessMm: 5, fingerWidthMm: 30, isFingerWidthManual: true } } };
+    connections = { [connectionId]: { id: connectionId, prefix: 'TB', properties: { fingerWidthMm: 30, isFingerWidthManual: true } } };
   } else {
     assignments = { [a.selectedEdgeId]: { slotAssignments: [{ connectionId, slotRole: 'A' }] }, [b.selectedEdgeId]: { slotAssignments: [{ connectionId, slotRole: 'B' }] } };
-    connections = { [connectionId]: { id: connectionId, prefix: 'S', properties: { materialThicknessMm: 5, slotLengthMm: 30, isSlotLengthManual: true, slotOffsetMm: 0 } } };
+    connections = { [connectionId]: { id: connectionId, prefix: 'S', properties: { slotLengthMm: 30, isSlotLengthManual: true, slotOffsetMm: 0 } } };
   }
   const items = tool === 'TB' ? buildGeneratedTBGeometryItems(model, assignments, connections, pm) : buildGeneratedSGeometryItems(model, assignments, connections, pm);
   return { name, tool, model, items, sourceEdge: model.edges.find((edge) => edge.id === a.selectedEdgeId)! };
@@ -63,8 +63,8 @@ const adjacentTBFixture = () => {
   const mateB = rectangle('adjacent-mate-b', 240, 0, 90, 60, 'counterclockwise', 0, false);
   const edgeA = owner.panel.edgeIds[0]; const edgeB = owner.panel.edgeIds[1];
   const connections: any = {
-    TB1: { id: 'TB1', prefix: 'TB', properties: { materialThicknessMm: 5, fingerWidthMm: 30, isFingerWidthManual: true } },
-    TB2: { id: 'TB2', prefix: 'TB', properties: { materialThicknessMm: 5, fingerWidthMm: 30, isFingerWidthManual: true } },
+    TB1: { id: 'TB1', prefix: 'TB', properties: { fingerWidthMm: 30, isFingerWidthManual: true } },
+    TB2: { id: 'TB2', prefix: 'TB', properties: { fingerWidthMm: 30, isFingerWidthManual: true } },
   };
   const assignments: any = {
     [edgeA]: { edgeAssignment: { connectionId: 'TB1', edgeRole: 'A' } },

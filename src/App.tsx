@@ -24,7 +24,7 @@ import { validateGeometryAuthoring } from './app/authoringRelationships';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { appendAutoCreatedTBToTBGroup, buildTBDisplayLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
 import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildGeneratedTBGeometryItems, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/tbGeometry';
-import { buildPanelContainmentTree, createPanelManagerStateFromModel, defaultPanelManagerState, validatePanelManagerState } from './app/panelManagerModel';
+import { buildPanelContainmentTree, createPanelManagerStateFromModel, DEFAULT_PANEL_THICKNESS_MM, defaultPanelManagerState, validatePanelManagerState } from './app/panelManagerModel';
 import type { PanelEdgeOperation, TabSegmentPlan } from './app/tbGeometry';
 import type { PanelContour } from './app/sharedGeometry';
 import type { PanelGeometryBuildResult } from './app/sharedPanelGeometry';
@@ -309,16 +309,13 @@ const labelGroups: LabelGroup[] = [
 
 export const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
   TB: {
-    materialThicknessMm: 3,
     fingerWidthMm: 9,
     isFingerWidthManual: false,
   },
   S: {
     slotOffsetMm: 0,
-    slotWidthMm: getDefaultSlotWidth(3),
     slotLengthMm: getDefaultSlotLength(3),
     isSlotLengthManual: false,
-    materialThicknessMm: 3,
     kerfMm: 0.15,
   },
   C: {
@@ -418,10 +415,6 @@ const zoomViewBox = (
 };
 function getDefaultSlotLength(materialThicknessMm: number) {
   return materialThicknessMm * 3;
-}
-
-function getDefaultSlotWidth(materialThicknessMm: number) {
-  return materialThicknessMm;
 }
 
 function getDefaultCornerDepth(materialThicknessMm: number) {
@@ -694,8 +687,7 @@ function App() {
         }
 
         if (currentConnection.prefix === 'S' && synchronizedConnection.prefix === 'S') {
-          return currentConnection.properties.slotLengthMm !== synchronizedConnection.properties.slotLengthMm
-            || currentConnection.properties.slotWidthMm !== synchronizedConnection.properties.slotWidthMm;
+          return currentConnection.properties.slotLengthMm !== synchronizedConnection.properties.slotLengthMm;
         }
 
         return false;
@@ -1443,7 +1435,7 @@ function App() {
   const acceptDefaultPanelThickness = () => {
     const defaultThicknessMm = panelManager.defaultThicknessMm > 0
       ? panelManager.defaultThicknessMm
-      : defaultConnectionProperties.TB.materialThicknessMm;
+      : DEFAULT_PANEL_THICKNESS_MM;
     setPanelManager((current) => ({
       ...current,
       defaultThicknessMm,
@@ -1530,7 +1522,6 @@ function App() {
                 properties: {
                   ...connection.properties,
                   fingerWidthMm: nextProperties.fingerWidthMm,
-                  materialThicknessMm: nextProperties.materialThicknessMm,
                   isFingerWidthManual: nextProperties.isFingerWidthManual,
                 },
               }

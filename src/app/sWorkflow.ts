@@ -8,14 +8,10 @@ const getNextSLabel = (labels: string[]) => getNextConnectionLabel('S', labels);
 
 const getDefaultSlotLength = (materialThicknessMm: number) => materialThicknessMm * 3;
 
-const getDefaultSlotWidth = (materialThicknessMm: number) => materialThicknessMm;
-
 const cloneDefaultSProperties = (): SlotConnectionProperties => ({
   slotOffsetMm: 0,
-  slotWidthMm: getDefaultSlotWidth(3),
   slotLengthMm: getDefaultSlotLength(3),
   isSlotLengthManual: false,
-  materialThicknessMm: 3,
   kerfMm: 0.15,
 });
 
@@ -58,8 +54,6 @@ export const createCopiedSConnection = (id: string, previousConnection: SlotConn
   prefix: 'S',
   properties: {
     ...cloneDefaultSProperties(),
-    materialThicknessMm: previousConnection.properties.materialThicknessMm,
-    slotWidthMm: previousConnection.properties.slotWidthMm,
     slotLengthMm: previousConnection.properties.slotLengthMm,
     isSlotLengthManual: previousConnection.properties.isSlotLengthManual,
     slotOffsetMm: previousConnection.properties.slotOffsetMm,
@@ -74,10 +68,6 @@ export const applySlotPropertyUpdates = (
     ...connection.properties,
     ...updates,
   };
-
-  if (updates.materialThicknessMm !== undefined) {
-    nextProperties.slotWidthMm = getDefaultSlotWidth(updates.materialThicknessMm);
-  }
 
   if (updates.slotLengthMm !== undefined) {
     nextProperties.isSlotLengthManual = true;
