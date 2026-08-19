@@ -10,7 +10,7 @@ import { processManufacturingGeometry } from './manufacturingCompensation';
 import type { ManufacturingGeometry } from './manufacturingCompensation';
 import type { GeneratedProfileId } from './generatedProfiles';
 import type { ProfileOffsetSelectionTargetId } from './profileOffsetSelection';
-import { pointsToClosedPathD } from './sharedGeometry';
+import { pointsMatch, pointsToClosedPathD } from './sharedGeometry';
 import type { SvgDocumentModel } from '../svgUtils';
 
 export type PanelDualRunClassification = 'SINGLE_TOOL_MATCH' | 'SINGLE_TOOL_MISMATCH' | 'MIXED_VALID' | 'MIXED_INVALID'
@@ -71,7 +71,10 @@ export const packageComposedPanelGeometry = (
     generatedProfiles: uniqueMetadata(owners.flatMap((item) => item.generatedProfiles ?? []), 'generated profile').map((profile) => ({ ...profile,
       geometryProjections: profile.geometryProjections.map((projection) => {
         const segment = candidate.segments.find((value) => value.projectionId === projection.id);
-        return segment ? { ...projection, start: { ...segment.start }, end: { ...segment.end } } : projection;
+        if (!segment || (pointsMatch(projection.start, segment.start) && pointsMatch(projection.end, segment.end))) {
+          return projection;
+        }
+        return { ...projection, start: { ...segment.start }, end: { ...segment.end } };
       }),
     })),
     generatedTaps: uniqueMetadata(owners.flatMap((item) => item.generatedTaps ?? []), 'generated tap'),

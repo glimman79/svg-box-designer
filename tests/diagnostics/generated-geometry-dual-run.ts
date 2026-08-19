@@ -1,5 +1,6 @@
 import { buildGeneratedTBGeometryItems } from '../../src/app/tbGeometry';
-import { runGeneratedGeometryDualRun } from '../../src/app/generatedGeometryDualRun';
+import { packageComposedPanelGeometry, runGeneratedGeometryDualRun } from '../../src/app/generatedGeometryDualRun';
+import { assembleGeneratedGeometryDiagnostics } from '../../src/app/generatedGeometryAssembly';
 import { buildGeneratedSGeometryItems } from '../../src/app/sGeometry';
 import type { SvgDocumentModel, SvgPanel } from '../../src/svgUtils';
 
@@ -15,6 +16,25 @@ const sItems=buildGeneratedSGeometryItems(model,sAssignments,{S1:{id:'S1',prefix
 const tbAssignments:any={[owner.panel.edgeIds[0]]:{edgeAssignment:{connectionId:'TB1',edgeRole:'A'}},[mate.panel.edgeIds[0]]:{edgeAssignment:{connectionId:'TB1',edgeRole:'B'}}};
 const tbItems=buildGeneratedTBGeometryItems(model,tbAssignments,{TB1:{id:'TB1',prefix:'TB',properties:{fingerWidthMm:12,isFingerWidthManual:true}}} as any,thickness)
   .filter(item=>item.behaviour.replacesPanelId===owner.panel.id);
+
+// Packaging retains generator-authored representation for tolerance-equivalent
+// endpoints, but still transports a real composer junction adjustment.
+const assembly=assembleGeneratedGeometryDiagnostics(model,tbItems);
+const candidate=assembly.panelCandidates.find(value=>value.panelId===owner.panel.id)!;
+const diagnostic=assembly.panelDiagnostics.find(value=>value.panelId===owner.panel.id)!;
+const matched=candidate.segments.find(value=>value.projectionId)!;
+const generatedProjection=tbItems.flatMap(item=>item.generatedProfiles??[]).flatMap(profile=>profile.geometryProjections)
+  .find(value=>value.id===matched.projectionId)!;
+const packagedProjection=(changedStart:{x:number;y:number})=>packageComposedPanelGeometry(tbItems,
+  {...candidate,segments:candidate.segments.map(value=>value===matched?{...value,start:changedStart}:value)},diagnostic.replacementOperationIds)
+  .flatMap(item=>item.generatedProfiles??[]).flatMap(profile=>profile.geometryProjections).find(value=>value.id===matched.projectionId)!;
+const equivalent=packagedProjection({x:generatedProjection.start.x,y:generatedProjection.start.y+Number.EPSILON});
+assert(equivalent===generatedProjection,'tolerance-equivalent projection object was replaced');
+const adjustedStart={x:generatedProjection.start.x,y:generatedProjection.start.y+1};
+const adjusted=packagedProjection(adjustedStart);
+assert(adjusted!==generatedProjection&&adjusted.start.x===adjustedStart.x&&adjusted.start.y===adjustedStart.y,
+  'material composer projection endpoint was not rewritten');
+console.log('projection packaging | sub-tolerance=PRESERVED material-junction-change=REWRITTEN');
 
 for (const [fixture,items] of [['S-only',sItems],['TB-only',tbItems]] as const) {
   const before=JSON.stringify(items); const result=runGeneratedGeometryDualRun(model,items);
