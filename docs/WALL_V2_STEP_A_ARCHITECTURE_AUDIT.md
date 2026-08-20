@@ -70,14 +70,17 @@ assignment order, and connection creation order. At a vertex, **incoming** is
 the side terminating there and **outgoing** the side beginning there in that
 canonical traversal.
 
-The invariant's form is therefore:
+Step A2 corrects the original wording here: adjacency does not require an A/B
+pair, and same-role adjacency is valid. The invariant's minimal form is:
 
 ```text
-if both incident canonical sides are Wall-operated:
-  allowed iff (incomingRole, outgoingRole) == PRODUCT_ALLOWED_PAIR
+if either incident canonical side is not Wall-operated: allowed
+else if incomingRole == outgoingRole: allowed
+else: allowed iff (incomingRole, outgoingRole) == PRODUCT_ALLOWED_MIXED_PAIR
 ```
 
-The reverse mixed pair is forbidden. Isolated A and isolated B are valid. The
+Only the reverse mixed pair is forbidden. Isolated A and isolated B, A/A, and
+B/B are valid. The
 diagnostic proves this formulation remains stable through CW/CCW input and
 rotation/translation. Raw source-edge endpoint reversal cannot change panel
 topology: TB uses `panel.contour`/`panel.edgeIds` for adjacency and uses raw edge
@@ -96,9 +99,10 @@ and unlabelled prompt provide two candidates:
 No generated terminal pair is disconnected: the actual within-contour gap
 vector is `(0,0)` and magnitude `0`. The alternative-junction vector is
 `(-5,5)` and 7.071067811865476 mm, but it must not be misreported as the
-mouse-hole opening. A labelled assembly fixture is required to measure the
-physical opening and bind allowed/forbidden roles. This is an architecture
-blocker to implementing the validator, not a TB production defect.
+mouse-hole opening. A labelled assembly fixture is required to bind allowed/forbidden
+roles. This is the single product input required before production implementation, not a TB
+production defect. The corrected contract is recorded in
+[`WALL_V2_STEP_A2_CORNER_AUTHORING_CONTRACT.md`](./WALL_V2_STEP_A2_CORNER_AUTHORING_CONTRACT.md).
 
 ## Validation and extensibility seam
 
@@ -165,7 +169,7 @@ W-A should REPLACE its source edge: **YES**.
 W-B should REPLACE its source edge: **YES**.  
 Wall connection requires exactly one A and one B: **YES** (to generate).  
 Single operated Wall edge at a corner is valid regardless of A/B role: **YES**.  
-Two adjacent Wall-operated edges require an ordered A/B orientation: **YES** (product requirement; exact order unresolved).  
+Two adjacent Wall-operated edges require an ordered A/B orientation: **NO**; A/A and B/B are allowed, and only a mixed pair is orientation-sensitive.
 Valid orientation is invariant under CW/CCW: **YES**, once expressed in normalized canonical traversal.  
 Valid orientation is invariant under raw edge reversal: **YES**.  
 Valid orientation is invariant under rotation/translation: **YES**.  
