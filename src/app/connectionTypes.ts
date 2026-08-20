@@ -13,6 +13,9 @@ export type SlotConnectionProperties = {
   kerfMm: number;
 };
 
+/** Wall has no physical settings until the Step B3 generator is introduced. */
+export type WallConnectionProperties = Record<string, never>;
+
 export type CornerConnectionProperties = {
   cornerDepthMm: number;
   isCornerDepthManual: boolean;
@@ -33,9 +36,16 @@ export type PatternConnectionProperties = {
 
 export type ConnectionPropertiesByPrefix = {
   TB: TBConnectionProperties;
+  W: WallConnectionProperties;
   S: SlotConnectionProperties;
   C: CornerConnectionProperties;
   P: PatternConnectionProperties;
+};
+
+export type WallConnectionDefinition = {
+  id: string;
+  prefix: 'W';
+  properties: WallConnectionProperties;
 };
 
 export type TBConnectionDefinition = {
@@ -64,6 +74,7 @@ export type PatternConnectionDefinition = {
 
 export type ConnectionDefinition =
   | TBConnectionDefinition
+  | WallConnectionDefinition
   | SlotConnectionDefinition
   | CornerConnectionDefinition
   | PatternConnectionDefinition;

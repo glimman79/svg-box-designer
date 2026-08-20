@@ -243,7 +243,7 @@ export const getBucketSlotAssignments = (assignment: EdgeAssignment | EdgeAssign
 );
 
 const getAssignmentDisplayLabel = (assignment: EdgeAssignment) => {
-  if (hasConnectionLabelPrefix(assignment.connectionId, 'TB') && assignment.edgeRole) {
+  if (hasConnectionLabelPrefix(assignment.connectionId, 'TB', 'W') && assignment.edgeRole) {
     return `${assignment.connectionId}-${assignment.edgeRole === 'A' ? 'A' : 'B'}`;
   }
 
