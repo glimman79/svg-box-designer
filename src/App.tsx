@@ -22,6 +22,7 @@ import { collectSourceEdgeAuthoringClaims, deriveCanvasEdgeRelationshipState, de
 import type { PanelCompositionAuthorityMode, PanelCompositionModel } from './app/generatedGeometryAuthority';
 import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { validateGeometryAuthoring } from './app/authoringRelationships';
+import { availableWallOrientationsForPanelPair, complementaryWallRole, getWallAssignments, resolveTBPanelPairOrientation, validateWallAuthoringForApply } from './app/wallAuthoring';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { appendAutoCreatedTBToTBGroup, buildTBDisplayLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
 import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildGeneratedTBGeometryItems, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/tbGeometry';
@@ -84,7 +85,7 @@ export type { PanelGeometryBuildResult } from './app/sharedPanelGeometry';
 export type { PanelManagerState } from './app/panelManagerModel';
 export type { ActiveSGroup, ActiveTBGroup, ConnectionDefinition, ConnectionMap, TBConnectionDefinition, TBConnectionProperties } from './app/connectionTypes';
 
-type LabelPrefix = 'TB' | 'S' | 'C' | 'P';
+type LabelPrefix = 'TB' | 'W' | 'S' | 'C' | 'P';
 
 
 type LabelGroup = {
@@ -93,7 +94,7 @@ type LabelGroup = {
   description: string;
 };
 
-type ActiveTool = 'select' | 'PM' | 'TB' | 'S' | 'J' | 'P' | 'manufacturing';
+export type ActiveTool = 'select' | 'PM' | 'TB' | 'W' | 'S' | 'J' | 'P' | 'manufacturing';
 
 type HistoryState = {
   projectSettings: ProjectSettings;
@@ -307,6 +308,7 @@ const emptySvgModel: SvgDocumentModel = {
 
 const labelGroups: LabelGroup[] = [
   { prefix: 'TB', name: 'Edge connections', description: 'Reusable edge connection IDs' },
+  { prefix: 'W', name: 'Wall connections', description: 'Wall A/B source-edge authoring' },
   { prefix: 'S', name: 'Slot connections', description: 'Reusable slot connection IDs' },
   { prefix: 'C', name: 'Corner connections', description: 'Reusable corner connection IDs' },
   { prefix: 'P', name: 'Pattern connections', description: 'Reusable pattern connection IDs' },
@@ -317,6 +319,7 @@ export const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
     fingerWidthMm: 9,
     isFingerWidthManual: false,
   },
+  W: {},
   S: {
     slotOffsetMm: 0,
     slotLengthMm: getDefaultSlotLength(3),
@@ -478,6 +481,8 @@ const createConnectionDefinition = (
   if (prefix === 'S') {
     return { id, prefix, properties: cloneDefaultProperties(prefix) };
   }
+
+  if (prefix === 'W') return { id, prefix, properties: {} };
 
 
   if (prefix === 'C') {
@@ -1071,6 +1076,12 @@ function App() {
     }
     setActiveTool(tool);
 
+    if (tool === 'W') {
+      const selectedWall = assignmentTargetConnectionId && connections[assignmentTargetConnectionId]?.prefix === 'W';
+      if (!selectedWall) createLabel('W');
+      return;
+    }
+
     if (tool === 'manufacturing') {
       setWorkflowGroupOrder((currentOrder) => currentOrder.manufacturing !== undefined
         ? currentOrder
@@ -1142,7 +1153,9 @@ function App() {
 
   const assignSelectedLabelToEdge = (edgeId: string) => {
     const assignmentConnectionId = assignmentTargetConnectionId;
-    const assignedConnectionId = resolveAssignedTBOrSConnectionIdForEdge(edgeAssignments, edgeId, activeTool === 'S' ? 'S' : activeTool === 'TB' ? 'TB' : undefined);
+    const assignedConnectionId = activeTool === 'W'
+      ? (getBucketEdgeAssignment(edgeAssignments[edgeId])?.connectionId.startsWith('W') ? getBucketEdgeAssignment(edgeAssignments[edgeId])?.connectionId : undefined)
+      : resolveAssignedTBOrSConnectionIdForEdge(edgeAssignments, edgeId, activeTool === 'S' ? 'S' : activeTool === 'TB' ? 'TB' : undefined);
     setSelectedEdgeId(edgeId);
 
     if (assignedConnectionId && assignedConnectionId === assignmentConnectionId) {
@@ -1170,6 +1183,28 @@ function App() {
 
     const nextSlotRole = connection.prefix === 'S' ? getDefaultSlotRole(edgeAssignments, assignmentConnectionId) : null;
 
+    const wallAssignments = connection.prefix === 'W' ? getWallAssignments(svgModel, edgeAssignments, assignmentConnectionId) : [];
+    if (connection.prefix === 'W' && wallAssignments.length >= 2) {
+      setErrorMessage(`${assignmentConnectionId} is complete. Create another Wall connection before assigning another edge.`);
+      return;
+    }
+    const nextWallRole = connection.prefix === 'W'
+      ? wallAssignments.length === 0 ? 'A' : complementaryWallRole(wallAssignments[0].role)
+      : null;
+    if (connection.prefix === 'W' && wallAssignments.length === 1) {
+      const sourcePanelId = panelIdByEdgeId.get(edgeId);
+      if (!sourcePanelId) { setErrorMessage('Wall assignments require panel source edges.'); return; }
+      const available = availableWallOrientationsForPanelPair(wallAssignments[0].panelId, sourcePanelId, svgModel, edgeAssignments, connections);
+      const requested = wallAssignments[0].role === 'A' ? 'P_WA_Q_WB' : 'P_WB_Q_WA';
+      if (!available.includes(requested)) {
+        const orientation = resolveTBPanelPairOrientation(wallAssignments[0].panelId, sourcePanelId, svgModel, edgeAssignments, connections);
+        setErrorMessage(orientation === 'AMBIGUOUS_CONTRADICTORY_TB_ORIENTATION'
+          ? 'Wall is unavailable: contradictory TB orientation exists between these panels.'
+          : `TB constrains the Wall panel orientation. Change the first assignment to W-${complementaryWallRole(wallAssignments[0].role)} before selecting this mate.`);
+        return;
+      }
+    }
+
     if (connection.prefix === 'S' && !nextSlotRole) {
       if (activeSGroup?.isActive && activeSGroup.connectionIds.includes(assignmentConnectionId)) {
         const nextWorkflow = maybeAutoCreateNextSInGroup(connections, edgeAssignments, activeSGroup, assignmentConnectionId);
@@ -1185,14 +1220,14 @@ function App() {
       return;
     }
 
-    const requestedRelationship = connection.prefix === 'TB' || (connection.prefix === 'S' && nextSlotRole === 'A')
+    const requestedRelationship = connection.prefix === 'TB' || connection.prefix === 'W' || (connection.prefix === 'S' && nextSlotRole === 'A')
       ? 'replaces' : connection.prefix === 'S' ? 'references' : null;
     const sourcePanelId = panelIdByEdgeId.get(edgeId);
     const currentRelationship = sourcePanelId
       ? authoredCanvasEdgeRelationships.bySource.get(sourceEdgeRelationshipKey(sourcePanelId, edgeId))
       : undefined;
-    const requestedOperationId = connection.prefix === 'TB'
-      ? `operation:TB:${assignmentConnectionId}` : `operation:S:${assignmentConnectionId}`;
+    const requestedOperationId = connection.prefix === 'TB' || connection.prefix === 'W'
+      ? `operation:${connection.prefix}:${assignmentConnectionId}` : `operation:S:${assignmentConnectionId}`;
     if (requestedRelationship === 'replaces' && currentRelationship?.replacementOwner
       && currentRelationship.replacementOwner !== requestedOperationId) {
       setErrorMessage('This edge already has a replacement assignment.');
@@ -1205,10 +1240,11 @@ function App() {
     const nextAssignment: EdgeAssignment = {
       connectionId: assignmentConnectionId,
       ...(connection.prefix === 'TB' ? { edgeRole: getDefaultEdgeRole(edgeAssignments, assignmentConnectionId) } : {}),
+      ...(connection.prefix === 'W' && nextWallRole ? { edgeRole: nextWallRole } : {}),
       ...(connection.prefix === 'S' && nextSlotRole ? { slotRole: nextSlotRole } : {}),
     };
 
-    if (connection.prefix === 'TB') {
+    if (connection.prefix === 'TB' || connection.prefix === 'W') {
       if (currentBucket.edgeAssignment) {
         setErrorMessage('This edge already has a TB assignment.');
         return;
@@ -1222,7 +1258,7 @@ function App() {
 
     const nextAssignments = {
       ...edgeAssignments,
-      [edgeId]: connection.prefix === 'TB'
+      [edgeId]: connection.prefix === 'TB' || connection.prefix === 'W'
         ? { ...currentBucket, edgeAssignment: nextAssignment }
         : { ...currentBucket, slotAssignments: [...(currentBucket.slotAssignments ?? []), nextAssignment] },
     };
@@ -1282,8 +1318,21 @@ function App() {
     const assignment = bucket?.edgeAssignment;
     const connection = assignment ? connections[assignment.connectionId] : undefined;
 
-    if (!bucket || !assignment || connection?.prefix !== 'TB' || assignment.edgeRole === edgeRole) {
+    if (!bucket || !assignment || (connection?.prefix !== 'TB' && connection?.prefix !== 'W') || assignment.edgeRole === edgeRole) {
       return;
+    }
+
+    if (connection.prefix === 'W') {
+      const authored = getWallAssignments(svgModel, edgeAssignments, connection.id);
+      const mate = authored.find((item) => item.sourceEdgeId !== edgeId);
+      if (mate && mate.role === edgeRole) { setErrorMessage('Wall requires complementary W-A and W-B roles.'); return; }
+      if (mate) {
+        const panelId = panelIdByEdgeId.get(edgeId);
+        if (!panelId) return;
+        const available = availableWallOrientationsForPanelPair(panelId, mate.panelId, svgModel, edgeAssignments, connections);
+        const requested = edgeRole === 'A' ? 'P_WA_Q_WB' : 'P_WB_Q_WA';
+        if (!available.includes(requested)) { setErrorMessage('This Wall role is unavailable because TB constrains the panel-pair orientation.'); return; }
+      }
     }
 
     pushUndoState();
@@ -1340,6 +1389,7 @@ function App() {
       const applyInputs = { connections, assignments: edgeAssignments };
       const nextConnections = recalculateAutomaticTBFingerWidths(svgModel, applyInputs.assignments, recalculateAutomaticSSlotLengths(svgModel, applyInputs.assignments, applyInputs.connections, panelManager), panelManager);
       validateGeometryAuthoring(svgModel, applyInputs.assignments, nextConnections, panelCompositionAuthorityMode);
+      validateWallAuthoringForApply(svgModel, applyInputs.assignments, nextConnections);
       const nextGeneratedGeometryItems = [
         ...buildGeneratedTBGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
         ...buildGeneratedSGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
@@ -1904,6 +1954,34 @@ function App() {
       );
     }
 
+    if (selectedConnection.prefix === 'W') {
+      const assigned = getWallAssignments(svgModel, edgeAssignments, selectedConnection.id);
+      const complete = assigned.length === 2 && assigned.some((item) => item.role === 'A') && assigned.some((item) => item.role === 'B');
+      const orientation = assigned.length === 2
+        ? resolveTBPanelPairOrientation(assigned[0].panelId, assigned[1].panelId, svgModel, edgeAssignments, connections)
+        : null;
+      return <div className="property-sections">
+        <section className="property-section" aria-labelledby="wall-assigned-edges">
+          <h4 id="wall-assigned-edges">Wall assignments</h4>
+          <p><strong>{complete ? 'Complete' : 'Incomplete'}</strong> — exactly one W-A and one W-B are required.</p>
+          {assigned.length ? <ul className="calculated-edge-list">{assigned.map((item) => <li key={item.sourceEdgeId}>
+            <strong>{selectedConnection.id}-{item.role}</strong><span>{getPanelDisplayName(item.panelId)} · {item.sourceEdgeId}</span>
+            <SelectField id={`${item.sourceEdgeId}-wall-role`} label="Role" value={item.role} options={['A', 'B']}
+              onChange={(role) => updateAssignedEdgeRole(item.sourceEdgeId, role as EdgeRole)} />
+            <button type="button" onClick={() => clearEdgeLabel(item.sourceEdgeId)}>Remove</button>
+          </li>)}</ul> : <p className="muted">Click a source edge for W-A, then its mate for W-B. Change the first role to reverse a free Wall.</p>}
+        </section>
+        <section className="property-section" aria-labelledby="wall-orientation">
+          <h4 id="wall-orientation">TB panel-pair guidance</h4>
+          <p>{orientation === null ? 'Choose a second panel to resolve TB guidance.'
+            : orientation === 'NO_TB_ORIENTATION' ? 'No TB constraint — either Wall orientation is available.'
+            : orientation === 'AMBIGUOUS_CONTRADICTORY_TB_ORIENTATION' ? 'Conflict: contradictory TB orientation; Wall fails closed.'
+            : `TB constrained: ${orientation === 'P_A_Q_B' ? 'first panel W-A / second panel W-B' : 'first panel W-B / second panel W-A'}.`}</p>
+          <p className="muted">Physical Wall geometry is deferred to Step B3.</p>
+        </section>
+      </div>;
+    }
+
     if (selectedConnection.prefix === 'S') {
       const sViewModel = getConnectionViewModel(svgModel, edgeAssignments, selectedConnection, panelManager, getPanelDisplayName);
       const sThickness = {
@@ -2007,14 +2085,14 @@ function App() {
   const labelScale = Math.max(canvasViewBox.width / Math.max(canvasViewportSize.width, 1), minZoom);
   const labelEdgeOffset = annotationEdgeOffsetPx * labelScale;
   const displayEdgeAssignments = useMemo(() => {
-    if (activeTool !== 'TB' && activeTool !== 'S') {
+    if (activeTool !== 'TB' && activeTool !== 'W' && activeTool !== 'S') {
       return {};
     }
 
     return Object.fromEntries(Object.entries(edgeAssignments).flatMap(([edgeId, assignment]) => {
       const bucket = toEdgeAssignmentBucket(assignment);
-      const displayBucket = activeTool === 'TB'
-        ? bucket?.edgeAssignment?.connectionId.startsWith('TB') ? { edgeAssignment: bucket.edgeAssignment } : undefined
+      const displayBucket = activeTool === 'TB' || activeTool === 'W'
+        ? bucket?.edgeAssignment?.connectionId.startsWith(activeTool) ? { edgeAssignment: bucket.edgeAssignment } : undefined
         : bucket?.slotAssignments?.some((slotAssignment) => slotAssignment.connectionId.startsWith('S'))
           ? { slotAssignments: bucket.slotAssignments.filter((slotAssignment) => slotAssignment.connectionId.startsWith('S')) }
           : undefined;
@@ -2170,6 +2248,7 @@ function App() {
           {([
             ['select', 'Select', 'Select and inspect existing edges'],
             ['TB', 'TB', 'Tab/box edge tool alias for Top/Bottom connections'],
+            ['W', 'W', 'Wall connection authoring'],
             ['S', 'S', 'Slot connection workflow'],
             ['J', 'J', 'Future joint tool placeholder'],
             ['P', 'P', 'Future pattern tool placeholder'],
@@ -2276,7 +2355,7 @@ function App() {
             </div>
           )}
 
-          {!isProjectLocked && (activeTool === 'TB' || activeTool === 'S') && (
+          {!isProjectLocked && (activeTool === 'TB' || activeTool === 'W' || activeTool === 'S') && (
             <>
               <div className="active-label-card" aria-live="polite">
                 <span>Selected connection</span>

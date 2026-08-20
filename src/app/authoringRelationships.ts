@@ -31,9 +31,10 @@ export const collectSourceEdgeAuthoringClaims = (model: SvgDocumentModel, assign
     const panelId = panelByEdge.get(sourceEdgeId);
     if (!panelId) return;
     const edgeAssignment = getBucketEdgeAssignment(bucket);
-    if (edgeAssignment && connections[edgeAssignment.connectionId]?.prefix === 'TB') {
-      const operationId = `operation:TB:${edgeAssignment.connectionId}`;
-      claims.push(claim('replaces', operationId, 'TB', edgeAssignment.connectionId, edgeAssignment.edgeRole, panelId, sourceEdgeId));
+    if (edgeAssignment && ['TB', 'W'].includes(connections[edgeAssignment.connectionId]?.prefix ?? '')) {
+      const contributorId = connections[edgeAssignment.connectionId].prefix as 'TB' | 'W';
+      const operationId = `operation:${contributorId}:${edgeAssignment.connectionId}`;
+      claims.push(claim('replaces', operationId, contributorId, edgeAssignment.connectionId, edgeAssignment.edgeRole, panelId, sourceEdgeId));
     }
     getBucketSlotAssignments(bucket).forEach((assignment) => {
       if (connections[assignment.connectionId]?.prefix !== 'S') return;

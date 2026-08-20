@@ -14,7 +14,7 @@ export const toEdgeAssignmentBucket = (assignment: EdgeAssignment | EdgeAssignme
     return assignment;
   }
 
-  if (hasConnectionLabelPrefix(assignment.connectionId, 'TB')) {
+  if (hasConnectionLabelPrefix(assignment.connectionId, 'TB', 'W')) {
     return { edgeAssignment: assignment };
   }
 
