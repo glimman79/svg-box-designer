@@ -98,4 +98,4 @@ console.log('PASS rigid transforms: 90 degrees, 27 degrees, translation');
 console.log(`EVIDENCE CCW corner=(0,0) previous=A next=B junction=(${ab.junction.x},${ab.junction.y})`);
 console.log(`EVIDENCE CCW corner=(0,0) previous=B next=A junction=(${ba.junction.x},${ba.junction.y})`);
 console.log(`EVIDENCE alternative-junction separation=(${separation.x},${separation.y}) magnitude=${Math.hypot(separation.x, separation.y)}`);
-console.log('LIMIT: both alternatives are closed native TB contours; TB alone does not designate either as a physical mouse hole.');
+console.log('EVIDENCE LIMIT: corner topology alone does not choose roles; B1 panel-pair TB orientation supplies the product rule.');
