@@ -147,18 +147,18 @@ Keep them. Do not restore legacy Wall code.
 13. Exactly one A+B: **YES for generatable connection**; drafts may be incomplete.
 14–16. PM thickness; TB-equivalent finger width; coherent fresh whole-W batch.
 17–18. Isolated A/B: both valid at every tested corner/winding.
-19–20. Adjacent A/B and B/A: both native contours close; product validity designation unresolved.
-21–22. Valid/invalid invariant: canonical incoming/outgoing product pair and its reverse; pair value unresolved pending labelled oracle.
+19–20. Adjacent A/B and B/A: both native contours close; neither is independently forbidden at a local corner.
+21–22. Superseded by B1: Wall validity follows complete TB A/B orientation between the same panel pair, not canonical incoming/outgoing corner order.
 23–30. CW, CCW, previous/next/both raw reversal, 90°, 27°, translation: topology invariant; rigid transforms numerically pass, raw reversal is structurally irrelevant to adjacency.
 31–33. Native contour gap: coincident shared terminal, vector `(0,0)`, magnitude `0`; alternative junctions `(5,0)`/`(0,5)`, delta `(-5,5)`, magnitude `7.071067811865476` mm.
-34. Cause: A selects inset support/odd segments; B selects original support/even segments; intersection selects different corner terminal. TB joins it coherently, so physical assembly semantics—not a broken 2-D contour—must identify the mouse hole.
+34. Cause: A selects inset support/odd segments; B selects original support/even segments; intersection selects different corner terminal. B1 product clarification identifies reversal relative to the same-panel-pair TB orientation as the mouse-hole cause and fully retires a separate corner restriction.
 35–39. Wall pre-generation domain validation; no Wall logic in composer, authority, FinalGeometry, or manufacturing.
 40–43. Wall+TB and Wall+Wall replacement conflicts fail closed; S-B and multiple future references are allowed.
 44–45. Generic downstream extensibility is sound; authored connection/UI dispatch remains a known closed union to extend in Step B.
 46. Run the focused diagnostic, build, and existing coherent/relationship/contributor diagnostics.
 47. Production defect: **none discovered**.
-48. Blocker: labelled product oracle identifying canonical A/B versus B/A and its expected physical gap measurement.
-49. Step B: first add a labelled assembly fixture/product decision; then extract the TB finger-joint kernel, add W authored types/workflow/claims/registration, implement canonical incoming/outgoing validation before Apply, and add conflict/coherent-batch integration diagnostics. Do not implement downstream Wall branches.
+48. Blocker retired by B1: no labelled canonical-corner oracle is required.
+49. Next step after corrected B1 is merged: Step B2 may design Wall authored types/workflow around the panel-pair resolver; do not add production generation or downstream Wall branches in B1.
 50. Commit hash: recorded in the delivery report after commit.
 
 ## Final checklist
