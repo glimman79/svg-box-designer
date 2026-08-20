@@ -1,4 +1,5 @@
 import type { Point } from '../svgUtils';
+import type { PanelContributorType } from './panelContributors';
 
 export type GeneratedTapId = string & { readonly __brand: 'GeneratedTapId' };
 
@@ -28,7 +29,7 @@ export type GeneratedTapGroup = Readonly<{
 }>;
 
 export const createGeneratedTapId = (input: {
-  toolType: 'TB' | 'S';
+  toolType: PanelContributorType;
   sourceOperationId: string;
   panelId: string;
   sourceEdgeId: string;

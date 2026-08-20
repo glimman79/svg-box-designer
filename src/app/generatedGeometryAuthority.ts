@@ -5,10 +5,12 @@ import { packageComposedPanelGeometry } from './generatedGeometryDualRun';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import { buildFinalGeometry } from './finalGeometry';
 import { processManufacturingGeometry } from './manufacturingCompensation';
+import { defaultPanelContributorRegistry } from './panelContributors';
+import type { PanelContributorRegistry } from './panelContributors';
 
 export type PanelCompositionAuthorityMode = 'legacy' | 'single-tool' | 'mixed';
 export type PanelCompositionModel = 'legacy' | 'relationship-composed-single-tool-v1' | 'relationship-composed-mixed-v1';
-export type PanelAuthorityCohort = 'NONE' | 'S_ONLY' | 'TB_ONLY' | 'MIXED' | 'UNSUPPORTED';
+export type PanelAuthorityCohort = 'NONE' | 'S_ONLY' | 'TB_ONLY' | 'REGISTERED_SINGLE' | 'MIXED' | 'UNSUPPORTED';
 export type PanelAuthorityDecision = Readonly<{ panelId: string; relationshipOwners: ReadonlyArray<string>;
   cohort: PanelAuthorityCohort; authority: 'LEGACY' | 'COMPOSED';
   reason: 'MODE_LEGACY' | 'SINGLE_TOOL_APPROVED' | 'MIXED_NOT_ENABLED' | 'UNSUPPORTED_CONTRIBUTOR'
@@ -29,16 +31,19 @@ const blockedReason = (status: PanelAssemblyComparisonStatus): PanelAuthorityDec
 /** Project-atomic migration gate. Raw generator output is the only valid input. */
 export const selectGeneratedGeometryAuthority = (svgModel: SvgDocumentModel,
   generatedGeometryItems: ReadonlyArray<GeneratedGeometryItem>, mode: PanelCompositionAuthorityMode = 'legacy',
-  diagnostics = assembleGeneratedGeometryDiagnostics(svgModel, generatedGeometryItems),
+  diagnostics?: GeneratedGeometryAssemblyDiagnostics,
+  contributorRegistry: PanelContributorRegistry = defaultPanelContributorRegistry,
 ): GeneratedGeometryAuthoritySelection => {
+  diagnostics ??= assembleGeneratedGeometryDiagnostics(svgModel, generatedGeometryItems, contributorRegistry);
   let selected = [...generatedGeometryItems];
   const profiles = generatedGeometryItems.flatMap((item) => item.generatedProfiles ?? []);
   const decisions = diagnostics.panelDiagnostics.map((panel): PanelAuthorityDecision => {
     const tools = new Set(panel.replacementOperationIds.map((id) => profiles.find((profile) => profile.operationId === id)?.generatorType));
-    const cohort: PanelAuthorityCohort = tools.has(undefined) ? 'UNSUPPORTED' : tools.size > 1 ? 'MIXED'
-      : tools.has('S') ? 'S_ONLY' : tools.has('TB') ? 'TB_ONLY' : 'UNSUPPORTED';
+    const unsupported = tools.has(undefined) || [...tools].some((tool) => tool !== undefined && !contributorRegistry.has(tool));
+    const cohort: PanelAuthorityCohort = unsupported ? 'UNSUPPORTED' : tools.size > 1 ? 'MIXED'
+      : tools.has('S') ? 'S_ONLY' : tools.has('TB') ? 'TB_ONLY' : tools.size === 1 ? 'REGISTERED_SINGLE' : 'NONE';
     const blocked = panel.status.startsWith('BLOCKED_'); const match = panel.status === 'MATCH';
-    const singleToolApproved = match && (cohort === 'S_ONLY' || cohort === 'TB_ONLY');
+    const singleToolApproved = match && (cohort === 'S_ONLY' || cohort === 'TB_ONLY' || cohort === 'REGISTERED_SINGLE');
     const mixedCandidate = cohort === 'MIXED' && panel.status === 'MIXED_NO_LEGACY_ORACLE';
     const candidate = diagnostics.panelCandidates.find((value) => value.panelId === panel.panelId);
     let downstreamGate: PanelAuthorityDecision['downstreamEquivalenceGate'] = singleToolApproved ? 'APPROVED' : 'NOT_APPROVED';
