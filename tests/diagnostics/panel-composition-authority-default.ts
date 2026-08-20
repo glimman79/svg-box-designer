@@ -30,7 +30,7 @@ const tbAssignments: any = {}; const tbConnections: any = {}; const sAssignments
 const tbRaw = buildGeneratedTBGeometryItems(model, tbAssignments, tbConnections, thickness);
 const sRaw = buildGeneratedSGeometryItems(model, sAssignments, sConnections, thickness);
 
-for (const [raw, expected] of [[undefined, 'single-tool'], [null, 'single-tool'], ['', 'single-tool'], ['  \t', 'single-tool'],
+for (const [raw, expected] of [[undefined, 'mixed'], [null, 'mixed'], ['', 'mixed'], ['  \t', 'mixed'],
   ['legacy', 'legacy'], ['single-tool', 'single-tool'], ['mixed', 'mixed']] as const) {
   let diagnostics = 0; assert(resolvePanelCompositionAuthorityMode(raw, () => { diagnostics += 1; }) === expected, `${String(raw)} resolved incorrectly`);
   assert(diagnostics === 0, `${String(raw)} emitted a diagnostic`);
@@ -50,8 +50,7 @@ const empty = freshApply([]); assert(empty.ok && empty.decisions.length === 0 &&
   && empty.generatedGeometry.length === 0, 'no-replacement project changed');
 const mixedClaims: any = [{ kind: 'replaces', operationId: 'operation:TB:TB1', contributorId: 'TB', panelId: 'owner', sourceEdgeId: 'owner-edge-0', provenance: 'native-generator-intent', provenanceId: 'tb' },
   { kind: 'replaces', operationId: 'operation:S:S1', contributorId: 'S', panelId: 'owner', sourceEdgeId: 'owner-edge-1', provenance: 'native-generator-intent', provenanceId: 's' }];
-let mixedBlocked = false; try { validateAuthorityModeForAuthoringClaims(mixedClaims, defaultMode); } catch { mixedBlocked = true; }
-assert(mixedBlocked, 'default ordinary Apply admitted mixed authoring');
+validateAuthorityModeForAuthoringClaims(mixedClaims, defaultMode);
 const mixedTbAssignments: any = { [owner.panel.edgeIds[0]]: tbAssignments[owner.panel.edgeIds[0]],
   [mates[0].panel.edgeIds[2]]: tbAssignments[mates[0].panel.edgeIds[2]] };
 const mixedSAssignments: any = { [owner.panel.edgeIds[1]]: sAssignments[owner.panel.edgeIds[1]],
@@ -60,8 +59,22 @@ const mixedRaw = [...buildGeneratedTBGeometryItems(model, mixedTbAssignments, tb
   .filter((item) => item.behaviour.replacesPanelId === 'owner'),
   ...buildGeneratedSGeometryItems(model, mixedSAssignments, sConnections, thickness)];
 const directMixed = selectGeneratedGeometryAuthority(model, mixedRaw, defaultMode);
-assert(directMixed.ok && directMixed.decisions.find((value) => value.panelId === 'owner')?.reason === 'MIXED_NOT_ENABLED'
-  && directMixed.panelCompositionModel === 'legacy', 'direct selector mixed legacy retention changed');
+assert(directMixed.ok && directMixed.decisions.find((value) => value.panelId === 'owner')?.cohort === 'MIXED'
+  && directMixed.panelCompositionModel === 'relationship-composed-mixed-v1', 'default mixed Apply was not composed');
+const sameEdgeSAssignments: any = { [owner.panel.edgeIds[0]]: sAssignments[owner.panel.edgeIds[0]],
+  [mates[0].panel.edgeIds[2]]: sAssignments[mates[0].panel.edgeIds[2]] };
+const conflictingRaw = [...buildGeneratedTBGeometryItems(model, mixedTbAssignments, tbConnections, thickness),
+  ...buildGeneratedSGeometryItems(model, sameEdgeSAssignments, sConnections, thickness)];
+const conflict = selectGeneratedGeometryAuthority(model, conflictingRaw, defaultMode);
+assert(!conflict.ok && conflict.panelCompositionModel === 'legacy'
+  && conflict.blockingDecisions.some((decision) => decision.reason === 'REPLACEMENT_CONFLICT'), 'same-edge conflict did not fail closed');
+const singleToolMode = resolvePanelCompositionAuthorityMode('single-tool');
+let rollbackBlocked = false; try { validateAuthorityModeForAuthoringClaims(mixedClaims, singleToolMode); } catch { rollbackBlocked = true; }
+assert(rollbackBlocked, 'single-tool rollback admitted mixed authoring');
+assert(selectGeneratedGeometryAuthority(model, tbRaw, singleToolMode).panelCompositionModel === 'relationship-composed-single-tool-v1'
+  && selectGeneratedGeometryAuthority(model, sRaw, singleToolMode).panelCompositionModel === 'relationship-composed-single-tool-v1',
+  'single-tool rollback rejected a single-tool cohort');
+assert(selectGeneratedGeometryAuthority(model, mixedRaw, 'legacy').panelCompositionModel === 'legacy', 'legacy rollback changed');
 const oldSnapshot = structuredClone(createGeneratedGeometrySnapshot({ generatedGeometry: [...tbRaw] }));
 delete (oldSnapshot.metadata as any).panelCompositionModel;
 const oldRestored = restoreGeneratedGeometrySnapshot(oldSnapshot); assert(oldRestored.panelCompositionModel === 'legacy', 'old snapshot was reselected');
@@ -71,9 +84,12 @@ const restoredComposed = restoreGeneratedGeometrySnapshot(composedSnapshot);
 assert(restoredComposed.panelCompositionModel === 'relationship-composed-single-tool-v1'
   && JSON.stringify(restoredComposed.generatedGeometry) === JSON.stringify(migrated.generatedGeometry), 'legacy runtime could not preserve composed snapshot');
 assert(oldRestored.panelCompositionModel === 'legacy' && JSON.stringify(oldRestored.generatedGeometry) === JSON.stringify(tbRaw), 'default runtime changed legacy restore');
+const mixedSnapshot = createGeneratedGeometrySnapshot({ generatedGeometry: [...directMixed.generatedGeometry], panelCompositionModel: directMixed.panelCompositionModel });
+const restoredMixed = restoreGeneratedGeometrySnapshot(mixedSnapshot);
+assert(restoredMixed.panelCompositionModel === 'relationship-composed-mixed-v1', 'mixed snapshot was reinterpreted during restore');
 const diagnostics = assembleGeneratedGeometryDiagnostics(model, tbRaw); const panel = diagnostics.panelDiagnostics[0];
 const blocked = selectGeneratedGeometryAuthority(model, tbRaw, defaultMode,
   { ...diagnostics, panelCandidates: [], panelDiagnostics: [{ ...panel, status: 'BLOCKED_INVALID_JUNCTION' }] });
 assert(!blocked.ok && blocked.generatedGeometry.length === 0 && blocked.panelCompositionModel === 'legacy'
   && blocked.blockingDecisions[0]?.reason === 'INVALID_JUNCTION', 'default eligible invalid composition did not fail closed');
-console.log('panel composition authority default: resolver=PASS TB=COMPOSED S=COMPOSED multiple=PASS empty=PASS mixed-authoring=BLOCKED restore=PASS lazy-migration=PASS fail-closed=PASS');
+console.log('panel composition authority default: resolver=MIXED TB=COMPOSED S=COMPOSED mixed=COMPOSED empty=PASS mixed-authoring=ALLOWED rollback=PASS restore=PASS lazy-migration=PASS conflict=FAIL-CLOSED');

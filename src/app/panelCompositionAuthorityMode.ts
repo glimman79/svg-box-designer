@@ -8,7 +8,7 @@ export type AuthorityModeDiagnostic = (message: string) => void;
 export const resolvePanelCompositionAuthorityMode = (rawValue: string | null | undefined,
   diagnostic: AuthorityModeDiagnostic = console.warn): PanelCompositionAuthorityMode => {
   const value = rawValue?.trim() ?? '';
-  if (!value) return 'single-tool';
+  if (!value) return 'mixed';
   if (value === 'legacy' || value === 'single-tool' || value === 'mixed') return value;
   diagnostic(`Invalid ${panelCompositionAuthorityModeEnvironmentVariable} value ${JSON.stringify(rawValue)}; falling back to legacy authority.`);
   return 'legacy';

@@ -2,7 +2,7 @@
 
 ## Authority Step C
 
-- Promoted single-tool panel-composition authority to the production default while retaining explicit legacy rollback, explicit mixed opt-in, fail-closed selection, and snapshot-compatible lazy migration.
+- Promoted mixed panel-composition authority to the application default while retaining explicit restricted `single-tool` and historical `legacy` rollback modes. Same-edge conflicts remain fail-closed, S-B references retain original-source semantics, and stored projects migrate lazily only on fresh Apply rather than being recomposed during restore.
 
 ## V1.1
 

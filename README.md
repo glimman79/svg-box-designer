@@ -56,7 +56,7 @@ npm run build
 
 ### Panel-composition authority
 
-The optional build-time environment variable `VITE_PANEL_COMPOSITION_AUTHORITY_MODE` accepts `legacy`, `single-tool`, or `mixed`. Missing, empty, and whitespace-only values use the production default, `single-tool`. Set it explicitly to `legacy` for the migration rollback path or to `mixed` for the existing mixed-authority opt-in. Invalid nonempty values fall back to `legacy` and produce a developer-console diagnostic identifying the variable and supplied value.
+The optional build-time environment variable `VITE_PANEL_COMPOSITION_AUTHORITY_MODE` accepts `legacy`, `single-tool`, or `mixed`. Missing, empty, and whitespace-only values use the production default, `mixed`. Mixed authority is the normal application policy; same-edge replacement conflicts remain invalid, and S-B `REFERENCES` continues to address the original imported/source edge rather than a composed replacement boundary. Set `single-tool` explicitly for restricted rollback/debug operation, or `legacy` for the historical rollback/oracle path. Invalid nonempty values fall back to `legacy` and produce a developer-console diagnostic identifying the variable and supplied value. Stored snapshots are never recomposed on restore, so old projects retain their stored authority and migrate lazily only on a fresh Apply; raw legacy oracle carriers remain supported.
 
 ## Usage
 
