@@ -1,6 +1,6 @@
 import type { SourceBounds } from '../svgUtils';
 import type { ManufacturingMetadata } from './manufacturingMetadata';
-import type { OperationKind } from './operationTypes';
+import type { PanelContributorType } from './panelContributors';
 import type { ManufacturingClassification } from './finalGeometryTypes';
 import type { GeneratedProfile, GeneratedProfileGroup } from './generatedProfiles';
 import type { GeneratedTapGroup } from './generatedTaps';
@@ -35,7 +35,7 @@ export type GeneratedGeometryBehaviour = {
 export type GeneratedGeometryItem = {
   id: string;
   operationId: string;
-  toolType: OperationKind;
+  toolType: PanelContributorType;
   kind: GeneratedGeometryKind;
   source: GeneratedGeometrySource;
   geometry: GeneratedPathPrimitive;

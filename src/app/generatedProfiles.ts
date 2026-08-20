@@ -1,5 +1,6 @@
 import type { Point } from '../svgUtils';
 import type { GeneratedTapGroup, GeneratedTapId, GeneratedTapSegmentRole } from './generatedTaps';
+import type { PanelContributorType } from './panelContributors';
 
 export type GeneratedProfileId = string & { readonly __brand: 'GeneratedProfileId' };
 export type GeneratedProfileElementId = string & { readonly __brand: 'GeneratedProfileElementId' };
@@ -46,7 +47,7 @@ export type GeneratedProfileTap = Readonly<{
 /** Generator-owned, non-authoritative shadow of one directed edge replacement. */
 export type GeneratedProfile = Readonly<{
   id: GeneratedProfileId;
-  generatorType: 'TB' | 'S';
+  generatorType: PanelContributorType;
   operationId: string;
   panelId: string;
   sourceEdgeId: string;
@@ -74,13 +75,13 @@ export type GeneratedProfileGroup = Readonly<{
 
 /** The single construction boundary for opaque, persistent profile identities. */
 export const createGeneratedProfileId = (input: {
-  toolType: 'TB' | 'S'; connectionId: string; panelId: string; sourceEdgeId: string; discriminator?: string;
+  toolType: PanelContributorType; connectionId: string; panelId: string; sourceEdgeId: string; discriminator?: string;
 }): GeneratedProfileId => [
   'profile', input.toolType, input.connectionId, input.panelId, input.sourceEdgeId,
   input.discriminator ?? 'boundary-profile',
 ].map(encodeURIComponent).join(':') as GeneratedProfileId;
 
-export const createBoundaryProfileGroup = (input: Omit<GeneratedProfileGroup, 'id' | 'kind'> & { toolType: 'TB' | 'S' }): GeneratedProfileGroup => ({
+export const createBoundaryProfileGroup = (input: Omit<GeneratedProfileGroup, 'id' | 'kind'> & { toolType: PanelContributorType }): GeneratedProfileGroup => ({
   id: createGeneratedProfileId(input), sourceOperationId: input.sourceOperationId, connectionId: input.connectionId,
   panelId: input.panelId, sourceEdgeId: input.sourceEdgeId,
   ...(input.attachmentStart ? { attachmentStart: { ...input.attachmentStart } } : {}),
@@ -92,7 +93,7 @@ const projectionId = (id: GeneratedProfileElementId): GeometryProjectionId => `$
 
 /** Called only by generators while their ordered tap emission is still available. */
 export const createGeneratedProfile = (input: {
-  toolType: 'TB' | 'S'; connectionId: string; operationId: string; panelId: string; sourceEdgeId: string;
+  toolType: PanelContributorType; connectionId: string; operationId: string; panelId: string; sourceEdgeId: string;
   sourceEdgeStart: Point; sourceEdgeEnd: Point; attachmentStart: Point; attachmentEnd: Point;
   taps: ReadonlyArray<GeneratedTapGroup>;
 }): GeneratedProfile => {

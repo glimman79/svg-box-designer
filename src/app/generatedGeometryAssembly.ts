@@ -9,8 +9,8 @@ import { auditGeneratedGeometryRelationships, buildGeometryRelationshipIndex } f
 import type { GeometryRelationshipIndex } from './geometryRelationships';
 import { composePanel } from './panelComposer';
 import type { PanelCandidate, PanelComposerDiagnostic, PanelReplacedEdgeContribution } from './panelComposer';
-import { adaptSProfilesToPanelContributions } from './sPanelContributionAdapter';
-import { adaptTBProfilesToPanelContributions } from './tbShadowPanelAdapter';
+import { defaultPanelContributorRegistry } from './panelContributors';
+import type { PanelContributorRegistry } from './panelContributors';
 import { cornerTouchTolerance, getContourSignedArea } from './sharedGeometry';
 import type { Point, SvgDocumentModel } from '../svgUtils';
 
@@ -52,16 +52,24 @@ const matchesLegacy = (candidate: PanelCandidate, item: GeneratedGeometryItem) =
 export const assembleGeneratedGeometryDiagnostics = (
   svgModel: SvgDocumentModel,
   generatedGeometryItems: ReadonlyArray<GeneratedGeometryItem>,
+  contributorRegistry: PanelContributorRegistry = defaultPanelContributorRegistry,
 ): GeneratedGeometryAssemblyDiagnostics => {
   const audit = auditGeneratedGeometryRelationships(generatedGeometryItems);
   // Re-index the audited records so ownership comes solely from the normalized relationship index.
   const relationshipIndex = buildGeometryRelationshipIndex(audit.relationships, audit.diagnostics.filter((entry) => entry.kind !== 'replacement-conflict'));
   const profiles = generatedGeometryItems.flatMap((item) => item.generatedProfiles ?? []);
-  const supportedOperations = new Set(profiles.filter((profile) => profile.generatorType === 'S' || profile.generatorType === 'TB').map((profile) => profile.operationId));
-  const contributions: PanelReplacedEdgeContribution[] = [
-    ...adaptSProfilesToPanelContributions(profiles.filter((profile) => profile.generatorType === 'S')),
-    ...adaptTBProfilesToPanelContributions(profiles.filter((profile) => profile.generatorType === 'TB')),
-  ];
+  const profilesByContributor = new Map<GeneratedGeometryItem['toolType'], typeof profiles>();
+  profiles.forEach((profile) => profilesByContributor.set(profile.generatorType,
+    [...(profilesByContributor.get(profile.generatorType) ?? []), profile]));
+  const supportedOperations = new Set<string>();
+  const contributions: PanelReplacedEdgeContribution[] = [];
+  [...profilesByContributor].sort(([a], [b]) => a.localeCompare(b)).forEach(([type, contributorProfiles]) => {
+    const definition = contributorRegistry.get(type);
+    if (!definition) return;
+    const adapted = definition.adaptProfiles(contributorProfiles);
+    adapted.forEach((contribution) => supportedOperations.add(contribution.operationId));
+    contributions.push(...adapted);
+  });
   const createdFeatures = relationshipIndex.features.map((view) => generatedGeometryItems.find((item) => item.id === view.feature.featureId))
     .filter((item): item is GeneratedGeometryItem => !!item).sort((a, b) => a.id.localeCompare(b.id));
   const legacyWinnersByPanel = new Map<string, LegacyPanelWinner>();

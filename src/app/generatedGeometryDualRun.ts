@@ -68,8 +68,8 @@ export const packageComposedPanelGeometry = (
     .map(({ id: _id, ...relationship }) => relationship);
   const diagnostic: GeneratedGeometryItem = {
     ...owners[0], id: `composed:panel:${panelId}`, operationId: `composed:${panelId}`,
-    source: { operationId: `composed:${panelId}`, connectionIds: owners.flatMap((item) => item.source.connectionIds),
-      edgeIds: [...new Set(owners.flatMap((item) => item.source.edgeIds))], panelIds: [panelId] },
+    source: { operationId: `composed:${panelId}`, connectionIds: [...new Set(owners.flatMap((item) => item.source.connectionIds))].sort(),
+      edgeIds: [...new Set(owners.flatMap((item) => item.source.edgeIds))].sort(), panelIds: [panelId] },
     geometry: { ...owners[0].geometry, pathD }, pathD,
     profileGroups: uniqueMetadata(owners.flatMap((item) => item.profileGroups ?? []), 'profile group'),
     generatedProfiles: uniqueMetadata(owners.flatMap((item) => item.generatedProfiles ?? []), 'generated profile').map((profile) => ({ ...profile,
