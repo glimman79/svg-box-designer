@@ -304,6 +304,15 @@ export const recalculateAutomaticSSlotLengths = (
   _panelThicknessState?: PanelThicknessState,
 ): ConnectionMap => connectionMap;
 
+/**
+ * Generates S geometry from the complete current `assignments` and
+ * `connectionMap` state. The result is one fresh, coherent S generation batch
+ * that processes all complete S connections together, groups S-A panel
+ * replacements coherently per panel, and includes S-B `SLOT_PATH` geometry in
+ * that same pass. The result must replace—not append to—previous S generated
+ * state; separately generated same-tool subsets affecting one panel are
+ * unsupported.
+ */
 export const buildGeneratedSGeometryItems = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,

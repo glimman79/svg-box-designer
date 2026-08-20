@@ -197,6 +197,13 @@ export const getPanelEdgeOperations = (
   })
 );
 
+/**
+ * Generates TB geometry from the complete current `assignments` and
+ * `connectionMap` state. The result is one fresh, coherent TB generation batch:
+ * same-panel TB operations are expected to be generated together, and the
+ * result must replace—not append to—previous TB generated state. Separately
+ * generated same-tool subsets affecting the same panel are unsupported.
+ */
 export const buildGeneratedTBGeometryItems = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
