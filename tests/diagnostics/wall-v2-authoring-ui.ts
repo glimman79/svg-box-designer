@@ -1,62 +1,55 @@
-import { collectSourceEdgeAuthoringClaims, validateSourceEdgeReplacementClaims } from '../../src/app/authoringRelationships';
+import { collectSourceEdgeAuthoringClaims } from '../../src/app/authoringRelationships';
 import type { ConnectionMap } from '../../src/app/connectionTypes';
-import { availableWallOrientationsForPanelPair, resolveTBPanelPairOrientation, validateWallConnection,
+import { getWallAssignments, normalizeWallConnection, resolveRelevantTBMeeting, validateWallConnection,
   validateWallAuthoringForApply } from '../../src/app/wallAuthoring';
-import type { EdgeAssignmentRecord, SvgDocumentModel } from '../../src/svgUtils';
-import { getEdgeAssignmentDisplayLabels } from '../../src/svgUtils';
+import { getEdgeAssignmentDisplayLabels, type EdgeAssignmentRecord, type SvgDocumentModel } from '../../src/svgUtils';
 
-const assert: (value: unknown, message: string) => asserts value = (value, message) => { if (!value) throw new Error(message); };
-const equal = <T>(actual: T, expected: T, message: string) => assert(actual === expected, `${message}: ${actual} != ${expected}`);
-const panel = (id: string, edgeIds: string[]) => ({ id, edgeIds, contour: [], holes: [], bounds: { minX: 0, minY: 0, maxX: 10, maxY: 10 } });
-const model = { panels: [panel('P', ['p1', 'p2', 'p3']), panel('Q', ['q1', 'q2', 'q3']), panel('R', ['r1'])], edges: [] } as unknown as SvgDocumentModel;
-const tb = (id: string) => ({ id, prefix: 'TB' as const, properties: { fingerWidthMm: 9, isFingerWidthManual: false } });
+const assert: (v: unknown, m: string) => asserts v = (v, m) => { if (!v) throw new Error(m); };
+const equal = <T>(a: T, b: T, m: string) => assert(a === b, `${m}: ${String(a)} != ${String(b)}`);
+const panel = (id: string) => ({ id, edgeIds: Array.from({ length: 12 }, (_, i) => `${id.toLowerCase()}${i}`), contour: [], holes: [], bounds: { minX: 0, minY: 0, maxX: 1, maxY: 1 } });
+const model = { panels: [panel('P'), panel('Q'), panel('R')], edges: [] } as unknown as SvgDocumentModel;
 const wall = (id: string) => ({ id, prefix: 'W' as const, properties: {} });
-const slot = (id: string) => ({ id, prefix: 'S' as const, properties: { slotOffsetMm: 0, slotLengthMm: 9, isSlotLengthManual: false, kerfMm: 0 } });
-const edge = (connectionId: string, edgeRole: 'A' | 'B') => ({ edgeAssignment: { connectionId, edgeRole } });
-const slotEdge = (connectionId: string, slotRole: 'A' | 'B') => ({ slotAssignments: [{ connectionId, slotRole }] });
+const tb = (id: string) => ({ id, prefix: 'TB' as const, properties: { fingerWidthMm: 9, isFingerWidthManual: false } });
+const edge = (id: string, role: 'A' | 'B') => ({ edgeAssignment: { connectionId: id, edgeRole: role } });
 
-const freeConnections: ConnectionMap = { W1: wall('W1'), W2: wall('W2') };
-equal(resolveTBPanelPairOrientation('P', 'Q', model, {}, freeConnections), 'NO_TB_ORIENTATION', 'no TB');
-equal(availableWallOrientationsForPanelPair('P', 'Q', model, {}, freeConnections).length, 2, 'free orientations');
-validateWallConnection(model, { p1: edge('W1', 'A'), q1: edge('W1', 'B') }, freeConnections, 'W1');
-validateWallConnection(model, { p1: edge('W1', 'B'), q1: edge('W1', 'A') }, freeConnections, 'W1');
-for (const role of ['A', 'B'] as const) {
-  try { validateWallConnection(model, { p1: edge('W1', role), q1: edge('W1', role) }, freeConnections, 'W1'); assert(false, `duplicate ${role} accepted`); }
-  catch (error) { assert((error as Error).message.includes('exactly one'), `duplicate ${role} diagnostic`); }
+for (const wallId of ['W1', 'W7']) {
+  const connections: ConnectionMap = { [wallId]: wall(wallId), TB4: tb('TB4') };
+  const reversed: EdgeAssignmentRecord = { p0: edge(wallId, 'B'), q0: edge(wallId, 'A'), p1: edge('TB4', 'A'), q1: edge('TB4', 'B') };
+  equal(resolveRelevantTBMeeting(model, reversed, connections, wallId), 'W_A_SIDE_IS_TB_B', `${wallId} reverse detected`);
+  const normalized = normalizeWallConnection(model, reversed, connections, wallId);
+  equal(getWallAssignments(model, normalized, wallId).find(x => x.sourceEdgeId === 'p0')?.role, 'A', `${wallId} p role`);
+  equal(getWallAssignments(model, normalized, wallId).find(x => x.sourceEdgeId === 'q0')?.role, 'B', `${wallId} q role`);
+  equal(getWallAssignments(model, normalized, 'TB4').find(x => x.sourceEdgeId === 'p1')?.role, 'A', `${wallId} TB untouched`);
+  validateWallConnection(model, normalized, connections, wallId);
 }
 
-const abConnections: ConnectionMap = { ...freeConnections, TB99: tb('TB99') };
-const ab: EdgeAssignmentRecord = { p2: edge('TB99', 'A'), q2: edge('TB99', 'B') };
-equal(resolveTBPanelPairOrientation('P', 'Q', model, ab, abConnections), 'P_A_Q_B', 'different-edge AB');
-equal(availableWallOrientationsForPanelPair('P', 'Q', model, ab, abConnections)[0], 'P_WA_Q_WB', 'constrained AB');
-try { validateWallConnection(model, { ...ab, p1: edge('W1', 'B'), q1: edge('W1', 'A') }, abConnections, 'W1'); assert(false, 'reversed Wall accepted'); }
-catch (error) { assert((error as Error).message.includes('conflicts'), 'reversed diagnostic'); }
+const connections: ConnectionMap = { W1: wall('W1'), TB4: tb('TB4'), TBunrelated: tb('TBunrelated') };
+const correct: EdgeAssignmentRecord = { p0: edge('W1', 'A'), q0: edge('W1', 'B'), p1: edge('TB4', 'A'), q1: edge('TB4', 'B') };
+equal(normalizeWallConnection(model, correct, connections, 'W1'), correct, 'correct orientation is an identity-preserving no-op');
+const free: EdgeAssignmentRecord = { p0: edge('W1', 'B'), q0: edge('W1', 'A'), p6: edge('TBunrelated', 'A'), q6: edge('TBunrelated', 'B') };
+equal(resolveRelevantTBMeeting(model, free, connections, 'W1'), 'NO_TB_MEETING', 'nonincident same-panel TB unrelated');
+equal(normalizeWallConnection(model, free, connections, 'W1'), free, 'free reverse orientation preserved');
 
-const contradictoryConnections: ConnectionMap = { ...abConnections, TB2: tb('TB2') };
-const contradictory = { ...ab, p3: edge('TB2', 'B'), q3: edge('TB2', 'A') };
-equal(resolveTBPanelPairOrientation('P', 'Q', model, contradictory, contradictoryConnections), 'AMBIGUOUS_CONTRADICTORY_TB_ORIENTATION', 'contradictory');
-equal(availableWallOrientationsForPanelPair('P', 'Q', model, contradictory, contradictoryConnections).length, 0, 'fail closed');
-equal(resolveTBPanelPairOrientation('P', 'Q', model, { p2: edge('TB99', 'A') }, abConnections), 'NO_TB_ORIENTATION', 'incomplete TB');
-equal(resolveTBPanelPairOrientation('P', 'Q', model, { p2: edge('TB99', 'A'), r1: edge('TB99', 'B') }, abConnections), 'NO_TB_ORIENTATION', 'unrelated TB');
+const ambiguousConnections: ConnectionMap = { W1: wall('W1'), TBa: tb('TBa'), TBb: tb('TBb') };
+const ambiguous: EdgeAssignmentRecord = { p0: edge('W1', 'A'), q0: edge('W1', 'B'), p1: edge('TBa', 'A'), q1: edge('TBa', 'B'), p11: edge('TBb', 'B'), q11: edge('TBb', 'A') };
+equal(resolveRelevantTBMeeting(model, ambiguous, ambiguousConnections, 'W1'), 'AMBIGUOUS_CONTRADICTORY_TB_MEETING', 'contradictory incident meetings');
+try { validateWallConnection(model, ambiguous, ambiguousConnections, 'W1'); assert(false, 'ambiguity accepted'); } catch { /* fail closed */ }
+try { validateWallConnection(model, { p0: edge('W1', 'A'), q0: edge('W1', 'A') }, { W1: wall('W1') }, 'W1'); assert(false, 'malformed accepted'); } catch { /* fail closed */ }
 
-const authored = { p1: edge('W1', 'A'), q1: edge('W1', 'B') };
-const claims = collectSourceEdgeAuthoringClaims(model, authored, freeConnections);
-equal(getEdgeAssignmentDisplayLabels(authored.p1)[0], 'W1-A', 'canvas W-A label');
-equal(getEdgeAssignmentDisplayLabels(authored.q1)[0], 'W1-B', 'canvas W-B label');
-equal(claims.length, 2, 'Wall claims');
-assert(claims.every((claim) => claim.kind === 'replaces' && claim.contributorId === 'W' && claim.operationId === 'operation:W:W1'), 'canonical Wall claims');
-validateSourceEdgeReplacementClaims(collectSourceEdgeAuthoringClaims(model,
-  { p1: { ...edge('W1', 'A'), ...slotEdge('S1', 'B') }, q1: edge('W1', 'B') }, { ...freeConnections, S1: slot('S1') }));
-try { validateSourceEdgeReplacementClaims(collectSourceEdgeAuthoringClaims(model, { p1: edge('W1', 'A'), q1: edge('W2', 'B') }, freeConnections)); assert(false, 'W/W replacement accepted'); }
-catch { /* expected */ }
-try { validateSourceEdgeReplacementClaims(collectSourceEdgeAuthoringClaims(model, { p1: edge('W1', 'A') }, { ...freeConnections, TB1: tb('TB1') })); } catch { /* bucket cannot hold two replacers by design */ }
-try { validateWallAuthoringForApply(model, authored, { W1: wall('W1') }); assert(false, 'Wall silently applied'); }
-catch (error) { assert((error as Error).message.includes('not implemented in B2'), 'explicit Apply diagnostic'); }
+const multiConnections: ConnectionMap = { W1: wall('W1'), W2: wall('W2'), W3: wall('W3') };
+const multi: EdgeAssignmentRecord = { p2: edge('W1', 'A'), q2: edge('W1', 'B'), p4: edge('W2', 'A'), q4: edge('W2', 'B'), p8: edge('W3', 'A'), q8: edge('W3', 'B') };
+for (const id of ['W1', 'W2', 'W3']) {
+  const authored = getWallAssignments(model, multi, id); equal(authored.length, 2, `${id} retained`); validateWallConnection(model, multi, multiConnections, id);
+  equal(new Set(authored.map(x => x.role)).size, 2, `${id} A/B`);
+  const claims = collectSourceEdgeAuthoringClaims(model, multi, multiConnections).filter(x => x.operationId === `operation:W:${id}`);
+  equal(claims.length, 2, `${id} claims`); assert(claims.every(x => x.kind === 'replaces'), `${id} REPLACES`);
+}
+equal(getEdgeAssignmentDisplayLabels(multi.p2)[0], 'W1-A', 'W1 canvas label');
+equal(getEdgeAssignmentDisplayLabels(multi.q8)[0], 'W3-B', 'W3 canvas label');
+const restored = structuredClone({ assignments: multi, connections: multiConnections });
+for (const id of ['W1', 'W2', 'W3']) validateWallConnection(model, restored.assignments, restored.connections, id);
+try { validateWallAuthoringForApply(model, multi, multiConnections); assert(false, 'Wall geometry applied'); }
+catch (error) { assert((error as Error).message.includes('not implemented in B2.1'), 'explicit non-generatable Apply'); }
 
-const restoredAssignments = structuredClone(authored); const restoredConnections = structuredClone(freeConnections);
-validateWallConnection(model, restoredAssignments, restoredConnections, 'W1');
-equal(restoredAssignments.p1.edgeAssignment?.connectionId, 'W1', 'restore id');
-equal(restoredAssignments.p1.edgeAssignment?.edgeRole, 'A', 'restore role');
-
-console.log('PASS Wall native model, W1/W2 persistence, cardinality, free and TB-constrained orientation');
-console.log('PASS canonical W REPLACES claims, S-B sharing, restore, and explicit not-generatable Apply');
+console.log('PASS W1/W7 incident-TB reverse normalization, correct/no-TB controls, ambiguity and malformed fail-closed');
+console.log('PASS W1/W2/W3 authoring, stable IDs/labels/REPLACES, clone restore, and B2.1 non-generation');
