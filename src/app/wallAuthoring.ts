@@ -2,8 +2,8 @@ import { getBucketEdgeAssignment, toEdgeAssignmentBucket } from './assignmentBuc
 import type { ConnectionMap } from './connectionTypes';
 import type { EdgeAssignmentRecord, EdgeRole, SvgDocumentModel } from '../svgUtils';
 
-export type TBMeetingOrientation = 'NO_TB_MEETING' | 'W_A_SIDE_IS_TB_A' | 'W_A_SIDE_IS_TB_B'
-  | 'AMBIGUOUS_CONTRADICTORY_TB_MEETING';
+export type TBPanelPairOrientation = 'NO_TB_ORIENTATION' | 'FIRST_A_SECOND_B' | 'FIRST_B_SECOND_A'
+  | 'AMBIGUOUS_TB_ORIENTATION';
 
 const assignmentsForConnection = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord, connectionId: string) => {
   const panelByEdge = new Map(model.panels.flatMap((panel) => panel.edgeIds.map((edgeId) => [edgeId, panel.id] as const)));
@@ -15,56 +15,49 @@ const assignmentsForConnection = (model: SvgDocumentModel, assignments: EdgeAssi
   });
 };
 
-const areIncidentPanelEdges = (model: SvgDocumentModel, panelId: string, first: string, second: string) => {
-  const edgeIds = model.panels.find((panel) => panel.id === panelId)?.edgeIds ?? [];
-  const a = edgeIds.indexOf(first); const b = edgeIds.indexOf(second);
-  return a >= 0 && b >= 0 && a !== b && (Math.abs(a - b) === 1 || Math.abs(a - b) === edgeIds.length - 1);
-};
-
 /**
- * Finds TB meetings by authored contour incidence: a complete TB connection is
- * relevant only when its edge on each Wall panel is incident to that panel's
- * Wall edge. IDs and contour membership are stable under every geometric
- * transform and raw segment reversal; neither record nor connection order is
- * consulted. Contradictory relevant meetings are deliberately retained as an
- * ambiguity rather than resolved by priority.
+ * Resolves complete typed TB relationships for exactly the supplied panel pair.
+ * Source-edge position and all geometric/topological properties are deliberately
+ * absent: orientation is relative to the order of the panel arguments.
  */
-export const resolveRelevantTBMeeting = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord,
-  connections: ConnectionMap, wallConnectionId: string): TBMeetingOrientation => {
-  const wall = assignmentsForConnection(model, assignments, wallConnectionId);
-  if (wall.length !== 2 || wall[0].panelId === wall[1].panelId) return 'NO_TB_MEETING';
-  const wallA = wall.find((item) => item.role === 'A');
-  const wallB = wall.find((item) => item.role === 'B');
-  if (!wallA || !wallB) return 'NO_TB_MEETING';
-  const votes = new Set<'W_A_SIDE_IS_TB_A' | 'W_A_SIDE_IS_TB_B'>();
+export const resolveTBOrientationForPanelPair = (firstPanelId: string, secondPanelId: string,
+  assignments: EdgeAssignmentRecord, connections: ConnectionMap,
+  model: SvgDocumentModel): TBPanelPairOrientation => {
+  if (firstPanelId === secondPanelId) return 'AMBIGUOUS_TB_ORIENTATION';
+  const votes = new Set<'FIRST_A_SECOND_B' | 'FIRST_B_SECOND_A'>();
   for (const connection of Object.values(connections)) {
     if (connection.prefix !== 'TB') continue;
     const tb = assignmentsForConnection(model, assignments, connection.id);
-    if (tb.length !== 2 || !tb.some((item) => item.role === 'A') || !tb.some((item) => item.role === 'B')) continue;
-    const atA = tb.filter((item) => item.panelId === wallA.panelId
-      && areIncidentPanelEdges(model, wallA.panelId, wallA.sourceEdgeId, item.sourceEdgeId));
-    const atB = tb.filter((item) => item.panelId === wallB.panelId
-      && areIncidentPanelEdges(model, wallB.panelId, wallB.sourceEdgeId, item.sourceEdgeId));
-    if (atA.length === 0 || atB.length === 0) continue;
-    if (atA.length !== 1 || atB.length !== 1 || atA[0].role === atB[0].role) return 'AMBIGUOUS_CONTRADICTORY_TB_MEETING';
-    votes.add(atA[0].role === 'A' ? 'W_A_SIDE_IS_TB_A' : 'W_A_SIDE_IS_TB_B');
+    const touchesFirst = tb.some((item) => item.panelId === firstPanelId);
+    const touchesSecond = tb.some((item) => item.panelId === secondPanelId);
+    if (!touchesFirst || !touchesSecond) continue;
+    if (tb.length !== 2 || tb.filter((item) => item.role === 'A').length !== 1
+      || tb.filter((item) => item.role === 'B').length !== 1
+      || tb.filter((item) => item.panelId === firstPanelId).length !== 1
+      || tb.filter((item) => item.panelId === secondPanelId).length !== 1) {
+      return 'AMBIGUOUS_TB_ORIENTATION';
+    }
+    votes.add(tb.find((item) => item.panelId === firstPanelId)!.role === 'A'
+      ? 'FIRST_A_SECOND_B' : 'FIRST_B_SECOND_A');
   }
-  return votes.size === 0 ? 'NO_TB_MEETING' : votes.size === 1 ? [...votes][0] : 'AMBIGUOUS_CONTRADICTORY_TB_MEETING';
+  return votes.size === 0 ? 'NO_TB_ORIENTATION' : votes.size === 1 ? [...votes][0]
+    : 'AMBIGUOUS_TB_ORIENTATION';
 };
 
 export const getWallAssignments = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord, connectionId: string) =>
   assignmentsForConnection(model, assignments, connectionId);
 
-/** Normal UI path: swap only the two role labels in this W connection. */
+/** Normal UI path: swap only the two role labels in this completed W connection. */
 export const normalizeWallConnection = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord,
   connections: ConnectionMap, connectionId: string): EdgeAssignmentRecord => {
   const wall = getWallAssignments(model, assignments, connectionId);
-  if (wall.length !== 2 || !wall.some((item) => item.role === 'A') || !wall.some((item) => item.role === 'B')) return assignments;
-  const meeting = resolveRelevantTBMeeting(model, assignments, connections, connectionId);
-  if (meeting === 'AMBIGUOUS_CONTRADICTORY_TB_MEETING') throw new Error(`${connectionId} has ambiguous or contradictory relevant TB meeting evidence.`);
-  const wallA = wall.find((item) => item.role === 'A')!;
-  const mustSwap = meeting === 'W_A_SIDE_IS_TB_B';
-  if (!mustSwap) return assignments;
+  if (wall.length !== 2 || wall.filter((item) => item.role === 'A').length !== 1
+    || wall.filter((item) => item.role === 'B').length !== 1 || wall[0].panelId === wall[1].panelId) return assignments;
+  const orientation = resolveTBOrientationForPanelPair(wall[0].panelId, wall[1].panelId, assignments, connections, model);
+  if (orientation === 'AMBIGUOUS_TB_ORIENTATION') throw new Error(`${connectionId} has ambiguous or malformed TB panel-pair orientation evidence.`);
+  if (orientation === 'NO_TB_ORIENTATION') return assignments;
+  const firstRequiredRole = orientation === 'FIRST_A_SECOND_B' ? 'A' : 'B';
+  if (wall[0].role === firstRequiredRole) return assignments;
   const next = { ...assignments };
   for (const item of wall) {
     const bucket = toEdgeAssignmentBucket(assignments[item.sourceEdgeId])!;
@@ -76,14 +69,15 @@ export const normalizeWallConnection = (model: SvgDocumentModel, assignments: Ed
 export const validateWallConnection = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord,
   connections: ConnectionMap, connectionId: string): void => {
   if (connections[connectionId]?.prefix !== 'W') return;
-  const authored = getWallAssignments(model, assignments, connectionId);
-  if (authored.length !== 2 || authored.filter((item) => item.role === 'A').length !== 1
-    || authored.filter((item) => item.role === 'B').length !== 1) {
-    throw new Error(`${connectionId} is incomplete: Wall requires exactly one W-A and one W-B assignment.`);
+  const wall = getWallAssignments(model, assignments, connectionId);
+  if (wall.length !== 2 || wall.filter((item) => item.role === 'A').length !== 1
+    || wall.filter((item) => item.role === 'B').length !== 1 || wall[0].panelId === wall[1].panelId) {
+    throw new Error(`${connectionId} is incomplete: Wall requires exactly one W-A and one W-B assignment on two panels.`);
   }
-  const meeting = resolveRelevantTBMeeting(model, assignments, connections, connectionId);
-  if (meeting === 'AMBIGUOUS_CONTRADICTORY_TB_MEETING') throw new Error(`${connectionId} has ambiguous or contradictory relevant TB meeting evidence.`);
-  if (meeting === 'W_A_SIDE_IS_TB_B') throw new Error(`${connectionId} does not match its relevant TB meeting orientation.`);
+  const orientation = resolveTBOrientationForPanelPair(wall[0].panelId, wall[1].panelId, assignments, connections, model);
+  if (orientation === 'AMBIGUOUS_TB_ORIENTATION') throw new Error(`${connectionId} has ambiguous or malformed TB panel-pair orientation evidence.`);
+  const required = orientation === 'FIRST_A_SECOND_B' ? 'A' : orientation === 'FIRST_B_SECOND_A' ? 'B' : null;
+  if (required && wall[0].role !== required) throw new Error(`${connectionId} does not match its TB panel-pair orientation.`);
 };
 
 export const validateWallAuthoringForApply = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord,

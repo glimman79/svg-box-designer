@@ -1,10 +1,9 @@
 /**
- * B2.3/B2.3A evidence fixture. It records the production mismatch side by side
- * with a diagnostic-only panel-pair calculation, without changing production.
+ * B2.4 production regression retaining the realistic B2.3 segmented fixture.
  */
 import { getBucketEdgeAssignment } from '../../src/app/assignmentBuckets';
 import type { ConnectionMap } from '../../src/app/connectionTypes';
-import { resolveRelevantTBMeeting } from '../../src/app/wallAuthoring';
+import { resolveTBOrientationForPanelPair } from '../../src/app/wallAuthoring';
 import { authorWallEdge, startWallGroupWorkflow } from '../../src/app/wallWorkflow';
 import type { EdgeAssignmentRecord, SvgDocumentModel, SvgPanel } from '../../src/svgUtils';
 
@@ -39,11 +38,11 @@ connections = started.connections;
 // is clicked through the exact production authorWallEdge command.
 assignments = { ...assignments, 'p-wall': tb('W1', 'B') };
 const result = authorWallEdge(model, assignments, connections, started.activeWallGroup, 'W1', 'q-wall');
-const meeting = resolveRelevantTBMeeting(model, result.assignments, result.connections, 'W1');
+const meeting = resolveTBOrientationForPanelPair('wall-P', 'wall-Q', result.assignments, result.connections, model);
 const observed = {
   candidates: [{ connectionId: 'TB1', aEdge: 'p-tb', aPanel: 'wall-P', bEdge: 'q-tb', bPanel: 'wall-Q', complete: true,
-    touchesP: true, touchesQ: true, incidentP: false, incidentQ: true, survives: false,
-    rejection: 'p-wall and p-tb have p-seam between them in wall-P.edgeIds' }],
+    touchesP: true, touchesQ: true, incidentP: false, incidentQ: true, survives: true,
+    note: 'p-seam segmentation is intentionally irrelevant to panel-pair orientation' }],
   meeting,
   pRole: getBucketEdgeAssignment(result.assignments['p-wall'])?.edgeRole,
   qRole: getBucketEdgeAssignment(result.assignments['q-wall'])?.edgeRole,
@@ -69,17 +68,17 @@ const panelPair = {
   matchingTBConnections,
   orientation: tb1.find((item) => item.panelId === 'wall-P')?.role === 'A'
     ? 'P_TB_A_Q_TB_B' : 'P_TB_B_Q_TB_A',
-  reversedWallDetected: observed.pRole === 'B' && observed.qRole === 'A',
+  reversedWallDetectedBeforeNormalization: true,
   wouldSwapOnlyWallRoles: true,
   resultingRoles: { pRole: 'A', qRole: 'B' },
 };
-console.log('B2.3A SIDE-BY-SIDE EVIDENCE', JSON.stringify({
-  currentProduction: { ...observed, result: 'W remains reversed' },
-  proposedPanelPairContract: panelPair,
+console.log('B2.4 SEGMENTED PRODUCTION EVIDENCE', JSON.stringify({
+  production: { ...observed, result: 'W auto-swapped to TB orientation' },
+  panelPairContract: panelPair,
 }, null, 2));
 
-if (meeting !== 'NO_TB_MEETING' || observed.pRole !== 'B' || observed.qRole !== 'A')
-  throw new Error('Production baseline changed: update the B2.3A analysis before relying on this evidence');
-if (panelPair.matchingTBConnections.join() !== 'TB1' || !panelPair.reversedWallDetected
-  || panelPair.resultingRoles.pRole !== 'A' || panelPair.resultingRoles.qRole !== 'B')
-  throw new Error('Diagnostic panel-pair calculation did not normalize the reproduced reversed Wall');
+if (meeting !== 'FIRST_A_SECOND_B' || observed.pRole !== 'A' || observed.qRole !== 'B')
+  throw new Error('Production did not normalize the segmented same-panel-pair Wall');
+if (panelPair.matchingTBConnections.join() !== 'TB1')
+  throw new Error('TB1 was not identified as the matching panel-pair connection');
+console.log('PASS realistic segmented fixture: same-panel-pair TB auto-swaps reversed W through production');
