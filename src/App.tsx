@@ -22,7 +22,7 @@ import { collectSourceEdgeAuthoringClaims, deriveCanvasEdgeRelationshipState, de
 import type { PanelCompositionAuthorityMode, PanelCompositionModel } from './app/generatedGeometryAuthority';
 import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { validateGeometryAuthoring } from './app/authoringRelationships';
-import { complementaryWallRole, getWallAssignments, normalizeWallConnection, resolveTBOrientationForPanelPair, validateWallAuthoringForApply } from './app/wallAuthoring';
+import { complementaryWallRole, getWallAssignments, normalizeWallConnection, resolveTBRoleForPanel, validateWallAuthoringForApply } from './app/wallAuthoring';
 import { authorWallEdge, buildWallWorkflowGroups, finishWallGroupWithTrailingCleanup, startWallGroupWorkflow, type ActiveWallGroup } from './app/wallWorkflow';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { appendAutoCreatedTBToTBGroup, buildTBDisplayLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
@@ -1426,7 +1426,7 @@ function App() {
       const applyInputs = { connections, assignments: edgeAssignments };
       const nextConnections = recalculateAutomaticTBFingerWidths(svgModel, applyInputs.assignments, recalculateAutomaticSSlotLengths(svgModel, applyInputs.assignments, applyInputs.connections, panelManager), panelManager);
       validateGeometryAuthoring(svgModel, applyInputs.assignments, nextConnections, panelCompositionAuthorityMode);
-      validateWallAuthoringForApply(svgModel, applyInputs.assignments, nextConnections);
+      validateWallAuthoringForApply(svgModel, applyInputs.assignments, nextConnections, activeWallGroup);
       const nextGeneratedGeometryItems = [
         ...buildGeneratedTBGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
         ...buildGeneratedSGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
@@ -1994,9 +1994,8 @@ function App() {
     if (selectedConnection.prefix === 'W') {
       const assigned = getWallAssignments(svgModel, edgeAssignments, selectedConnection.id);
       const complete = assigned.length === 2 && assigned.some((item) => item.role === 'A') && assigned.some((item) => item.role === 'B');
-      const orientation = assigned.length === 2
-        ? resolveTBOrientationForPanelPair(assigned[0].panelId, assigned[1].panelId, edgeAssignments, connections, svgModel)
-        : null;
+      const panelRoles = assigned.length === 2
+        ? assigned.map((item) => resolveTBRoleForPanel(item.panelId, edgeAssignments, connections, svgModel)) : null;
       return <div className="property-sections">
         <section className="property-section" aria-labelledby="wall-assigned-edges">
           <h4 id="wall-assigned-edges">Wall assignments</h4>
@@ -2009,11 +2008,11 @@ function App() {
           </li>)}</ul> : <p className="muted">Click a source edge for W-A, then its mate for W-B. Change the first role to reverse a free Wall.</p>}
         </section>
         <section className="property-section" aria-labelledby="wall-orientation">
-          <h4 id="wall-orientation">TB panel-pair guidance</h4>
-          <p>{orientation === null ? 'Choose a second panel to resolve TB guidance.'
-            : orientation === 'NO_TB_ORIENTATION' ? 'No TB constraint — either Wall orientation is available.'
-            : orientation === 'AMBIGUOUS_TB_ORIENTATION' ? 'Conflict: contradictory TB orientation; Wall fails closed.'
-            : 'TB constrained: Wall roles follow the complete TB orientation for these two panels.'}</p>
+          <h4 id="wall-orientation">Per-panel TB guidance</h4>
+          <p>{panelRoles === null ? 'Choose a second panel to resolve TB guidance.'
+            : panelRoles.some((role) => role === 'AMBIGUOUS_TB_ROLE') ? 'Conflict: ambiguous TB panel role; Wall fails closed.'
+            : panelRoles.every((role) => role === 'NO_TB_ROLE') ? 'No TB constraint — either Wall orientation is available.'
+            : 'TB constrained: each Wall panel independently inherits its complete TB role.'}</p>
           <p className="muted">Physical Wall geometry is deferred to Step B3.</p>
         </section>
       </div>;

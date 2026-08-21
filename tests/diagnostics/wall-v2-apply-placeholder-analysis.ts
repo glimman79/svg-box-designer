@@ -1,25 +1,14 @@
-/** B2.5 evidence only: demonstrates zero-assignment versus started trailing W. */
 import { validateWallAuthoringForApply } from '../../src/app/wallAuthoring';
-import { getBucketEdgeAssignment } from '../../src/app/assignmentBuckets';
+import type { ActiveWallGroup } from '../../src/app/wallWorkflow';
 import type { ConnectionMap } from '../../src/app/connectionTypes';
 import type { EdgeAssignmentRecord, SvgDocumentModel, SvgPanel } from '../../src/svgUtils';
-
-const assert: (value: unknown, message: string) => asserts value = (value, message) => { if (!value) throw new Error(message); };
-const panel = (id: string, edgeIds: string[]): SvgPanel => ({ id, edgeIds, outerEdgeIds: edgeIds,
-  contour: [], outerContour: [], innerContours: [], innerEdgeIds: [], bounds: { minX: 0, minY: 0, maxX: 1, maxY: 1 } });
-const model = { panels: [panel('p', ['p1', 'p2', 'p3']), panel('q', ['q1', 'q2', 'q3'])], edges: [] } as unknown as SvgDocumentModel;
-const edge = (connectionId: string, edgeRole: 'A' | 'B') => ({ edgeAssignment: { connectionId, edgeRole } });
-const connections = Object.fromEntries(['W1', 'W2', 'W3'].map((id) => [id, { id, prefix: 'W', properties: {} }])) as ConnectionMap;
-const complete: EdgeAssignmentRecord = { p1: edge('W1', 'A'), q1: edge('W1', 'B'), p2: edge('W2', 'A'), q2: edge('W2', 'B') };
-const errorFor = (assignments: EdgeAssignmentRecord) => { try { validateWallAuthoringForApply(model, assignments, connections); }
-  catch (error) { return (error as Error).message; } return null; };
-
-assert(errorFor(complete)?.startsWith('W3 is incomplete:'), 'current Apply must fail specifically on empty W3');
-assert(errorFor({ ...complete, p3: edge('W3', 'A') })?.startsWith('W3 is incomplete:'), 'started W3 must fail too');
-const assignmentCount = (id: string, assignments: EdgeAssignmentRecord) => Object.values(assignments)
-  .filter((bucket) => getBucketEdgeAssignment(bucket)?.connectionId === id).length;
-const proposedBatch = Object.keys(connections).filter((id) => assignmentCount(id, complete) > 0);
-assert(JSON.stringify(proposedBatch) === JSON.stringify(['W1', 'W2']), 'zero-assignment trailing W3 is excluded from proposed batch');
-assert(assignmentCount('W3', { ...complete, p3: edge('W3', 'A') }) === 1, 'one-assignment W3 remains a started incomplete connection');
-console.log('PASS current Apply validation enumerates empty W3 and reports it incomplete');
-console.log('PASS proposed distinction ignores trailing zero-assignment W3 but retains one-assignment W3 as blocking');
+const assert:(v:unknown,m:string)=>asserts v=(v,m)=>{if(!v)throw new Error(m)};
+const panel=(id:string,edgeIds:string[]):SvgPanel=>({id,edgeIds,outerEdgeIds:edgeIds,contour:[],outerContour:[],innerContours:[],innerEdgeIds:[],bounds:{minX:0,minY:0,maxX:1,maxY:1}});
+const model={panels:[panel('p',['p1','p2','p3','p4']),panel('q',['q1','q2','q3','q4'])],edges:[]} as unknown as SvgDocumentModel;
+const edge=(connectionId:string,edgeRole:'A'|'B')=>({edgeAssignment:{connectionId,edgeRole}});
+const complete=(n:number):EdgeAssignmentRecord=>Object.fromEntries(Array.from({length:n},(_,i)=>[[`p${i+1}`,edge(`W${i+1}`,'A')],[`q${i+1}`,edge(`W${i+1}`,'B')]]).flat());
+const errorFor=(count:number,a:EdgeAssignmentRecord)=>{const ids=Array.from({length:count},(_,i)=>`W${i+1}`);const c=Object.fromEntries(ids.map(id=>[id,{id,prefix:'W',properties:{}}])) as ConnectionMap;const g:ActiveWallGroup={groupId:'g',connectionIds:ids,isActive:true};const before=JSON.stringify([a,c,g]);try{validateWallAuthoringForApply(model,a,c,g)}catch(e){assert(JSON.stringify([a,c,g])===before,'Apply mutated session');return(e as Error).message}return''};
+for(const n of [1,2,3])assert(errorFor(n+1,complete(n)).includes('not implemented in B2.6'),`${n} complete plus empty trailing placeholder`);
+assert(errorFor(3,{...complete(2),p3:edge('W3','A')}).startsWith('W3 is incomplete:'),'started W3 blocks');
+assert(errorFor(3,{...complete(2),p3:edge('W3','A'),q3:edge('W3','A')}).startsWith('W3 is incomplete:'),'malformed W3 blocks');
+console.log('PASS trailing empty active Wall placeholder ignored without mutation; started and malformed Wall block');

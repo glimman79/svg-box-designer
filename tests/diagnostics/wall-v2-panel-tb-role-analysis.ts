@@ -1,55 +1,35 @@
-/** B2.5 evidence only: contrasts production B2.4 with the proposed per-panel rule. */
-import { getWallAssignments, normalizeWallConnection, resolveTBOrientationForPanelPair } from '../../src/app/wallAuthoring';
-import { getBucketEdgeAssignment } from '../../src/app/assignmentBuckets';
+import { getWallAssignments, normalizeWallConnection, resolveTBRoleForPanel } from '../../src/app/wallAuthoring';
+import { authorWallEdge, startWallGroupWorkflow } from '../../src/app/wallWorkflow';
 import type { ConnectionMap } from '../../src/app/connectionTypes';
 import type { EdgeAssignmentRecord, SvgDocumentModel, SvgPanel } from '../../src/svgUtils';
-
-const assert: (value: unknown, message: string) => asserts value = (value, message) => { if (!value) throw new Error(message); };
-const panel = (id: string, edgeIds: string[]): SvgPanel => ({ id, edgeIds, outerEdgeIds: edgeIds,
-  contour: [], outerContour: [], innerContours: [], innerEdgeIds: [], bounds: { minX: 0, minY: 0, maxX: 1, maxY: 1 } });
-const model = { panels: [panel('center', ['c1', 'c2', 'c4']), panel('top', ['top-tb', 'top-w1', 'top-w2']),
-  panel('right', ['right-tb', 'right-w1']), panel('left', ['left-tb', 'left-w2'])], edges: [] } as unknown as SvgDocumentModel;
-const edge = (connectionId: string, edgeRole: 'A' | 'B') => ({ edgeAssignment: { connectionId, edgeRole } });
-const connections: ConnectionMap = {
-  TB1: { id: 'TB1', prefix: 'TB', properties: { fingerWidthMm: 9, isFingerWidthManual: false } },
-  TB2: { id: 'TB2', prefix: 'TB', properties: { fingerWidthMm: 9, isFingerWidthManual: false } },
-  TB4: { id: 'TB4', prefix: 'TB', properties: { fingerWidthMm: 9, isFingerWidthManual: false } },
-  W1: { id: 'W1', prefix: 'W', properties: {} }, W2: { id: 'W2', prefix: 'W', properties: {} },
-};
-const authored: EdgeAssignmentRecord = {
-  'top-tb': edge('TB1', 'A'), c1: edge('TB1', 'B'), 'right-tb': edge('TB2', 'B'), c2: edge('TB2', 'A'),
-  'left-tb': edge('TB4', 'B'), c4: edge('TB4', 'A'), 'top-w1': edge('W1', 'A'), 'right-w1': edge('W1', 'B'),
-  'top-w2': edge('W2', 'B'), 'left-w2': edge('W2', 'A'),
-};
-
-assert(resolveTBOrientationForPanelPair('top', 'left', authored, connections, model) === 'NO_TB_ORIENTATION',
-  'production must expose that no single TB joins top and left');
-const current = normalizeWallConnection(model, authored, connections, 'W2');
-assert(getWallAssignments(model, current, 'W2').find((x) => x.panelId === 'top')?.role === 'B',
-  'current B2.4 must leave reversed W2 unchanged');
-
-type ProposedPanelRole = 'NO_TB_ROLE' | 'TB_ROLE_A' | 'TB_ROLE_B' | 'AMBIGUOUS_TB_ROLE';
-const proposedRole = (panelId: string): ProposedPanelRole => {
-  const panelByEdge = new Map(model.panels.flatMap((p) => p.edgeIds.map((id) => [id, p.id])));
-  const roles = new Set<'A' | 'B'>();
-  for (const connection of Object.values(connections).filter((c) => c.prefix === 'TB')) {
-    const entries = Object.entries(authored).flatMap(([sourceEdgeId, bucket]) => {
-      const assignment = getBucketEdgeAssignment(bucket);
-      return assignment?.connectionId === connection.id && assignment.edgeRole
-        ? [{ panelId: panelByEdge.get(sourceEdgeId), role: assignment.edgeRole }] : [];
-    });
-    if (entries.length === 2 && entries.filter((x) => x.role === 'A').length === 1
-      && entries.filter((x) => x.role === 'B').length === 1 && entries[0].panelId !== entries[1].panelId) {
-      entries.filter((x) => x.panelId === panelId).forEach((x) => roles.add(x.role));
-    }
-  }
-  return roles.size === 0 ? 'NO_TB_ROLE' : roles.size > 1 ? 'AMBIGUOUS_TB_ROLE'
-    : roles.has('A') ? 'TB_ROLE_A' : 'TB_ROLE_B';
-};
-assert(proposedRole('top') === 'TB_ROLE_A', 'top must inherit A from TB1');
-assert(proposedRole('left') === 'TB_ROLE_B', 'left must inherit B from TB4');
-assert(proposedRole('right') === 'TB_ROLE_B', 'right must inherit B from TB2');
-assert(proposedRole('top') === 'TB_ROLE_A' && proposedRole('right') === 'TB_ROLE_B', 'W1 is A/B');
-assert(proposedRole('top') === 'TB_ROLE_A' && proposedRole('left') === 'TB_ROLE_B', 'proposed W2 swaps to A/B');
-console.log('PASS current B2.4 returns NO_TB_ORIENTATION and leaves screenshot W2 top=B/left=A');
-console.log('PASS diagnostic panel resolver finds top=A (TB1), right=B (TB2), left=B (TB4); proposed W2 is top=A/left=B');
+const assert: (v: unknown, m: string) => asserts v = (v,m) => { if (!v) throw new Error(m); };
+const panel=(id:string, edgeIds:string[]):SvgPanel=>({id,edgeIds,outerEdgeIds:edgeIds,contour:[],outerContour:[],innerContours:[],innerEdgeIds:[],bounds:{minX:0,minY:0,maxX:1,maxY:1}});
+const model={panels:[panel('center',['c1','c2','c3','c4']),panel('top',['ttb','tw1','tw2']),panel('left',['ltb','lw1']),panel('right',['rtb','rw2']),panel('none',['n1','n2'])],edges:[]} as unknown as SvgDocumentModel;
+const edge=(connectionId:string,edgeRole:'A'|'B')=>({edgeAssignment:{connectionId,edgeRole}});
+const tb=(id:string)=>({id,prefix:'TB' as const,properties:{fingerWidthMm:9,isFingerWidthManual:false}});
+let connections:ConnectionMap={TB1:tb('TB1'),TB2:tb('TB2'),TB3:tb('TB3')};
+let assignments:EdgeAssignmentRecord={ttb:edge('TB1','A'),c1:edge('TB1','B'),rtb:edge('TB2','B'),c2:edge('TB2','A'),ltb:edge('TB3','B'),c3:edge('TB3','A')};
+assert(resolveTBRoleForPanel('top',assignments,connections,model)==='TB_ROLE_A','top A');
+assert(resolveTBRoleForPanel('left',assignments,connections,model)==='TB_ROLE_B','left B');
+assert(resolveTBRoleForPanel('right',assignments,connections,model)==='TB_ROLE_B','right B');
+assert(resolveTBRoleForPanel('none',assignments,connections,model)==='NO_TB_ROLE','none');
+const started=startWallGroupWorkflow(connections); connections=started.connections;
+assignments={...assignments,tw1:edge('W1','B')};
+let result=authorWallEdge(model,assignments,connections,started.activeWallGroup,'W1','lw1');
+assert(getWallAssignments(model,result.assignments,'W1').find(x=>x.panelId==='top')?.role==='A','real reversed W1 top A');
+assert(getWallAssignments(model,result.assignments,'W1').find(x=>x.panelId==='left')?.role==='B','real reversed W1 left B');
+result=authorWallEdge(model,result.assignments,result.connections,result.activeWallGroup,'W2','tw2');
+result=authorWallEdge(model,result.assignments,result.connections,result.activeWallGroup,'W2','rw2');
+assert(getWallAssignments(model,result.assignments,'W2').find(x=>x.panelId==='top')?.role==='A','real W2 top A');
+assert(getWallAssignments(model,result.assignments,'W2').find(x=>x.panelId==='right')?.role==='B','real W2 right B');
+assert(result.activeWallGroup.connectionIds.join()==='W1,W2,W3','W1/W2/W3 progression');
+const multiple={...assignments,tw2:edge('TB4','A'),n1:edge('TB4','B')};
+const with4={...connections,TB4:tb('TB4')};
+assert(resolveTBRoleForPanel('top',multiple,with4,model)==='TB_ROLE_A','multiple A evidence');
+const conflict={...multiple,tw2:edge('TB4','B'),n1:edge('TB4','A')};
+assert(resolveTBRoleForPanel('top',conflict,with4,model)==='AMBIGUOUS_TB_ROLE','A+B ambiguous');
+const incomplete={...assignments,n1:edge('TB4','A')};
+assert(resolveTBRoleForPanel('none',incomplete,with4,model)==='NO_TB_ROLE','incomplete ignored');
+const free:EdgeAssignmentRecord={n1:edge('W9','B'),n2:edge('W9','A')};
+assert(normalizeWallConnection(model,free,{W9:{id:'W9',prefix:'W',properties:{}}},'W9')===free,'none/none preserves orientation');
+console.log('PASS per-panel TB role resolver and production authoring TOP/LEFT W1 + TOP/RIGHT W2 regression');
