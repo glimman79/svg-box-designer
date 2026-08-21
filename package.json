@@ -4,6 +4,7 @@
   "version": "1.1.0",
   "type": "module",
   "scripts": {
+    "test:wall-v2-downstream-diagnostic-analysis": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/wall-v2-downstream-diagnostic-analysis.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/wall-v2-downstream-diagnostic-analysis.js",
     "test:connection-labels": "rm -rf .test-build && tsc --ignoreConfig src/app/connectionLabels.ts --target es2022 --module esnext --moduleResolution bundler --outDir .test-build --skipLibCheck && node tests/connection-labels.test.mjs",
     "test:projected-distance-intervals": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/projected-distance-intervals.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/projected-distance-intervals.js",
     "test:tb-native-production": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/tb-native-production.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/tb-native-production.js",
@@ -60,6 +61,7 @@
     "test:wall-v2-native-production": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/wall-v2-tb-geometry-equivalence.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/wall-v2-tb-geometry-equivalence.js",
     "test:wall-v2-coherent-batch": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/wall-v2-tb-geometry-equivalence.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/wall-v2-tb-geometry-equivalence.js",
     "test:wall-v2-real-apply-analysis": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/wall-v2-production-path.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/wall-v2-production-path.js",
+    "test:wall-v2-production-path": "npm run test:wall-v2-real-apply-analysis",
     "test:wall-v2-w3-panel-resolution-analysis": "npm run test:wall-v2-panel-tb-role",
     "test:wall-v2-mixed-authority": "npm run test:wall-v2-real-apply-analysis",
     "test:wall-v2-final-geometry": "npm run test:wall-v2-real-apply-analysis",
