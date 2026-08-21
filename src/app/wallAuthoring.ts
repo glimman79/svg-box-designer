@@ -1,9 +1,9 @@
 import { getBucketEdgeAssignment, toEdgeAssignmentBucket } from './assignmentBuckets';
 import type { ConnectionMap } from './connectionTypes';
+import type { ActiveWallGroup } from './wallWorkflow';
 import type { EdgeAssignmentRecord, EdgeRole, SvgDocumentModel } from '../svgUtils';
 
-export type TBPanelPairOrientation = 'NO_TB_ORIENTATION' | 'FIRST_A_SECOND_B' | 'FIRST_B_SECOND_A'
-  | 'AMBIGUOUS_TB_ORIENTATION';
+export type TBPanelRole = 'NO_TB_ROLE' | 'TB_ROLE_A' | 'TB_ROLE_B' | 'AMBIGUOUS_TB_ROLE';
 
 const assignmentsForConnection = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord, connectionId: string) => {
   const panelByEdge = new Map(model.panels.flatMap((panel) => panel.edgeIds.map((edgeId) => [edgeId, panel.id] as const)));
@@ -15,37 +15,40 @@ const assignmentsForConnection = (model: SvgDocumentModel, assignments: EdgeAssi
   });
 };
 
-/**
- * Resolves complete typed TB relationships for exactly the supplied panel pair.
- * Source-edge position and all geometric/topological properties are deliberately
- * absent: orientation is relative to the order of the panel arguments.
- */
-export const resolveTBOrientationForPanelPair = (firstPanelId: string, secondPanelId: string,
-  assignments: EdgeAssignmentRecord, connections: ConnectionMap,
-  model: SvgDocumentModel): TBPanelPairOrientation => {
-  if (firstPanelId === secondPanelId) return 'AMBIGUOUS_TB_ORIENTATION';
-  const votes = new Set<'FIRST_A_SECOND_B' | 'FIRST_B_SECOND_A'>();
+/** Resolves a panel's role from complete, typed TB authored state only. */
+export const resolveTBRoleForPanel = (panelId: string, assignments: EdgeAssignmentRecord,
+  connections: ConnectionMap, model: SvgDocumentModel): TBPanelRole => {
+  const roles = new Set<EdgeRole>();
   for (const connection of Object.values(connections)) {
     if (connection.prefix !== 'TB') continue;
     const tb = assignmentsForConnection(model, assignments, connection.id);
-    const touchesFirst = tb.some((item) => item.panelId === firstPanelId);
-    const touchesSecond = tb.some((item) => item.panelId === secondPanelId);
-    if (!touchesFirst || !touchesSecond) continue;
+    const onPanel = tb.filter((item) => item.panelId === panelId);
+    if (onPanel.length === 0) continue;
+    if (tb.length === 1) continue; // An unambiguously incomplete draft is not evidence.
     if (tb.length !== 2 || tb.filter((item) => item.role === 'A').length !== 1
       || tb.filter((item) => item.role === 'B').length !== 1
-      || tb.filter((item) => item.panelId === firstPanelId).length !== 1
-      || tb.filter((item) => item.panelId === secondPanelId).length !== 1) {
-      return 'AMBIGUOUS_TB_ORIENTATION';
-    }
-    votes.add(tb.find((item) => item.panelId === firstPanelId)!.role === 'A'
-      ? 'FIRST_A_SECOND_B' : 'FIRST_B_SECOND_A');
+      || tb[0].panelId === tb[1].panelId || onPanel.length !== 1) return 'AMBIGUOUS_TB_ROLE';
+    roles.add(onPanel[0].role);
   }
-  return votes.size === 0 ? 'NO_TB_ORIENTATION' : votes.size === 1 ? [...votes][0]
-    : 'AMBIGUOUS_TB_ORIENTATION';
+  return roles.size === 0 ? 'NO_TB_ROLE' : roles.size > 1 ? 'AMBIGUOUS_TB_ROLE'
+    : roles.has('A') ? 'TB_ROLE_A' : 'TB_ROLE_B';
 };
 
 export const getWallAssignments = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord, connectionId: string) =>
   assignmentsForConnection(model, assignments, connectionId);
+
+const requiredFirstWallRole = (first: TBPanelRole, second: TBPanelRole): EdgeRole | null | 'INVALID' => {
+  if (first === 'AMBIGUOUS_TB_ROLE' || second === 'AMBIGUOUS_TB_ROLE') return 'INVALID';
+  if (first === 'NO_TB_ROLE' && second === 'NO_TB_ROLE') return null;
+  if (first === second) return 'INVALID';
+  if (first === 'TB_ROLE_A' || second === 'TB_ROLE_B') return 'A';
+  return 'B';
+};
+
+const wallRequiredRole = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord,
+  connections: ConnectionMap, firstPanelId: string, secondPanelId: string) => requiredFirstWallRole(
+  resolveTBRoleForPanel(firstPanelId, assignments, connections, model),
+  resolveTBRoleForPanel(secondPanelId, assignments, connections, model));
 
 /** Normal UI path: swap only the two role labels in this completed W connection. */
 export const normalizeWallConnection = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord,
@@ -53,11 +56,9 @@ export const normalizeWallConnection = (model: SvgDocumentModel, assignments: Ed
   const wall = getWallAssignments(model, assignments, connectionId);
   if (wall.length !== 2 || wall.filter((item) => item.role === 'A').length !== 1
     || wall.filter((item) => item.role === 'B').length !== 1 || wall[0].panelId === wall[1].panelId) return assignments;
-  const orientation = resolveTBOrientationForPanelPair(wall[0].panelId, wall[1].panelId, assignments, connections, model);
-  if (orientation === 'AMBIGUOUS_TB_ORIENTATION') throw new Error(`${connectionId} has ambiguous or malformed TB panel-pair orientation evidence.`);
-  if (orientation === 'NO_TB_ORIENTATION') return assignments;
-  const firstRequiredRole = orientation === 'FIRST_A_SECOND_B' ? 'A' : 'B';
-  if (wall[0].role === firstRequiredRole) return assignments;
+  const required = wallRequiredRole(model, assignments, connections, wall[0].panelId, wall[1].panelId);
+  if (required === 'INVALID') throw new Error(`${connectionId} has ambiguous or incompatible per-panel TB role evidence.`);
+  if (required === null || wall[0].role === required) return assignments;
   const next = { ...assignments };
   for (const item of wall) {
     const bucket = toEdgeAssignmentBucket(assignments[item.sourceEdgeId])!;
@@ -74,18 +75,22 @@ export const validateWallConnection = (model: SvgDocumentModel, assignments: Edg
     || wall.filter((item) => item.role === 'B').length !== 1 || wall[0].panelId === wall[1].panelId) {
     throw new Error(`${connectionId} is incomplete: Wall requires exactly one W-A and one W-B assignment on two panels.`);
   }
-  const orientation = resolveTBOrientationForPanelPair(wall[0].panelId, wall[1].panelId, assignments, connections, model);
-  if (orientation === 'AMBIGUOUS_TB_ORIENTATION') throw new Error(`${connectionId} has ambiguous or malformed TB panel-pair orientation evidence.`);
-  const required = orientation === 'FIRST_A_SECOND_B' ? 'A' : orientation === 'FIRST_B_SECOND_A' ? 'B' : null;
-  if (required && wall[0].role !== required) throw new Error(`${connectionId} does not match its TB panel-pair orientation.`);
+  const required = wallRequiredRole(model, assignments, connections, wall[0].panelId, wall[1].panelId);
+  if (required === 'INVALID') throw new Error(`${connectionId} has ambiguous or incompatible per-panel TB role evidence.`);
+  if (required && wall[0].role !== required) throw new Error(`${connectionId} does not match its per-panel TB roles.`);
 };
 
 export const validateWallAuthoringForApply = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord,
-  connections: ConnectionMap): void => {
+  connections: ConnectionMap, activeWallGroup: ActiveWallGroup | null = null): void => {
   const walls = Object.values(connections).filter((connection) => connection.prefix === 'W');
   if (walls.length === 0) return;
-  walls.forEach((connection) => validateWallConnection(model, assignments, connections, connection.id));
-  throw new Error('Wall geometry not implemented in B2.2; Wall authoring was not applied.');
+  const trailing = activeWallGroup?.isActive && activeWallGroup.connectionIds.length > 1
+    ? activeWallGroup.connectionIds.at(-1) : undefined;
+  for (const connection of walls) {
+    if (connection.id === trailing && getWallAssignments(model, assignments, connection.id).length === 0) continue;
+    validateWallConnection(model, assignments, connections, connection.id);
+  }
+  throw new Error('Wall geometry not implemented in B2.6; Wall authoring was not applied.');
 };
 
 export const complementaryWallRole = (role: EdgeRole): EdgeRole => role === 'A' ? 'B' : 'A';

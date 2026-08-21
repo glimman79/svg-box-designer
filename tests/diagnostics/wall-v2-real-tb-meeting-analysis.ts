@@ -3,7 +3,7 @@
  */
 import { getBucketEdgeAssignment } from '../../src/app/assignmentBuckets';
 import type { ConnectionMap } from '../../src/app/connectionTypes';
-import { resolveTBOrientationForPanelPair } from '../../src/app/wallAuthoring';
+import { resolveTBRoleForPanel } from '../../src/app/wallAuthoring';
 import { authorWallEdge, startWallGroupWorkflow } from '../../src/app/wallWorkflow';
 import type { EdgeAssignmentRecord, SvgDocumentModel, SvgPanel } from '../../src/svgUtils';
 
@@ -38,7 +38,7 @@ connections = started.connections;
 // is clicked through the exact production authorWallEdge command.
 assignments = { ...assignments, 'p-wall': tb('W1', 'B') };
 const result = authorWallEdge(model, assignments, connections, started.activeWallGroup, 'W1', 'q-wall');
-const meeting = resolveTBOrientationForPanelPair('wall-P', 'wall-Q', result.assignments, result.connections, model);
+const meeting = [resolveTBRoleForPanel('wall-P', result.assignments, result.connections, model), resolveTBRoleForPanel('wall-Q', result.assignments, result.connections, model)];
 const observed = {
   candidates: [{ connectionId: 'TB1', aEdge: 'p-tb', aPanel: 'wall-P', bEdge: 'q-tb', bPanel: 'wall-Q', complete: true,
     touchesP: true, touchesQ: true, incidentP: false, incidentQ: true, survives: true,
@@ -77,7 +77,7 @@ console.log('B2.4 SEGMENTED PRODUCTION EVIDENCE', JSON.stringify({
   panelPairContract: panelPair,
 }, null, 2));
 
-if (meeting !== 'FIRST_A_SECOND_B' || observed.pRole !== 'A' || observed.qRole !== 'B')
+if (meeting.join('/') !== 'TB_ROLE_A/TB_ROLE_B' || observed.pRole !== 'A' || observed.qRole !== 'B')
   throw new Error('Production did not normalize the segmented same-panel-pair Wall');
 if (panelPair.matchingTBConnections.join() !== 'TB1')
   throw new Error('TB1 was not identified as the matching panel-pair connection');

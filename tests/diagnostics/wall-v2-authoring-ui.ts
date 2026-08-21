@@ -1,6 +1,6 @@
 import { collectSourceEdgeAuthoringClaims } from '../../src/app/authoringRelationships';
 import type { ConnectionMap } from '../../src/app/connectionTypes';
-import { getWallAssignments, normalizeWallConnection, resolveTBOrientationForPanelPair, validateWallConnection,
+import { getWallAssignments, normalizeWallConnection, resolveTBRoleForPanel, validateWallConnection,
   validateWallAuthoringForApply } from '../../src/app/wallAuthoring';
 import { getEdgeAssignmentDisplayLabels, type EdgeAssignmentRecord, type SvgDocumentModel } from '../../src/svgUtils';
 
@@ -15,7 +15,7 @@ const edge = (id: string, role: 'A' | 'B') => ({ edgeAssignment: { connectionId:
 for (const wallId of ['W1', 'W7']) {
   const connections: ConnectionMap = { [wallId]: wall(wallId), TB4: tb('TB4') };
   const reversed: EdgeAssignmentRecord = { p0: edge(wallId, 'B'), q0: edge(wallId, 'A'), p1: edge('TB4', 'A'), q1: edge('TB4', 'B') };
-  equal(resolveTBOrientationForPanelPair('P', 'Q', reversed, connections, model), 'FIRST_A_SECOND_B', `${wallId} TB orientation`);
+  equal(resolveTBRoleForPanel('P', reversed, connections, model), 'TB_ROLE_A', `${wallId} P TB role`);
   const normalized = normalizeWallConnection(model, reversed, connections, wallId);
   equal(getWallAssignments(model, normalized, wallId).find(x => x.sourceEdgeId === 'p0')?.role, 'A', `${wallId} p role`);
   equal(getWallAssignments(model, normalized, wallId).find(x => x.sourceEdgeId === 'q0')?.role, 'B', `${wallId} q role`);
@@ -27,12 +27,12 @@ const connections: ConnectionMap = { W1: wall('W1'), TB4: tb('TB4'), TBunrelated
 const correct: EdgeAssignmentRecord = { p0: edge('W1', 'A'), q0: edge('W1', 'B'), p1: edge('TB4', 'A'), q1: edge('TB4', 'B') };
 equal(normalizeWallConnection(model, correct, connections, 'W1'), correct, 'correct orientation is an identity-preserving no-op');
 const free: EdgeAssignmentRecord = { p0: edge('W1', 'B'), q0: edge('W1', 'A'), p6: edge('TBunrelated', 'A'), r6: edge('TBunrelated', 'B') };
-equal(resolveTBOrientationForPanelPair('P', 'Q', free, connections, model), 'NO_TB_ORIENTATION', 'other-panel TB unrelated');
-equal(normalizeWallConnection(model, free, connections, 'W1'), free, 'free reverse orientation preserved');
+equal(resolveTBRoleForPanel('Q', free, connections, model), 'NO_TB_ROLE', 'other-panel TB unrelated');
+equal(getWallAssignments(model, normalizeWallConnection(model, free, connections, 'W1'), 'W1').find(x => x.panelId === 'P')?.role, 'A', 'one known panel TB role determines Wall');
 
 const ambiguousConnections: ConnectionMap = { W1: wall('W1'), TBa: tb('TBa'), TBb: tb('TBb') };
 const ambiguous: EdgeAssignmentRecord = { p0: edge('W1', 'A'), q0: edge('W1', 'B'), p1: edge('TBa', 'A'), q1: edge('TBa', 'B'), p11: edge('TBb', 'B'), q11: edge('TBb', 'A') };
-equal(resolveTBOrientationForPanelPair('P', 'Q', ambiguous, ambiguousConnections, model), 'AMBIGUOUS_TB_ORIENTATION', 'contradictory panel-pair TB');
+equal(resolveTBRoleForPanel('P', ambiguous, ambiguousConnections, model), 'AMBIGUOUS_TB_ROLE', 'contradictory panel TB roles');
 try { validateWallConnection(model, ambiguous, ambiguousConnections, 'W1'); assert(false, 'ambiguity accepted'); } catch { /* fail closed */ }
 try { validateWallConnection(model, { p0: edge('W1', 'A'), q0: edge('W1', 'A') }, { W1: wall('W1') }, 'W1'); assert(false, 'malformed accepted'); } catch { /* fail closed */ }
 
@@ -49,7 +49,7 @@ equal(getEdgeAssignmentDisplayLabels(multi.q8)[0], 'W3-B', 'W3 canvas label');
 const restored = structuredClone({ assignments: multi, connections: multiConnections });
 for (const id of ['W1', 'W2', 'W3']) validateWallConnection(model, restored.assignments, restored.connections, id);
 try { validateWallAuthoringForApply(model, multi, multiConnections); assert(false, 'Wall geometry applied'); }
-catch (error) { assert((error as Error).message.includes('not implemented in B2.2'), 'explicit non-generatable Apply'); }
+catch (error) { assert((error as Error).message.includes('not implemented in B2.6'), 'explicit non-generatable Apply'); }
 
-console.log('PASS W1/W7 panel-pair TB reverse normalization, correct/no-TB controls, ambiguity and malformed fail-closed');
-console.log('PASS W1/W2/W3 authoring, stable IDs/labels/REPLACES, clone restore, and B2.2 non-generation');
+console.log('PASS W1/W7 per-panel TB reverse normalization, correct/no-TB controls, ambiguity and malformed fail-closed');
+console.log('PASS W1/W2/W3 authoring, stable IDs/labels/REPLACES, clone restore, and B2.6 non-generation');
