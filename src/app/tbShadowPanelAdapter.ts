@@ -1,5 +1,5 @@
 /**
- * Read-only adapter from TB's edge-local diagnostic profiles to the neutral
+ * Read-only adapter from finger-joint edge-local profiles to the neutral
  * replacement contract consumed by the shadow panel composer.
  */
 import type { GeneratedProfile } from './generatedProfiles';
@@ -15,11 +15,11 @@ const samePoint = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y) <= co
  * support.  Consequently the directed line between them is the complete
  * neutral support needed at both junctions; roles do not cross this boundary.
  */
-export const adaptTBProfilesToShadowContributions = (
+export const adaptFingerJointProfilesToPanelContributions = (
   profiles: ReadonlyArray<GeneratedProfile>,
 ): ReadonlyArray<PanelReplacedEdgeContribution> => profiles.map((profile) => {
-  if (profile.generatorType !== 'TB') {
-    throw new Error(`Profile ${profile.id} is not a TB profile.`);
+  if (profile.generatorType !== 'TB' && profile.generatorType !== 'W') {
+    throw new Error(`Profile ${profile.id} is not a supported TB/W finger-joint profile.`);
   }
   const elements = new Map(profile.orderedElements.map((element) => [element.id, element]));
   const support = { start: clonePoint(profile.attachmentStart), end: clonePoint(profile.attachmentEnd) };
@@ -63,5 +63,6 @@ export const adaptTBProfilesToShadowContributions = (
   };
 });
 
-/** Production-neutral name; the legacy export remains for diagnostic compatibility. */
-export const adaptTBProfilesToPanelContributions = adaptTBProfilesToShadowContributions;
+/** Legacy TB names remain aliases for diagnostic and extension compatibility. */
+export const adaptTBProfilesToShadowContributions = adaptFingerJointProfilesToPanelContributions;
+export const adaptTBProfilesToPanelContributions = adaptFingerJointProfilesToPanelContributions;

@@ -1,4 +1,4 @@
-import { getWallAssignments, normalizeWallConnection, resolveTBRoleForPanel } from '../../src/app/wallAuthoring';
+import { getWallAssignments, normalizeWallConnection, resolveTBRoleForPanel, validateWallConnection } from '../../src/app/wallAuthoring';
 import { authorWallEdge, startWallGroupWorkflow } from '../../src/app/wallWorkflow';
 import type { ConnectionMap } from '../../src/app/connectionTypes';
 import type { EdgeAssignmentRecord, SvgDocumentModel, SvgPanel } from '../../src/svgUtils';
@@ -32,4 +32,24 @@ const incomplete={...assignments,n1:edge('TB4','A')};
 assert(resolveTBRoleForPanel('none',incomplete,with4,model)==='NO_TB_ROLE','incomplete ignored');
 const free:EdgeAssignmentRecord={n1:edge('W9','B'),n2:edge('W9','A')};
 assert(normalizeWallConnection(model,free,{W9:{id:'W9',prefix:'W',properties:{}}},'W9')===free,'none/none preserves orientation');
+const sameRoleConnections={...connections,W8:{id:'W8',prefix:'W' as const,properties:{}}};
+for (const [name, first, second] of [['A/A','top','top2'],['B/B','left','right']] as const) {
+  const extraPanel=panel(second,second==='top2'?['t2tb','t2w']:model.panels.find(x=>x.id===second)!.edgeIds);
+  const sameModel=second==='top2'?{...model,panels:[...model.panels,extraPanel]}:model;
+  const sameAssignments:EdgeAssignmentRecord=second==='top2'
+    ? {...assignments,t2tb:edge('TB5','A'),c4:edge('TB5','B'),tw2:edge('W8','A'),t2w:edge('W8','B')}
+    : {...assignments,lw1:edge('W8','A'),rw2:edge('W8','B')};
+  const sameConnections=second==='top2'?{...sameRoleConnections,TB5:tb('TB5')}:sameRoleConnections;
+  const normalized=normalizeWallConnection(sameModel,sameAssignments,sameConnections,'W8');
+  assert(normalized===sameAssignments,`${name} preserves first orientation`);
+  validateWallConnection(sameModel,normalized,sameConnections,'W8');
+  const reversed={...sameAssignments,
+    [name==='A/A'?'tw2':'lw1']:edge('W8','B'),[name==='A/A'?'t2w':'rw2']:edge('W8','A')};
+  assert(normalizeWallConnection(sameModel,reversed,sameConnections,'W8')===reversed,`${name} preserves reversed orientation`);
+  validateWallConnection(sameModel,reversed,sameConnections,'W8');
+}
+const ambiguousWall={...conflict,tw1:edge('W8','A'),n2:edge('W8','B')};
+let ambiguityRejected=false;
+try { validateWallConnection(model,ambiguousWall,{...with4,W8:{id:'W8',prefix:'W',properties:{}}},'W8'); } catch { ambiguityRejected=true; }
+assert(ambiguityRejected,'single-panel A+B ambiguity must fail closed');
 console.log('PASS per-panel TB role resolver and production authoring TOP/LEFT W1 + TOP/RIGHT W2 regression');

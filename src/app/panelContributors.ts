@@ -1,7 +1,7 @@
 import type { GeneratedProfile } from './generatedProfiles';
 import type { PanelReplacedEdgeContribution } from './panelComposer';
 import { adaptSProfilesToPanelContributions } from './sPanelContributionAdapter';
-import { adaptTBProfilesToPanelContributions } from './tbShadowPanelAdapter';
+import { adaptFingerJointProfilesToPanelContributions } from './tbShadowPanelAdapter';
 
 /** Built-in identities remain literals; extension identities can only be made through the validating constructor. */
 export type ExtensionPanelContributorType = string & { readonly __brand: 'ExtensionPanelContributorType' };
@@ -33,7 +33,7 @@ export const createPanelContributorRegistry = (
 };
 
 export const defaultPanelContributorRegistry = createPanelContributorRegistry([
-  { contributorType: 'TB', adaptProfiles: adaptTBProfilesToPanelContributions },
-  { contributorType: 'W', adaptProfiles: adaptTBProfilesToPanelContributions },
+  { contributorType: 'TB', adaptProfiles: adaptFingerJointProfilesToPanelContributions },
+  { contributorType: 'W', adaptProfiles: adaptFingerJointProfilesToPanelContributions },
   { contributorType: 'S', adaptProfiles: adaptSProfilesToPanelContributions },
 ]);

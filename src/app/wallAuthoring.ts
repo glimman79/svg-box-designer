@@ -40,7 +40,9 @@ export const getWallAssignments = (model: SvgDocumentModel, assignments: EdgeAss
 const requiredFirstWallRole = (first: TBPanelRole, second: TBPanelRole): EdgeRole | null | 'INVALID' => {
   if (first === 'AMBIGUOUS_TB_ROLE' || second === 'AMBIGUOUS_TB_ROLE') return 'INVALID';
   if (first === 'NO_TB_ROLE' && second === 'NO_TB_ROLE') return null;
-  if (first === second) return 'INVALID';
+  // Equal, individually resolved evidence does not determine which endpoint
+  // owns the complementary Wall role. Preserve the user's valid orientation.
+  if (first === second) return null;
   if (first === 'TB_ROLE_A' || second === 'TB_ROLE_B') return 'A';
   return 'B';
 };
