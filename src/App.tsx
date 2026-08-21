@@ -22,7 +22,7 @@ import { collectSourceEdgeAuthoringClaims, deriveCanvasEdgeRelationshipState, de
 import type { PanelCompositionAuthorityMode, PanelCompositionModel } from './app/generatedGeometryAuthority';
 import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { validateGeometryAuthoring } from './app/authoringRelationships';
-import { availableWallOrientationsForPanelPair, complementaryWallRole, getWallAssignments, resolveTBPanelPairOrientation, validateWallAuthoringForApply } from './app/wallAuthoring';
+import { complementaryWallRole, getWallAssignments, normalizeWallConnection, resolveRelevantTBMeeting, validateWallAuthoringForApply } from './app/wallAuthoring';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { appendAutoCreatedTBToTBGroup, buildTBDisplayLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
 import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildGeneratedTBGeometryItems, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/tbGeometry';
@@ -1191,19 +1191,7 @@ function App() {
     const nextWallRole = connection.prefix === 'W'
       ? wallAssignments.length === 0 ? 'A' : complementaryWallRole(wallAssignments[0].role)
       : null;
-    if (connection.prefix === 'W' && wallAssignments.length === 1) {
-      const sourcePanelId = panelIdByEdgeId.get(edgeId);
-      if (!sourcePanelId) { setErrorMessage('Wall assignments require panel source edges.'); return; }
-      const available = availableWallOrientationsForPanelPair(wallAssignments[0].panelId, sourcePanelId, svgModel, edgeAssignments, connections);
-      const requested = wallAssignments[0].role === 'A' ? 'P_WA_Q_WB' : 'P_WB_Q_WA';
-      if (!available.includes(requested)) {
-        const orientation = resolveTBPanelPairOrientation(wallAssignments[0].panelId, sourcePanelId, svgModel, edgeAssignments, connections);
-        setErrorMessage(orientation === 'AMBIGUOUS_CONTRADICTORY_TB_ORIENTATION'
-          ? 'Wall is unavailable: contradictory TB orientation exists between these panels.'
-          : `TB constrains the Wall panel orientation. Change the first assignment to W-${complementaryWallRole(wallAssignments[0].role)} before selecting this mate.`);
-        return;
-      }
-    }
+
 
     if (connection.prefix === 'S' && !nextSlotRole) {
       if (activeSGroup?.isActive && activeSGroup.connectionIds.includes(assignmentConnectionId)) {
@@ -1256,13 +1244,21 @@ function App() {
       }
     }
 
-    const nextAssignments = {
+    let nextAssignments: EdgeAssignmentRecord = {
       ...edgeAssignments,
       [edgeId]: connection.prefix === 'TB' || connection.prefix === 'W'
         ? { ...currentBucket, edgeAssignment: nextAssignment }
         : { ...currentBucket, slotAssignments: [...(currentBucket.slotAssignments ?? []), nextAssignment] },
     };
-    setEdgeAssignments(nextAssignments);
+    if (connection.prefix === 'W') {
+      try {
+        nextAssignments = normalizeWallConnection(svgModel, nextAssignments, connections, assignmentConnectionId);
+      } catch (error) {
+        setErrorMessage((error as Error).message);
+        return;
+      }
+    }
+    setEdgeAssignments(nextAssignments as typeof edgeAssignments);
     setDisplayConnectionId(assignmentConnectionId);
 
 
@@ -1273,7 +1269,7 @@ function App() {
     ), 0);
     const nextEdgeLabel = selectedLabelAssignmentCount === 2 ? getFollowingEdgeLabel(assignmentConnectionId) : null;
 
-    if (connection.prefix === 'TB' && nextEdgeLabel) {
+    if ((connection.prefix === 'TB' || connection.prefix === 'W') && nextEdgeLabel) {
       setConnections((currentConnections) => {
         if (currentConnections[nextEdgeLabel]) {
           return currentConnections;
@@ -1283,15 +1279,17 @@ function App() {
           ...currentConnections,
           [nextEdgeLabel]: createConnectionDefinition(
             nextEdgeLabel,
-            'TB',
-            getSharedTBProperties(currentConnections),
+            connection.prefix,
+            connection.prefix === 'TB' ? getSharedTBProperties(currentConnections) : undefined,
           ),
         };
       });
       setAssignmentTargetConnectionId(nextEdgeLabel);
       setDisplayConnectionId(assignmentConnectionId);
-      setActiveTBGroup((currentGroup) => appendAutoCreatedTBToTBGroup(currentGroup, assignmentConnectionId, nextEdgeLabel));
-      setExpandedTBGroups((currentGroups) => activeTBGroup?.connectionIds.includes(assignmentConnectionId) ? { ...currentGroups, [activeTBGroup.groupId]: true } : currentGroups);
+      if (connection.prefix === 'TB') {
+        setActiveTBGroup((currentGroup) => appendAutoCreatedTBToTBGroup(currentGroup, assignmentConnectionId, nextEdgeLabel));
+        setExpandedTBGroups((currentGroups) => activeTBGroup?.connectionIds.includes(assignmentConnectionId) ? { ...currentGroups, [activeTBGroup.groupId]: true } : currentGroups);
+      }
     }
 
     const selectedSlotRoles = Object.values(nextAssignments)
@@ -1326,13 +1324,6 @@ function App() {
       const authored = getWallAssignments(svgModel, edgeAssignments, connection.id);
       const mate = authored.find((item) => item.sourceEdgeId !== edgeId);
       if (mate && mate.role === edgeRole) { setErrorMessage('Wall requires complementary W-A and W-B roles.'); return; }
-      if (mate) {
-        const panelId = panelIdByEdgeId.get(edgeId);
-        if (!panelId) return;
-        const available = availableWallOrientationsForPanelPair(panelId, mate.panelId, svgModel, edgeAssignments, connections);
-        const requested = edgeRole === 'A' ? 'P_WA_Q_WB' : 'P_WB_Q_WA';
-        if (!available.includes(requested)) { setErrorMessage('This Wall role is unavailable because TB constrains the panel-pair orientation.'); return; }
-      }
     }
 
     pushUndoState();
@@ -1958,7 +1949,7 @@ function App() {
       const assigned = getWallAssignments(svgModel, edgeAssignments, selectedConnection.id);
       const complete = assigned.length === 2 && assigned.some((item) => item.role === 'A') && assigned.some((item) => item.role === 'B');
       const orientation = assigned.length === 2
-        ? resolveTBPanelPairOrientation(assigned[0].panelId, assigned[1].panelId, svgModel, edgeAssignments, connections)
+        ? resolveRelevantTBMeeting(svgModel, edgeAssignments, connections, selectedConnection.id)
         : null;
       return <div className="property-sections">
         <section className="property-section" aria-labelledby="wall-assigned-edges">
@@ -1972,11 +1963,11 @@ function App() {
           </li>)}</ul> : <p className="muted">Click a source edge for W-A, then its mate for W-B. Change the first role to reverse a free Wall.</p>}
         </section>
         <section className="property-section" aria-labelledby="wall-orientation">
-          <h4 id="wall-orientation">TB panel-pair guidance</h4>
+          <h4 id="wall-orientation">Relevant TB meeting guidance</h4>
           <p>{orientation === null ? 'Choose a second panel to resolve TB guidance.'
-            : orientation === 'NO_TB_ORIENTATION' ? 'No TB constraint — either Wall orientation is available.'
-            : orientation === 'AMBIGUOUS_CONTRADICTORY_TB_ORIENTATION' ? 'Conflict: contradictory TB orientation; Wall fails closed.'
-            : `TB constrained: ${orientation === 'P_A_Q_B' ? 'first panel W-A / second panel W-B' : 'first panel W-B / second panel W-A'}.`}</p>
+            : orientation === 'NO_TB_MEETING' ? 'No TB constraint — either Wall orientation is available.'
+            : orientation === 'AMBIGUOUS_CONTRADICTORY_TB_MEETING' ? 'Conflict: contradictory TB orientation; Wall fails closed.'
+            : `TB constrained: ${orientation === 'W_A_SIDE_IS_TB_A' ? 'Wall roles match the incident TB meeting' : 'Wall roles require normalization'}.`}</p>
           <p className="muted">Physical Wall geometry is deferred to Step B3.</p>
         </section>
       </div>;
