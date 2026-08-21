@@ -90,7 +90,7 @@ export const validateWallAuthoringForApply = (model: SvgDocumentModel, assignmen
     if (connection.id === trailing && getWallAssignments(model, assignments, connection.id).length === 0) continue;
     validateWallConnection(model, assignments, connections, connection.id);
   }
-  throw new Error('Wall geometry not implemented in B2.6; Wall authoring was not applied.');
+  // Complete Walls are consumed by the native Wall geometry adapter.
 };
 
 export const complementaryWallRole = (role: EdgeRole): EdgeRole => role === 'A' ? 'B' : 'A';

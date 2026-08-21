@@ -13,8 +13,8 @@ export type SlotConnectionProperties = {
   kerfMm: number;
 };
 
-/** Wall has no physical settings until the Step B3 generator is introduced. */
-export type WallConnectionProperties = Record<string, never>;
+/** Wall shares TB's finger-width policy while retaining native Wall identity. */
+export type WallConnectionProperties = Partial<TBConnectionProperties>;
 
 export type CornerConnectionProperties = {
   cornerDepthMm: number;

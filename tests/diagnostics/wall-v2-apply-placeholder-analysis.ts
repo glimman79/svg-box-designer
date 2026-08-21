@@ -8,7 +8,7 @@ const model={panels:[panel('p',['p1','p2','p3','p4']),panel('q',['q1','q2','q3',
 const edge=(connectionId:string,edgeRole:'A'|'B')=>({edgeAssignment:{connectionId,edgeRole}});
 const complete=(n:number):EdgeAssignmentRecord=>Object.fromEntries(Array.from({length:n},(_,i)=>[[`p${i+1}`,edge(`W${i+1}`,'A')],[`q${i+1}`,edge(`W${i+1}`,'B')]]).flat());
 const errorFor=(count:number,a:EdgeAssignmentRecord)=>{const ids=Array.from({length:count},(_,i)=>`W${i+1}`);const c=Object.fromEntries(ids.map(id=>[id,{id,prefix:'W',properties:{}}])) as ConnectionMap;const g:ActiveWallGroup={groupId:'g',connectionIds:ids,isActive:true};const before=JSON.stringify([a,c,g]);try{validateWallAuthoringForApply(model,a,c,g)}catch(e){assert(JSON.stringify([a,c,g])===before,'Apply mutated session');return(e as Error).message}return''};
-for(const n of [1,2,3])assert(errorFor(n+1,complete(n)).includes('not implemented in B2.6'),`${n} complete plus empty trailing placeholder`);
+for(const n of [1,2,3])assert(errorFor(n+1,complete(n))==='',`${n} complete plus empty trailing placeholder`);
 assert(errorFor(3,{...complete(2),p3:edge('W3','A')}).startsWith('W3 is incomplete:'),'started W3 blocks');
 assert(errorFor(3,{...complete(2),p3:edge('W3','A'),q3:edge('W3','A')}).startsWith('W3 is incomplete:'),'malformed W3 blocks');
-console.log('PASS trailing empty active Wall placeholder ignored without mutation; started and malformed Wall block');
+console.log('PASS complete Wall batches apply past validation; trailing placeholder is ignored; started and malformed Wall block');

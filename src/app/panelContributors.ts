@@ -5,10 +5,10 @@ import { adaptTBProfilesToPanelContributions } from './tbShadowPanelAdapter';
 
 /** Built-in identities remain literals; extension identities can only be made through the validating constructor. */
 export type ExtensionPanelContributorType = string & { readonly __brand: 'ExtensionPanelContributorType' };
-export type PanelContributorType = 'TB' | 'S' | ExtensionPanelContributorType;
+export type PanelContributorType = 'TB' | 'W' | 'S' | ExtensionPanelContributorType;
 
 export const createExtensionPanelContributorType = (value: string): ExtensionPanelContributorType => {
-  if (!/^[A-Z][A-Z0-9_]{1,63}$/.test(value) || value === 'TB' || value === 'S') {
+  if (!/^[A-Z][A-Z0-9_]{1,63}$/.test(value) || value === 'TB' || value === 'W' || value === 'S') {
     throw new Error(`Invalid extension panel contributor identity: ${JSON.stringify(value)}.`);
   }
   return value as ExtensionPanelContributorType;
@@ -34,5 +34,6 @@ export const createPanelContributorRegistry = (
 
 export const defaultPanelContributorRegistry = createPanelContributorRegistry([
   { contributorType: 'TB', adaptProfiles: adaptTBProfilesToPanelContributions },
+  { contributorType: 'W', adaptProfiles: adaptTBProfilesToPanelContributions },
   { contributorType: 'S', adaptProfiles: adaptSProfilesToPanelContributions },
 ]);
