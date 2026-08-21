@@ -49,7 +49,7 @@ equal(getEdgeAssignmentDisplayLabels(multi.q8)[0], 'W3-B', 'W3 canvas label');
 const restored = structuredClone({ assignments: multi, connections: multiConnections });
 for (const id of ['W1', 'W2', 'W3']) validateWallConnection(model, restored.assignments, restored.connections, id);
 try { validateWallAuthoringForApply(model, multi, multiConnections); assert(false, 'Wall geometry applied'); }
-catch (error) { assert((error as Error).message.includes('not implemented in B2.1'), 'explicit non-generatable Apply'); }
+catch (error) { assert((error as Error).message.includes('not implemented in B2.2'), 'explicit non-generatable Apply'); }
 
 console.log('PASS W1/W7 incident-TB reverse normalization, correct/no-TB controls, ambiguity and malformed fail-closed');
-console.log('PASS W1/W2/W3 authoring, stable IDs/labels/REPLACES, clone restore, and B2.1 non-generation');
+console.log('PASS W1/W2/W3 authoring, stable IDs/labels/REPLACES, clone restore, and B2.2 non-generation');

@@ -91,7 +91,7 @@ export const validateWallAuthoringForApply = (model: SvgDocumentModel, assignmen
   const walls = Object.values(connections).filter((connection) => connection.prefix === 'W');
   if (walls.length === 0) return;
   walls.forEach((connection) => validateWallConnection(model, assignments, connections, connection.id));
-  throw new Error('Wall geometry not implemented in B2.1; Wall authoring was not applied.');
+  throw new Error('Wall geometry not implemented in B2.2; Wall authoring was not applied.');
 };
 
 export const complementaryWallRole = (role: EdgeRole): EdgeRole => role === 'A' ? 'B' : 'A';

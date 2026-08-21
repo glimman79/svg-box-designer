@@ -23,6 +23,7 @@ import type { PanelCompositionAuthorityMode, PanelCompositionModel } from './app
 import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { validateGeometryAuthoring } from './app/authoringRelationships';
 import { complementaryWallRole, getWallAssignments, normalizeWallConnection, resolveRelevantTBMeeting, validateWallAuthoringForApply } from './app/wallAuthoring';
+import { authorWallEdge, buildWallWorkflowGroups, finishWallGroupWithTrailingCleanup, startWallGroupWorkflow, type ActiveWallGroup } from './app/wallWorkflow';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
 import { appendAutoCreatedTBToTBGroup, buildTBDisplayLabelAliasMap, finishTBGroupWithTrailingCleanup, finishTBGroupWorkflow, startTBGroupWorkflow } from './app/tbWorkflow';
 import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildGeneratedTBGeometryItems, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/tbGeometry';
@@ -109,6 +110,8 @@ type HistoryState = {
   activeSGroup: ActiveSGroup | null;
   activeTBGroup: ActiveTBGroup | null;
   completedTBGroups: ActiveTBGroup[];
+  activeWallGroup: ActiveWallGroup | null;
+  completedWallGroups: ActiveWallGroup[];
   workflowGroupOrder: Record<string, number>;
   panelManager: PanelManagerState;
 };
@@ -118,7 +121,7 @@ type WorkflowHistoryGroup = { id: string; labels: string[]; isActive: boolean; o
 
 type WorkflowHistoryItem = {
   id: string;
-  kind: 'PM' | 'TB' | 'S' | 'manufacturing';
+  kind: 'PM' | 'TB' | 'W' | 'S' | 'manufacturing';
   name: string;
   labels: string[];
   isActive: boolean;
@@ -127,6 +130,7 @@ type WorkflowHistoryItem = {
 
 export const buildWorkflowHistoryItems = (
   tbGroups: WorkflowHistoryGroup[],
+  wallGroups: WorkflowHistoryGroup[],
   sGroups: WorkflowHistoryGroup[],
   manufacturingOrderIndex?: number,
   includePanelManager = false,
@@ -160,6 +164,10 @@ export const buildWorkflowHistoryItems = (
       isActive: group.isActive,
       childCount: group.labels.length,
       orderIndex: group.orderIndex,
+    })),
+    ...wallGroups.map((group, groupIndex) => ({
+      id: group.id, kind: 'W' as const, name: `W Group ${groupIndex + 1}`, labels: group.labels,
+      isActive: group.isActive, childCount: group.labels.length, orderIndex: group.orderIndex,
     })),
     ...sGroups.map((group, groupIndex) => ({
       id: group.id,
@@ -250,6 +258,8 @@ const cloneHistoryState = (state: HistoryState): HistoryState => ({
   activeSGroup: state.activeSGroup ? structuredClone(state.activeSGroup) : null,
   activeTBGroup: state.activeTBGroup ? structuredClone(state.activeTBGroup) : null,
   completedTBGroups: structuredClone(state.completedTBGroups ?? []),
+  activeWallGroup: state.activeWallGroup ? structuredClone(state.activeWallGroup) : null,
+  completedWallGroups: structuredClone(state.completedWallGroups ?? []),
   workflowGroupOrder: structuredClone(state.workflowGroupOrder ?? {}),
   panelManager: structuredClone(state.panelManager ?? defaultPanelManagerState),
 });
@@ -620,6 +630,8 @@ function App() {
   const [activeSGroup, setActiveSGroup] = useState<ActiveSGroup | null>(null);
   const [activeTBGroup, setActiveTBGroup] = useState<ActiveTBGroup | null>(null);
   const [completedTBGroups, setCompletedTBGroups] = useState<ActiveTBGroup[]>([]);
+  const [activeWallGroup, setActiveWallGroup] = useState<ActiveWallGroup | null>(null);
+  const [completedWallGroups, setCompletedWallGroups] = useState<ActiveWallGroup[]>([]);
   const [workflowGroupOrder, setWorkflowGroupOrder] = useState<Record<string, number>>({});
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
@@ -867,7 +879,10 @@ function App() {
   }, [panelContainmentTree]);
   const panelManagerValidationMessage = validatePanelManagerState(panelManager);
   const canApplyPanelManager = !panelManager.isApplied && panelManagerValidationMessage === null;
-  const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, sLabelGroups, workflowGroupOrder.manufacturing, panelManager.isApplied), [connections, panelManager.isApplied, sLabelGroups, tbLabelGroups, workflowGroupOrder]);
+  const wallLabelGroups = useMemo(() => {
+    return buildWallWorkflowGroups(connections, activeWallGroup, completedWallGroups, workflowGroupOrder);
+  }, [activeWallGroup, completedWallGroups, connections, workflowGroupOrder]);
+  const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, wallLabelGroups, sLabelGroups, workflowGroupOrder.manufacturing, panelManager.isApplied), [panelManager.isApplied, sLabelGroups, tbLabelGroups, wallLabelGroups, workflowGroupOrder]);
   const hasPendingManufacturingSettings = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
   const hasApplyInputs = hasPendingManufacturingSettings || Object.keys(edgeAssignments).length > 0;
   const navigateToWorkflowHistoryItem = (item: WorkflowHistoryItem) => {
@@ -918,6 +933,8 @@ function App() {
     activeSGroup,
     activeTBGroup,
     completedTBGroups,
+    activeWallGroup,
+    completedWallGroups,
     workflowGroupOrder,
     panelManager,
   });
@@ -937,6 +954,8 @@ function App() {
     setActiveSGroup(snapshot.activeSGroup);
     setActiveTBGroup(snapshot.activeTBGroup);
     setCompletedTBGroups(snapshot.completedTBGroups);
+    setActiveWallGroup(snapshot.activeWallGroup);
+    setCompletedWallGroups(snapshot.completedWallGroups);
     setWorkflowGroupOrder(snapshot.workflowGroupOrder);
     setPanelManager(snapshot.panelManager);
     setIsPanelManagerModalOpen(!snapshot.panelManager.isApplied && Object.keys(snapshot.panelManager.panels).length > 0);
@@ -971,6 +990,8 @@ function App() {
     setActiveSGroup(null);
     setActiveTBGroup(null);
     setCompletedTBGroups([]);
+    setActiveWallGroup(null);
+    setCompletedWallGroups([]);
     setWorkflowGroupOrder({});
     const nextPanelManager = createPanelManagerStateFromModel(parsedSvg);
     setPanelManager(nextPanelManager);
@@ -1077,8 +1098,17 @@ function App() {
     setActiveTool(tool);
 
     if (tool === 'W') {
-      const selectedWall = assignmentTargetConnectionId && connections[assignmentTargetConnectionId]?.prefix === 'W';
-      if (!selectedWall) createLabel('W');
+      if (!activeWallGroup?.isActive) {
+        pushUndoState();
+        const next = startWallGroupWorkflow(connections);
+        setConnections(next.connections);
+        setActiveWallGroup(next.activeWallGroup);
+        selectConnectionForDisplayAndAssignment(next.selectedLabelId);
+        setWorkflowGroupOrder((order) => ({ ...order, [next.activeWallGroup.groupId]: order[next.activeWallGroup.groupId] ?? getNextWorkflowGroupOrderIndex(order) }));
+      } else {
+        selectConnectionForDisplayAndAssignment(activeWallGroup.connectionIds.at(-1) ?? null);
+      }
+      setErrorMessage('');
       return;
     }
 
@@ -1131,8 +1161,21 @@ function App() {
     setErrorMessage('');
   };
 
+  const finishWallGroup = () => {
+    if (!activeWallGroup?.isActive) return;
+    pushUndoState();
+    const next = finishWallGroupWithTrailingCleanup(activeWallGroup, connections, edgeAssignments);
+    setConnections(next.connections);
+    setActiveWallGroup(next.activeWallGroup);
+    setCompletedWallGroups((groups) => [...groups.filter((group) => group.groupId !== next.activeWallGroup.groupId), next.activeWallGroup]);
+    setAssignmentTargetConnectionId(null); setDisplayConnectionId(null); setSelectedEdgeId(null);
+    setActiveTool('select'); setErrorMessage('');
+  };
+
   const activeToolbarFinish = activeTool === 'TB' && activeTBGroup?.isActive
     ? { label: 'Finish TB', onClick: finishTBGroup }
+    : activeTool === 'W' && activeWallGroup?.isActive
+      ? { label: 'Finish W', onClick: finishWallGroup }
     : activeTool === 'S' && activeSGroup?.isActive
       ? { label: 'Finish S', onClick: finishSGroup }
       : null;
@@ -1222,17 +1265,30 @@ function App() {
       return;
     }
 
+    if (connection.prefix === 'W') {
+      if (!activeWallGroup?.isActive || !activeWallGroup.connectionIds.includes(assignmentConnectionId)) {
+        setErrorMessage('Start an active Wall session before assigning edges.'); return;
+      }
+      pushUndoState();
+      try {
+        const next = authorWallEdge(svgModel, edgeAssignments, connections, activeWallGroup, assignmentConnectionId, edgeId);
+        setEdgeAssignments(next.assignments as typeof edgeAssignments); setConnections(next.connections);
+        setActiveWallGroup(next.activeWallGroup); setAssignmentTargetConnectionId(next.selectedLabelId);
+        setDisplayConnectionId(assignmentConnectionId); setErrorMessage('');
+      } catch (error) { setErrorMessage((error as Error).message); }
+      return;
+    }
+
     pushUndoState();
 
     const currentBucket = toEdgeAssignmentBucket(edgeAssignments[edgeId]) ?? {};
     const nextAssignment: EdgeAssignment = {
       connectionId: assignmentConnectionId,
       ...(connection.prefix === 'TB' ? { edgeRole: getDefaultEdgeRole(edgeAssignments, assignmentConnectionId) } : {}),
-      ...(connection.prefix === 'W' && nextWallRole ? { edgeRole: nextWallRole } : {}),
       ...(connection.prefix === 'S' && nextSlotRole ? { slotRole: nextSlotRole } : {}),
     };
 
-    if (connection.prefix === 'TB' || connection.prefix === 'W') {
+    if (connection.prefix === 'TB') {
       if (currentBucket.edgeAssignment) {
         setErrorMessage('This edge already has a TB assignment.');
         return;
@@ -1244,20 +1300,12 @@ function App() {
       }
     }
 
-    let nextAssignments: EdgeAssignmentRecord = {
+    const nextAssignments: EdgeAssignmentRecord = {
       ...edgeAssignments,
-      [edgeId]: connection.prefix === 'TB' || connection.prefix === 'W'
+      [edgeId]: connection.prefix === 'TB'
         ? { ...currentBucket, edgeAssignment: nextAssignment }
         : { ...currentBucket, slotAssignments: [...(currentBucket.slotAssignments ?? []), nextAssignment] },
     };
-    if (connection.prefix === 'W') {
-      try {
-        nextAssignments = normalizeWallConnection(svgModel, nextAssignments, connections, assignmentConnectionId);
-      } catch (error) {
-        setErrorMessage((error as Error).message);
-        return;
-      }
-    }
     setEdgeAssignments(nextAssignments as typeof edgeAssignments);
     setDisplayConnectionId(assignmentConnectionId);
 
@@ -1269,7 +1317,7 @@ function App() {
     ), 0);
     const nextEdgeLabel = selectedLabelAssignmentCount === 2 ? getFollowingEdgeLabel(assignmentConnectionId) : null;
 
-    if ((connection.prefix === 'TB' || connection.prefix === 'W') && nextEdgeLabel) {
+    if (connection.prefix === 'TB' && nextEdgeLabel) {
       setConnections((currentConnections) => {
         if (currentConnections[nextEdgeLabel]) {
           return currentConnections;
@@ -1280,16 +1328,14 @@ function App() {
           [nextEdgeLabel]: createConnectionDefinition(
             nextEdgeLabel,
             connection.prefix,
-            connection.prefix === 'TB' ? getSharedTBProperties(currentConnections) : undefined,
+            getSharedTBProperties(currentConnections),
           ),
         };
       });
       setAssignmentTargetConnectionId(nextEdgeLabel);
       setDisplayConnectionId(assignmentConnectionId);
-      if (connection.prefix === 'TB') {
-        setActiveTBGroup((currentGroup) => appendAutoCreatedTBToTBGroup(currentGroup, assignmentConnectionId, nextEdgeLabel));
-        setExpandedTBGroups((currentGroups) => activeTBGroup?.connectionIds.includes(assignmentConnectionId) ? { ...currentGroups, [activeTBGroup.groupId]: true } : currentGroups);
-      }
+      setActiveTBGroup((currentGroup) => appendAutoCreatedTBToTBGroup(currentGroup, assignmentConnectionId, nextEdgeLabel));
+      setExpandedTBGroups((currentGroups) => activeTBGroup?.connectionIds.includes(assignmentConnectionId) ? { ...currentGroups, [activeTBGroup.groupId]: true } : currentGroups);
     }
 
     const selectedSlotRoles = Object.values(nextAssignments)
