@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test:wall-v2-downstream-diagnostic-analysis": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/wall-v2-downstream-diagnostic-analysis.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/wall-v2-downstream-diagnostic-analysis.js",
+    "test:multi-contributor-panel-carriers": "npm run test:wall-v2-downstream-diagnostic-analysis && npm run test:contributor-registration",
     "test:connection-labels": "rm -rf .test-build && tsc --ignoreConfig src/app/connectionLabels.ts --target es2022 --module esnext --moduleResolution bundler --outDir .test-build --skipLibCheck && node tests/connection-labels.test.mjs",
     "test:projected-distance-intervals": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/projected-distance-intervals.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/projected-distance-intervals.js",
     "test:tb-native-production": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/tb-native-production.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/tb-native-production.js",

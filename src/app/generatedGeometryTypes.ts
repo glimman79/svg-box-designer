@@ -51,3 +51,10 @@ export type GeneratedGeometryItem = {
   /** Explicit generator intent that cannot be recovered safely from contour provenance. */
   sourceRelationships?: ReadonlyArray<SourceGeometryRelationship>;
 };
+
+/** Stable identity for a contributor's coherent, pre-composition panel carrier.
+ * Final composed panel items intentionally use the separate panel-scoped identity. */
+export const createGeneratedPanelCarrierId = (
+  contributorType: PanelContributorType,
+  panelId: string,
+): string => ['generated', 'panel', contributorType, panelId].map(encodeURIComponent).join(':');

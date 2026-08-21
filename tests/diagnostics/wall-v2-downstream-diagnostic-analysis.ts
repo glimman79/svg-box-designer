@@ -33,15 +33,17 @@ affected.forEach((panelId, index) => {
   const tbId = `TB${index + 1}`; const wallId = `W${index + 1}`;
   connections[tbId] = { id: tbId, prefix: 'TB', properties: { fingerWidthMm: 10, isFingerWidthManual: true } };
   connections[wallId] = { id: wallId, prefix: 'W', properties: { fingerWidthMm: 10, isFingerWidthManual: true } };
-  tbAssignments[`${panelId}-edge-0`] = { edgeAssignment: { connectionId: tbId, edgeRole: index % 2 ? 'B' : 'A' } };
-  tbAssignments[`panel-4-edge-${index}`] = { edgeAssignment: { connectionId: tbId, edgeRole: index % 2 ? 'A' : 'B' } };
-  wallAssignments[`${panelId}-edge-1`] = { edgeAssignment: { connectionId: wallId, edgeRole: index % 2 ? 'B' : 'A' } };
-  wallAssignments[`panel-2-edge-${index}`] = { edgeAssignment: { connectionId: wallId, edgeRole: index % 2 ? 'A' : 'B' } };
+  tbAssignments[`${panelId}-edge-0`] = { edgeAssignment: { connectionId: tbId, edgeRole: 'A' } };
+  tbAssignments[`panel-4-edge-${index}`] = { edgeAssignment: { connectionId: tbId, edgeRole: 'B' } };
+  wallAssignments[`${panelId}-edge-1`] = { edgeAssignment: { connectionId: wallId, edgeRole: 'A' } };
+  wallAssignments[`panel-2-edge-${index}`] = { edgeAssignment: { connectionId: wallId, edgeRole: 'B' } };
 });
 const assignments = { ...tbAssignments, ...wallAssignments };
 const thickness = { defaultThicknessMm: 3, panels: Object.fromEntries(model.panels.map((panel) => [panel.id, { panelId: panel.id, thicknessMm: 3 }])) };
 
 validateWallAuthoringForApply(model, assignments, connections);
+// Apply validates complete operations before the authoring workflow appends its zero-assignment trailing placeholder.
+connections.W5 = { id: 'W5', prefix: 'W', properties: { fingerWidthMm: 10, isFingerWidthManual: true } };
 const run = (wallCount: number) => {
   const enabled = new Set(Array.from({ length: wallCount }, (_, index) => `W${index + 1}`));
   const selectedWallAssignments = Object.fromEntries(Object.entries(wallAssignments).filter(([, bucket]) => enabled.has(((bucket as any).edgeAssignment ?? bucket).connectionId)));
@@ -77,9 +79,15 @@ const run = (wallCount: number) => {
 
 const reductions = [1, 2, 3, 4].map(run);
 const final = reductions[3];
-assert(!final.authority.ok, 'Expected the diagnostic fixture to reproduce downstream mixed-authority failure.');
-assert(final.authority.blockingDecisions.some((value) => value.reason === 'DOWNSTREAM_DIAGNOSTIC_FAILURE'), 'Aggregate downstream diagnostic was not reproduced.');
-assert(final.details.some((detail) => detail.packagingError?.startsWith('Conflicting diagnostic packaging carrier')), 'Underlying packaging collision was not exposed.');
+assert(final.authority.ok, `Four-W mixed authority failed: ${final.authority.blockingDecisions.map((value) => value.reason)}`);
+assert(final.details.every((detail) => !detail.packagingError && !detail.finalDiagnostics.some((entry) => entry.severity === 'error')),
+  'Four-W topology did not reach valid packaging and FinalGeometry.');
+assert(final.details.filter((detail) => affected.includes(detail.panelId)).every((detail) =>
+  detail.carriers.length === 2 && new Set(detail.carriers.map((item) => item.id)).size === 2),
+  'Each mixed panel must retain distinct TB and W raw carriers.');
+const minimal = reductions[0];
+assert(minimal.authority.ok && minimal.details.some((detail) => detail.panelId === 'panel-1' && detail.carriers.length === 2),
+  'Minimal one-panel TB edge-0 plus W edge-1 regression failed.');
 
 const tbEquivalentConnections: ConnectionMap = { ...connections };
 const tbEquivalentAssignments: EdgeAssignmentRecord = { ...tbAssignments };
@@ -92,4 +100,4 @@ Object.entries(wallAssignments).forEach(([edgeId, bucket]) => {
 const tbEquivalentRaw = buildGeneratedTBGeometryItems(model, tbEquivalentAssignments, tbEquivalentConnections, thickness);
 const tbEquivalent = selectGeneratedGeometryAuthority(model, tbEquivalentRaw, 'mixed');
 assert(tbEquivalent.ok, `Equivalent all-TB coherent batch unexpectedly failed: ${tbEquivalent.blockingDecisions.map((value) => value.reason)}`);
-console.log(`PASS | aggregate failure reproduced | underlying packaging collision emitted | equivalent TB coherent batch passes (${tbEquivalentRaw.length} carriers)`);
+console.log(`PASS | minimal and four-W mixed panels package | FinalGeometry succeeds | W5 placeholder ignored | equivalent TB coherent batch passes (${tbEquivalentRaw.length} carriers)`);
