@@ -1,6 +1,6 @@
 /**
- * B2.3 evidence fixture. This deliberately records the production mismatch;
- * it is expected to fail until B2.4 changes the production meeting contract.
+ * B2.3/B2.3A evidence fixture. It records the production mismatch side by side
+ * with a diagnostic-only panel-pair calculation, without changing production.
  */
 import { getBucketEdgeAssignment } from '../../src/app/assignmentBuckets';
 import type { ConnectionMap } from '../../src/app/connectionTypes';
@@ -48,8 +48,38 @@ const observed = {
   pRole: getBucketEdgeAssignment(result.assignments['p-wall'])?.edgeRole,
   qRole: getBucketEdgeAssignment(result.assignments['q-wall'])?.edgeRole,
 };
-console.error('B2.3 REALISTIC TOPOLOGY EVIDENCE', JSON.stringify(observed, null, 2));
+const panelByEdge = new Map(model.panels.flatMap((item) => item.edgeIds.map((edgeId) => [edgeId, item.id] as const)));
+const authored = (connectionId: string) => Object.entries(result.assignments).flatMap(([edgeId, bucket]) => {
+  const assignment = getBucketEdgeAssignment(bucket);
+  const panelId = panelByEdge.get(edgeId);
+  return assignment?.connectionId === connectionId && panelId
+    ? [{ panelId, role: assignment.edgeRole }] : [];
+});
+const wallPanels = authored('W1').map((item) => item.panelId);
+const matchingTBConnections = Object.values(result.connections).filter((connection) => {
+  if (connection.prefix !== 'TB') return false;
+  const tbAssignments = authored(connection.id);
+  return tbAssignments.length === 2 && tbAssignments.some((item) => item.role === 'A')
+    && tbAssignments.some((item) => item.role === 'B')
+    && wallPanels.every((panelId) => tbAssignments.some((item) => item.panelId === panelId));
+}).map((connection) => connection.id);
+const tb1 = authored('TB1');
+const panelPair = {
+  wallPanels,
+  matchingTBConnections,
+  orientation: tb1.find((item) => item.panelId === 'wall-P')?.role === 'A'
+    ? 'P_TB_A_Q_TB_B' : 'P_TB_B_Q_TB_A',
+  reversedWallDetected: observed.pRole === 'B' && observed.qRole === 'A',
+  wouldSwapOnlyWallRoles: true,
+  resultingRoles: { pRole: 'A', qRole: 'B' },
+};
+console.log('B2.3A SIDE-BY-SIDE EVIDENCE', JSON.stringify({
+  currentProduction: { ...observed, result: 'W remains reversed' },
+  proposedPanelPairContract: panelPair,
+}, null, 2));
 
-if (meeting !== 'W_A_SIDE_IS_TB_B' || observed.pRole !== 'A' || observed.qRole !== 'B') {
-  throw new Error('KNOWN B2.3 FAILURE: same-panel-pair TB1 was filtered by contour-index adjacency, so reversed W1 was not normalized');
-}
+if (meeting !== 'NO_TB_MEETING' || observed.pRole !== 'B' || observed.qRole !== 'A')
+  throw new Error('Production baseline changed: update the B2.3A analysis before relying on this evidence');
+if (panelPair.matchingTBConnections.join() !== 'TB1' || !panelPair.reversedWallDetected
+  || panelPair.resultingRoles.pRole !== 'A' || panelPair.resultingRoles.qRole !== 'B')
+  throw new Error('Diagnostic panel-pair calculation did not normalize the reproduced reversed Wall');
