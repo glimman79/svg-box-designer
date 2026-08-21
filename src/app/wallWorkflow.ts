@@ -14,7 +14,7 @@ export const buildWallWorkflowGroups = (connections: ConnectionMap, active: Acti
   const labels = active.connectionIds.filter((id) => connections[id]?.prefix === 'W');
   return labels.length ? [...finished, { id: active.groupId, labels, isActive: true, orderIndex: order[active.groupId] }] : finished;
 };
-const createWall = (id: string) => ({ id, prefix: 'W' as const, properties: {} });
+const createWall = (id: string) => ({ id, prefix: 'W' as const, properties: { fingerWidthMm: 9, isFingerWidthManual: false } });
 const following = (id: string) => { const parsed = parseConnectionLabel(id); return parsed ? `${parsed.prefix}${parsed.number + 1}` : null; };
 
 export const startWallGroupWorkflow = (connections: ConnectionMap) => {

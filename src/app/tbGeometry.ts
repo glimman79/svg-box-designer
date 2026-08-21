@@ -160,42 +160,39 @@ export const recalculateAutomaticTBFingerWidths = (
   _panelThicknessState?: PanelThicknessState,
 ): ConnectionMap => connectionMap;
 
-export const getPanelEdgeOperations = (
+const getFingerJointPanelEdgeOperations = (
   panel: SvgPanel,
   assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
   panelThicknessState: PanelThicknessState,
   svgModel: SvgDocumentModel,
+  prefix: 'TB' | 'W',
 ): PanelEdgeOperation[] => (
   panel.edgeIds.flatMap((edgeId) => {
     const assignment = getBucketEdgeAssignment(assignments[edgeId]);
     const connection = assignment ? connectionMap[assignment.connectionId] : undefined;
-
-    if (!assignment || connection?.prefix !== 'TB' || !assignment.edgeRole) {
-      return [];
-    }
-
-    const connectionThickness = resolveTBThickness(svgModel, assignments, connection, panelThicknessState);
-    const roleThickness = getTBRoleThickness(connectionThickness, assignment.edgeRole);
-    const { ownerThicknessMm, receiverThicknessMm } = roleThickness;
-    const fingerWidthMm = connection.properties.isFingerWidthManual
-      ? connection.properties.fingerWidthMm
-      : connectionThickness.autoFingerWidthMm;
-
-    if (ownerThicknessMm === null || receiverThicknessMm === null || fingerWidthMm === null) {
-      return [];
-    }
-
-    return [{
-      edgeId,
-      connectionId: assignment.connectionId,
-      role: assignment.edgeRole,
-      materialThicknessMm: ownerThicknessMm,
-      insetDepthMm: receiverThicknessMm,
-      fingerWidthMm,
-    }];
+    if (!assignment || connection?.prefix !== prefix || !assignment.edgeRole) return [];
+    const assignedEdges = getAssignedTBEdges(assignments, connection.id);
+    const panelA = getAssignedPanelForRole(svgModel, assignedEdges, 'A');
+    const panelB = getAssignedPanelForRole(svgModel, assignedEdges, 'B');
+    const panelAThicknessMm = getPanelThickness(panelA?.id, panelThicknessState);
+    const panelBThicknessMm = getPanelThickness(panelB?.id, panelThicknessState);
+    if (panelAThicknessMm === null || panelBThicknessMm === null) return [];
+    const ownerThicknessMm = assignment.edgeRole === 'A' ? panelAThicknessMm : panelBThicknessMm;
+    const receiverThicknessMm = assignment.edgeRole === 'A' ? panelBThicknessMm : panelAThicknessMm;
+    const properties = connection.properties as { fingerWidthMm?: number; isFingerWidthManual?: boolean };
+    const fingerWidthMm = properties.isFingerWidthManual
+      ? properties.fingerWidthMm ?? Number.NaN : 3 * Math.min(panelAThicknessMm, panelBThicknessMm);
+    if (!Number.isFinite(fingerWidthMm)) return [];
+    return [{ edgeId, connectionId: assignment.connectionId, role: assignment.edgeRole,
+      materialThicknessMm: ownerThicknessMm, insetDepthMm: receiverThicknessMm, fingerWidthMm }];
   })
 );
+
+export const getPanelEdgeOperations = (
+  panel: SvgPanel, assignments: EdgeAssignmentRecord, connectionMap: ConnectionMap,
+  panelThicknessState: PanelThicknessState, svgModel: SvgDocumentModel,
+): PanelEdgeOperation[] => getFingerJointPanelEdgeOperations(panel, assignments, connectionMap, panelThicknessState, svgModel, 'TB');
 
 /**
  * Generates TB geometry from the complete current `assignments` and
@@ -204,15 +201,16 @@ export const getPanelEdgeOperations = (
  * result must replace—not append to—previous TB generated state. Separately
  * generated same-tool subsets affecting the same panel are unsupported.
  */
-export const buildGeneratedTBGeometryItems = (
+export const buildGeneratedFingerJointGeometryItems = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
   connectionMap: ConnectionMap,
   panelThicknessState: PanelThicknessState,
+  toolType: 'TB' | 'W',
 ): GeneratedGeometryItem[] => {
   const edgesById = new Map(svgModel.edges.map((edge) => [edge.id, edge]));
   const insetPanelOperations = svgModel.panels.flatMap((panel) => {
-    const operations = getPanelEdgeOperations(panel, assignments, connectionMap, panelThicknessState, svgModel);
+    const operations = getFingerJointPanelEdgeOperations(panel, assignments, connectionMap, panelThicknessState, svgModel, toolType);
     const validation = validateClosedPanel(panel, edgesById);
 
     if (!validation.valid || operations.length === 0) {
@@ -240,7 +238,7 @@ export const buildGeneratedTBGeometryItems = (
 
   return insetPanelOperations.flatMap(({ panel, operations, insetContour }) => {
     const connectionIds = [...new Set(operations.map((operation) => operation.connectionId))];
-    const operationId = `operation:TB:${connectionIds.join('+')}`;
+    const operationId = `operation:${toolType}:${connectionIds.join('+')}`;
     const generatedTaps: GeneratedTapGroup[] = [];
     const result = buildPanelGeometry(
       panel,
@@ -248,7 +246,7 @@ export const buildGeneratedTBGeometryItems = (
       insetContour,
       tabSegmentPlansByConnectionId,
       (operation, points, tapIndex, segmentRoles) => generatedTaps.push({
-        id: createGeneratedTapId({ toolType: 'TB', sourceOperationId: operationId, panelId: panel.id, sourceEdgeId: operation.edgeId, tapIndex }),
+        id: createGeneratedTapId({ toolType, sourceOperationId: operationId, panelId: panel.id, sourceEdgeId: operation.edgeId, tapIndex }),
         sourceOperationId: operationId, panelId: panel.id, sourceEdgeId: operation.edgeId, points, segmentRoles,
       }),
     );
@@ -267,13 +265,13 @@ export const buildGeneratedTBGeometryItems = (
     }
 
     return [{
-      id: `generated:panel:${panel.id}`, operationId, toolType: 'TB', kind: 'PANEL_PATH', pathD,
+      id: `generated:panel:${panel.id}`, operationId, toolType, kind: 'PANEL_PATH', pathD,
       source: { operationId, panelIds: [panel.id], edgeIds: [...panel.edgeIds], connectionIds },
       geometry: { type: 'path', pathD, sourcePathD: pointsToClosedPathD(panel.contour), sourceBounds: { ...panel.bounds } },
       behaviour: { assembly: 'panel-boundary', replacesPanelId: panel.id },
       manufacturingClassification: 'GENERATED_OUTER', manufacturing: generatedManufacturingMetadata(false), diagnostics: [],
       profileGroups: operations.map((operation) => createBoundaryProfileGroup({
-        toolType: 'TB', sourceOperationId: `operation:TB:${operation.connectionId}`, connectionId: operation.connectionId,
+        toolType, sourceOperationId: `operation:${toolType}:${operation.connectionId}`, connectionId: operation.connectionId,
         panelId: panel.id, sourceEdgeId: operation.edgeId,
         attachmentStart: roleEffectiveGeometry.junctions[panel.edgeIds.indexOf(operation.edgeId)],
         attachmentEnd: roleEffectiveGeometry.junctions[(panel.edgeIds.indexOf(operation.edgeId) + 1) % insetContour.length],
@@ -282,7 +280,7 @@ export const buildGeneratedTBGeometryItems = (
         const edgeIndex = panel.edgeIds.indexOf(operation.edgeId);
         const sourceEdge = edgesById.get(operation.edgeId)!;
         return createGeneratedProfile({
-          toolType: 'TB', connectionId: operation.connectionId, operationId: `operation:TB:${operation.connectionId}`, panelId: panel.id, sourceEdgeId: operation.edgeId,
+          toolType, connectionId: operation.connectionId, operationId: `operation:${toolType}:${operation.connectionId}`, panelId: panel.id, sourceEdgeId: operation.edgeId,
           sourceEdgeStart: sourceEdge.start, sourceEdgeEnd: sourceEdge.end,
           attachmentStart: roleEffectiveGeometry.junctions[edgeIndex], attachmentEnd: roleEffectiveGeometry.junctions[(edgeIndex + 1) % insetContour.length],
           taps: generatedTaps,
@@ -292,6 +290,13 @@ export const buildGeneratedTBGeometryItems = (
     }];
   });
 };
+
+export const buildGeneratedTBGeometryItems = (
+  svgModel: SvgDocumentModel, assignments: EdgeAssignmentRecord, connectionMap: ConnectionMap,
+  panelThicknessState: PanelThicknessState,
+): GeneratedGeometryItem[] => buildGeneratedFingerJointGeometryItems(
+  svgModel, assignments, connectionMap, panelThicknessState, 'TB',
+);
 
 export const buildContourSideOffsetPlan = (
   panel: SvgPanel,

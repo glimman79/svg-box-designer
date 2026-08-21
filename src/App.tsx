@@ -22,6 +22,7 @@ import { collectSourceEdgeAuthoringClaims, deriveCanvasEdgeRelationshipState, de
 import type { PanelCompositionAuthorityMode, PanelCompositionModel } from './app/generatedGeometryAuthority';
 import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { validateGeometryAuthoring } from './app/authoringRelationships';
+import { buildGeneratedWGeometryItems } from './app/wallGeometry';
 import { complementaryWallRole, getWallAssignments, normalizeWallConnection, resolveTBRoleForPanel, validateWallAuthoringForApply } from './app/wallAuthoring';
 import { authorWallEdge, buildWallWorkflowGroups, finishWallGroupWithTrailingCleanup, startWallGroupWorkflow, type ActiveWallGroup } from './app/wallWorkflow';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
@@ -77,6 +78,7 @@ export type { GeometryOperation, OperationSourceReference, OperationValidation, 
 export type { ManufacturingMetadata } from './app/manufacturingMetadata';
 export type { ManufacturingCompensationStrategy, ManufacturingPolicy } from './app/manufacturingPolicy';
 export type { CompensationStrategy, CompensationStrategyContext } from './app/compensationStrategies';
+export { buildGeneratedWGeometryItems } from './app/wallGeometry';
 export { applyTabsToContour, buildGeneratedTBGeometryItems, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, getPanelThicknessForEdge, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/tbGeometry';
 export type { PanelEdgeOperation, TabSegmentPlan } from './app/tbGeometry';
 export { getPanelThickness } from './app/panelThickness';
@@ -329,7 +331,7 @@ export const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
     fingerWidthMm: 9,
     isFingerWidthManual: false,
   },
-  W: {},
+  W: { fingerWidthMm: 9, isFingerWidthManual: false },
   S: {
     slotOffsetMm: 0,
     slotLengthMm: getDefaultSlotLength(3),
@@ -492,7 +494,7 @@ const createConnectionDefinition = (
     return { id, prefix, properties: cloneDefaultProperties(prefix) };
   }
 
-  if (prefix === 'W') return { id, prefix, properties: {} };
+  if (prefix === 'W') return { id, prefix, properties: { fingerWidthMm: 9, isFingerWidthManual: false } };
 
 
   if (prefix === 'C') {
@@ -1429,6 +1431,7 @@ function App() {
       validateWallAuthoringForApply(svgModel, applyInputs.assignments, nextConnections, activeWallGroup);
       const nextGeneratedGeometryItems = [
         ...buildGeneratedTBGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
+        ...buildGeneratedWGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
         ...buildGeneratedSGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
       ];
       const authority = selectGeneratedGeometryAuthority(svgModel, nextGeneratedGeometryItems, panelCompositionAuthorityMode);
@@ -1569,6 +1572,7 @@ function App() {
     });
     const recomputedGeneratedItems = [
       ...(generatedGeometryItems.some((item) => item.toolType === 'TB') || hasTBAssignments ? buildGeneratedTBGeometryItems(svgModel, edgeAssignments, nextConnections, appliedPanelManager) : []),
+      ...(generatedGeometryItems.some((item) => item.toolType === 'W') || Object.values(edgeAssignments).some((bucket) => { const assignment = getBucketEdgeAssignment(bucket); return assignment ? nextConnections[assignment.connectionId]?.prefix === 'W' : false; }) ? buildGeneratedWGeometryItems(svgModel, edgeAssignments, nextConnections, appliedPanelManager) : []),
       ...(generatedGeometryItems.some((item) => item.toolType === 'S') ? buildGeneratedSGeometryItems(svgModel, edgeAssignments, nextConnections, appliedPanelManager) : []),
     ];
     setConnections(nextConnections);
@@ -2013,7 +2017,7 @@ function App() {
             : panelRoles.some((role) => role === 'AMBIGUOUS_TB_ROLE') ? 'Conflict: ambiguous TB panel role; Wall fails closed.'
             : panelRoles.every((role) => role === 'NO_TB_ROLE') ? 'No TB constraint — either Wall orientation is available.'
             : 'TB constrained: each Wall panel independently inherits its complete TB role.'}</p>
-          <p className="muted">Physical Wall geometry is deferred to Step B3.</p>
+          <p className="muted">Wall uses TB-equivalent finger-joint geometry with Wall-safe A/B authoring.</p>
         </section>
       </div>;
     }
