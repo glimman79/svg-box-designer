@@ -37,6 +37,24 @@ export const selectGeneratedGeometryAuthority = (svgModel: SvgDocumentModel,
   diagnostics ??= assembleGeneratedGeometryDiagnostics(svgModel, generatedGeometryItems, contributorRegistry);
   let selected = [...generatedGeometryItems];
   const profiles = generatedGeometryItems.flatMap((item) => item.generatedProfiles ?? []);
+  // Downstream validation is project-atomic: validate the complete composed candidate set,
+  // rather than one composed panel surrounded by unrelated raw panel carriers.
+  let mixedDownstreamGate: PanelAuthorityDecision['downstreamEquivalenceGate'] = 'NOT_APPROVED';
+  if (mode === 'mixed' && diagnostics.panelDiagnostics.some((panel) => panel.status === 'MIXED_NO_LEGACY_ORACLE')) {
+    try {
+      const temporary = diagnostics.panelDiagnostics.reduce<ReadonlyArray<GeneratedGeometryItem>>((items, panel) => {
+        const candidate = diagnostics!.panelCandidates.find((value) => value.panelId === panel.panelId);
+        return candidate && !panel.status.startsWith('BLOCKED_')
+          ? packageComposedPanelGeometry(items, candidate, panel.replacementOperationIds) : items;
+      }, generatedGeometryItems);
+      const finalGeometry = buildFinalGeometry(svgModel, temporary);
+      const manufacturing = processManufacturingGeometry(finalGeometry, 0, 0, 0, [], 0);
+      mixedDownstreamGate = !finalGeometry.diagnostics.some((entry) => entry.severity === 'error') && manufacturing.contours.length > 0
+        ? 'APPROVED' : 'FAILED';
+    } catch {
+      mixedDownstreamGate = 'FAILED';
+    }
+  }
   const decisions = diagnostics.panelDiagnostics.map((panel): PanelAuthorityDecision => {
     const tools = new Set(panel.replacementOperationIds.map((id) => profiles.find((profile) => profile.operationId === id)?.generatorType));
     const unsupported = tools.has(undefined) || [...tools].some((tool) => tool !== undefined && !contributorRegistry.has(tool));
@@ -48,15 +66,7 @@ export const selectGeneratedGeometryAuthority = (svgModel: SvgDocumentModel,
     const candidate = diagnostics.panelCandidates.find((value) => value.panelId === panel.panelId);
     let downstreamGate: PanelAuthorityDecision['downstreamEquivalenceGate'] = singleToolApproved ? 'APPROVED' : 'NOT_APPROVED';
     if (mode === 'mixed' && mixedCandidate && candidate) {
-      try {
-        const temporary = packageComposedPanelGeometry(generatedGeometryItems, candidate, panel.replacementOperationIds);
-        const finalGeometry = buildFinalGeometry(svgModel, temporary);
-        const manufacturing = processManufacturingGeometry(finalGeometry, 0, 0, 0, [], 0);
-        downstreamGate = !finalGeometry.diagnostics.some((entry) => entry.severity === 'error') && manufacturing.contours.length > 0
-          ? 'APPROVED' : 'FAILED';
-      } catch {
-        downstreamGate = 'FAILED';
-      }
+      downstreamGate = mixedDownstreamGate;
     }
     const approved = singleToolApproved || (mixedCandidate && downstreamGate === 'APPROVED');
     const reason: PanelAuthorityDecision['reason'] = mode === 'legacy' ? 'MODE_LEGACY' : blocked ? blockedReason(panel.status)

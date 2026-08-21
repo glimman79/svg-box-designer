@@ -1,4 +1,5 @@
 import type { ConnectionMap, TBConnectionDefinition } from './connectionTypes';
+import { createGeneratedPanelCarrierId } from './generatedGeometryTypes';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import { createBoundaryProfileGroup, createGeneratedProfile } from './generatedProfiles';
 import { createGeneratedTapId } from './generatedTaps';
@@ -265,7 +266,7 @@ export const buildGeneratedFingerJointGeometryItems = (
     }
 
     return [{
-      id: `generated:panel:${panel.id}`, operationId, toolType, kind: 'PANEL_PATH', pathD,
+      id: createGeneratedPanelCarrierId(toolType, panel.id), operationId, toolType, kind: 'PANEL_PATH', pathD,
       source: { operationId, panelIds: [panel.id], edgeIds: [...panel.edgeIds], connectionIds },
       geometry: { type: 'path', pathD, sourcePathD: pointsToClosedPathD(panel.contour), sourceBounds: { ...panel.bounds } },
       behaviour: { assembly: 'panel-boundary', replacesPanelId: panel.id },
