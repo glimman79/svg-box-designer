@@ -4,6 +4,7 @@
   "version": "1.1.0",
   "type": "module",
   "scripts": {
+    "test:wall-v2-imported-model-differential-analysis": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/wall-v2-imported-model-differential-analysis.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/wall-v2-imported-model-differential-analysis.js",
     "test:wall-v2-browser-sequence-analysis": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/wall-v2-browser-sequence-analysis.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/wall-v2-browser-sequence-analysis.js",
     "test:wall-v2-downstream-diagnostic-analysis": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/wall-v2-downstream-diagnostic-analysis.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/wall-v2-downstream-diagnostic-analysis.js",
     "test:multi-contributor-panel-carriers": "npm run test:wall-v2-downstream-diagnostic-analysis && npm run test:contributor-registration",
