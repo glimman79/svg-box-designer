@@ -2,9 +2,9 @@ import type { SvgDocumentModel } from '../svgUtils';
 import { assembleGeneratedGeometryDiagnostics } from './generatedGeometryAssembly';
 import type { GeneratedGeometryAssemblyDiagnostics, PanelAssemblyComparisonStatus } from './generatedGeometryAssembly';
 import { packageComposedPanelGeometry } from './generatedGeometryDualRun';
+import { diagnoseMixedDownstream } from './generatedGeometryDownstreamDiagnostics';
+import type { DownstreamDiagnosticServices, MixedDownstreamDiagnostic } from './generatedGeometryDownstreamDiagnostics';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
-import { buildFinalGeometry } from './finalGeometry';
-import { processManufacturingGeometry } from './manufacturingCompensation';
 import { defaultPanelContributorRegistry } from './panelContributors';
 import type { PanelContributorRegistry } from './panelContributors';
 
@@ -22,7 +22,8 @@ export type PanelAuthorityDecision = Readonly<{ panelId: string; relationshipOwn
 export type GeneratedGeometryAuthoritySelection = Readonly<{ generatedGeometry: ReadonlyArray<GeneratedGeometryItem>;
   decisions: ReadonlyArray<PanelAuthorityDecision>; diagnostics: GeneratedGeometryAssemblyDiagnostics;
   panelCompositionModel: PanelCompositionModel; ok: boolean;
-  blockingDecisions: ReadonlyArray<PanelAuthorityDecision> }>;
+  blockingDecisions: ReadonlyArray<PanelAuthorityDecision>;
+  downstreamDiagnostics: ReadonlyArray<MixedDownstreamDiagnostic> }>;
 
 const blockedReason = (status: PanelAssemblyComparisonStatus): PanelAuthorityDecision['reason'] => status === 'BLOCKED_CONFLICT'
   ? 'REPLACEMENT_CONFLICT' : status === 'BLOCKED_MISSING_CONTRIBUTION' ? 'MISSING_CONTRIBUTION'
@@ -33,6 +34,7 @@ export const selectGeneratedGeometryAuthority = (svgModel: SvgDocumentModel,
   generatedGeometryItems: ReadonlyArray<GeneratedGeometryItem>, mode: PanelCompositionAuthorityMode = 'legacy',
   diagnostics?: GeneratedGeometryAssemblyDiagnostics,
   contributorRegistry: PanelContributorRegistry = defaultPanelContributorRegistry,
+  downstreamServices?: DownstreamDiagnosticServices,
 ): GeneratedGeometryAuthoritySelection => {
   diagnostics ??= assembleGeneratedGeometryDiagnostics(svgModel, generatedGeometryItems, contributorRegistry);
   let selected = [...generatedGeometryItems];
@@ -40,20 +42,15 @@ export const selectGeneratedGeometryAuthority = (svgModel: SvgDocumentModel,
   // Downstream validation is project-atomic: validate the complete composed candidate set,
   // rather than one composed panel surrounded by unrelated raw panel carriers.
   let mixedDownstreamGate: PanelAuthorityDecision['downstreamEquivalenceGate'] = 'NOT_APPROVED';
+  let downstreamDiagnostics: ReadonlyArray<MixedDownstreamDiagnostic> = Object.freeze([]);
   if (mode === 'mixed' && diagnostics.panelDiagnostics.some((panel) => panel.status === 'MIXED_NO_LEGACY_ORACLE')) {
-    try {
-      const temporary = diagnostics.panelDiagnostics.reduce<ReadonlyArray<GeneratedGeometryItem>>((items, panel) => {
-        const candidate = diagnostics!.panelCandidates.find((value) => value.panelId === panel.panelId);
-        return candidate && !panel.status.startsWith('BLOCKED_')
-          ? packageComposedPanelGeometry(items, candidate, panel.replacementOperationIds) : items;
-      }, generatedGeometryItems);
-      const finalGeometry = buildFinalGeometry(svgModel, temporary);
-      const manufacturing = processManufacturingGeometry(finalGeometry, 0, 0, 0, [], 0);
-      mixedDownstreamGate = !finalGeometry.diagnostics.some((entry) => entry.severity === 'error') && manufacturing.contours.length > 0
-        ? 'APPROVED' : 'FAILED';
-    } catch {
-      mixedDownstreamGate = 'FAILED';
-    }
+    const downstreamPanels = diagnostics.panelDiagnostics.flatMap((panel) => {
+      const candidate = diagnostics!.panelCandidates.find((value) => value.panelId === panel.panelId);
+      return candidate && !panel.status.startsWith('BLOCKED_')
+        ? [{ panelId: panel.panelId, status: panel.status, candidate, replacementOperationIds: panel.replacementOperationIds }] : [];
+    });
+    downstreamDiagnostics = diagnoseMixedDownstream(svgModel, generatedGeometryItems, downstreamPanels, downstreamServices);
+    mixedDownstreamGate = downstreamDiagnostics.every((entry) => entry.firstFailure === null) ? 'APPROVED' : 'FAILED';
   }
   const decisions = diagnostics.panelDiagnostics.map((panel): PanelAuthorityDecision => {
     const tools = new Set(panel.replacementOperationIds.map((id) => profiles.find((profile) => profile.operationId === id)?.generatorType));
@@ -89,7 +86,7 @@ export const selectGeneratedGeometryAuthority = (svgModel: SvgDocumentModel,
     : mode === 'single-tool' && decision.cohort !== 'MIXED' && decision.authority !== 'COMPOSED');
   if (blockingDecisions.length) {
     return Object.freeze({ ok: false, generatedGeometry: Object.freeze([]), decisions: Object.freeze(decisions), diagnostics,
-      blockingDecisions: Object.freeze(blockingDecisions), panelCompositionModel: 'legacy' });
+      blockingDecisions: Object.freeze(blockingDecisions), downstreamDiagnostics, panelCompositionModel: 'legacy' });
   }
   for (const decision of decisions.filter((value) => value.authority === 'COMPOSED')) {
     const count = selected.filter((item) => item.kind === 'PANEL_PATH' && item.behaviour.replacesPanelId === decision.panelId).length;
@@ -97,7 +94,7 @@ export const selectGeneratedGeometryAuthority = (svgModel: SvgDocumentModel,
   }
   const mixedAuthority = decisions.some((value) => value.authority === 'COMPOSED' && value.cohort === 'MIXED');
   return Object.freeze({ ok: true, generatedGeometry: Object.freeze(selected), decisions: Object.freeze(decisions), diagnostics,
-    blockingDecisions: Object.freeze([]),
+    blockingDecisions: Object.freeze([]), downstreamDiagnostics,
     panelCompositionModel: mixedAuthority ? 'relationship-composed-mixed-v1'
       : decisions.some((value) => value.authority === 'COMPOSED') ? 'relationship-composed-single-tool-v1' : 'legacy' });
 };

@@ -17,6 +17,7 @@ import { createGeneratedProfileOffsetTargetId, createOrdinaryProfileOffsetTarget
 import { buildFinalGeometry as buildNativeFinalGeometry } from './app/finalGeometry';
 import { createGeneratedGeometrySnapshot, restoreGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { selectGeneratedGeometryAuthority } from './app/generatedGeometryAuthority';
+import type { GeneratedGeometryAuthoritySelection } from './app/generatedGeometryAuthority';
 import { downloadGeometryRuntimeDebugState, geometryContributorRegistryIdentity, probeGeometryDownstreamExceptions } from './app/geometryRuntimeDebug';
 import type { GeometryRuntimeDebugCapture } from './app/geometryRuntimeDebug';
 import { assembleGeneratedGeometryDiagnostics } from './app/generatedGeometryAssembly';
@@ -69,6 +70,25 @@ export { NoMovementStrategy, OffsetStrategy, noMovementStrategy, offsetStrategy 
 const requestedPanelCompositionAuthorityMode = resolvePanelCompositionAuthorityMode(
   import.meta.env.VITE_PANEL_COMPOSITION_AUTHORITY_MODE,
 );
+const reportAuthorityDownstreamDiagnostics = (authority: GeneratedGeometryAuthoritySelection) => {
+  if (!import.meta.env.DEV || !authority.downstreamDiagnostics.length) return;
+  console.group('[GeometryAuthority] mixed project-atomic downstream diagnostics');
+  authority.downstreamDiagnostics.forEach((record) => {
+    const method = record.firstFailure ? console.error : console.info;
+    method('[GeometryAuthority]', record.panelId, record);
+  });
+  console.table(authority.downstreamDiagnostics.map((record) => ({ panelId: record.panelId,
+    status: record.assemblyStatus, firstFailure: record.firstFailure ?? 'NONE',
+    finalGeometryDiagnostics: record.finalGeometry.diagnosticCount,
+    manufacturingContours: record.manufacturing.contourCount })));
+  console.groupEnd();
+};
+const formatAuthorityBlockingDecision = (authority: GeneratedGeometryAuthoritySelection,
+  decision: GeneratedGeometryAuthoritySelection['blockingDecisions'][number]) => {
+  const detail = import.meta.env.DEV
+    ? authority.downstreamDiagnostics.find((entry) => entry.panelId === decision.panelId)?.firstFailure : null;
+  return `${decision.panelId}: ${decision.reason}${detail ? ` firstFailure=${detail}` : ''}`;
+};
 export { geometryServices } from './app/geometryServices';
 export { collectSourceEdgeAuthoringClaims, deriveCanvasEdgeRelationshipState, deriveGeneratedCanvasEdgeRelationshipState, sourceEdgeRelationshipKey } from './app/canvasEdgeRelationships';
 export type { CanvasEdgeRelationshipState } from './app/canvasEdgeRelationships';
@@ -1459,8 +1479,9 @@ function App() {
         downstreamExceptions: probeGeometryDownstreamExceptions(svgModel, nextGeneratedGeometryItems),
       };
       const authority = selectGeneratedGeometryAuthority(svgModel, nextGeneratedGeometryItems, panelCompositionAuthorityMode);
+      reportAuthorityDownstreamDiagnostics(authority);
       if (!authority.ok) {
-        const reasons = authority.blockingDecisions.map((decision) => `${decision.panelId}: ${decision.reason}`).join('; ');
+        const reasons = authority.blockingDecisions.map((decision) => formatAuthorityBlockingDecision(authority, decision)).join('; ');
         throw new Error(`Unable to compose panel geometry: ${reasons}`);
       }
       const shouldRecordManufacturing = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
@@ -1601,8 +1622,9 @@ function App() {
     ];
     setConnections(nextConnections);
     const authority = selectGeneratedGeometryAuthority(svgModel, recomputedGeneratedItems, panelCompositionAuthorityMode);
+    reportAuthorityDownstreamDiagnostics(authority);
     if (!authority.ok) {
-      setErrorMessage(`Unable to compose panel geometry: ${authority.blockingDecisions.map((decision) => `${decision.panelId}: ${decision.reason}`).join('; ')}`);
+      setErrorMessage(`Unable to compose panel geometry: ${authority.blockingDecisions.map((decision) => formatAuthorityBlockingDecision(authority, decision)).join('; ')}`);
       return;
     }
     setGeneratedGeometryItems([...authority.generatedGeometry]);
