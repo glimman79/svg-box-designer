@@ -17,6 +17,9 @@ import { createGeneratedProfileOffsetTargetId, createOrdinaryProfileOffsetTarget
 import { buildFinalGeometry as buildNativeFinalGeometry } from './app/finalGeometry';
 import { createGeneratedGeometrySnapshot, restoreGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { selectGeneratedGeometryAuthority } from './app/generatedGeometryAuthority';
+import { downloadGeometryRuntimeDebugState, geometryContributorRegistryIdentity, probeGeometryDownstreamExceptions } from './app/geometryRuntimeDebug';
+import type { GeometryRuntimeDebugCapture } from './app/geometryRuntimeDebug';
+import { assembleGeneratedGeometryDiagnostics } from './app/generatedGeometryAssembly';
 import { resolvePanelCompositionAuthorityMode } from './app/panelCompositionAuthorityMode';
 import { collectSourceEdgeAuthoringClaims, deriveCanvasEdgeRelationshipState, deriveGeneratedCanvasEdgeRelationshipState, sourceEdgeRelationshipKey } from './app/canvasEdgeRelationships';
 import type { PanelCompositionAuthorityMode, PanelCompositionModel } from './app/generatedGeometryAuthority';
@@ -627,6 +630,7 @@ function App() {
   const [displayConnectionId, setDisplayConnectionId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [generatedGeometryItems, setGeneratedGeometryItems] = useState<GeneratedGeometryItem[]>([]);
+  const geometryRuntimeDebugCaptureRef = useRef<GeometryRuntimeDebugCapture | null>(null);
   // Non-legacy marks arrays already selected at Apply or restored from history; they are never raw generator input.
   const [generatedGeometryCompositionModel, setGeneratedGeometryCompositionModel] = useState<PanelCompositionModel>('legacy');
   const [activeSGroup, setActiveSGroup] = useState<ActiveSGroup | null>(null);
@@ -665,6 +669,14 @@ function App() {
     setDisplayConnectionId(connectionId);
   };
   const selectedEdge = svgModel.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const debugWindow = window as typeof window & { __exportGeometryDebugState?: () => string | null };
+    debugWindow.__exportGeometryDebugState = () => geometryRuntimeDebugCaptureRef.current
+      ? downloadGeometryRuntimeDebugState(geometryRuntimeDebugCaptureRef.current) : null;
+    return () => { delete debugWindow.__exportGeometryDebugState; };
+  }, []);
 
   useLayoutEffect(() => {
     const updateCanvasViewportSize = () => {
@@ -1429,11 +1441,23 @@ function App() {
       const nextConnections = recalculateAutomaticTBFingerWidths(svgModel, applyInputs.assignments, recalculateAutomaticSSlotLengths(svgModel, applyInputs.assignments, applyInputs.connections, panelManager), panelManager);
       validateGeometryAuthoring(svgModel, applyInputs.assignments, nextConnections, panelCompositionAuthorityMode);
       validateWallAuthoringForApply(svgModel, applyInputs.assignments, nextConnections, activeWallGroup);
-      const nextGeneratedGeometryItems = [
-        ...buildGeneratedTBGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
-        ...buildGeneratedWGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
-        ...buildGeneratedSGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager),
-      ];
+      const tbGeneratedItems = buildGeneratedTBGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager);
+      const wGeneratedItems = buildGeneratedWGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager);
+      const sGeneratedItems = buildGeneratedSGeometryItems(svgModel, applyInputs.assignments, nextConnections, panelManager);
+      const nextGeneratedGeometryItems = [...tbGeneratedItems, ...wGeneratedItems, ...sGeneratedItems];
+      if (import.meta.env.DEV) geometryRuntimeDebugCaptureRef.current = {
+        schema: 'wall-v2-runtime-debug-b3.7', capturedAt: new Date().toISOString(),
+        authoredState: { svgModel, edgeAssignments: applyInputs.assignments, connections: nextConnections, panelManager,
+          activeTBGroup, completedTBGroups, activeWallGroup, completedWallGroups, activeSGroup,
+          assignmentTargetConnectionId, displayConnectionId, selectedEdgeId, activePanelId, activeHoleId,
+          workflowGroupOrder, projectSettings, lastAppliedManufacturingSettings,
+          panelCompositionModel: generatedGeometryCompositionModel, existingGeneratedGeometryItems: generatedGeometryItems },
+        applyInput: { tbGeneratedItems, wGeneratedItems, sGeneratedItems, combinedGeneratedItems: nextGeneratedGeometryItems },
+        authorityContext: { mode: panelCompositionAuthorityMode, panelCompositionModel: generatedGeometryCompositionModel,
+          contributorRegistryIdentity: geometryContributorRegistryIdentity(),
+          assemblyDiagnostics: assembleGeneratedGeometryDiagnostics(svgModel, nextGeneratedGeometryItems) },
+        downstreamExceptions: probeGeometryDownstreamExceptions(svgModel, nextGeneratedGeometryItems),
+      };
       const authority = selectGeneratedGeometryAuthority(svgModel, nextGeneratedGeometryItems, panelCompositionAuthorityMode);
       if (!authority.ok) {
         const reasons = authority.blockingDecisions.map((decision) => `${decision.panelId}: ${decision.reason}`).join('; ');
