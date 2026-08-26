@@ -8,6 +8,7 @@ import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import { processManufacturingGeometry } from './manufacturingCompensation';
 import type { ManufacturingGeometry } from './manufacturingCompensation';
 import type { PanelCandidate } from './panelComposer';
+import type { ComposedPanelMetadataReconciliationResult } from './composedPanelMetadataReconciliation';
 
 export type DownstreamFirstFailure = 'PACKAGING_FAILURE' | 'FINAL_GEOMETRY_EXCEPTION'
   | 'FINAL_GEOMETRY_ERROR_DIAGNOSTIC' | 'MANUFACTURING_EXCEPTION' | 'MANUFACTURING_ZERO_CONTOURS' | null;
@@ -35,7 +36,7 @@ export type ClearanceProjectionTrace = FinalGeometryClearanceProjectionTrace & R
 }>;
 
 type PanelInput = Readonly<{ panelId: string; status: PanelAssemblyComparisonStatus; candidate: PanelCandidate;
-  replacementOperationIds: ReadonlyArray<string> }>;
+  replacementOperationIds: ReadonlyArray<string>; reconciliation: ComposedPanelMetadataReconciliationResult }>;
 export type DownstreamDiagnosticServices = Readonly<{
   packagePanel: typeof packageComposedPanelGeometry; buildFinal: typeof buildFinalGeometry;
   manufacture: typeof processManufacturingGeometry;
@@ -57,7 +58,7 @@ export const diagnoseMixedDownstream = (svgModel: SvgDocumentModel, initialItems
   let packagingError: string | null = null;
   for (const panel of panels) {
     if (packagingError) break;
-    try { items = services.packagePanel(items, panel.candidate, panel.replacementOperationIds); }
+    try { items = services.packagePanel(items, panel.candidate, panel.replacementOperationIds, panel.reconciliation); }
     catch (error) { packagingError = errorMessage(error); }
   }
   let finalGeometry: FinalGeometry | null = null; let finalError: string | null = null;

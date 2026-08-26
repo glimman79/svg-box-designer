@@ -1,6 +1,7 @@
 import { buildGeneratedTBGeometryItems } from '../../src/app/tbGeometry';
 import { packageComposedPanelGeometry, runGeneratedGeometryDualRun } from '../../src/app/generatedGeometryDualRun';
 import { assembleGeneratedGeometryDiagnostics } from '../../src/app/generatedGeometryAssembly';
+import { reconcileComposedPanelMetadata } from '../../src/app/composedPanelMetadataReconciliation';
 import { buildGeneratedSGeometryItems } from '../../src/app/sGeometry';
 import type { SvgDocumentModel, SvgPanel } from '../../src/svgUtils';
 
@@ -25,9 +26,12 @@ const diagnostic=assembly.panelDiagnostics.find(value=>value.panelId===owner.pan
 const matched=candidate.segments.find(value=>value.projectionId)!;
 const generatedProjection=tbItems.flatMap(item=>item.generatedProfiles??[]).flatMap(profile=>profile.geometryProjections)
   .find(value=>value.id===matched.projectionId)!;
-const packagedProjection=(changedStart:{x:number;y:number})=>packageComposedPanelGeometry(tbItems,
-  {...candidate,segments:candidate.segments.map(value=>value===matched?{...value,start:changedStart}:value)},diagnostic.replacementOperationIds)
-  .flatMap(item=>item.generatedProfiles??[]).flatMap(profile=>profile.geometryProjections).find(value=>value.id===matched.projectionId)!;
+const packagedProjection=(changedStart:{x:number;y:number})=>{ const changedCandidate={...candidate,
+  segments:candidate.segments.map(value=>value===matched?{...value,start:changedStart}:value)};
+  const reconciliation=reconcileComposedPanelMetadata({candidate:changedCandidate,generatedGeometryItems:tbItems,
+    relationshipIndex:assembly.relationshipIndex});
+  return packageComposedPanelGeometry(tbItems,changedCandidate,diagnostic.replacementOperationIds,reconciliation)
+    .flatMap(item=>item.generatedProfiles??[]).flatMap(profile=>profile.geometryProjections).find(value=>value.id===matched.projectionId)!; };
 const equivalent=packagedProjection({x:generatedProjection.start.x,y:generatedProjection.start.y+Number.EPSILON});
 assert(equivalent===generatedProjection,'tolerance-equivalent projection object was replaced');
 const adjustedStart={x:generatedProjection.start.x,y:generatedProjection.start.y+1};

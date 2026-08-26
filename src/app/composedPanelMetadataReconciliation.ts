@@ -4,6 +4,7 @@ import type { GeometryRelationshipIndex } from './geometryRelationships';
 import type { GeneratedProfile, GeneratedProfileElementId, GeneratedProfileId, GeometryProjectionId } from './generatedProfiles';
 import type { GeneratedTapId, GeneratedTapSegmentRole } from './generatedTaps';
 import type { PanelCandidate, PanelCandidateSegment } from './panelComposer';
+import type { NonphysicalProjectionDisposition } from './panelComposer';
 import { cornerTouchTolerance, pointsMatch } from './sharedGeometry';
 import type { Point } from '../svgUtils';
 
@@ -29,6 +30,7 @@ export type ProjectionReconciliationEvidence = Readonly<{
   finalEnd?: Readonly<Point>;
   startMoved: boolean;
   endMoved: boolean;
+  nonphysicalDisposition?: NonphysicalProjectionDisposition;
 }>;
 
 export type ProjectionReconciliation = Readonly<{
@@ -71,6 +73,7 @@ export type ReconciledProjectionOrigin = Readonly<{
   originalCoverage: NormalizedCoverageInterval; finalCoverage: NormalizedCoverageInterval;
 }>;
 export type ComposedPanelMetadataReconciliationResult = Readonly<{
+  panelId: string;
   reconciliations: ReadonlyArray<ProjectionReconciliation>;
   segmentOrigins: Readonly<Record<number, ReadonlyArray<ReconciledProjectionOrigin>>>;
   diagnostics: ReadonlyArray<ProfileReconciliationDiagnostic>;
@@ -106,8 +109,8 @@ const freezeRef = (segment: PanelCandidateSegment, orientation: ProjectionOrient
 export const reconcileComposedPanelMetadata = (input: ReconcileComposedPanelMetadataInput): ComposedPanelMetadataReconciliationResult => {
   const diagnostics: ProfileReconciliationDiagnostic[] = [];
   const mappings: ProjectionReconciliation[] = [];
-  const profiles = input.generatedGeometryItems.flatMap((item) => item.generatedProfiles ?? [])
-    .filter((profile) => profile.panelId === input.candidate.panelId).sort((a, b) => semanticKey(a).localeCompare(semanticKey(b)));
+  const profiles = [...new Set(input.generatedGeometryItems.flatMap((item) => item.generatedProfiles ?? [])
+    .filter((profile) => profile.panelId === input.candidate.panelId))].sort((a, b) => semanticKey(a).localeCompare(semanticKey(b)));
   const diagnostic = (profile: GeneratedProfile, code: ProfileReconciliationDiagnosticCode, message: string,
     projectionId?: GeometryProjectionId, segmentIndex?: number) => diagnostics.push(Object.freeze({ code, blocking: true, panelId: profile.panelId,
     sourceEdgeId: profile.sourceEdgeId, operationId: profile.operationId, profileId: profile.id, ...(projectionId ? { projectionId } : {}),
@@ -147,6 +150,16 @@ export const reconcileComposedPanelMetadata = (input: ReconcileComposedPanelMeta
         valid.push(segment);
       });
       if (!valid.length) {
+        const nonphysical = (input.candidate.nonphysicalProjectionLineage ?? []).filter((entry) => entry.panelId === profile.panelId
+          && entry.sourceEdgeId === profile.sourceEdgeId && entry.operationId === profile.operationId && entry.profileId === profile.id
+          && entry.elementId === element.id && entry.projectionId === projection.id);
+        if (nonphysical.length === 1 && pointsMatch(nonphysical[0].start, projection.start)
+          && pointsMatch(nonphysical[0].end, projection.end) && nonphysical[0].tapId === (element.tapId ?? null)
+          && nonphysical[0].tapRole === (element.segmentTapRole ?? null)
+          && nonphysical[0].disposition === 'TERMINAL_INVERSE_PAIR_NONPHYSICAL') {
+          addMapping('DROPPED_NONPHYSICAL', [], { ...baseEvidence, startMoved: false, endMoved: false,
+            nonphysicalDisposition: nonphysical[0].disposition }); return;
+        }
         diagnostic(profile, 'RECONCILIATION_REQUIRED_PHYSICAL_MAPPING_MISSING', 'Required nonzero projection has no authoritative final target.', projection.id); return;
       }
       if (valid.length === 1) {
@@ -202,6 +215,6 @@ export const reconcileComposedPanelMetadata = (input: ReconcileComposedPanelMeta
   const segmentOrigins: Record<number, ReadonlyArray<ReconciledProjectionOrigin>> = {};
   [...originBuckets].sort(([a], [b]) => a - b).forEach(([index, origins]) => { segmentOrigins[index] = Object.freeze(origins.sort((a, b) =>
     `${a.panelId}\0${a.sourceEdgeId}\0${a.operationId}\0${a.profileId}\0${a.elementId}\0${a.originalProjectionId}`.localeCompare(`${b.panelId}\0${b.sourceEdgeId}\0${b.operationId}\0${b.profileId}\0${b.elementId}\0${b.originalProjectionId}`))); });
-  return Object.freeze({ reconciliations: Object.freeze(mappings), segmentOrigins: Object.freeze(segmentOrigins),
+  return Object.freeze({ panelId: input.candidate.panelId, reconciliations: Object.freeze(mappings), segmentOrigins: Object.freeze(segmentOrigins),
     diagnostics: Object.freeze(diagnostics), ok: diagnostics.length === 0 });
 };

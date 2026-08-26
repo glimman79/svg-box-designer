@@ -3,7 +3,7 @@ import type { GeneratedGeometryItem } from '../../src/app/generatedGeometryTypes
 import { buildGeometryRelationshipIndex } from '../../src/app/geometryRelationships';
 import type { SourceGeometryRelationship } from '../../src/app/geometryRelationships';
 import type { GeneratedProfile, GeneratedProfileElementId, GeneratedProfileId, GeometryProjectionId } from '../../src/app/generatedProfiles';
-import type { PanelCandidate, PanelCandidateSegment } from '../../src/app/panelComposer';
+import type { NonphysicalProjectionLineage, PanelCandidate, PanelCandidateSegment } from '../../src/app/panelComposer';
 import type { PanelContributorType } from '../../src/app/panelContributors';
 import type { GeneratedTapId } from '../../src/app/generatedTaps';
 
@@ -31,8 +31,9 @@ const segment = (p: GeneratedProfile, index = 0, start = p.geometryProjections[0
 const run = (profiles: GeneratedProfile[], segments: PanelCandidateSegment[], relationships: ReadonlyArray<SourceGeometryRelationship> = profiles.map((p) => ({
   kind: 'replaces' as const, operationId: p.operationId, panelId: p.panelId, sourceEdgeId: p.sourceEdgeId,
   provenance: 'native-generated-profile' as const, provenanceId: p.id,
-}))) => {
-  const candidate: PanelCandidate = { panelId: 'panel', points: [], junctions: [], segments, diagnostics: [], createdFeatures: [] };
+})), nonphysicalProjectionLineage: ReadonlyArray<NonphysicalProjectionLineage> = []) => {
+  const candidate: PanelCandidate = { panelId: 'panel', points: [], junctions: [], segments, diagnostics: [], createdFeatures: [],
+    nonphysicalProjectionLineage };
   const item = { id: 'carrier', generatedProfiles: profiles } as unknown as GeneratedGeometryItem;
   return reconcileComposedPanelMetadata({ candidate, generatedGeometryItems: [item], relationshipIndex: buildGeometryRelationshipIndex(relationships) });
 };
@@ -56,6 +57,17 @@ for (const tool of ['TB', 'W', 'FUTURE_X'] as PanelContributorType[]) {
   const p = profile('missing'); const result = run([p], []);
   assert.equal(result.diagnostics[0].code, 'RECONCILIATION_REQUIRED_PHYSICAL_MAPPING_MISSING');
   assert.ok(!result.reconciliations.some((m) => m.status === 'DROPPED_NONPHYSICAL'));
+}
+{
+  const p = profile('nonphysical'); const projection = p.geometryProjections[0]; const element = p.orderedElements[0];
+  const evidence: NonphysicalProjectionLineage = { panelId: p.panelId, sourceEdgeId: p.sourceEdgeId, operationId: p.operationId,
+    profileId: p.id, elementId: element.id, projectionId: projection.id, start: projection.start, end: projection.end,
+    tapId: null, tapRole: null, disposition: 'TERMINAL_INVERSE_PAIR_NONPHYSICAL' };
+  const result = run([p], [], undefined, [evidence]);
+  assert.equal(result.ok, true); assert.equal(result.reconciliations[0].status, 'DROPPED_NONPHYSICAL');
+  assert.equal(result.reconciliations[0].evidence.nonphysicalDisposition, 'TERMINAL_INVERSE_PAIR_NONPHYSICAL');
+  const conflicting = run([p], [], undefined, [evidence, { ...evidence, end: { x: 11, y: 0 } }]);
+  assert.equal(conflicting.diagnostics[0].code, 'RECONCILIATION_REQUIRED_PHYSICAL_MAPPING_MISSING');
 }
 {
   const p = profile('ambiguous'); const result = run([p], [segment(p, 0), segment(p, 1)]);
