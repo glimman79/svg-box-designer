@@ -1,6 +1,7 @@
 import type { SvgDocumentModel } from '../svgUtils';
 import { assembleGeneratedGeometryDiagnostics } from './generatedGeometryAssembly';
 import { packageComposedPanelGeometry } from './generatedGeometryDualRun';
+import { reconcileComposedPanelMetadata } from './composedPanelMetadataReconciliation';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import { buildFinalGeometry } from './finalGeometry';
 import { processManufacturingGeometry } from './manufacturingCompensation';
@@ -58,7 +59,9 @@ export const probeGeometryDownstreamExceptions = (svgModel: SvgDocumentModel, it
       const candidate = diagnostics.panelCandidates.find((value) => value.panelId === panel.panelId);
       if (!candidate || panel.status.startsWith('BLOCKED_')) continue;
       stage = 'packageComposedPanelGeometry';
-      temporary = packageComposedPanelGeometry(temporary, candidate, panel.replacementOperationIds);
+      const reconciliation = reconcileComposedPanelMetadata({ candidate, generatedGeometryItems: temporary,
+        relationshipIndex: diagnostics.relationshipIndex });
+      temporary = packageComposedPanelGeometry(temporary, candidate, panel.replacementOperationIds, reconciliation);
     }
     stage = 'buildFinalGeometry';
     const finalGeometry = buildFinalGeometry(svgModel, temporary);

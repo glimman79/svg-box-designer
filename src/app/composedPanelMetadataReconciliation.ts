@@ -71,6 +71,7 @@ export type ReconciledProjectionOrigin = Readonly<{
   originalCoverage: NormalizedCoverageInterval; finalCoverage: NormalizedCoverageInterval;
 }>;
 export type ComposedPanelMetadataReconciliationResult = Readonly<{
+  panelId: string;
   reconciliations: ReadonlyArray<ProjectionReconciliation>;
   segmentOrigins: Readonly<Record<number, ReadonlyArray<ReconciledProjectionOrigin>>>;
   diagnostics: ReadonlyArray<ProfileReconciliationDiagnostic>;
@@ -106,8 +107,8 @@ const freezeRef = (segment: PanelCandidateSegment, orientation: ProjectionOrient
 export const reconcileComposedPanelMetadata = (input: ReconcileComposedPanelMetadataInput): ComposedPanelMetadataReconciliationResult => {
   const diagnostics: ProfileReconciliationDiagnostic[] = [];
   const mappings: ProjectionReconciliation[] = [];
-  const profiles = input.generatedGeometryItems.flatMap((item) => item.generatedProfiles ?? [])
-    .filter((profile) => profile.panelId === input.candidate.panelId).sort((a, b) => semanticKey(a).localeCompare(semanticKey(b)));
+  const profiles = [...new Set(input.generatedGeometryItems.flatMap((item) => item.generatedProfiles ?? [])
+    .filter((profile) => profile.panelId === input.candidate.panelId))].sort((a, b) => semanticKey(a).localeCompare(semanticKey(b)));
   const diagnostic = (profile: GeneratedProfile, code: ProfileReconciliationDiagnosticCode, message: string,
     projectionId?: GeometryProjectionId, segmentIndex?: number) => diagnostics.push(Object.freeze({ code, blocking: true, panelId: profile.panelId,
     sourceEdgeId: profile.sourceEdgeId, operationId: profile.operationId, profileId: profile.id, ...(projectionId ? { projectionId } : {}),
@@ -202,6 +203,6 @@ export const reconcileComposedPanelMetadata = (input: ReconcileComposedPanelMeta
   const segmentOrigins: Record<number, ReadonlyArray<ReconciledProjectionOrigin>> = {};
   [...originBuckets].sort(([a], [b]) => a - b).forEach(([index, origins]) => { segmentOrigins[index] = Object.freeze(origins.sort((a, b) =>
     `${a.panelId}\0${a.sourceEdgeId}\0${a.operationId}\0${a.profileId}\0${a.elementId}\0${a.originalProjectionId}`.localeCompare(`${b.panelId}\0${b.sourceEdgeId}\0${b.operationId}\0${b.profileId}\0${b.elementId}\0${b.originalProjectionId}`))); });
-  return Object.freeze({ reconciliations: Object.freeze(mappings), segmentOrigins: Object.freeze(segmentOrigins),
+  return Object.freeze({ panelId: input.candidate.panelId, reconciliations: Object.freeze(mappings), segmentOrigins: Object.freeze(segmentOrigins),
     diagnostics: Object.freeze(diagnostics), ok: diagnostics.length === 0 });
 };

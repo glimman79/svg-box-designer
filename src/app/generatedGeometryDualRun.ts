@@ -13,6 +13,8 @@ import type { GeneratedProfileId } from './generatedProfiles';
 import type { ProfileOffsetSelectionTargetId } from './profileOffsetSelection';
 import { pointsMatch, pointsToClosedPathD } from './sharedGeometry';
 import type { SvgDocumentModel } from '../svgUtils';
+import { reconcileComposedPanelMetadata } from './composedPanelMetadataReconciliation';
+import type { ComposedPanelMetadataReconciliationResult } from './composedPanelMetadataReconciliation';
 
 export type PanelDualRunClassification = 'SINGLE_TOOL_MATCH' | 'SINGLE_TOOL_MISMATCH' | 'MIXED_VALID' | 'MIXED_INVALID'
   | Exclude<PanelAssemblyComparisonStatus, 'MATCH' | 'MISMATCH' | 'MIXED_NO_LEGACY_ORACLE'>;
@@ -34,8 +36,19 @@ const normalized = (value: unknown) => JSON.stringify(value);
 export const packageComposedPanelGeometry = (
   items: ReadonlyArray<GeneratedGeometryItem>, candidate: PanelCandidate,
   ownerOperationIds: ReadonlyArray<string>,
+  reconciliation: ComposedPanelMetadataReconciliationResult,
 ): ReadonlyArray<GeneratedGeometryItem> => {
   const { panelId, points } = candidate;
+  if (reconciliation.panelId !== panelId || !reconciliation.ok || reconciliation.diagnostics.some((entry) => entry.blocking)) {
+    throw new Error(`Invalid or blocking metadata reconciliation for ${panelId}.`);
+  }
+  const candidateSegments = new Map(candidate.segments.map((segment) => [segment.segmentIndex, segment]));
+  reconciliation.reconciliations.forEach((mapping) => mapping.finalSegmentRefs.forEach((ref) => {
+    const segment = candidateSegments.get(ref.segmentIndex);
+    if (!segment || segment.panelId !== panelId || !pointsMatch(segment.start, ref.start) || !pointsMatch(segment.end, ref.end)) {
+      throw new Error(`Invalid reconciled final segment ${ref.segmentIndex} for ${panelId}.`);
+    }
+  }));
   const carriersById = new Map<string, GeneratedGeometryItem>();
   items.filter((item) => item.kind === 'PANEL_PATH' && item.behaviour.assembly === 'panel-boundary'
     && item.behaviour.replacesPanelId === panelId
@@ -66,28 +79,18 @@ export const packageComposedPanelGeometry = (
   const sourceRelationships = uniqueMetadata(owners.flatMap((item) => item.sourceRelationships ?? [])
     .map((relationship) => ({ ...relationship, id: geometryRelationshipKey(relationship) })), 'source relationship')
     .map(({ id: _id, ...relationship }) => relationship);
-  const contributorCount = new Set(owners.flatMap((item) => (item.generatedProfiles ?? []).map((profile) => profile.generatorType))).size;
   const remapProfile = (profile: NonNullable<GeneratedGeometryItem['generatedProfiles']>[number]) => {
-    // A projection describes a segment in the *current* contour, rather than an
-    // immutable generator-local segment.  Composition may adjust a junction,
-    // coalesce duplicate directed segments, or remove a zero-extent terminal
-    // out-and-back pair.  Resolve through the candidate's stable profile/edge/
-    // operation lineage and only transport projections which still have a
-    // physical segment in the composed contour.
-    const profileSegments = candidate.segments.filter((segment) => segment.profileId === profile.id
-      && segment.operationId === profile.operationId && segment.sourceEdgeId === profile.sourceEdgeId);
-    const geometryProjections = profile.geometryProjections.flatMap((projection) => {
-      // FinalGeometry deliberately ignores a generator-authored zero-length
-      // semantic element, so retaining it is both harmless and preserves the
-      // single-contributor metadata contract.
-      if (pointsMatch(projection.start, projection.end)) return [projection];
-      const identityMatch = profileSegments.find((segment) => segment.projectionId === projection.id);
-      const geometryMatches = identityMatch ? [] : profileSegments.filter((segment) =>
-        pointsMatch(segment.start, projection.start) && pointsMatch(segment.end, projection.end));
-      const segment = identityMatch ?? (geometryMatches.length === 1 ? geometryMatches[0] : undefined);
-      if (!segment) return contributorCount > 1 ? [] : [projection];
-      if (pointsMatch(projection.start, segment.start) && pointsMatch(projection.end, segment.end)) return [projection];
-      return [{ ...projection, start: { ...segment.start }, end: { ...segment.end } }];
+    const geometryProjections = profile.geometryProjections.map((projection) => {
+      const mapping = reconciliation.reconciliations.find((entry) => entry.profileId === profile.id
+        && entry.operationId === profile.operationId && entry.originalProjectionId === projection.id);
+      if (!mapping) throw new Error(`Missing reconciled projection ${projection.id} for ${panelId}.`);
+      if (mapping.status === 'PRESERVED' || mapping.status === 'ZERO_LENGTH_SEMANTIC') return projection;
+      if (mapping.status !== 'REMAPPED' && mapping.status !== 'REVERSED') {
+        throw new Error(`Unsupported reconciled projection status ${mapping.status} for ${projection.id}.`);
+      }
+      const ref = mapping.finalSegmentRefs[0];
+      if (!ref || mapping.finalSegmentRefs.length !== 1) throw new Error(`Invalid one-to-one mapping for ${projection.id}.`);
+      return { ...projection, start: { ...ref.start }, end: { ...ref.end } };
     });
     return { ...profile, geometryProjections };
   };
@@ -123,7 +126,13 @@ export const runGeneratedGeometryDualRun = (svgModel: SvgDocumentModel, items: R
       legacyEquivalence: 'BLOCKED', legacyOwners: assembly.legacyWinners.filter((x) => x.panelId === diagnostic.panelId).map((x) => x.winningOperationId),
       composedOwners: diagnostic.replacementOperationIds, legacyFinalGeometry, diagnosticFinalGeometry: null, legacyManufacturing,
       diagnosticManufacturing: null, finalGeometryEquivalent: null, manufacturingEquivalent: null };
-    const temporary = createDiagnosticGeneratedGeometry(items, candidate, diagnostic.replacementOperationIds);
+    const reconciliation = reconcileComposedPanelMetadata({ candidate, generatedGeometryItems: items,
+      relationshipIndex: assembly.relationshipIndex });
+    if (!reconciliation.ok) return { panelId: diagnostic.panelId, classification: 'MIXED_INVALID', legacyEquivalence: 'BLOCKED',
+      legacyOwners: assembly.legacyWinners.filter((x) => x.panelId === diagnostic.panelId).map((x) => x.winningOperationId),
+      composedOwners: diagnostic.replacementOperationIds, legacyFinalGeometry, diagnosticFinalGeometry: null, legacyManufacturing,
+      diagnosticManufacturing: null, finalGeometryEquivalent: null, manufacturingEquivalent: null };
+    const temporary = createDiagnosticGeneratedGeometry(items, candidate, diagnostic.replacementOperationIds, reconciliation);
     const diagnosticFinalGeometry = buildFinalGeometry(svgModel, temporary);
     const diagnosticManufacturing = processManufacturingGeometry(diagnosticFinalGeometry, kerfMm, slotClearanceMm, profileOffsetMm, selectedIds, tapClearanceMm);
     const mixed = diagnostic.status === 'MIXED_NO_LEGACY_ORACLE';
