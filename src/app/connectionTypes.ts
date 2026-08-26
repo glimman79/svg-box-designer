@@ -13,7 +13,7 @@ export type SlotConnectionProperties = {
   kerfMm: number;
 };
 
-/** Wall shares TB's finger-width policy while retaining native Wall identity. */
+/** Wall shares TB's finger-width properties while retaining native Wall identity. */
 export type WallConnectionProperties = Partial<TBConnectionProperties>;
 
 export type CornerConnectionProperties = {

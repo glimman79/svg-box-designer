@@ -10,10 +10,13 @@ export const getSharedTBEdgeProperties = (
   defaultProperties: TBConnectionProperties,
 ): TBConnectionProperties => {
   const sharedConnection = Object.values(connections).find(
-    (connection): connection is TBConnectionDefinition => connection.prefix === 'TB',
+    (connection) => connection.prefix === 'TB' || connection.prefix === 'W',
   );
 
-  return sharedConnection ? { ...sharedConnection.properties } : { ...defaultProperties };
+  return sharedConnection ? {
+    fingerWidthMm: sharedConnection.properties.fingerWidthMm ?? defaultProperties.fingerWidthMm,
+    isFingerWidthManual: sharedConnection.properties.isFingerWidthManual ?? defaultProperties.isFingerWidthManual,
+  } : { ...defaultProperties };
 };
 
 export const createTBConnectionDefinition = (
