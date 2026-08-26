@@ -11,11 +11,24 @@ import type { GeneratedTapGroup, GeneratedTapId, GeneratedTapSegmentRole } from 
 
 export type FinalGeometryContour = FinalContour;
 
+export type FinalGeometryClearanceProjectionTrace = Readonly<{
+  diagnosticId: string;
+  profile: Readonly<{ id: string; generatorType: string; operationId: string; panelId: string; sourceEdgeId: string }>;
+  element: Readonly<{ id: string; kind: string; profileOrder: number }> | null;
+  projection: Readonly<{ id: string; start: Readonly<Point>; end: Readonly<Point> }>;
+  matchCount: number;
+  /** The complete directed segment set searched by identifyProfileGroups. */
+  finalContourSegments: ReadonlyArray<Readonly<{ contourId: string; segmentIndex: number;
+    start: Readonly<Point>; end: Readonly<Point> }>>;
+}>;
+
 export type FinalGeometry = {
   readonly contours: ReadonlyArray<FinalGeometryContour>;
   readonly diagnostics: ReadonlyArray<ContourDiagnostic>;
   /** Non-authoritative generator shadow; deliberately unused by FinalGeometry algorithms. */
   readonly generatedProfiles: ReadonlyArray<GeneratedProfile>;
+  /** Non-semantic DEV evidence captured at the projection matching operation. */
+  readonly clearanceProjectionTraces: ReadonlyArray<FinalGeometryClearanceProjectionTrace>;
 };
 
 const clonePoints = (points: Point[]) => points.map((point) => ({ ...point }));
@@ -68,10 +81,12 @@ export const identifyAutomaticCompensationProfile = (generated: Point[], importe
 
 const identifyProfileGroups = (
   generated: Point[], imported: Point[], edgeIds: string[], groups: ReadonlyArray<GeneratedProfileGroup>,
-  profiles: ReadonlyArray<GeneratedProfile>,
-): { ids: Array<GeneratedProfileId | null>; diagnostics: ContourDiagnostic[] } => {
+  profiles: ReadonlyArray<GeneratedProfile>, contourId: string,
+): { ids: Array<GeneratedProfileId | null>; diagnostics: ContourDiagnostic[];
+  clearanceProjectionTraces: FinalGeometryClearanceProjectionTrace[] } => {
   const result: Array<GeneratedProfileId | null> = generated.map(() => null);
   const diagnostics: ContourDiagnostic[] = [];
+  const clearanceProjectionTraces: FinalGeometryClearanceProjectionTrace[] = [];
   const onAnyImportedEdge = (start: Point, end: Point) => imported.some((point, index) => pointOnImportedSegment(start, point, imported[(index + 1) % imported.length]) && pointOnImportedSegment(end, point, imported[(index + 1) % imported.length]));
 
   groups.forEach((group) => {
@@ -119,12 +134,26 @@ const identifyProfileGroups = (
           && pointsMatch(generated[(index + 1) % generated.length], projection.end) ? [index] : []
       ));
       if (matches.length !== 1) {
-        diagnostics.push({
+        const diagnostic: ContourDiagnostic = {
           id: projection.id,
           code: matches.length === 0 ? 'CLEARANCE_PROFILE_MISSING' : 'CLEARANCE_PROFILE_AMBIGUOUS',
           severity: 'error',
           message: `Generated profile projection ${projection.id} mapped to ${matches.length} final contour segments.`,
-        });
+        };
+        diagnostics.push(diagnostic);
+        if (matches.length === 0) {
+          const element = profile.orderedElements.find((value) => value.id === projection.elementId);
+          clearanceProjectionTraces.push({
+            diagnosticId: diagnostic.id,
+            profile: { id: profile.id, generatorType: profile.generatorType, operationId: profile.operationId,
+              panelId: profile.panelId, sourceEdgeId: profile.sourceEdgeId },
+            element: element ? { id: element.id, kind: element.kind, profileOrder: element.profileOrder } : null,
+            projection: { id: projection.id, start: { ...projection.start }, end: { ...projection.end } },
+            matchCount: matches.length,
+            finalContourSegments: generated.map((start, segmentIndex) => ({ contourId, segmentIndex,
+              start: { ...start }, end: { ...generated[(segmentIndex + 1) % generated.length] } })),
+          });
+        }
         return;
       }
       const index = matches[0];
@@ -135,7 +164,7 @@ const identifyProfileGroups = (
       result[index] = profile.id;
     });
   });
-  return { ids: result, diagnostics };
+  return { ids: result, diagnostics, clearanceProjectionTraces };
 };
 
 const identifyGeneratedTaps = (generated: Point[], taps: ReadonlyArray<GeneratedTapGroup>): { ids: Array<GeneratedTapId | null>; roles: Array<GeneratedTapSegmentRole | null> } => {
@@ -226,6 +255,7 @@ export const buildFinalGeometry = (
     .forEach((item) => replacementByPanelId.set(item.behaviour.replacesPanelId!, { pathD: item.geometry.pathD, finalSource: 'applied-panel', geometryType: item.manufacturingClassification, profileGroups: item.profileGroups ?? [], generatedProfiles: item.generatedProfiles ?? [], generatedTaps: item.generatedTaps ?? [] }));
 
   const profileProjectionDiagnostics: ContourDiagnostic[] = [];
+  const clearanceProjectionTraces: FinalGeometryClearanceProjectionTrace[] = [];
 
   const contours: FinalGeometryContour[] = svgModel.panels.flatMap((panel) => {
     const replacement = replacementByPanelId.get(panel.id);
@@ -243,8 +273,10 @@ export const buildFinalGeometry = (
       points: generatedPoints ?? clonePoints(outerPanelContour),
       ...(generatedPoints ? (() => {
         const compensationProfile = identifyAutomaticCompensationProfile(generatedPoints, outerPanelContour);
-        const profileMembership = identifyProfileGroups(generatedPoints, outerPanelContour, panel.edgeIds, replacement?.profileGroups ?? [], replacement?.generatedProfiles ?? []);
+        const profileMembership = identifyProfileGroups(generatedPoints, outerPanelContour, panel.edgeIds,
+          replacement?.profileGroups ?? [], replacement?.generatedProfiles ?? [], `final-panel:${panel.id}`);
         profileProjectionDiagnostics.push(...profileMembership.diagnostics);
+        clearanceProjectionTraces.push(...profileMembership.clearanceProjectionTraces);
         const segmentProfileIds = profileMembership.ids;
         const segmentSourceEdgeIds = identifySourceEdges(generatedPoints, outerPanelContour, panel.edgeIds, segmentProfileIds);
         const tapSegments = identifyGeneratedTaps(generatedPoints, replacement?.generatedTaps ?? []);
@@ -308,6 +340,12 @@ export const buildFinalGeometry = (
     Object.freeze(contour);
   });
   diagnostics.forEach(Object.freeze);
+  clearanceProjectionTraces.forEach((trace) => {
+    Object.freeze(trace.profile); if (trace.element) Object.freeze(trace.element);
+    Object.freeze(trace.projection.start); Object.freeze(trace.projection.end); Object.freeze(trace.projection);
+    trace.finalContourSegments.forEach((segment) => { Object.freeze(segment.start); Object.freeze(segment.end); Object.freeze(segment); });
+    Object.freeze(trace.finalContourSegments); Object.freeze(trace);
+  });
   const generatedProfiles = structuredClone(generatedGeometry.flatMap((item) => item.generatedProfiles ?? []));
   generatedProfiles.forEach((profile) => {
     profile.orderedElements.forEach(Object.freeze);
@@ -317,5 +355,6 @@ export const buildFinalGeometry = (
     Object.freeze(profile.attachmentStart); Object.freeze(profile.attachmentEnd);
     Object.freeze(profile.orderedElements); Object.freeze(profile.geometryProjections); Object.freeze(profile.orderedTaps); Object.freeze(profile);
   });
-  return Object.freeze({ contours: Object.freeze(contours), diagnostics: Object.freeze(diagnostics), generatedProfiles: Object.freeze(generatedProfiles) });
+  return Object.freeze({ contours: Object.freeze(contours), diagnostics: Object.freeze(diagnostics),
+    generatedProfiles: Object.freeze(generatedProfiles), clearanceProjectionTraces: Object.freeze(clearanceProjectionTraces) });
 };
