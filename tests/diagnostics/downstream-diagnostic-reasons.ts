@@ -17,8 +17,11 @@ assert(success.downstreamDiagnostics.length > 0 && success.downstreamDiagnostics
 
 const finalFailure = run({ ...base, buildFinal: (model, items) => {
   const result = buildFinalGeometry(model, items);
+  const projectionId = result.generatedProfiles.find((profile) => profile.panelId === fixture.ownerPanelId)
+    ?.geometryProjections.find((projection) => projection.start.x !== projection.end.x || projection.start.y !== projection.end.y)?.id;
+  if (!projectionId) throw new Error('trace fixture has no nonzero generated-profile projection');
   return { ...result, diagnostics: [...result.diagnostics,
-    { id: fixture.ownerPanelId, code: 'CLEARANCE_PROFILE_MISSING' as const, severity: 'error' as const,
+    { id: projectionId, code: 'CLEARANCE_PROFILE_MISSING' as const, severity: 'error' as const,
       message: 'Synthetic non-throwing FinalGeometry error.' }] };
 } });
 assert(!finalFailure.ok, 'non-throwing FinalGeometry error was accepted');
@@ -27,6 +30,10 @@ assert(finalFailure.downstreamDiagnostics.every((entry) => entry.firstFailure ==
 assert(finalFailure.downstreamDiagnostics.every((entry) => entry.finalGeometry.error === null
   && entry.finalGeometry.diagnostics.some((diagnostic) => diagnostic.message.includes('non-throwing'))),
   'FinalGeometry non-throwing detail was lost');
+const trace = finalFailure.downstreamDiagnostics.flatMap((entry) => entry.clearanceProjectionTraces)[0];
+assert(trace?.profile?.panelId === fixture.ownerPanelId && trace.projection?.id === trace.diagnosticId
+  && trace.element && trace.candidateSegments.length > 0 && trace.finalContourSegments.length > 0,
+  'CLEARANCE_PROFILE_MISSING lifecycle trace lacks semantic/candidate/final-contour evidence');
 
 const manufacturingFailure = run({ ...base, manufacture: (final, kerf, slot, offset, ids, tap) => ({
   ...processManufacturingGeometry(final, kerf, slot, offset, ids, tap), contours: [],

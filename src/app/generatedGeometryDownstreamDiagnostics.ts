@@ -24,6 +24,20 @@ export type MixedDownstreamDiagnostic = Readonly<{
   predicates: Readonly<{ packagingSucceeded: boolean; finalGeometryCompleted: boolean; noFinalGeometryErrors: boolean;
     manufacturingCompleted: boolean; hasManufacturingContours: boolean }>;
   projectAtomicItems: ReadonlyArray<DownstreamItemDiagnostic>; firstFailure: DownstreamFirstFailure;
+  /** DEV oracle for replaying a projection which FinalGeometry could not map. */
+  clearanceProjectionTraces: ReadonlyArray<ClearanceProjectionTrace>;
+}>;
+
+export type ClearanceProjectionTrace = Readonly<{
+  diagnosticId: string; profile: Readonly<{ id: string; generatorType: string; operationId: string; panelId: string;
+    sourceEdgeId: string }> | null;
+  element: Readonly<{ id: string; kind: string; profileOrder: number }> | null;
+  projection: Readonly<{ id: string; start: Readonly<{ x: number; y: number }>; end: Readonly<{ x: number; y: number }> }> | null;
+  candidateSegments: ReadonlyArray<Readonly<{ segmentIndex: number; sourceEdgeId: string; operationId: string | null;
+    profileId: string | null; elementId: string | null; projectionId: string | null;
+    start: Readonly<{ x: number; y: number }>; end: Readonly<{ x: number; y: number }> }>>;
+  finalContourSegments: ReadonlyArray<Readonly<{ contourId: string; segmentIndex: number;
+    start: Readonly<{ x: number; y: number }>; end: Readonly<{ x: number; y: number }> }>>;
 }>;
 
 type PanelInput = Readonly<{ panelId: string; status: PanelAssemblyComparisonStatus; candidate: PanelCandidate;
@@ -64,6 +78,28 @@ export const diagnoseMixedDownstream = (svgModel: SvgDocumentModel, initialItems
   const firstFailure: DownstreamFirstFailure = packagingError ? 'PACKAGING_FAILURE' : finalError ? 'FINAL_GEOMETRY_EXCEPTION'
     : !noFinalGeometryErrors ? 'FINAL_GEOMETRY_ERROR_DIAGNOSTIC' : manufacturingError ? 'MANUFACTURING_EXCEPTION'
       : !hasManufacturingContours ? 'MANUFACTURING_ZERO_CONTOURS' : null;
+  const missingProjectionIds = new Set(finalDiagnostics.filter((entry) => entry.code === 'CLEARANCE_PROFILE_MISSING').map((entry) => entry.id));
+  const profiles = items.flatMap((item) => item.generatedProfiles ?? []);
+  const clearanceProjectionTraces: ClearanceProjectionTrace[] = [...missingProjectionIds].map((diagnosticId) => {
+    const profile = profiles.find((value) => value.geometryProjections.some((projection) => projection.id === diagnosticId));
+    const projection = profile?.geometryProjections.find((value) => value.id === diagnosticId);
+    const element = profile?.orderedElements.find((value) => value.id === projection?.elementId);
+    const candidate = profile ? panels.find((value) => value.panelId === profile.panelId)?.candidate : undefined;
+    return Object.freeze({ diagnosticId,
+      profile: profile ? Object.freeze({ id: profile.id, generatorType: profile.generatorType, operationId: profile.operationId,
+        panelId: profile.panelId, sourceEdgeId: profile.sourceEdgeId }) : null,
+      element: element ? Object.freeze({ id: element.id, kind: element.kind, profileOrder: element.profileOrder }) : null,
+      projection: projection ? Object.freeze({ id: projection.id, start: Object.freeze({ ...projection.start }), end: Object.freeze({ ...projection.end }) }) : null,
+      candidateSegments: Object.freeze((candidate?.segments ?? []).filter((segment) => !profile || (
+        segment.profileId === profile.id || segment.operationId === profile.operationId || segment.sourceEdgeId === profile.sourceEdgeId
+      )).map((segment) => Object.freeze({ segmentIndex: segment.segmentIndex, sourceEdgeId: segment.sourceEdgeId,
+        operationId: segment.operationId, profileId: segment.profileId, elementId: segment.elementId,
+        projectionId: segment.projectionId, start: Object.freeze({ ...segment.start }), end: Object.freeze({ ...segment.end }) }))),
+      finalContourSegments: Object.freeze((finalGeometry?.contours ?? []).filter((contour) => contour.panelId === profile?.panelId)
+        .flatMap((contour) => (contour.points ?? []).map((start, segmentIndex, points) => Object.freeze({ contourId: contour.id,
+          segmentIndex, start: Object.freeze({ ...start }), end: Object.freeze({ ...points[(segmentIndex + 1) % points.length] }) })))),
+    });
+  });
   return panels.map((panel) => Object.freeze({ panelId: panel.panelId, assemblyStatus: panel.status,
     packaging: Object.freeze({ ok: !packagingError, inputItemIds: initialItems.map((item) => item.id),
       outputItemIds: items.map((item) => item.id), error: packagingError }),
@@ -75,5 +111,6 @@ export const diagnoseMixedDownstream = (svgModel: SvgDocumentModel, initialItems
     predicates: Object.freeze({ packagingSucceeded: !packagingError, finalGeometryCompleted: !!finalGeometry,
       noFinalGeometryErrors, manufacturingCompleted: !!manufacturing, hasManufacturingContours }),
     projectAtomicItems: Object.freeze(items.map(describeItem)), firstFailure,
+    clearanceProjectionTraces: Object.freeze(clearanceProjectionTraces.filter((trace) => trace.profile?.panelId === panel.panelId)),
   }));
 };
