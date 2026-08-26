@@ -1,7 +1,7 @@
 {
   "name": "svg-box-designer",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "scripts": {
     "test:downstream-diagnostic-reasons": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/downstream-diagnostic-reasons.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/downstream-diagnostic-reasons.js",
