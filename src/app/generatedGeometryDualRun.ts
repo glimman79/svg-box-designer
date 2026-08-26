@@ -80,17 +80,18 @@ export const packageComposedPanelGeometry = (
     .map((relationship) => ({ ...relationship, id: geometryRelationshipKey(relationship) })), 'source relationship')
     .map(({ id: _id, ...relationship }) => relationship);
   const remapProfile = (profile: NonNullable<GeneratedGeometryItem['generatedProfiles']>[number]) => {
-    const geometryProjections = profile.geometryProjections.map((projection) => {
+    const geometryProjections = profile.geometryProjections.flatMap((projection) => {
       const mapping = reconciliation.reconciliations.find((entry) => entry.profileId === profile.id
         && entry.operationId === profile.operationId && entry.originalProjectionId === projection.id);
       if (!mapping) throw new Error(`Missing reconciled projection ${projection.id} for ${panelId}.`);
-      if (mapping.status === 'PRESERVED' || mapping.status === 'ZERO_LENGTH_SEMANTIC') return projection;
+      if (mapping.status === 'DROPPED_NONPHYSICAL') return [];
+      if (mapping.status === 'PRESERVED' || mapping.status === 'ZERO_LENGTH_SEMANTIC') return [projection];
       if (mapping.status !== 'REMAPPED' && mapping.status !== 'REVERSED') {
         throw new Error(`Unsupported reconciled projection status ${mapping.status} for ${projection.id}.`);
       }
       const ref = mapping.finalSegmentRefs[0];
       if (!ref || mapping.finalSegmentRefs.length !== 1) throw new Error(`Invalid one-to-one mapping for ${projection.id}.`);
-      return { ...projection, start: { ...ref.start }, end: { ...ref.end } };
+      return [{ ...projection, start: { ...ref.start }, end: { ...ref.end } }];
     });
     return { ...profile, geometryProjections };
   };

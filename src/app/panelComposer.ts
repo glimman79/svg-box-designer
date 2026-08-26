@@ -12,6 +12,13 @@ export type PanelSegment = Readonly<{
   start: Point; end: Point; profileId: GeneratedProfileId; elementId: GeneratedProfileElementId;
   projectionId: GeometryProjectionId; tapId: GeneratedTapId | null; tapRole: GeneratedTapSegmentRole | null;
 }>;
+export type NonphysicalProjectionDisposition = 'TERMINAL_INVERSE_PAIR_NONPHYSICAL';
+export type NonphysicalProjectionLineage = Readonly<{
+  panelId: string; sourceEdgeId: string; operationId: string; profileId: GeneratedProfileId;
+  elementId: GeneratedProfileElementId; projectionId: GeometryProjectionId; start: Point; end: Point;
+  tapId: GeneratedTapId | null; tapRole: GeneratedTapSegmentRole | null;
+  disposition: NonphysicalProjectionDisposition;
+}>;
 export type PanelUnchangedEdgeContribution = Readonly<{
   kind: 'unchanged'; panelId: string; sourceEdgeId: string; sourceTraversal: ContourSide;
   startSupport: ContourSide; endSupport: ContourSide;
@@ -20,6 +27,7 @@ export type PanelReplacedEdgeContribution = Readonly<{
   kind: 'replaced'; panelId: string; sourceEdgeId: string; operationId: string; profileId: GeneratedProfileId;
   sourceTraversal: ContourSide; startSupport: ContourSide; endSupport: ContourSide;
   geometry: ReadonlyArray<PanelSegment>; startPolicy: PanelTerminalPolicy; endPolicy: PanelTerminalPolicy;
+  nonphysicalProjectionLineage?: ReadonlyArray<NonphysicalProjectionLineage>;
 }>;
 export type PanelContribution = PanelUnchangedEdgeContribution | PanelReplacedEdgeContribution;
 export type PanelComposerDiagnostic = Readonly<{
@@ -35,6 +43,7 @@ export type PanelCandidate = Readonly<{
   panelId: string; points: ReadonlyArray<Point>; junctions: ReadonlyArray<Readonly<{ beforeEdgeId: string; afterEdgeId: string; point: Point }>>;
   segments: ReadonlyArray<PanelCandidateSegment>; diagnostics: ReadonlyArray<PanelComposerDiagnostic>;
   createdFeatures: ReadonlyArray<GeneratedGeometryItem>;
+  nonphysicalProjectionLineage?: ReadonlyArray<NonphysicalProjectionLineage>;
 }>;
 
 const key = (panelId: string, edgeId: string, operationId: string) => `${panelId}\u0000${edgeId}\u0000${operationId}`;
@@ -92,6 +101,16 @@ export const composePanel = (panel: SvgPanel, relationships: GeometryRelationshi
   });
   if (diagnostics.length || junctions.some((value) => !value)) return { panelId: panel.id, points: [], junctions: [], segments: [], diagnostics: diagnostics.sort((a, b) => `${a.kind}\0${a.key}`.localeCompare(`${b.kind}\0${b.key}`)), createdFeatures: orderedCreatedFeatures };
   const resolved = junctions as Array<{ beforeEdgeId: string; afterEdgeId: string; point: Point }>;
+  const nonphysicalById = new Map<string, NonphysicalProjectionLineage>();
+  contributions.filter((value): value is PanelReplacedEdgeContribution => value.kind === 'replaced')
+    .flatMap((value) => value.nonphysicalProjectionLineage ?? []).forEach((lineage) => {
+      const identity = `${lineage.panelId}\0${lineage.sourceEdgeId}\0${lineage.operationId}\0${lineage.profileId}\0${lineage.elementId}\0${lineage.projectionId}`;
+      const existing = nonphysicalById.get(identity);
+      if (existing && JSON.stringify(existing) !== JSON.stringify(lineage)) throw new Error(`Conflicting nonphysical projection lineage ${identity}.`);
+      nonphysicalById.set(identity, lineage);
+    });
+  const nonphysicalProjectionLineage = Object.freeze([...nonphysicalById.entries()].sort(([a], [b]) => a.localeCompare(b))
+    .map(([, lineage]) => lineage));
   const segments: PanelCandidateSegment[] = [];
   contributions.forEach((contribution, edgeIndex) => {
     const startJ = resolved[edgeIndex].point; const endJ = resolved[(edgeIndex + 1) % resolved.length].point;
@@ -107,5 +126,6 @@ export const composePanel = (panel: SvgPanel, relationships: GeometryRelationshi
         tapId: part.tapId, tapRole: part.tapRole, relationshipOrigin: 'replaces' });
     });
   });
-  return { panelId: panel.id, points: segments.map(({ start }) => clonePoint(start)), junctions: resolved, segments, diagnostics: [], createdFeatures: orderedCreatedFeatures };
+  return { panelId: panel.id, points: segments.map(({ start }) => clonePoint(start)), junctions: resolved, segments, diagnostics: [],
+    createdFeatures: orderedCreatedFeatures, nonphysicalProjectionLineage };
 };

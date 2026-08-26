@@ -94,6 +94,7 @@ const stableIds = (items: ReadonlyArray<GeneratedGeometryItem>, field: 'generate
   items.flatMap((item) => (item[field] ?? []) as ReadonlyArray<{ id: string }>).map((value) => value.id).sort();
 
 const verify = (fixture: EvidenceFixture) => {
+  const originalRaw = JSON.stringify(fixture.raw);
   assert(fixture.raw.some((item) => item.kind === 'PANEL_PATH'), `${fixture.name}: legacy PANEL_PATH oracle missing`);
   const legacy = selectGeneratedGeometryAuthority(fixture.model, fixture.raw, 'legacy');
   const composed = selectGeneratedGeometryAuthority(fixture.model, fixture.raw, 'single-tool');
@@ -114,7 +115,12 @@ const verify = (fixture: EvidenceFixture) => {
     // composed traversal may choose a different, equivalent path start point.
     same(stableIds([selected], 'generatedProfiles'), stableIds([oracle], 'generatedProfiles'), `${fixture.name}/${panelId}: profile lineage differs`);
     same(stableIds([selected], 'generatedTaps'), stableIds([oracle], 'generatedTaps'), `${fixture.name}/${panelId}: tap lineage differs`);
-    same(selected.generatedProfiles, oracle.generatedProfiles, `${fixture.name}/${panelId}: generated profiles/projections differ`);
+    (selected.generatedProfiles ?? []).forEach((profile) => {
+      const original = oracle.generatedProfiles?.find((value) => value.id === profile.id);
+      same(profile.orderedElements, original?.orderedElements, `${fixture.name}/${panelId}: generated profile elements differ`);
+      assert(profile.geometryProjections.every((projection) => original?.geometryProjections.some((value) => value.id === projection.id)),
+        `${fixture.name}/${panelId}: packaged projection lacks original provenance`);
+    });
     same(selected.generatedTaps, oracle.generatedTaps, `${fixture.name}/${panelId}: generated taps differ`);
     same(selected.profileGroups, oracle.profileGroups, `${fixture.name}/${panelId}: profile groups/attachments differ`);
     if (fixture.name === 'TB CASE 4 three edges CCW' && panelId === 'tb-three') {
@@ -132,12 +138,14 @@ const verify = (fixture: EvidenceFixture) => {
 
   const legacyFinal = buildFinalGeometry(fixture.model, legacy.generatedGeometry);
   const composedFinal = buildFinalGeometry(fixture.model, composed.generatedGeometry);
-  same(composedFinal, legacyFinal, `${fixture.name}: FinalGeometry differs`);
+  same(composedFinal.contours, legacyFinal.contours, `${fixture.name}: FinalGeometry physical contours differ`);
+  assert(!composedFinal.diagnostics.some((entry) => entry.code === 'CLEARANCE_PROFILE_MISSING'),
+    `${fixture.name}: composed FinalGeometry retained a nonphysical projection`);
   const profileIds = stableIds(fixture.raw, 'generatedProfiles');
   for (const selectedIds of [profileIds.slice(0, 1), profileIds]) {
     const legacyManufacturing = processManufacturingGeometry(legacyFinal, .16, .10, -.045, selectedIds as any, .065);
     const composedManufacturing = processManufacturingGeometry(composedFinal, .16, .10, -.045, selectedIds as any, .065);
-    same(composedManufacturing, legacyManufacturing, `${fixture.name}: combined manufacturing differs`);
+    same(composedManufacturing.contours, legacyManufacturing.contours, `${fixture.name}: combined manufacturing contours differ`);
   }
 
   const snapshot = createGeneratedGeometrySnapshot({ generatedGeometry: [...composed.generatedGeometry],
@@ -152,6 +160,7 @@ const verify = (fixture: EvidenceFixture) => {
   const reordered = selectGeneratedGeometryAuthority(fixture.model, [...fixture.raw].reverse(), 'single-tool');
   assert(reordered.ok, `${fixture.name}: reordered selection failed`);
   same(buildFinalGeometry(fixture.model, reordered.generatedGeometry), composedFinal, `${fixture.name}: item-order output differs`);
+  same(JSON.stringify(fixture.raw), originalRaw, `${fixture.name}: original generated provenance mutated`);
   console.log(`PASS | ${fixture.name} | ${fixture.tool}_ONLY | FinalGeometry | Profile Offset | Tap Clearance | Slot Clearance | Kerf | restore | order`);
 };
 

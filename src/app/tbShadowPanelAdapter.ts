@@ -4,6 +4,7 @@
  */
 import type { GeneratedProfile } from './generatedProfiles';
 import type { PanelReplacedEdgeContribution } from './panelComposer';
+import type { NonphysicalProjectionLineage } from './panelComposer';
 import { cornerTouchTolerance } from './sharedGeometry';
 import type { Point } from '../svgUtils';
 
@@ -26,13 +27,23 @@ export const adaptFingerJointProfilesToPanelContributions = (
   const projections = profile.geometryProjections.filter((projection, index, all) => !all.slice(0, index).some((prior) => (
     samePoint(prior.start, projection.start) && samePoint(prior.end, projection.end)
   )));
+  const nonphysicalProjectionLineage: NonphysicalProjectionLineage[] = [];
+  const capture = (projection: typeof projections[number]) => {
+    const element = elements.get(projection.elementId);
+    if (!element) throw new Error(`Projection ${projection.id} has no profile element.`);
+    nonphysicalProjectionLineage.push(Object.freeze({ panelId: profile.panelId, sourceEdgeId: profile.sourceEdgeId,
+      operationId: profile.operationId, profileId: profile.id, elementId: element.id, projectionId: projection.id,
+      start: Object.freeze(clonePoint(projection.start)), end: Object.freeze(clonePoint(projection.end)),
+      tapId: element.tapId ?? null, tapRole: element.segmentTapRole ?? null,
+      disposition: 'TERMINAL_INVERSE_PAIR_NONPHYSICAL' }));
+  };
   // Role-effective terminal construction can retain an out-and-back semantic
   // pair which has no physical contour extent. Collapse only terminal inverse
   // pairs; interior tap walls retain their identity and geometry.
   while (projections.length >= 2 && samePoint(projections[0].start, projections[1].end)
-    && samePoint(projections[0].end, projections[1].start)) projections.splice(0, 2);
+    && samePoint(projections[0].end, projections[1].start)) projections.splice(0, 2).forEach(capture);
   while (projections.length >= 2 && samePoint(projections.at(-2)!.start, projections.at(-1)!.end)
-    && samePoint(projections.at(-2)!.end, projections.at(-1)!.start)) projections.splice(-2, 2);
+    && samePoint(projections.at(-2)!.end, projections.at(-1)!.start)) projections.splice(-2, 2).forEach(capture);
   return {
     kind: 'replaced',
     panelId: profile.panelId,
@@ -60,6 +71,7 @@ export const adaptFingerJointProfilesToPanelContributions = (
     }),
     startPolicy: 'replace-terminal',
     endPolicy: 'replace-terminal',
+    nonphysicalProjectionLineage: Object.freeze(nonphysicalProjectionLineage.sort((a, b) => a.projectionId.localeCompare(b.projectionId))),
   };
 });
 

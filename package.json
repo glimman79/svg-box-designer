@@ -75,7 +75,8 @@
     "test:wall-v2-final-geometry": "npm run test:wall-v2-real-apply-analysis",
     "test:wall-v2-manufacturing": "npm run test:wall-v2-real-apply-analysis",
     "test:wall-v2-restore": "npm run test:wall-v2-real-apply-analysis",
-    "test:composed-panel-reconciliation-integration": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/generated-geometry-authority-mixed-evidence.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/generated-geometry-authority-mixed-evidence.js"
+    "test:composed-panel-reconciliation-integration": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/generated-geometry-authority-mixed-evidence.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/generated-geometry-authority-mixed-evidence.js",
+    "test:nonphysical-projection-lineage": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/nonphysical-projection-lineage.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/nonphysical-projection-lineage.js"
   },
   "dependencies": {
     "react": "latest",
