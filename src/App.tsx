@@ -76,6 +76,9 @@ const reportAuthorityDownstreamDiagnostics = (authority: GeneratedGeometryAuthor
   authority.downstreamDiagnostics.forEach((record) => {
     const method = record.firstFailure ? console.error : console.info;
     method('[GeometryAuthority]', record.panelId, record);
+    record.clearanceProjectionTraces.forEach((trace) => console.error(
+      '[GeometryAuthority] CLEARANCE_PROFILE_MISSING projection lifecycle', trace,
+    ));
   });
   console.table(authority.downstreamDiagnostics.map((record) => ({ panelId: record.panelId,
     status: record.assemblyStatus, firstFailure: record.firstFailure ?? 'NONE',
