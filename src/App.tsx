@@ -27,6 +27,7 @@ import type { PanelCompositionAuthorityMode, PanelCompositionModel } from './app
 import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { validateGeometryAuthoring } from './app/authoringRelationships';
 import { buildGeneratedWGeometryItems } from './app/wallGeometry';
+import { applySharedFingerWidthUpdates, shouldShowFingerJointTabControl } from './app/tabSizeControl';
 import { complementaryWallRole, getWallAssignments, normalizeWallConnection, resolveTBRoleForPanel, validateWallAuthoringForApply } from './app/wallAuthoring';
 import { authorWallEdge, buildWallWorkflowGroups, finishWallGroupWithTrailingCleanup, startWallGroupWorkflow, type ActiveWallGroup } from './app/wallWorkflow';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
@@ -520,7 +521,7 @@ const createConnectionDefinition = (
     return { id, prefix, properties: cloneDefaultProperties(prefix) };
   }
 
-  if (prefix === 'W') return { id, prefix, properties: { fingerWidthMm: 9, isFingerWidthManual: false } };
+  if (prefix === 'W') return { id, prefix, properties: edgeProperties ? { ...edgeProperties } : cloneDefaultProperties(prefix) };
 
 
   if (prefix === 'C') {
@@ -532,10 +533,13 @@ const createConnectionDefinition = (
 
 const getSharedTBProperties = (connections: ConnectionMap): TBConnectionProperties => {
   const sharedConnection = Object.values(connections).find(
-    (connection): connection is TBConnectionDefinition => connection.prefix === 'TB',
+    (connection) => connection.prefix === 'TB' || connection.prefix === 'W',
   );
 
-  return sharedConnection ? { ...sharedConnection.properties } : cloneDefaultProperties('TB');
+  return sharedConnection ? {
+    fingerWidthMm: sharedConnection.properties.fingerWidthMm ?? defaultConnectionProperties.TB.fingerWidthMm,
+    isFingerWidthManual: sharedConnection.properties.isFingerWidthManual ?? defaultConnectionProperties.TB.isFingerWidthManual,
+  } : cloneDefaultProperties('TB');
 };
 
 const NumericField = ({ id, label, value, min, step = 0.1, disabled = false, placeholder, onChange, onFocus }: NumericFieldProps) => (
@@ -1070,7 +1074,7 @@ function App() {
       [nextLabel]: createConnectionDefinition(
         nextLabel,
         prefix,
-        prefix === 'TB' ? getSharedTBProperties(currentConnections) : undefined,
+        prefix === 'TB' || prefix === 'W' ? getSharedTBProperties(currentConnections) : undefined,
       ),
     }));
     selectConnectionForDisplayAndAssignment(nextLabel);
@@ -1646,7 +1650,7 @@ function App() {
   };
 
   const updateEdgeProperties = (updates: Partial<TBConnectionProperties>) => {
-    if (!selectedConnection || selectedConnection.prefix !== 'TB') {
+    if (!selectedConnection || (selectedConnection.prefix !== 'TB' && selectedConnection.prefix !== 'W')) {
       return;
     }
 
@@ -1654,12 +1658,13 @@ function App() {
     setConnections((currentConnections) => {
       const currentSelectedConnection = currentConnections[selectedConnection.id];
 
-      if (!currentSelectedConnection || currentSelectedConnection.prefix !== 'TB') {
+      if (!currentSelectedConnection || (currentSelectedConnection.prefix !== 'TB' && currentSelectedConnection.prefix !== 'W')) {
         return currentConnections;
       }
 
       const nextProperties: TBConnectionProperties = {
-        ...currentSelectedConnection.properties,
+        fingerWidthMm: currentSelectedConnection.properties.fingerWidthMm ?? defaultConnectionProperties.TB.fingerWidthMm,
+        isFingerWidthManual: currentSelectedConnection.properties.isFingerWidthManual ?? defaultConnectionProperties.TB.isFingerWidthManual,
         ...updates,
       };
 
@@ -1667,21 +1672,7 @@ function App() {
         nextProperties.isFingerWidthManual = true;
       }
 
-      return Object.fromEntries(
-        Object.entries(currentConnections).map(([connectionId, connection]) => [
-          connectionId,
-          connection.prefix === 'TB'
-            ? {
-                ...connection,
-                properties: {
-                  ...connection.properties,
-                  fingerWidthMm: nextProperties.fingerWidthMm,
-                  isFingerWidthManual: nextProperties.isFingerWidthManual,
-                },
-              }
-            : connection,
-        ]),
-      );
+      return applySharedFingerWidthUpdates(currentConnections, nextProperties);
     });
   };
 
@@ -2138,14 +2129,15 @@ function App() {
   };
 
   const renderCompactControls = () => {
-    if (selectedConnection?.prefix === 'TB') {
-      const properties = selectedConnection.properties;
+    if (selectedConnection && (selectedConnection.prefix === 'TB' || selectedConnection.prefix === 'W')
+      && shouldShowFingerJointTabControl(activeTool, selectedConnection.prefix)) {
       const tbViewModel = getConnectionViewModel(svgModel, edgeAssignments, selectedConnection, panelManager, getPanelDisplayName);
+      const toolLabel = selectedConnection.prefix;
 
       return (
-        <div className="compact-property-controls" aria-label="Compact TB controls">
+        <div className="compact-property-controls" aria-label={`Compact ${toolLabel} controls`}>
           <span className="muted">PM thickness</span>
-          <NumericField id="compact-edge-tab-size" label="Tab" min={0} value={tbViewModel.displayTabMm} disabled={tbViewModel.displayTabMm === null} placeholder="Complete TB connection" onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
+          <NumericField id="compact-edge-tab-size" label="Tab" min={0} value={tbViewModel.displayTabMm} disabled={tbViewModel.displayTabMm === null} placeholder={`Complete ${toolLabel} connection`} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
         </div>
       );
     }

@@ -1,6 +1,6 @@
 import { getBucketEdgeAssignment, toEdgeAssignmentBucket } from './assignmentBuckets';
 import { getNextConnectionLabel, parseConnectionLabel } from './connectionLabels';
-import type { ConnectionMap } from './connectionTypes';
+import type { ConnectionMap, TBConnectionProperties } from './connectionTypes';
 import { complementaryWallRole, getWallAssignments, normalizeWallConnection } from './wallAuthoring';
 import type { EdgeAssignmentRecord, SvgDocumentModel } from '../svgUtils';
 
@@ -14,13 +14,21 @@ export const buildWallWorkflowGroups = (connections: ConnectionMap, active: Acti
   const labels = active.connectionIds.filter((id) => connections[id]?.prefix === 'W');
   return labels.length ? [...finished, { id: active.groupId, labels, isActive: true, orderIndex: order[active.groupId] }] : finished;
 };
-const createWall = (id: string) => ({ id, prefix: 'W' as const, properties: { fingerWidthMm: 9, isFingerWidthManual: false } });
+const defaultFingerWidthProperties: TBConnectionProperties = { fingerWidthMm: 9, isFingerWidthManual: false };
+const getSharedFingerWidthProperties = (connections: ConnectionMap, fallback = defaultFingerWidthProperties): TBConnectionProperties => {
+  const shared = Object.values(connections).find((connection) => connection.prefix === 'TB' || connection.prefix === 'W');
+  return {
+    fingerWidthMm: shared?.properties.fingerWidthMm ?? fallback.fingerWidthMm,
+    isFingerWidthManual: shared?.properties.isFingerWidthManual ?? fallback.isFingerWidthManual,
+  };
+};
+const createWall = (id: string, properties: TBConnectionProperties) => ({ id, prefix: 'W' as const, properties: { ...properties } });
 const following = (id: string) => { const parsed = parseConnectionLabel(id); return parsed ? `${parsed.prefix}${parsed.number + 1}` : null; };
 
 export const startWallGroupWorkflow = (connections: ConnectionMap) => {
   const connectionId = getNextConnectionLabel('W', Object.keys(connections));
   return {
-    connections: { ...connections, [connectionId]: createWall(connectionId) },
+    connections: { ...connections, [connectionId]: createWall(connectionId, getSharedFingerWidthProperties(connections)) },
     selectedLabelId: connectionId,
     activeWallGroup: { groupId: `w-group-${connectionId}`, connectionIds: [connectionId], isActive: true } as ActiveWallGroup,
   };
@@ -42,7 +50,7 @@ export const authorWallEdge = (model: SvgDocumentModel, assignments: EdgeAssignm
   if (!complete) return { assignments: nextAssignments, connections, activeWallGroup: group, selectedLabelId: connectionId };
   const nextId = following(connectionId)!;
   const nextConnections = connections[nextId] ? connections : {
-    ...connections, [nextId]: createWall(nextId),
+    ...connections, [nextId]: createWall(nextId, getSharedFingerWidthProperties(connections)),
   };
   return {
     assignments: nextAssignments,

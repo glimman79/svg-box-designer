@@ -1,11 +1,11 @@
 import { getBucketEdgeAssignment, getBucketSlotAssignments } from './assignmentBuckets';
-import type { SlotConnectionDefinition, TBConnectionDefinition } from './connectionTypes';
+import type { SlotConnectionDefinition, TBConnectionDefinition, WallConnectionDefinition } from './connectionTypes';
 import { resolveTBThickness } from './tbGeometry';
 import type { PanelThicknessState } from './panelThickness';
 import { resolveSSlotLengthMm, resolveSThickness } from './sGeometry';
 import type { EdgeAssignmentRecord, EdgeRole, SlotRole, SvgDocumentModel } from '../svgUtils';
 
-export type ConnectionViewModelPrefix = 'TB' | 'S';
+export type ConnectionViewModelPrefix = 'TB' | 'W' | 'S';
 
 export type ConnectionViewModelAssignedEdge = {
   edgeId: string;
@@ -120,6 +120,24 @@ export const getTBConnectionViewModel = (
   };
 };
 
+/** TB and Wall expose the same persisted finger-width properties and resolution policy. */
+export const getFingerJointConnectionViewModel = (
+  svgModel: SvgDocumentModel,
+  assignments: EdgeAssignmentRecord,
+  connection: TBConnectionDefinition | WallConnectionDefinition,
+  panelThicknessState: PanelThicknessState,
+  getPanelDisplayLabel?: LabelResolver,
+): ConnectionViewModel => {
+  const viewModel = getTBConnectionViewModel(
+    svgModel,
+    assignments,
+    connection as TBConnectionDefinition,
+    panelThicknessState,
+    getPanelDisplayLabel,
+  );
+  return { ...viewModel, prefix: connection.prefix };
+};
+
 export const getSConnectionViewModel = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
@@ -175,11 +193,11 @@ export const getSConnectionViewModel = (
 export const getConnectionViewModel = (
   svgModel: SvgDocumentModel,
   assignments: EdgeAssignmentRecord,
-  connection: TBConnectionDefinition | SlotConnectionDefinition,
+  connection: TBConnectionDefinition | WallConnectionDefinition | SlotConnectionDefinition,
   panelThicknessState: PanelThicknessState,
   getPanelDisplayLabel?: LabelResolver,
 ): ConnectionViewModel => (
-  connection.prefix === 'TB'
-    ? getTBConnectionViewModel(svgModel, assignments, connection, panelThicknessState, getPanelDisplayLabel)
+  connection.prefix === 'TB' || connection.prefix === 'W'
+    ? getFingerJointConnectionViewModel(svgModel, assignments, connection, panelThicknessState, getPanelDisplayLabel)
     : getSConnectionViewModel(svgModel, assignments, connection, panelThicknessState, getPanelDisplayLabel)
 );
