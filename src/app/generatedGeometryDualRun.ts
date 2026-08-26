@@ -66,21 +66,38 @@ export const packageComposedPanelGeometry = (
   const sourceRelationships = uniqueMetadata(owners.flatMap((item) => item.sourceRelationships ?? [])
     .map((relationship) => ({ ...relationship, id: geometryRelationshipKey(relationship) })), 'source relationship')
     .map(({ id: _id, ...relationship }) => relationship);
+  const contributorCount = new Set(owners.flatMap((item) => (item.generatedProfiles ?? []).map((profile) => profile.generatorType))).size;
+  const remapProfile = (profile: NonNullable<GeneratedGeometryItem['generatedProfiles']>[number]) => {
+    // A projection describes a segment in the *current* contour, rather than an
+    // immutable generator-local segment.  Composition may adjust a junction,
+    // coalesce duplicate directed segments, or remove a zero-extent terminal
+    // out-and-back pair.  Resolve through the candidate's stable profile/edge/
+    // operation lineage and only transport projections which still have a
+    // physical segment in the composed contour.
+    const profileSegments = candidate.segments.filter((segment) => segment.profileId === profile.id
+      && segment.operationId === profile.operationId && segment.sourceEdgeId === profile.sourceEdgeId);
+    const geometryProjections = profile.geometryProjections.flatMap((projection) => {
+      // FinalGeometry deliberately ignores a generator-authored zero-length
+      // semantic element, so retaining it is both harmless and preserves the
+      // single-contributor metadata contract.
+      if (pointsMatch(projection.start, projection.end)) return [projection];
+      const identityMatch = profileSegments.find((segment) => segment.projectionId === projection.id);
+      const geometryMatches = identityMatch ? [] : profileSegments.filter((segment) =>
+        pointsMatch(segment.start, projection.start) && pointsMatch(segment.end, projection.end));
+      const segment = identityMatch ?? (geometryMatches.length === 1 ? geometryMatches[0] : undefined);
+      if (!segment) return contributorCount > 1 ? [] : [projection];
+      if (pointsMatch(projection.start, segment.start) && pointsMatch(projection.end, segment.end)) return [projection];
+      return [{ ...projection, start: { ...segment.start }, end: { ...segment.end } }];
+    });
+    return { ...profile, geometryProjections };
+  };
   const diagnostic: GeneratedGeometryItem = {
     ...owners[0], id: `composed:panel:${panelId}`, operationId: `composed:${panelId}`,
     source: { operationId: `composed:${panelId}`, connectionIds: [...new Set(owners.flatMap((item) => item.source.connectionIds))].sort(),
       edgeIds: [...new Set(owners.flatMap((item) => item.source.edgeIds))].sort(), panelIds: [panelId] },
     geometry: { ...owners[0].geometry, pathD }, pathD,
     profileGroups: uniqueMetadata(owners.flatMap((item) => item.profileGroups ?? []), 'profile group'),
-    generatedProfiles: uniqueMetadata(owners.flatMap((item) => item.generatedProfiles ?? []), 'generated profile').map((profile) => ({ ...profile,
-      geometryProjections: profile.geometryProjections.map((projection) => {
-        const segment = candidate.segments.find((value) => value.projectionId === projection.id);
-        if (!segment || (pointsMatch(projection.start, segment.start) && pointsMatch(projection.end, segment.end))) {
-          return projection;
-        }
-        return { ...projection, start: { ...segment.start }, end: { ...segment.end } };
-      }),
-    })),
+    generatedProfiles: uniqueMetadata(owners.flatMap((item) => item.generatedProfiles ?? []), 'generated profile').map(remapProfile),
     generatedTaps: uniqueMetadata(owners.flatMap((item) => item.generatedTaps ?? []), 'generated tap'),
     sourceRelationships,
     diagnostics: [],

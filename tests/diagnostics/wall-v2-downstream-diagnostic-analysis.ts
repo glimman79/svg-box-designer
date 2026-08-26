@@ -1,4 +1,5 @@
 import { buildFinalGeometry } from '../../src/app/finalGeometry';
+import { processManufacturingGeometry } from '../../src/app/manufacturingCompensation';
 import { assembleGeneratedGeometryDiagnostics } from '../../src/app/generatedGeometryAssembly';
 import { selectGeneratedGeometryAuthority } from '../../src/app/generatedGeometryAuthority';
 import { packageComposedPanelGeometry } from '../../src/app/generatedGeometryDualRun';
@@ -82,12 +83,34 @@ const final = reductions[3];
 assert(final.authority.ok, `Four-W mixed authority failed: ${final.authority.blockingDecisions.map((value) => value.reason)}`);
 assert(final.details.every((detail) => !detail.packagingError && !detail.finalDiagnostics.some((entry) => entry.severity === 'error')),
   'Four-W topology did not reach valid packaging and FinalGeometry.');
+assert(final.details.every((detail) => detail.finalDiagnostics.filter((entry) => entry.code === 'CLEARANCE_PROFILE_MISSING').length === 0),
+  'A mixed panel retained a projection without a composed contour segment.');
 assert(final.details.filter((detail) => affected.includes(detail.panelId)).every((detail) =>
   detail.carriers.length === 2 && new Set(detail.carriers.map((item) => item.id)).size === 2),
   'Each mixed panel must retain distinct TB and W raw carriers.');
 const minimal = reductions[0];
 assert(minimal.authority.ok && minimal.details.some((detail) => detail.panelId === 'panel-1' && detail.carriers.length === 2),
   'Minimal one-panel TB edge-0 plus W edge-1 regression failed.');
+
+const fullRaw = [...buildGeneratedTBGeometryItems(model, assignments, connections, thickness),
+  ...buildGeneratedWGeometryItems(model, assignments, connections, thickness)];
+const reversed = selectGeneratedGeometryAuthority(model, [...fullRaw].reverse(), 'mixed');
+assert(reversed.ok && JSON.stringify(reversed.generatedGeometry) === JSON.stringify(final.authority.generatedGeometry),
+  'Contributor order changed mixed composed output.');
+const approvedFinal = buildFinalGeometry(model, final.authority.generatedGeometry);
+assert(approvedFinal.diagnostics.filter((entry) => entry.severity === 'error').length === 0,
+  'Approved mixed FinalGeometry retained errors.');
+assert(processManufacturingGeometry(approvedFinal, 0, 0, 0, [], 0).contours.length > 0,
+  'Approved mixed manufacturing produced no contours.');
+
+const conflictWallAssignments: EdgeAssignmentRecord = {
+  'panel-1-edge-0': { edgeAssignment: { connectionId: 'W1', edgeRole: 'A' } },
+  'panel-2-edge-0': { edgeAssignment: { connectionId: 'W1', edgeRole: 'B' } },
+};
+const conflictRaw = [...buildGeneratedTBGeometryItems(model, tbAssignments, connections, thickness),
+  ...buildGeneratedWGeometryItems(model, conflictWallAssignments, connections, thickness)];
+assert(!selectGeneratedGeometryAuthority(model, conflictRaw, 'mixed').ok,
+  'Same-edge contributor ownership conflict did not fail closed.');
 
 const tbEquivalentConnections: ConnectionMap = { ...connections };
 const tbEquivalentAssignments: EdgeAssignmentRecord = { ...tbAssignments };
