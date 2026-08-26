@@ -16,24 +16,28 @@ assert(success.downstreamDiagnostics.length > 0 && success.downstreamDiagnostics
   'successful mixed candidate lacks a passing diagnostic');
 
 const finalFailure = run({ ...base, buildFinal: (model, items) => {
-  const result = buildFinalGeometry(model, items);
-  const projectionId = result.generatedProfiles.find((profile) => profile.panelId === fixture.ownerPanelId)
-    ?.geometryProjections.find((projection) => projection.start.x !== projection.end.x || projection.start.y !== projection.end.y)?.id;
-  if (!projectionId) throw new Error('trace fixture has no nonzero generated-profile projection');
-  return { ...result, diagnostics: [...result.diagnostics,
-    { id: projectionId, code: 'CLEARANCE_PROFILE_MISSING' as const, severity: 'error' as const,
-      message: 'Synthetic non-throwing FinalGeometry error.' }] };
+  const inputItems = 'generatedGeometry' in items ? items.generatedGeometry : items;
+  const malformed = inputItems.map((item) => ({ ...item, generatedProfiles: item.generatedProfiles?.map((profile) => ({ ...profile,
+    geometryProjections: profile.geometryProjections.map((projection, index) => index === 0 ? { ...projection,
+      end: { x: projection.end.x + 12345, y: projection.end.y + 12345 } } : projection),
+  })) }));
+  return buildFinalGeometry(model, malformed);
 } });
 assert(!finalFailure.ok, 'non-throwing FinalGeometry error was accepted');
 assert(finalFailure.downstreamDiagnostics.every((entry) => entry.firstFailure === 'FINAL_GEOMETRY_ERROR_DIAGNOSTIC'),
   'FinalGeometry error predicate was not identified');
 assert(finalFailure.downstreamDiagnostics.every((entry) => entry.finalGeometry.error === null
-  && entry.finalGeometry.diagnostics.some((diagnostic) => diagnostic.message.includes('non-throwing'))),
+  && entry.finalGeometry.diagnostics.some((diagnostic) => diagnostic.code === 'CLEARANCE_PROFILE_MISSING')),
   'FinalGeometry non-throwing detail was lost');
 const trace = finalFailure.downstreamDiagnostics.flatMap((entry) => entry.clearanceProjectionTraces)[0];
 assert(trace?.profile?.panelId === fixture.ownerPanelId && trace.projection?.id === trace.diagnosticId
-  && trace.element && trace.candidateSegments.length > 0 && trace.finalContourSegments.length > 0,
+  && trace.element && trace.matchCount === 0 && trace.candidateSegments.length > 0 && trace.finalContourSegments.length > 0,
   'CLEARANCE_PROFILE_MISSING lifecycle trace lacks semantic/candidate/final-contour evidence');
+finalFailure.downstreamDiagnostics.forEach((entry) => assert(
+  entry.finalGeometry.diagnostics.filter((diagnostic) => diagnostic.code === 'CLEARANCE_PROFILE_MISSING').length
+    === entry.clearanceProjectionTraces.length,
+  `missing diagnostic/trace count differs for ${entry.panelId}`,
+));
 
 const manufacturingFailure = run({ ...base, manufacture: (final, kerf, slot, offset, ids, tap) => ({
   ...processManufacturingGeometry(final, kerf, slot, offset, ids, tap), contours: [],
