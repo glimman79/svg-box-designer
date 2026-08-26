@@ -1,4 +1,4 @@
-import { applySharedFingerWidthUpdates, shouldShowFingerJointTabControl } from '../../src/app/tabSizeControl';
+import { applyFingerWidthUpdate, shouldShowFingerJointTabControl } from '../../src/app/tabSizeControl';
 import { buildGeneratedTBGeometryItems } from '../../src/app/tbGeometry';
 import { buildGeneratedWGeometryItems } from '../../src/app/wallGeometry';
 import { getSharedTBEdgeProperties } from '../../src/app/tbWorkflow';
@@ -45,13 +45,13 @@ for (const width of [9, 12]) {
   assert(tb.map((item) => item.pathD).join('|') === wall.map((item) => item.pathD).join('|'), `${width}: TB/W must use identical finger width geometry`);
 
   const nextWall = startWallGroupWorkflow(tbConnections).connections.W1;
-  assert(nextWall?.prefix === 'W' && nextWall.properties.fingerWidthMm === width, `${width}: new W must inherit shared TB value`);
-  assert(getSharedTBEdgeProperties(wConnections, { fingerWidthMm: 99, isFingerWidthManual: false }).fingerWidthMm === width, `${width}: new TB must inherit shared W value`);
+  assert(nextWall?.prefix === 'W' && nextWall.properties.fingerWidthMm === 9, `${width}: new W must use its workflow default`);
+  assert(getSharedTBEdgeProperties(wConnections, { fingerWidthMm: 99, isFingerWidthManual: false }).fingerWidthMm === 99, `${width}: new TB must not inherit a W value`);
 
-  const edited = applySharedFingerWidthUpdates({ ...tbConnections, ...wConnections }, { fingerWidthMm: width });
+  const edited = applyFingerWidthUpdate({ ...tbConnections, ...wConnections }, 'W1', { fingerWidthMm: width + 1 });
   assert(edited.TB1.prefix === 'TB' && edited.TB1.properties.fingerWidthMm === width, `${width}: edit must update TB source`);
-  assert(edited.W1.prefix === 'W' && edited.W1.properties.fingerWidthMm === width, `${width}: edit under W must update Wall source`);
-  assert(edited.TB1.properties.isFingerWidthManual && edited.W1.properties.isFingerWidthManual, `${width}: shared validation/update path must mark manual`);
+  assert(edited.W1.prefix === 'W' && edited.W1.properties.fingerWidthMm === width + 1, `${width}: edit must update selected Wall only`);
+  assert(edited.TB1.properties.isFingerWidthManual && edited.W1.properties.isFingerWidthManual, `${width}: per-connection update path must preserve/mark manual`);
 }
 
-console.log('PASS TB/W Tab control visibility and shared 9/12 mm finger-width generation');
+console.log('PASS TB/W shared Tab control visibility with per-connection update behavior');

@@ -27,7 +27,7 @@ import type { PanelCompositionAuthorityMode, PanelCompositionModel } from './app
 import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { validateGeometryAuthoring } from './app/authoringRelationships';
 import { buildGeneratedWGeometryItems } from './app/wallGeometry';
-import { applySharedFingerWidthUpdates, shouldShowFingerJointTabControl } from './app/tabSizeControl';
+import { applyFingerWidthUpdate, shouldShowFingerJointTabControl } from './app/tabSizeControl';
 import { complementaryWallRole, getWallAssignments, normalizeWallConnection, resolveTBRoleForPanel, validateWallAuthoringForApply } from './app/wallAuthoring';
 import { authorWallEdge, buildWallWorkflowGroups, finishWallGroupWithTrailingCleanup, startWallGroupWorkflow, type ActiveWallGroup } from './app/wallWorkflow';
 import { applyActiveSGroupSlotPropertyUpdates, applySlotPropertyUpdates, finishSGroupWithTrailingCleanup, finishSGroupWorkflow, getDefaultSlotRole, manualAddSWorkflow, maybeAutoCreateNextSInGroup, startSGroupWorkflow } from './app/sWorkflow';
@@ -533,7 +533,7 @@ const createConnectionDefinition = (
 
 const getSharedTBProperties = (connections: ConnectionMap): TBConnectionProperties => {
   const sharedConnection = Object.values(connections).find(
-    (connection) => connection.prefix === 'TB' || connection.prefix === 'W',
+    (connection): connection is TBConnectionDefinition => connection.prefix === 'TB',
   );
 
   return sharedConnection ? {
@@ -1074,7 +1074,7 @@ function App() {
       [nextLabel]: createConnectionDefinition(
         nextLabel,
         prefix,
-        prefix === 'TB' || prefix === 'W' ? getSharedTBProperties(currentConnections) : undefined,
+        prefix === 'TB' ? getSharedTBProperties(currentConnections) : undefined,
       ),
     }));
     selectConnectionForDisplayAndAssignment(nextLabel);
@@ -1672,7 +1672,7 @@ function App() {
         nextProperties.isFingerWidthManual = true;
       }
 
-      return applySharedFingerWidthUpdates(currentConnections, nextProperties);
+      return applyFingerWidthUpdate(currentConnections, selectedConnection.id, nextProperties);
     });
   };
 

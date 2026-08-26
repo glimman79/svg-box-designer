@@ -6,24 +6,26 @@ export const shouldShowFingerJointTabControl = (
   connectionPrefix: string | null | undefined,
 ): boolean => (activeTool === 'TB' || activeTool === 'W') && connectionPrefix === activeTool;
 
-/** Applies one edit to the single finger-width setting mirrored by all TB/Wall connections. */
-export const applySharedFingerWidthUpdates = (
+/** Applies a finger-width edit to the selected TB/Wall connection only. */
+export const applyFingerWidthUpdate = (
   connections: ConnectionMap,
+  connectionId: string,
   updates: Partial<TBConnectionProperties>,
-): ConnectionMap => Object.fromEntries(
-  Object.entries(connections).map(([connectionId, connection]) => [
-    connectionId,
-    connection.prefix === 'TB' || connection.prefix === 'W'
-      ? {
-          ...connection,
-          properties: {
-            ...connection.properties,
-            ...updates,
-            isFingerWidthManual: updates.fingerWidthMm !== undefined
-              ? true
-              : updates.isFingerWidthManual ?? connection.properties.isFingerWidthManual,
-          },
-        }
-      : connection,
-  ]),
-) as ConnectionMap;
+): ConnectionMap => {
+  const connection = connections[connectionId];
+  if (!connection || (connection.prefix !== 'TB' && connection.prefix !== 'W')) return connections;
+
+  return {
+    ...connections,
+    [connectionId]: {
+      ...connection,
+      properties: {
+        ...connection.properties,
+        ...updates,
+        isFingerWidthManual: updates.fingerWidthMm !== undefined
+          ? true
+          : updates.isFingerWidthManual ?? connection.properties.isFingerWidthManual,
+      },
+    },
+  } as ConnectionMap;
+};
