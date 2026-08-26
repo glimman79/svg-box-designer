@@ -10,7 +10,7 @@ export const getSharedTBEdgeProperties = (
   defaultProperties: TBConnectionProperties,
 ): TBConnectionProperties => {
   const sharedConnection = Object.values(connections).find(
-    (connection) => connection.prefix === 'TB' || connection.prefix === 'W',
+    (connection): connection is TBConnectionDefinition => connection.prefix === 'TB',
   );
 
   return sharedConnection ? {
