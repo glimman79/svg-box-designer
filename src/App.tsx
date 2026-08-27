@@ -41,6 +41,8 @@ import type { PanelManagerState, PanelTreeHoleNode, PanelTreePanelNode } from '.
 import { createTabSegmentPlan, pointsToClosedPathD, projectPointDistanceOnSide } from './app/sharedGeometry';
 import { getContourEdgePoints, validateClosedPanel } from './app/sharedPanelGeometry';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
+import { DrawingWorkspace, initialDrawingViewBox } from './app/DrawingWorkspace';
+import { createDrawingDocumentV1, DEFAULT_WORKSPACE, selectWorkspace, type WorkspaceId } from './app/drawingTypes';
 import type { ActiveSGroup, ActiveTBGroup, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, TBConnectionDefinition, TBConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties } from './app/connectionTypes';
 import { getNextConnectionLabel, parseConnectionLabel } from './app/connectionLabels';
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
@@ -648,6 +650,9 @@ const SelectField = ({ id, label, value, options, onChange }: SelectFieldProps) 
 );
 
 function App() {
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(DEFAULT_WORKSPACE);
+  const [drawingDocument] = useState(createDrawingDocumentV1);
+  const [drawingViewBox, setDrawingViewBox] = useState(initialDrawingViewBox);
   const [svgModel, setSvgModel] = useState<SvgDocumentModel>(() => parseSvgDocument(starterSvg));
   const [edgeAssignments, setEdgeAssignments] = useState<Record<string, EdgeAssignmentBucket>>({});
   const [connections, setConnections] = useState<ConnectionMap>({});
@@ -2265,7 +2270,12 @@ function App() {
           <span className="brand-mark" aria-hidden="true">SBD</span>
           <h1>SVG BOX DESIGNER</h1>
         </div>
-        <div className="toolbar-actions">
+        <nav className="workspace-selector" aria-label="Main workspaces">
+          <button type="button" className={activeWorkspace === 'drawing' ? 'active' : ''} aria-pressed={activeWorkspace === 'drawing'} onClick={() => setActiveWorkspace((current) => selectWorkspace(current, 'drawing'))}>2D Drawing</button>
+          <button type="button" disabled title="Puzzle is not implemented">Puzzle <span>Not implemented</span></button>
+          <button type="button" className={activeWorkspace === 'construction' ? 'active' : ''} aria-pressed={activeWorkspace === 'construction'} onClick={() => setActiveWorkspace((current) => selectWorkspace(current, 'construction'))}>Box / Construction</button>
+        </nav>
+        {activeWorkspace === 'construction' && <div className="toolbar-actions">
           <label className="toolbar-button primary" title="Import SVG">
             Import
             <input type="file" accept=".svg,image/svg+xml" onChange={handleImportWithError} />
@@ -2289,7 +2299,7 @@ function App() {
           <a ref={downloadRef} className="visually-hidden" aria-hidden="true">
             download
           </a>
-        </div>
+        </div>}
       </header>
 
       {isClearDialogOpen && (
@@ -2324,7 +2334,7 @@ function App() {
 
       {errorMessage && <div className="notice">{errorMessage}</div>}
 
-      <section className="workspace" aria-label="SVG connection workspace">
+      {activeWorkspace === 'drawing' ? <DrawingWorkspace document={drawingDocument} viewBox={drawingViewBox} setViewBox={setDrawingViewBox} /> : <section className="workspace" aria-label="SVG connection workspace">
         <aside className="tool-sidebar" aria-label="Tool sidebar">
           {([
             ['select', 'Select', 'Select and inspect existing edges'],
@@ -2735,7 +2745,7 @@ function App() {
             )}
           </div>
         </aside>
-      </section>
+      </section>}
     </main>
   );
 }
