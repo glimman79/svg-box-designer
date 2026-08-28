@@ -1890,10 +1890,6 @@ function App() {
   }, [svgModel]);
 
   const handleCanvasWheel = (event: WheelEvent<SVGSVGElement>) => {
-    if (!event.ctrlKey) {
-      return;
-    }
-
     event.preventDefault();
     const center = getSvgPointFromClient(event.clientX, event.clientY);
     zoomCanvas(Math.exp(-event.deltaY * wheelZoomSensitivity), center);
@@ -2600,6 +2596,7 @@ function App() {
             <div className="canvas-zoom-controls" aria-label="Canvas zoom controls">
               <button type="button" onClick={() => zoomCanvas(buttonZoomFactor)} aria-label="Zoom in">+</button>
               <button type="button" onClick={() => zoomCanvas(1 / buttonZoomFactor)} aria-label="Zoom out">−</button>
+              <button type="button" onClick={fitCanvasToScreen}>Fit</button>
             </div>
             <svg
               ref={svgRef}

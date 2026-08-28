@@ -33,11 +33,20 @@ const returnedSpacings = new Set([-Infinity, 0, 100, 240, 241, 800, 1799, 1800, 
 assert.deepEqual(returnedSpacings, new Set([1, 10, 100]), 'no intermediate grid spacing can be returned');
 assert.deepEqual(document, sameDocument, 'view/grid calculations must not mutate the Drawing document');
 
+assert.equal(drawingGrid.getAxisLabelInterval(10, 1), 100);
+assert.equal(drawingGrid.getAxisLabelInterval(10, 2), 50, 'label interval adapts independently of the 10 mm grid');
+assert.deepEqual(drawingGrid.getVisibleAxisLabels(-125, 125, 50, 500).map(({ value }) => value), [-100, -50, 0, 50, 100]);
+assert.deepEqual(drawingGrid.getVisibleAxisLabels(75, 225, 50, 300).map(({ value }) => value), [100, 150, 200], 'panning changes visible model values');
+const anchored = drawingGrid.zoomViewBoxAtPoint({ x: 0, y: 0, width: 800, height: 600 }, 2, { x: 200, y: 150 });
+assert.deepEqual(anchored, { x: 100, y: 75, width: 400, height: 300 }, 'wheel zoom preserves its model-space pointer anchor');
+
 const appSource = fs.readFileSync('src/App.tsx', 'utf8');
 assert.match(appSource, /useState<WorkspaceId>\(DEFAULT_WORKSPACE\)/);
 assert.match(appSource, /<DrawingWorkspace document=\{drawingDocument\} viewBox=\{drawingViewBox\}/);
 assert.match(appSource, /workspace workspace-shell/);
 assert.match(appSource, /aria-label="Active Tool overlay"/);
+assert.match(appSource, /onClick=\{fitCanvasToScreen\}>Fit/);
+assert.match(appSource, /const handleCanvasWheel[\s\S]*?event\.preventDefault\(\);[\s\S]*?getSvgPointFromClient/);
 assert.doesNotMatch(appSource, /grid-template-columns:.*active/);
 assert.match(appSource, /activeWorkspace === 'construction' && <div className="toolbar-actions">/);
 assert.match(appSource, /<button type="button" disabled title="Puzzle is not implemented">/);
@@ -48,5 +57,17 @@ assert.doesNotMatch(drawingSource, /(generatedGeometry|FinalGeometry|Manufacturi
 assert.match(drawingSource, /drawing-workspace workspace-shell/);
 assert.match(drawingSource, /patternUnits="userSpaceOnUse"/);
 assert.match(drawingSource, /DRAWING_ORIGIN\.x/);
+assert.match(drawingSource, /drawing-label-overlay/);
+assert.match(drawingSource, /getVisibleAxisLabels/);
+assert.match(drawingSource, /event\.preventDefault\(\);/);
+assert.doesNotMatch(drawingSource, /if \(!event\.ctrlKey\)/);
+
+const styles = fs.readFileSync('src/styles.css', 'utf8');
+assert.match(styles, /grid-template-columns: 62px minmax\(0, 1fr\)/, 'Tools uses a fixed layout column');
+assert.match(styles, /grid-template-areas: "tools canvas" "history history"/, 'History remains below Tools and canvas');
+assert.match(styles, /\.workspace-shell \.active-tool-panel \{[\s\S]*?position: absolute/, 'Active Tool remains an overlay');
+assert.match(styles, /\.drawing-label-overlay text \{[^}]*font-size: 11px/, 'coordinate text uses screen-space pixels');
+assert.match(styles, /drawing-grid-line-minor/);
+assert.match(styles, /drawing-grid-line-major/);
 
 console.log('D2.1 drawing workspace shell tests passed');
