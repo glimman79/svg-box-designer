@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type Dispatch, type PointerEvent, type SetStateAction, type WheelEvent } from 'react';
 import type { DrawingDocumentV1 } from './drawingTypes';
-import { DRAWING_ORIGIN, getDrawingGridSpacing } from './drawingGrid';
+import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridSpacing, getVisibleAxisLabels, zoomViewBoxAtPoint } from './drawingGrid';
 
 export type DrawingViewBox = { x: number; y: number; width: number; height: number };
 type PanState = { pointerId: number; clientX: number; clientY: number };
@@ -20,6 +20,7 @@ export function DrawingWorkspace({
   const svgRef = useRef<SVGSVGElement>(null);
   const panStateRef = useRef<PanState | null>(null);
   const [isPanning, setIsPanning] = useState(false);
+  const [viewport, setViewport] = useState({ width: 800, height: 600 });
   const activeSketch = document.sketches[document.activeSketchId];
   const gridSpacing = getDrawingGridSpacing(viewBox.width);
 
@@ -29,6 +30,7 @@ export function DrawingWorkspace({
     const observer = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
       if (width <= 0 || height <= 0) return;
+      setViewport({ width, height });
       setViewBox((current) => {
         const nextWidth = current.height * width / height;
         if (Math.abs(nextWidth - current.width) < 0.01) return current;
@@ -40,13 +42,10 @@ export function DrawingWorkspace({
     return () => observer.disconnect();
   }, [setViewBox]);
 
-  const zoom = (factor: number) => setViewBox((current) => {
-    const width = Math.min(8000, Math.max(40, current.width / factor));
-    const height = Math.min(6000, Math.max(30, current.height / factor));
-    const centerX = current.x + current.width / 2;
-    const centerY = current.y + current.height / 2;
-    return { x: centerX - width / 2, y: centerY - height / 2, width, height };
-  });
+  const zoom = (factor: number, anchor?: { x: number; y: number }) => setViewBox((current) => zoomViewBoxAtPoint(current, factor, anchor ?? {
+    x: current.x + current.width / 2,
+    y: current.y + current.height / 2,
+  }));
 
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (event.button !== 0 || event.target !== event.currentTarget) return;
@@ -78,10 +77,23 @@ export function DrawingWorkspace({
   };
 
   const handleWheel = (event: WheelEvent<SVGSVGElement>) => {
-    if (!event.ctrlKey) return;
     event.preventDefault();
-    zoom(Math.exp(-event.deltaY * 0.0015));
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const anchor = {
+      x: viewBox.x + (event.clientX - bounds.left) / bounds.width * viewBox.width,
+      y: viewBox.y + (event.clientY - bounds.top) / bounds.height * viewBox.height,
+    };
+    zoom(Math.exp(-event.deltaY * 0.0015), anchor);
   };
+
+  const pixelsPerMm = viewport.width / viewBox.width;
+  const labelInterval = getAxisLabelInterval(gridSpacing, pixelsPerMm);
+  const xLabels = getVisibleAxisLabels(viewBox.x, viewBox.x + viewBox.width, labelInterval, viewport.width);
+  const yLabels = getVisibleAxisLabels(viewBox.y, viewBox.y + viewBox.height, labelInterval, viewport.height);
+  const originScreenX = (DRAWING_ORIGIN.x - viewBox.x) / viewBox.width * viewport.width;
+  const originScreenY = (DRAWING_ORIGIN.y - viewBox.y) / viewBox.height * viewport.height;
+  const minorSpacing = gridSpacing / 5;
+  const showMinorGrid = minorSpacing * pixelsPerMm >= 5;
 
   return (
     <section className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace">
@@ -111,19 +123,33 @@ export function DrawingWorkspace({
             onPointerCancel={endPan}
           >
             <defs>
+              <pattern id="drawing-minor-grid" x="0" y="0" width={minorSpacing} height={minorSpacing} patternUnits="userSpaceOnUse">
+                <path className="drawing-grid-line drawing-grid-line-minor" d={`M ${minorSpacing} 0 L 0 0 0 ${minorSpacing}`} />
+              </pattern>
               <pattern id="drawing-grid" x="0" y="0" width={gridSpacing} height={gridSpacing} patternUnits="userSpaceOnUse">
-                <path className="drawing-grid-line" d={`M ${gridSpacing} 0 L 0 0 0 ${gridSpacing}`} />
+                {showMinorGrid && <rect width={gridSpacing} height={gridSpacing} fill="url(#drawing-minor-grid)" />}
+                <path className="drawing-grid-line drawing-grid-line-major" d={`M ${gridSpacing} 0 L 0 0 0 ${gridSpacing}`} />
               </pattern>
             </defs>
             <rect className="drawing-grid-plane" x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#drawing-grid)" />
             <g className="drawing-coordinate-plane" aria-label="Drawing axes and origin">
               <line className="drawing-axis" x1={viewBox.x} y1={DRAWING_ORIGIN.y} x2={viewBox.x + viewBox.width} y2={DRAWING_ORIGIN.y} />
               <line className="drawing-axis" x1={DRAWING_ORIGIN.x} y1={viewBox.y} x2={DRAWING_ORIGIN.x} y2={viewBox.y + viewBox.height} />
-              <circle className="drawing-origin" cx={DRAWING_ORIGIN.x} cy={DRAWING_ORIGIN.y} r={4} vectorEffect="non-scaling-stroke" />
-              <text className="drawing-origin-label" x={DRAWING_ORIGIN.x + 7} y={DRAWING_ORIGIN.y - 7}>0</text>
-              <text className="drawing-axis-label" x={viewBox.x + viewBox.width - 20} y={DRAWING_ORIGIN.y - 8}>X</text>
-              <text className="drawing-axis-label" x={DRAWING_ORIGIN.x + 8} y={viewBox.y + 18}>Y</text>
             </g>
+          </svg>
+          <svg className="drawing-label-overlay" viewBox={`0 0 ${viewport.width} ${viewport.height}`} aria-label="Model coordinate scale">
+            {originScreenY >= 0 && originScreenY <= viewport.height && xLabels.filter(({ value }) => value !== 0).map((label) => (
+              <text key={`x-${label.value}`} x={label.screenPosition} y={originScreenY + 15} textAnchor="middle">{label.value}</text>
+            ))}
+            {originScreenX >= 0 && originScreenX <= viewport.width && yLabels.filter(({ value }) => value !== 0).map((label) => (
+              <text key={`y-${label.value}`} x={originScreenX + 6} y={label.screenPosition + 4}>{label.value}</text>
+            ))}
+            {originScreenX >= 0 && originScreenX <= viewport.width && originScreenY >= 0 && originScreenY <= viewport.height && <>
+              <circle className="drawing-origin-screen" cx={originScreenX} cy={originScreenY} r="3.5" />
+              <text x={originScreenX + 7} y={originScreenY - 7}>0</text>
+            </>}
+            {originScreenY >= 0 && originScreenY <= viewport.height && <text className="drawing-axis-letter" x={viewport.width - 15} y={originScreenY - 7}>X</text>}
+            {originScreenX >= 0 && originScreenX <= viewport.width && <text className="drawing-axis-letter" x={originScreenX + 7} y="15">Y</text>}
           </svg>
         </div>
       </section>
