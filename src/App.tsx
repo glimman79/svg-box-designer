@@ -2334,7 +2334,7 @@ function App() {
 
       {errorMessage && <div className="notice">{errorMessage}</div>}
 
-      {activeWorkspace === 'drawing' ? <DrawingWorkspace document={drawingDocument} viewBox={drawingViewBox} setViewBox={setDrawingViewBox} /> : <section className="workspace" aria-label="SVG connection workspace">
+      {activeWorkspace === 'drawing' ? <DrawingWorkspace document={drawingDocument} viewBox={drawingViewBox} setViewBox={setDrawingViewBox} /> : <section className="workspace workspace-shell" aria-label="SVG connection workspace">
         <aside className="tool-sidebar" aria-label="Tool sidebar">
           {([
             ['select', 'Select', 'Select and inspect existing edges'],
@@ -2359,7 +2359,7 @@ function App() {
           ))}
         </aside>
 
-        <aside className="active-tool-panel panel">
+        {(activeTool !== 'select' || selectedEdge) && <aside className="active-tool-panel panel" aria-label="Active Tool overlay">
           <div className="panel-heading">
             <p className="eyebrow">Active tool</p>
             <h2>{activeTool === 'TB' ? 'TB / Top Bottom' : activeTool === 'manufacturing' ? 'Manufacturing' : activeTool}</h2>
@@ -2590,9 +2590,9 @@ function App() {
             </>
           )}
 
-        </aside>
+        </aside>}
 
-        <section className="canvas-card">
+        <section className="canvas-card workspace-canvas">
           <div className="canvas-frame" ref={canvasFrameRef}>
             <div className="canvas-history-controls" aria-label="Canvas compact property controls">
               {renderCompactControls()}
