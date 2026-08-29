@@ -44,6 +44,7 @@ import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRo
 import { DrawingWorkspace, initialDrawingViewBox } from './app/DrawingWorkspace';
 import { createDrawingDocumentV1, DEFAULT_WORKSPACE, selectWorkspace, type WorkspaceId } from './app/drawingTypes';
 import { useCadWheelCapture } from './app/useCadWheelCapture';
+import { createBoxDocumentV1 } from './app/boxDocument';
 import type { ActiveSGroup, ActiveTBGroup, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, TBConnectionDefinition, TBConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties } from './app/connectionTypes';
 import { getNextConnectionLabel, parseConnectionLabel } from './app/connectionLabels';
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
@@ -333,21 +334,6 @@ type PanState = {
 
 
 
-const emptySvgModel: SvgDocumentModel = {
-  content: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"></svg>',
-  innerMarkup: '',
-  rootAttributes: {
-    width: null,
-    height: null,
-    viewBox: '0 0 800 600',
-  },
-  viewBox: '0 0 800 600',
-  width: 800,
-  height: 600,
-  edges: [],
-  panels: [],
-};
-
 const labelGroups: LabelGroup[] = [
   { prefix: 'TB', name: 'Edge connections', description: 'Reusable edge connection IDs' },
   { prefix: 'W', name: 'Wall connections', description: 'Wall A/B source-edge authoring' },
@@ -385,11 +371,6 @@ export const defaultConnectionProperties: ConnectionPropertiesByPrefix = {
     marginMm: 2,
   },
 };
-
-const starterSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 260">
-  <rect x="70" y="45" width="280" height="170" rx="0" fill="none" stroke="#000000" stroke-width="1"/>
-  <line x1="70" y1="130" x2="350" y2="130" stroke="#000000" stroke-width="1"/>
-</svg>`;
 
 const getLabelPrefix = (label: string) => parseConnectionLabel(label)?.prefix;
 
@@ -654,7 +635,7 @@ function App() {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(DEFAULT_WORKSPACE);
   const [drawingDocument] = useState(createDrawingDocumentV1);
   const [drawingViewBox, setDrawingViewBox] = useState(initialDrawingViewBox);
-  const [svgModel, setSvgModel] = useState<SvgDocumentModel>(() => parseSvgDocument(starterSvg));
+  const [svgModel, setSvgModel] = useState<SvgDocumentModel>(createBoxDocumentV1);
   const [edgeAssignments, setEdgeAssignments] = useState<Record<string, EdgeAssignmentBucket>>({});
   const [connections, setConnections] = useState<ConnectionMap>({});
   const [projectSettings, setProjectSettings] = useState<ProjectSettings>(defaultProjectSettings);
@@ -686,7 +667,7 @@ function App() {
   const [expandedSGroups, setExpandedSGroups] = useState<Record<string, boolean>>({});
   const [expandedTBGroups, setExpandedTBGroups] = useState<Record<string, boolean>>({});
   const [activeTool, setActiveTool] = useState<ActiveTool>('select');
-  const [panelManager, setPanelManager] = useState<PanelManagerState>(() => ({ ...createPanelManagerStateFromModel(parseSvgDocument(starterSvg)), isApplied: true }));
+  const [panelManager, setPanelManager] = useState<PanelManagerState>(defaultPanelManagerState);
   const [isPanelManagerModalOpen, setIsPanelManagerModalOpen] = useState(false);
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
   const [activeHoleId, setActiveHoleId] = useState<string | null>(null);
@@ -1537,7 +1518,8 @@ function App() {
   };
 
   const clearProject = () => {
-    setSvgModel(emptySvgModel);
+    const emptyBoxDocument = createBoxDocumentV1();
+    setSvgModel(emptyBoxDocument);
     setEdgeAssignments({});
     setConnections({});
     setProjectSettings(defaultProjectSettings);
@@ -1559,7 +1541,7 @@ function App() {
     setRedoStack([]);
     setExpandedTBGroups({});
     setExpandedSGroups({});
-    setCanvasViewBox(parseViewBox(emptySvgModel.viewBox));
+    setCanvasViewBox(parseViewBox(emptyBoxDocument.viewBox));
     setIsClearDialogOpen(false);
   };
 
