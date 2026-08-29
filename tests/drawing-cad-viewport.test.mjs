@@ -31,11 +31,8 @@ assert.deepEqual(getDrawingGridHierarchy(10), { primarySpacing: 10, majorSpacing
 assert.deepEqual(getDrawingGridHierarchy(100), { primarySpacing: 100, majorSpacing: null });
 
 const workspaceSource = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
-assert.match(workspaceSource, /addEventListener\('wheel',\s*handleWheel,\s*\{ passive: false \}\)/,
-  'Drawing uses a native explicitly non-passive wheel listener');
-assert.match(workspaceSource, /const handleWheel = \(event: WheelEvent\)[\s\S]*?event\.preventDefault\(\)/,
-  'the native wheel handler prevents browser scrolling');
-assert.match(workspaceSource, /removeEventListener\('wheel',\s*handleWheel\)/, 'the native listener is cleaned up');
+assert.match(workspaceSource, /useCadWheelCapture\(svgRef,/,
+  'Drawing delegates native wheel ownership to the shared CAD hook');
 assert.doesNotMatch(workspaceSource, /onWheel=/, 'wheel capture does not depend on React synthetic events');
 assert.doesNotMatch(workspaceSource, /gridSpacing \/ 5|drawing-minor-grid|drawing-grid-line-minor/);
 assert.match(workspaceSource, /getScreenCTM\(\)/, 'D2.1e browser CTM authority remains in place');
@@ -43,7 +40,7 @@ assert.match(workspaceSource, /modelToOverlayPoint/, 'D2.1e shared transform hel
 assert.match(workspaceSource, /useLayoutEffect/, 'D2.1e layout timing remains in place');
 
 const styles = fs.readFileSync('src/styles.css', 'utf8');
-assert.match(styles, /\.drawing-svg \{ overscroll-behavior: contain; \}/, 'scroll containment is canvas-scoped');
+assert.match(styles, /\.cad-viewport-interaction \{ overscroll-behavior: contain; \}/, 'scroll containment is CAD-canvas-scoped');
 assert.match(styles, /\.drawing-grid-line-primary \{[^}]*stroke-width: 0\.7;[^}]*opacity: 0\.8;/);
 assert.match(styles, /\.drawing-grid-line-major \{[^}]*stroke-width: 1;[^}]*opacity: 0\.92;/);
 

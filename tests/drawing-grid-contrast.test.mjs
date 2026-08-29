@@ -23,7 +23,7 @@ const primary = readRule('drawing-grid-line-primary');
 const major = readRule('drawing-grid-line-major');
 const axis = readRule('drawing-axis');
 
-assert.deepEqual(primary, { stroke: '#b6c6d5', width: 0.7, opacity: 0.8 });
+assert.deepEqual(primary, { stroke: '#adbfce', width: 0.7, opacity: 0.8 });
 assert.deepEqual(major, { stroke: '#788ea6', width: 1, opacity: 0.92 });
 assert.deepEqual(axis, { stroke: '#64748b', width: 1.4, opacity: 1 });
 assert.ok(compositedLuminance(primary) > compositedLuminance(major), 'primary grid remains lighter than major grid');

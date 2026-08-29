@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type Point
 import type { DrawingDocumentV1 } from './drawingTypes';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
+import { useCadWheelCapture } from './useCadWheelCapture';
 
 export type DrawingViewBox = { x: number; y: number; width: number; height: number };
 type PanState = { pointerId: number; clientX: number; clientY: number };
@@ -53,24 +54,18 @@ export function DrawingWorkspace({
     return () => observer.disconnect();
   }, [setViewBox]);
 
-  useEffect(() => {
+  useCadWheelCapture(svgRef, (event) => {
     const svg = svgRef.current;
     if (!svg) return;
-    const handleWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const bounds = svg.getBoundingClientRect();
-      if (bounds.width <= 0 || bounds.height <= 0) return;
-      const xRatio = (event.clientX - bounds.left) / bounds.width;
-      const yRatio = (event.clientY - bounds.top) / bounds.height;
-      setViewBox((current) => zoomViewBoxAtPoint(current, Math.exp(-event.deltaY * 0.0015), {
-        x: current.x + xRatio * current.width,
-        y: current.y + yRatio * current.height,
-      }));
-    };
-    svg.addEventListener('wheel', handleWheel, { passive: false });
-    return () => svg.removeEventListener('wheel', handleWheel);
-  }, [setViewBox]);
+    const bounds = svg.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    const xRatio = (event.clientX - bounds.left) / bounds.width;
+    const yRatio = (event.clientY - bounds.top) / bounds.height;
+    setViewBox((current) => zoomViewBoxAtPoint(current, Math.exp(-event.deltaY * 0.0015), {
+      x: current.x + xRatio * current.width,
+      y: current.y + yRatio * current.height,
+    }));
+  });
 
   const zoom = (factor: number, anchor?: { x: number; y: number }) => setViewBox((current) => zoomViewBoxAtPoint(current, factor, anchor ?? {
     x: current.x + current.width / 2,
@@ -143,7 +138,7 @@ export function DrawingWorkspace({
           </div>
           <svg
             ref={svgRef}
-            className={`design-svg drawing-svg${isPanning ? ' is-panning' : ''}`}
+            className={`design-svg cad-viewport-interaction drawing-svg${isPanning ? ' is-panning' : ''}`}
             viewBox={formatViewBox(viewBox)}
             role="img"
             aria-label={`${activeSketch.name} coordinate drawing canvas`}
