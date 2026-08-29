@@ -29,6 +29,8 @@
     "preview": "vite preview",
     "test:ui": "rm -rf .test-build && tsc --ignoreConfig src/app/labelLayout.ts src/app/numericDraft.ts --target es2022 --module esnext --moduleResolution bundler --outDir .test-build --skipLibCheck && node tests/ui-corrections.test.mjs",
     "test:d2-1b": "rm -rf .test-build/drawing-shell && tsc --ignoreConfig src/app/drawingTypes.ts src/app/drawingGrid.ts --target es2022 --module esnext --moduleResolution bundler --outDir .test-build/drawing-shell --skipLibCheck && node tests/drawing-workspace-shell.test.mjs",
+    "test:d2-1c": "npm run test:d2-1b",
+    "test:d2-1d": "npm run test:d2-1b",
     "test:tap-compiled": "rm -rf .test-build && tsc --ignoreConfig src/app/manufacturingCompensation.ts --target es2022 --module commonjs --outDir .test-build --skipLibCheck && printf '{\"type\":\"commonjs\"}' > .test-build/package.json && node tests/tap-clearance.compiled.cjs",
     "diagnose:tap-roles": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/tap-role-trace.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/tap-role-trace.js",
     "diagnose:profile-offset-shadow": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/profile-offset-shadow.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/profile-offset-shadow.js",

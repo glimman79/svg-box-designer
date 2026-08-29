@@ -1765,14 +1765,14 @@ button:disabled {
 .profile-offset-profile-underlay.selected.hovered { stroke: rgba(245, 158, 11, 0.62); }
 .profile-offset-profile-hitbox { fill: none; stroke: transparent; stroke-width: 14px; vector-effect: non-scaling-stroke; cursor: pointer; pointer-events: stroke; }
 
-/* D2.1b: the canvas is the workspace; tools and inspectors float above it. */
+/* D2.1c: tools own a narrow column; the active inspector alone floats over canvas. */
 .workspace-shell {
   position: relative;
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: 62px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) 42px;
-  grid-template-areas: "canvas" "history";
+  grid-template-areas: "tools canvas" "history history";
   gap: 0;
   min-height: 0;
   height: auto;
@@ -1794,12 +1794,11 @@ button:disabled {
 
 .workspace-shell .tool-sidebar,
 .drawing-tool-sidebar {
-  position: absolute;
+  position: relative;
+  grid-area: tools;
   z-index: 4;
-  top: 12px;
-  left: 12px;
-  width: 50px;
-  max-height: calc(100% - 66px);
+  width: 62px;
+  max-height: none;
 }
 
 .workspace-shell .active-tool-panel {
@@ -1848,8 +1847,8 @@ button:disabled {
   color: #cbd5e1;
   background: #111827;
   border: 1px solid #1f2937;
-  border-radius: 14px;
-  box-shadow: 0 18px 50px rgb(15 23 42 / 12%);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .drawing-tool-placeholder {
@@ -1881,18 +1880,24 @@ button:disabled {
 .drawing-status strong { color: #0f172a; }
 .drawing-grid-plane,
 .drawing-coordinate-plane { pointer-events: none; }
-.drawing-grid-line { fill: none; stroke: #dfe6ef; stroke-width: 0.65; }
-.drawing-axis { stroke: #64748b; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
-.drawing-origin { fill: #ffffff; stroke: #0f766e; stroke-width: 2; }
-.drawing-origin-label,
-.drawing-axis-label { fill: #334155; font-size: 13px; font-weight: 800; user-select: none; }
+.drawing-grid-line { fill: none; vector-effect: non-scaling-stroke; }
+.drawing-grid-line-normal { stroke: #cbd5e1; stroke-width: 0.55; opacity: 0.4; }
+.drawing-grid-line-major { stroke: #94a3b8; stroke-width: 0.85; opacity: 0.65; }
+.drawing-axis { stroke: #64748b; stroke-width: 1.25; vector-effect: non-scaling-stroke; }
+.drawing-label-overlay { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; pointer-events: none; }
+.drawing-label-overlay text { fill: #475569; font-size: 11px; font-weight: 600; user-select: none; }
+.drawing-label-overlay .drawing-axis-letter { fill: #334155; font-size: 12px; font-weight: 800; }
+.drawing-axis-tick line { stroke: #64748b; stroke-width: 0.75; }
+.drawing-origin-screen { fill: #fff; stroke: #0f766e; stroke-width: 1.5; }
 
 .drawing-history { padding: 5px 8px; }
 
 .drawing-canvas-card .canvas-zoom-controls {
   top: 56px;
-  left: 74px;
+  left: 10px;
 }
+
+.workspace-shell:not(.drawing-workspace) .canvas-zoom-controls { top: 12px; left: 10px; flex-direction: column; }
 
 @media (max-width: 700px) {
   .workspace-shell .active-tool-panel { width: min(280px, calc(100% - 78px)); }
