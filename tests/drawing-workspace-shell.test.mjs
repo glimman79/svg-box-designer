@@ -35,8 +35,8 @@ assert.deepEqual(document, sameDocument, 'view/grid calculations must not mutate
 
 assert.equal(drawingGrid.getAxisLabelInterval(10, 1), 100);
 assert.equal(drawingGrid.getAxisLabelInterval(10, 2), 50, 'label interval adapts independently of the 10 mm grid');
-assert.deepEqual(drawingGrid.getVisibleAxisLabels(-125, 125, 50, 500).map(({ value }) => value), [-100, -50, 0, 50, 100]);
-assert.deepEqual(drawingGrid.getVisibleAxisLabels(75, 225, 50, 300).map(({ value }) => value), [100, 150, 200], 'panning changes visible model values');
+assert.deepEqual(drawingGrid.getVisibleAxisValues(-125, 125, 50), [-100, -50, 0, 50, 100]);
+assert.deepEqual(drawingGrid.getVisibleAxisValues(75, 225, 50), [100, 150, 200], 'panning changes visible model values');
 const anchored = drawingGrid.zoomViewBoxAtPoint({ x: 0, y: 0, width: 800, height: 600 }, 2, { x: 200, y: 150 });
 assert.deepEqual(anchored, { x: 100, y: 75, width: 400, height: 300 }, 'wheel zoom preserves its model-space pointer anchor');
 
@@ -58,7 +58,7 @@ assert.match(drawingSource, /drawing-workspace workspace-shell/);
 assert.match(drawingSource, /patternUnits="userSpaceOnUse"/);
 assert.match(drawingSource, /DRAWING_ORIGIN\.x/);
 assert.match(drawingSource, /drawing-label-overlay/);
-assert.match(drawingSource, /getVisibleAxisLabels/);
+assert.match(drawingSource, /getVisibleAxisValues/);
 assert.match(drawingSource, /event\.preventDefault\(\);/);
 assert.doesNotMatch(drawingSource, /if \(!event\.ctrlKey\)/);
 

@@ -3,8 +3,6 @@ export const DRAWING_ORIGIN = Object.freeze({ x: 0, y: 0 });
 export type DrawingGridSpacing = 1 | 10 | 100;
 export type DrawingGridHierarchy = { primarySpacing: DrawingGridSpacing; majorSpacing: 10 | 100 | null };
 
-export type AxisLabel = { value: number; screenPosition: number };
-
 /** Selects one of the three supported model-space grid intervals. */
 export const getDrawingGridSpacing = (visibleWidthMm: number): DrawingGridSpacing => {
   if (visibleWidthMm <= 240) return 1;
@@ -29,21 +27,20 @@ export const getAxisLabelInterval = (
   return gridSpacing * (preferredMultipliers.find((multiple) => gridSpacing * multiple * pixelsPerMm >= minimumPixelSpacing) ?? 100);
 };
 
-/** Generates only visible model-coordinate labels, mapped into screen space. */
-export const getVisibleAxisLabels = (
+/** Selects which model-coordinate values are visible; it does not position them. */
+export const getVisibleAxisValues = (
   minimum: number,
   maximum: number,
   interval: number,
-  screenExtent: number,
-): AxisLabel[] => {
-  if (!(maximum > minimum) || !(interval > 0) || !(screenExtent > 0)) return [];
+): number[] => {
+  if (!(maximum > minimum) || !(interval > 0)) return [];
   const first = Math.ceil(minimum / interval) * interval;
-  const labels: AxisLabel[] = [];
+  const values: number[] = [];
   for (let value = first; value <= maximum + interval * 1e-9; value += interval) {
     const normalizedValue = Math.abs(value) < interval * 1e-9 ? 0 : value;
-    labels.push({ value: normalizedValue, screenPosition: (value - minimum) / (maximum - minimum) * screenExtent });
+    values.push(normalizedValue);
   }
-  return labels;
+  return values;
 };
 
 export const zoomViewBoxAtPoint = <T extends { x: number; y: number; width: number; height: number }>(
