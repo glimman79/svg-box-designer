@@ -633,7 +633,7 @@ const SelectField = ({ id, label, value, options, onChange }: SelectFieldProps) 
 
 function App() {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(DEFAULT_WORKSPACE);
-  const [drawingDocument] = useState(createDrawingDocumentV1);
+  const [drawingDocument, setDrawingDocument] = useState(createDrawingDocumentV1);
   const [drawingViewBox, setDrawingViewBox] = useState(initialDrawingViewBox);
   const [svgModel, setSvgModel] = useState<SvgDocumentModel>(createBoxDocumentV1);
   const [edgeAssignments, setEdgeAssignments] = useState<Record<string, EdgeAssignmentBucket>>({});
@@ -2312,7 +2312,7 @@ function App() {
 
       {errorMessage && <div className="notice">{errorMessage}</div>}
 
-      {activeWorkspace === 'drawing' ? <DrawingWorkspace document={drawingDocument} viewBox={drawingViewBox} setViewBox={setDrawingViewBox} /> : <section className="workspace workspace-shell" aria-label="SVG connection workspace">
+      {activeWorkspace === 'drawing' ? <DrawingWorkspace document={drawingDocument} viewBox={drawingViewBox} setViewBox={setDrawingViewBox} setDocument={setDrawingDocument} /> : <section className="workspace workspace-shell" aria-label="SVG connection workspace">
         <aside className="tool-sidebar" aria-label="Tool sidebar">
           {([
             ['select', 'Select', 'Select and inspect existing edges'],

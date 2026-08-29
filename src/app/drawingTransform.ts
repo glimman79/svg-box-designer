@@ -28,6 +28,15 @@ const invertTransform = (transform: AffineTransform): AffineTransform | null => 
   };
 };
 
+/** Converts a browser client point to Drawing model coordinates using the SVG's authoritative CTM. */
+export const clientToModelPoint = (
+  clientPoint: CoordinatePoint,
+  drawingToClientTransform: AffineTransform,
+): CoordinatePoint | null => {
+  const clientToDrawingTransform = invertTransform(drawingToClientTransform);
+  return clientToDrawingTransform ? transformPoint(clientPoint, clientToDrawingTransform) : null;
+};
+
 /**
  * Converts a MODEL COORDINATE through the Drawing SVG's real CLIENT transform,
  * then from CLIENT coordinates through the overlay SVG's inverse transform.

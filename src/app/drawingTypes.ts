@@ -8,9 +8,23 @@ export const selectWorkspace = (current: WorkspaceId, requested: WorkspaceId): W
 
 export type SketchId = string;
 
+/** A reusable point in Drawing model space, measured in the document unit. */
+export type DrawingPoint = Readonly<{ x: number; y: number }>;
+
+export type DrawingLineEntity = Readonly<{
+  id: string;
+  type: 'line';
+  start: DrawingPoint;
+  end: DrawingPoint;
+}>;
+
+export type DrawingEntity = DrawingLineEntity;
+
 export type DrawingSketchV1 = {
   id: SketchId;
   name: string;
+  entities: Record<string, DrawingEntity>;
+  entityOrder: string[];
 };
 
 export type DrawingDocumentV1 = {
@@ -30,6 +44,8 @@ export const createDrawingDocumentV1 = (): DrawingDocumentV1 => ({
     [DEFAULT_SKETCH_ID]: {
       id: DEFAULT_SKETCH_ID,
       name: 'Sketch 1',
+      entities: {},
+      entityOrder: [],
     },
   },
   sketchOrder: [DEFAULT_SKETCH_ID],
