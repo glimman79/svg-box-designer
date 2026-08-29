@@ -23,7 +23,7 @@ assert.equal((drawingSource.match(/drawing-y-indicator/g) ?? []).length, 1);
 assert.match(drawingSource, /drawing-x-coordinate" data-label-side="below"/);
 assert.match(drawingSource, /drawing-y-coordinate" data-label-side="right"/);
 assert.doesNotMatch(drawingSource, /gridSpacing \/ 5|drawing-minor-grid|drawing-grid-line-minor/);
-assert.match(drawingSource, /<svg className="drawing-label-overlay"/);
+assert.match(drawingSource, /<svg ref=\{overlaySvgRef\} className="drawing-label-overlay"/);
 assert.match(drawingSource, /<circle className="drawing-origin-screen"/);
 
 const styles = fs.readFileSync('src/styles.css', 'utf8');

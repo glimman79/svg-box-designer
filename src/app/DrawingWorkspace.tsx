@@ -1,9 +1,17 @@
-import { useEffect, useRef, useState, type Dispatch, type PointerEvent, type SetStateAction, type WheelEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type PointerEvent, type SetStateAction, type WheelEvent } from 'react';
 import type { DrawingDocumentV1 } from './drawingTypes';
-import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisLabels, zoomViewBoxAtPoint } from './drawingGrid';
+import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
+import { modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
 
 export type DrawingViewBox = { x: number; y: number; width: number; height: number };
 type PanState = { pointerId: number; clientX: number; clientY: number };
+type CoordinateOverlayGeometry = {
+  origin: CoordinatePoint;
+  xLabels: Array<{ value: number; anchor: CoordinatePoint }>;
+  yLabels: Array<{ value: number; anchor: CoordinatePoint }>;
+  xIndicatorAnchor: CoordinatePoint;
+  yIndicatorAnchor: CoordinatePoint;
+};
 
 export const initialDrawingViewBox: DrawingViewBox = { x: -400, y: -300, width: 800, height: 600 };
 const formatViewBox = ({ x, y, width, height }: DrawingViewBox) => `${x} ${y} ${width} ${height}`;
@@ -18,9 +26,11 @@ export function DrawingWorkspace({
   setViewBox: Dispatch<SetStateAction<DrawingViewBox>>;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const overlaySvgRef = useRef<SVGSVGElement>(null);
   const panStateRef = useRef<PanState | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const [viewport, setViewport] = useState({ width: 800, height: 600 });
+  const [overlayGeometry, setOverlayGeometry] = useState<CoordinateOverlayGeometry | null>(null);
   const activeSketch = document.sketches[document.activeSketchId];
   const gridSpacing = getDrawingGridSpacing(viewBox.width);
   const gridHierarchy = getDrawingGridHierarchy(gridSpacing);
@@ -89,10 +99,24 @@ export function DrawingWorkspace({
 
   const pixelsPerMm = viewport.width / viewBox.width;
   const labelInterval = getAxisLabelInterval(gridSpacing, pixelsPerMm);
-  const xLabels = getVisibleAxisLabels(viewBox.x, viewBox.x + viewBox.width, labelInterval, viewport.width);
-  const yLabels = getVisibleAxisLabels(viewBox.y, viewBox.y + viewBox.height, labelInterval, viewport.height);
-  const originScreenX = (DRAWING_ORIGIN.x - viewBox.x) / viewBox.width * viewport.width;
-  const originScreenY = (DRAWING_ORIGIN.y - viewBox.y) / viewBox.height * viewport.height;
+  const xLabelValues = getVisibleAxisValues(viewBox.x, viewBox.x + viewBox.width, labelInterval);
+  const yLabelValues = getVisibleAxisValues(viewBox.y, viewBox.y + viewBox.height, labelInterval);
+
+  useLayoutEffect(() => {
+    const drawingToClientTransform = svgRef.current?.getScreenCTM();
+    const overlayToClientTransform = overlaySvgRef.current?.getScreenCTM();
+    if (!drawingToClientTransform || !overlayToClientTransform) {
+      setOverlayGeometry(null);
+      return;
+    }
+    const toOverlay = (modelPoint: CoordinatePoint) => modelToOverlayPoint(modelPoint, drawingToClientTransform, overlayToClientTransform);
+    const origin = toOverlay(DRAWING_ORIGIN);
+    const xIndicatorAnchor = toOverlay({ x: viewBox.x + viewBox.width, y: DRAWING_ORIGIN.y });
+    const yIndicatorAnchor = toOverlay({ x: DRAWING_ORIGIN.x, y: viewBox.y });
+    const xLabels = xLabelValues.map((value) => ({ value, anchor: toOverlay({ x: value, y: DRAWING_ORIGIN.y }) })).filter((label): label is { value: number; anchor: CoordinatePoint } => label.anchor !== null);
+    const yLabels = yLabelValues.map((value) => ({ value, anchor: toOverlay({ x: DRAWING_ORIGIN.x, y: value }) })).filter((label): label is { value: number; anchor: CoordinatePoint } => label.anchor !== null);
+    setOverlayGeometry(origin && xIndicatorAnchor && yIndicatorAnchor ? { origin, xLabels, yLabels, xIndicatorAnchor, yIndicatorAnchor } : null);
+  }, [viewBox, viewport.width, viewport.height, labelInterval]);
   return (
     <section className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace">
       <aside className="drawing-tool-sidebar" aria-label="Drawing tools">
@@ -135,19 +159,19 @@ export function DrawingWorkspace({
               <line className="drawing-axis drawing-y-axis" aria-label="Y axis" x1={DRAWING_ORIGIN.x} y1={viewBox.y} x2={DRAWING_ORIGIN.x} y2={viewBox.y + viewBox.height} />
             </g>
           </svg>
-          <svg className="drawing-label-overlay" viewBox={`0 0 ${viewport.width} ${viewport.height}`} aria-label="Model coordinate scale">
-            {originScreenY >= 0 && originScreenY <= viewport.height && xLabels.filter(({ value }) => value !== 0).map((label) => (
-              <text className="drawing-coordinate-label drawing-x-coordinate" data-label-side="below" key={`x-${label.value}`} x={label.screenPosition} y={originScreenY + 15} textAnchor="middle">{label.value}</text>
+          <svg ref={overlaySvgRef} className="drawing-label-overlay" viewBox={`0 0 ${viewport.width} ${viewport.height}`} aria-label="Model coordinate scale">
+            {overlayGeometry && overlayGeometry.origin.y >= 0 && overlayGeometry.origin.y <= viewport.height && overlayGeometry.xLabels.filter(({ value }) => value !== 0).map((label) => (
+              <text className="drawing-coordinate-label drawing-x-coordinate" data-label-side="below" key={`x-${label.value}`} x={label.anchor.x} y={label.anchor.y + 15} textAnchor="middle">{label.value}</text>
             ))}
-            {originScreenX >= 0 && originScreenX <= viewport.width && yLabels.filter(({ value }) => value !== 0).map((label) => (
-              <text className="drawing-coordinate-label drawing-y-coordinate" data-label-side="right" key={`y-${label.value}`} x={originScreenX + 6} y={label.screenPosition + 4}>{label.value}</text>
+            {overlayGeometry && overlayGeometry.origin.x >= 0 && overlayGeometry.origin.x <= viewport.width && overlayGeometry.yLabels.filter(({ value }) => value !== 0).map((label) => (
+              <text className="drawing-coordinate-label drawing-y-coordinate" data-label-side="right" key={`y-${label.value}`} x={label.anchor.x + 6} y={label.anchor.y + 4}>{label.value}</text>
             ))}
-            {originScreenX >= 0 && originScreenX <= viewport.width && originScreenY >= 0 && originScreenY <= viewport.height && <>
-              <circle className="drawing-origin-screen" cx={originScreenX} cy={originScreenY} r="3.5" />
-              <text className="drawing-origin-label" x={originScreenX + 7} y={originScreenY - 7}>0</text>
+            {overlayGeometry && overlayGeometry.origin.x >= 0 && overlayGeometry.origin.x <= viewport.width && overlayGeometry.origin.y >= 0 && overlayGeometry.origin.y <= viewport.height && <>
+              <circle className="drawing-origin-screen" cx={overlayGeometry.origin.x} cy={overlayGeometry.origin.y} r="3.5" />
+              <text className="drawing-origin-label" x={overlayGeometry.origin.x + 7} y={overlayGeometry.origin.y - 7}>0</text>
             </>}
-            {originScreenY >= 0 && originScreenY <= viewport.height && <text className="drawing-axis-letter drawing-x-indicator" x={viewport.width - 15} y={originScreenY - 7}>X</text>}
-            {originScreenX >= 0 && originScreenX <= viewport.width && <text className="drawing-axis-letter drawing-y-indicator" x={originScreenX + 7} y="15">Y</text>}
+            {overlayGeometry && overlayGeometry.origin.y >= 0 && overlayGeometry.origin.y <= viewport.height && <text className="drawing-axis-letter drawing-x-indicator" x={overlayGeometry.xIndicatorAnchor.x - 15} y={overlayGeometry.xIndicatorAnchor.y - 7}>X</text>}
+            {overlayGeometry && overlayGeometry.origin.x >= 0 && overlayGeometry.origin.x <= viewport.width && <text className="drawing-axis-letter drawing-y-indicator" x={overlayGeometry.yIndicatorAnchor.x + 7} y={overlayGeometry.yIndicatorAnchor.y + 15}>Y</text>}
           </svg>
         </div>
       </section>
