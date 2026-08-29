@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type PointerEvent, type SetStateAction } from 'react';
-import type { DrawingDocumentV1 } from './drawingTypes';
+import type { DrawingDocumentV1, DrawingPoint } from './drawingTypes';
+import { appendEntityToActiveSketch, applyLineClick, cancelLineInteraction, EMPTY_LINE_INTERACTION, updateLinePreview, type LineToolInteraction } from './drawingLineTool';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
-import { modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
+import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
 import { useCadWheelCapture } from './useCadWheelCapture';
 
 export type DrawingViewBox = { x: number; y: number; width: number; height: number };
@@ -19,10 +20,12 @@ const formatViewBox = ({ x, y, width, height }: DrawingViewBox) => `${x} ${y} ${
 
 export function DrawingWorkspace({
   document,
+  setDocument,
   viewBox,
   setViewBox,
 }: {
   document: DrawingDocumentV1;
+  setDocument: Dispatch<SetStateAction<DrawingDocumentV1>>;
   viewBox: DrawingViewBox;
   setViewBox: Dispatch<SetStateAction<DrawingViewBox>>;
 }) {
@@ -32,6 +35,9 @@ export function DrawingWorkspace({
   const [isPanning, setIsPanning] = useState(false);
   const [viewport, setViewport] = useState({ width: 800, height: 600 });
   const [overlayGeometry, setOverlayGeometry] = useState<CoordinateOverlayGeometry | null>(null);
+  const [activeTool, setActiveTool] = useState<'select' | 'line'>('select');
+  const [lineInteraction, setLineInteraction] = useState<LineToolInteraction>(EMPTY_LINE_INTERACTION);
+  const entitySequence = useRef(0);
   const activeSketch = document.sketches[document.activeSketchId];
   const gridSpacing = getDrawingGridSpacing(viewBox.width);
   const gridHierarchy = getDrawingGridHierarchy(gridSpacing);
@@ -72,14 +78,33 @@ export function DrawingWorkspace({
     y: current.y + current.height / 2,
   }));
 
+  const modelPointFromPointer = (event: PointerEvent<SVGSVGElement>): DrawingPoint | null => {
+    const matrix = svgRef.current?.getScreenCTM();
+    return matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
+  };
+
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
-    if (event.button !== 0 || event.target !== event.currentTarget) return;
+    if (event.button !== 0) return;
+    if (activeTool === 'line') {
+      const point = modelPointFromPointer(event);
+      if (!point) return;
+      const result = applyLineClick(lineInteraction, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`);
+      setLineInteraction(result.interaction);
+      if (result.entity) setDocument((current) => appendEntityToActiveSketch(current, result.entity!));
+      return;
+    }
+    if (event.target !== event.currentTarget) return;
     panStateRef.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY };
     setIsPanning(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
+    if (activeTool === 'line') {
+      const point = modelPointFromPointer(event);
+      if (point) setLineInteraction((current) => updateLinePreview(current, point));
+      return;
+    }
     const pan = panStateRef.current;
     const matrix = svgRef.current?.getScreenCTM();
     if (!pan || pan.pointerId !== event.pointerId || !matrix) return;
@@ -91,6 +116,21 @@ export function DrawingWorkspace({
     pan.clientX = event.clientX;
     pan.clientY = event.clientY;
     setViewBox((current) => ({ ...current, x: current.x - dx / scaleX, y: current.y - dy / scaleY }));
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || activeTool !== 'line') return;
+      if (lineInteraction.start) setLineInteraction(cancelLineInteraction());
+      else setActiveTool('select');
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTool, lineInteraction.start]);
+
+  const selectTool = (tool: 'select' | 'line') => {
+    setLineInteraction(cancelLineInteraction());
+    setActiveTool(tool);
   };
 
   const endPan = (event: PointerEvent<SVGSVGElement>) => {
@@ -125,11 +165,13 @@ export function DrawingWorkspace({
     <section className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace">
       <aside className="drawing-tool-sidebar" aria-label="Drawing tools">
         <span className="drawing-tool-placeholder">Tools</span>
+        <button type="button" className={activeTool === 'line' ? 'is-active' : ''} aria-pressed={activeTool === 'line'} onClick={() => selectTool('line')}>Line</button>
+        <button type="button" className={activeTool === 'select' ? 'is-active' : ''} aria-pressed={activeTool === 'select'} onClick={() => selectTool('select')}>Select</button>
       </aside>
       <section className="canvas-card drawing-canvas-card workspace-canvas">
         <div className="canvas-frame">
           <div className="drawing-status" aria-live="polite">
-            <strong>{activeSketch.name}</strong><span>Unit: {document.unit}</span><span>Grid: {gridSpacing} mm</span>
+            <strong>{activeSketch?.name ?? 'No active sketch'}</strong><span>Unit: {document.unit}</span><span>Grid: {gridSpacing} mm</span><span>Active Tool: {activeTool === 'line' ? 'Line' : 'Select'}</span>
           </div>
           <div className="canvas-zoom-controls" aria-label="Drawing canvas zoom controls">
             <button type="button" onClick={() => zoom(1.25)} aria-label="Zoom in">+</button>
@@ -141,7 +183,7 @@ export function DrawingWorkspace({
             className={`design-svg cad-viewport-interaction drawing-svg${isPanning ? ' is-panning' : ''}`}
             viewBox={formatViewBox(viewBox)}
             role="img"
-            aria-label={`${activeSketch.name} coordinate drawing canvas`}
+            aria-label={`${activeSketch?.name ?? 'Drawing'} coordinate drawing canvas`}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={endPan}
@@ -161,6 +203,14 @@ export function DrawingWorkspace({
               <line className="drawing-axis drawing-x-axis" aria-label="X axis" x1={viewBox.x} y1={DRAWING_ORIGIN.y} x2={viewBox.x + viewBox.width} y2={DRAWING_ORIGIN.y} />
               <line className="drawing-axis drawing-y-axis" aria-label="Y axis" x1={DRAWING_ORIGIN.x} y1={viewBox.y} x2={DRAWING_ORIGIN.x} y2={viewBox.y + viewBox.height} />
             </g>
+            <g className="drawing-sketch-geometry" aria-label="Committed sketch geometry">
+              {activeSketch?.entityOrder.map((entityId) => activeSketch.entities[entityId]).filter((entity) => entity?.type === 'line').map((entity) => (
+                <line key={entity.id} className="drawing-line-entity" x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
+              ))}
+            </g>
+            {activeTool === 'line' && lineInteraction.start && lineInteraction.pointer && (
+              <line className="drawing-line-preview" x1={lineInteraction.start.x} y1={lineInteraction.start.y} x2={lineInteraction.pointer.x} y2={lineInteraction.pointer.y} />
+            )}
           </svg>
           <svg ref={overlaySvgRef} className="drawing-label-overlay" viewBox={`0 0 ${viewport.width} ${viewport.height}`} aria-label="Model coordinate scale">
             {overlayGeometry && overlayGeometry.origin.y >= 0 && overlayGeometry.origin.y <= viewport.height && overlayGeometry.xLabels.filter(({ value }) => value !== 0).map((label) => (
