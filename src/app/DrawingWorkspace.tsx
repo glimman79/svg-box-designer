@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type PointerEvent, type SetStateAction, type WheelEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDocumentV1 } from './drawingTypes';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
@@ -53,6 +53,25 @@ export function DrawingWorkspace({
     return () => observer.disconnect();
   }, [setViewBox]);
 
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const bounds = svg.getBoundingClientRect();
+      if (bounds.width <= 0 || bounds.height <= 0) return;
+      const xRatio = (event.clientX - bounds.left) / bounds.width;
+      const yRatio = (event.clientY - bounds.top) / bounds.height;
+      setViewBox((current) => zoomViewBoxAtPoint(current, Math.exp(-event.deltaY * 0.0015), {
+        x: current.x + xRatio * current.width,
+        y: current.y + yRatio * current.height,
+      }));
+    };
+    svg.addEventListener('wheel', handleWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', handleWheel);
+  }, [setViewBox]);
+
   const zoom = (factor: number, anchor?: { x: number; y: number }) => setViewBox((current) => zoomViewBoxAtPoint(current, factor, anchor ?? {
     x: current.x + current.width / 2,
     y: current.y + current.height / 2,
@@ -85,16 +104,6 @@ export function DrawingWorkspace({
       setIsPanning(false);
     }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-  };
-
-  const handleWheel = (event: WheelEvent<SVGSVGElement>) => {
-    event.preventDefault();
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const anchor = {
-      x: viewBox.x + (event.clientX - bounds.left) / bounds.width * viewBox.width,
-      y: viewBox.y + (event.clientY - bounds.top) / bounds.height * viewBox.height,
-    };
-    zoom(Math.exp(-event.deltaY * 0.0015), anchor);
   };
 
   const pixelsPerMm = viewport.width / viewBox.width;
@@ -138,7 +147,6 @@ export function DrawingWorkspace({
             viewBox={formatViewBox(viewBox)}
             role="img"
             aria-label={`${activeSketch.name} coordinate drawing canvas`}
-            onWheel={handleWheel}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={endPan}

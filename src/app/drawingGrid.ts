@@ -48,8 +48,8 @@ export const zoomViewBoxAtPoint = <T extends { x: number; y: number; width: numb
   factor: number,
   anchor: { x: number; y: number },
 ): T => {
-  const width = Math.min(8000, Math.max(40, viewBox.width / factor));
-  const height = Math.min(6000, Math.max(30, viewBox.height / factor));
+  const width = Math.min(8000, Math.max(4, viewBox.width / factor));
+  const height = Math.min(6000, Math.max(3, viewBox.height / factor));
   const xRatio = (anchor.x - viewBox.x) / viewBox.width;
   const yRatio = (anchor.y - viewBox.y) / viewBox.height;
   return { ...viewBox, x: anchor.x - width * xRatio, y: anchor.y - height * yRatio, width, height };
