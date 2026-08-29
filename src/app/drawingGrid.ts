@@ -1,6 +1,7 @@
 export const DRAWING_ORIGIN = Object.freeze({ x: 0, y: 0 });
 
 export type DrawingGridSpacing = 1 | 10 | 100;
+export type DrawingGridHierarchy = { primarySpacing: DrawingGridSpacing; majorSpacing: 10 | 100 | null };
 
 export type AxisLabel = { value: number; screenPosition: number };
 
@@ -10,6 +11,12 @@ export const getDrawingGridSpacing = (visibleWidthMm: number): DrawingGridSpacin
   if (visibleWidthMm >= 1800) return 100;
   return 10;
 };
+
+/** Defines the decimal visual hierarchy for each supported primary grid. */
+export const getDrawingGridHierarchy = (primarySpacing: DrawingGridSpacing): DrawingGridHierarchy => ({
+  primarySpacing,
+  majorSpacing: primarySpacing === 100 ? null : primarySpacing * 10 as 10 | 100,
+});
 
 
 /** Chooses a readable coordinate interval without changing the primary grid mode. */

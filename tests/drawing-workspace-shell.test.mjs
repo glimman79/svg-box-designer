@@ -67,7 +67,7 @@ assert.match(styles, /grid-template-columns: 62px minmax\(0, 1fr\)/, 'Tools uses
 assert.match(styles, /grid-template-areas: "tools canvas" "history history"/, 'History remains below Tools and canvas');
 assert.match(styles, /\.workspace-shell \.active-tool-panel \{[\s\S]*?position: absolute/, 'Active Tool remains an overlay');
 assert.match(styles, /\.drawing-label-overlay text \{[^}]*font-size: 11px/, 'coordinate text uses screen-space pixels');
-assert.match(styles, /drawing-grid-line-minor/);
+assert.match(styles, /drawing-grid-line-primary/);
 assert.match(styles, /drawing-grid-line-major/);
 
 console.log('D2.1 drawing workspace shell tests passed');

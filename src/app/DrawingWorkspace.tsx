@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type Dispatch, type PointerEvent, type SetStateAction, type WheelEvent } from 'react';
 import type { DrawingDocumentV1 } from './drawingTypes';
-import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridSpacing, getVisibleAxisLabels, zoomViewBoxAtPoint } from './drawingGrid';
+import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisLabels, zoomViewBoxAtPoint } from './drawingGrid';
 
 export type DrawingViewBox = { x: number; y: number; width: number; height: number };
 type PanState = { pointerId: number; clientX: number; clientY: number };
@@ -23,6 +23,7 @@ export function DrawingWorkspace({
   const [viewport, setViewport] = useState({ width: 800, height: 600 });
   const activeSketch = document.sketches[document.activeSketchId];
   const gridSpacing = getDrawingGridSpacing(viewBox.width);
+  const gridHierarchy = getDrawingGridHierarchy(gridSpacing);
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -92,9 +93,6 @@ export function DrawingWorkspace({
   const yLabels = getVisibleAxisLabels(viewBox.y, viewBox.y + viewBox.height, labelInterval, viewport.height);
   const originScreenX = (DRAWING_ORIGIN.x - viewBox.x) / viewBox.width * viewport.width;
   const originScreenY = (DRAWING_ORIGIN.y - viewBox.y) / viewBox.height * viewport.height;
-  const minorSpacing = gridSpacing / 5;
-  const showMinorGrid = minorSpacing * pixelsPerMm >= 5;
-
   return (
     <section className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace">
       <aside className="drawing-tool-sidebar" aria-label="Drawing tools">
@@ -123,33 +121,33 @@ export function DrawingWorkspace({
             onPointerCancel={endPan}
           >
             <defs>
-              <pattern id="drawing-minor-grid" x="0" y="0" width={minorSpacing} height={minorSpacing} patternUnits="userSpaceOnUse">
-                <path className="drawing-grid-line drawing-grid-line-minor" d={`M ${minorSpacing} 0 L 0 0 0 ${minorSpacing}`} />
-              </pattern>
               <pattern id="drawing-grid" x="0" y="0" width={gridSpacing} height={gridSpacing} patternUnits="userSpaceOnUse">
-                {showMinorGrid && <rect width={gridSpacing} height={gridSpacing} fill="url(#drawing-minor-grid)" />}
-                <path className="drawing-grid-line drawing-grid-line-major" d={`M ${gridSpacing} 0 L 0 0 0 ${gridSpacing}`} />
+                <path className="drawing-grid-line drawing-grid-line-primary" d={`M ${gridSpacing} 0 L 0 0 0 ${gridSpacing}`} />
               </pattern>
+              {gridHierarchy.majorSpacing !== null && <pattern id="drawing-major-grid" x="0" y="0" width={gridHierarchy.majorSpacing} height={gridHierarchy.majorSpacing} patternUnits="userSpaceOnUse">
+                <path className="drawing-grid-line drawing-grid-line-major" d={`M ${gridHierarchy.majorSpacing} 0 L 0 0 0 ${gridHierarchy.majorSpacing}`} />
+              </pattern>}
             </defs>
             <rect className="drawing-grid-plane" x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#drawing-grid)" />
+            {gridHierarchy.majorSpacing !== null && <rect className="drawing-grid-plane drawing-major-grid-plane" x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#drawing-major-grid)" />}
             <g className="drawing-coordinate-plane" aria-label="Drawing axes and origin">
-              <line className="drawing-axis" x1={viewBox.x} y1={DRAWING_ORIGIN.y} x2={viewBox.x + viewBox.width} y2={DRAWING_ORIGIN.y} />
-              <line className="drawing-axis" x1={DRAWING_ORIGIN.x} y1={viewBox.y} x2={DRAWING_ORIGIN.x} y2={viewBox.y + viewBox.height} />
+              <line className="drawing-axis drawing-x-axis" aria-label="X axis" x1={viewBox.x} y1={DRAWING_ORIGIN.y} x2={viewBox.x + viewBox.width} y2={DRAWING_ORIGIN.y} />
+              <line className="drawing-axis drawing-y-axis" aria-label="Y axis" x1={DRAWING_ORIGIN.x} y1={viewBox.y} x2={DRAWING_ORIGIN.x} y2={viewBox.y + viewBox.height} />
             </g>
           </svg>
           <svg className="drawing-label-overlay" viewBox={`0 0 ${viewport.width} ${viewport.height}`} aria-label="Model coordinate scale">
             {originScreenY >= 0 && originScreenY <= viewport.height && xLabels.filter(({ value }) => value !== 0).map((label) => (
-              <text key={`x-${label.value}`} x={label.screenPosition} y={originScreenY + 15} textAnchor="middle">{label.value}</text>
+              <text className="drawing-coordinate-label drawing-x-coordinate" data-label-side="below" key={`x-${label.value}`} x={label.screenPosition} y={originScreenY + 15} textAnchor="middle">{label.value}</text>
             ))}
             {originScreenX >= 0 && originScreenX <= viewport.width && yLabels.filter(({ value }) => value !== 0).map((label) => (
-              <text key={`y-${label.value}`} x={originScreenX + 6} y={label.screenPosition + 4}>{label.value}</text>
+              <text className="drawing-coordinate-label drawing-y-coordinate" data-label-side="right" key={`y-${label.value}`} x={originScreenX + 6} y={label.screenPosition + 4}>{label.value}</text>
             ))}
             {originScreenX >= 0 && originScreenX <= viewport.width && originScreenY >= 0 && originScreenY <= viewport.height && <>
               <circle className="drawing-origin-screen" cx={originScreenX} cy={originScreenY} r="3.5" />
-              <text x={originScreenX + 7} y={originScreenY - 7}>0</text>
+              <text className="drawing-origin-label" x={originScreenX + 7} y={originScreenY - 7}>0</text>
             </>}
-            {originScreenY >= 0 && originScreenY <= viewport.height && <text className="drawing-axis-letter" x={viewport.width - 15} y={originScreenY - 7}>X</text>}
-            {originScreenX >= 0 && originScreenX <= viewport.width && <text className="drawing-axis-letter" x={originScreenX + 7} y="15">Y</text>}
+            {originScreenY >= 0 && originScreenY <= viewport.height && <text className="drawing-axis-letter drawing-x-indicator" x={viewport.width - 15} y={originScreenY - 7}>X</text>}
+            {originScreenX >= 0 && originScreenX <= viewport.width && <text className="drawing-axis-letter drawing-y-indicator" x={originScreenX + 7} y="15">Y</text>}
           </svg>
         </div>
       </section>
