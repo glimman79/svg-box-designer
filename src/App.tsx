@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent, PointerEvent, WheelEvent } from 'react';
+import type { ChangeEvent, PointerEvent } from 'react';
 import { exportLabeledSvg, formatImportDiagnosticMessage, getEdgeAssignmentDisplayLabels, parseSvgDocument } from './svgUtils';
 import { layoutPanelLabels } from './app/labelLayout';
 import { formatFixedNumericValue, parseCompleteNumericDraft } from './app/numericDraft';
@@ -43,6 +43,7 @@ import { getContourEdgePoints, validateClosedPanel } from './app/sharedPanelGeom
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
 import { DrawingWorkspace, initialDrawingViewBox } from './app/DrawingWorkspace';
 import { createDrawingDocumentV1, DEFAULT_WORKSPACE, selectWorkspace, type WorkspaceId } from './app/drawingTypes';
+import { useCadWheelCapture } from './app/useCadWheelCapture';
 import type { ActiveSGroup, ActiveTBGroup, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, TBConnectionDefinition, TBConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties } from './app/connectionTypes';
 import { getNextConnectionLabel, parseConnectionLabel } from './app/connectionLabels';
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
@@ -1889,11 +1890,10 @@ function App() {
     setCanvasViewBox(getFittedCanvasViewBox());
   }, [svgModel]);
 
-  const handleCanvasWheel = (event: WheelEvent<SVGSVGElement>) => {
-    event.preventDefault();
+  useCadWheelCapture(svgRef, (event) => {
     const center = getSvgPointFromClient(event.clientX, event.clientY);
     zoomCanvas(Math.exp(-event.deltaY * wheelZoomSensitivity), center);
-  };
+  });
 
   const handleCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (event.button !== 0 || event.target !== event.currentTarget) {
@@ -2600,11 +2600,10 @@ function App() {
             </div>
             <svg
               ref={svgRef}
-              className={`design-svg${isCanvasPanning ? ' is-panning' : ''}`}
+              className={`design-svg cad-viewport-interaction${isCanvasPanning ? ' is-panning' : ''}`}
               viewBox={formatViewBox(canvasViewBox)}
               role="img"
               aria-label="Imported SVG with selectable edges"
-              onWheel={handleCanvasWheel}
               onPointerDown={handleCanvasPointerDown}
               onPointerMove={handleCanvasPointerMove}
               onPointerUp={handleCanvasPointerUp}

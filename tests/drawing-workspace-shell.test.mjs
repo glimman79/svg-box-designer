@@ -46,7 +46,7 @@ assert.match(appSource, /<DrawingWorkspace document=\{drawingDocument\} viewBox=
 assert.match(appSource, /workspace workspace-shell/);
 assert.match(appSource, /aria-label="Active Tool overlay"/);
 assert.match(appSource, /onClick=\{fitCanvasToScreen\}>Fit/);
-assert.match(appSource, /const handleCanvasWheel[\s\S]*?event\.preventDefault\(\);[\s\S]*?getSvgPointFromClient/);
+assert.match(appSource, /useCadWheelCapture\(svgRef,[\s\S]*?getSvgPointFromClient/);
 assert.doesNotMatch(appSource, /grid-template-columns:.*active/);
 assert.match(appSource, /activeWorkspace === 'construction' && <div className="toolbar-actions">/);
 assert.match(appSource, /<button type="button" disabled title="Puzzle is not implemented">/);
@@ -59,7 +59,8 @@ assert.match(drawingSource, /patternUnits="userSpaceOnUse"/);
 assert.match(drawingSource, /DRAWING_ORIGIN\.x/);
 assert.match(drawingSource, /drawing-label-overlay/);
 assert.match(drawingSource, /getVisibleAxisValues/);
-assert.match(drawingSource, /event\.preventDefault\(\);/);
+assert.match(drawingSource, /useCadWheelCapture\(svgRef,/);
+assert.match(fs.readFileSync('src/app/useCadWheelCapture.ts', 'utf8'), /event\.preventDefault\(\);/);
 assert.doesNotMatch(drawingSource, /if \(!event\.ctrlKey\)/);
 
 const styles = fs.readFileSync('src/styles.css', 'utf8');
