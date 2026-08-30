@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDocumentV1, DrawingPoint } from './drawingTypes';
-import { appendEntityToActiveSketch, applyLineClick, cancelLineInteraction, EMPTY_LINE_INTERACTION, updateLinePreview, type LineToolInteraction } from './drawingLineTool';
+import { appendEntityToActiveSketch, applyResolvedLineClick, cancelLineInteraction, EMPTY_LINE_INTERACTION, resolveLinePreviewPoint, updateLinePreviewAtEffectivePoint, type LineToolInteraction } from './drawingLineTool';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
-import { resolveDrawingInference, type DrawingInference } from './drawingInference';
+import { collectDrawingInferenceCandidates } from './drawingInference';
+import { resolveDrawingSnap, type DrawingSnap } from './drawingSnapEngine';
+import { nextDrawingTool, type DrawingActiveTool } from './drawingToolLifecycle';
 import { useCadWheelCapture } from './useCadWheelCapture';
 
 export type DrawingViewBox = { x: number; y: number; width: number; height: number };
@@ -15,7 +17,7 @@ type CoordinateOverlayGeometry = {
   xIndicatorAnchor: CoordinatePoint;
   yIndicatorAnchor: CoordinatePoint;
 };
-type LineCursorPresentation = Readonly<{ anchor: CoordinatePoint; inference: DrawingInference }> | null;
+type CadCursorPresentation = Readonly<{ anchor: CoordinatePoint; snap: DrawingSnap }> | null;
 
 export const initialDrawingViewBox: DrawingViewBox = { x: -400, y: -300, width: 800, height: 600 };
 const formatViewBox = ({ x, y, width, height }: DrawingViewBox) => `${x} ${y} ${width} ${height}`;
@@ -37,9 +39,16 @@ export function DrawingWorkspace({
   const [isPanning, setIsPanning] = useState(false);
   const [viewport, setViewport] = useState({ width: 800, height: 600 });
   const [overlayGeometry, setOverlayGeometry] = useState<CoordinateOverlayGeometry | null>(null);
-  const [activeTool, setActiveTool] = useState<'select' | 'line'>('select');
+  const [activeTool, setActiveTool] = useState<DrawingActiveTool>('select');
   const [lineInteraction, setLineInteraction] = useState<LineToolInteraction>(EMPTY_LINE_INTERACTION);
-  const [lineCursor, setLineCursor] = useState<LineCursorPresentation>(null);
+  const [cadCursor, setCadCursor] = useState<CadCursorPresentation>(null);
+  const lineCursor = cadCursor; // Line is currently the sole consumer of the shared CAD cursor.
+  const [drawingSnap, setDrawingSnap] = useState<DrawingSnap | null>(null);
+  const [ctrlOverride, setCtrlOverride] = useState(false);
+  const lastPointerClientRef = useRef<CoordinatePoint | null>(null);
+  const pendingLineClickRef = useRef<number | null>(null);
+  const activeToolRef = useRef<DrawingActiveTool>(activeTool);
+  const resolvePlacementRef = useRef<(clientPoint: CoordinatePoint, ctrlHeld: boolean) => void>(() => undefined);
   const entitySequence = useRef(0);
   const activeSketch = document.sketches[document.activeSketchId];
   const gridSpacing = getDrawingGridSpacing(viewBox.width);
@@ -86,17 +95,51 @@ export function DrawingWorkspace({
     return matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
   };
 
+  const resolvePlacement = (clientPoint: CoordinatePoint, ctrlHeld: boolean) => {
+    const drawingTransform = svgRef.current?.getScreenCTM();
+    const overlayTransform = overlaySvgRef.current?.getScreenCTM();
+    if (!drawingTransform || !overlayTransform) return;
+    const rawPoint = clientToModelPoint(clientPoint, drawingTransform);
+    if (!rawPoint) return;
+    const committedLines = activeSketch?.entityOrder.map((id) => activeSketch.entities[id]).filter((entity) => entity?.type === 'line') ?? [];
+    const candidates = collectDrawingInferenceCandidates(clientPoint, committedLines, drawingTransform);
+    const snap = resolveDrawingSnap({ rawPoint, candidates, previousSnap: drawingSnap, ctrlOverride: ctrlHeld });
+    const toolPoint = snap.active || !lineInteraction.start
+      ? snap.effectivePoint
+      : resolveLinePreviewPoint(lineInteraction.start, rawPoint).effectivePreviewPoint;
+    // D2.2b equivalent was: placementPoint = nextInteraction.effectivePreviewPoint ?? point.
+    const placementPoint = toolPoint;
+    const nextInteraction = snap.active
+      ? updateLinePreviewAtEffectivePoint(lineInteraction, rawPoint, toolPoint)
+      : lineInteraction.start ? { ...lineInteraction, ...resolveLinePreviewPoint(lineInteraction.start, rawPoint) } : lineInteraction;
+    const anchor = modelToOverlayPoint(placementPoint, drawingTransform, overlayTransform);
+    setDrawingSnap(snap);
+    setLineInteraction(nextInteraction);
+    setCadCursor(anchor ? { anchor, snap } : null);
+  };
+  activeToolRef.current = activeTool;
+  resolvePlacementRef.current = resolvePlacement;
+
+  const commitLinePoint = (point: DrawingPoint) => {
+    const result = applyResolvedLineClick(lineInteraction, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`);
+    setLineInteraction(result.interaction);
+    if (result.entity) setDocument((current) => appendEntityToActiveSketch(current, result.entity!));
+  };
+
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return;
     if (activeTool === 'line') {
       const point = modelPointFromPointer(event);
       if (!point) return;
-      const result = applyLineClick(lineInteraction, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`);
-      setLineInteraction(result.interaction);
-      if (result.entity) setDocument((current) => appendEntityToActiveSketch(current, result.entity!));
+      if (event.detail > 1) return;
+      const effectivePoint = drawingSnap?.effectivePoint ?? point;
+      if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current);
+      pendingLineClickRef.current = window.setTimeout(() => {
+        pendingLineClickRef.current = null;
+        commitLinePoint(effectivePoint);
+      }, 220);
       return;
     }
-    if (event.target !== event.currentTarget) return;
     panStateRef.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY };
     setIsPanning(true);
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -104,20 +147,8 @@ export function DrawingWorkspace({
 
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
     if (activeTool === 'line') {
-      const point = modelPointFromPointer(event);
-      const drawingTransform = svgRef.current?.getScreenCTM();
-      const overlayTransform = overlaySvgRef.current?.getScreenCTM();
-      if (point && drawingTransform && overlayTransform) {
-        const nextInteraction = updateLinePreview(lineInteraction, point);
-        const placementPoint = nextInteraction.effectivePreviewPoint ?? point;
-        const anchor = modelToOverlayPoint(placementPoint, drawingTransform, overlayTransform);
-        const committedLines = activeSketch?.entityOrder
-          .map((entityId) => activeSketch.entities[entityId])
-          .filter((entity) => entity?.type === 'line') ?? [];
-        const inference = resolveDrawingInference({ x: event.clientX, y: event.clientY }, committedLines, drawingTransform);
-        setLineInteraction(nextInteraction);
-        setLineCursor(anchor ? { anchor, inference } : null);
-      }
+      lastPointerClientRef.current = { x: event.clientX, y: event.clientY };
+      resolvePlacement(lastPointerClientRef.current, event.ctrlKey || ctrlOverride);
       return;
     }
     const pan = panStateRef.current;
@@ -135,24 +166,54 @@ export function DrawingWorkspace({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || activeTool !== 'line') return;
-      if (lineInteraction.start) setLineInteraction(cancelLineInteraction());
-      else {
-        setLineCursor(null);
-        setActiveTool('select');
+      if (event.key === 'Control') {
+        setCtrlOverride(true);
+        if (lastPointerClientRef.current) resolvePlacementRef.current(lastPointerClientRef.current, true);
       }
+      if (event.key !== 'Escape' || activeToolRef.current !== 'line') return;
+      if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current);
+      pendingLineClickRef.current = null;
+      setLineInteraction(cancelLineInteraction());
+      setDrawingSnap(null);
+      setCadCursor(null);
+      setActiveTool((current) => nextDrawingTool(current, 'deactivate'));
     };
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key !== 'Control') return;
+      setCtrlOverride(false);
+      if (lastPointerClientRef.current && activeToolRef.current === 'line') resolvePlacementRef.current(lastPointerClientRef.current, false);
+    };
+    const handleBlur = () => { setCtrlOverride(false); if (lastPointerClientRef.current && activeToolRef.current === 'line') resolvePlacementRef.current(lastPointerClientRef.current, false); };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeTool, lineInteraction.start]);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+      if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current);
+    };
+  }, []);
 
-  const selectTool = (tool: 'select' | 'line') => {
+  const selectTool = (tool: DrawingActiveTool) => {
+    if (tool === activeTool) return;
     setLineInteraction(cancelLineInteraction());
-    setLineCursor(null);
-    setActiveTool(tool);
+    setDrawingSnap(null);
+    setCadCursor(null);
+    setActiveTool((current) => nextDrawingTool(current, 'activate', tool));
   };
 
-  const clearLineCursor = () => setLineCursor(null);
+  const clearCadCursor = () => { lastPointerClientRef.current = null; setCadCursor(null); setDrawingSnap(null); };
+  const clearLineCursor = clearCadCursor;
+
+  const finishLine = (deactivate: boolean) => {
+    if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current);
+    pendingLineClickRef.current = null;
+    setLineInteraction(cancelLineInteraction());
+    setDrawingSnap(null);
+    setCadCursor(null);
+    if (deactivate) setActiveTool((current) => nextDrawingTool(current, 'deactivate'));
+  };
 
   const endPan = (event: PointerEvent<SVGSVGElement>) => {
     if (panStateRef.current?.pointerId === event.pointerId) {
@@ -186,7 +247,7 @@ export function DrawingWorkspace({
     <section className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace">
       <aside className="drawing-tool-sidebar" aria-label="Drawing tools">
         <span className="drawing-tool-placeholder">Tools</span>
-        <button type="button" className={activeTool === 'line' ? 'is-active' : ''} aria-pressed={activeTool === 'line'} onClick={() => selectTool('line')}>Line</button>
+        <button type="button" className={activeTool === 'line' ? 'is-active' : ''} aria-pressed={activeTool === 'line'} onClick={() => selectTool('line')} onDoubleClick={() => activeTool === 'line' ? finishLine(false) : selectTool('line')}>Line</button>
         <button type="button" className={activeTool === 'select' ? 'is-active' : ''} aria-pressed={activeTool === 'select'} onClick={() => selectTool('select')}>Select</button>
       </aside>
       <section className="canvas-card drawing-canvas-card workspace-canvas">
@@ -210,6 +271,7 @@ export function DrawingWorkspace({
             onPointerUp={endPan}
             onPointerCancel={endPan}
             onPointerLeave={clearLineCursor}
+            onDoubleClick={() => { if (activeTool === 'line') finishLine(true); }}
           >
             <defs>
               <pattern id="drawing-grid" x="0" y="0" width={gridSpacing} height={gridSpacing} patternUnits="userSpaceOnUse">
@@ -248,14 +310,14 @@ export function DrawingWorkspace({
             {overlayGeometry && overlayGeometry.origin.y >= 0 && overlayGeometry.origin.y <= viewport.height && <text className="drawing-axis-letter drawing-x-indicator" x={overlayGeometry.xIndicatorAnchor.x - 15} y={overlayGeometry.xIndicatorAnchor.y - 7}>X</text>}
             {overlayGeometry && overlayGeometry.origin.x >= 0 && overlayGeometry.origin.x <= viewport.width && <text className="drawing-axis-letter drawing-y-indicator" x={overlayGeometry.yIndicatorAnchor.x + 7} y={overlayGeometry.yIndicatorAnchor.y + 15}>Y</text>}
             {activeTool === 'line' && lineCursor && (
-              <g className="drawing-line-cursor" data-inference={lineCursor.inference.type} transform={`translate(${lineCursor.anchor.x} ${lineCursor.anchor.y})`} aria-hidden="true">
+              <g className="drawing-line-cursor drawing-cad-cursor" data-inference={lineCursor.snap.type} transform={`translate(${lineCursor.anchor.x} ${lineCursor.anchor.y})`} aria-hidden="true">
                 <line className="drawing-line-cursor-arm" data-arm="left" x1="-22" y1="0" x2="-7" y2="0" />
                 <line className="drawing-line-cursor-arm" data-arm="right" x1="7" y1="0" x2="22" y2="0" />
                 <line className="drawing-line-cursor-arm" data-arm="top" x1="0" y1="-22" x2="0" y2="-7" />
                 <line className="drawing-line-cursor-arm" data-arm="bottom" x1="0" y1="7" x2="0" y2="22" />
-                {lineCursor.inference.type === 'none' && <circle className="drawing-line-cursor-dot" cx="0" cy="0" r="2.5" />}
-                {lineCursor.inference.type === 'endpoint' && <circle className="drawing-line-cursor-endpoint" cx="0" cy="0" r="5.5" />}
-                {lineCursor.inference.type === 'line' && <path className="drawing-line-cursor-line" d="M 0 -6 L 6 5 L -6 5 Z" />}
+                {lineCursor.snap.type === 'none' && <circle className="drawing-line-cursor-dot" cx="0" cy="0" r="2.5" />}
+                {lineCursor.snap.type === 'endpoint' && <circle className="drawing-line-cursor-endpoint" cx="0" cy="0" r="5.5" />}
+                {lineCursor.snap.type === 'line' && <path className="drawing-line-cursor-line" d="M 0 -6 L 6 5 L -6 5 Z" />}
               </g>
             )}
           </svg>

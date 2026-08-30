@@ -66,6 +66,10 @@ export const updateLinePreview = (interaction: LineToolInteraction, pointer: Dra
   interaction.start ? { ...interaction, ...resolveLinePreviewPoint(interaction.start, pointer) } : interaction
 );
 
+export const updateLinePreviewAtEffectivePoint = (interaction: LineToolInteraction, rawPointerPoint: DrawingPoint, effectivePreviewPoint: DrawingPoint): LineToolInteraction => (
+  interaction.start ? { ...interaction, rawPointerPoint, effectivePreviewPoint, snapActive: false, snappedAngleDegrees: null } : interaction
+);
+
 export const cancelLineInteraction = (): LineToolInteraction => EMPTY_LINE_INTERACTION;
 
 export type LineClickResult = Readonly<{
@@ -97,6 +101,16 @@ export const applyLineClick = (
       effectivePreviewPoint: effectivePoint,
     },
     entity: { id: createId(), type: 'line', start: interaction.start, end: effectivePoint },
+  };
+};
+
+/** Commits a point already resolved by global/tool arbitration without reapplying angular inference. */
+export const applyResolvedLineClick = (interaction: LineToolInteraction, point: DrawingPoint, createId: () => string): LineClickResult => {
+  if (!interaction.start) return { interaction: { ...EMPTY_LINE_INTERACTION, start: point, rawPointerPoint: point, effectivePreviewPoint: point }, entity: null };
+  if (Math.hypot(point.x - interaction.start.x, point.y - interaction.start.y) <= LINE_ZERO_LENGTH_TOLERANCE_MM) return { interaction, entity: null };
+  return {
+    interaction: { ...EMPTY_LINE_INTERACTION, start: point, rawPointerPoint: point, effectivePreviewPoint: point },
+    entity: { id: createId(), type: 'line', start: interaction.start, end: point },
   };
 };
 

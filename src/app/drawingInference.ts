@@ -22,6 +22,10 @@ export type DrawingInference = Readonly<{
 }>;
 
 export const NO_DRAWING_INFERENCE: DrawingInference = { type: 'none', screenDistance: null };
+export type DrawingInferenceCandidates = Readonly<{
+  endpoints: ReadonlyArray<Extract<DrawingInference, { type: 'endpoint' }>>;
+  lines: ReadonlyArray<Extract<DrawingInference, { type: 'line' }>>;
+}>;
 
 const toScreenPoint = (point: CoordinatePoint, transform: AffineTransform): CoordinatePoint => ({
   x: transform.a * point.x + transform.c * point.y + transform.e,
@@ -45,33 +49,26 @@ export const distancePointToSegment = (
 };
 
 /** Resolves visual-only inference against committed active-sketch lines in client pixels. */
-export const resolveDrawingInference = (
+export const collectDrawingInferenceCandidates = (
   pointerClientPoint: CoordinatePoint,
   lines: ReadonlyArray<DrawingLineEntity>,
   drawingToClientTransform: AffineTransform,
-): DrawingInference => {
-  let endpointHit: Exclude<DrawingInference, { type: 'none' } | { type: 'line' }> | null = null;
+): DrawingInferenceCandidates => {
+  const endpoints: Array<Extract<DrawingInference, { type: 'endpoint' }>> = [];
   for (const line of lines) {
     for (const endpoint of ['start', 'end'] as const) {
       const candidatePoint = line[endpoint];
       const screenPoint = toScreenPoint(candidatePoint, drawingToClientTransform);
       const screenDistance = Math.hypot(pointerClientPoint.x - screenPoint.x, pointerClientPoint.y - screenPoint.y);
-      if (screenDistance <= DRAWING_ENDPOINT_INFERENCE_TOLERANCE_PX
-        && (!endpointHit || screenDistance < endpointHit.screenDistance)) {
-        endpointHit = { type: 'endpoint', entityId: line.id, endpoint, candidatePoint, screenDistance };
-      }
+      endpoints.push({ type: 'endpoint', entityId: line.id, endpoint, candidatePoint, screenDistance });
     }
   }
-  if (endpointHit) return endpointHit;
-
-  let lineHit: Exclude<DrawingInference, { type: 'none' } | { type: 'endpoint' }> | null = null;
+  const lineCandidates: Array<Extract<DrawingInference, { type: 'line' }>> = [];
   for (const line of lines) {
     const start = toScreenPoint(line.start, drawingToClientTransform);
     const end = toScreenPoint(line.end, drawingToClientTransform);
     const { distance: screenDistance, parameter } = distancePointToSegment(pointerClientPoint, start, end);
-    if (screenDistance <= DRAWING_LINE_INFERENCE_TOLERANCE_PX
-      && (!lineHit || screenDistance < lineHit.screenDistance)) {
-      lineHit = {
+    lineCandidates.push({
         type: 'line',
         entityId: line.id,
         candidatePoint: {
@@ -80,8 +77,18 @@ export const resolveDrawingInference = (
         },
         segmentParameter: parameter,
         screenDistance,
-      };
-    }
+      });
   }
-  return lineHit ?? NO_DRAWING_INFERENCE;
+  return {
+    endpoints: endpoints.sort((a, b) => a.screenDistance - b.screenDistance),
+    lines: lineCandidates.sort((a, b) => a.screenDistance - b.screenDistance),
+  };
+};
+
+/** Backward-compatible visual inference resolver using acquire tolerances. */
+export const resolveDrawingInference = (pointerClientPoint: CoordinatePoint, lines: ReadonlyArray<DrawingLineEntity>, drawingToClientTransform: AffineTransform): DrawingInference => {
+  const candidates = collectDrawingInferenceCandidates(pointerClientPoint, lines, drawingToClientTransform);
+  if (candidates.endpoints[0] && candidates.endpoints[0].screenDistance <= DRAWING_ENDPOINT_INFERENCE_TOLERANCE_PX) return candidates.endpoints[0];
+  if (candidates.lines[0] && candidates.lines[0].screenDistance <= DRAWING_LINE_INFERENCE_TOLERANCE_PX) return candidates.lines[0];
+  return NO_DRAWING_INFERENCE;
 };
