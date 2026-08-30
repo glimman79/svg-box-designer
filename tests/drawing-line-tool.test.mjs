@@ -22,16 +22,18 @@ assert.deepEqual(interaction.start, { x: 2.25, y: 3.75 });
 assert.equal(document.sketches[document.activeSketchId].entityOrder.length, 0, 'preview is not document geometry');
 
 interaction = lineTool.updateLinePreview(interaction, { x: 7.125, y: 8.625 });
-assert.deepEqual(interaction.pointer, { x: 7.125, y: 8.625 }, 'preview follows exact unsnapped coordinates');
+assert.deepEqual(interaction.rawPointerPoint, { x: 7.125, y: 8.625 }, 'preview retains exact raw coordinates');
+assert.ok(Math.abs(interaction.effectivePreviewPoint.x - 7.125) < 1e-12 && Math.abs(interaction.effectivePreviewPoint.y - 8.625) < 1e-12, 'exact 45 degree preview remains geometrically unchanged');
 result = lineTool.applyLineClick(interaction, { x: 7.125, y: 8.625 }, createId);
-assert.deepEqual(result.entity, {
-  id: 'line-test-1', type: 'line', start: { x: 2.25, y: 3.75 }, end: { x: 7.125, y: 8.625 },
-});
+assert.equal(result.entity.id, 'line-test-1');
+assert.equal(result.entity.type, 'line');
+assert.deepEqual(result.entity.start, { x: 2.25, y: 3.75 });
+assert.ok(Math.abs(result.entity.end.x - 7.125) < 1e-12 && Math.abs(result.entity.end.y - 8.625) < 1e-12);
 assert.equal('svg' in result.entity, false, 'entity is geometry, not SVG markup');
 document = lineTool.appendEntityToActiveSketch(document, result.entity);
 interaction = result.interaction;
-assert.deepEqual(interaction.start, { x: 7.125, y: 8.625 }, 'commit continues the chain at its end');
-assert.deepEqual(interaction.pointer, interaction.start, 'old preview clears at commit');
+assert.deepEqual(interaction.start, result.entity.end, 'commit continues the chain at its effective end');
+assert.deepEqual(interaction.effectivePreviewPoint, interaction.start, 'old preview clears at commit');
 
 result = lineTool.applyLineClick(interaction, { x: 11.2, y: -4.4 }, createId);
 document = lineTool.appendEntityToActiveSketch(document, result.entity);
