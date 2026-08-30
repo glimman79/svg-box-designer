@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type PointerEvent, type SetStateAction } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDocumentV1, DrawingPoint } from './drawingTypes';
 import { appendEntityToActiveSketch, applyResolvedLineClick, cancelLineInteraction, EMPTY_LINE_INTERACTION, resolveLinePreviewPoint, updateLinePreviewAtEffectivePoint, type LineToolInteraction } from './drawingLineTool';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
@@ -8,6 +8,16 @@ import { resolveDrawingSnap, type DrawingSnap } from './drawingSnapEngine';
 import { activateDrawingTool, finishDrawingConstruction, type DrawingActiveTool, type DrawingToolLifecycle } from './drawingToolLifecycle';
 import { useCadWheelCapture } from './useCadWheelCapture';
 import { CAD_PRIMARY_BUTTON, useCadCtrlSnapOverride, useCadEscapeToolExit, useCadPanGesture } from './cadInteraction';
+
+const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
+  if (event.button !== CAD_PRIMARY_BUTTON) return;
+  event.preventDefault();
+  (event.target as Element).closest<HTMLButtonElement>('.cad-tool-button')?.focus();
+};
+
+const preventToolChromeSelection = (event: Event) => {
+  event.preventDefault();
+};
 
 export type DrawingViewBox = { x: number; y: number; width: number; height: number };
 type CoordinateOverlayGeometry = {
@@ -39,12 +49,20 @@ export function DrawingWorkspace({
   viewBox: DrawingViewBox;
   setViewBox: Dispatch<SetStateAction<DrawingViewBox>>;
 }) {
+  const toolSidebarRef = useRef<HTMLElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const overlaySvgRef = useRef<SVGSVGElement>(null);
   const [viewport, setViewport] = useState({ width: 800, height: 600 });
   const [overlayGeometry, setOverlayGeometry] = useState<CoordinateOverlayGeometry | null>(null);
   const [toolLifecycle, setToolLifecycle] = useState<DrawingToolLifecycle>(() => activateDrawingTool('select'));
   const activeTool = toolLifecycle.activeTool;
+
+  useEffect(() => {
+    const sidebar = toolSidebarRef.current;
+    if (!sidebar) return;
+    sidebar.addEventListener('selectionstart', preventToolChromeSelection);
+    return () => sidebar.removeEventListener('selectionstart', preventToolChromeSelection);
+  }, []);
   const [lineInteraction, setLineInteraction] = useState<LineToolInteraction>(EMPTY_LINE_INTERACTION);
   const [cadCursor, setCadCursor] = useState<CadCursorPresentation>(null);
   const lineCursor = cadCursor; // Line is currently the sole consumer of the shared CAD cursor.
@@ -237,10 +255,9 @@ export function DrawingWorkspace({
   }, [viewBox, viewport.width, viewport.height, labelInterval]);
   return (
     <section className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace">
-      <aside className="drawing-tool-sidebar" aria-label="Drawing tools">
-        <span className="drawing-tool-placeholder">Tools</span>
-        <button type="button" className={`cad-tool-button${activeTool === 'line' ? ' is-active' : ''}`} aria-pressed={activeTool === 'line'} onClick={() => selectTool('line')} onDoubleClick={(event) => { event.preventDefault(); selectTool('line', 'persistent'); }}>Line</button>
+      <aside ref={toolSidebarRef} className="drawing-tool-sidebar" aria-label="Drawing tools" onMouseDownCapture={preventToolChromeMouseSelection}>
         <button type="button" className={`cad-tool-button${activeTool === 'select' ? ' is-active' : ''}`} aria-pressed={activeTool === 'select'} onClick={() => selectTool('select')}>Select</button>
+        <button type="button" className={`cad-tool-button${activeTool === 'line' ? ' is-active' : ''}`} aria-pressed={activeTool === 'line'} onClick={() => selectTool('line')} onDoubleClick={(event) => { event.preventDefault(); selectTool('line', 'persistent'); }}>Line</button>
       </aside>
       <section className="canvas-card drawing-canvas-card workspace-canvas">
         <div className="canvas-frame">
