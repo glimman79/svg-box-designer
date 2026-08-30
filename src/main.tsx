@@ -1,10 +1,11 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
-import './styles.css';
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+const root = ReactDOM.createRoot(document.getElementById('root')!);
+const render = (Component: React.ComponentType) => root.render(<React.StrictMode><Component /></React.StrictMode>);
+
+if (import.meta.env.DEV && window.location.pathname === '/edge-tool-repro') {
+  void import('./EdgeToolRepro').then(({ default: EdgeToolRepro }) => render(EdgeToolRepro));
+} else {
+  void import('./styles.css').then(() => import('./App')).then(({ default: App }) => render(App));
+}
