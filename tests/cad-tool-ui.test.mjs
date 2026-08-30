@@ -19,6 +19,6 @@ assert.match(css, /\.drawing-tool-sidebar \.cad-tool-button\.is-active\s*\{[^}]*
 
 assert.match(css, /\.cad-tool-button\s*\{[^}]*user-select:\s*none;/s, 'selection suppression is scoped to CAD tool controls');
 assert.doesNotMatch(css, /(?:^|[},]\s*)(?:html|body|#root|\.app-shell)\b[^{}]*\{[^}]*user-select:\s*none;/ms, 'application text selection is not globally disabled');
-assert.match(workspace, /onDoubleClick=\{\(event\) => \{ event\.preventDefault\(\); selectTool\('line', 'persistent'\); \}\}/, 'Line double-click prevents browser selection and retains persistent activation');
+assert.match(workspace, /onPointerDown=\{\(event\) => activateToolFromPointer\('line', event\)\}/, 'Line uses application-controlled pointer activation');
 
 console.log('CAD tool UI polish tests passed');

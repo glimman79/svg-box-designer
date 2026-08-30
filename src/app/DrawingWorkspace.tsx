@@ -8,9 +8,17 @@ import { resolveDrawingSnap, type DrawingSnap } from './drawingSnapEngine';
 import { activateDrawingTool, finishDrawingConstruction, type DrawingActiveTool, type DrawingToolLifecycle } from './drawingToolLifecycle';
 import { useCadWheelCapture } from './useCadWheelCapture';
 import { CAD_PRIMARY_BUTTON, useCadCtrlSnapOverride, useCadEscapeToolExit, useCadPanGesture } from './cadInteraction';
+import { resolveCadToolPointerActivation, type CadToolActivationRecord } from './cadToolActivation';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
+  event.preventDefault();
+  (event.target as Element).closest<HTMLButtonElement>('.cad-tool-button')?.focus();
+};
+
+const preventToolChromePointerSelection = (event: PointerEvent<HTMLElement>) => {
+  if (event.button !== CAD_PRIMARY_BUTTON) return;
+  // Cancel the pointer default before Edge can synthesize its native mouse/dblclick selection sequence.
   event.preventDefault();
   (event.target as Element).closest<HTMLButtonElement>('.cad-tool-button')?.focus();
 };
@@ -70,6 +78,7 @@ export function DrawingWorkspace({
   const lastPointerClientRef = useRef<CoordinatePoint | null>(null);
   const pendingLineClickRef = useRef<number | null>(null);
   const activeToolRef = useRef<DrawingActiveTool>(activeTool);
+  const previousToolActivationRef = useRef<CadToolActivationRecord<DrawingActiveTool> | null>(null);
   const lineInteractionRef = useRef(lineInteraction);
   const drawingSnapRef = useRef<DrawingSnap | null>(drawingSnap);
   const resolvePlacementRef = useRef<(clientPoint: CoordinatePoint, ctrlHeld: boolean) => void>(() => undefined);
@@ -220,6 +229,24 @@ export function DrawingWorkspace({
     setToolLifecycle(activateDrawingTool(tool, activationMode));
   };
 
+  const activateToolFromPointer = (tool: DrawingActiveTool, event: PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== CAD_PRIMARY_BUTTON) return;
+    const resolution = resolveCadToolPointerActivation(
+      tool,
+      event.timeStamp,
+      { x: event.clientX, y: event.clientY },
+      previousToolActivationRef.current,
+    );
+    previousToolActivationRef.current = resolution.record;
+    selectTool(tool, resolution.activationMode);
+  };
+
+  const activateToolFromKeyboard = (tool: DrawingActiveTool, event: MouseEvent<HTMLButtonElement>) => {
+    if (event.detail !== 0) return;
+    previousToolActivationRef.current = null;
+    selectTool(tool);
+  };
+
   const clearCadCursor = () => { lastPointerClientRef.current = null; setCadCursor(null); setDrawingSnap(null); };
   const clearLineCursor = clearCadCursor;
 
@@ -255,9 +282,9 @@ export function DrawingWorkspace({
   }, [viewBox, viewport.width, viewport.height, labelInterval]);
   return (
     <section className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace">
-      <aside ref={toolSidebarRef} className="drawing-tool-sidebar" aria-label="Drawing tools" onMouseDownCapture={preventToolChromeMouseSelection}>
-        <button type="button" className={`cad-tool-button${activeTool === 'select' ? ' is-active' : ''}`} aria-pressed={activeTool === 'select'} onClick={() => selectTool('select')}>Select</button>
-        <button type="button" className={`cad-tool-button${activeTool === 'line' ? ' is-active' : ''}`} aria-pressed={activeTool === 'line'} onClick={() => selectTool('line')} onDoubleClick={(event) => { event.preventDefault(); selectTool('line', 'persistent'); }}>Line</button>
+      <aside ref={toolSidebarRef} className="drawing-tool-sidebar" aria-label="Drawing tools" onPointerDownCapture={preventToolChromePointerSelection} onMouseDownCapture={preventToolChromeMouseSelection}>
+        <button type="button" className={`cad-tool-button${activeTool === 'select' ? ' is-active' : ''}`} aria-pressed={activeTool === 'select'} onPointerDown={(event) => activateToolFromPointer('select', event)} onClick={(event) => activateToolFromKeyboard('select', event)}>Select</button>
+        <button type="button" className={`cad-tool-button${activeTool === 'line' ? ' is-active' : ''}`} aria-pressed={activeTool === 'line'} onPointerDown={(event) => activateToolFromPointer('line', event)} onClick={(event) => activateToolFromKeyboard('line', event)}>Line</button>
       </aside>
       <section className="canvas-card drawing-canvas-card workspace-canvas">
         <div className="canvas-frame">
