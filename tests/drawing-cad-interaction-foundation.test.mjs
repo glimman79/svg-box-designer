@@ -52,12 +52,13 @@ const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const css = fs.readFileSync('src/styles.css', 'utf8');
 const engine = fs.readFileSync('src/app/drawingSnapEngine.ts', 'utf8');
 assert.match(workspace, /aria-pressed=\{activeTool === 'line'\}/, 'active styling derives from activeTool');
-assert.match(workspace, /event\.key !== 'Escape'[\s\S]*nextDrawingTool\(current, 'deactivate'\)/, 'one Escape deactivates');
-assert.match(workspace, /pendingLineClickRef[\s\S]*onDoubleClick=\{\(\) => \{ if \(activeTool === 'line'\) finishLine\(true\)/, 'canvas double-click cancels deferred click and exits');
-assert.match(workspace, /onDoubleClick=\{\(\) => activeTool === 'line' \? finishLine\(false\)/, 'tool double-click ends chain without deactivation');
-assert.match(workspace, /if \(tool === activeTool\) return;/, 'single active-tool click is nondestructive');
+assert.match(workspace, /useCadEscapeToolExit\(exitActiveTool\)/, 'one Escape uses the shared exit contract');
+assert.match(workspace, /onDoubleClick=\{\(\) => \{ if \(activeTool === 'line'\) finishLine\(\)/, 'canvas double-click finishes the current construction');
+assert.match(workspace, /onDoubleClick=\{\(\) => selectTool\('line', 'persistent'\)\}/, 'tool double-click explicitly requests persistent activation');
 assert.doesNotMatch(workspace, /event\.target !== event\.currentTarget/, 'pan can start over child grid and geometry elements');
-assert.match(workspace, /setPointerCapture[\s\S]*releasePointerCapture/, 'pan capture has a symmetric release');
+const cadInteraction = fs.readFileSync('src/app/cadInteraction.ts', 'utf8');
+assert.match(cadInteraction, /releasePointerCapture/);
+assert.match(cadInteraction, /setPointerCapture/, 'shared pan capture has a symmetric release');
 assert.match(css, /\.drawing-label-overlay[^}]*pointer-events:\s*none/s, 'screen-space cursor overlay cannot intercept pan');
 assert.doesNotMatch(engine, /22\.5|angular|grid|midpoint|intersection|origin|constraint/i, 'global engine contains only endpoint/line spatial policy');
 
