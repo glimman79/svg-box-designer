@@ -54,7 +54,7 @@ const engine = fs.readFileSync('src/app/drawingSnapEngine.ts', 'utf8');
 assert.match(workspace, /aria-pressed=\{activeTool === 'line'\}/, 'active styling derives from activeTool');
 assert.match(workspace, /useCadEscapeToolExit\(exitActiveTool\)/, 'one Escape uses the shared exit contract');
 assert.match(workspace, /onDoubleClick=\{\(\) => \{ if \(activeTool === 'line'\) finishLine\(\)/, 'canvas double-click finishes the current construction');
-assert.match(workspace, /onDoubleClick=\{\(event\) => \{ event\.preventDefault\(\); selectTool\('line', 'persistent'\); \}\}/, 'tool double-click prevents browser default and explicitly requests persistent activation');
+assert.match(workspace, /resolveCadToolPointerActivation[\s\S]*?selectTool\(tool, resolution\.activationMode\)/, 'application-controlled pointer activation can explicitly request persistent mode');
 assert.doesNotMatch(workspace, /event\.target !== event\.currentTarget/, 'pan can start over child grid and geometry elements');
 const cadInteraction = fs.readFileSync('src/app/cadInteraction.ts', 'utf8');
 assert.match(cadInteraction, /releasePointerCapture/);

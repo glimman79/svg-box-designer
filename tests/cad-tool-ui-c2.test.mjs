@@ -19,7 +19,7 @@ assert.match(css, /\.cad-tool-button\s*\{[^}]*-webkit-user-select:\s*none;[^}]*u
 assert.match(workspace, /onMouseDownCapture=\{preventToolChromeMouseSelection\}/, 'selection default is prevented at mousedown, before click and dblclick');
 assert.match(workspace, /toolSidebarRef\.current[\s\S]*?addEventListener\('selectionstart', preventToolChromeSelection\)[\s\S]*?removeEventListener\('selectionstart', preventToolChromeSelection\)/, 'native selectionstart is blocked and cleaned up within Drawing tool chrome');
 assert.match(workspace, /preventToolChromeMouseSelection[\s\S]*?event\.preventDefault\(\);[\s\S]*?\.closest<HTMLButtonElement>\('\.cad-tool-button'\)\?\.focus\(\);/, 'early suppression retains explicit button focus');
-assert.match(rail, /onDoubleClick=\{\(event\) => \{ event\.preventDefault\(\); selectTool\('line', 'persistent'\); \}\}/, 'Line double-click still prevents its default and requests persistent mode');
+assert.doesNotMatch(rail, /onDoubleClick=/, 'tool chrome no longer relies on native dblclick activation');
 assert.doesNotMatch(css, /(?:^|[},]\s*)(?:html|body|#root|\.app-shell)\b[^{}]*\{[^}]*user-select:\s*none;/ms, 'global application text selection remains enabled');
 
 assert.match(app, /className=\{`tool-button cad-tool-button\$\{activeTool === tool \? ' active' : ''\}`\}/, 'Box tool styling and state markup remain unchanged');
