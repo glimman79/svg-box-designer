@@ -891,6 +891,28 @@ button:disabled {
   background: #fff;
 }
 
+.drawing-svg.has-line-cursor,
+.drawing-svg.has-line-cursor * {
+  cursor: none;
+}
+
+.drawing-line-cursor-arm {
+  stroke: #075985;
+  stroke-width: 1.4;
+  stroke-linecap: square;
+}
+
+.drawing-line-cursor-dot {
+  fill: #075985;
+}
+
+.drawing-line-cursor-endpoint,
+.drawing-line-cursor-line {
+  fill: #fff;
+  stroke: #0284c7;
+  stroke-width: 1.8;
+}
+
 @media (max-width: 900px) {
   .drawing-workspace {
     grid-template-columns: 56px minmax(0, 1fr);

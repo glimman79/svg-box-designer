@@ -3,6 +3,7 @@ import type { DrawingDocumentV1, DrawingPoint } from './drawingTypes';
 import { appendEntityToActiveSketch, applyLineClick, cancelLineInteraction, EMPTY_LINE_INTERACTION, updateLinePreview, type LineToolInteraction } from './drawingLineTool';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
+import { resolveDrawingInference, type DrawingInference } from './drawingInference';
 import { useCadWheelCapture } from './useCadWheelCapture';
 
 export type DrawingViewBox = { x: number; y: number; width: number; height: number };
@@ -14,6 +15,7 @@ type CoordinateOverlayGeometry = {
   xIndicatorAnchor: CoordinatePoint;
   yIndicatorAnchor: CoordinatePoint;
 };
+type LineCursorPresentation = Readonly<{ anchor: CoordinatePoint; inference: DrawingInference }> | null;
 
 export const initialDrawingViewBox: DrawingViewBox = { x: -400, y: -300, width: 800, height: 600 };
 const formatViewBox = ({ x, y, width, height }: DrawingViewBox) => `${x} ${y} ${width} ${height}`;
@@ -37,6 +39,7 @@ export function DrawingWorkspace({
   const [overlayGeometry, setOverlayGeometry] = useState<CoordinateOverlayGeometry | null>(null);
   const [activeTool, setActiveTool] = useState<'select' | 'line'>('select');
   const [lineInteraction, setLineInteraction] = useState<LineToolInteraction>(EMPTY_LINE_INTERACTION);
+  const [lineCursor, setLineCursor] = useState<LineCursorPresentation>(null);
   const entitySequence = useRef(0);
   const activeSketch = document.sketches[document.activeSketchId];
   const gridSpacing = getDrawingGridSpacing(viewBox.width);
@@ -102,7 +105,19 @@ export function DrawingWorkspace({
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
     if (activeTool === 'line') {
       const point = modelPointFromPointer(event);
-      if (point) setLineInteraction((current) => updateLinePreview(current, point));
+      const drawingTransform = svgRef.current?.getScreenCTM();
+      const overlayTransform = overlaySvgRef.current?.getScreenCTM();
+      if (point && drawingTransform && overlayTransform) {
+        const nextInteraction = updateLinePreview(lineInteraction, point);
+        const placementPoint = nextInteraction.effectivePreviewPoint ?? point;
+        const anchor = modelToOverlayPoint(placementPoint, drawingTransform, overlayTransform);
+        const committedLines = activeSketch?.entityOrder
+          .map((entityId) => activeSketch.entities[entityId])
+          .filter((entity) => entity?.type === 'line') ?? [];
+        const inference = resolveDrawingInference({ x: event.clientX, y: event.clientY }, committedLines, drawingTransform);
+        setLineInteraction(nextInteraction);
+        setLineCursor(anchor ? { anchor, inference } : null);
+      }
       return;
     }
     const pan = panStateRef.current;
@@ -122,7 +137,10 @@ export function DrawingWorkspace({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || activeTool !== 'line') return;
       if (lineInteraction.start) setLineInteraction(cancelLineInteraction());
-      else setActiveTool('select');
+      else {
+        setLineCursor(null);
+        setActiveTool('select');
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -130,8 +148,11 @@ export function DrawingWorkspace({
 
   const selectTool = (tool: 'select' | 'line') => {
     setLineInteraction(cancelLineInteraction());
+    setLineCursor(null);
     setActiveTool(tool);
   };
+
+  const clearLineCursor = () => setLineCursor(null);
 
   const endPan = (event: PointerEvent<SVGSVGElement>) => {
     if (panStateRef.current?.pointerId === event.pointerId) {
@@ -180,7 +201,7 @@ export function DrawingWorkspace({
           </div>
           <svg
             ref={svgRef}
-            className={`design-svg cad-viewport-interaction drawing-svg${isPanning ? ' is-panning' : ''}`}
+            className={`design-svg cad-viewport-interaction drawing-svg${isPanning ? ' is-panning' : ''}${activeTool === 'line' ? ' has-line-cursor' : ''}`}
             viewBox={formatViewBox(viewBox)}
             role="img"
             aria-label={`${activeSketch?.name ?? 'Drawing'} coordinate drawing canvas`}
@@ -188,6 +209,7 @@ export function DrawingWorkspace({
             onPointerMove={handlePointerMove}
             onPointerUp={endPan}
             onPointerCancel={endPan}
+            onPointerLeave={clearLineCursor}
           >
             <defs>
               <pattern id="drawing-grid" x="0" y="0" width={gridSpacing} height={gridSpacing} patternUnits="userSpaceOnUse">
@@ -225,6 +247,17 @@ export function DrawingWorkspace({
             </>}
             {overlayGeometry && overlayGeometry.origin.y >= 0 && overlayGeometry.origin.y <= viewport.height && <text className="drawing-axis-letter drawing-x-indicator" x={overlayGeometry.xIndicatorAnchor.x - 15} y={overlayGeometry.xIndicatorAnchor.y - 7}>X</text>}
             {overlayGeometry && overlayGeometry.origin.x >= 0 && overlayGeometry.origin.x <= viewport.width && <text className="drawing-axis-letter drawing-y-indicator" x={overlayGeometry.yIndicatorAnchor.x + 7} y={overlayGeometry.yIndicatorAnchor.y + 15}>Y</text>}
+            {activeTool === 'line' && lineCursor && (
+              <g className="drawing-line-cursor" data-inference={lineCursor.inference.type} transform={`translate(${lineCursor.anchor.x} ${lineCursor.anchor.y})`} aria-hidden="true">
+                <line className="drawing-line-cursor-arm" data-arm="left" x1="-22" y1="0" x2="-7" y2="0" />
+                <line className="drawing-line-cursor-arm" data-arm="right" x1="7" y1="0" x2="22" y2="0" />
+                <line className="drawing-line-cursor-arm" data-arm="top" x1="0" y1="-22" x2="0" y2="-7" />
+                <line className="drawing-line-cursor-arm" data-arm="bottom" x1="0" y1="7" x2="0" y2="22" />
+                {lineCursor.inference.type === 'none' && <circle className="drawing-line-cursor-dot" cx="0" cy="0" r="2.5" />}
+                {lineCursor.inference.type === 'endpoint' && <circle className="drawing-line-cursor-endpoint" cx="0" cy="0" r="5.5" />}
+                {lineCursor.inference.type === 'line' && <path className="drawing-line-cursor-line" d="M 0 -6 L 6 5 L -6 5 Z" />}
+              </g>
+            )}
           </svg>
         </div>
       </section>
