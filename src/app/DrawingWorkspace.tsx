@@ -208,8 +208,8 @@ export function DrawingWorkspace({
                 <line key={entity.id} className="drawing-line-entity" x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
               ))}
             </g>
-            {activeTool === 'line' && lineInteraction.start && lineInteraction.pointer && (
-              <line className="drawing-line-preview" x1={lineInteraction.start.x} y1={lineInteraction.start.y} x2={lineInteraction.pointer.x} y2={lineInteraction.pointer.y} />
+            {activeTool === 'line' && lineInteraction.start && lineInteraction.effectivePreviewPoint && (
+              <line className={`drawing-line-preview${lineInteraction.snapActive ? ' is-angular-snapped' : ''}`} x1={lineInteraction.start.x} y1={lineInteraction.start.y} x2={lineInteraction.effectivePreviewPoint.x} y2={lineInteraction.effectivePreviewPoint.y} />
             )}
           </svg>
           <svg ref={overlaySvgRef} className="drawing-label-overlay" viewBox={`0 0 ${viewport.width} ${viewport.height}`} aria-label="Model coordinate scale">

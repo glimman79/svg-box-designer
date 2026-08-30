@@ -850,14 +850,20 @@ button:disabled {
 }
 
 .drawing-line-entity {
-  stroke: #d9e4f0;
-  stroke-width: 1.5;
+  stroke: #17283a;
+  stroke-width: 1.8;
 }
 
 .drawing-line-preview {
-  stroke: #4fb3ff;
+  stroke: #397f9f;
   stroke-width: 1.25;
   stroke-dasharray: 5 4;
+}
+
+.drawing-line-preview.is-angular-snapped {
+  stroke: #0284c7;
+  stroke-width: 1.7;
+  stroke-dasharray: none;
 }
 
 .drawing-info-panel {
