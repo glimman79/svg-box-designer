@@ -816,14 +816,6 @@ button:disabled {
   background: #fff;
 }
 
-.drawing-tool-placeholder {
-  color: #7a838f;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  writing-mode: vertical-rl;
-}
-
 .drawing-tool-sidebar button {
   width: 48px;
   min-height: 34px;
@@ -1922,10 +1914,6 @@ button:disabled {
   border: 1px solid #1f2937;
   border-radius: 0;
   box-shadow: none;
-}
-
-.drawing-tool-placeholder {
-  color: #cbd5e1;
 }
 
 .drawing-canvas-card .canvas-frame {
