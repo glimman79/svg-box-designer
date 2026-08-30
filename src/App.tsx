@@ -2255,7 +2255,7 @@ function App() {
             <button
               key={tool}
               type="button"
-              className={`tool-button${activeTool === tool ? ' active' : ''}`}
+              className={`tool-button cad-tool-button${activeTool === tool ? ' active' : ''}`}
               title={title}
               aria-pressed={activeTool === tool}
               onClick={() => handleToolClick(tool)}

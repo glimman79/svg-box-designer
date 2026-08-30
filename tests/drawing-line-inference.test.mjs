@@ -45,8 +45,8 @@ assert.deepEqual(committed.entity.end, interaction.effectivePreviewPoint, 'commi
 
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const css = fs.readFileSync('src/styles.css', 'utf8');
-assert.match(workspace, /className=\{activeTool === 'line' \? 'is-active' : ''\} aria-pressed=\{activeTool === 'line'\}/, 'Line button active presentation derives from sole activeTool state');
-assert.match(workspace, /className=\{activeTool === 'select' \? 'is-active' : ''\} aria-pressed=\{activeTool === 'select'\}/, 'Select has mutually exclusive tool-state presentation');
+assert.match(workspace, /className=\{`cad-tool-button\$\{activeTool === 'line' \? ' is-active' : ''\}`\} aria-pressed=\{activeTool === 'line'\}/, 'Line button active presentation derives from sole activeTool state');
+assert.match(workspace, /className=\{`cad-tool-button\$\{activeTool === 'select' \? ' is-active' : ''\}`\} aria-pressed=\{activeTool === 'select'\}/, 'Select has mutually exclusive tool-state presentation');
 assert.match(workspace, /activeTool === 'line' && lineCursor/, 'custom cursor only renders for active Line');
 assert.match(workspace, /data-arm="left"[\s\S]*data-arm="right"[\s\S]*data-arm="top"[\s\S]*data-arm="bottom"/, 'four separate arms structurally preserve the centre gap');
 assert.match(workspace, /drawing-line-cursor-dot[\s\S]*drawing-line-cursor-endpoint[\s\S]*drawing-line-cursor-line/, 'normal dot, endpoint ring, and line triangle are distinct marker states');
