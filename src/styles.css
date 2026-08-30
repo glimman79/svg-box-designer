@@ -1103,11 +1103,6 @@ button:disabled {
   user-select: none;
 }
 
-.cad-tool-button * {
-  -webkit-user-select: none;
-  user-select: none;
-}
-
 .tool-button:hover,
 .tool-button.active {
   color: #022c22;
