@@ -44,6 +44,7 @@ import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRo
 import { DrawingWorkspace, initialDrawingViewBox } from './app/DrawingWorkspace';
 import { createDrawingDocumentV1, DEFAULT_WORKSPACE, selectWorkspace, type WorkspaceId } from './app/drawingTypes';
 import { useCadWheelCapture } from './app/useCadWheelCapture';
+import { useCadPanGesture } from './app/cadInteraction';
 import { createBoxDocumentV1 } from './app/boxDocument';
 import type { ActiveSGroup, ActiveTBGroup, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, TBConnectionDefinition, TBConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties } from './app/connectionTypes';
 import { getNextConnectionLabel, parseConnectionLabel } from './app/connectionLabels';
@@ -322,17 +323,6 @@ type CanvasViewBox = {
   width: number;
   height: number;
 };
-
-type PanState = {
-  pointerId: number;
-  startClientX: number;
-  startClientY: number;
-  lastClientX: number;
-  lastClientY: number;
-  moved: boolean;
-};
-
-
 
 const labelGroups: LabelGroup[] = [
   { prefix: 'TB', name: 'Edge connections', description: 'Reusable edge connection IDs' },
@@ -657,13 +647,11 @@ function App() {
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const canvasFrameRef = useRef<HTMLDivElement>(null);
-  const panStateRef = useRef<PanState | null>(null);
   const suppressEdgeClickRef = useRef(false);
   const [canvasViewBox, setCanvasViewBox] = useState<CanvasViewBox>(() => parseViewBox(svgModel.viewBox));
   const [canvasViewportSize, setCanvasViewportSize] = useState({ width: 1, height: 1 });
   const [undoStack, setUndoStack] = useState<HistoryState[]>([]);
   const [redoStack, setRedoStack] = useState<HistoryState[]>([]);
-  const [isCanvasPanning, setIsCanvasPanning] = useState(false);
   const [expandedSGroups, setExpandedSGroups] = useState<Record<string, boolean>>({});
   const [expandedTBGroups, setExpandedTBGroups] = useState<Record<string, boolean>>({});
   const [activeTool, setActiveTool] = useState<ActiveTool>('select');
@@ -1877,80 +1865,21 @@ function App() {
     zoomCanvas(Math.exp(-event.deltaY * wheelZoomSensitivity), center);
   });
 
-  const handleCanvasPointerDown = (event: PointerEvent<SVGSVGElement>) => {
-    if (event.button !== 0 || event.target !== event.currentTarget) {
-      return;
-    }
-
-    panStateRef.current = {
-      pointerId: event.pointerId,
-      startClientX: event.clientX,
-      startClientY: event.clientY,
-      lastClientX: event.clientX,
-      lastClientY: event.clientY,
-      moved: false,
-    };
-    suppressEdgeClickRef.current = false;
-    setIsCanvasPanning(true);
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const handleCanvasPointerMove = (event: PointerEvent<SVGSVGElement>) => {
-    const panState = panStateRef.current;
-    const screenMatrix = svgRef.current?.getScreenCTM();
-
-    if (!panState || panState.pointerId !== event.pointerId || !screenMatrix) {
-      return;
-    }
-
-    const totalDx = event.clientX - panState.startClientX;
-    const totalDy = event.clientY - panState.startClientY;
-    const dx = event.clientX - panState.lastClientX;
-    const dy = event.clientY - panState.lastClientY;
-    const scaleX = Math.hypot(screenMatrix.a, screenMatrix.b);
-    const scaleY = Math.hypot(screenMatrix.c, screenMatrix.d);
-
-    if (Math.hypot(totalDx, totalDy) > 3) {
-      panState.moved = true;
-    }
-
-    panState.lastClientX = event.clientX;
-    panState.lastClientY = event.clientY;
-
-    if (scaleX === 0 || scaleY === 0) {
-      return;
-    }
-
-    setCanvasViewBox((currentViewBox) => ({
-      ...currentViewBox,
-      x: currentViewBox.x - dx / scaleX,
-      y: currentViewBox.y - dy / scaleY,
-    }));
-  };
-
-  const handleCanvasPointerUp = (event: PointerEvent<SVGSVGElement>) => {
-    const panState = panStateRef.current;
-
-    if (panState?.pointerId === event.pointerId) {
-      suppressEdgeClickRef.current = panState.moved;
-      panStateRef.current = null;
-      setIsCanvasPanning(false);
-      window.setTimeout(() => {
-        suppressEdgeClickRef.current = false;
-      }, 0);
-    }
-
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  };
-
-  const handleCanvasPointerLeave = (event: PointerEvent<SVGSVGElement>) => {
-    if (panStateRef.current?.pointerId === event.pointerId) {
-      panStateRef.current = null;
-      setIsCanvasPanning(false);
-    }
-  };
+  const { isPanning: isCanvasPanning, panHandlers: canvasPanHandlers } = useCadPanGesture({
+    viewportRef: svgRef,
+    onPan: ({ dx, dy }) => {
+      const screenMatrix = svgRef.current?.getScreenCTM();
+      if (!screenMatrix) return;
+      const scaleX = Math.hypot(screenMatrix.a, screenMatrix.b);
+      const scaleY = Math.hypot(screenMatrix.c, screenMatrix.d);
+      if (scaleX === 0 || scaleY === 0) return;
+      setCanvasViewBox((currentViewBox) => ({
+        ...currentViewBox,
+        x: currentViewBox.x - dx / scaleX,
+        y: currentViewBox.y - dy / scaleY,
+      }));
+    },
+  });
 
   const renderPropertiesPanel = () => {
     const activeConnectionPrefix = activeTool === 'TB' ? 'TB' : activeTool;
@@ -2586,11 +2515,11 @@ function App() {
               viewBox={formatViewBox(canvasViewBox)}
               role="img"
               aria-label="Imported SVG with selectable edges"
-              onPointerDown={handleCanvasPointerDown}
-              onPointerMove={handleCanvasPointerMove}
-              onPointerUp={handleCanvasPointerUp}
-              onPointerCancel={handleCanvasPointerUp}
-              onPointerLeave={handleCanvasPointerLeave}
+              onPointerDown={canvasPanHandlers.onPointerDown}
+              onPointerMove={canvasPanHandlers.onPointerMove}
+              onPointerUp={canvasPanHandlers.onPointerUp}
+              onPointerCancel={canvasPanHandlers.onPointerCancel}
+              onContextMenu={canvasPanHandlers.onContextMenu}
             >
               {isProfileOffsetProfileSelectionActive && (
                 <g className="profile-offset-profile-underlays" aria-hidden="true">
