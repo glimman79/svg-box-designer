@@ -836,10 +836,10 @@ button:disabled {
   cursor: pointer;
 }
 
-.drawing-tool-sidebar button.is-active {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+.drawing-tool-sidebar .cad-tool-button.is-active {
+  color: #022c22;
+  background: #5eead4;
+  border-color: #2dd4bf;
 }
 
 .drawing-line-entity,
@@ -1103,6 +1103,12 @@ button:disabled {
   border-radius: 9px;
   font-size: 0.74rem;
   font-weight: 950;
+}
+
+/* Shared application-chrome behavior for present and future CAD tool controls. */
+.cad-tool-button {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .tool-button:hover,

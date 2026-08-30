@@ -239,8 +239,8 @@ export function DrawingWorkspace({
     <section className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace">
       <aside className="drawing-tool-sidebar" aria-label="Drawing tools">
         <span className="drawing-tool-placeholder">Tools</span>
-        <button type="button" className={activeTool === 'line' ? 'is-active' : ''} aria-pressed={activeTool === 'line'} onClick={() => selectTool('line')} onDoubleClick={() => selectTool('line', 'persistent')}>Line</button>
-        <button type="button" className={activeTool === 'select' ? 'is-active' : ''} aria-pressed={activeTool === 'select'} onClick={() => selectTool('select')}>Select</button>
+        <button type="button" className={`cad-tool-button${activeTool === 'line' ? ' is-active' : ''}`} aria-pressed={activeTool === 'line'} onClick={() => selectTool('line')} onDoubleClick={(event) => { event.preventDefault(); selectTool('line', 'persistent'); }}>Line</button>
+        <button type="button" className={`cad-tool-button${activeTool === 'select' ? ' is-active' : ''}`} aria-pressed={activeTool === 'select'} onClick={() => selectTool('select')}>Select</button>
       </aside>
       <section className="canvas-card drawing-canvas-card workspace-canvas">
         <div className="canvas-frame">
