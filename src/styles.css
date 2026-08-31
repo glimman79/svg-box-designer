@@ -899,10 +899,22 @@ button:disabled {
 }
 
 .drawing-line-cursor-endpoint,
-.drawing-line-cursor-line {
+.drawing-line-cursor-line,
+.drawing-line-cursor-alignment {
   fill: #fff;
   stroke: #0284c7;
   stroke-width: 1.8;
+}
+
+.drawing-line-cursor-alignment {
+  fill: none;
+}
+
+.drawing-alignment-guide {
+  stroke: #c084fc;
+  stroke-width: 1.25;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
 }
 
 @media (max-width: 900px) {
