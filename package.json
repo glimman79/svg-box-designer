@@ -46,6 +46,8 @@
     "test:cad-tool-ui-c4": "rm -rf .test-build/cad-tool-ui-c4 && tsc --ignoreConfig src/app/drawingToolLifecycle.ts src/app/cadToolActivation.ts --target es2022 --module esnext --moduleResolution bundler --outDir .test-build/cad-tool-ui-c4 --skipLibCheck && node tests/cad-tool-ui-c4.test.mjs",
     "test:edge-tool-repro": "node tests/edge-tool-repro.test.mjs",
     "test:edge-canvas-repro": "node tests/edge-canvas-repro.test.mjs",
+    "test:edge-svg-hit-target": "node tests/edge-svg-hit-target.test.mjs",
+    "test:drawing-hit-target-audit": "node tests/drawing-hit-target-audit.test.mjs",
     "test:drawing-canvas-dblclick-analysis": "node tests/drawing-canvas-dblclick-analysis.test.mjs",
     "test:cad-tool-cleanup": "node tests/cad-tool-cleanup.test.mjs",
     "test:d2-3a": "rm -rf .test-build/d2-3a && tsc --ignoreConfig src/app/drawingTypes.ts src/app/drawingLineTool.ts --target es2022 --module esnext --moduleResolution bundler --outDir .test-build/d2-3a --skipLibCheck && node tests/drawing-d2-3a-stabilization.test.mjs",

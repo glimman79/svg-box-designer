@@ -1,64 +1,83 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
-const svgStyle = { width: '100%', height: 260, display: 'block', border: '1px solid #64748b', background: '#fff' } as const;
-const sectionStyle = { marginBlock: 28, padding: 18, border: '1px solid #cbd5e1', borderRadius: 10, background: '#f8fafc' } as const;
+const svgStyle = { width: '100%', height: 220, display: 'block', border: '1px solid #64748b', background: '#fff' } as const;
+const sectionStyle = { marginBlock: 24, padding: 18, border: '1px solid #cbd5e1', borderRadius: 10, background: '#f8fafc' } as const;
+const eventNames = ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'selectionstart'] as const;
+
+const describeNode = (node: Node | null) => {
+  if (!node) return 'null';
+  if (node.nodeType === Node.TEXT_NODE) return '#text';
+  if (!(node instanceof Element)) return node.nodeName.toLowerCase();
+  return `${node.tagName.toLowerCase()}${node.id ? `#${node.id}` : ''}${node.classList.length ? `.${Array.from(node.classList).join('.')}` : ''}`;
+};
+
+type Readout = { target: string; elementFromPoint: string; path: string; selection: string; details: string };
+const initialReadout: Readout = { target: '—', elementFromPoint: '—', path: '—', selection: 'collapsed; text: ""', details: 'Interact with this case.' };
+
+function HitTargetCase({ id, title, description, children }: { id: string; title: string; description: ReactNode; children: ReactNode }) {
+  const ref = useRef<HTMLElement>(null);
+  const [readout, setReadout] = useState(initialReadout);
+  const active = useRef(false);
+  const update = (event?: Event) => {
+    const selection = document.getSelection();
+    const mouse = event instanceof MouseEvent ? event : null;
+    const target = event?.target as Node | null;
+    const elementAtPoint = mouse ? document.elementFromPoint(mouse.clientX, mouse.clientY) : null;
+    setReadout({
+      target: event ? describeNode(target) : readout.target,
+      elementFromPoint: mouse ? describeNode(elementAtPoint) : readout.elementFromPoint,
+      path: event ? event.composedPath().map((item) => item instanceof Node ? describeNode(item) : String(item)).join(' > ') : readout.path,
+      selection: `${selection?.isCollapsed === false ? 'non-collapsed' : 'collapsed'}; ranges: ${selection?.rangeCount ?? 0}; text: ${JSON.stringify(selection?.toString() ?? '')}; anchor: ${describeNode(selection?.anchorNode ?? null)}:${selection?.anchorOffset ?? 0}; focus: ${describeNode(selection?.focusNode ?? null)}:${selection?.focusOffset ?? 0}`,
+      details: event ? `${event.type}; x: ${mouse?.clientX ?? '—'}; y: ${mouse?.clientY ?? '—'}; button: ${mouse?.button ?? '—'}; detail: ${mouse?.detail ?? '—'}; defaultPrevented: ${event.defaultPrevented}` : 'selectionchange',
+    });
+  };
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    const record = (event: Event) => { active.current = true; update(event); };
+    const selectionChange = () => { if (active.current) update(); };
+    eventNames.forEach((name) => root.addEventListener(name, record, true));
+    document.addEventListener('selectionchange', selectionChange, true);
+    return () => {
+      eventNames.forEach((name) => root.removeEventListener(name, record, true));
+      document.removeEventListener('selectionchange', selectionChange, true);
+    };
+  });
+  return <section ref={ref} style={sectionStyle} data-edge-canvas-case={id}>
+    <h2>{title}</h2><p>{description}</p>{children}
+    <dl data-hit-target-readout style={{ marginTop: 10, padding: 10, background: '#e2e8f0', font: '12px/1.45 ui-monospace, monospace', overflowWrap: 'anywhere' }}>
+      <dt>Last target:</dt><dd>{readout.target}</dd>
+      <dt>Last elementFromPoint:</dt><dd>{readout.elementFromPoint}</dd>
+      <dt>Selection:</dt><dd>{readout.selection}</dd>
+      <dt>Composed path:</dt><dd>{readout.path}</dd>
+      <dt>Event:</dt><dd>{readout.details}</dd>
+    </dl>
+  </section>;
+}
+
+const SimpleSvg = ({ label, children }: { label: string; children?: ReactNode }) => <svg width="800" height="400" viewBox="0 0 800 400" style={svgStyle} aria-label={label}>{children}</svg>;
+const line = <line x1="100" y1="190" x2="700" y2="70" stroke="#0f766e" strokeWidth="5" />;
 
 export default function EdgeCanvasRepro() {
-  const [case2Count, setCase2Count] = useState(0);
-  const [case6Count, setCase6Count] = useState(0);
+  const [caseBCount, setCaseBCount] = useState(0);
+  return <main style={{ maxWidth: 900, margin: '32px auto', padding: 24, color: '#0f172a', fontFamily: 'system-ui, sans-serif' }}>
+    <h1>Microsoft Edge SVG hit-target repro</h1>
+    <p>Development-only cases isolate root SVG, graphical child, transparent hit geometry, and text hit targets. Double-click empty space and the labelled element separately.</p>
 
-  return (
-    <main style={{ maxWidth: 900, margin: '32px auto', padding: 24, color: '#0f172a', fontFamily: 'system-ui, sans-serif' }}>
-      <h1>Microsoft Edge drawing canvas repro</h1>
-      <p>This development-only page isolates six SVG canvas structures. Double-click each target and record whether Edge opens Copilot / Mini Menu.</p>
-
-      <section style={sectionStyle} data-edge-canvas-case="1">
-        <h2>Case 1 — Empty SVG</h2>
-        <p>No handler, content, overlay, or selection CSS.</p>
-        <svg width="800" height="500" style={svgStyle} aria-label="Case 1 empty SVG" />
-      </section>
-
-      <section style={sectionStyle} data-edge-canvas-case="2">
-        <h2>Case 2 — SVG with dblclick handler</h2>
-        <p>The handler only increments this counter: <output>{case2Count}</output></p>
-        <svg width="800" height="500" style={svgStyle} aria-label="Case 2 SVG dblclick" onDoubleClick={() => setCase2Count((count) => count + 1)} />
-      </section>
-
-      <section style={sectionStyle} data-edge-canvas-case="3">
-        <h2>Case 3 — SVG with simple line</h2>
-        <p>Geometry only; no text, handler, or overlay.</p>
-        <svg width="800" height="500" style={svgStyle} aria-label="Case 3 SVG geometry"><line x1="90" y1="190" x2="710" y2="70" stroke="#0f766e" strokeWidth="3" /></svg>
-      </section>
-
-      <section style={sectionStyle} data-edge-canvas-case="4">
-        <h2>Case 4 — SVG with SVG text</h2>
-        <p>Double-click both the number and empty space.</p>
-        <svg width="800" height="500" style={svgStyle} aria-label="Case 4 SVG text"><text x="390" y="135" fontSize="28" textAnchor="middle">100</text></svg>
-      </section>
-
-      <section style={sectionStyle} data-edge-canvas-case="5">
-        <h2>Case 5 — SVG + absolute HTML overlay</h2>
-        <p>The non-editable HTML text participates in hit testing.</p>
-        <div style={{ position: 'relative' }}>
-          <svg width="800" height="500" style={svgStyle} aria-label="Case 5 SVG under HTML overlay" />
-          <div data-repro-html-overlay style={{ position: 'absolute', top: 28, left: 28, zIndex: 2, padding: '10px 14px', background: '#fff', border: '1px solid #94a3b8' }}>Active Tool: Line</div>
-        </div>
-      </section>
-
-      <section style={sectionStyle} data-edge-canvas-case="6">
-        <h2>Case 6 — Drawing-like canvas shell</h2>
-        <p>Structural shell only. Double-click counter: <output>{case6Count}</output></p>
-        <div data-repro-viewport style={{ position: 'relative', overflow: 'hidden', border: '1px solid #64748b', background: '#fff' }}>
-          <div style={{ position: 'absolute', zIndex: 3, top: 12, left: 72, pointerEvents: 'none' }}>Active Tool: Line</div>
-          <svg width="800" height="500" style={{ width: '100%', height: 260, display: 'block' }} viewBox="0 0 800 500" aria-label="Case 6 Drawing-like SVG" onDoubleClick={() => setCase6Count((count) => count + 1)}>
-            <line x1="0" y1="250" x2="800" y2="250" stroke="#64748b" />
-            <line x1="400" y1="0" x2="400" y2="500" stroke="#64748b" />
-          </svg>
-          <svg data-repro-label-overlay style={{ position: 'absolute', inset: 0, zIndex: 2, width: '100%', height: '100%', pointerEvents: 'none' }} viewBox="0 0 800 500" aria-label="Case 6 coordinate overlay">
-            <text x="410" y="240">0</text><text x="770" y="240">X</text><text x="410" y="25">Y</text>
-          </svg>
-        </div>
-      </section>
-    </main>
-  );
+    <HitTargetCase id="A" title="Case A — Empty root SVG" description="Baseline: no child and no dblclick handler."><SimpleSvg label="Case A empty root SVG" /></HitTargetCase>
+    <HitTargetCase id="B" title="Case B — Root SVG + dblclick" description={<>Baseline handler count: <output>{caseBCount}</output>.</>}><svg width="800" height="400" viewBox="0 0 800 400" style={svgStyle} aria-label="Case B root SVG dblclick" onDoubleClick={() => setCaseBCount((count) => count + 1)} /></HitTargetCase>
+    <HitTargetCase id="C1-C2" title="Cases C1/C2 — SVG line: empty area vs direct hit" description="Use the same SVG: double-click beside the line, then directly on its painted stroke."><SimpleSvg label="Cases C1 and C2 SVG line comparison">{line}</SimpleSvg></HitTargetCase>
+    <HitTargetCase id="C3" title="Case C3 — Line pointer-events none" description="The visible line cannot become the hit target."><SimpleSvg label="Case C3 pointer transparent SVG line"><line x1="100" y1="190" x2="700" y2="70" stroke="#0f766e" strokeWidth="5" pointerEvents="none" /></SimpleSvg></HitTargetCase>
+    <HitTargetCase id="C4-transparent-stroke" title="Case C4a — Transparent stroke hit line" description="A visible pointer-transparent line is paired with a wider transparent-stroke hit line."><SimpleSvg label="Case C4 transparent stroke hit line"><g pointerEvents="none">{line}</g><line data-hit-line="transparent-stroke" x1="100" y1="190" x2="700" y2="70" stroke="transparent" strokeWidth="24" pointerEvents="stroke" /></SimpleSvg></HitTargetCase>
+    <HitTargetCase id="C4-stroke-opacity" title="Case C4b — stroke-opacity zero hit line" description="The wide line has stroke-opacity 0 and pointer-events stroke."><SimpleSvg label="Case C4 stroke opacity hit line"><g pointerEvents="none">{line}</g><line data-hit-line="stroke-opacity" x1="100" y1="190" x2="700" y2="70" stroke="#0f766e" strokeOpacity="0" strokeWidth="24" pointerEvents="stroke" /></SimpleSvg></HitTargetCase>
+    <HitTargetCase id="C4-opacity" title="Case C4c — opacity zero hit line" description="The wide line has opacity 0 and pointer-events stroke."><SimpleSvg label="Case C4 opacity hit line"><g pointerEvents="none">{line}</g><line data-hit-line="opacity" x1="100" y1="190" x2="700" y2="70" stroke="#0f766e" opacity="0" strokeWidth="24" pointerEvents="stroke" /></SimpleSvg></HitTargetCase>
+    <HitTargetCase id="C4-none" title="Case C4d — Invisible hit line pointer-events none" description="Control: the same invisible wide line is not hit-testable."><SimpleSvg label="Case C4 pointer transparent invisible line">{line}<line data-hit-line="none" x1="100" y1="190" x2="700" y2="70" stroke="transparent" strokeWidth="24" pointerEvents="none" /></SimpleSvg></HitTargetCase>
+    <HitTargetCase id="D1" title="Case D1 — SVG rect" description="Compare empty area with the filled rectangle."><SimpleSvg label="Case D1 SVG rect"><rect x="270" y="70" width="260" height="150" fill="#bfdbfe" stroke="#2563eb" strokeWidth="4" /></SimpleSvg></HitTargetCase>
+    <HitTargetCase id="D2" title="Case D2 — SVG circle" description="Compare empty area with the circle."><SimpleSvg label="Case D2 SVG circle"><circle cx="400" cy="145" r="80" fill="#ccfbf1" stroke="#0f766e" strokeWidth="4" /></SimpleSvg></HitTargetCase>
+    <HitTargetCase id="D3" title="Case D3 — SVG path" description="The path paints the same diagonal as the line case."><SimpleSvg label="Case D3 SVG path"><path d="M 100 190 L 700 70" fill="none" stroke="#7c3aed" strokeWidth="5" /></SimpleSvg></HitTargetCase>
+    <HitTargetCase id="E1" title="Case E1 — SVG text pointer-active" description="Double-click 100 directly."><SimpleSvg label="Case E1 pointer active SVG text"><text x="400" y="155" fontSize="42" textAnchor="middle">100</text></SimpleSvg></HitTargetCase>
+    <HitTargetCase id="E2" title="Case E2 — SVG text pointer-events none" description="The same visible text passes hit testing to the root SVG."><SimpleSvg label="Case E2 pointer transparent SVG text"><text x="400" y="155" fontSize="42" textAnchor="middle" pointerEvents="none">100</text></SimpleSvg></HitTargetCase>
+    <HitTargetCase id="F1" title="Case F1 — HTML overlay pointer-active" description="Double-click the overlay text directly."><div style={{ position: 'relative' }}><SimpleSvg label="Case F1 SVG under HTML overlay" /><div data-repro-html-overlay="active" style={{ position: 'absolute', top: 65, left: 320, padding: 14, background: '#fff', border: '1px solid #94a3b8' }}>Active Tool: Line</div></div></HitTargetCase>
+    <HitTargetCase id="F2" title="Case F2 — HTML overlay pointer-events none" description="The same visual overlay passes hit testing through to the SVG."><div style={{ position: 'relative' }}><SimpleSvg label="Case F2 SVG under pointer transparent HTML overlay" /><div data-repro-html-overlay="none" style={{ position: 'absolute', top: 65, left: 320, padding: 14, background: '#fff', border: '1px solid #94a3b8', pointerEvents: 'none' }}>Active Tool: Line</div></div></HitTargetCase>
+  </main>;
 }

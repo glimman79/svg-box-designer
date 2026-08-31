@@ -5,14 +5,27 @@ export const DRAWING_CANVAS_DIAGNOSTIC_EVENTS = [
 export type DrawingCanvasDiagnosticEntry = Readonly<{
   event: string;
   target: string;
+  targetTagName: string;
+  targetClass: string;
+  targetId: string;
   elementFromPoint: string;
+  elementFromPointTagName: string;
+  elementFromPointClass: string;
+  elementFromPointId: string;
   composedPath: string[];
+  clientX: number | null;
+  clientY: number | null;
+  button: number | null;
+  detail: number | null;
+  defaultPrevented: boolean;
   selection: Readonly<{
     isCollapsed: boolean | null;
     rangeCount: number;
     text: string;
     anchorNode: string;
+    anchorOffset: number;
     focusNode: string;
+    focusOffset: number;
   }>;
 }>;
 
@@ -32,7 +45,9 @@ const readSelection = () => {
     rangeCount: selection?.rangeCount ?? 0,
     text: selection?.toString() ?? '',
     anchorNode: describeNode(selection?.anchorNode ?? null),
+    anchorOffset: selection?.anchorOffset ?? 0,
     focusNode: describeNode(selection?.focusNode ?? null),
+    focusOffset: selection?.focusOffset ?? 0,
   };
 };
 
@@ -43,11 +58,25 @@ export const installDrawingCanvasDiagnostics = (
   let lastPoint = { x: 0, y: 0 };
   const record = (event: Event) => {
     if (event instanceof MouseEvent) lastPoint = { x: event.clientX, y: event.clientY };
+    const target = event.target instanceof Element ? event.target : null;
+    const pointTarget = document.elementFromPoint(lastPoint.x, lastPoint.y);
+    const mouse = event instanceof MouseEvent ? event : null;
     onEntry({
       event: event.type,
       target: describeNode(event.target as Node | null),
-      elementFromPoint: describeNode(document.elementFromPoint(lastPoint.x, lastPoint.y)),
+      targetTagName: target?.tagName.toLowerCase() ?? '',
+      targetClass: target?.getAttribute('class') ?? '',
+      targetId: target?.id ?? '',
+      elementFromPoint: describeNode(pointTarget),
+      elementFromPointTagName: pointTarget?.tagName.toLowerCase() ?? '',
+      elementFromPointClass: pointTarget?.getAttribute('class') ?? '',
+      elementFromPointId: pointTarget?.id ?? '',
       composedPath: event.composedPath().map((item) => item instanceof Node ? describeNode(item) : String(item)),
+      clientX: mouse?.clientX ?? null,
+      clientY: mouse?.clientY ?? null,
+      button: mouse?.button ?? null,
+      detail: mouse?.detail ?? null,
+      defaultPrevented: event.defaultPrevented,
       selection: readSelection(),
     });
   };
