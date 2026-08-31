@@ -47,6 +47,7 @@
     "test:edge-tool-repro": "node tests/edge-tool-repro.test.mjs",
     "test:edge-canvas-repro": "node tests/edge-canvas-repro.test.mjs",
     "test:edge-svg-hit-target": "node tests/edge-svg-hit-target.test.mjs",
+    "test:cad-canvas-selection": "node tests/cad-canvas-selection.test.mjs",
     "test:drawing-hit-target-audit": "node tests/drawing-hit-target-audit.test.mjs",
     "test:drawing-canvas-dblclick-analysis": "node tests/drawing-canvas-dblclick-analysis.test.mjs",
     "test:cad-tool-cleanup": "node tests/cad-tool-cleanup.test.mjs",
