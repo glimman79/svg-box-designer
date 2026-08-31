@@ -35,7 +35,12 @@ type CoordinateOverlayGeometry = {
   xIndicatorAnchor: CoordinatePoint;
   yIndicatorAnchor: CoordinatePoint;
 };
-type CadCursorPresentation = Readonly<{ anchor: CoordinatePoint; snap: DrawingSnap }> | null;
+type CadCursorPresentation = Readonly<{
+  anchor: CoordinatePoint;
+  snap: DrawingSnap;
+  xGuideReference: CoordinatePoint | null;
+  yGuideReference: CoordinatePoint | null;
+}> | null;
 type DrawingPlacementResolution = Readonly<{
   rawPoint: DrawingPoint;
   effectivePoint: DrawingPoint;
@@ -132,7 +137,7 @@ export function DrawingWorkspace({
     const rawPoint = clientToModelPoint(clientPoint, drawingTransform);
     if (!rawPoint) return null;
     const committedLines = activeSketch?.entityOrder.map((id) => activeSketch.entities[id]).filter((entity) => entity?.type === 'line') ?? [];
-    const candidates = collectDrawingInferenceCandidates(clientPoint, committedLines, drawingTransform);
+    const candidates = collectDrawingInferenceCandidates(clientPoint, committedLines, drawingTransform, viewBox);
     const interaction = lineInteractionRef.current;
     const snap = resolveDrawingSnap({ rawPoint, candidates, previousSnap: drawingSnapRef.current, ctrlOverride: ctrlHeld });
     const toolPoint = snap.active || !interaction.start
@@ -148,7 +153,11 @@ export function DrawingWorkspace({
     drawingSnapRef.current = snap;
     setLineInteraction(nextInteraction);
     lineInteractionRef.current = nextInteraction;
-    setCadCursor(anchor ? { anchor, snap } : null);
+    const xGuideReference = snap.type === 'alignment' && snap.xReference
+      ? modelToOverlayPoint(snap.xReference.candidatePoint, drawingTransform, overlayTransform) : null;
+    const yGuideReference = snap.type === 'alignment' && snap.yReference
+      ? modelToOverlayPoint(snap.yReference.candidatePoint, drawingTransform, overlayTransform) : null;
+    setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference } : null);
     return { rawPoint, effectivePoint: placementPoint, spatialSnap: snap, interaction: nextInteraction };
   };
   activeToolRef.current = activeTool;
@@ -352,6 +361,9 @@ export function DrawingWorkspace({
             {overlayGeometry && overlayGeometry.origin.y >= 0 && overlayGeometry.origin.y <= viewport.height && <text className="drawing-axis-letter drawing-x-indicator" x={overlayGeometry.xIndicatorAnchor.x - 15} y={overlayGeometry.xIndicatorAnchor.y - 7}>X</text>}
             {overlayGeometry && overlayGeometry.origin.x >= 0 && overlayGeometry.origin.x <= viewport.width && <text className="drawing-axis-letter drawing-y-indicator" x={overlayGeometry.yIndicatorAnchor.x + 7} y={overlayGeometry.yIndicatorAnchor.y + 15}>Y</text>}
             {activeTool === 'line' && lineCursor && (
+              <g className="drawing-alignment-presentation" aria-hidden="true">
+                {lineCursor.snap.type === 'alignment' && lineCursor.xGuideReference && <line className="drawing-alignment-guide" data-axis="x" x1={lineCursor.xGuideReference.x} y1={lineCursor.xGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
+                {lineCursor.snap.type === 'alignment' && lineCursor.yGuideReference && <line className="drawing-alignment-guide" data-axis="y" x1={lineCursor.yGuideReference.x} y1={lineCursor.yGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
               <g className="drawing-line-cursor drawing-cad-cursor" data-inference={lineCursor.snap.type} transform={`translate(${lineCursor.anchor.x} ${lineCursor.anchor.y})`} aria-hidden="true">
                 <line className="drawing-line-cursor-arm" data-arm="left" x1="-22" y1="0" x2="-7" y2="0" />
                 <line className="drawing-line-cursor-arm" data-arm="right" x1="7" y1="0" x2="22" y2="0" />
@@ -360,6 +372,8 @@ export function DrawingWorkspace({
                 {lineCursor.snap.type === 'none' && <circle className="drawing-line-cursor-dot" cx="0" cy="0" r="2.5" />}
                 {lineCursor.snap.type === 'endpoint' && <circle className="drawing-line-cursor-endpoint" cx="0" cy="0" r="5.5" />}
                 {lineCursor.snap.type === 'line' && <path className="drawing-line-cursor-line" d="M 0 -6 L 6 5 L -6 5 Z" />}
+                {lineCursor.snap.type === 'alignment' && <rect className="drawing-line-cursor-alignment" x="-5" y="-5" width="10" height="10" />}
+              </g>
               </g>
             )}
           </svg>
