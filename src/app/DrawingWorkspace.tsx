@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
-import type { DrawingCanvasDiagnosticEntry } from './drawingCanvasDiagnostics';
 import type { DrawingDocumentV1, DrawingPoint } from './drawingTypes';
 import { appendEntityToActiveSketch, applyResolvedLineClick, cancelLineInteraction, EMPTY_LINE_INTERACTION, resolveLinePreviewPoint, updateLinePreviewAtEffectivePoint, type LineToolInteraction } from './drawingLineTool';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
@@ -59,14 +58,11 @@ export function DrawingWorkspace({
   setViewBox: Dispatch<SetStateAction<DrawingViewBox>>;
 }) {
   const toolSidebarRef = useRef<HTMLElement>(null);
-  const workspaceRef = useRef<HTMLElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const overlaySvgRef = useRef<SVGSVGElement>(null);
   const [viewport, setViewport] = useState({ width: 800, height: 600 });
   const [overlayGeometry, setOverlayGeometry] = useState<CoordinateOverlayGeometry | null>(null);
   const [toolLifecycle, setToolLifecycle] = useState<DrawingToolLifecycle>(() => activateDrawingTool('select'));
-  const [diagnosticEntries, setDiagnosticEntries] = useState<ReadonlyArray<DrawingCanvasDiagnosticEntry>>([]);
-  const diagnosticsEnabled = import.meta.env.DEV && new URLSearchParams(window.location.search).get('edgeCanvasDiagnostics') === '1';
   const activeTool = toolLifecycle.activeTool;
 
   useEffect(() => {
@@ -75,17 +71,6 @@ export function DrawingWorkspace({
     sidebar.addEventListener('selectionstart', preventToolChromeSelection);
     return () => sidebar.removeEventListener('selectionstart', preventToolChromeSelection);
   }, []);
-  useEffect(() => {
-    if (!diagnosticsEnabled || !workspaceRef.current) return;
-    let dispose: (() => void) | undefined;
-    void import('./drawingCanvasDiagnostics').then(({ installDrawingCanvasDiagnostics }) => {
-      if (!workspaceRef.current) return;
-      dispose = installDrawingCanvasDiagnostics(workspaceRef.current, (entry) => {
-        setDiagnosticEntries((current) => [...current.slice(-39), entry]);
-      });
-    });
-    return () => dispose?.();
-  }, [diagnosticsEnabled]);
   const [lineInteraction, setLineInteraction] = useState<LineToolInteraction>(EMPTY_LINE_INTERACTION);
   const [cadCursor, setCadCursor] = useState<CadCursorPresentation>(null);
   const lineCursor = cadCursor; // Line is currently the sole consumer of the shared CAD cursor.
@@ -300,7 +285,7 @@ export function DrawingWorkspace({
     setOverlayGeometry(origin && xIndicatorAnchor && yIndicatorAnchor ? { origin, xLabels, yLabels, xIndicatorAnchor, yIndicatorAnchor } : null);
   }, [viewBox, viewport.width, viewport.height, labelInterval]);
   return (
-    <section ref={workspaceRef} className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace" data-edge-canvas-diagnostics={diagnosticsEnabled || undefined}>
+    <section className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace">
       <aside ref={toolSidebarRef} className="drawing-tool-sidebar" aria-label="Drawing tools" onPointerDownCapture={preventToolChromePointerSelection} onMouseDownCapture={preventToolChromeMouseSelection}>
         <button type="button" className={`cad-tool-button${activeTool === 'select' ? ' is-active' : ''}`} aria-pressed={activeTool === 'select'} onPointerDown={(event) => activateToolFromPointer('select', event)} onClick={(event) => activateToolFromKeyboard('select', event)}>Select</button>
         <button type="button" className={`cad-tool-button${activeTool === 'line' ? ' is-active' : ''}`} aria-pressed={activeTool === 'line'} onPointerDown={(event) => activateToolFromPointer('line', event)} onClick={(event) => activateToolFromKeyboard('line', event)}>Line</button>
@@ -378,11 +363,6 @@ export function DrawingWorkspace({
               </g>
             )}
           </svg>
-          {diagnosticsEnabled && <aside className="drawing-canvas-diagnostics" aria-label="Drawing canvas event diagnostics">
-            <strong>Canvas diagnostics (development only)</strong>
-            <button type="button" onClick={() => setDiagnosticEntries([])}>Clear</button>
-            <pre>{diagnosticEntries.length ? diagnosticEntries.map((entry) => JSON.stringify(entry)).join('\n') : 'Interact with the canvas to record hit testing, event paths, and selection.'}</pre>
-          </aside>}
         </div>
       </section>
       <aside className="workflow-history-panel drawing-history panel" aria-label="Drawing history">
