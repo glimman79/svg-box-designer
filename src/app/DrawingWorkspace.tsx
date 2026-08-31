@@ -223,6 +223,10 @@ export function DrawingWorkspace({
     }
   };
 
+  const handleDrawingMouseDown = (event: MouseEvent<SVGSVGElement>) => {
+    if (event.button === CAD_PRIMARY_BUTTON) event.preventDefault();
+  };
+
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
     if (panHandlers.onPointerMove(event)) return;
     if (activeTool === 'line') {
@@ -317,6 +321,7 @@ export function DrawingWorkspace({
             viewBox={formatViewBox(viewBox)}
             role="img"
             aria-label={`${activeSketch?.name ?? 'Drawing'} coordinate drawing canvas`}
+            onMouseDown={handleDrawingMouseDown}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={panHandlers.onPointerUp}
