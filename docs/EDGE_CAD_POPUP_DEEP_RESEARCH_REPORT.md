@@ -4,6 +4,10 @@ Date: 2026-08-31
 Repository baseline: `b71a42a` (`Add minimal Edge SVG structure bisect (#408)`)
 Scope: research and static analysis only. No popup fix, diagnostic, repro, or lifecycle change is part of this task.
 
+## Resolved status (2026-08-31)
+
+Real Edge acceptance established the successful solution as Drawing-local primary-button `mousedown` `preventDefault()`. Select popup: **NO**; Line popup: **NO**; right pan: **PASS**; wheel zoom: **PASS**.
+
 > **Evidence boundary.** Repository evidence was inspected directly. The execution environment denied live external HTTP access (`401` from the web research service and `403` from Microsoft Learn, GitHub, and raw GitHub over `curl`/Git), so external sources could not be re-opened or version-checked during this task. The external section therefore separates official claims and stable source locations known from published documentation from inferences, and it does **not** claim that an Edge-version-specific site workaround has been proved. Direct URLs are recorded so that a connected review can verify them before implementation.
 
 ## 1. EXECUTIVE CONCLUSION

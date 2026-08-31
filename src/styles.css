@@ -1951,24 +1951,6 @@ button:disabled {
 .drawing-label-overlay .drawing-axis-letter { fill: #334155; font-size: 12px; font-weight: 800; }
 .drawing-origin-screen { fill: #fff; stroke: #0f766e; stroke-width: 1.5; }
 
-.drawing-canvas-diagnostics {
-  position: absolute;
-  z-index: 5;
-  right: 10px;
-  bottom: 10px;
-  width: min(620px, calc(100% - 20px));
-  max-height: 240px;
-  overflow: auto;
-  padding: 10px;
-  color: #dbeafe;
-  background: rgb(15 23 42 / 94%);
-  border: 1px solid #475569;
-  border-radius: 8px;
-  font: 11px/1.35 ui-monospace, monospace;
-}
-.drawing-canvas-diagnostics button { margin-left: 12px; }
-.drawing-canvas-diagnostics pre { margin: 8px 0 0; white-space: pre-wrap; }
-
 .drawing-history { padding: 5px 8px; }
 
 .drawing-canvas-card .canvas-zoom-controls {
