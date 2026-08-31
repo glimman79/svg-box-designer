@@ -1,5 +1,21 @@
 # Edge tool popup isolation audit
 
+## Updated canvas-selection hypothesis
+
+Real Edge evidence now shows the contextual popup even when `event.target`,
+`elementFromPoint`, and the start of the composed path are the root `svg`. In
+that failing run, the DOM selection was non-collapsed and selected nearby
+diagnostic HTML (`"Last "`). SVG graphical-child identity is therefore no longer
+the leading hypothesis. Normal browser text selection initiated by a CAD-canvas
+double-click is the leading explanation, but remains unproven until the new
+selectable/local-`user-select: none` A/B is completed in real Edge.
+
+The development-only `/edge-canvas-repro` now places each diagnostic readout
+outside its selection-test region and records target, `elementFromPoint`, full
+selection state, anchor/focus nodes, and a manual popup observation. Production
+CAD viewport selection remains unchanged until that real Edge comparison proves
+that local suppression eliminates both the DOM selection and popup.
+
 ## Scope and status
 
 This audit starts at `c69bbc4053ea20139be736acf949be2597a25d06`, which includes the C4 event-completion and diagnostic work. The Edge popup root cause is **not proven** without the real-browser comparison below. No new popup-suppression mechanism was added.
