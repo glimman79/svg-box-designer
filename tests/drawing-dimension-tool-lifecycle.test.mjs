@@ -33,7 +33,7 @@ for (const [value, expected] of [[95.623, '95.623'], [120, '120'], [120.5, '120.
 assert.match(workspace, /setDimensionDraft\(formatDimensionEditValue\(dimension\.value\)\)/, 'editor initializes synchronously from the current stored driving value');
 assert.doesNotMatch(workspace, /setDimensionDraft\(dimension\.value\.toString\(\)\)/, 'editor does not bypass display precision policy');
 assert.match(workspace, /if \(dimension\.role === 'reference'\) return;/, 'reference values cannot enter numeric editing');
-assert.match(css, /drawing-dimension-editor[^}]*font-size: 10px;[^}]*font-weight: 400;/, 'editor preserves passive text size and normal weight');
+assert.match(css, /drawing-dimension-editor[^}]*font-size: 12px;[^}]*font-weight: 400;/, 'editor emphasizes editing with a larger text size and normal weight');
 assert.match(css, /drawing-dimension-editor[^}]*color: #137a3e;/, 'editor uses the selected Dimension green');
 assert.match(css, /drawing-dimension-value-hit\.is-editable \{ cursor: pointer; \}/, 'only editable value hit targets show the hand cursor');
 assert.match(css, /is-line-target \{ cursor: default; \}[\s\S]*is-point-target \{ cursor: default; \}/, 'Line and endpoint targets keep the normal arrow');
