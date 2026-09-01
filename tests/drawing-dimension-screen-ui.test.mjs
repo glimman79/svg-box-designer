@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { DIMENSION_COLORS, DIMENSION_EDITOR_BORDER_PX, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_EDITOR_HORIZONTAL_PADDING_PX, DIMENSION_EDITOR_RADIUS_PX, DIMENSION_EDITOR_VERTICAL_PADDING_PX, DIMENSION_TEXT_SIZE_PX, dimensionEditorWidthPixels, formatDimensionEditValue } from '../.test-build/drawing-dimension-screen-ui/drawingDimension.js';
+
+const workspace = fs.readFileSync(new URL('../src/app/DrawingWorkspace.tsx', import.meta.url), 'utf8');
+const css = fs.readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+
+assert.deepEqual(DIMENSION_COLORS, { normal: '#2db65b', hover: '#2fb85f', active: '#137a3e' });
+assert.ok(Object.values(DIMENSION_COLORS).every((color) => color !== '#000000' && color !== 'black'));
+assert.match(workspace, /id=\{`dimension-arrow-\$\{state\}`\}/);
+assert.match(workspace, /fill=\{color\} stroke="none"/);
+assert.match(workspace, /markerStart=\{arrowMarker\} markerEnd=\{arrowMarker\}/);
+assert.match(workspace, /viewBox="0 0 7 7" refX="7" refY="3\.5" orient="auto-start-reverse"/);
+assert.doesNotMatch(css, /context-stroke/);
+assert.equal(DIMENSION_TEXT_SIZE_PX, 10);
+assert.equal(DIMENSION_EDITOR_HEIGHT_PX, 18);
+assert.equal(DIMENSION_EDITOR_BORDER_PX, 1);
+assert.equal(DIMENSION_EDITOR_RADIUS_PX, 3);
+assert.equal(DIMENSION_EDITOR_HORIZONTAL_PADDING_PX, 4);
+assert.equal(DIMENSION_EDITOR_VERTICAL_PADDING_PX, 2);
+assert.equal(dimensionEditorWidthPixels('95.623'), 46);
+assert.equal(dimensionEditorWidthPixels('120'), 28);
+assert.equal(dimensionEditorWidthPixels('120.125'), 52);
+assert.match(workspace, /modelToOverlayPoint\(editingMiddle/);
+assert.doesNotMatch(workspace, /<foreignObject x=\{middle\.x/);
+assert.match(css, /border: 1px solid #137a3e/);
+assert.match(css, /border-radius: 3px/);
+assert.match(css, /padding: 2px 4px/);
+assert.equal(formatDimensionEditValue(95.6234), '95.623');
+assert.equal(formatDimensionEditValue(120), '120');
+assert.equal(formatDimensionEditValue(120.125), '120.125');
+console.log('Drawing Dimension screen UI checks passed.');
