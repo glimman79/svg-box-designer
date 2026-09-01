@@ -38,11 +38,12 @@ assert.match(css, /drawing-dimension-editor[^}]*color: #137a3e;/, 'editor uses t
 assert.match(css, /drawing-dimension-value-hit\.is-editable \{ cursor: pointer; \}/, 'only editable value hit targets show the hand cursor');
 assert.match(css, /is-line-target \{ cursor: default; \}[\s\S]*is-point-target \{ cursor: default; \}/, 'Line and endpoint targets keep the normal arrow');
 
-const marker = workspace.match(/<marker id="dimension-arrow"[^>]*>/)?.[0] ?? '';
+const marker = workspace.match(/<marker key=\{state\} id=\{`dimension-arrow-\$\{state\}`\}[^>]*>/)?.[0] ?? '';
 assert.match(marker, /viewBox="0 0 7 7"/);
 assert.match(marker, /refX="7" refY="3\.5"/, 'marker reference is the actual arrow tip');
 assert.match(marker, /orient="auto-start-reverse"/, 'one tip geometry serves both endpoints');
-assert.match(css, /#dimension-arrow path \{ fill: #2db65b; fill: context-stroke; \}/, 'arrow has a green fallback and follows line state color');
+assert.match(workspace, /<path d="M 7 3\.5 L 0 0 L 0 7 Z" fill=\{color\} stroke="none" \/>/, 'arrow receives an explicit browser-safe state color');
+assert.doesNotMatch(css, /context-stroke/, 'arrow rendering does not depend on context paint inheritance');
 assert.match(css, /\.drawing-dimension \{ color: #2db65b; \}/, 'normal green is brighter than D2.5a3');
 
 console.log('drawing Dimension tool lifecycle and polish tests passed');
