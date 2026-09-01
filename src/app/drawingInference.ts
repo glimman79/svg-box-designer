@@ -1,4 +1,4 @@
-import type { DrawingEntity, DrawingLineEntity, DrawingPoint } from './drawingTypes';
+import type { DrawingPoint, ResolvedDrawingLine } from './drawingTypes';
 import type { AffineTransform, CoordinatePoint } from './drawingTransform';
 
 export const DRAWING_ENDPOINT_INFERENCE_TOLERANCE_PX = 9;
@@ -51,7 +51,7 @@ const toScreenPoint = (point: CoordinatePoint, transform: AffineTransform): Coor
 });
 
 /** Extracts stable, meaningful geometric vertices without coupling inference to a tool. */
-export const collectDrawingReferencePoints = (entities: ReadonlyArray<DrawingEntity>): DrawingReferencePoint[] => {
+export const collectDrawingReferencePoints = (entities: ReadonlyArray<ResolvedDrawingLine>): DrawingReferencePoint[] => {
   const references: DrawingReferencePoint[] = [];
   const coordinates = new Set<string>();
   for (const entity of entities) {
@@ -90,7 +90,7 @@ export const distancePointToSegment = (
 /** Resolves visual-only inference against committed active-sketch lines in client pixels. */
 export const collectDrawingInferenceCandidates = (
   pointerClientPoint: CoordinatePoint,
-  lines: ReadonlyArray<DrawingLineEntity>,
+  lines: ReadonlyArray<ResolvedDrawingLine>,
   drawingToClientTransform: AffineTransform,
   visibleBounds?: DrawingModelBounds,
 ): DrawingInferenceCandidates => {
@@ -152,7 +152,7 @@ const clientToModelPointForInference = (point: CoordinatePoint, transform: Affin
 };
 
 /** Backward-compatible visual inference resolver using acquire tolerances. */
-export const resolveDrawingInference = (pointerClientPoint: CoordinatePoint, lines: ReadonlyArray<DrawingLineEntity>, drawingToClientTransform: AffineTransform): DrawingInference => {
+export const resolveDrawingInference = (pointerClientPoint: CoordinatePoint, lines: ReadonlyArray<ResolvedDrawingLine>, drawingToClientTransform: AffineTransform): DrawingInference => {
   const candidates = collectDrawingInferenceCandidates(pointerClientPoint, lines, drawingToClientTransform);
   if (candidates.endpoints[0] && candidates.endpoints[0].screenDistance <= DRAWING_ENDPOINT_INFERENCE_TOLERANCE_PX) return candidates.endpoints[0];
   if (candidates.lines[0] && candidates.lines[0].screenDistance <= DRAWING_LINE_INFERENCE_TOLERANCE_PX) return candidates.lines[0];

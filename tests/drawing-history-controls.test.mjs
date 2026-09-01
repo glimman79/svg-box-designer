@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { solveDrawingDimensionEdit } from '../.test-build/drawing-history-controls/drawingConstraintSolver.js';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-history-controls/drawingTypes.js';
 import { appendEntityToActiveSketch } from '../.test-build/drawing-history-controls/drawingLineTool.js';
+import { resolveDrawingPointReference } from '../.test-build/drawing-history-controls/drawingDimension.js';
 
 const app = fs.readFileSync('src/App.tsx', 'utf8');
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
@@ -40,9 +41,9 @@ assert.equal(undoStack.length, 1); undo(); assert.equal(current.sketches['sketch
 assert.equal(redoStack.length, 1); redo(); assert.equal(current.sketches['sketch-1'].entities.line.id, 'line', 'Redo restores a Line');
 current = beforeSolve; undoStack = []; redoStack = []; transact(solved.document); undo();
 assert.equal(current.sketches['sketch-1'].dimensions.dimension.value, 100);
-assert.equal(current.sketches['sketch-1'].entities.line.end.x, 100, 'one Undo restores target and geometry');
+assert.equal(resolveDrawingPointReference(current.sketches['sketch-1'], dimension.references[1]).x, 100, 'one Undo restores target and geometry');
 redo(); assert.equal(current.sketches['sketch-1'].dimensions.dimension.value, 120);
-assert.equal(current.sketches['sketch-1'].entities.line.end.x, 120, 'one Redo restores target and geometry');
+assert.equal(resolveDrawingPointReference(current.sketches['sketch-1'], dimension.references[1]).x, 120, 'one Redo restores target and geometry');
 undo(); transact(withLine); assert.equal(redoStack.length, 0, 'a new transaction clears the redo branch');
 
 const failed = solveDrawingDimensionEdit({ document: beforeSolve, dimensionId: 'dimension', targetValue: -1 });

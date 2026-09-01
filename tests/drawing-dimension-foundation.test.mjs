@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { appendDimension, availableLineDimensionKinds, chooseLineDimensionKind, createLineDimension, deleteDimension, deleteEntityWithDependentDimensions, formatLinearDimension, measureDimension, parseLinearDimension, resolveDrawingPointReference } from '../.test-build/drawing-dimension/drawingDimension.js';
 import { createDrawingDocumentV1, createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/drawing-dimension/drawingTypes.js';
+import { appendEntityToActiveSketch } from '../.test-build/drawing-dimension/drawingLineTool.js';
 
 const line = { id: 'line-17', type: 'line', start: { x: 0, y: 0 }, end: { x: 100, y: 50 } };
 assert.equal(measureDimension('ALIGNED_DISTANCE', line.start, line.end), Math.hypot(100, 50));
@@ -18,11 +19,11 @@ for (const [value, expected] of [[120, '120 mm'], [120.0, '120 mm'], [120.5, '12
 for (const [text, expected] of [['120',120],['120mm',120],['120 mm',120],['120.5',120.5],['0',0],['0.000',0]]) assert.equal(parseLinearDimension(text), expected);
 for (const text of ['-1','NaN','Infinity','word','2cm','1.2.3']) assert.equal(parseLinearDimension(text), null);
 let document = createDrawingDocumentV2();
-document = { ...document, sketches: { ...document.sketches, 'sketch-1': { ...document.sketches['sketch-1'], entities: { 'line-17': line }, entityOrder: ['line-17'] } } };
+document = appendEntityToActiveSketch(document, line, (() => { let n = 0; return () => `foundation-point-${++n}`; })());
 const placed = appendDimension(document, dimension);
 assert.equal(placed.sketches['sketch-1'].dimensionOrder[0], 'dimension-stable');
 assert.deepEqual(resolveDrawingPointReference(placed.sketches['sketch-1'], dimension.references[1]), line.end);
-assert.deepEqual(deleteDimension(placed, dimension.id).sketches['sketch-1'].entities['line-17'], line);
+assert.equal(deleteDimension(placed, dimension.id).sketches['sketch-1'].entities['line-17'].id, line.id);
 const cascaded = deleteEntityWithDependentDimensions(placed, line.id);
 assert.equal(cascaded.sketches['sketch-1'].dimensions[dimension.id], undefined);
 assert.equal(migrateDrawingDocument(createDrawingDocumentV1()).schemaVersion, 2);

@@ -1,4 +1,5 @@
-import type { DrawingDimension, DrawingDimensionKind, DrawingDimensionRole, DrawingDocumentV2, DrawingGeometryReference, DrawingLineEntity, DrawingPoint, DrawingSketchV2 } from './drawingTypes';
+import type { DrawingDimension, DrawingDimensionKind, DrawingDimensionRole, DrawingDocumentV2, DrawingGeometryReference, DrawingLineEntity, DrawingPoint, DrawingSketchV2, ResolvedDrawingLine } from './drawingTypes';
+import { pointIdForLineEndpoint, removeLineAndOrphans, resolveLine } from './drawingTopology.js';
 
 export const DIMENSION_AXIS_EPSILON_MM = 1e-7;
 export const DIMENSION_INTERPRETATION_HYSTERESIS_PX = 3;
@@ -33,11 +34,13 @@ export const lineDimensionReferences = (line: DrawingLineEntity): DrawingDimensi
 export const resolveDrawingPointReference = (sketch: DrawingSketchV2, reference: DrawingGeometryReference): DrawingPoint | null => {
   if (reference.kind !== 'point') return null;
   const entity = sketch.entities[reference.entityId];
-  return entity?.type === 'line' ? entity[reference.point] : null;
+  if (entity?.type !== 'line') return null;
+  const point = sketch.points[pointIdForLineEndpoint(entity, reference.point)];
+  return point ? { x: point.x, y: point.y } : null;
 };
 export const measureDimension = (kind: DrawingDimensionKind, a: DrawingPoint, b: DrawingPoint): number => kind === 'HORIZONTAL_DISTANCE'
   ? Math.abs(b.x - a.x) : kind === 'VERTICAL_DISTANCE' ? Math.abs(b.y - a.y) : Math.hypot(b.x - a.x, b.y - a.y);
-export const availableLineDimensionKinds = (line: DrawingLineEntity): DrawingDimensionKind[] => {
+export const availableLineDimensionKinds = (line: ResolvedDrawingLine): DrawingDimensionKind[] => {
   const dx = Math.abs(line.end.x - line.start.x), dy = Math.abs(line.end.y - line.start.y);
   if (dx <= DIMENSION_AXIS_EPSILON_MM && dy <= DIMENSION_AXIS_EPSILON_MM) return [];
   // Aligned is the canonical axis-line length. Zero projections and duplicate families are omitted.
@@ -67,7 +70,7 @@ export const preselectionReference = (candidate: DimensionPreselection): Drawing
   : { kind: 'entity', entityId: candidate.lineId };
 
 /** Scores distance to each family's natural placement locus; a 3 px advantage switches families. */
-export const chooseLineDimensionKind = (line: DrawingLineEntity, cursor: DrawingPoint, previous?: DrawingDimensionKind, pixelsPerModelUnit = 1): DrawingDimensionKind => {
+export const chooseLineDimensionKind = (line: ResolvedDrawingLine, cursor: DrawingPoint, previous?: DrawingDimensionKind, pixelsPerModelUnit = 1): DrawingDimensionKind => {
   const kinds = availableLineDimensionKinds(line);
   const mid = { x: (line.start.x + line.end.x) / 2, y: (line.start.y + line.end.y) / 2 };
   const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y, length = Math.hypot(dx, dy) || 1;
@@ -77,14 +80,14 @@ export const chooseLineDimensionKind = (line: DrawingLineEntity, cursor: Drawing
   const winner = kinds.reduce((best, kind) => scores[kind] < scores[best] ? kind : best, kinds[0]);
   return previous && kinds.includes(previous) && scores[previous] <= scores[winner] + DIMENSION_INTERPRETATION_HYSTERESIS_PX ? previous : winner;
 };
-export const dimensionOffset = (line: DrawingLineEntity, cursor: DrawingPoint, kind: DrawingDimensionKind): number => {
+export const dimensionOffset = (line: ResolvedDrawingLine, cursor: DrawingPoint, kind: DrawingDimensionKind): number => {
   const mid = { x: (line.start.x + line.end.x) / 2, y: (line.start.y + line.end.y) / 2 };
   if (kind === 'HORIZONTAL_DISTANCE') return cursor.y - mid.y;
   if (kind === 'VERTICAL_DISTANCE') return cursor.x - mid.x;
   const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y, length = Math.hypot(dx, dy) || 1;
   return (cursor.x - mid.x) * (-dy / length) + (cursor.y - mid.y) * (dx / length);
 };
-export const createLineDimension = (line: DrawingLineEntity, kind: DrawingDimensionKind, cursor: DrawingPoint, id: string): DrawingDimension => ({ id, kind, role: 'driving', references: lineDimensionReferences(line), value: measureDimension(kind, line.start, line.end), placement: { kind: 'linear', offset: dimensionOffset(line, cursor, kind) } });
+export const createLineDimension = (line: ResolvedDrawingLine, kind: DrawingDimensionKind, cursor: DrawingPoint, id: string): DrawingDimension => ({ id, kind, role: 'driving', references: lineDimensionReferences(line), value: measureDimension(kind, line.start, line.end), placement: { kind: 'linear', offset: dimensionOffset(line, cursor, kind) } });
 export const formatLinearDimension = (value: number): string => `${new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 3 }).format(value)} mm`;
 /** User-facing edit draft: the authoritative stored target, rounded only to the display policy. */
 export const formatDimensionEditValue = (value: number): string => new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 3 }).format(value);
@@ -157,8 +160,7 @@ export const moveDimensionPlacement = (document: DrawingDocumentV2, id: string, 
 };
 export const deleteEntityWithDependentDimensions = (document: DrawingDocumentV2, entityId: string): DrawingDocumentV2 => {
   const sketch = document.sketches[document.activeSketchId]; if (!sketch?.entities[entityId]) return document;
-  const entities = { ...sketch.entities }; delete entities[entityId];
-  const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, d]) => d.references.every((r) => r.entityId !== entityId)));
-  return { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch, entities, entityOrder: sketch.entityOrder.filter((id) => id !== entityId), dimensions, dimensionOrder: sketch.dimensionOrder.filter((id) => Boolean(dimensions[id])) } } };
+  const next = removeLineAndOrphans(sketch, entityId);
+  return { ...document, sketches: { ...document.sketches, [sketch.id]: next } };
 };
 export const createDimensionId = (): string => `dimension-${crypto.randomUUID()}`;

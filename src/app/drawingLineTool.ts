@@ -1,5 +1,7 @@
 import type { DrawingDocumentV2, DrawingLineEntity, DrawingPoint } from './drawingTypes';
 
+export type DrawingLineDraft = Readonly<{ id: string; type: 'line'; start: DrawingPoint; end: DrawingPoint; startPointId?: string; endPointId?: string }>;
+
 export const LINE_ZERO_LENGTH_TOLERANCE_MM = 1e-9;
 export const LINE_ANGULAR_SNAP_INCREMENT_DEGREES = 22.5;
 export const LINE_ANGULAR_SNAP_TOLERANCE_DEGREES = 3;
@@ -48,6 +50,7 @@ export const resolveLinePreviewPoint = (
 
 export type LineToolInteraction = Readonly<{
   start: DrawingPoint | null;
+  startPointId: string | null;
   rawPointerPoint: DrawingPoint | null;
   effectivePreviewPoint: DrawingPoint | null;
   snapActive: boolean;
@@ -56,6 +59,7 @@ export type LineToolInteraction = Readonly<{
 
 export const EMPTY_LINE_INTERACTION: LineToolInteraction = {
   start: null,
+  startPointId: null,
   rawPointerPoint: null,
   effectivePreviewPoint: null,
   snapActive: false,
@@ -88,7 +92,7 @@ export const cancelLineInteraction = (): LineToolInteraction => EMPTY_LINE_INTER
 
 export type LineClickResult = Readonly<{
   interaction: LineToolInteraction;
-  entity: DrawingLineEntity | null;
+  entity: DrawingLineDraft | null;
 }>;
 
 export const applyLineClick = (
@@ -119,29 +123,38 @@ export const applyLineClick = (
 };
 
 /** Commits a point already resolved by global/tool arbitration without reapplying angular inference. */
-export const applyResolvedLineClick = (interaction: LineToolInteraction, point: DrawingPoint, createId: () => string): LineClickResult => {
-  if (!interaction.start) return { interaction: { ...EMPTY_LINE_INTERACTION, start: point, rawPointerPoint: point, effectivePreviewPoint: point }, entity: null };
+export const applyResolvedLineClick = (interaction: LineToolInteraction, point: DrawingPoint, createId: () => string, pointId: string | null = null): LineClickResult => {
+  if (!interaction.start) return { interaction: { ...EMPTY_LINE_INTERACTION, start: point, startPointId: pointId, rawPointerPoint: point, effectivePreviewPoint: point }, entity: null };
   if (Math.hypot(point.x - interaction.start.x, point.y - interaction.start.y) <= LINE_ZERO_LENGTH_TOLERANCE_MM) return { interaction, entity: null };
   return {
-    interaction: { ...EMPTY_LINE_INTERACTION, start: point, rawPointerPoint: point, effectivePreviewPoint: point },
-    entity: { id: createId(), type: 'line', start: interaction.start, end: point },
+    interaction: { ...EMPTY_LINE_INTERACTION, start: point, startPointId: pointId, rawPointerPoint: point, effectivePreviewPoint: point },
+    entity: { id: createId(), type: 'line', start: interaction.start, end: point, startPointId: interaction.startPointId ?? undefined, endPointId: pointId ?? undefined },
   };
 };
 
 /** Immutably appends an entity to the active sketch. Invalid active sketch ids are rejected. */
 export const appendEntityToActiveSketch = (
   document: DrawingDocumentV2,
-  entity: DrawingLineEntity,
+  entity: DrawingLineDraft,
+  createPointId: () => string = () => `point-${crypto.randomUUID()}`,
 ): DrawingDocumentV2 => {
   const activeSketch = document.sketches[document.activeSketchId];
   if (!activeSketch || activeSketch.entities[entity.id]) return document;
+  const startPointId = entity.startPointId ?? createPointId();
+  const endPointId = entity.endPointId ?? createPointId();
+  const line: DrawingLineEntity = { id: entity.id, type: 'line', startPointId, endPointId };
   return {
     ...document,
     sketches: {
       ...document.sketches,
       [activeSketch.id]: {
         ...activeSketch,
-        entities: { ...activeSketch.entities, [entity.id]: entity },
+        points: {
+          ...activeSketch.points,
+          ...(activeSketch.points[startPointId] ? {} : { [startPointId]: { id: startPointId, ...entity.start } }),
+          ...(activeSketch.points[endPointId] ? {} : { [endPointId]: { id: endPointId, ...entity.end } }),
+        },
+        entities: { ...activeSketch.entities, [entity.id]: line },
         entityOrder: [...activeSketch.entityOrder, entity.id],
       },
     },
