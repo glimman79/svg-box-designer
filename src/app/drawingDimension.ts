@@ -1,4 +1,4 @@
-import type { DrawingDimension, DrawingDimensionKind, DrawingDocumentV2, DrawingGeometryReference, DrawingLineEntity, DrawingPoint, DrawingSketchV2 } from './drawingTypes';
+import type { DrawingDimension, DrawingDimensionKind, DrawingDimensionRole, DrawingDocumentV2, DrawingGeometryReference, DrawingLineEntity, DrawingPoint, DrawingSketchV2 } from './drawingTypes';
 
 export const DIMENSION_AXIS_EPSILON_MM = 1e-7;
 export const DIMENSION_INTERPRETATION_HYSTERESIS_PX = 3;
@@ -72,18 +72,64 @@ export const dimensionOffset = (line: DrawingLineEntity, cursor: DrawingPoint, k
   const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y, length = Math.hypot(dx, dy) || 1;
   return (cursor.x - mid.x) * (-dy / length) + (cursor.y - mid.y) * (dx / length);
 };
-export const createLineDimension = (line: DrawingLineEntity, kind: DrawingDimensionKind, cursor: DrawingPoint, id: string): DrawingDimension => ({ id, kind, references: lineDimensionReferences(line), value: measureDimension(kind, line.start, line.end), placement: { kind: 'linear', offset: dimensionOffset(line, cursor, kind) } });
+export const createLineDimension = (line: DrawingLineEntity, kind: DrawingDimensionKind, cursor: DrawingPoint, id: string): DrawingDimension => ({ id, kind, role: 'driving', references: lineDimensionReferences(line), value: measureDimension(kind, line.start, line.end), placement: { kind: 'linear', offset: dimensionOffset(line, cursor, kind) } });
 export const formatLinearDimension = (value: number): string => `${new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 3 }).format(value)} mm`;
+export const formatDimensionValue = (value: number, role: DrawingDimensionRole): string => role === 'reference'
+  ? `(${formatLinearDimension(value)})`
+  : formatLinearDimension(value);
 export const parseLinearDimension = (input: string): number | null => {
   const match = input.trim().match(/^(?:\d+(?:\.\d*)?|\.\d+)\s*(?:mm)?$/i);
   if (!match) return null;
   const value = Number.parseFloat(match[0]);
   return Number.isFinite(value) && value >= 0 ? value : null;
 };
+
+type PointReference = DrawingDimension['references'][number];
+export const semanticPointReferenceKey = (reference: PointReference): string => `${reference.entityId}:${reference.point}`;
+export const canonicalDimensionReferencePairKey = (references: DrawingDimension['references']): string => references
+  .map(semanticPointReferenceKey)
+  .sort()
+  .join('|');
+
+export type DimensionRoleClassification = Readonly<
+  | { role: 'driving'; reason: 'independent' }
+  | { role: 'reference'; reason: 'redundant' }
+  | { role: 'reference'; reason: 'duplicate' }
+>;
+
+/**
+ * Limited D2.5a3 rule for the three current linear families on one semantic
+ * unordered point pair. This is intentionally not a general rank/DOF solver.
+ */
+export const classifyNewDimensionRole = (sketch: DrawingSketchV2, candidate: DrawingDimension): DimensionRoleClassification => {
+  const pairKey = canonicalDimensionReferencePairKey(candidate.references);
+  const samePair = Object.values(sketch.dimensions).filter((dimension) =>
+    canonicalDimensionReferencePairKey(dimension.references) === pairKey);
+  if (samePair.some((dimension) => dimension.kind === candidate.kind)) return { role: 'reference', reason: 'duplicate' };
+  const drivingFamilies = new Set(samePair.filter((dimension) => dimension.role === 'driving').map((dimension) => dimension.kind));
+  return drivingFamilies.size >= 2
+    ? { role: 'reference', reason: 'redundant' }
+    : { role: 'driving', reason: 'independent' };
+};
+
+/** Reference measurement is always resolved from current geometry, never stale `value`. */
+export const displayedDimensionMeasurement = (sketch: DrawingSketchV2, dimension: DrawingDimension): number | null => {
+  if (dimension.role === 'driving') return dimension.value;
+  const a = resolveDrawingPointReference(sketch, dimension.references[0]);
+  const b = resolveDrawingPointReference(sketch, dimension.references[1]);
+  return a && b ? measureDimension(dimension.kind, a, b) : null;
+};
+
+/** Future solver contract: reference dimensions add zero scalar equations. */
+export const dimensionConstraintEquationCount = (dimension: DrawingDimension): 0 | 1 => dimension.role === 'driving' ? 1 : 0;
+
 export const appendDimension = (document: DrawingDocumentV2, dimension: DrawingDimension): DrawingDocumentV2 => {
   const sketch = document.sketches[document.activeSketchId];
   if (!sketch || sketch.dimensions[dimension.id] || dimension.references.some((r) => !resolveDrawingPointReference(sketch, r))) return document;
-  return { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch, dimensions: { ...sketch.dimensions, [dimension.id]: dimension }, dimensionOrder: [...sketch.dimensionOrder, dimension.id] } } };
+  const classification = classifyNewDimensionRole(sketch, dimension);
+  if (classification.reason === 'duplicate') return document;
+  const classified = { ...dimension, role: classification.role };
+  return { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch, dimensions: { ...sketch.dimensions, [dimension.id]: classified }, dimensionOrder: [...sketch.dimensionOrder, dimension.id] } } };
 };
 export const deleteDimension = (document: DrawingDocumentV2, id: string): DrawingDocumentV2 => {
   const sketch = document.sketches[document.activeSketchId]; if (!sketch?.dimensions[id]) return document;
