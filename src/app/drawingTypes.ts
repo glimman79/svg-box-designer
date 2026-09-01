@@ -24,11 +24,14 @@ export type DrawingGeometryReference =
   | Readonly<{ kind: 'entity'; entityId: string }>
   | Readonly<{ kind: 'point'; entityId: string; point: 'start' | 'end' }>;
 export type DrawingDimensionKind = 'ALIGNED_DISTANCE' | 'HORIZONTAL_DISTANCE' | 'VERTICAL_DISTANCE';
+export type DrawingDimensionRole = 'driving' | 'reference';
 export type DrawingDimension = Readonly<{
   id: string;
   kind: DrawingDimensionKind;
   references: readonly [Extract<DrawingGeometryReference, { kind: 'point' }>, Extract<DrawingGeometryReference, { kind: 'point' }>];
-  /** Future driving value in mm; D2.5a keeps it equal to measured geometry. */
+  /** Persistent solver semantics. Reference dimensions contribute no constraint equation. */
+  role: DrawingDimensionRole;
+  /** Authoritative future target for driving dimensions; ignored for reference display. */
   value: number;
   placement: Readonly<{ kind: 'linear'; offset: number }>;
 }>;
@@ -77,8 +80,13 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
   if (document.schemaVersion === 2) return {
     ...document,
     sketches: Object.fromEntries(Object.entries(document.sketches).map(([id, sketch]) => {
+      // D2.5a3 migration: legacy schema-v2 dimensions without a role become driving.
+      // An explicitly persisted reference role is retained and is never reclassified here.
       const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, dimension]) =>
-        dimension.references.every((reference) => Boolean(sketch.entities[reference.entityId]))));
+        dimension.references.every((reference) => Boolean(sketch.entities[reference.entityId]))).map(([dimensionId, dimension]) => [
+          dimensionId,
+          { ...dimension, role: (dimension.role === 'reference' ? 'reference' : 'driving') as DrawingDimensionRole },
+        ]));
       return [id, { ...sketch, dimensions, dimensionOrder: sketch.dimensionOrder.filter((dimensionId) => Boolean(dimensions[dimensionId])) }];
     })),
   };
