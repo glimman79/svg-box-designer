@@ -33,7 +33,7 @@ assert.equal(ctrlAngular.snapActive, true);
 assert.equal(ctrlAngular.snappedAngleDegrees, 45);
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 assert.match(workspace, /snap\.active[\s\S]*updateLinePreviewAtSpatialPoint/);
-assert.match(workspace, /commitLinePoint\(effectivePoint\)/);
+assert.match(workspace, /commitLinePoint\(effectivePoint, endpointPointId\)/);
 assert.match(workspace, /drawing-line-cursor-endpoint/);
 assert.match(workspace, /drawing-line-cursor-line/);
 assert.match(workspace, /drawing-line-cursor-alignment/);

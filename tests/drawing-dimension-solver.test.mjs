@@ -6,6 +6,7 @@ import {
 } from '../.test-build/drawing-dimension-solver/drawingConstraintSolver.js';
 import { displayedDimensionMeasurement, formatDimensionValue } from '../.test-build/drawing-dimension-solver/drawingDimension.js';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-dimension-solver/drawingTypes.js';
+import { resolveLine } from '../.test-build/drawing-dimension-solver/drawingTopology.js';
 
 const kinds = {
   a: 'ALIGNED_DISTANCE',
@@ -22,13 +23,17 @@ const makeDimension = (id, kind, value, role = 'driving', lineId = 'line') => ({
 });
 const makeDocument = ({ end = { x: 60, y: 80 }, dimensions = [makeDimension('edited', kinds.a, 100)] } = {}) => {
   const base = createDrawingDocumentV2();
-  const line = { id: 'line', type: 'line', start: { x: 10, y: 20 }, end };
-  const other = { id: 'other', type: 'line', start: { x: 10, y: 20 }, end: { x: 60, y: 80 } };
+  const line = { id: 'line', type: 'line', startPointId: 'line:start', endPointId: 'line:end' };
+  const other = { id: 'other', type: 'line', startPointId: 'other:start', endPointId: 'other:end' };
   const sketch = base.sketches[base.activeSketchId];
   return {
     ...base,
     sketches: { ...base.sketches, [sketch.id]: {
       ...sketch,
+      points: {
+        'line:start': { id: 'line:start', x: 10, y: 20 }, 'line:end': { id: 'line:end', ...end },
+        'other:start': { id: 'other:start', x: 10, y: 20 }, 'other:end': { id: 'other:end', x: 60, y: 80 },
+      },
       entities: { line, other }, entityOrder: ['line', 'other'],
       dimensions: Object.fromEntries(dimensions.map(dimension => [dimension.id, dimension])),
       dimensionOrder: dimensions.map(dimension => dimension.id),
@@ -36,7 +41,7 @@ const makeDocument = ({ end = { x: 60, y: 80 }, dimensions = [makeDimension('edi
   };
 };
 const solve = (document, value, id = 'edited') => solveDrawingDimensionEdit({ document, dimensionId: id, targetValue: value });
-const lineOf = result => result.document.sketches['sketch-1'].entities.line;
+const lineOf = result => { const sketch = result.document.sketches['sketch-1']; return resolveLine(sketch, sketch.entities.line); };
 const dimensionOf = (result, id) => result.document.sketches['sketch-1'].dimensions[id];
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) <= DRAWING_CONSTRAINT_TOLERANCE_MM, `${actual} != ${expected}`);
 
@@ -45,7 +50,7 @@ const close = (actual, expected) => assert.ok(Math.abs(actual - expected) <= DRA
   const before = makeDocument();
   const result = solve(before, 120.1234);
   assert.equal(result.ok, true);
-  assert.deepEqual(lineOf(result).start, before.sketches['sketch-1'].entities.line.start);
+  assert.deepEqual(lineOf(result).start, { x: 10, y: 20 });
   close(lineOf(result).end.x, 10 + 50 / Math.hypot(50, 60) * 120.1234);
   close(lineOf(result).end.y, 20 + 60 / Math.hypot(50, 60) * 120.1234);
   close(Math.hypot(lineOf(result).end.x - 10, lineOf(result).end.y - 20), 120.1234);

@@ -1,4 +1,5 @@
-import type { DrawingDimension, DrawingDimensionKind, DrawingDocumentV2, DrawingLineEntity, DrawingPoint } from './drawingTypes';
+import type { DrawingDimension, DrawingDimensionKind, DrawingDocumentV2, DrawingPoint } from './drawingTypes';
+import { resolveLine, updateSketchPoint } from './drawingTopology.js';
 
 export const DRAWING_CONSTRAINT_TOLERANCE_MM = 1e-7;
 
@@ -76,7 +77,9 @@ export const solveDrawingDimensionEdit = ({ document, dimensionId, targetValue }
   }
   if (constraints.length < 1 || constraints.length > 2) return fail('UNSATISFIABLE_DIMENSION_SET');
 
-  const a = source.start, current = source.end;
+  const resolvedSource = resolveLine(sketch, source);
+  if (!resolvedSource) return fail('MISSING_REFERENCE');
+  const a = resolvedSource.start, current = resolvedSource.end;
   const dx = current.x - a.x, dy = current.y - a.y;
   const currentLength = Math.hypot(dx, dy);
   const aligned = targets.ALIGNED_DISTANCE, horizontal = targets.HORIZONTAL_DISTANCE, vertical = targets.VERTICAL_DISTANCE;
@@ -121,15 +124,13 @@ export const solveDrawingDimensionEdit = ({ document, dimensionId, targetValue }
   if (residuals.some((residual) => residual > DRAWING_CONSTRAINT_TOLERANCE_MM)) return fail('SOLUTION_VERIFICATION_FAILED');
 
   const diagnostics = { constraintCount: constraints.length, residuals } as const;
-  if (nearZero(end.x - source.end.x) && nearZero(end.y - source.end.y) && targetValue === edited.value) {
+  if (nearZero(end.x - resolvedSource.end.x) && nearZero(end.y - resolvedSource.end.y) && targetValue === edited.value) {
     return { ok: true, document, diagnostics };
   }
 
-  const solvedLine: DrawingLineEntity = { ...source, end };
   const solvedDimension: DrawingDimension = { ...edited, value: targetValue };
   const solvedSketch = {
-    ...sketch,
-    entities: { ...sketch.entities, [source.id]: solvedLine },
+    ...updateSketchPoint(sketch, source.endPointId, end),
     dimensions: { ...sketch.dimensions, [dimensionId]: solvedDimension },
   };
   return {

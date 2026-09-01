@@ -5,11 +5,12 @@ import {
   displayedDimensionMeasurement, formatDimensionValue,
 } from '../.test-build/drawing-dimension-role/drawingDimension.js';
 import { createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/drawing-dimension-role/drawingTypes.js';
+import { appendEntityToActiveSketch } from '../.test-build/drawing-dimension-role/drawingLineTool.js';
 
 const line = { id: 'line-role', type: 'line', start: { x: 0, y: 0 }, end: { x: 42.602, y: 102.85 } };
 const makeDocument = () => {
   const document = createDrawingDocumentV2();
-  return { ...document, sketches: { ...document.sketches, 'sketch-1': { ...document.sketches['sketch-1'], entities: { [line.id]: line }, entityOrder: [line.id] } } };
+  return appendEntityToActiveSketch(document, line, (() => { let n = 0; return () => `role-point-${++n}`; })());
 };
 const make = (kind, id, source = line) => createLineDimension(source, kind, { x: 70, y: 130 }, id);
 const placeOrder = (kinds) => kinds.reduce((document, kind, index) => appendDimension(document, make(kind, `d${index}`)), makeDocument());
@@ -39,8 +40,7 @@ const coordinateCopy = make('ALIGNED_DISTANCE', 'other', { ...line, id: 'other-l
 assert.notEqual(canonicalDimensionReferencePairKey(first.references), canonicalDimensionReferencePairKey(coordinateCopy.references), 'coordinates do not define identity');
 const reference = { ...document.sketches['sketch-1'].dimensions.aligned, value: 9999 };
 assert.equal(displayedDimensionMeasurement(document.sketches['sketch-1'], reference), Math.hypot(42.602, 102.85));
-const changedLine = { ...line, end: { x: 120, y: 5 } };
-const changedSketch = { ...document.sketches['sketch-1'], entities: { [line.id]: changedLine } };
+const changedSketch = { ...document.sketches['sketch-1'], points: { ...document.sketches['sketch-1'].points, [document.sketches['sketch-1'].entities[line.id].endPointId]: { id: document.sketches['sketch-1'].entities[line.id].endPointId, x: 120, y: 5 } } };
 assert.equal(displayedDimensionMeasurement(changedSketch, reference), Math.hypot(120, 5), 'reference recomputes after geometry changes');
 for (const [kind, expected] of [['HORIZONTAL_DISTANCE', 120], ['VERTICAL_DISTANCE', 5], ['ALIGNED_DISTANCE', Math.hypot(120, 5)]])
   assert.equal(displayedDimensionMeasurement(changedSketch, { ...reference, kind }), expected);

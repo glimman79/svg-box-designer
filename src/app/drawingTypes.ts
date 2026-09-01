@@ -11,12 +11,18 @@ export type SketchId = string;
 /** A reusable point in Drawing model space, measured in the document unit. */
 export type DrawingPoint = Readonly<{ x: number; y: number }>;
 
+export type DrawingSketchPoint = Readonly<{ id: string; x: number; y: number }>;
+
 export type DrawingLineEntity = Readonly<{
   id: string;
   type: 'line';
-  start: DrawingPoint;
-  end: DrawingPoint;
+  startPointId: string;
+  endPointId: string;
 }>;
+export type DrawingLineEntityV1 = Readonly<{ id: string; type: 'line'; start: DrawingPoint; end: DrawingPoint }>;
+
+/** Non-persistent geometry resolved from a line's point references. */
+export type ResolvedDrawingLine = DrawingLineEntity & Readonly<{ start: DrawingPoint; end: DrawingPoint }>;
 
 export type DrawingEntity = DrawingLineEntity;
 
@@ -39,7 +45,7 @@ export type DrawingDimension = Readonly<{
 export type DrawingSketchV1 = {
   id: SketchId;
   name: string;
-  entities: Record<string, DrawingEntity>;
+  entities: Record<string, DrawingLineEntityV1>;
   entityOrder: string[];
 };
 
@@ -51,11 +57,17 @@ export type DrawingDocumentV1 = {
   activeSketchId: SketchId;
 };
 
-export type DrawingSketchV2 = DrawingSketchV1 & { dimensions: Record<string, DrawingDimension>; dimensionOrder: string[] };
+export type DrawingSketchV2 = Omit<DrawingSketchV1, 'entities'> & {
+  points: Record<string, DrawingSketchPoint>;
+  entities: Record<string, DrawingEntity>;
+  dimensions: Record<string, DrawingDimension>;
+  dimensionOrder: string[];
+};
 export type DrawingDocumentV2 = Omit<DrawingDocumentV1, 'schemaVersion' | 'sketches'> & {
   schemaVersion: 2;
   sketches: Record<SketchId, DrawingSketchV2>;
 };
+/** Runtime input also accepts historical schema-v2 coordinate-embedded lines. */
 export type DrawingDocument = DrawingDocumentV1 | DrawingDocumentV2;
 
 export const DEFAULT_SKETCH_ID: SketchId = 'sketch-1';
@@ -79,7 +91,19 @@ export const createDrawingDocumentV1 = (): DrawingDocumentV1 => ({
 export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocumentV2 => {
   if (document.schemaVersion === 2) return {
     ...document,
-    sketches: Object.fromEntries(Object.entries(document.sketches).map(([id, sketch]) => {
+    sketches: Object.fromEntries(Object.entries(document.sketches).map(([id, sourceSketch]) => {
+      const legacySketch = sourceSketch as unknown as Omit<DrawingSketchV2, 'entities' | 'points'> & { points?: Record<string, DrawingSketchPoint>; entities: Record<string, DrawingEntity | DrawingLineEntityV1> };
+      const points: Record<string, DrawingSketchPoint> = { ...(legacySketch.points ?? {}) };
+      const entities = Object.fromEntries(Object.entries(legacySketch.entities).map(([entityId, entity]) => {
+        if ('startPointId' in entity) return [entityId, entity];
+        // Legacy documents contain no authoritative connectivity metadata. Each endpoint
+        // therefore receives a deterministic, independent identity; equal coordinates are not merged.
+        const startPointId = `legacy:${entity.id}:start`, endPointId = `legacy:${entity.id}:end`;
+        points[startPointId] = { id: startPointId, ...entity.start };
+        points[endPointId] = { id: endPointId, ...entity.end };
+        return [entityId, { id: entity.id, type: 'line', startPointId, endPointId } satisfies DrawingLineEntity];
+      })) as Record<string, DrawingEntity>;
+      const sketch = { ...legacySketch, points, entities } as DrawingSketchV2;
       // D2.5a3 migration: legacy schema-v2 dimensions without a role become driving.
       // An explicitly persisted reference role is retained and is never reclassified here.
       const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, dimension]) =>
@@ -90,7 +114,16 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
       return [id, { ...sketch, dimensions, dimensionOrder: sketch.dimensionOrder.filter((dimensionId) => Boolean(dimensions[dimensionId])) }];
     })),
   };
-  return { ...document, schemaVersion: 2, sketches: Object.fromEntries(Object.entries(document.sketches).map(([id, sketch]) => [id, { ...sketch, dimensions: {}, dimensionOrder: [] }])) };
+  return { ...document, schemaVersion: 2, sketches: Object.fromEntries(Object.entries(document.sketches).map(([id, sketch]) => {
+    const points: Record<string, DrawingSketchPoint> = {};
+    const entities = Object.fromEntries(Object.entries(sketch.entities).map(([entityId, entity]) => {
+      const startPointId = `legacy:${entity.id}:start`, endPointId = `legacy:${entity.id}:end`;
+      points[startPointId] = { id: startPointId, ...entity.start };
+      points[endPointId] = { id: endPointId, ...entity.end };
+      return [entityId, { id: entity.id, type: 'line', startPointId, endPointId } satisfies DrawingLineEntity];
+    }));
+    return [id, { ...sketch, points, entities, dimensions: {}, dimensionOrder: [] }];
+  })) };
 };
 
 export const createDrawingDocumentV2 = (): DrawingDocumentV2 => migrateDrawingDocument(createDrawingDocumentV1());
