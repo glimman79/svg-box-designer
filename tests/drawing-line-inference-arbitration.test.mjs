@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const line = await import(pathToFileURL(path.resolve('.test-build/drawing-line-inference-arbitration/drawingLineTool.js')));
+const start = { x: 10, y: 20 };
+const interaction = line.applyResolvedLineClick(line.EMPTY_LINE_INTERACTION, start, () => 'start').interaction;
+const pointAt = (degrees, distance = 100) => ({ x: start.x + distance * Math.cos(degrees * Math.PI / 180), y: start.y + distance * Math.sin(degrees * Math.PI / 180) });
+const free90 = line.resolveLinePreviewPoint(start, pointAt(89));
+assert.equal(free90.snapActive, true);
+assert.equal(free90.snappedAngleDegrees, 90);
+for (const degrees of [90, 45, 22.5]) {
+  const endpoint = pointAt(degrees);
+  const resolved = line.updateLinePreviewAtSpatialPoint(interaction, pointAt(degrees + 1), endpoint);
+  assert.equal(resolved.effectivePreviewPoint, endpoint, `${degrees} endpoint remains the exact semantic snap object`);
+  assert.equal(resolved.snapActive, true, `${degrees} endpoint and angular inference coexist`);
+  assert.equal(resolved.snappedAngleDegrees, degrees);
+  const committed = line.applyResolvedLineClick(resolved, resolved.effectivePreviewPoint, () => `line-${degrees}`).entity;
+  assert.equal(committed.end, endpoint, `${degrees} preview and commit are identical`);
+}
+const horizontalEndpoint = pointAt(0);
+const replaced = line.updateLinePreviewAtSpatialPoint(interaction, pointAt(90), horizontalEndpoint);
+assert.equal(replaced.snapActive, true);
+assert.equal(replaced.snappedAngleDegrees, 0, 'visual follows actual endpoint geometry rather than stale 90 degrees');
+const incompatible = pointAt(13);
+const conflict = line.updateLinePreviewAtSpatialPoint(interaction, pointAt(0), incompatible);
+assert.equal(conflict.effectivePreviewPoint, incompatible);
+assert.equal(conflict.snapActive, false, 'incompatible endpoint cannot retain a false angular visual');
+assert.equal(conflict.snappedAngleDegrees, null);
+const ctrlAngular = line.resolveLinePreviewPoint(start, pointAt(44));
+assert.equal(ctrlAngular.snapActive, true);
+assert.equal(ctrlAngular.snappedAngleDegrees, 45);
+const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
+assert.match(workspace, /snap\.active[\s\S]*updateLinePreviewAtSpatialPoint/);
+assert.match(workspace, /commitLinePoint\(effectivePoint\)/);
+assert.match(workspace, /drawing-line-cursor-endpoint/);
+assert.match(workspace, /drawing-line-cursor-line/);
+assert.match(workspace, /drawing-line-cursor-alignment/);
+assert.match(workspace, /if \(panHandlers\.onPointerMove\(event\)\) return;/);
+console.log('Drawing Line inference arbitration tests passed');

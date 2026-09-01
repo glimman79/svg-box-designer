@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDimension, DrawingDocumentV2, DrawingLineEntity, DrawingPoint } from './drawingTypes';
-import { appendEntityToActiveSketch, applyResolvedLineClick, cancelLineInteraction, EMPTY_LINE_INTERACTION, resolveLinePreviewPoint, updateLinePreviewAtEffectivePoint, type LineToolInteraction } from './drawingLineTool';
+import { appendEntityToActiveSketch, applyResolvedLineClick, cancelLineInteraction, EMPTY_LINE_INTERACTION, resolveLinePreviewPoint, updateLinePreviewAtSpatialPoint, type LineToolInteraction } from './drawingLineTool';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
 import { collectDrawingInferenceCandidates } from './drawingInference';
@@ -9,7 +9,7 @@ import { activateDrawingTool, finishDrawingConstruction, type DrawingActiveTool,
 import { useCadWheelCapture } from './useCadWheelCapture';
 import { CAD_PRIMARY_BUTTON, useCadCtrlSnapOverride, useCadEscapeToolExit, useCadPanGesture } from './cadInteraction';
 import { resolveCadToolPointerActivation, type CadToolActivationRecord } from './cadToolActivation';
-import { appendDimension, chooseLineDimensionKind, createDimensionId, createLineDimension, deleteDimension, dimensionOffset, formatLinearDimension, moveDimensionPlacement, parseLinearDimension, resolveDimensionPreselection, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
+import { appendDimension, chooseLineDimensionKind, createDimensionId, createLineDimension, deleteDimension, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_TEXT_SIZE_PX, formatLinearDimension, moveDimensionPlacement, parseLinearDimension, resolveDimensionPreselection, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -169,7 +169,7 @@ export function DrawingWorkspace({
     // D2.2b equivalent was: placementPoint = nextInteraction.effectivePreviewPoint ?? point.
     const placementPoint = toolPoint;
     const nextInteraction = snap.active
-      ? updateLinePreviewAtEffectivePoint(interaction, rawPoint, toolPoint)
+      ? updateLinePreviewAtSpatialPoint(interaction, rawPoint, toolPoint)
       : interaction.start ? { ...interaction, ...resolveLinePreviewPoint(interaction.start, rawPoint) } : interaction;
     const anchor = modelToOverlayPoint(placementPoint, drawingTransform, overlayTransform);
     setDrawingSnap(snap);
@@ -467,7 +467,7 @@ export function DrawingWorkspace({
                 return <g key={dimension.id} className={`drawing-dimension${dimension.id === selectedDimensionId ? ' is-selected' : ''}${dimension.id === hoveredDimensionId ? ' is-hovered' : ''}${dimensionDrag?.id === dimension.id ? ' is-dragging' : ''}${editingDimensionId === dimension.id ? ' is-editing' : ''}${dimension.id === 'preview' ? ' is-preview' : ''}`}>
                   <line className="drawing-dimension-extension" x1={extensionA.start.x} y1={extensionA.start.y} x2={extensionA.end.x} y2={extensionA.end.y} /><line className="drawing-dimension-extension" x1={extensionB.start.x} y1={extensionB.start.y} x2={extensionB.end.x} y2={extensionB.end.y} />
                   <line className="drawing-dimension-line" markerStart="url(#dimension-arrow)" markerEnd="url(#dimension-arrow)" x1={geometry.a.x} y1={geometry.a.y} x2={geometry.b.x} y2={geometry.b.y} />
-                  <text className="drawing-dimension-value" x={middle.x} y={middle.y - 4 / pixelsPerMm} textAnchor="middle" transform={`rotate(${textAngle} ${middle.x} ${middle.y})`}>{formatLinearDimension(dimension.value)}</text>
+                  <text className="drawing-dimension-value" x={middle.x} y={middle.y - 4 / pixelsPerMm} textAnchor="middle" style={{ fontSize: dimensionScreenPixelsToModelUnits(DIMENSION_TEXT_SIZE_PX, pixelsPerMm) }} transform={`rotate(${textAngle} ${middle.x} ${middle.y})`}>{formatLinearDimension(dimension.value)}</text>
                   {dimension.id !== 'preview' && <line className="drawing-dimension-hit" x1={geometry.a.x} y1={geometry.a.y} x2={geometry.b.x} y2={geometry.b.y} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || editingDimensionId) return; event.currentTarget.setPointerCapture(event.pointerId); setSelectedDimensionId(dimension.id); setDimensionDrag({ id: dimension.id, startClient: { x: event.clientX, y: event.clientY }, startOffset: dimension.placement.offset, previewOffset: dimension.placement.offset, exceeded: false }); }} onDoubleClick={(event) => { if (dimensionDrag?.exceeded) return; setDimensionDrag(null); setSelectedDimensionId(dimension.id); setEditingDimensionId(dimension.id); setDimensionDraft(dimension.value.toString()); setDimensionEditError(null); }} />}
                   {editingDimensionId === dimension.id && <foreignObject x={middle.x - 45 / pixelsPerMm} y={middle.y - 18 / pixelsPerMm} width={90 / pixelsPerMm} height={30 / pixelsPerMm}><input autoFocus className="drawing-dimension-editor" value={dimensionDraft} aria-label="Dimension value in millimetres" onChange={(event) => { setDimensionDraft(event.target.value); setDimensionEditError(null); }} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingDimensionId(null); setDimensionEditError(null); } if (event.key === 'Enter') { const parsed = parseLinearDimension(dimensionDraft); if (parsed === null) setDimensionEditError('Enter a non-negative value in mm.'); else if (Math.abs(parsed - dimension.value) > 1e-9) setDimensionEditError('Driving edits require the D2.5b solver.'); else { setEditingDimensionId(null); setDimensionEditError(null); } } }} /></foreignObject>}
                   {editingDimensionId === dimension.id && dimensionEditError && <text className="drawing-dimension-error" x={middle.x} y={middle.y + 24 / pixelsPerMm} textAnchor="middle">{dimensionEditError}</text>}

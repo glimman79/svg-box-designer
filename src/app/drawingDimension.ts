@@ -5,6 +5,7 @@ export const DIMENSION_INTERPRETATION_HYSTERESIS_PX = 3;
 export const DIMENSION_ENDPOINT_TOLERANCE_PX = 9;
 export const DIMENSION_LINE_TOLERANCE_PX = 8;
 export const DIMENSION_DRAG_THRESHOLD_PX = 4;
+export const DIMENSION_TEXT_SIZE_PX = 10;
 export type DimensionPreselection = Readonly<{
   kind: 'point'; lineId: string; point: 'start' | 'end'; clientPoint: DrawingPoint; distancePx: number;
 }> | Readonly<{ kind: 'line'; lineId: string; distancePx: number }>;
@@ -27,11 +28,12 @@ export const measureDimension = (kind: DrawingDimensionKind, a: DrawingPoint, b:
 export const availableLineDimensionKinds = (line: DrawingLineEntity): DrawingDimensionKind[] => {
   const dx = Math.abs(line.end.x - line.start.x), dy = Math.abs(line.end.y - line.start.y);
   if (dx <= DIMENSION_AXIS_EPSILON_MM && dy <= DIMENSION_AXIS_EPSILON_MM) return [];
-  // Keep aligned as the canonical equivalent; retain the non-duplicate zero projection.
-  if (dy <= DIMENSION_AXIS_EPSILON_MM) return ['ALIGNED_DISTANCE', 'VERTICAL_DISTANCE'];
-  if (dx <= DIMENSION_AXIS_EPSILON_MM) return ['ALIGNED_DISTANCE', 'HORIZONTAL_DISTANCE'];
+  // Aligned is the canonical axis-line length. Zero projections and duplicate families are omitted.
+  if (dy <= DIMENSION_AXIS_EPSILON_MM || dx <= DIMENSION_AXIS_EPSILON_MM) return ['ALIGNED_DISTANCE'];
   return ['ALIGNED_DISTANCE', 'HORIZONTAL_DISTANCE', 'VERTICAL_DISTANCE'];
 };
+/** Converts a fixed screen-space annotation size to SVG model units. */
+export const dimensionScreenPixelsToModelUnits = (screenPixels: number, pixelsPerModelUnit: number): number => screenPixels / pixelsPerModelUnit;
 /** Resolve one semantic target in client space. Endpoints intentionally form the first priority tier. */
 export const collectDimensionReferenceCandidates = (lines: readonly DimensionClientLine[], cursor: DrawingPoint): DimensionPreselection[] => {
   const points: DimensionPreselection[] = [], bodies: DimensionPreselection[] = [];

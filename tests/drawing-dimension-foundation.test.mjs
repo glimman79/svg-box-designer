@@ -10,8 +10,8 @@ const dimension = createLineDimension(line, 'ALIGNED_DISTANCE', { x: 40, y: 80 }
 assert.equal(dimension.id, 'dimension-stable');
 assert.deepEqual(dimension.references, [{ kind: 'point', entityId: 'line-17', point: 'start' }, { kind: 'point', entityId: 'line-17', point: 'end' }]);
 assert.equal('x' in dimension.references[0], false);
-assert.deepEqual(availableLineDimensionKinds({ ...line, end: { x: 100, y: 0 } }), ['ALIGNED_DISTANCE', 'VERTICAL_DISTANCE']);
-assert.deepEqual(availableLineDimensionKinds({ ...line, end: { x: 0, y: 100 } }), ['ALIGNED_DISTANCE', 'HORIZONTAL_DISTANCE']);
+assert.deepEqual(availableLineDimensionKinds({ ...line, end: { x: 100, y: 0 } }), ['ALIGNED_DISTANCE']);
+assert.deepEqual(availableLineDimensionKinds({ ...line, end: { x: 0, y: 100 } }), ['ALIGNED_DISTANCE']);
 assert.equal(chooseLineDimensionKind(line, { x: 50, y: 100 }), chooseLineDimensionKind(line, { x: 50, y: 100 }));
 assert.equal(chooseLineDimensionKind(line, { x: 50, y: 100 }, chooseLineDimensionKind(line, { x: 50, y: 100 })), chooseLineDimensionKind(line, { x: 50, y: 100 }));
 for (const [value, expected] of [[120, '120 mm'], [120.0, '120 mm'], [120.5, '120.5 mm'], [120.125, '120.125 mm'], [0, '0 mm']]) assert.equal(formatLinearDimension(value), expected);
