@@ -74,6 +74,8 @@ export const dimensionOffset = (line: DrawingLineEntity, cursor: DrawingPoint, k
 };
 export const createLineDimension = (line: DrawingLineEntity, kind: DrawingDimensionKind, cursor: DrawingPoint, id: string): DrawingDimension => ({ id, kind, role: 'driving', references: lineDimensionReferences(line), value: measureDimension(kind, line.start, line.end), placement: { kind: 'linear', offset: dimensionOffset(line, cursor, kind) } });
 export const formatLinearDimension = (value: number): string => `${new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 3 }).format(value)} mm`;
+/** User-facing edit draft: the authoritative stored target, rounded only to the display policy. */
+export const formatDimensionEditValue = (value: number): string => new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 3 }).format(value);
 export const formatDimensionValue = (value: number, role: DrawingDimensionRole): string => role === 'reference'
   ? `(${formatLinearDimension(value)})`
   : formatLinearDimension(value);

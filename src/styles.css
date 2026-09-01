@@ -1408,15 +1408,18 @@ button:disabled {
 }
 
 .drawing-operation-toolbar .toolbar-button { display: inline-flex; align-items: center; gap: 6px; }
-.drawing-dimension { color: #249b50; }
+.drawing-operation-toolbar .toolbar-button.is-active { color: #022c22; background: #5eead4; border-color: #2dd4bf; }
+.drawing-dimension { color: #2db65b; }
 .drawing-dimension-line { fill: none; stroke: currentColor; stroke-width: 0.75; vector-effect: non-scaling-stroke; }
 .drawing-dimension-extension { fill: none; stroke: currentColor; stroke-width: 0.65; opacity: 0.72; vector-effect: non-scaling-stroke; }
-#dimension-arrow path { fill: context-stroke; }
+#dimension-arrow path { fill: #2db65b; fill: context-stroke; }
 .drawing-dimension-value, .drawing-dimension-error { fill: currentColor; font-family: system-ui, sans-serif; font-weight: 400; paint-order: stroke; stroke: #f8fafc; stroke-width: 2px; vector-effect: non-scaling-stroke; }
 .drawing-dimension.is-hovered { color: #2fb85f; }
 .drawing-dimension.is-selected, .drawing-dimension.is-editing, .drawing-dimension.is-dragging { color: #137a3e; }
 .drawing-dimension.is-preview { opacity: 0.7; pointer-events: none; }
 .drawing-dimension-hit { stroke: transparent; stroke-width: 14; vector-effect: non-scaling-stroke; cursor: grab; }
+.drawing-dimension-value-hit { fill: transparent; pointer-events: all; cursor: default; }
+.drawing-dimension-value-hit.is-editable { cursor: pointer; }
 .drawing-dimension.is-dragging .drawing-dimension-hit { cursor: grabbing; }
 .drawing-line-entity.is-dimension-preselected { stroke: #06b6d4; stroke-width: 2.4; }
 .drawing-dimension-point-preselection, .drawing-dimension-point-selected { fill: #f8fafc; stroke: #06b6d4; stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
@@ -1424,7 +1427,7 @@ button:disabled {
 .drawing-svg.has-dimension-cursor { cursor: crosshair; }
 .drawing-svg.has-dimension-cursor.is-line-target { cursor: default; }
 .drawing-svg.has-dimension-cursor.is-point-target { cursor: default; }
-.drawing-dimension-editor { box-sizing: border-box; width: 100%; border: 1px solid #22d3ee; border-radius: 4px; padding: 3px 5px; color: #0f172a; background: white; font: 12px system-ui; }
+.drawing-dimension-editor { box-sizing: border-box; width: 100%; border: 1px solid #86d7a5; border-radius: 3px; padding: 2px 4px; color: #137a3e; caret-color: #0f172a; background: rgb(255 255 255 / 94%); font-family: system-ui, sans-serif; font-size: 10px; font-weight: 400; line-height: 1.2; }
 .drawing-dimension-error { fill: #fca5a5; font-size: 10px; }
 
 .workspace {

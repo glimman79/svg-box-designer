@@ -9,7 +9,7 @@ import { activateDrawingTool, finishDrawingConstruction, type DrawingActiveTool,
 import { useCadWheelCapture } from './useCadWheelCapture';
 import { CAD_PRIMARY_BUTTON, useCadCtrlSnapOverride, useCadEscapeToolExit, useCadPanGesture } from './cadInteraction';
 import { resolveCadToolPointerActivation, type CadToolActivationRecord } from './cadToolActivation';
-import { appendDimension, chooseLineDimensionKind, createDimensionId, createLineDimension, deleteDimension, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatDimensionValue, moveDimensionPlacement, parseLinearDimension, resolveDimensionPreselection, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
+import { appendDimension, chooseLineDimensionKind, createDimensionId, createLineDimension, deleteDimension, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatDimensionEditValue, formatDimensionValue, moveDimensionPlacement, parseLinearDimension, resolveDimensionPreselection, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -112,10 +112,24 @@ export function DrawingWorkspace({
   });
 
   useEffect(() => {
-    const activate = () => selectTool('dimension');
+    const activate = (event: Event) => {
+      const detail = (event as CustomEvent<{ timestamp?: number; x?: number; y?: number }>).detail;
+      if (detail?.timestamp !== undefined && detail.x !== undefined && detail.y !== undefined) {
+        const resolution = resolveCadToolPointerActivation('dimension', detail.timestamp, { x: detail.x, y: detail.y }, previousToolActivationRef.current);
+        previousToolActivationRef.current = resolution.record;
+        selectTool('dimension', resolution.activationMode);
+      } else {
+        previousToolActivationRef.current = null;
+        selectTool('dimension');
+      }
+    };
     window.addEventListener('drawing:activate-dimension', activate);
     return () => window.removeEventListener('drawing:activate-dimension', activate);
   });
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('drawing:tool-state', { detail: { activeTool, activationMode: toolLifecycle.activationMode } }));
+  }, [activeTool, toolLifecycle.activationMode]);
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -234,7 +248,7 @@ export function DrawingWorkspace({
 
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (panHandlers.onPointerDown(event)) return;
-    if ((event.target as Element).closest('.drawing-dimension-editor, .drawing-dimension-hit')) return;
+    if ((event.target as Element).closest('.drawing-dimension-editor, .drawing-dimension-hit, .drawing-dimension-value-hit')) return;
     if (event.button !== CAD_PRIMARY_BUTTON) return;
     if (activeTool === 'dimension') {
       const matrix = svgRef.current?.getScreenCTM();
@@ -242,8 +256,12 @@ export function DrawingWorkspace({
       if (!point || !activeSketch) return;
       if (dimensionTool.phase === 'placementPreview') {
         const line = activeSketch.entities[dimensionTool.lineId];
-        if (line?.type === 'line') transactDocument((current) => appendDimension(current, createLineDimension(line, dimensionTool.kind, point, createDimensionId())));
-        setDimensionTool({ phase: 'acquiringReference' });
+        if (line?.type !== 'line') return;
+        transactDocument((current) => appendDimension(current, createLineDimension(line, dimensionTool.kind, point, createDimensionId())));
+        const nextLifecycle = finishDrawingConstruction(toolLifecycle);
+        setToolLifecycle(nextLifecycle);
+        setDimensionTool(nextLifecycle.activeTool === 'dimension' ? { phase: 'acquiringReference' } : { phase: 'inactive' });
+        setDimensionPreselection(null);
         return;
       }
       const candidate = resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
@@ -431,7 +449,7 @@ export function DrawingWorkspace({
             onDoubleClick={() => { if (activeTool === 'line') finishLine(); }}
           >
             <defs>
-              <marker id="dimension-arrow" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto-start-reverse" markerUnits="strokeWidth"><path d="M 7 3.5 L 0 0 L 0 7 Z" /></marker>
+              <marker id="dimension-arrow" markerWidth="7" markerHeight="7" viewBox="0 0 7 7" refX="7" refY="3.5" orient="auto-start-reverse" markerUnits="strokeWidth"><path d="M 7 3.5 L 0 0 L 0 7 Z" /></marker>
               <pattern id="drawing-grid" x="0" y="0" width={gridSpacing} height={gridSpacing} patternUnits="userSpaceOnUse">
                 <path className="drawing-grid-line drawing-grid-line-primary" d={`M ${gridSpacing} 0 L 0 0 0 ${gridSpacing}`} />
               </pattern>
@@ -466,11 +484,21 @@ export function DrawingWorkspace({
                 const extensionA = extension(geometry.sourceA, geometry.a), extensionB = extension(geometry.sourceB, geometry.b);
                 const rawAngle = dimension.kind === 'HORIZONTAL_DISTANCE' ? 0 : dimension.kind === 'VERTICAL_DISTANCE' ? -90 : Math.atan2(geometry.b.y - geometry.a.y, geometry.b.x - geometry.a.x) * 180 / Math.PI;
                 const textAngle = rawAngle > 90 || rawAngle < -90 ? rawAngle + 180 : rawAngle;
+                const label = formatDimensionValue(measurement, dimension.role);
+                const valueHitWidth = (label.length * 6 + 12) / pixelsPerMm;
+                const beginDimensionEdit = () => {
+                  setSelectedDimensionId(dimension.id);
+                  if (dimension.role === 'reference') return;
+                  setEditingDimensionId(dimension.id);
+                  setDimensionDraft(formatDimensionEditValue(dimension.value));
+                  setDimensionEditError(null);
+                };
                 return <g key={dimension.id} className={`drawing-dimension is-${dimension.role}${dimension.id === selectedDimensionId ? ' is-selected' : ''}${dimension.id === hoveredDimensionId ? ' is-hovered' : ''}${dimensionDrag?.id === dimension.id ? ' is-dragging' : ''}${editingDimensionId === dimension.id ? ' is-editing' : ''}${dimension.id === 'preview' ? ' is-preview' : ''}`}>
                   <line className="drawing-dimension-extension" x1={extensionA.start.x} y1={extensionA.start.y} x2={extensionA.end.x} y2={extensionA.end.y} /><line className="drawing-dimension-extension" x1={extensionB.start.x} y1={extensionB.start.y} x2={extensionB.end.x} y2={extensionB.end.y} />
                   <line className="drawing-dimension-line" markerStart="url(#dimension-arrow)" markerEnd="url(#dimension-arrow)" x1={geometry.a.x} y1={geometry.a.y} x2={geometry.b.x} y2={geometry.b.y} />
-                  <text className="drawing-dimension-value" x={middle.x} y={middle.y - 4 / pixelsPerMm} textAnchor="middle" style={{ fontSize: dimensionScreenPixelsToModelUnits(DIMENSION_TEXT_SIZE_PX, pixelsPerMm) }} transform={`rotate(${textAngle} ${middle.x} ${middle.y})`}>{formatDimensionValue(measurement, dimension.role)}</text>
-                  {dimension.id !== 'preview' && <line className="drawing-dimension-hit" x1={geometry.a.x} y1={geometry.a.y} x2={geometry.b.x} y2={geometry.b.y} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || editingDimensionId) return; event.currentTarget.setPointerCapture(event.pointerId); setSelectedDimensionId(dimension.id); setDimensionDrag({ id: dimension.id, startClient: { x: event.clientX, y: event.clientY }, startOffset: dimension.placement.offset, previewOffset: dimension.placement.offset, exceeded: false }); }} onDoubleClick={(event) => { if (dimensionDrag?.exceeded) return; setDimensionDrag(null); setSelectedDimensionId(dimension.id); if (dimension.role === 'reference') return; setEditingDimensionId(dimension.id); setDimensionDraft(dimension.value.toString()); setDimensionEditError(null); }} />}
+                  <text className="drawing-dimension-value" x={middle.x} y={middle.y - 4 / pixelsPerMm} textAnchor="middle" style={{ fontSize: dimensionScreenPixelsToModelUnits(DIMENSION_TEXT_SIZE_PX, pixelsPerMm) }} transform={`rotate(${textAngle} ${middle.x} ${middle.y})`}>{label}</text>
+                  {dimension.id !== 'preview' && <line className="drawing-dimension-hit" x1={geometry.a.x} y1={geometry.a.y} x2={geometry.b.x} y2={geometry.b.y} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || editingDimensionId) return; event.currentTarget.setPointerCapture(event.pointerId); setSelectedDimensionId(dimension.id); setDimensionDrag({ id: dimension.id, startClient: { x: event.clientX, y: event.clientY }, startOffset: dimension.placement.offset, previewOffset: dimension.placement.offset, exceeded: false }); }} />}
+                  {dimension.id !== 'preview' && <rect className={`drawing-dimension-value-hit${dimension.role === 'driving' ? ' is-editable' : ''}`} x={middle.x - valueHitWidth / 2} y={middle.y - 16 / pixelsPerMm} width={valueHitWidth} height={18 / pixelsPerMm} transform={`rotate(${textAngle} ${middle.x} ${middle.y})`} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => { if (event.button === CAD_PRIMARY_BUTTON) setSelectedDimensionId(dimension.id); }} onDoubleClick={beginDimensionEdit} />}
                   {editingDimensionId === dimension.id && <foreignObject x={middle.x - 45 / pixelsPerMm} y={middle.y - 18 / pixelsPerMm} width={90 / pixelsPerMm} height={30 / pixelsPerMm}><input autoFocus className="drawing-dimension-editor" value={dimensionDraft} aria-label="Dimension value in millimetres" onChange={(event) => { setDimensionDraft(event.target.value); setDimensionEditError(null); }} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingDimensionId(null); setDimensionEditError(null); } if (event.key === 'Enter') { const parsed = parseLinearDimension(dimensionDraft); if (parsed === null) setDimensionEditError('Enter a non-negative value in mm.'); else if (Math.abs(parsed - dimension.value) > 1e-9) setDimensionEditError('Driving edits require the D2.5b solver.'); else { setEditingDimensionId(null); setDimensionEditError(null); } } }} /></foreignObject>}
                   {editingDimensionId === dimension.id && dimensionEditError && <text className="drawing-dimension-error" x={middle.x} y={middle.y + 24 / pixelsPerMm} textAnchor="middle">{dimensionEditError}</text>}
                 </g>;
