@@ -1,10 +1,17 @@
 import type { DrawingDimension, DrawingDimensionKind, DrawingDocumentV2, DrawingGeometryReference, DrawingLineEntity, DrawingPoint, DrawingSketchV2 } from './drawingTypes';
 
 export const DIMENSION_AXIS_EPSILON_MM = 1e-7;
-export const DIMENSION_INTERPRETATION_HYSTERESIS = 0.12;
+export const DIMENSION_INTERPRETATION_HYSTERESIS_PX = 3;
+export const DIMENSION_ENDPOINT_TOLERANCE_PX = 9;
+export const DIMENSION_LINE_TOLERANCE_PX = 8;
+export const DIMENSION_DRAG_THRESHOLD_PX = 4;
+export type DimensionPreselection = Readonly<{
+  kind: 'point'; lineId: string; point: 'start' | 'end'; clientPoint: DrawingPoint; distancePx: number;
+}> | Readonly<{ kind: 'line'; lineId: string; distancePx: number }>;
+export type DimensionClientLine = Readonly<{ id: string; start: DrawingPoint; end: DrawingPoint }>;
 export type DimensionToolState =
   | Readonly<{ phase: 'inactive' }>
-  | Readonly<{ phase: 'acquiringReference' }>
+  | Readonly<{ phase: 'acquiringReference'; reference?: Extract<DrawingGeometryReference, { kind: 'point' }> }>
   | Readonly<{ phase: 'placementPreview'; lineId: string; cursor: DrawingPoint; kind: DrawingDimensionKind }>;
 
 export const lineDimensionReferences = (line: DrawingLineEntity): DrawingDimension['references'] => ([
@@ -25,15 +32,36 @@ export const availableLineDimensionKinds = (line: DrawingLineEntity): DrawingDim
   if (dx <= DIMENSION_AXIS_EPSILON_MM) return ['ALIGNED_DISTANCE', 'HORIZONTAL_DISTANCE'];
   return ['ALIGNED_DISTANCE', 'HORIZONTAL_DISTANCE', 'VERTICAL_DISTANCE'];
 };
-/** Scores cursor direction against each annotation family's vector locus. */
-export const chooseLineDimensionKind = (line: DrawingLineEntity, cursor: DrawingPoint, previous?: DrawingDimensionKind): DrawingDimensionKind => {
+/** Resolve one semantic target in client space. Endpoints intentionally form the first priority tier. */
+export const collectDimensionReferenceCandidates = (lines: readonly DimensionClientLine[], cursor: DrawingPoint): DimensionPreselection[] => {
+  const points: DimensionPreselection[] = [], bodies: DimensionPreselection[] = [];
+  for (const line of lines) {
+    for (const point of ['start', 'end'] as const) {
+      const distancePx = Math.hypot(cursor.x - line[point].x, cursor.y - line[point].y);
+      if (distancePx <= DIMENSION_ENDPOINT_TOLERANCE_PX) points.push({ kind: 'point', lineId: line.id, point, clientPoint: line[point], distancePx });
+    }
+    const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y;
+    const t = Math.max(0, Math.min(1, ((cursor.x - line.start.x) * dx + (cursor.y - line.start.y) * dy) / (dx * dx + dy * dy || 1)));
+    const distancePx = Math.hypot(cursor.x - line.start.x - t * dx, cursor.y - line.start.y - t * dy);
+    if (distancePx <= DIMENSION_LINE_TOLERANCE_PX) bodies.push({ kind: 'line', lineId: line.id, distancePx });
+  }
+  return [...points.sort((a, b) => a.distancePx - b.distancePx), ...bodies.sort((a, b) => a.distancePx - b.distancePx)];
+};
+export const resolveDimensionPreselection = (lines: readonly DimensionClientLine[], cursor: DrawingPoint): DimensionPreselection | null => collectDimensionReferenceCandidates(lines, cursor)[0] ?? null;
+export const preselectionReference = (candidate: DimensionPreselection): DrawingGeometryReference => candidate.kind === 'point'
+  ? { kind: 'point', entityId: candidate.lineId, point: candidate.point }
+  : { kind: 'entity', entityId: candidate.lineId };
+
+/** Scores distance to each family's natural placement locus; a 3 px advantage switches families. */
+export const chooseLineDimensionKind = (line: DrawingLineEntity, cursor: DrawingPoint, previous?: DrawingDimensionKind, pixelsPerModelUnit = 1): DrawingDimensionKind => {
   const kinds = availableLineDimensionKinds(line);
   const mid = { x: (line.start.x + line.end.x) / 2, y: (line.start.y + line.end.y) / 2 };
   const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y, length = Math.hypot(dx, dy) || 1;
-  const qx = cursor.x - mid.x, qy = cursor.y - mid.y, radius = Math.hypot(qx, qy) || 1;
-  const scores: Record<DrawingDimensionKind, number> = { ALIGNED_DISTANCE: Math.abs(qx * dx / length + qy * dy / length) / radius, HORIZONTAL_DISTANCE: Math.abs(qx) / radius, VERTICAL_DISTANCE: Math.abs(qy) / radius };
+  const qx = cursor.x - mid.x, qy = cursor.y - mid.y;
+  // Loci are rays normal to the candidate dimension line through its midpoint.
+  const scores: Record<DrawingDimensionKind, number> = { ALIGNED_DISTANCE: Math.abs(qx * dx / length + qy * dy / length) * pixelsPerModelUnit, HORIZONTAL_DISTANCE: Math.abs(qx) * pixelsPerModelUnit, VERTICAL_DISTANCE: Math.abs(qy) * pixelsPerModelUnit };
   const winner = kinds.reduce((best, kind) => scores[kind] < scores[best] ? kind : best, kinds[0]);
-  return previous && kinds.includes(previous) && scores[previous] <= scores[winner] + DIMENSION_INTERPRETATION_HYSTERESIS ? previous : winner;
+  return previous && kinds.includes(previous) && scores[previous] <= scores[winner] + DIMENSION_INTERPRETATION_HYSTERESIS_PX ? previous : winner;
 };
 export const dimensionOffset = (line: DrawingLineEntity, cursor: DrawingPoint, kind: DrawingDimensionKind): number => {
   const mid = { x: (line.start.x + line.end.x) / 2, y: (line.start.y + line.end.y) / 2 };
@@ -43,7 +71,7 @@ export const dimensionOffset = (line: DrawingLineEntity, cursor: DrawingPoint, k
   return (cursor.x - mid.x) * (-dy / length) + (cursor.y - mid.y) * (dx / length);
 };
 export const createLineDimension = (line: DrawingLineEntity, kind: DrawingDimensionKind, cursor: DrawingPoint, id: string): DrawingDimension => ({ id, kind, references: lineDimensionReferences(line), value: measureDimension(kind, line.start, line.end), placement: { kind: 'linear', offset: dimensionOffset(line, cursor, kind) } });
-export const formatLinearDimension = (value: number): string => `${value.toString()} mm`;
+export const formatLinearDimension = (value: number): string => `${new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 3 }).format(value)} mm`;
 export const parseLinearDimension = (input: string): number | null => {
   const match = input.trim().match(/^(?:\d+(?:\.\d*)?|\.\d+)\s*(?:mm)?$/i);
   if (!match) return null;
@@ -59,6 +87,11 @@ export const deleteDimension = (document: DrawingDocumentV2, id: string): Drawin
   const sketch = document.sketches[document.activeSketchId]; if (!sketch?.dimensions[id]) return document;
   const dimensions = { ...sketch.dimensions }; delete dimensions[id];
   return { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch, dimensions, dimensionOrder: sketch.dimensionOrder.filter((item) => item !== id) } } };
+};
+export const moveDimensionPlacement = (document: DrawingDocumentV2, id: string, offset: number): DrawingDocumentV2 => {
+  const sketch = document.sketches[document.activeSketchId], dimension = sketch?.dimensions[id];
+  if (!sketch || !dimension || dimension.placement.offset === offset) return document;
+  return { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch, dimensions: { ...sketch.dimensions, [id]: { ...dimension, placement: { ...dimension.placement, offset } } } } } };
 };
 export const deleteEntityWithDependentDimensions = (document: DrawingDocumentV2, entityId: string): DrawingDocumentV2 => {
   const sketch = document.sketches[document.activeSketchId]; if (!sketch?.entities[entityId]) return document;

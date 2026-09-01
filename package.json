@@ -4,6 +4,7 @@
   "version": "1.2.0",
   "type": "module",
   "scripts": {
+    "test:drawing-dimension-interaction": "rm -rf .test-build/drawing-dimension-interaction && tsc --ignoreConfig src/app/drawingTypes.ts src/app/drawingDimension.ts --target es2022 --module esnext --moduleResolution bundler --outDir .test-build/drawing-dimension-interaction --skipLibCheck && node tests/drawing-dimension-interaction.test.mjs",
     "test:drawing-dimension-foundation": "rm -rf .test-build/drawing-dimension && tsc --ignoreConfig src/app/drawingTypes.ts src/app/drawingDimension.ts --target es2022 --module esnext --moduleResolution bundler --outDir .test-build/drawing-dimension --skipLibCheck && node tests/drawing-dimension-foundation.test.mjs",
     "test:downstream-diagnostic-reasons": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/downstream-diagnostic-reasons.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/downstream-diagnostic-reasons.js",
     "test:geometry-runtime-debug-serialization": "rm -rf .diagnostic-build && tsc --ignoreConfig tests/diagnostics/geometry-runtime-debug-serialization.ts --target es2022 --module commonjs --outDir .diagnostic-build --skipLibCheck --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .diagnostic-build/package.json && node .diagnostic-build/tests/diagnostics/geometry-runtime-debug-serialization.js",
