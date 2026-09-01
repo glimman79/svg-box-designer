@@ -625,6 +625,12 @@ function App() {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(DEFAULT_WORKSPACE);
   const [drawingDocument, setDrawingDocument] = useState(createDrawingDocumentV2);
   const [drawingViewBox, setDrawingViewBox] = useState(initialDrawingViewBox);
+  const [drawingActiveTool, setDrawingActiveTool] = useState<'select' | 'line' | 'dimension'>('select');
+  useEffect(() => {
+    const updateDrawingTool = (event: Event) => setDrawingActiveTool((event as CustomEvent<{ activeTool: 'select' | 'line' | 'dimension' }>).detail.activeTool);
+    window.addEventListener('drawing:tool-state', updateDrawingTool);
+    return () => window.removeEventListener('drawing:tool-state', updateDrawingTool);
+  }, []);
   const [svgModel, setSvgModel] = useState<SvgDocumentModel>(createBoxDocumentV1);
   const [edgeAssignments, setEdgeAssignments] = useState<Record<string, EdgeAssignmentBucket>>({});
   const [connections, setConnections] = useState<ConnectionMap>({});
@@ -2208,7 +2214,7 @@ function App() {
           </a>
         </div>}
         {activeWorkspace === 'drawing' && <div className="toolbar-actions drawing-operation-toolbar" aria-label="Drawing operations">
-          <button className="toolbar-button" type="button" title="Create a drawing dimension" onClick={() => window.dispatchEvent(new CustomEvent('drawing:activate-dimension'))}><span aria-hidden="true">↔</span> Dimension</button>
+          <button className={`toolbar-button cad-tool-button${drawingActiveTool === 'dimension' ? ' is-active' : ''}`} type="button" aria-pressed={drawingActiveTool === 'dimension'} title="Create a drawing dimension" onPointerDown={(event) => { if (event.button === 0) { event.preventDefault(); window.dispatchEvent(new CustomEvent('drawing:activate-dimension', { detail: { timestamp: event.timeStamp, x: event.clientX, y: event.clientY } })); } }} onClick={(event) => { if (event.detail === 0) window.dispatchEvent(new CustomEvent('drawing:activate-dimension')); }}><span aria-hidden="true">↔</span> Dimension</button>
         </div>}
       </header>
 
