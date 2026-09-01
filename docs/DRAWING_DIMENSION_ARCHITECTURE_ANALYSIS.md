@@ -1,5 +1,7 @@
 # Drawing Dimension Architecture Analysis
 
+> **D2.5a implementation note:** The implemented V2 sketch model intentionally contains only aligned, horizontal, and vertical two-point dimensions over existing Line endpoints. Value editing validates input but refuses a changed value until D2.5b can atomically solve geometry. For that next stage, an otherwise unconstrained Line keeps start A fixed and moves end B. Axis-aligned Lines use aligned as the canonical length interpretation, suppressing its identical axis-distance choice; zero projection remains available. No Circle, Arc, solver, or geometric constraint types were introduced.
+
 ## 1. CURRENT ARCHITECTURE
 
 ### Audit baseline

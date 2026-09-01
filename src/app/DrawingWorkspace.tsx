@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
-import type { DrawingDocumentV1, DrawingPoint } from './drawingTypes';
+import type { DrawingDimension, DrawingDocumentV2, DrawingLineEntity, DrawingPoint } from './drawingTypes';
 import { appendEntityToActiveSketch, applyResolvedLineClick, cancelLineInteraction, EMPTY_LINE_INTERACTION, resolveLinePreviewPoint, updateLinePreviewAtEffectivePoint, type LineToolInteraction } from './drawingLineTool';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
@@ -9,6 +9,7 @@ import { activateDrawingTool, finishDrawingConstruction, type DrawingActiveTool,
 import { useCadWheelCapture } from './useCadWheelCapture';
 import { CAD_PRIMARY_BUTTON, useCadCtrlSnapOverride, useCadEscapeToolExit, useCadPanGesture } from './cadInteraction';
 import { resolveCadToolPointerActivation, type CadToolActivationRecord } from './cadToolActivation';
+import { appendDimension, chooseLineDimensionKind, createDimensionId, createLineDimension, deleteDimension, formatLinearDimension, parseLinearDimension, resolveDrawingPointReference, type DimensionToolState } from './drawingDimension';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -57,8 +58,8 @@ export function DrawingWorkspace({
   viewBox,
   setViewBox,
 }: {
-  document: DrawingDocumentV1;
-  setDocument: Dispatch<SetStateAction<DrawingDocumentV1>>;
+  document: DrawingDocumentV2;
+  setDocument: Dispatch<SetStateAction<DrawingDocumentV2>>;
   viewBox: DrawingViewBox;
   setViewBox: Dispatch<SetStateAction<DrawingViewBox>>;
 }) {
@@ -69,6 +70,13 @@ export function DrawingWorkspace({
   const [overlayGeometry, setOverlayGeometry] = useState<CoordinateOverlayGeometry | null>(null);
   const [toolLifecycle, setToolLifecycle] = useState<DrawingToolLifecycle>(() => activateDrawingTool('select'));
   const activeTool = toolLifecycle.activeTool;
+  const [dimensionTool, setDimensionTool] = useState<DimensionToolState>({ phase: 'inactive' });
+  const [selectedDimensionId, setSelectedDimensionId] = useState<string | null>(null);
+  const [editingDimensionId, setEditingDimensionId] = useState<string | null>(null);
+  const [dimensionDraft, setDimensionDraft] = useState('');
+  const [dimensionEditError, setDimensionEditError] = useState<string | null>(null);
+  const undoRef = useRef<DrawingDocumentV2[]>([]);
+  const redoRef = useRef<DrawingDocumentV2[]>([]);
 
   useEffect(() => {
     const sidebar = toolSidebarRef.current;
@@ -93,6 +101,18 @@ export function DrawingWorkspace({
   const gridHierarchy = getDrawingGridHierarchy(gridSpacing);
   lineInteractionRef.current = lineInteraction;
   drawingSnapRef.current = drawingSnap;
+
+  const transactDocument = (update: (current: DrawingDocumentV2) => DrawingDocumentV2) => setDocument((current) => {
+    const next = update(current);
+    if (next !== current) { undoRef.current.push(current); redoRef.current = []; }
+    return next;
+  });
+
+  useEffect(() => {
+    const activate = () => selectTool('dimension');
+    window.addEventListener('drawing:activate-dimension', activate);
+    return () => window.removeEventListener('drawing:activate-dimension', activate);
+  });
 
   useEffect(() => {
     const svg = svgRef.current;
@@ -187,6 +207,7 @@ export function DrawingWorkspace({
   });
 
   const exitActiveTool = () => {
+    if (editingDimensionId) { setEditingDimensionId(null); setDimensionEditError(null); return; }
     if (activeToolRef.current === 'select') return;
     if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current);
     pendingLineClickRef.current = null;
@@ -196,12 +217,33 @@ export function DrawingWorkspace({
     setDrawingSnap(null);
     setCadCursor(null);
     setToolLifecycle(activateDrawingTool('select'));
+    setDimensionTool({ phase: 'inactive' });
   };
   useCadEscapeToolExit(exitActiveTool);
 
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (panHandlers.onPointerDown(event)) return;
+    if ((event.target as Element).closest('.drawing-dimension-editor, .drawing-dimension-hit')) return;
     if (event.button !== CAD_PRIMARY_BUTTON) return;
+    if (activeTool === 'dimension') {
+      const matrix = svgRef.current?.getScreenCTM();
+      const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
+      if (!point || !activeSketch) return;
+      if (dimensionTool.phase === 'placementPreview') {
+        const line = activeSketch.entities[dimensionTool.lineId];
+        if (line?.type === 'line') transactDocument((current) => appendDimension(current, createLineDimension(line, dimensionTool.kind, point, createDimensionId())));
+        setDimensionTool({ phase: 'acquiringReference' });
+        return;
+      }
+      const tolerance = viewBox.width * 0.015;
+      const line = activeSketch.entityOrder.map((id) => activeSketch.entities[id]).filter((entity): entity is DrawingLineEntity => entity?.type === 'line').find((entity) => {
+        const dx = entity.end.x - entity.start.x, dy = entity.end.y - entity.start.y;
+        const t = Math.max(0, Math.min(1, ((point.x - entity.start.x) * dx + (point.y - entity.start.y) * dy) / (dx * dx + dy * dy || 1)));
+        return Math.hypot(point.x - (entity.start.x + t * dx), point.y - (entity.start.y + t * dy)) <= tolerance;
+      });
+      if (line) setDimensionTool({ phase: 'placementPreview', lineId: line.id, cursor: point, kind: chooseLineDimensionKind(line, point) });
+      return;
+    }
     if (activeTool === 'line') {
       if (event.detail > 1) return;
       // Resolve synchronously at acceptance time. The delayed commit owns this immutable point.
@@ -223,6 +265,13 @@ export function DrawingWorkspace({
 
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
     if (panHandlers.onPointerMove(event)) return;
+    if (activeTool === 'dimension' && dimensionTool.phase === 'placementPreview') {
+      const matrix = svgRef.current?.getScreenCTM();
+      const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
+      const line = activeSketch?.entities[dimensionTool.lineId];
+      if (point && line?.type === 'line') setDimensionTool({ ...dimensionTool, cursor: point, kind: chooseLineDimensionKind(line, point, dimensionTool.kind) });
+      return;
+    }
     if (activeTool === 'line') {
       lastPointerClientRef.current = { x: event.clientX, y: event.clientY };
       resolvePlacement(lastPointerClientRef.current, event.ctrlKey || ctrlSnapOverride);
@@ -240,6 +289,7 @@ export function DrawingWorkspace({
     setDrawingSnap(null);
     setCadCursor(null);
     setToolLifecycle(activateDrawingTool(tool, activationMode));
+    setDimensionTool(tool === 'dimension' ? { phase: 'acquiringReference' } : { phase: 'inactive' });
   };
 
   const activateToolFromPointer = (tool: DrawingActiveTool, event: PointerEvent<HTMLButtonElement>) => {
@@ -273,6 +323,28 @@ export function DrawingWorkspace({
     setToolLifecycle((current) => finishDrawingConstruction(current));
   };
 
+  const annotationGeometry = (dimension: DrawingDimension) => {
+    if (!activeSketch) return null;
+    const a = resolveDrawingPointReference(activeSketch, dimension.references[0]), b = resolveDrawingPointReference(activeSketch, dimension.references[1]);
+    if (!a || !b) return null;
+    if (dimension.kind === 'HORIZONTAL_DISTANCE') return { a: { x: a.x, y: (a.y + b.y) / 2 + dimension.placement.offset }, b: { x: b.x, y: (a.y + b.y) / 2 + dimension.placement.offset }, sourceA: a, sourceB: b };
+    if (dimension.kind === 'VERTICAL_DISTANCE') return { a: { x: (a.x + b.x) / 2 + dimension.placement.offset, y: a.y }, b: { x: (a.x + b.x) / 2 + dimension.placement.offset, y: b.y }, sourceA: a, sourceB: b };
+    const dx = b.x - a.x, dy = b.y - a.y, length = Math.hypot(dx, dy) || 1, ox = -dy / length * dimension.placement.offset, oy = dx / length * dimension.placement.offset;
+    return { a: { x: a.x + ox, y: a.y + oy }, b: { x: b.x + ox, y: b.y + oy }, sourceA: a, sourceB: b };
+  };
+  const previewDimension = dimensionTool.phase === 'placementPreview' && activeSketch?.entities[dimensionTool.lineId]?.type === 'line'
+    ? createLineDimension(activeSketch.entities[dimensionTool.lineId], dimensionTool.kind, dimensionTool.cursor, 'preview') : null;
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.target as HTMLElement).tagName === 'INPUT') return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { const previous = undoRef.current.pop(); if (previous) { event.preventDefault(); redoRef.current.push(document); setDocument(previous); } }
+      else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { const next = redoRef.current.pop(); if (next) { event.preventDefault(); undoRef.current.push(document); setDocument(next); } }
+      else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedDimensionId) { event.preventDefault(); transactDocument((current) => deleteDimension(current, selectedDimensionId)); setSelectedDimensionId(null); }
+    };
+    window.addEventListener('keydown', onKeyDown); return () => window.removeEventListener('keydown', onKeyDown);
+  }, [document, selectedDimensionId]);
+
   const pixelsPerMm = viewport.width / viewBox.width;
   const labelInterval = getAxisLabelInterval(gridSpacing, pixelsPerMm);
   const xLabelValues = getVisibleAxisValues(viewBox.x, viewBox.x + viewBox.width, labelInterval);
@@ -302,7 +374,7 @@ export function DrawingWorkspace({
       <section className="canvas-card drawing-canvas-card workspace-canvas">
         <div className="canvas-frame">
           <div className="drawing-status" aria-live="polite">
-            <strong>{activeSketch?.name ?? 'No active sketch'}</strong><span>Unit: {document.unit}</span><span>Grid: {gridSpacing} mm</span><span>Active Tool: {activeTool === 'line' ? 'Line' : 'Select'}</span>
+            <strong>{activeSketch?.name ?? 'No active sketch'}</strong><span>Unit: {document.unit}</span><span>Grid: {gridSpacing} mm</span><span>Active Tool: {activeTool === 'line' ? 'Line' : activeTool === 'dimension' ? 'Dimension' : 'Select'}</span>
           </div>
           <div className="canvas-zoom-controls" aria-label="Drawing canvas zoom controls">
             <button type="button" onClick={() => zoom(1.25)} aria-label="Zoom in">+</button>
@@ -325,6 +397,7 @@ export function DrawingWorkspace({
             onDoubleClick={() => { if (activeTool === 'line') finishLine(); }}
           >
             <defs>
+              <marker id="dimension-arrow" markerWidth="7" markerHeight="7" refX="3.5" refY="3.5" orient="auto-start-reverse" markerUnits="strokeWidth"><path d="M 7 3.5 L 0 0 L 0 7 Z" /></marker>
               <pattern id="drawing-grid" x="0" y="0" width={gridSpacing} height={gridSpacing} patternUnits="userSpaceOnUse">
                 <path className="drawing-grid-line drawing-grid-line-primary" d={`M ${gridSpacing} 0 L 0 0 0 ${gridSpacing}`} />
               </pattern>
@@ -342,6 +415,20 @@ export function DrawingWorkspace({
               {activeSketch?.entityOrder.map((entityId) => activeSketch.entities[entityId]).filter((entity) => entity?.type === 'line').map((entity) => (
                 <line key={entity.id} className="drawing-line-entity" x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
               ))}
+            </g>
+            <g className="drawing-dimension-layer" aria-label="Drawing dimensions">
+              {[...(activeSketch?.dimensionOrder.map((id) => activeSketch.dimensions[id]).filter(Boolean) ?? []), ...(previewDimension ? [previewDimension] : [])].map((dimension) => {
+                const geometry = annotationGeometry(dimension); if (!geometry) return null;
+                const middle = { x: (geometry.a.x + geometry.b.x) / 2, y: (geometry.a.y + geometry.b.y) / 2 };
+                return <g key={dimension.id} className={`drawing-dimension${dimension.id === selectedDimensionId ? ' is-selected' : ''}${dimension.id === 'preview' ? ' is-preview' : ''}`}>
+                  <line className="drawing-dimension-extension" x1={geometry.sourceA.x} y1={geometry.sourceA.y} x2={geometry.a.x} y2={geometry.a.y} /><line className="drawing-dimension-extension" x1={geometry.sourceB.x} y1={geometry.sourceB.y} x2={geometry.b.x} y2={geometry.b.y} />
+                  <line className="drawing-dimension-line" markerStart="url(#dimension-arrow)" markerEnd="url(#dimension-arrow)" x1={geometry.a.x} y1={geometry.a.y} x2={geometry.b.x} y2={geometry.b.y} />
+                  <text className="drawing-dimension-value" x={middle.x} y={middle.y - 5 / pixelsPerMm} textAnchor="middle">{formatLinearDimension(dimension.value)}</text>
+                  {dimension.id !== 'preview' && <line className="drawing-dimension-hit" x1={geometry.a.x} y1={geometry.a.y} x2={geometry.b.x} y2={geometry.b.y} onPointerDown={(event) => { setSelectedDimensionId(dimension.id); }} onDoubleClick={(event) => { setSelectedDimensionId(dimension.id); setEditingDimensionId(dimension.id); setDimensionDraft(dimension.value.toString()); setDimensionEditError(null); }} />}
+                  {editingDimensionId === dimension.id && <foreignObject x={middle.x - 45 / pixelsPerMm} y={middle.y - 18 / pixelsPerMm} width={90 / pixelsPerMm} height={30 / pixelsPerMm}><input autoFocus className="drawing-dimension-editor" value={dimensionDraft} aria-label="Dimension value in millimetres" onChange={(event) => { setDimensionDraft(event.target.value); setDimensionEditError(null); }} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingDimensionId(null); setDimensionEditError(null); } if (event.key === 'Enter') { const parsed = parseLinearDimension(dimensionDraft); if (parsed === null) setDimensionEditError('Enter a non-negative value in mm.'); else if (Math.abs(parsed - dimension.value) > 1e-9) setDimensionEditError('Driving edits require the D2.5b solver.'); else { setEditingDimensionId(null); setDimensionEditError(null); } } }} /></foreignObject>}
+                  {editingDimensionId === dimension.id && dimensionEditError && <text className="drawing-dimension-error" x={middle.x} y={middle.y + 24 / pixelsPerMm} textAnchor="middle">{dimensionEditError}</text>}
+                </g>;
+              })}
             </g>
             {activeTool === 'line' && lineInteraction.start && lineInteraction.effectivePreviewPoint && (
               <line className={`drawing-line-preview${lineInteraction.snapActive ? ' is-angular-snapped' : ''}`} x1={lineInteraction.start.x} y1={lineInteraction.start.y} x2={lineInteraction.effectivePreviewPoint.x} y2={lineInteraction.effectivePreviewPoint.y} />
@@ -380,7 +467,7 @@ export function DrawingWorkspace({
         </div>
       </section>
       <aside className="workflow-history-panel drawing-history panel" aria-label="Drawing history">
-        <div className="workflow-history-items"><span className="workflow-history-label">History</span><p className="workflow-history-empty muted">Drawing history is not implemented.</p></div>
+        <div className="workflow-history-items"><span className="workflow-history-label">History</span><p className="workflow-history-empty muted">Dimension create/delete supports Ctrl+Z / Ctrl+Y.</p></div>
       </aside>
     </section>
   );

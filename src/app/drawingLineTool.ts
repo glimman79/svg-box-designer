@@ -1,4 +1,4 @@
-import type { DrawingDocumentV1, DrawingLineEntity, DrawingPoint } from './drawingTypes';
+import type { DrawingDocumentV2, DrawingLineEntity, DrawingPoint } from './drawingTypes';
 
 export const LINE_ZERO_LENGTH_TOLERANCE_MM = 1e-9;
 export const LINE_ANGULAR_SNAP_INCREMENT_DEGREES = 22.5;
@@ -116,9 +116,9 @@ export const applyResolvedLineClick = (interaction: LineToolInteraction, point: 
 
 /** Immutably appends an entity to the active sketch. Invalid active sketch ids are rejected. */
 export const appendEntityToActiveSketch = (
-  document: DrawingDocumentV1,
+  document: DrawingDocumentV2,
   entity: DrawingLineEntity,
-): DrawingDocumentV1 => {
+): DrawingDocumentV2 => {
   const activeSketch = document.sketches[document.activeSketchId];
   if (!activeSketch || activeSketch.entities[entity.id]) return document;
   return {

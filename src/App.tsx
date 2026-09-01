@@ -42,7 +42,7 @@ import { createTabSegmentPlan, pointsToClosedPathD, projectPointDistanceOnSide }
 import { getContourEdgePoints, validateClosedPanel } from './app/sharedPanelGeometry';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
 import { DrawingWorkspace, initialDrawingViewBox } from './app/DrawingWorkspace';
-import { createDrawingDocumentV1, DEFAULT_WORKSPACE, selectWorkspace, type WorkspaceId } from './app/drawingTypes';
+import { createDrawingDocumentV2, DEFAULT_WORKSPACE, selectWorkspace, type WorkspaceId } from './app/drawingTypes';
 import { useCadWheelCapture } from './app/useCadWheelCapture';
 import { useCadPanGesture } from './app/cadInteraction';
 import { createBoxDocumentV1 } from './app/boxDocument';
@@ -623,7 +623,7 @@ const SelectField = ({ id, label, value, options, onChange }: SelectFieldProps) 
 
 function App() {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(DEFAULT_WORKSPACE);
-  const [drawingDocument, setDrawingDocument] = useState(createDrawingDocumentV1);
+  const [drawingDocument, setDrawingDocument] = useState(createDrawingDocumentV2);
   const [drawingViewBox, setDrawingViewBox] = useState(initialDrawingViewBox);
   const [svgModel, setSvgModel] = useState<SvgDocumentModel>(createBoxDocumentV1);
   const [edgeAssignments, setEdgeAssignments] = useState<Record<string, EdgeAssignmentBucket>>({});
@@ -2206,6 +2206,9 @@ function App() {
           <a ref={downloadRef} className="visually-hidden" aria-hidden="true">
             download
           </a>
+        </div>}
+        {activeWorkspace === 'drawing' && <div className="toolbar-actions drawing-operation-toolbar" aria-label="Drawing operations">
+          <button className="toolbar-button" type="button" title="Create a drawing dimension" onClick={() => window.dispatchEvent(new CustomEvent('drawing:activate-dimension'))}><span aria-hidden="true">↔</span> Dimension</button>
         </div>}
       </header>
 
