@@ -66,9 +66,23 @@ export const updateLinePreview = (interaction: LineToolInteraction, pointer: Dra
   interaction.start ? { ...interaction, ...resolveLinePreviewPoint(interaction.start, pointer) } : interaction
 );
 
-export const updateLinePreviewAtEffectivePoint = (interaction: LineToolInteraction, rawPointerPoint: DrawingPoint, effectivePreviewPoint: DrawingPoint): LineToolInteraction => (
-  interaction.start ? { ...interaction, rawPointerPoint, effectivePreviewPoint, snapActive: false, snappedAngleDegrees: null } : interaction
-);
+/**
+ * Arbitrates a globally snapped point with Line's angular presentation. Spatial snap owns the
+ * endpoint; angular state is recomputed from that endpoint so compatible inferences coexist and
+ * an incompatible/stale angle can never describe different geometry.
+ */
+export const updateLinePreviewAtSpatialPoint = (interaction: LineToolInteraction, rawPointerPoint: DrawingPoint, effectivePreviewPoint: DrawingPoint): LineToolInteraction => {
+  if (!interaction.start) return interaction;
+  const effectiveInference = resolveLinePreviewPoint(interaction.start, effectivePreviewPoint);
+  const compatible = effectiveInference.snapActive;
+  return {
+    ...interaction,
+    rawPointerPoint,
+    effectivePreviewPoint,
+    snapActive: compatible,
+    snappedAngleDegrees: compatible ? effectiveInference.snappedAngleDegrees : null,
+  };
+};
 
 export const cancelLineInteraction = (): LineToolInteraction => EMPTY_LINE_INTERACTION;
 

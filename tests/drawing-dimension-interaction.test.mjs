@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   availableLineDimensionKinds, chooseLineDimensionKind, collectDimensionReferenceCandidates,
-  createLineDimension, formatLinearDimension, moveDimensionPlacement, preselectionReference,
+  createLineDimension, dimensionScreenPixelsToModelUnits, formatLinearDimension, moveDimensionPlacement, preselectionReference,
   resolveDimensionPreselection,
 } from '../.test-build/drawing-dimension-interaction/drawingDimension.js';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-dimension-interaction/drawingTypes.js';
@@ -27,8 +28,15 @@ for (const degrees of [5, 10, 15]) {
   assert.equal(chooseLineDimensionKind(shallow, { x: 50, y: 80 }, 'HORIZONTAL_DISTANCE'), 'HORIZONTAL_DISTANCE', 'stationary hysteresis is stable');
   assert.equal(chooseLineDimensionKind(shallow, { x: 120, y: 50 * Math.sin(radians) }, 'HORIZONTAL_DISTANCE'), 'VERTICAL_DISTANCE', 'hysteresis is not sticky after a deliberate move');
 }
-assert.deepEqual(availableLineDimensionKinds({ ...line, end: { x: 110, y: 20 } }), ['ALIGNED_DISTANCE', 'VERTICAL_DISTANCE']);
-assert.deepEqual(availableLineDimensionKinds({ ...line, end: { x: 10, y: 120 } }), ['ALIGNED_DISTANCE', 'HORIZONTAL_DISTANCE']);
+assert.deepEqual(availableLineDimensionKinds({ ...line, end: { x: 110, y: 20 } }), ['ALIGNED_DISTANCE'], 'horizontal line has one canonical length and no zero projection');
+assert.deepEqual(availableLineDimensionKinds({ ...line, end: { x: 10, y: 120 } }), ['ALIGNED_DISTANCE'], 'vertical line has one canonical length and no zero projection');
+for (const degrees of [5, 85]) {
+  const radians = degrees * Math.PI / 180;
+  assert.deepEqual(availableLineDimensionKinds({ ...line, end: { x: 10 + 100 * Math.cos(radians), y: 20 + 100 * Math.sin(radians) } }), ['ALIGNED_DISTANCE', 'HORIZONTAL_DISTANCE', 'VERTICAL_DISTANCE']);
+}
+assert.equal(dimensionScreenPixelsToModelUnits(10, 2) * 2, 10);
+assert.equal(dimensionScreenPixelsToModelUnits(10, 0.02) * 0.02, 10);
+
 
 const dimension = createLineDimension(line, 'ALIGNED_DISTANCE', { x: 40, y: 80 }, 'dimension-1');
 let document = createDrawingDocumentV2();
@@ -44,4 +52,12 @@ for (const [value, expected] of [[120, '120 mm'], [120.5, '120.5 mm'], [120.125,
 assert.equal(dimension.value, Math.hypot(100, 10), 'formatting never mutates stored precision');
 assert.equal(document.schemaVersion, 2, 'dimension graphics remain outside DrawingEntity/document entities');
 assert.equal('Circle' in document.sketches['sketch-1'].entities, false);
+const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
+const css = fs.readFileSync('src/styles.css', 'utf8');
+assert.match(workspace, /style=\{\{ fontSize: dimensionScreenPixelsToModelUnits\(DIMENSION_TEXT_SIZE_PX, pixelsPerMm\) \}\}/, 'model anchor uses an inverse-scale text size');
+assert.match(workspace, /middle\.x[\s\S]*middle\.y/, 'dimension text remains attached to model-derived annotation geometry');
+assert.match(css, /\.drawing-dimension \{ color: #27864a; \}/, 'passive dimensions use restrained CAD green');
+assert.match(css, /is-line-target \{ cursor: pointer; \}[\s\S]*is-point-target \{ cursor: pointer; \}/, 'line and endpoint targets use pointers');
+assert.match(css, /\.drawing-svg\.has-dimension-cursor \{ cursor: crosshair; \}/, 'empty Dimension canvas uses crosshair');
+assert.match(css, /is-hovered \{ color: #35a95e; \}[\s\S]*is-selected[^}]*#167c45/, 'interactive states remain distinct from passive green');
 console.log('drawing dimension interaction tests passed');
