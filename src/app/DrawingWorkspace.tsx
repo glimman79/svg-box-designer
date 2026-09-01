@@ -11,6 +11,7 @@ import { CAD_PRIMARY_BUTTON, useCadCtrlSnapOverride, useCadEscapeToolExit, useCa
 import { resolveCadToolPointerActivation, type CadToolActivationRecord } from './cadToolActivation';
 import { appendDimension, chooseLineDimensionKind, createDimensionId, createLineDimension, deleteDimension, dimensionEditorWidthPixels, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_COLORS, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatDimensionEditValue, formatDimensionValue, moveDimensionPlacement, parseLinearDimension, resolveDimensionPreselection, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
 import { solveDrawingDimensionEdit } from './drawingConstraintSolver';
+import type { HistoryControlsProps } from './HistoryControls';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -58,11 +59,13 @@ export function DrawingWorkspace({
   setDocument,
   viewBox,
   setViewBox,
+  onHistoryControllerChange,
 }: {
   document: DrawingDocumentV2;
   setDocument: Dispatch<SetStateAction<DrawingDocumentV2>>;
   viewBox: DrawingViewBox;
   setViewBox: Dispatch<SetStateAction<DrawingViewBox>>;
+  onHistoryControllerChange?: (controller: HistoryControlsProps | null) => void;
 }) {
   const toolSidebarRef = useRef<HTMLElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -81,6 +84,7 @@ export function DrawingWorkspace({
   const [dimensionDrag, setDimensionDrag] = useState<null | { id: string; startClient: CoordinatePoint; startOffset: number; previewOffset: number; exceeded: boolean }>(null);
   const undoRef = useRef<DrawingDocumentV2[]>([]);
   const redoRef = useRef<DrawingDocumentV2[]>([]);
+  const [historyRevision, setHistoryRevision] = useState(0);
 
   useEffect(() => {
     const sidebar = toolSidebarRef.current;
@@ -108,7 +112,7 @@ export function DrawingWorkspace({
 
   const transactDocument = (update: (current: DrawingDocumentV2) => DrawingDocumentV2) => setDocument((current) => {
     const next = update(current);
-    if (next !== current) { undoRef.current.push(current); redoRef.current = []; }
+    if (next !== current) { undoRef.current.push(current); redoRef.current = []; setHistoryRevision((revision) => revision + 1); }
     return next;
   });
 
@@ -205,7 +209,7 @@ export function DrawingWorkspace({
     const result = applyResolvedLineClick(lineInteractionRef.current, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`);
     setLineInteraction(result.interaction);
     lineInteractionRef.current = result.interaction;
-    if (result.entity) setDocument((current) => appendEntityToActiveSketch(current, result.entity!));
+    if (result.entity) transactDocument((current) => appendEntityToActiveSketch(current, result.entity!));
   };
 
   const resolveDimensionCandidate = (client: CoordinatePoint): DimensionPreselection | null => {
@@ -394,11 +398,39 @@ export function DrawingWorkspace({
     setDimensionDrag(null);
   };
 
+  const undo = () => {
+    const previous = undoRef.current.pop();
+    if (!previous) return;
+    redoRef.current.push(document);
+    setEditingDimensionId(null);
+    setDimensionEditError(null);
+    setSelectedDimensionId(null);
+    setDocument(previous);
+    setHistoryRevision((revision) => revision + 1);
+  };
+
+  const redo = () => {
+    const next = redoRef.current.pop();
+    if (!next) return;
+    undoRef.current.push(document);
+    setEditingDimensionId(null);
+    setDimensionEditError(null);
+    setSelectedDimensionId(null);
+    setDocument(next);
+    setHistoryRevision((revision) => revision + 1);
+  };
+
+  useEffect(() => {
+    onHistoryControllerChange?.({ canUndo: undoRef.current.length > 0, canRedo: redoRef.current.length > 0, onUndo: undo, onRedo: redo });
+  }, [document, historyRevision, onHistoryControllerChange]);
+
+  useEffect(() => () => onHistoryControllerChange?.(null), [onHistoryControllerChange]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.target as HTMLElement).tagName === 'INPUT') return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { const previous = undoRef.current.pop(); if (previous) { event.preventDefault(); redoRef.current.push(document); setDocument(previous); } }
-      else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { const next = redoRef.current.pop(); if (next) { event.preventDefault(); undoRef.current.push(document); setDocument(next); } }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { if (undoRef.current.length > 0) { event.preventDefault(); undo(); } }
+      else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { if (redoRef.current.length > 0) { event.preventDefault(); redo(); } }
       else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedDimensionId) { event.preventDefault(); transactDocument((current) => deleteDimension(current, selectedDimensionId)); setSelectedDimensionId(null); }
     };
     window.addEventListener('keydown', onKeyDown); return () => window.removeEventListener('keydown', onKeyDown);
