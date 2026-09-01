@@ -6,15 +6,18 @@ export const DIMENSION_ENDPOINT_TOLERANCE_PX = 9;
 export const DIMENSION_LINE_TOLERANCE_PX = 8;
 export const DIMENSION_DRAG_THRESHOLD_PX = 4;
 export const DIMENSION_TEXT_SIZE_PX = 10;
-export const DIMENSION_EDITOR_TEXT_SIZE_PX = 12;
+// The SVG annotation's 2 px non-scaling paint halo adds 4 px to its visible
+// silhouette. 17 px makes the un-stroked HTML input about 121% of that 14 px
+// painted target, rather than comparing unlike 10 px SVG and 12 px CSS values.
+export const DIMENSION_EDITOR_TEXT_SIZE_PX = 17;
 export const DIMENSION_COLORS = { normal: '#2db65b', hover: '#2fb85f', active: '#137a3e' } as const;
-export const DIMENSION_EDITOR_HEIGHT_PX = 20;
+export const DIMENSION_EDITOR_HEIGHT_PX = 26;
 export const DIMENSION_EDITOR_HORIZONTAL_PADDING_PX = 4;
 export const DIMENSION_EDITOR_VERTICAL_PADDING_PX = 2;
 export const DIMENSION_EDITOR_BORDER_PX = 1;
 export const DIMENSION_EDITOR_RADIUS_PX = 3;
-/** Compact width in screen pixels for a numeric draft rendered at 12 px. */
-export const dimensionEditorWidthPixels = (draft: string): number => Math.max(28, draft.length * 7 + 2 * DIMENSION_EDITOR_HORIZONTAL_PADDING_PX + 2 * DIMENSION_EDITOR_BORDER_PX);
+/** Compact width in screen pixels for a numeric draft rendered at 17 px. */
+export const dimensionEditorWidthPixels = (draft: string): number => Math.max(34, draft.length * 10 + 2 * DIMENSION_EDITOR_HORIZONTAL_PADDING_PX + 2 * DIMENSION_EDITOR_BORDER_PX);
 export type DimensionPreselection = Readonly<{
   kind: 'point'; lineId: string; point: 'start' | 'end'; clientPoint: DrawingPoint; distancePx: number;
 }> | Readonly<{ kind: 'line'; lineId: string; distancePx: number }>;
