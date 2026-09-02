@@ -31,6 +31,7 @@ export const collectAffectedDrivingDimensions = (
   const sketch = document.sketches[document.activeSketchId];
   if (!sketch) return [];
   return Object.values(sketch.dimensions).filter((dimension) => dimension.role === 'driving' && dimension.references.some((reference) => {
+    if (reference.kind === 'entity') { const line = sketch.entities[reference.entityId]; return Boolean(line && (movedPointIds.has(line.startPointId) || movedPointIds.has(line.endPointId))); }
     const pointId = sketchPointIdFromReference(sketch, reference);
     return Boolean(pointId && movedPointIds.has(pointId));
   }));
@@ -41,6 +42,13 @@ export const validateDrivingDimensions = (document: DrawingDocumentV2, dimension
   const sketch = document.sketches[document.activeSketchId];
   if (!sketch) return false;
   return (dimensions ?? Object.values(sketch.dimensions).filter(({ role }) => role === 'driving')).every((dimension) => {
+    if (dimension.kind === 'POINT_TO_LINE_DISTANCE') {
+      const point = resolveDrawingPointReference(sketch, dimension.references[0]);
+      const line = sketch.entities[dimension.references[1].entityId];
+      if (!point || !line) return false;
+      const a = sketch.points[line.startPointId], b = sketch.points[line.endPointId], length = Math.hypot(b.x - a.x, b.y - a.y);
+      return length > 0 && Math.abs(Math.abs((b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x)) / length - dimension.value) <= DRAWING_CONSTRAINT_TOLERANCE_MM;
+    }
     const a = resolveDrawingPointReference(sketch, dimension.references[0]);
     const b = resolveDrawingPointReference(sketch, dimension.references[1]);
     return Boolean(a && b && Math.abs(measureDimension(dimension.kind, a!, b!) - dimension.value) <= DRAWING_CONSTRAINT_TOLERANCE_MM);

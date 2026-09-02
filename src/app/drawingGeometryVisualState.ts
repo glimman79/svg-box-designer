@@ -25,6 +25,7 @@ const targetPointIds = (sketch: DrawingSketchV2, target: GeometryConstraintVisua
 
 const hasDrivingRestriction = (sketch: DrawingSketchV2, pointIds: ReadonlySet<string>): boolean => (
   Object.values(sketch.dimensions).some((dimension) => dimension.role === 'driving' && dimension.references.some((reference) => {
+    if (reference.kind === 'entity') { const line = sketch.entities[reference.entityId]; return Boolean(line && (pointIds.has(line.startPointId) || pointIds.has(line.endPointId))); }
     const pointId = sketchPointIdFromReference(sketch, reference);
     return Boolean(pointId && pointIds.has(pointId));
   }))

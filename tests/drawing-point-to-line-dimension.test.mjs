@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import { appendDimension, classifyNewDimensionRole, createPointToLineDimension, displayedDimensionMeasurement, measurePointToLine } from '../.test-build/drawing-point-to-line/drawingDimension.js';
+import { solveDrawingDimensionEdit, verifyDrawingDrivingDimensions } from '../.test-build/drawing-point-to-line/drawingConstraintSolver.js';
+const point = (pointId) => ({ kind: 'sketchPoint', pointId });
+const entity = (entityId) => ({ kind: 'entity', entityId });
+const base = (p = { x: 5, y: 5 }, a = { x: 0, y: 0 }, b = { x: 10, y: 0 }) => ({ schemaVersion: 2, unit: 'mm', activeSketchId: 's', sketchOrder: ['s'], sketches: { s: { id: 's', name: 'Sketch', points: { p: { id: 'p', ...p }, a: { id: 'a', ...a }, b: { id: 'b', ...b }, q: { id: 'q', x: p.x - 3, y: p.y } }, entities: { l: { id: 'l', type: 'line', startPointId: 'a', endPointId: 'b' }, incident: { id: 'incident', type: 'line', startPointId: 'q', endPointId: 'p' } }, entityOrder: ['l', 'incident'], dimensions: {}, dimensionOrder: [] } } });
+const line = (doc) => ({ ...doc.sketches.s.entities.l, start: doc.sketches.s.points.a, end: doc.sketches.s.points.b });
+const make = (doc, preference, id = 'd') => createPointToLineDimension(point('p'), entity('l'), doc.sketches.s.points.p, line(doc), preference, { x: 4, y: 8 }, id);
+assert.equal(measurePointToLine({ x: 2, y: 7 }, { ...line(base()), start: { x: 0, y: 0 }, end: { x: 10, y: 0 } }), 7);
+assert.equal(measurePointToLine({ x: 7, y: 2 }, { ...line(base()), start: { x: 0, y: 0 }, end: { x: 0, y: 10 } }), 7);
+assert.ok(Math.abs(measurePointToLine({ x: 0, y: 2 }, { ...line(base()), start: { x: 0, y: 0 }, end: { x: 2, y: 2 } }) - Math.SQRT2) < 1e-12);
+assert.equal(measurePointToLine({ x: 5, y: 0 }, line(base({ x: 5, y: 0 }))), 0);
+assert.equal(measurePointToLine({ x: 1, y: 1 }, { ...line(base()), start: { x: 0, y: 0 }, end: { x: 0, y: 0 } }), null);
+for (const preference of ['point', 'line']) { const doc = base(), d = make(doc, preference); assert.equal(d.kind, 'POINT_TO_LINE_DISTANCE'); assert.equal(d.movementPreference, preference); }
+let doc = base(), first = make(doc, 'point', 'first'); doc = appendDimension(doc, first); const reverseIntent = make(doc, 'line', 'reverse'); assert.deepEqual(classifyNewDimensionRole(doc.sketches.s, reverseIntent), { role: 'reference', reason: 'duplicate' }); assert.equal(appendDimension(doc, reverseIntent), doc);
+let solved = solveDrawingDimensionEdit({ document: doc, dimensionId: 'first', targetValue: 8 }); assert.equal(solved.ok, true); assert.deepEqual(solved.document.sketches.s.points.a, doc.sketches.s.points.a); assert.deepEqual(solved.document.sketches.s.points.b, doc.sketches.s.points.b); assert.ok(Math.abs(solved.document.sketches.s.points.p.y - 8) < 1e-7); assert.equal(solved.document.sketches.s.entities.incident.endPointId, 'p');
+doc = base(); doc = appendDimension(doc, make(doc, 'line')); solved = solveDrawingDimensionEdit({ document: doc, dimensionId: 'd', targetValue: 8 }); assert.equal(solved.ok, true); const s = solved.document.sketches.s; assert.deepEqual(s.points.p, doc.sketches.s.points.p); assert.ok(Math.abs(s.points.a.y + 3) < 1e-7 && Math.abs(s.points.b.y + 3) < 1e-7); assert.ok(Math.abs(Math.hypot(s.points.b.x - s.points.a.x, s.points.b.y - s.points.a.y) - 10) < 1e-7);
+const reference = { ...make(base(), 'point'), role: 'reference', value: 999 }; doc = base(); doc.sketches.s.dimensions.d = reference; doc.sketches.s.dimensionOrder = ['d']; assert.equal(displayedDimensionMeasurement(doc.sketches.s, reference), 5); doc.sketches.s.points.p.y = 9; assert.equal(displayedDimensionMeasurement(doc.sketches.s, reference), 9);
+assert.ok(verifyDrawingDrivingDimensions(solved.document.sketches.s, ['d']));
+console.log('drawing point-to-line dimension tests passed');
