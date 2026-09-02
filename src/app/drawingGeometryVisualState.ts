@@ -1,5 +1,6 @@
 import { sketchPointIdFromReference } from './drawingDimension.js';
 import type { DrawingSketchV2 } from './drawingTypes.js';
+import { analyzeDrawingConstraints } from './drawingConstraintAnalysis.js';
 
 export const GEOMETRY_CONSTRAINT_VISUAL_STATES = ['FREE', 'CONSTRAINED', 'FULLY_LOCKED'] as const;
 export type GeometryConstraintVisualState = typeof GEOMETRY_CONSTRAINT_VISUAL_STATES[number];
@@ -9,9 +10,7 @@ export type GeometryConstraintVisualTarget =
   | Readonly<{ kind: 'point'; pointId: string }>;
 
 /**
- * A future constraint solver may supply this only after a rigorous DOF/rank
- * analysis. The current Drawing solver validates equations but does not produce
- * such a proof, so production callers intentionally omit this input.
+ * Optional compatibility override for callers that already hold a rigorous proof.
  */
 export type GeometryFreedomProof = Readonly<{
   isRigorous: true;
@@ -43,7 +42,13 @@ export const getGeometryConstraintVisualState = (
   freedomProof?: GeometryFreedomProof,
 ): GeometryConstraintVisualState => {
   if (freedomProof?.isRigorous && freedomProof.degreesOfFreedom === 0) return 'FULLY_LOCKED';
-  return hasDrivingRestriction(sketch, targetPointIds(sketch, target)) ? 'CONSTRAINED' : 'FREE';
+  const pointIds = targetPointIds(sketch, target);
+  if (!hasDrivingRestriction(sketch, pointIds)) return 'FREE';
+  const analysis = analyzeDrawingConstraints(sketch);
+  const components = [...pointIds].map((id) => analysis.componentByPointId.get(id)).filter((component) => component !== undefined);
+  return components.length > 0 && components.every((component) => component.degreesOfFreedom === 0)
+    ? 'FULLY_LOCKED'
+    : 'CONSTRAINED';
 };
 
 export const geometryConstraintVisualClass = (state: GeometryConstraintVisualState): string => (
