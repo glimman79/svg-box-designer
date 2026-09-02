@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { appendDimension, classifyNewDimensionRole, createPointToLineDimension, displayedDimensionMeasurement, measurePointToLine } from '../.test-build/drawing-point-to-line/drawingDimension.js';
+import { appendDimension, classifyNewDimensionRole, createPointToLineDimension, derivePointToLineAnnotationGeometry, displayedDimensionMeasurement, measurePointToLine, pointToLineDimensionOffset } from '../.test-build/drawing-point-to-line/drawingDimension.js';
 import { solveDrawingDimensionEdit, verifyDrawingDrivingDimensions } from '../.test-build/drawing-point-to-line/drawingConstraintSolver.js';
 const point = (pointId) => ({ kind: 'sketchPoint', pointId });
 const entity = (entityId) => ({ kind: 'entity', entityId });
@@ -11,6 +11,21 @@ assert.equal(measurePointToLine({ x: 7, y: 2 }, { ...line(base()), start: { x: 0
 assert.ok(Math.abs(measurePointToLine({ x: 0, y: 2 }, { ...line(base()), start: { x: 0, y: 0 }, end: { x: 2, y: 2 } }) - Math.SQRT2) < 1e-12);
 assert.equal(measurePointToLine({ x: 5, y: 0 }, line(base({ x: 5, y: 0 }))), 0);
 assert.equal(measurePointToLine({ x: 1, y: 1 }, { ...line(base()), start: { x: 0, y: 0 }, end: { x: 0, y: 0 } }), null);
+const diagonal = { ...line(base()), start: { x: 0, y: 0 }, end: { x: 8, y: 6 } };
+const annotationPoint = { x: 1, y: 9 };
+const placementCursor = { x: 7, y: 8 };
+const annotationOffset = pointToLineDimensionOffset(annotationPoint, diagonal, placementCursor);
+const annotation = derivePointToLineAnnotationGeometry(annotationPoint, diagonal, annotationOffset);
+assert.ok(annotation);
+const tangent = { x: diagonal.end.x - diagonal.start.x, y: diagonal.end.y - diagonal.start.y };
+const main = { x: annotation.b.x - annotation.a.x, y: annotation.b.y - annotation.a.y };
+const witnessA = { x: annotation.a.x - annotation.sourceA.x, y: annotation.a.y - annotation.sourceA.y };
+const witnessB = { x: annotation.b.x - annotation.sourceB.x, y: annotation.b.y - annotation.sourceB.y };
+assert.ok(Math.abs(main.x * tangent.x + main.y * tangent.y) < 1e-10, 'diagonal main arrow/value vector is perpendicular to the selected line');
+assert.ok(Math.abs(main.x * tangent.y - main.y * tangent.x) > 1e-6, 'main arrow/value vector is not parallel to the selected line');
+assert.ok(Math.abs(witnessA.x * tangent.y - witnessA.y * tangent.x) < 1e-10, 'line-side witness follows the tangent');
+assert.ok(Math.abs(witnessB.x * tangent.y - witnessB.y * tangent.x) < 1e-10, 'point-side witness follows the tangent');
+assert.ok(Math.abs(Math.hypot(main.x, main.y) - measurePointToLine(annotationPoint, diagonal)) < 1e-10, 'main segment carries the measured perpendicular value');
 for (const preference of ['point', 'line']) { const doc = base(), d = make(doc, preference); assert.equal(d.kind, 'POINT_TO_LINE_DISTANCE'); assert.equal(d.movementPreference, preference); }
 let doc = base(), first = make(doc, 'point', 'first'); doc = appendDimension(doc, first); const reverseIntent = make(doc, 'line', 'reverse'); assert.deepEqual(classifyNewDimensionRole(doc.sketches.s, reverseIntent), { role: 'reference', reason: 'duplicate' }); assert.equal(appendDimension(doc, reverseIntent), doc);
 let solved = solveDrawingDimensionEdit({ document: doc, dimensionId: 'first', targetValue: 8 }); assert.equal(solved.ok, true); assert.deepEqual(solved.document.sketches.s.points.a, doc.sketches.s.points.a); assert.deepEqual(solved.document.sketches.s.points.b, doc.sketches.s.points.b); assert.ok(Math.abs(solved.document.sketches.s.points.p.y - 8) < 1e-7); assert.equal(solved.document.sketches.s.entities.incident.endPointId, 'p');
