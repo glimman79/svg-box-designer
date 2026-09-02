@@ -32,18 +32,28 @@ export type DrawingGeometryReference =
   | Readonly<{ kind: 'sketchPoint'; pointId: string }>
   | Readonly<{ kind: 'datum'; datum: 'ORIGIN' | 'X_AXIS' | 'Y_AXIS' }>;
 export type DrawingPointReference = Exclude<DrawingGeometryReference, { kind: 'entity' }>;
-export type DrawingDimensionKind = 'ALIGNED_DISTANCE' | 'HORIZONTAL_DISTANCE' | 'VERTICAL_DISTANCE';
+export type DrawingEntityReference = Extract<DrawingGeometryReference, { kind: 'entity' }>;
+export type DrawingDimensionKind = 'ALIGNED_DISTANCE' | 'HORIZONTAL_DISTANCE' | 'VERTICAL_DISTANCE' | 'POINT_TO_LINE_DISTANCE';
 export type DrawingDimensionRole = 'driving' | 'reference';
-export type DrawingDimension = Readonly<{
+type DrawingDimensionBase = Readonly<{
   id: string;
-  kind: DrawingDimensionKind;
-  references: readonly [DrawingPointReference, DrawingPointReference];
   /** Persistent solver semantics. Reference dimensions contribute no constraint equation. */
   role: DrawingDimensionRole;
   /** Authoritative future target for driving dimensions; ignored for reference display. */
   value: number;
   placement: Readonly<{ kind: 'linear'; offset: number }>;
 }>;
+export type DrawingDimension =
+  | (DrawingDimensionBase & Readonly<{
+    kind: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE'>;
+    references: readonly [DrawingPointReference, DrawingPointReference];
+  }>)
+  | (DrawingDimensionBase & Readonly<{
+    kind: 'POINT_TO_LINE_DISTANCE';
+    /** Canonical geometric identity is Point + Line; selection order is separate solver intent. */
+    references: readonly [DrawingPointReference, DrawingEntityReference];
+    movementPreference: 'point' | 'line';
+  }>);
 
 export type DrawingSketchV1 = {
   id: SketchId;
