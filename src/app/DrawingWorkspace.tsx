@@ -14,6 +14,7 @@ import { solveDrawingDimensionEdit } from './drawingConstraintSolver';
 import type { HistoryControlsProps } from './HistoryControls';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from './drawingHistory';
 import { pointIdForLineEndpoint, resolveLine } from './drawingTopology.js';
+import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -46,6 +47,10 @@ type CadCursorPresentation = Readonly<{
   xGuideReference: CoordinatePoint | null;
   yGuideReference: CoordinatePoint | null;
 }> | null;
+type GeometryDragSession = Readonly<{
+  pointerId: number; target: DrawingGeometryTarget; startClient: CoordinatePoint; startModel: DrawingPoint;
+  startDocument: DrawingDocumentV2; candidate: DrawingDocumentV2; exceeded: boolean;
+}>;
 type DrawingPlacementResolution = Readonly<{
   rawPoint: DrawingPoint;
   effectivePoint: DrawingPoint;
@@ -84,6 +89,9 @@ export function DrawingWorkspace({
   const [dimensionPreselection, setDimensionPreselection] = useState<DimensionPreselection | null>(null);
   const [hoveredDimensionId, setHoveredDimensionId] = useState<string | null>(null);
   const [dimensionDrag, setDimensionDrag] = useState<null | { id: string; startClient: CoordinatePoint; startOffset: number; previewOffset: number; exceeded: boolean }>(null);
+  const [geometryDrag, setGeometryDrag] = useState<GeometryDragSession | null>(null);
+  const [geometryPreselection, setGeometryPreselection] = useState<DimensionPreselection | null>(null);
+  const [selectedGeometry, setSelectedGeometry] = useState<DrawingGeometryTarget | null>(null);
   const documentRef = useRef(document);
   const historyRef = useRef(EMPTY_DRAWING_HISTORY);
   const [historyRevision, setHistoryRevision] = useState(0);
@@ -107,7 +115,8 @@ export function DrawingWorkspace({
   const resolvePlacementRef = useRef<(clientPoint: CoordinatePoint, ctrlHeld: boolean) => void>(() => undefined);
   const entitySequence = useRef(0);
   const pointSequence = useRef(0);
-  const activeSketch = document.sketches[document.activeSketchId];
+  const renderDocument = geometryDrag?.candidate ?? document;
+  const activeSketch = renderDocument.sketches[renderDocument.activeSketchId];
   const resolvedLines = activeSketch?.entityOrder.flatMap((id) => {
     const entity = activeSketch.entities[id];
     const line = entity?.type === 'line' ? resolveLine(activeSketch, entity) : null;
@@ -248,6 +257,7 @@ export function DrawingWorkspace({
   });
 
   const exitActiveTool = () => {
+    if (geometryDrag) { setGeometryDrag(null); return; }
     if (dimensionDrag) { setDimensionDrag(null); return; }
     if (editingDimensionId) { setEditingDimensionId(null); setDimensionEditError(null); return; }
     if (activeToolRef.current === 'select') return;
@@ -267,6 +277,21 @@ export function DrawingWorkspace({
     if (panHandlers.onPointerDown(event)) return;
     if ((event.target as Element).closest('.drawing-dimension-editor, .drawing-dimension-hit, .drawing-dimension-value-hit')) return;
     if (event.button !== CAD_PRIMARY_BUTTON) return;
+    if (activeTool === 'select') {
+      const hit = resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
+      const matrix = svgRef.current?.getScreenCTM();
+      const startModel = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
+      if (!hit || !startModel) { setSelectedGeometry(null); return; }
+      const target: DrawingGeometryTarget | null = hit.kind === 'point'
+        ? (() => { const pointId = pointIdFromHit(documentRef.current, hit.lineId, hit.point); return pointId ? { kind: 'point', pointId } : null; })()
+        : { kind: 'line', lineId: hit.lineId };
+      if (!target) return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setSelectedGeometry(target);
+      setSelectedDimensionId(null);
+      setGeometryDrag({ pointerId: event.pointerId, target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false });
+      return;
+    }
     if (activeTool === 'dimension') {
       const matrix = svgRef.current?.getScreenCTM();
       const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
@@ -315,6 +340,16 @@ export function DrawingWorkspace({
 
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
     if (panHandlers.onPointerMove(event)) return;
+    if (geometryDrag?.pointerId === event.pointerId) {
+      const matrix = svgRef.current?.getScreenCTM();
+      const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
+      if (!point) return;
+      const exceeded = geometryDrag.exceeded || Math.hypot(event.clientX - geometryDrag.startClient.x, event.clientY - geometryDrag.startClient.y) >= DRAWING_DRAG_THRESHOLD_PX;
+      if (!exceeded) return;
+      const candidate = solveDrawingDragCandidate(geometryDrag.startDocument, geometryDrag.target, { x: point.x - geometryDrag.startModel.x, y: point.y - geometryDrag.startModel.y });
+      setGeometryDrag({ ...geometryDrag, exceeded, candidate: candidate ?? geometryDrag.candidate });
+      return;
+    }
     if (dimensionDrag) {
       const matrix = svgRef.current?.getScreenCTM(), sketch = activeSketch;
       const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
@@ -342,6 +377,7 @@ export function DrawingWorkspace({
       resolvePlacement(lastPointerClientRef.current, event.ctrlKey || ctrlSnapOverride);
       return;
     }
+    if (activeTool === 'select') setGeometryPreselection(resolveDimensionCandidate({ x: event.clientX, y: event.clientY }));
   };
 
   useEffect(() => () => { if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current); }, []);
@@ -375,7 +411,7 @@ export function DrawingWorkspace({
     selectTool(tool);
   };
 
-  const clearCadCursor = () => { lastPointerClientRef.current = null; setCadCursor(null); setDrawingSnap(null); setDimensionPreselection(null); };
+  const clearCadCursor = () => { lastPointerClientRef.current = null; setCadCursor(null); setDrawingSnap(null); setDimensionPreselection(null); if (!geometryDrag) setGeometryPreselection(null); };
   const clearLineCursor = clearCadCursor;
 
   const finishLine = () => {
@@ -412,6 +448,13 @@ export function DrawingWorkspace({
     ? modelToOverlayPoint(editingMiddle, svgRef.current.getScreenCTM()!, overlaySvgRef.current.getScreenCTM()!) : null;
   const editorWidth = dimensionEditorWidthPixels(dimensionDraft);
 
+  const finishGeometryDrag = (event: PointerEvent<SVGSVGElement>) => {
+    if (!geometryDrag || geometryDrag.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (geometryDrag.exceeded && geometryDrag.candidate !== geometryDrag.startDocument) transactDocument(() => geometryDrag.candidate);
+    setGeometryDrag(null);
+  };
+
   const finishDimensionDrag = () => {
     if (!dimensionDrag) return;
     if (dimensionDrag.exceeded) transactDocument((current) => moveDimensionPlacement(current, dimensionDrag.id, dimensionDrag.previewOffset));
@@ -426,6 +469,7 @@ export function DrawingWorkspace({
     setEditingDimensionId(null);
     setDimensionEditError(null);
     setSelectedDimensionId(null);
+    setSelectedGeometry(null);
     setDocument(result.document);
     setHistoryRevision((revision) => revision + 1);
   };
@@ -438,6 +482,7 @@ export function DrawingWorkspace({
     setEditingDimensionId(null);
     setDimensionEditError(null);
     setSelectedDimensionId(null);
+    setSelectedGeometry(null);
     setDocument(result.document);
     setHistoryRevision((revision) => revision + 1);
   };
@@ -496,15 +541,15 @@ export function DrawingWorkspace({
           </div>
           <svg
             ref={svgRef}
-            className={`design-svg cad-viewport-interaction drawing-svg${isPanning ? ' is-panning' : ''}${activeTool === 'line' ? ' has-line-cursor' : ''}${activeTool === 'dimension' ? ` has-dimension-cursor is-${dimensionPreselection?.kind ?? 'normal'}-target` : ''}`}
+            className={`design-svg cad-viewport-interaction drawing-svg${isPanning ? ' is-panning' : ''}${activeTool === 'line' ? ' has-line-cursor' : ''}${activeTool === 'dimension' ? ` has-dimension-cursor is-${dimensionPreselection?.kind ?? 'normal'}-target` : ''}${activeTool === 'select' ? ` has-geometry-cursor is-${geometryPreselection?.kind ?? 'normal'}-target${geometryDrag ? ' is-geometry-dragging' : ''}` : ''}`}
             viewBox={formatViewBox(viewBox)}
             role="img"
             aria-label={`${activeSketch?.name ?? 'Drawing'} coordinate drawing canvas`}
             onMouseDown={handleDrawingMouseDown}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
-            onPointerUp={(event) => { if (dimensionDrag) finishDimensionDrag(); else panHandlers.onPointerUp(event); }}
-            onPointerCancel={(event) => { if (dimensionDrag) setDimensionDrag(null); else panHandlers.onPointerCancel(event); }}
+            onPointerUp={(event) => { if (geometryDrag) finishGeometryDrag(event); else if (dimensionDrag) finishDimensionDrag(); else panHandlers.onPointerUp(event); }}
+            onPointerCancel={(event) => { if (geometryDrag) setGeometryDrag(null); else if (dimensionDrag) setDimensionDrag(null); else panHandlers.onPointerCancel(event); }}
             onContextMenu={panHandlers.onContextMenu}
             onPointerLeave={clearLineCursor}
             onDoubleClick={() => { if (activeTool === 'line') finishLine(); }}
@@ -526,8 +571,10 @@ export function DrawingWorkspace({
             </g>
             <g className="drawing-sketch-geometry" aria-label="Committed sketch geometry">
               {resolvedLines.map((entity) => (
-                <line key={entity.id} className={`drawing-line-entity${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
+                <line key={entity.id} className={`drawing-line-entity${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${selectedGeometry?.kind === 'line' && selectedGeometry.lineId === entity.id ? ' is-geometry-selected' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
               ))}
+              {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); return p ? <circle className="drawing-geometry-point-preselection" cx={p.x} cy={p.y} r={5 / pixelsPerMm} /> : null; })()}
+              {activeTool === 'select' && selectedGeometry?.kind === 'point' && activeSketch?.points[selectedGeometry.pointId] && <circle className="drawing-geometry-point-selected" cx={activeSketch.points[selectedGeometry.pointId].x} cy={activeSketch.points[selectedGeometry.pointId].y} r={6 / pixelsPerMm} />}
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: dimensionPreselection.lineId, point: dimensionPreselection.point }); return p ? <circle className="drawing-dimension-point-preselection" cx={p.x} cy={p.y} r={5 / pixelsPerMm} /> : null; })()}
               {dimensionTool.phase === 'acquiringReference' && dimensionTool.reference && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, dimensionTool.reference!); return p ? <circle className="drawing-dimension-point-selected" cx={p.x} cy={p.y} r={6 / pixelsPerMm} /> : null; })()}
             </g>

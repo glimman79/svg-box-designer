@@ -1421,6 +1421,12 @@ button:disabled {
 .drawing-dimension-value-hit.is-editable { cursor: pointer; }
 .drawing-dimension.is-dragging .drawing-dimension-hit { cursor: grabbing; }
 .drawing-line-entity.is-dimension-preselected { stroke: #06b6d4; stroke-width: 2.4; }
+.drawing-line-entity.is-geometry-preselected { stroke: #0e7490; stroke-width: 2.4; }
+.drawing-line-entity.is-geometry-selected { stroke: #0f766e; stroke-width: 2.6; }
+.drawing-geometry-point-preselection, .drawing-geometry-point-selected { fill: #f8fafc; stroke: #0e7490; stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
+.drawing-geometry-point-selected { fill: #14b8a6; stroke: #f8fafc; }
+.drawing-svg.has-geometry-cursor.is-line-target, .drawing-svg.has-geometry-cursor.is-point-target { cursor: move; }
+.drawing-svg.has-geometry-cursor.is-geometry-dragging { cursor: grabbing; }
 .drawing-dimension-point-preselection, .drawing-dimension-point-selected { fill: #f8fafc; stroke: #06b6d4; stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
 .drawing-dimension-point-selected { fill: #06b6d4; stroke: #f8fafc; }
 .drawing-svg.has-dimension-cursor { cursor: crosshair; }
