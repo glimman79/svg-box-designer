@@ -1,7 +1,7 @@
 import { DRAWING_CONSTRAINT_TOLERANCE_MM } from './drawingConstraintSolver.js';
 import { measureDimension, resolveDrawingPointReference } from './drawingDimension.js';
 import { pointIdForLineEndpoint, updateSketchPoint } from './drawingTopology.js';
-import type { DrawingDocumentV2, DrawingPoint } from './drawingTypes.js';
+import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes.js';
 
 export const DRAWING_DRAG_THRESHOLD_PX = 4;
 
@@ -23,12 +23,24 @@ export const applyDrawingPointMoves = (document: DrawingDocumentV2, moves: Reado
   return moved === sketch ? document : { ...document, sketches: { ...document.sketches, [sketch.id]: moved } };
 };
 
-/** A conservative constraint boundary: every driving target must still measure exactly. */
-export const validateDrivingDimensions = (document: DrawingDocumentV2): boolean => {
+/** Collect equations touching the authoritative points moved by a candidate. */
+export const collectAffectedDrivingDimensions = (
+  document: DrawingDocumentV2,
+  movedPointIds: ReadonlySet<string>,
+): readonly DrawingDimension[] => {
+  const sketch = document.sketches[document.activeSketchId];
+  if (!sketch) return [];
+  return Object.values(sketch.dimensions).filter((dimension) => dimension.role === 'driving' && dimension.references.some((reference) => {
+    const line = sketch.entities[reference.entityId];
+    return Boolean(line && movedPointIds.has(pointIdForLineEndpoint(line, reference.point)));
+  }));
+};
+
+/** Validate the supplied equation set (all driving equations by default). */
+export const validateDrivingDimensions = (document: DrawingDocumentV2, dimensions?: readonly DrawingDimension[]): boolean => {
   const sketch = document.sketches[document.activeSketchId];
   if (!sketch) return false;
-  return Object.values(sketch.dimensions).every((dimension) => {
-    if (dimension.role === 'reference') return true;
+  return (dimensions ?? Object.values(sketch.dimensions).filter(({ role }) => role === 'driving')).every((dimension) => {
     const a = resolveDrawingPointReference(sketch, dimension.references[0]);
     const b = resolveDrawingPointReference(sketch, dimension.references[1]);
     return Boolean(a && b && Math.abs(measureDimension(dimension.kind, a!, b!) - dimension.value) <= DRAWING_CONSTRAINT_TOLERANCE_MM);
@@ -48,5 +60,6 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
     return [id, { x: point.x + delta.x, y: point.y + delta.y }];
   }));
   const candidate = applyDrawingPointMoves(document, moves);
-  return validateDrivingDimensions(candidate) ? candidate : null;
+  const affectedDimensions = collectAffectedDrivingDimensions(document, new Set(ids));
+  return validateDrivingDimensions(candidate, affectedDimensions) ? candidate : null;
 };
