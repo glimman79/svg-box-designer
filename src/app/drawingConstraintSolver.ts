@@ -1,5 +1,6 @@
 import type { DrawingDimension, DrawingDimensionKind, DrawingDocumentV2, DrawingPoint } from './drawingTypes';
-import { resolveLine, updateSketchPoint } from './drawingTopology.js';
+import { updateSketchPoint } from './drawingTopology.js';
+import { canonicalDimensionReferencePairKey, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
 
 export const DRAWING_CONSTRAINT_TOLERANCE_MM = 1e-7;
 
@@ -27,10 +28,7 @@ const failureMessages: Record<DrawingDimensionSolveFailureReason, string> = {
 export const drawingDimensionSolveFailureMessage = (reason: DrawingDimensionSolveFailureReason): string => failureMessages[reason];
 const fail = (reason: DrawingDimensionSolveFailureReason): DrawingDimensionSolveResult => ({ ok: false, reason, message: failureMessages[reason] });
 const nearZero = (value: number): boolean => Math.abs(value) <= DRAWING_CONSTRAINT_TOLERANCE_MM;
-const referencePairKey = (dimension: DrawingDimension): string => dimension.references
-  .map((reference) => `${reference.entityId}:${reference.point}`)
-  .sort()
-  .join('|');
+const referencePairKey = canonicalDimensionReferencePairKey;
 const evaluate = (kind: DrawingDimensionKind, a: DrawingPoint, b: DrawingPoint): number => kind === 'HORIZONTAL_DISTANCE'
   ? Math.abs(b.x - a.x)
   : kind === 'VERTICAL_DISTANCE'
@@ -58,17 +56,13 @@ export const solveDrawingDimensionEdit = ({ document, dimensionId, targetValue }
   const sketch = document.sketches[document.activeSketchId];
   const edited = sketch?.dimensions[dimensionId];
   if (!sketch || !edited || edited.role !== 'driving') return fail('MISSING_REFERENCE');
-  const sourceId = edited.references[0].entityId;
-  const source = sketch.entities[sourceId];
-  const referenceEntityIds = new Set(edited.references.map((reference) => reference.entityId));
-  const referencePoints = new Set(edited.references.map((reference) => reference.point));
-  if (source?.type !== 'line' || referenceEntityIds.size !== 1 || referencePoints.size !== 2 || !referencePoints.has('start') || !referencePoints.has('end')) {
-    return fail('MISSING_REFERENCE');
-  }
+  const first = resolveDrawingPointReference(sketch, edited.references[0]);
+  const second = resolveDrawingPointReference(sketch, edited.references[1]);
+  if (!first || !second) return fail('MISSING_REFERENCE');
 
-  const pairKey = referencePairKey(edited);
+  const pairKey = referencePairKey(edited.references);
   const constraints = Object.values(sketch.dimensions).filter((dimension) =>
-    dimension.role === 'driving' && referencePairKey(dimension) === pairKey);
+    dimension.role === 'driving' && referencePairKey(dimension.references) === pairKey);
   const targets: ConstraintTargets = {};
   for (const dimension of constraints) {
     const value = dimension.id === dimensionId ? targetValue : dimension.value;
@@ -77,9 +71,14 @@ export const solveDrawingDimensionEdit = ({ document, dimensionId, targetValue }
   }
   if (constraints.length < 1 || constraints.length > 2) return fail('UNSATISFIABLE_DIMENSION_SET');
 
-  const resolvedSource = resolveLine(sketch, source);
-  if (!resolvedSource) return fail('MISSING_REFERENCE');
-  const a = resolvedSource.start, current = resolvedSource.end;
+  const firstIsOrigin = edited.references[0].kind === 'datum' && edited.references[0].datum === 'ORIGIN';
+  const secondIsOrigin = edited.references[1].kind === 'datum' && edited.references[1].datum === 'ORIGIN';
+  if (firstIsOrigin && secondIsOrigin) return fail('UNSUPPORTED_DEGENERATE_GEOMETRY');
+  // Datum fixedness overrides selection order; otherwise the first reference is fixed.
+  const movableReference = secondIsOrigin ? edited.references[0] : edited.references[1];
+  const movablePointId = sketchPointIdFromReference(sketch, movableReference);
+  if (!movablePointId) return fail('MISSING_REFERENCE');
+  const a = secondIsOrigin ? second : first, current = secondIsOrigin ? first : second;
   const dx = current.x - a.x, dy = current.y - a.y;
   const currentLength = Math.hypot(dx, dy);
   const aligned = targets.ALIGNED_DISTANCE, horizontal = targets.HORIZONTAL_DISTANCE, vertical = targets.VERTICAL_DISTANCE;
@@ -124,13 +123,13 @@ export const solveDrawingDimensionEdit = ({ document, dimensionId, targetValue }
   if (residuals.some((residual) => residual > DRAWING_CONSTRAINT_TOLERANCE_MM)) return fail('SOLUTION_VERIFICATION_FAILED');
 
   const diagnostics = { constraintCount: constraints.length, residuals } as const;
-  if (nearZero(end.x - resolvedSource.end.x) && nearZero(end.y - resolvedSource.end.y) && targetValue === edited.value) {
+  if (nearZero(end.x - current.x) && nearZero(end.y - current.y) && targetValue === edited.value) {
     return { ok: true, document, diagnostics };
   }
 
   const solvedDimension: DrawingDimension = { ...edited, value: targetValue };
   const solvedSketch = {
-    ...updateSketchPoint(sketch, source.endPointId, end),
+    ...updateSketchPoint(sketch, movablePointId, end),
     dimensions: { ...sketch.dimensions, [dimensionId]: solvedDimension },
   };
   return {

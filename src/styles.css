@@ -2009,3 +2009,19 @@ button:disabled {
   .workspace-shell .active-tool-panel { width: min(280px, calc(100% - 78px)); }
   .drawing-status { right: 10px; flex-wrap: wrap; gap: 4px 8px; }
 }
+
+.drawing-origin-preselection {
+  fill: rgba(45, 182, 91, 0.18);
+  stroke: #137a3e;
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+}
+
+.drawing-origin-preselection-label {
+  fill: #155f38;
+  font: 600 11px system-ui, sans-serif;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.92);
+  stroke-width: 3px;
+  pointer-events: none;
+}

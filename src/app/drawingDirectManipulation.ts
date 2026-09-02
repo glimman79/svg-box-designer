@@ -1,5 +1,5 @@
 import { DRAWING_CONSTRAINT_TOLERANCE_MM } from './drawingConstraintSolver.js';
-import { measureDimension, resolveDrawingPointReference } from './drawingDimension.js';
+import { measureDimension, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
 import { pointIdForLineEndpoint, updateSketchPoint } from './drawingTopology.js';
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes.js';
 
@@ -31,8 +31,8 @@ export const collectAffectedDrivingDimensions = (
   const sketch = document.sketches[document.activeSketchId];
   if (!sketch) return [];
   return Object.values(sketch.dimensions).filter((dimension) => dimension.role === 'driving' && dimension.references.some((reference) => {
-    const line = sketch.entities[reference.entityId];
-    return Boolean(line && movedPointIds.has(pointIdForLineEndpoint(line, reference.point)));
+    const pointId = sketchPointIdFromReference(sketch, reference);
+    return Boolean(pointId && movedPointIds.has(pointId));
   }));
 };
 

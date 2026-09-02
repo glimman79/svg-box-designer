@@ -22,7 +22,9 @@ export const removeLineAndOrphans = (sketch: DrawingSketchV2, lineId: string): D
   const entities = { ...sketch.entities }; delete entities[lineId];
   const referenced = new Set(Object.values(entities).flatMap((entity) => [entity.startPointId, entity.endPointId]));
   const points = Object.fromEntries(Object.entries(sketch.points).filter(([id]) => referenced.has(id)));
-  const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, dimension]) => dimension.references.every((reference) => reference.entityId !== lineId)));
+  const removedPointIds = new Set(Object.keys(sketch.points).filter((id) => !points[id]));
+  const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, dimension]) => dimension.references.every((reference) =>
+    reference.kind === 'datum' || reference.kind === 'sketchPoint' ? reference.kind === 'datum' || !removedPointIds.has(reference.pointId) : reference.entityId !== lineId)));
   return { ...sketch, points, entities, entityOrder: sketch.entityOrder.filter((id) => id !== lineId), dimensions, dimensionOrder: sketch.dimensionOrder.filter((id) => Boolean(dimensions[id])) };
 };
 
@@ -39,8 +41,9 @@ export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTop
       if (line.startPointId === line.endPointId) errors.push(`Line references one point twice: ${line.id}`);
     }
     for (const dimension of Object.values(sketch.dimensions) as DrawingDimension[]) for (const reference of dimension.references) {
-      const line = sketch.entities[reference.entityId];
-      if (!line || !sketch.points[pointIdForLineEndpoint(line, reference.point)]) errors.push(`Dimension reference cannot resolve: ${dimension.id}`);
+      if (reference.kind === 'datum') { if (reference.datum !== 'ORIGIN') errors.push(`Unsupported datum reference: ${dimension.id}`); continue; }
+      if (reference.kind === 'sketchPoint') { if (!sketch.points[reference.pointId]) errors.push(`Dimension reference cannot resolve: ${dimension.id}`); continue; }
+      const line = sketch.entities[reference.entityId]; if (!line || !sketch.points[pointIdForLineEndpoint(line, reference.point)]) errors.push(`Dimension reference cannot resolve: ${dimension.id}`);
     }
     const referenced = new Set(Object.values(sketch.entities).flatMap((line) => [line.startPointId, line.endPointId]));
     for (const id of Object.keys(sketch.points)) if (!referenced.has(id)) errors.push(`Orphan point: ${id}`);

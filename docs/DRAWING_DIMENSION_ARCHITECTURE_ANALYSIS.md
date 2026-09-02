@@ -536,3 +536,35 @@ The recommended next implementation task is **D2.5a-model**: V2 migration and va
 | Should existing snap, pan, wheel, Edge fix, and Box behavior remain untouched? | **YES** |
 
 **Recommended first implementation stage:** D2.5a-model—Drawing V2 migration/validation, stable semantic Line references, dimension document contracts, parser/formatter, pure cursor-placement math, and atomic Drawing-history foundations, all tested without exposing an editable production Dimension tool; then build the minimum real solver before enabling driving edits.
+
+## D2.5c — Point references and Drawing datum
+
+Linear dimensions now accept a shared semantic `DrawingPointReference`: a stable
+`sketchPoint` reference, the analytically resolved `ORIGIN` datum, or the legacy
+Line endpoint reference retained for persisted-document compatibility. Origin is
+always `(0, 0)` and is not a sketch point, entity, manufacturing object, or history
+object. Unordered reference keys make A–B equivalent to B–A, including Origin–P.
+
+Point-to-point dimensions use the existing cursor-locus resolver and annotation
+renderer for aligned, horizontal, and vertical distance. Axis-aligned pairs filter
+duplicate projection families in the same way as Line dimensions. Driving edits
+remain bounded analytic solves: the first ordinary point is fixed and the second
+moves; when Origin participates, Origin is fixed regardless of selection order.
+The solve preserves the current ray for aligned distance and the current sign for
+horizontal/vertical distance. Zero projections are valid; directionless aligned
+or sign-changing degenerate edits return a structured solver failure.
+
+Driving point references participate in local affected-constraint drag validation
+and `CONSTRAINED` presentation. Reference dimensions remain live measurements,
+add no equation, do not block drag, and do not affect visual constraint state.
+Deleting the last incident geometry for a referenced sketch point removes its
+dependent dimensions. Existing Line endpoint dimensions continue resolving
+without an eager document rewrite.
+
+The datum discriminant reserves `X_AXIS` and `Y_AXIS` for a future reference
+family. **Axis acquisition, axis dimensions, Point-to-Line, and Line-to-Line are
+NOT IMPLEMENTED.** A future Point-to-Line stage may define Point→X-axis as
+`abs(y)`, Point→Y-axis as `abs(x)`, and Point→Line as perpendicular shortest
+distance. A later Line-to-Line stage may cover horizontal/vertical lines against
+the corresponding datum axes and distances between parallel lines. No general
+rank, DOF, graph, or nonlinear solver is introduced here.
