@@ -40,7 +40,10 @@ let undone=undoDrawingDocument(tx.history,tx.document); assert.deepEqual(undone.
 let redone=redoDrawingDocument(undone.history,undone.document); assert.deepEqual(redone.document.sketches[active.id].points.p1,{id:'p1',x:12,y:2});
 assert.equal(transactDrawingDocument(EMPTY_DRAWING_HISTORY,make(),d=>d).history.undo.length,0,'cancel/no-op has no history');
 const workspace=fs.readFileSync('src/app/DrawingWorkspace.tsx','utf8');
+const css=fs.readFileSync('src/styles.css','utf8');
 assert.match(workspace,/DRAWING_DRAG_THRESHOLD_PX/); assert.match(workspace,/setPointerCapture/); assert.match(workspace,/candidate: candidate \?\? geometryDrag\.candidate/,'invalid preview retains last valid candidate');
 assert.match(workspace,/if \(geometryDrag\) \{ setGeometryDrag\(null\); return; \}/,'Escape cancels transient drag');
 assert.match(workspace,/onMouseDown=\{handleDrawingMouseDown\}/,'Drawing-local primary preventDefault remains');
+assert.match(css,/has-geometry-cursor\.is-line-target[\s\S]*has-geometry-cursor\.is-point-target,[\s\S]*has-geometry-cursor\.is-geometry-dragging \{ cursor: default; \}/,'Select hover and active geometry drag reuse the Dimension normal-arrow cursor value');
+assert.doesNotMatch(css,/has-geometry-cursor[^}]*cursor:\s*(?:move|grab|grabbing|pointer)/s,'Drawing geometry manipulation has no movement or hand cursor');
 console.log('drawing direct manipulation tests passed');
