@@ -9,7 +9,7 @@ import { activateDrawingTool, finishDrawingConstruction, type DrawingActiveTool,
 import { useCadWheelCapture } from './useCadWheelCapture';
 import { CAD_PRIMARY_BUTTON, useCadCtrlSnapOverride, useCadEscapeToolExit, useCadPanGesture } from './cadInteraction';
 import { resolveCadToolPointerActivation, type CadToolActivationRecord } from './cadToolActivation';
-import { appendDimension, chooseLineDimensionKind, createDimensionId, createLineDimension, deleteDimension, dimensionEditorWidthPixels, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_COLORS, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatDimensionEditValue, formatDimensionValue, moveDimensionPlacement, parseLinearDimension, resolveDimensionPreselection, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
+import { appendDimension, chooseLineDimensionKind, choosePointDimensionKind, createDimensionId, createPointToPointDimension, deleteDimension, dimensionEditorWidthPixels, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_COLORS, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatDimensionEditValue, formatDimensionValue, lineDimensionReferences, moveDimensionPlacement, parseLinearDimension, preselectionReference, resolveDimensionPreselection, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
 import { solveDrawingDimensionEdit } from './drawingConstraintSolver';
 import type { HistoryControlsProps } from './HistoryControls';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from './drawingHistory';
@@ -238,7 +238,10 @@ export function DrawingWorkspace({
     const matrix = svgRef.current?.getScreenCTM();
     if (!matrix || !activeSketch) return null;
     const toClient = (point: DrawingPoint) => ({ x: matrix.a * point.x + matrix.c * point.y + matrix.e, y: matrix.b * point.x + matrix.d * point.y + matrix.f });
-    return resolveDimensionPreselection(resolvedLines.map((line) => ({ id: line.id, start: toClient(line.start), end: toClient(line.end) })), client);
+    const candidate = resolveDimensionPreselection(resolvedLines.map((line) => ({ id: line.id, start: toClient(line.start), end: toClient(line.end) })), client, activeTool === 'dimension' ? toClient(DRAWING_ORIGIN) : undefined);
+    if (candidate?.kind !== 'point') return candidate;
+    const line = activeSketch.entities[candidate.lineId];
+    return line ? { ...candidate, pointId: pointIdForLineEndpoint(line, candidate.point) } : candidate;
   };
 
   const ctrlSnapOverride = useCadCtrlSnapOverride((held) => {
@@ -285,7 +288,7 @@ export function DrawingWorkspace({
       if (!hit || !startModel) { setSelectedGeometry(null); return; }
       const target: DrawingGeometryTarget | null = hit.kind === 'point'
         ? (() => { const pointId = pointIdFromHit(documentRef.current, hit.lineId, hit.point); return pointId ? { kind: 'point', pointId } : null; })()
-        : { kind: 'line', lineId: hit.lineId };
+        : hit.kind === 'line' ? { kind: 'line', lineId: hit.lineId } : null;
       if (!target) return;
       event.currentTarget.setPointerCapture(event.pointerId);
       setSelectedGeometry(target);
@@ -298,10 +301,9 @@ export function DrawingWorkspace({
       const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
       if (!point || !activeSketch) return;
       if (dimensionTool.phase === 'placementPreview') {
-        const line = activeSketch.entities[dimensionTool.lineId];
-        if (line?.type !== 'line') return;
-        const resolved = resolveLine(activeSketch, line); if (!resolved) return;
-        transactDocument((current) => appendDimension(current, createLineDimension(resolved, dimensionTool.kind, point, createDimensionId())));
+        const a = resolveDrawingPointReference(activeSketch, dimensionTool.references[0]), b = resolveDrawingPointReference(activeSketch, dimensionTool.references[1]);
+        if (!a || !b) return;
+        transactDocument((current) => appendDimension(current, createPointToPointDimension(dimensionTool.references, a, b, dimensionTool.kind, point, createDimensionId())));
         const nextLifecycle = finishDrawingConstruction(toolLifecycle);
         setToolLifecycle(nextLifecycle);
         setDimensionTool(nextLifecycle.activeTool === 'dimension' ? { phase: 'acquiringReference' } : { phase: 'inactive' });
@@ -309,12 +311,19 @@ export function DrawingWorkspace({
         return;
       }
       const candidate = resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
-      if (candidate?.kind === 'point') {
-        setDimensionTool({ phase: 'acquiringReference', reference: { kind: 'point', entityId: candidate.lineId, point: candidate.point } });
+      if (candidate?.kind === 'point' || candidate?.kind === 'origin') {
+        const reference = preselectionReference(candidate);
+        if (reference.kind === 'entity') return;
+        if (dimensionTool.phase === 'acquiringReference' && dimensionTool.reference) {
+          const a = resolveDrawingPointReference(activeSketch, dimensionTool.reference), b = resolveDrawingPointReference(activeSketch, reference);
+          if (!a || !b || JSON.stringify(dimensionTool.reference) === JSON.stringify(reference)) return;
+          const references = [dimensionTool.reference, reference] as const;
+          setDimensionTool({ phase: 'placementPreview', references, cursor: point, kind: choosePointDimensionKind(a, b, point, undefined, viewport.width / viewBox.width) });
+        } else setDimensionTool({ phase: 'acquiringReference', reference });
       } else if (candidate?.kind === 'line') {
         const line = activeSketch.entities[candidate.lineId];
         const resolved = line?.type === 'line' ? resolveLine(activeSketch, line) : null;
-        if (resolved) setDimensionTool({ phase: 'placementPreview', lineId: line.id, cursor: point, kind: chooseLineDimensionKind(resolved, point, undefined, viewport.width / viewBox.width) });
+        if (resolved) setDimensionTool({ phase: 'placementPreview', references: lineDimensionReferences(line), cursor: point, kind: chooseLineDimensionKind(resolved, point, undefined, viewport.width / viewBox.width) });
       }
       return;
     }
@@ -355,8 +364,9 @@ export function DrawingWorkspace({
       const matrix = svgRef.current?.getScreenCTM(), sketch = activeSketch;
       const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
       const dimension = sketch?.dimensions[dimensionDrag.id];
-      const source = dimension && sketch ? sketch.entities[dimension.references[0].entityId] : null;
-      const resolved = source?.type === 'line' && sketch ? resolveLine(sketch, source) : null;
+      const a = dimension && sketch ? resolveDrawingPointReference(sketch, dimension.references[0]) : null;
+      const b = dimension && sketch ? resolveDrawingPointReference(sketch, dimension.references[1]) : null;
+      const resolved = a && b ? { id: '', type: 'line' as const, startPointId: '', endPointId: '', start: a, end: b } : null;
       if (point && dimension && resolved) {
         const offset = dimensionOffset(resolved, point, dimension.kind);
         const exceeded = dimensionDrag.exceeded || Math.hypot(event.clientX - dimensionDrag.startClient.x, event.clientY - dimensionDrag.startClient.y) >= 4;
@@ -367,9 +377,9 @@ export function DrawingWorkspace({
     if (activeTool === 'dimension' && dimensionTool.phase === 'placementPreview') {
       const matrix = svgRef.current?.getScreenCTM();
       const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
-      const line = activeSketch?.entities[dimensionTool.lineId];
-      const resolved = point && line?.type === 'line' && activeSketch ? resolveLine(activeSketch, line) : null;
-      if (point && resolved) setDimensionTool({ ...dimensionTool, cursor: point, kind: chooseLineDimensionKind(resolved, point, dimensionTool.kind, viewport.width / viewBox.width) });
+      const a = activeSketch ? resolveDrawingPointReference(activeSketch, dimensionTool.references[0]) : null;
+      const b = activeSketch ? resolveDrawingPointReference(activeSketch, dimensionTool.references[1]) : null;
+      if (point && a && b) setDimensionTool({ ...dimensionTool, cursor: point, kind: choosePointDimensionKind(a, b, point, dimensionTool.kind, viewport.width / viewBox.width) });
       return;
     }
     if (activeTool === 'dimension') { setDimensionPreselection(resolveDimensionCandidate({ x: event.clientX, y: event.clientY })); return; }
@@ -434,10 +444,9 @@ export function DrawingWorkspace({
     const dx = b.x - a.x, dy = b.y - a.y, length = Math.hypot(dx, dy) || 1, ox = -dy / length * dimension.placement.offset, oy = dx / length * dimension.placement.offset;
     return { a: { x: a.x + ox, y: a.y + oy }, b: { x: b.x + ox, y: b.y + oy }, sourceA: a, sourceB: b };
   };
-  const previewLine = dimensionTool.phase === 'placementPreview' && activeSketch?.entities[dimensionTool.lineId]?.type === 'line'
-    ? resolveLine(activeSketch, activeSketch.entities[dimensionTool.lineId]) : null;
-  const previewDimension = dimensionTool.phase === 'placementPreview' && previewLine
-    ? createLineDimension(previewLine, dimensionTool.kind, dimensionTool.cursor, 'preview') : null;
+  const previewPoints = dimensionTool.phase === 'placementPreview' && activeSketch ? [resolveDrawingPointReference(activeSketch, dimensionTool.references[0]), resolveDrawingPointReference(activeSketch, dimensionTool.references[1])] as const : null;
+  const previewDimension = dimensionTool.phase === 'placementPreview' && previewPoints?.[0] && previewPoints[1]
+    ? createPointToPointDimension(dimensionTool.references, previewPoints[0], previewPoints[1], dimensionTool.kind, dimensionTool.cursor, 'preview') : null;
   const displayedDimensions = activeSketch?.dimensionOrder.map((id) => {
     const dimension = activeSketch.dimensions[id];
     return dimensionDrag?.id === id ? { ...dimension, placement: { ...dimension.placement, offset: dimensionDrag.previewOffset } } : dimension;
@@ -580,6 +589,7 @@ export function DrawingWorkspace({
               {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); return p ? <circle className="drawing-geometry-point-preselection" cx={p.x} cy={p.y} r={5 / pixelsPerMm} /> : null; })()}
               {activeTool === 'select' && selectedGeometry?.kind === 'point' && activeSketch?.points[selectedGeometry.pointId] && <circle className={`drawing-geometry-point-selected${geometryDrag?.target.kind === 'point' && geometryDrag.target.pointId === selectedGeometry.pointId ? ' is-geometry-dragging' : ''}`} cx={activeSketch.points[selectedGeometry.pointId].x} cy={activeSketch.points[selectedGeometry.pointId].y} r={6 / pixelsPerMm} />}
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: dimensionPreselection.lineId, point: dimensionPreselection.point }); return p ? <circle className="drawing-dimension-point-preselection" cx={p.x} cy={p.y} r={5 / pixelsPerMm} /> : null; })()}
+              {activeTool === 'dimension' && dimensionPreselection?.kind === 'origin' && <circle className="drawing-dimension-point-preselection drawing-origin-preselection" cx={0} cy={0} r={6 / pixelsPerMm} />}
               {dimensionTool.phase === 'acquiringReference' && dimensionTool.reference && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, dimensionTool.reference!); return p ? <circle className="drawing-dimension-point-selected" cx={p.x} cy={p.y} r={6 / pixelsPerMm} /> : null; })()}
             </g>
             <g className="drawing-dimension-layer" aria-label="Drawing dimensions">
@@ -633,6 +643,7 @@ export function DrawingWorkspace({
               <circle className="drawing-origin-screen" cx={overlayGeometry.origin.x} cy={overlayGeometry.origin.y} r="3.5" />
               <text className="drawing-origin-label" x={overlayGeometry.origin.x + 7} y={overlayGeometry.origin.y - 7}>0</text>
             </>}
+            {activeTool === 'dimension' && dimensionPreselection?.kind === 'origin' && overlayGeometry && <text className="drawing-origin-preselection-label" x={overlayGeometry.origin.x + 10} y={overlayGeometry.origin.y - 10}>Origin · X0 Y0</text>}
             {overlayGeometry && overlayGeometry.origin.y >= 0 && overlayGeometry.origin.y <= viewport.height && <text className="drawing-axis-letter drawing-x-indicator" x={overlayGeometry.xIndicatorAnchor.x - 15} y={overlayGeometry.xIndicatorAnchor.y - 7}>X</text>}
             {overlayGeometry && overlayGeometry.origin.x >= 0 && overlayGeometry.origin.x <= viewport.width && <text className="drawing-axis-letter drawing-y-indicator" x={overlayGeometry.yIndicatorAnchor.x + 7} y={overlayGeometry.yIndicatorAnchor.y + 15}>Y</text>}
             {activeTool === 'line' && lineCursor && (

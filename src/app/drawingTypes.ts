@@ -28,13 +28,16 @@ export type DrawingEntity = DrawingLineEntity;
 
 export type DrawingGeometryReference =
   | Readonly<{ kind: 'entity'; entityId: string }>
-  | Readonly<{ kind: 'point'; entityId: string; point: 'start' | 'end' }>;
+  | Readonly<{ kind: 'point'; entityId: string; point: 'start' | 'end' }>
+  | Readonly<{ kind: 'sketchPoint'; pointId: string }>
+  | Readonly<{ kind: 'datum'; datum: 'ORIGIN' | 'X_AXIS' | 'Y_AXIS' }>;
+export type DrawingPointReference = Exclude<DrawingGeometryReference, { kind: 'entity' }>;
 export type DrawingDimensionKind = 'ALIGNED_DISTANCE' | 'HORIZONTAL_DISTANCE' | 'VERTICAL_DISTANCE';
 export type DrawingDimensionRole = 'driving' | 'reference';
 export type DrawingDimension = Readonly<{
   id: string;
   kind: DrawingDimensionKind;
-  references: readonly [Extract<DrawingGeometryReference, { kind: 'point' }>, Extract<DrawingGeometryReference, { kind: 'point' }>];
+  references: readonly [DrawingPointReference, DrawingPointReference];
   /** Persistent solver semantics. Reference dimensions contribute no constraint equation. */
   role: DrawingDimensionRole;
   /** Authoritative future target for driving dimensions; ignored for reference display. */
@@ -107,7 +110,7 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
       // D2.5a3 migration: legacy schema-v2 dimensions without a role become driving.
       // An explicitly persisted reference role is retained and is never reclassified here.
       const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, dimension]) =>
-        dimension.references.every((reference) => Boolean(sketch.entities[reference.entityId]))).map(([dimensionId, dimension]) => [
+        dimension.references.every((reference) => reference.kind === 'datum' ? reference.datum === 'ORIGIN' : reference.kind === 'sketchPoint' ? Boolean(sketch.points[reference.pointId]) : Boolean(sketch.entities[reference.entityId]))).map(([dimensionId, dimension]) => [
           dimensionId,
           { ...dimension, role: (dimension.role === 'reference' ? 'reference' : 'driving') as DrawingDimensionRole },
         ]));

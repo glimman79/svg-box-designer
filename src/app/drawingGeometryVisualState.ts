@@ -1,4 +1,4 @@
-import { pointIdForLineEndpoint } from './drawingTopology.js';
+import { sketchPointIdFromReference } from './drawingDimension.js';
 import type { DrawingSketchV2 } from './drawingTypes.js';
 
 export const GEOMETRY_CONSTRAINT_VISUAL_STATES = ['FREE', 'CONSTRAINED', 'FULLY_LOCKED'] as const;
@@ -26,8 +26,8 @@ const targetPointIds = (sketch: DrawingSketchV2, target: GeometryConstraintVisua
 
 const hasDrivingRestriction = (sketch: DrawingSketchV2, pointIds: ReadonlySet<string>): boolean => (
   Object.values(sketch.dimensions).some((dimension) => dimension.role === 'driving' && dimension.references.some((reference) => {
-    const entity = sketch.entities[reference.entityId];
-    return entity?.type === 'line' && pointIds.has(pointIdForLineEndpoint(entity, reference.point));
+    const pointId = sketchPointIdFromReference(sketch, reference);
+    return Boolean(pointId && pointIds.has(pointId));
   }))
 );
 
