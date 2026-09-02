@@ -26,7 +26,9 @@ export type DimensionPreselection = Readonly<{
 export type DimensionClientLine = Readonly<{ id: string; start: DrawingPoint; end: DrawingPoint }>;
 export type DimensionToolState =
   | Readonly<{ phase: 'inactive' }>
-  | Readonly<{ phase: 'acquiringReference'; reference?: DrawingGeometryReference }>
+  | Readonly<{ phase: 'waitingForFirstTarget' }>
+  | Readonly<{ phase: 'waitingForSecondTarget'; first: DrawingGeometryReference }>
+  | Readonly<{ phase: 'lineTargetSelected'; line: DrawingEntityReference; dimension: DrawingDimension; cursor: DrawingPoint }>
   | Readonly<{ phase: 'placementPreview'; dimension: DrawingDimension; cursor: DrawingPoint }>;
 
 export const lineDimensionReferences = (line: DrawingLineEntity): readonly [DrawingPointReference, DrawingPointReference] => ([
@@ -83,6 +85,17 @@ export const collectDimensionReferenceCandidates = (lines: readonly DimensionCli
   return [...points, ...origin].sort((a, b) => a.distancePx - b.distancePx).concat(bodies.sort((a, b) => a.distancePx - b.distancePx));
 };
 export const resolveDimensionPreselection = (lines: readonly DimensionClientLine[], cursor: DrawingPoint, originClient?: DrawingPoint): DimensionPreselection | null => collectDimensionReferenceCandidates(lines, cursor, originClient)[0] ?? null;
+export const resolveDimensionPreselectionForTarget = (lines: readonly DimensionClientLine[], cursor: DrawingPoint, target: 'any' | 'point' | 'line', originClient?: DrawingPoint): DimensionPreselection | null => {
+  const candidates = collectDimensionReferenceCandidates(lines, cursor, originClient);
+  if (target === 'line') return candidates.find((candidate) => candidate.kind === 'line') ?? null;
+  if (target === 'point') {
+    // In a state that explicitly requests a Point, the datum is intentional UI,
+    // not another generic endpoint candidate. Keep it selectable at coincidence.
+    return candidates.find((candidate) => candidate.kind === 'origin')
+      ?? candidates.find((candidate) => candidate.kind === 'point') ?? null;
+  }
+  return candidates[0] ?? null;
+};
 export const preselectionReference = (candidate: DimensionPreselection): DrawingGeometryReference => candidate.kind === 'point'
   ? candidate.pointId ? { kind: 'sketchPoint', pointId: candidate.pointId } : { kind: 'point', entityId: candidate.lineId, point: candidate.point }
   : candidate.kind === 'origin' ? { kind: 'datum', datum: 'ORIGIN' } : { kind: 'entity', entityId: candidate.lineId };
@@ -106,11 +119,32 @@ export const dimensionOffset = (line: ResolvedDrawingLine, cursor: DrawingPoint,
   const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y, length = Math.hypot(dx, dy) || 1;
   return (cursor.x - mid.x) * (-dy / length) + (cursor.y - mid.y) * (dx / length);
 };
+export const pointToLineDimensionOffset = (point: DrawingPoint, line: ResolvedDrawingLine, cursor: DrawingPoint): number => {
+  const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y, length = Math.hypot(dx, dy) || 1;
+  const projectionT = ((point.x - line.start.x) * dx + (point.y - line.start.y) * dy) / (length * length);
+  const projection = { x: line.start.x + projectionT * dx, y: line.start.y + projectionT * dy };
+  return (cursor.x - projection.x) * dx / length + (cursor.y - projection.y) * dy / length;
+};
+export type LinearAnnotationGeometry = Readonly<{ a: DrawingPoint; b: DrawingPoint; sourceA: DrawingPoint; sourceB: DrawingPoint }>;
+export const derivePointToLineAnnotationGeometry = (point: DrawingPoint, line: ResolvedDrawingLine, offset: number): LinearAnnotationGeometry | null => {
+  const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y, length = Math.hypot(dx, dy);
+  if (length <= DIMENSION_AXIS_EPSILON_MM) return null;
+  const ux = dx / length, uy = dy / length;
+  const projectionT = (point.x - line.start.x) * ux + (point.y - line.start.y) * uy;
+  const projection = { x: line.start.x + projectionT * ux, y: line.start.y + projectionT * uy };
+  const shift = { x: ux * offset, y: uy * offset };
+  return {
+    a: { x: projection.x + shift.x, y: projection.y + shift.y },
+    b: { x: point.x + shift.x, y: point.y + shift.y },
+    sourceA: projection,
+    sourceB: point,
+  };
+};
 export const createLineDimension = (line: ResolvedDrawingLine, kind: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE'>, cursor: DrawingPoint, id: string): DrawingDimension => ({ id, kind, role: 'driving', references: lineDimensionReferences(line), value: measureDimension(kind, line.start, line.end), placement: { kind: 'linear', offset: dimensionOffset(line, cursor, kind) } });
 export const createPointToPointDimension = (references: readonly [DrawingPointReference, DrawingPointReference], a: DrawingPoint, b: DrawingPoint, kind: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE'>, cursor: DrawingPoint, id: string): DrawingDimension => ({ id, kind, role: 'driving', references, value: measureDimension(kind, a, b), placement: { kind: 'linear', offset: dimensionOffset({ id: '', type: 'line', startPointId: '', endPointId: '', start: a, end: b }, cursor, kind) } });
 export const createPointToLineDimension = (pointReference: DrawingPointReference, lineReference: DrawingEntityReference, point: DrawingPoint, line: ResolvedDrawingLine, movementPreference: 'point' | 'line', cursor: DrawingPoint, id: string): DrawingDimension | null => {
   const value = measurePointToLine(point, line); if (value === null) return null;
-  return { id, kind: 'POINT_TO_LINE_DISTANCE', role: 'driving', references: [pointReference, lineReference], movementPreference, value, placement: { kind: 'linear', offset: dimensionOffset(line, cursor, 'ALIGNED_DISTANCE') } };
+  return { id, kind: 'POINT_TO_LINE_DISTANCE', role: 'driving', references: [pointReference, lineReference], movementPreference, value, placement: { kind: 'linear', offset: pointToLineDimensionOffset(point, line, cursor) } };
 };
 export const formatLinearDimension = (value: number): string => `${new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 3 }).format(value)} mm`;
 /** User-facing edit draft: the authoritative stored target, rounded only to the display policy. */
