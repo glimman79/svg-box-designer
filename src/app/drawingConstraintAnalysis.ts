@@ -97,3 +97,13 @@ export const dimensionIncreasesConstraintRank = (sketch: DrawingSketchV2, candid
   const total = (analysis: DrawingConstraintAnalysis) => analysis.components.reduce((sum, component) => sum + component.constraintRank, 0);
   return total(analyzeDrawingConstraints(sketch, candidate)) > total(analyzeDrawingConstraints(sketch));
 };
+
+/** Reuses the canonical constraint Jacobian/rank calculation for a candidate's local variables. */
+export const drawingConstraintDegreesOfFreedomForPoints = (sketch: DrawingSketchV2, pointIds: readonly string[], excludedDimensionId?: string): number => {
+  const equations = Object.values(sketch.dimensions)
+    .filter(({ id, role }) => role === 'driving' && id !== excludedDimensionId)
+    .map((dimension) => constraintEquation(sketch, dimension))
+    .filter((equation): equation is DrawingConstraintEquation => Boolean(equation));
+  const rows = equations.map((equation) => constraintJacobianRow(sketch, equation, pointIds)).filter((row): row is number[] => Boolean(row));
+  return pointIds.length * 2 - matrixRank(rows);
+};
