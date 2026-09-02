@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes';
 import { appendEntityToActiveSketch, applyResolvedLineClick, cancelLineInteraction, EMPTY_LINE_INTERACTION, resolveLinePreviewPoint, updateLinePreviewAtSpatialPoint, type LineToolInteraction } from './drawingLineTool';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
@@ -85,6 +85,11 @@ export function DrawingWorkspace({
   const [dimensionTool, setDimensionTool] = useState<DimensionToolState>({ phase: 'inactive' });
   const [selectedDimensionId, setSelectedDimensionId] = useState<string | null>(null);
   const [editingDimensionId, setEditingDimensionId] = useState<string | null>(null);
+  const dimensionEditorInputRef = useCallback((input: HTMLInputElement | null) => {
+    if (!input) return;
+    input.focus();
+    input.select();
+  }, []);
   const [dimensionDraft, setDimensionDraft] = useState('');
   const [dimensionEditError, setDimensionEditError] = useState<string | null>(null);
   const [dimensionPreselection, setDimensionPreselection] = useState<DimensionPreselection | null>(null);
@@ -632,7 +637,7 @@ export function DrawingWorkspace({
             )}
           </svg>
           <svg ref={overlaySvgRef} className="drawing-label-overlay" viewBox={`0 0 ${viewport.width} ${viewport.height}`} aria-label="Model coordinate scale">
-            {editingDimension && editorAnchor && <foreignObject className="drawing-dimension-editor-frame" x={editorAnchor.x - editorWidth / 2} y={editorAnchor.y - DIMENSION_EDITOR_HEIGHT_PX + 2} width={editorWidth} height={DIMENSION_EDITOR_HEIGHT_PX}><input autoFocus className="drawing-dimension-editor" value={dimensionDraft} aria-label="Dimension value in millimetres" onChange={(event) => { setDimensionDraft(event.target.value); setDimensionEditError(null); }} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingDimensionId(null); setDimensionEditError(null); } if (event.key === 'Enter') { const parsed = parseLinearDimension(dimensionDraft); if (parsed === null) { setDimensionEditError('Dimension must be 0 mm or greater.'); return; } const result = solveDrawingDimensionEdit({ document, dimensionId: editingDimension.id, targetValue: parsed }); if (!result.ok) { setDimensionEditError(result.message); return; } transactDocument(() => result.document); setEditingDimensionId(null); setDimensionEditError(null); } }} /></foreignObject>}
+            {editingDimension && editorAnchor && <foreignObject className="drawing-dimension-editor-frame" x={editorAnchor.x - editorWidth / 2} y={editorAnchor.y - DIMENSION_EDITOR_HEIGHT_PX + 2} width={editorWidth} height={DIMENSION_EDITOR_HEIGHT_PX}><input ref={dimensionEditorInputRef} className="drawing-dimension-editor" value={dimensionDraft} aria-label="Dimension value in millimetres" onChange={(event) => { setDimensionDraft(event.target.value); setDimensionEditError(null); }} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingDimensionId(null); setDimensionEditError(null); } if (event.key === 'Enter') { const parsed = parseLinearDimension(dimensionDraft); if (parsed === null) { setDimensionEditError('Dimension must be 0 mm or greater.'); return; } const result = solveDrawingDimensionEdit({ document, dimensionId: editingDimension.id, targetValue: parsed }); if (!result.ok) { setDimensionEditError(result.message); return; } transactDocument(() => result.document); setEditingDimensionId(null); setDimensionEditError(null); } }} /></foreignObject>}
             {overlayGeometry && overlayGeometry.origin.y >= 0 && overlayGeometry.origin.y <= viewport.height && overlayGeometry.xLabels.filter(({ value }) => value !== 0).map((label) => (
               <text className="drawing-coordinate-label drawing-x-coordinate" data-label-side="below" key={`x-${label.value}`} x={label.anchor.x} y={label.anchor.y + 15} textAnchor="middle">{label.value}</text>
             ))}

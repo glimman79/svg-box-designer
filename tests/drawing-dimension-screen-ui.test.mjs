@@ -49,4 +49,14 @@ assert.match(workspace, /y=\{editorAnchor\.y - DIMENSION_EDITOR_HEIGHT_PX \+ 2\}
 assert.equal(formatDimensionEditValue(95.6234), '95.623');
 assert.equal(formatDimensionEditValue(120), '120');
 assert.equal(formatDimensionEditValue(120.125), '120.125');
+
+// The stable callback ref runs when React mounts the editor input. It focuses and
+// selects only at activation; draft renders retain the same callback identity and
+// therefore preserve ordinary caret/selection behavior while the user edits.
+assert.match(workspace, /const dimensionEditorInputRef = useCallback\(\(input: HTMLInputElement \| null\) => \{\s*if \(!input\) return;\s*input\.focus\(\);\s*input\.select\(\);\s*\}, \[\]\);/, 'mounted editor input is focused and fully selected');
+assert.match(workspace, /<input ref=\{dimensionEditorInputRef\} className="drawing-dimension-editor" value=\{dimensionDraft\}/, 'the editor uses the stable mount callback rather than a render-driven selection effect');
+assert.doesNotMatch(workspace, /autoFocus className="drawing-dimension-editor"/, 'focus and selection share the mounted-input lifecycle');
+assert.match(workspace, /if \(dimension\.role === 'reference'\) return;[\s\S]*setEditingDimensionId\(dimension\.id\)/, 'reference dimensions remain non-editable');
+assert.match(workspace, /event\.key === 'Escape'[\s\S]*setEditingDimensionId\(null\)/, 'Escape retains the cancel path');
+assert.match(workspace, /event\.key === 'Enter'[\s\S]*solveDrawingDimensionEdit\([\s\S]*transactDocument\(\(\) => result\.document\)/, 'Enter retains the solver-backed transaction path');
 console.log('Drawing Dimension screen UI checks passed.');
