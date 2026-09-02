@@ -125,7 +125,14 @@ export const pointToLineDimensionOffset = (point: DrawingPoint, line: ResolvedDr
   const projection = { x: line.start.x + projectionT * dx, y: line.start.y + projectionT * dy };
   return (cursor.x - projection.x) * dx / length + (cursor.y - projection.y) * dy / length;
 };
-export type LinearAnnotationGeometry = Readonly<{ a: DrawingPoint; b: DrawingPoint; sourceA: DrawingPoint; sourceB: DrawingPoint }>;
+export type LinearAnnotationGeometry = Readonly<{
+  a: DrawingPoint;
+  b: DrawingPoint;
+  sourceA: DrawingPoint;
+  sourceB: DrawingPoint;
+  /** Annotation-only continuation from the finite measured segment to Q. */
+  lineExtension?: Readonly<{ start: DrawingPoint; end: DrawingPoint }>;
+}>;
 export const derivePointToLineAnnotationGeometry = (point: DrawingPoint, line: ResolvedDrawingLine, offset: number): LinearAnnotationGeometry | null => {
   const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y, length = Math.hypot(dx, dy);
   if (length <= DIMENSION_AXIS_EPSILON_MM) return null;
@@ -133,11 +140,15 @@ export const derivePointToLineAnnotationGeometry = (point: DrawingPoint, line: R
   const projectionT = (point.x - line.start.x) * ux + (point.y - line.start.y) * uy;
   const projection = { x: line.start.x + projectionT * ux, y: line.start.y + projectionT * uy };
   const shift = { x: ux * offset, y: uy * offset };
+  const lineExtension = projectionT < 0
+    ? { start: line.start, end: projection }
+    : projectionT > length ? { start: line.end, end: projection } : undefined;
   return {
     a: { x: projection.x + shift.x, y: projection.y + shift.y },
     b: { x: point.x + shift.x, y: point.y + shift.y },
     sourceA: projection,
     sourceB: point,
+    lineExtension,
   };
 };
 export const createLineDimension = (line: ResolvedDrawingLine, kind: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE'>, cursor: DrawingPoint, id: string): DrawingDimension => ({ id, kind, role: 'driving', references: lineDimensionReferences(line), value: measureDimension(kind, line.start, line.end), placement: { kind: 'linear', offset: dimensionOffset(line, cursor, kind) } });

@@ -50,7 +50,11 @@ export type DrawingDimension =
   }>)
   | (DrawingDimensionBase & Readonly<{
     kind: 'POINT_TO_LINE_DISTANCE';
-    /** Canonical geometric identity is Point + Line; selection order is separate solver intent. */
+    /**
+     * Retained for schema compatibility with existing documents. Point-to-Line
+     * movement ownership is derived from topology and is not controlled by this
+     * historical record of selection order.
+     */
     references: readonly [DrawingPointReference, DrawingEntityReference];
     movementPreference: 'point' | 'line';
   }>);
