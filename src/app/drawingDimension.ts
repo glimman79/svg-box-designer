@@ -1,5 +1,6 @@
 import type { DrawingDimension, DrawingDimensionKind, DrawingDimensionRole, DrawingDocumentV2, DrawingGeometryReference, DrawingLineEntity, DrawingPoint, DrawingPointReference, DrawingSketchV2, ResolvedDrawingLine } from './drawingTypes';
 import { pointIdForLineEndpoint, removeLineAndOrphans, resolveLine } from './drawingTopology.js';
+import { dimensionIncreasesConstraintRank } from './drawingConstraintAnalysis.js';
 
 export const DIMENSION_AXIS_EPSILON_MM = 1e-7;
 export const DIMENSION_INTERPRETATION_HYSTERESIS_PX = 3;
@@ -126,19 +127,14 @@ export type DimensionRoleClassification = Readonly<
   | { role: 'reference'; reason: 'duplicate' }
 >;
 
-/**
- * Limited D2.5a3 rule for the three current linear families on one semantic
- * unordered point pair. This is intentionally not a general rank/DOF solver.
- */
 export const classifyNewDimensionRole = (sketch: DrawingSketchV2, candidate: DrawingDimension): DimensionRoleClassification => {
   const pairKey = canonicalDimensionReferencePairKey(candidate.references);
   const samePair = Object.values(sketch.dimensions).filter((dimension) =>
     canonicalDimensionReferencePairKey(dimension.references) === pairKey);
   if (samePair.some((dimension) => dimension.kind === candidate.kind)) return { role: 'reference', reason: 'duplicate' };
-  const drivingFamilies = new Set(samePair.filter((dimension) => dimension.role === 'driving').map((dimension) => dimension.kind));
-  return drivingFamilies.size >= 2
-    ? { role: 'reference', reason: 'redundant' }
-    : { role: 'driving', reason: 'independent' };
+  return dimensionIncreasesConstraintRank(sketch, candidate)
+    ? { role: 'driving', reason: 'independent' }
+    : { role: 'reference', reason: 'redundant' };
 };
 
 /** Reference measurement is always resolved from current geometry, never stale `value`. */
