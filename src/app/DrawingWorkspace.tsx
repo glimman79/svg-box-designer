@@ -671,6 +671,10 @@ export function DrawingWorkspace({
                   return { start: { x: source.x + ux * 3 / pixelsPerMm, y: source.y + uy * 3 / pixelsPerMm }, end: { x: target.x + ux * 3 / pixelsPerMm, y: target.y + uy * 3 / pixelsPerMm } };
                 };
                 const extensionA = extension(geometry.sourceA, geometry.a), extensionB = extension(geometry.sourceB, geometry.b);
+                // The line-side Point-to-Line witness must visibly originate at
+                // the exact derived projection Q. Other witnesses retain their
+                // established screen-space gap at the referenced geometry.
+                if (dimension.kind === 'POINT_TO_LINE_DISTANCE') extensionA.start = geometry.sourceA;
                 const rawAngle = dimension.kind === 'HORIZONTAL_DISTANCE' ? 0 : dimension.kind === 'VERTICAL_DISTANCE' ? -90 : Math.atan2(geometry.b.y - geometry.a.y, geometry.b.x - geometry.a.x) * 180 / Math.PI;
                 const textAngle = rawAngle > 90 || rawAngle < -90 ? rawAngle + 180 : rawAngle;
                 const label = formatDimensionValue(measurement, dimension.role);
