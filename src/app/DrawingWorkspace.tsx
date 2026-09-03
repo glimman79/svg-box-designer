@@ -687,11 +687,13 @@ export function DrawingWorkspace({
                   const measurement = activeSketch ? displayedDimensionMeasurement(activeSketch, dimension) : null; if (measurement === null) return null;
                   const path = `M ${angleGeometry.start.x} ${angleGeometry.start.y} A ${angleGeometry.radius} ${angleGeometry.radius} 0 ${angleGeometry.largeArc} ${angleGeometry.sweep} ${angleGeometry.end.x} ${angleGeometry.end.y}`;
                   const selected = dimension.id === selectedDimensionId, hovered = dimension.id === hoveredDimensionId;
+                  const arrowState = selected ? 'active' : hovered ? 'hover' : 'normal';
+                  const arrowMarker = `url(#dimension-arrow-${arrowState})`;
                   return <g key={dimension.id} className={`drawing-dimension is-reference is-angle${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}${dimension.id === 'preview' ? ' is-preview' : ''}`}>
                     {angleGeometry.supportExtensions.map((extension) => <line key={extension.lineId} className="drawing-dimension-extension drawing-dimension-lineage drawing-dimension-support-extension" x1={extension.start.x} y1={extension.start.y} x2={extension.end.x} y2={extension.end.y} />)}
                     <line className="drawing-dimension-extension drawing-dimension-lineage" x1={angleGeometry.supportA.start.x} y1={angleGeometry.supportA.start.y} x2={angleGeometry.supportA.end.x} y2={angleGeometry.supportA.end.y} />
                     <line className="drawing-dimension-extension drawing-dimension-lineage" x1={angleGeometry.supportB.start.x} y1={angleGeometry.supportB.start.y} x2={angleGeometry.supportB.end.x} y2={angleGeometry.supportB.end.y} />
-                    <path className="drawing-dimension-line drawing-dimension-angle-arc" d={path} fill="none" />
+                    <path className="drawing-dimension-line drawing-dimension-angle-arc" d={path} fill="none" markerStart={arrowMarker} markerEnd={arrowMarker} />
                     <text className="drawing-dimension-value" x={angleGeometry.label.x} y={angleGeometry.label.y} textAnchor="middle" style={{ fontSize: dimensionScreenPixelsToModelUnits(DIMENSION_TEXT_SIZE_PX, pixelsPerMm) }}>{formatAngleDimension(measurement)}</text>
                     {dimension.id !== 'preview' && <path className="drawing-dimension-hit" d={path} fill="none" onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => { if (event.button === CAD_PRIMARY_BUTTON) setSelectedDimensionId(dimension.id); }} />}
                   </g>;

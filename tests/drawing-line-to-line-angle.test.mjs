@@ -18,7 +18,10 @@ const selected = cross.candidates.map((candidate) => {
 });
 assert.equal(new Set(selected.map(({ sector }) => angleSectorKey(sector))).size, 4, 'cursor motion reaches every physical sector');
 for (const candidate of cross.candidates) {
-  assert.deepEqual(deriveLineAngleAnnotation(cross, candidate, { x: 4, y: 1 }, 2).center, cross.intersection, 'every crossing sector uses the support intersection');
+  const geometry = deriveLineAngleAnnotation(cross, candidate, { x: 4, y: 1 }, 2);
+  assert.notDeepEqual(geometry.center, cross.intersection, 'crossing presentation can be placed locally without changing Q');
+  assert.ok(Math.abs(geometry.startTangent.x * (geometry.start.x - geometry.center.x) + geometry.startTangent.y * (geometry.start.y - geometry.center.y)) < 1e-10, 'start arrow tangent is perpendicular to its radius');
+  assert.ok(Math.abs(geometry.endTangent.x * (geometry.end.x - geometry.center.x) + geometry.endTangent.y * (geometry.end.y - geometry.center.y)) < 1e-10, 'end arrow tangent is perpendicular to its radius');
 }
 
 const reverse = createLineAngleBasis(diagonal, horizontal);
@@ -39,18 +42,18 @@ assert.ok(separated);
 assert.deepEqual(separated.intersection, { x: 0, y: 0 });
 assert.equal(separated.candidates.length, 3, 'common separated geometry exposes occupied plus two adjacent cells');
 const annotation = deriveLineAngleAnnotation(separated, separated.candidates[0], { x: 8, y: 3 }, 2);
-assert.deepEqual(annotation.center, { x: 0, y: 0 }, 'separated presentation uses the true support intersection, not its annotation anchor');
-assert.equal(annotation.supportExtensions.length, 2, 'both finite segments receive only the display extensions needed to reach the vertex');
-assert.deepEqual(annotation.supportExtensions.map(({ start, end }) => ({ start, end })), [
-  { start: { x: 10, y: 0 }, end: { x: 0, y: 0 } },
-  { start: { x: 2, y: 2 }, end: { x: 0, y: 0 } },
-]);
+assert.equal(annotation.presentationRegion, 'interior');
+assert.notDeepEqual(annotation.center, separated.intersection, 'separated presentation is local while Q remains mathematical authority');
+assert.ok(annotation.supportExtensions.every(({ end }) => end.x !== separated.intersection.x || end.y !== separated.intersection.y), 'no automatic endpoint-to-Q extension is emitted');
 for (const candidate of separated.candidates) {
-  assert.deepEqual(deriveLineAngleAnnotation(separated, candidate, { x: 8, y: 3 }, 2).center, separated.intersection, 'all three practical candidates share one geometric vertex');
+  assert.equal(deriveLineAngleAnnotation(separated, candidate, { x: 8, y: 3 }, 2).presentationRegion, 'interior', 'all practical candidates support local graphics');
 }
 const movedAnnotation = deriveLineAngleAnnotation(separated, separated.candidates[0], { x: 16, y: 6 }, 2);
-assert.deepEqual(movedAnnotation.center, annotation.center, 'moving annotation does not move its geometric vertex');
-assert.equal(movedAnnotation.radius, annotation.radius * 2, 'cursor distance controls arc radius independently');
+assert.notDeepEqual(movedAnnotation.center, annotation.center, 'moving annotation moves local presentation');
+const exterior = deriveLineAngleAnnotation(separated, separated.candidates[0], { x: 24, y: 9 }, 2);
+assert.match(exterior.presentationRegion, /^exterior-/);
+assert.ok(exterior.supportExtensions.length > 0, 'exterior placement receives local finite-line witnesses');
+assert.deepEqual(separated.intersection, { x: 0, y: 0 }, 'presentation movement does not change mathematical Q');
 const placementOne = createLineToLineAngleDimension(separatedA, separatedB, { x: 8, y: 3 }, 'p1');
 const placementTwo = createLineToLineAngleDimension(separatedA, separatedB, { x: 16, y: 6 }, 'p2');
 assert.ok(placementOne && placementTwo);
@@ -63,7 +66,7 @@ const oneSided = createLineAngleBasis(
 );
 assert.ok(oneSided);
 const oneSidedAnnotation = deriveLineAngleAnnotation(oneSided, oneSided.candidates[0], { x: 8, y: 3 }, 2);
-assert.deepEqual(oneSidedAnnotation.supportExtensions.map(({ lineId }) => lineId), ['b'], 'a segment already reaching Q receives no redundant extension');
+assert.ok(oneSidedAnnotation.supportExtensions.every(({ end }) => end.x !== oneSided.intersection.x || end.y !== oneSided.intersection.y), 'local witnesses never target Q merely because it exists');
 
 const parallel = createLineAngleBasis(horizontal, line('c', { x: -10, y: 5 }, { x: 10, y: 5 }));
 assert.equal(parallel, null, 'parallel lines fail closed without zero-angle or NaN candidates');

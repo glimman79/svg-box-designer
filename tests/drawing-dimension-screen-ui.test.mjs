@@ -10,6 +10,7 @@ assert.ok(Object.values(DIMENSION_COLORS).every((color) => color !== '#000000' &
 assert.match(workspace, /id=\{`dimension-arrow-\$\{state\}`\}/);
 assert.match(workspace, /fill=\{color\} stroke="none"/);
 assert.match(workspace, /markerStart=\{arrowMarker\} markerEnd=\{arrowMarker\}/);
+assert.match(workspace, /drawing-dimension-angle-arc[^>]*[\s\S]*markerStart=\{arrowMarker\} markerEnd=\{arrowMarker\}/, 'angle arc uses the same two-ended CAD arrow markers as linear dimensions');
 assert.match(workspace, /viewBox="0 0 7 7" refX="7" refY="3\.5" orient="auto-start-reverse"/);
 assert.doesNotMatch(css, /context-stroke/);
 assert.equal(DIMENSION_TEXT_SIZE_PX, 10);
