@@ -182,9 +182,19 @@ export const deriveLineToLineAnnotationGeometry = (a: ResolvedDrawingLine, b: Re
   const basis = stableLineBasis(a)!;
   const center = { x: (a.start.x + a.end.x + b.start.x + b.end.x) / 4, y: (a.start.y + a.end.y + b.start.y + b.end.y) / 4 };
   const anchor = { x: center.x + basis.tangent.x * offset, y: center.y + basis.tangent.y * offset };
-  const project = (line: ResolvedDrawingLine) => { const t = (anchor.x - line.start.x) * basis.tangent.x + (anchor.y - line.start.y) * basis.tangent.y; return { x: line.start.x + t * basis.tangent.x, y: line.start.y + t * basis.tangent.y }; };
-  const sourceA = project(a), sourceB = project(b);
-  return { a: sourceA, b: sourceB, sourceA, sourceB };
+  const project = (line: ResolvedDrawingLine) => {
+    const endT = (line.end.x - line.start.x) * basis.tangent.x + (line.end.y - line.start.y) * basis.tangent.y;
+    const t = (anchor.x - line.start.x) * basis.tangent.x + (anchor.y - line.start.y) * basis.tangent.y;
+    const attachmentT = Math.max(Math.min(0, endT), Math.min(Math.max(0, endT), t));
+    return {
+      endpoint: { x: line.start.x + t * basis.tangent.x, y: line.start.y + t * basis.tangent.y },
+      // This is derived annotation geometry only: inside the finite extent it
+      // coincides with the Line; outside it is the nearest finite endpoint.
+      attachment: { x: line.start.x + attachmentT * basis.tangent.x, y: line.start.y + attachmentT * basis.tangent.y },
+    };
+  };
+  const projectedA = project(a), projectedB = project(b);
+  return { a: projectedA.endpoint, b: projectedB.endpoint, sourceA: projectedA.attachment, sourceB: projectedB.attachment };
 };
 export const createLineToLineDistanceDimension = (first: ResolvedDrawingLine, second: ResolvedDrawingLine, cursor: DrawingPoint, id: string): DrawingDimension | null => {
   const [a, b] = canonicalLinePair(first, second), value = measureLineToLineDistance(a, b), basis = stableLineBasis(a);
