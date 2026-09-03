@@ -1,6 +1,12 @@
 import type { DrawingAngleSector, DrawingEntityReference, DrawingPoint, ResolvedDrawingLine } from './drawingTypes';
 
 const EPSILON = 1e-9;
+/**
+ * A support intersection farther than this many source-line lengths is treated
+ * as presentationally near-parallel. This keeps pathological coordinates out
+ * of SVG while failing closed instead of substituting a local, false vertex.
+ */
+export const MAX_SUPPORT_INTERSECTION_DISTANCE_RATIO = 1e6;
 const TAU = Math.PI * 2;
 export type LineAngleCandidate = Readonly<{
   sector: DrawingAngleSector;
@@ -28,6 +34,8 @@ export type LineAngleAnnotationGeometry = Readonly<{
   sweep: 0 | 1;
   supportA: Readonly<{ start: DrawingPoint; end: DrawingPoint }>;
   supportB: Readonly<{ start: DrawingPoint; end: DrawingPoint }>;
+  /** Derived display-only bridges from finite segment endpoints to the vertex. */
+  supportExtensions: readonly Readonly<{ lineId: string; start: DrawingPoint; end: DrawingPoint }>[];
 }>;
 
 const direction = (line: ResolvedDrawingLine) => ({ x: line.end.x - line.start.x, y: line.end.y - line.start.y });
@@ -42,10 +50,19 @@ export const canonicalLinePair = (first: ResolvedDrawingLine, second: ResolvedDr
 
 export const intersectLineSupports = (a: ResolvedDrawingLine, b: ResolvedDrawingLine): DrawingPoint | null => {
   const da = direction(a), db = direction(b), denominator = cross(da, db);
-  if (Math.hypot(da.x, da.y) <= EPSILON || Math.hypot(db.x, db.y) <= EPSILON || Math.abs(denominator) <= EPSILON * Math.hypot(da.x, da.y) * Math.hypot(db.x, db.y)) return null;
+  const lengthA = Math.hypot(da.x, da.y), lengthB = Math.hypot(db.x, db.y);
+  if (lengthA <= EPSILON || lengthB <= EPSILON || Math.abs(denominator) <= EPSILON * lengthA * lengthB) return null;
   const delta = { x: b.start.x - a.start.x, y: b.start.y - a.start.y };
   const t = cross(delta, db) / denominator;
-  return { x: a.start.x + t * da.x, y: a.start.y + t * da.y };
+  const intersection = { x: a.start.x + t * da.x, y: a.start.y + t * da.y };
+  const sourceScale = Math.max(lengthA, lengthB);
+  const remoteDistance = Math.min(
+    Math.hypot(intersection.x - a.start.x, intersection.y - a.start.y),
+    Math.hypot(intersection.x - a.end.x, intersection.y - a.end.y),
+    Math.hypot(intersection.x - b.start.x, intersection.y - b.start.y),
+    Math.hypot(intersection.x - b.end.x, intersection.y - b.end.y),
+  );
+  return Number.isFinite(intersection.x) && Number.isFinite(intersection.y) && remoteDistance / sourceScale <= MAX_SUPPORT_INTERSECTION_DISTANCE_RATIO ? intersection : null;
 };
 
 const segmentContains = (line: ResolvedDrawingLine, p: DrawingPoint) => {
@@ -53,6 +70,15 @@ const segmentContains = (line: ResolvedDrawingLine, p: DrawingPoint) => {
   const t = ((p.x - line.start.x) * d.x + (p.y - line.start.y) * d.y) / lengthSquared;
   return t >= -EPSILON && t <= 1 + EPSILON;
 };
+
+export const resolveRequiredSupportExtensions = (basis: LineAngleBasis): LineAngleAnnotationGeometry['supportExtensions'] =>
+  [basis.lineA, basis.lineB].flatMap((line) => {
+    if (segmentContains(line, basis.intersection)) return [];
+    const startDistance = Math.hypot(basis.intersection.x - line.start.x, basis.intersection.y - line.start.y);
+    const endDistance = Math.hypot(basis.intersection.x - line.end.x, basis.intersection.y - line.end.y);
+    const endpoint = startDistance <= endDistance ? line.start : line.end;
+    return [{ lineId: line.id, start: endpoint, end: basis.intersection }];
+  });
 
 /**
  * The four support-line cells are authoritative. When the finite segments cross,
@@ -97,13 +123,12 @@ export const selectLineAngleCandidate = (basis: LineAngleBasis, cursor: DrawingP
 export const candidateForSector = (basis: LineAngleBasis, sector: DrawingAngleSector): LineAngleCandidate | null => basis.supportCandidates.find((candidate) => sameSector(candidate.sector, sector)) ?? null;
 
 export const deriveLineAngleAnnotation = (basis: LineAngleBasis, candidate: LineAngleCandidate, anchor: DrawingPoint, minimumRadius: number): LineAngleAnnotationGeometry => {
-  const finiteCross = segmentContains(basis.lineA, basis.intersection) && segmentContains(basis.lineB, basis.intersection);
-  const center = finiteCross ? basis.intersection : anchor;
+  const center = basis.intersection;
   const cursorRadius = Math.hypot(anchor.x - center.x, anchor.y - center.y);
   const radius = Math.max(minimumRadius, cursorRadius);
   const start = { x: center.x + Math.cos(candidate.startAngle) * radius, y: center.y + Math.sin(candidate.startAngle) * radius };
   const endAngle = candidate.startAngle + candidate.sweepAngle;
   const end = { x: center.x + Math.cos(endAngle) * radius, y: center.y + Math.sin(endAngle) * radius };
   const middle = candidate.startAngle + candidate.sweepAngle / 2;
-  return { center, radius, start, end, label: { x: center.x + Math.cos(middle) * (radius + minimumRadius * .45), y: center.y + Math.sin(middle) * (radius + minimumRadius * .45) }, largeArc: candidate.sweepAngle > Math.PI ? 1 : 0, sweep: 1, supportA: { start: center, end: start }, supportB: { start: center, end } };
+  return { center, radius, start, end, label: { x: center.x + Math.cos(middle) * (radius + minimumRadius * .45), y: center.y + Math.sin(middle) * (radius + minimumRadius * .45) }, largeArc: candidate.sweepAngle > Math.PI ? 1 : 0, sweep: 1, supportA: { start: center, end: start }, supportB: { start: center, end }, supportExtensions: resolveRequiredSupportExtensions(basis) };
 };
