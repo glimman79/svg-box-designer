@@ -9,7 +9,8 @@ import { activateDrawingTool, finishDrawingConstruction, type DrawingActiveTool,
 import { useCadWheelCapture } from './useCadWheelCapture';
 import { CAD_PRIMARY_BUTTON, useCadCtrlSnapOverride, useCadEscapeToolExit, useCadPanGesture } from './cadInteraction';
 import { resolveCadToolPointerActivation, type CadToolActivationRecord } from './cadToolActivation';
-import { appendDimension, chooseLineDimensionKind, choosePointDimensionKind, createDimensionId, createLineDimension, createPointToLineDimension, createPointToPointDimension, deleteDimension, derivePointToLineAnnotationGeometry, dimensionEditorWidthPixels, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_COLORS, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatDimensionEditValue, formatDimensionValue, moveDimensionPlacement, parseLinearDimension, pointToLineDimensionOffset, preselectionReference, resolveDimensionLineReference, resolveDimensionPreselection, resolveDimensionPreselectionForTarget, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
+import { appendDimension, chooseLineDimensionKind, choosePointDimensionKind, createDimensionId, createLineDimension, createLineToLineAngleDimension, createPointToLineDimension, createPointToPointDimension, deleteDimension, derivePointToLineAnnotationGeometry, dimensionEditorWidthPixels, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_COLORS, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatAngleDimension, formatDimensionEditValue, formatDimensionValue, moveDimensionPlacement, parseLinearDimension, pointToLineDimensionOffset, preselectionReference, resolveDimensionLineReference, resolveDimensionPreselection, resolveDimensionPreselectionForTarget, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
+import { candidateForSector, createLineAngleBasis, deriveLineAngleAnnotation } from './drawingLineAngle';
 import { solveDrawingDimensionEdit } from './drawingConstraintSolver';
 import type { HistoryControlsProps } from './HistoryControls';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from './drawingHistory';
@@ -306,9 +307,15 @@ export function DrawingWorkspace({
       if (!point || !activeSketch) return;
       if (dimensionTool.phase === 'placementPreview' || dimensionTool.phase === 'lineTargetSelected') {
         if (dimensionTool.phase === 'lineTargetSelected') {
-          const secondCandidate = resolveDimensionCandidate({ x: event.clientX, y: event.clientY }, 'point');
+          const secondCandidate = resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
           if (secondCandidate) {
             const pointReference = preselectionReference(secondCandidate);
+            if (pointReference.kind === 'entity' && pointReference.entityId !== dimensionTool.line.entityId) {
+              const firstLine = resolveDimensionLineReference(activeSketch, dimensionTool.line), secondLine = resolveDimensionLineReference(activeSketch, pointReference);
+              const angle = firstLine && secondLine ? createLineToLineAngleDimension(firstLine, secondLine, point, 'preview') : null;
+              if (angle) { setDimensionTool({ phase: 'placementPreview', dimension: angle, cursor: point }); setDimensionPreselection(null); }
+              return;
+            }
             const pointValue = resolveDrawingPointReference(activeSketch, pointReference);
             const lineValue = resolveDimensionLineReference(activeSketch, dimensionTool.line);
             if (pointReference.kind !== 'entity' && pointValue && lineValue) {
@@ -322,6 +329,14 @@ export function DrawingWorkspace({
           }
         }
         const preview = dimensionTool.dimension;
+        if (preview.kind === 'LINE_TO_LINE_ANGLE') {
+          const first = resolveDimensionLineReference(activeSketch, preview.references[0]), second = resolveDimensionLineReference(activeSketch, preview.references[1]);
+          const refreshed = first && second ? createLineToLineAngleDimension(first, second, point, createDimensionId()) : null;
+          if (!refreshed) return;
+          transactDocument((current) => appendDimension(current, refreshed));
+          const nextLifecycle = finishDrawingConstruction(toolLifecycle); setToolLifecycle(nextLifecycle);
+          setDimensionTool(nextLifecycle.activeTool === 'dimension' ? { phase: 'waitingForFirstTarget' } : { phase: 'inactive' }); setDimensionPreselection(null); return;
+        }
         const offsetLine = preview.kind === 'POINT_TO_LINE_DISTANCE' ? resolveDimensionLineReference(activeSketch, preview.references[1]) : (() => { const a = resolveDrawingPointReference(activeSketch, preview.references[0]), b = resolveDrawingPointReference(activeSketch, preview.references[1]); return a && b ? { id: '', type: 'line' as const, startPointId: '', endPointId: '', start: a, end: b } : null; })();
         if (!offsetLine) return;
         const pointReference = preview.kind === 'POINT_TO_LINE_DISTANCE' ? resolveDrawingPointReference(activeSketch, preview.references[0]) : null;
@@ -422,6 +437,10 @@ export function DrawingWorkspace({
           const line = resolveDimensionLineReference(activeSketch, d.references[1]);
           const targetPoint = resolveDrawingPointReference(activeSketch, d.references[0]);
           if (line && targetPoint) setDimensionTool({ ...dimensionTool, cursor: point, dimension: { ...d, placement: { kind: 'linear', offset: pointToLineDimensionOffset(targetPoint, line, point) } } });
+        } else if (d.kind === 'LINE_TO_LINE_ANGLE') {
+          const first = resolveDimensionLineReference(activeSketch, d.references[0]), second = resolveDimensionLineReference(activeSketch, d.references[1]);
+          const dimension = first && second ? createLineToLineAngleDimension(first, second, point, 'preview') : null;
+          if (dimension) setDimensionTool({ ...dimensionTool, cursor: point, dimension });
         } else {
           const a = resolveDrawingPointReference(activeSketch, d.references[0]), b = resolveDrawingPointReference(activeSketch, d.references[1]);
           if (a && b) {
@@ -432,7 +451,7 @@ export function DrawingWorkspace({
         }
       }
       setDimensionPreselection(dimensionTool.phase === 'lineTargetSelected'
-        ? resolveDimensionCandidate({ x: event.clientX, y: event.clientY }, 'point') : null);
+        ? (() => { const candidate = resolveDimensionCandidate({ x: event.clientX, y: event.clientY }); return candidate?.kind === 'line' && candidate.lineId === dimensionTool.line.entityId ? null : candidate; })() : null);
       return;
     }
     if (activeTool === 'dimension') {
@@ -496,6 +515,7 @@ export function DrawingWorkspace({
 
   const annotationGeometry = (dimension: DrawingDimension) => {
     if (!activeSketch) return null;
+    if (dimension.kind === 'LINE_TO_LINE_ANGLE') return null;
     if (dimension.kind === 'POINT_TO_LINE_DISTANCE') {
       const point = resolveDrawingPointReference(activeSketch, dimension.references[0]), line = resolveDimensionLineReference(activeSketch, dimension.references[1]);
       if (!point || !line) return null;
@@ -507,6 +527,12 @@ export function DrawingWorkspace({
     if (dimension.kind === 'VERTICAL_DISTANCE') return { a: { x: (a.x + b.x) / 2 + dimension.placement.offset, y: a.y }, b: { x: (a.x + b.x) / 2 + dimension.placement.offset, y: b.y }, sourceA: a, sourceB: b };
     const dx = b.x - a.x, dy = b.y - a.y, length = Math.hypot(dx, dy) || 1, ox = -dy / length * dimension.placement.offset, oy = dx / length * dimension.placement.offset;
     return { a: { x: a.x + ox, y: a.y + oy }, b: { x: b.x + ox, y: b.y + oy }, sourceA: a, sourceB: b };
+  };
+  const angleAnnotationGeometry = (dimension: DrawingDimension) => {
+    if (!activeSketch || dimension.kind !== 'LINE_TO_LINE_ANGLE' || dimension.placement.kind !== 'angular') return null;
+    const first = resolveDimensionLineReference(activeSketch, dimension.references[0]), second = resolveDimensionLineReference(activeSketch, dimension.references[1]);
+    const basis = first && second ? createLineAngleBasis(first, second) : null, candidate = basis && candidateForSector(basis, dimension.angleSector);
+    return basis && candidate ? deriveLineAngleAnnotation(basis, candidate, dimension.placement.anchor, 24 / (viewport.width / viewBox.width)) : null;
   };
   const previewDimension = dimensionTool.phase === 'placementPreview' || dimensionTool.phase === 'lineTargetSelected' ? dimensionTool.dimension : null;
   const displayedDimensions = activeSketch?.dimensionOrder.map((id) => {
@@ -646,7 +672,7 @@ export function DrawingWorkspace({
             </g>
             <g className="drawing-sketch-geometry" aria-label="Committed sketch geometry">
               {resolvedLines.map((entity) => (
-                <line key={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} className={`drawing-line-entity ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${selectedGeometry?.kind === 'line' && selectedGeometry.lineId === entity.id ? ' is-geometry-selected' : ''}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
+                <line key={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} className={`drawing-line-entity ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${selectedGeometry?.kind === 'line' && selectedGeometry.lineId === entity.id ? ' is-geometry-selected' : ''}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
               ))}
               {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); return p ? <circle className="drawing-geometry-point-preselection" cx={p.x} cy={p.y} r={5 / pixelsPerMm} /> : null; })()}
               {activeTool === 'select' && selectedGeometry?.kind === 'point' && activeSketch?.points[selectedGeometry.pointId] && <circle className={`drawing-geometry-point-selected${geometryDrag?.target.kind === 'point' && geometryDrag.target.pointId === selectedGeometry.pointId ? ' is-geometry-dragging' : ''}`} cx={activeSketch.points[selectedGeometry.pointId].x} cy={activeSketch.points[selectedGeometry.pointId].y} r={6 / pixelsPerMm} />}
@@ -656,6 +682,19 @@ export function DrawingWorkspace({
             </g>
             <g className="drawing-dimension-layer" aria-label="Drawing dimensions">
               {[...displayedDimensions, ...(previewDimension ? [previewDimension] : [])].map((dimension) => {
+                if (dimension.kind === 'LINE_TO_LINE_ANGLE') {
+                  const angleGeometry = angleAnnotationGeometry(dimension); if (!angleGeometry) return null;
+                  const measurement = activeSketch ? displayedDimensionMeasurement(activeSketch, dimension) : null; if (measurement === null) return null;
+                  const path = `M ${angleGeometry.start.x} ${angleGeometry.start.y} A ${angleGeometry.radius} ${angleGeometry.radius} 0 ${angleGeometry.largeArc} ${angleGeometry.sweep} ${angleGeometry.end.x} ${angleGeometry.end.y}`;
+                  const selected = dimension.id === selectedDimensionId, hovered = dimension.id === hoveredDimensionId;
+                  return <g key={dimension.id} className={`drawing-dimension is-reference is-angle${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}${dimension.id === 'preview' ? ' is-preview' : ''}`}>
+                    <line className="drawing-dimension-extension drawing-dimension-lineage" x1={angleGeometry.supportA.start.x} y1={angleGeometry.supportA.start.y} x2={angleGeometry.supportA.end.x} y2={angleGeometry.supportA.end.y} />
+                    <line className="drawing-dimension-extension drawing-dimension-lineage" x1={angleGeometry.supportB.start.x} y1={angleGeometry.supportB.start.y} x2={angleGeometry.supportB.end.x} y2={angleGeometry.supportB.end.y} />
+                    <path className="drawing-dimension-line drawing-dimension-angle-arc" d={path} fill="none" />
+                    <text className="drawing-dimension-value" x={angleGeometry.label.x} y={angleGeometry.label.y} textAnchor="middle" style={{ fontSize: dimensionScreenPixelsToModelUnits(DIMENSION_TEXT_SIZE_PX, pixelsPerMm) }}>{formatAngleDimension(measurement)}</text>
+                    {dimension.id !== 'preview' && <path className="drawing-dimension-hit" d={path} fill="none" onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => { if (event.button === CAD_PRIMARY_BUTTON) setSelectedDimensionId(dimension.id); }} />}
+                  </g>;
+                }
                 const geometry = annotationGeometry(dimension); if (!geometry) return null;
                 const measurement = activeSketch ? displayedDimensionMeasurement(activeSketch, dimension) : null;
                 if (measurement === null) return null;
