@@ -33,7 +33,7 @@ export type DrawingGeometryReference =
   | Readonly<{ kind: 'datum'; datum: 'ORIGIN' | 'X_AXIS' | 'Y_AXIS' }>;
 export type DrawingPointReference = Exclude<DrawingGeometryReference, { kind: 'entity' }>;
 export type DrawingEntityReference = Extract<DrawingGeometryReference, { kind: 'entity' }>;
-export type DrawingDimensionKind = 'ALIGNED_DISTANCE' | 'HORIZONTAL_DISTANCE' | 'VERTICAL_DISTANCE' | 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE';
+export type DrawingDimensionKind = 'ALIGNED_DISTANCE' | 'HORIZONTAL_DISTANCE' | 'VERTICAL_DISTANCE' | 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE';
 export type DrawingAngleSector = Readonly<{ sideA: -1 | 1; sideB: -1 | 1 }>;
 export type DrawingDimensionRole = 'driving' | 'reference';
 type DrawingDimensionBase = Readonly<{
@@ -46,7 +46,7 @@ type DrawingDimensionBase = Readonly<{
 }>;
 export type DrawingDimension =
   | (DrawingDimensionBase & Readonly<{
-    kind: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE'>;
+    kind: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE'>;
     references: readonly [DrawingPointReference, DrawingPointReference];
   }>)
   | (DrawingDimensionBase & Readonly<{
@@ -58,6 +58,13 @@ export type DrawingDimension =
      */
     references: readonly [DrawingPointReference, DrawingEntityReference];
     movementPreference: 'point' | 'line';
+  }>)
+  | (DrawingDimensionBase & Readonly<{
+    kind: 'LINE_TO_LINE_DISTANCE';
+    /** Canonical unordered pair: references[0].entityId is lexically first. */
+    references: readonly [DrawingEntityReference, DrawingEntityReference];
+    /** Side of canonical Line B relative to canonical Line A's stable normal. */
+    signedSide: -1 | 1;
   }>)
   | (DrawingDimensionBase & Readonly<{
     kind: 'LINE_TO_LINE_ANGLE';

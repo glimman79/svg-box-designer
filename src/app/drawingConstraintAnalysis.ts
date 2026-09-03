@@ -19,6 +19,11 @@ export const constraintPointKey = (sketch: DrawingSketchV2, reference: DrawingPo
 
 export const constraintEquation = (sketch: DrawingSketchV2, dimension: DrawingDimension): DrawingConstraintEquation | null => {
   if (dimension.kind === 'LINE_TO_LINE_ANGLE') return null;
+  if (dimension.kind === 'LINE_TO_LINE_DISTANCE') {
+    const a = sketch.entities[dimension.references[0].entityId], b = sketch.entities[dimension.references[1].entityId];
+    if (!a || !b || a.startPointId === a.endPointId || b.startPointId === b.endPointId) return null;
+    return { dimension, pointKeys: [a.startPointId, a.endPointId, b.startPointId, b.endPointId] };
+  }
   if (dimension.kind === 'POINT_TO_LINE_DISTANCE') {
     const point = constraintPointKey(sketch, dimension.references[0]);
     const line = sketch.entities[dimension.references[1].entityId];
@@ -27,6 +32,22 @@ export const constraintEquation = (sketch: DrawingSketchV2, dimension: DrawingDi
   }
   const a = constraintPointKey(sketch, dimension.references[0]), b = constraintPointKey(sketch, dimension.references[1]);
   return a && b && a !== b ? { dimension, pointKeys: [a, b] } : null;
+};
+
+export const lineToLineDistanceAndGradient = (a0: DrawingPoint, a1: DrawingPoint, b0: DrawingPoint, b1: DrawingPoint) => {
+  const coordinates = [a0.x, a0.y, a1.x, a1.y, b0.x, b0.y, b1.x, b1.y];
+  const signedValue = (v: readonly number[]) => {
+    let dx = v[2] - v[0], dy = v[3] - v[1]; const length = Math.hypot(dx, dy);
+    if (length <= DRAWING_CONSTRAINT_RANK_TOLERANCE.absolute) return null;
+    dx /= length; dy /= length;
+    // Canonical orientation makes endpoint ordering irrelevant.
+    if (dx < 0 || (Math.abs(dx) <= 1e-9 && dy < 0)) { dx = -dx; dy = -dy; }
+    return -dy * (v[4] - v[0]) + dx * (v[5] - v[1]);
+  };
+  const signed = signedValue(coordinates); if (signed === null) return null;
+  const side = signed < 0 ? -1 : 1;
+  const gradient = coordinates.map((coordinate, index) => { const h = 1e-6 * Math.max(1, Math.abs(coordinate)); const plus = [...coordinates], minus = [...coordinates]; plus[index] += h; minus[index] -= h; const p = signedValue(plus), m = signedValue(minus); return p === null || m === null ? 0 : side * (p - m) / (2 * h); });
+  return { distance: Math.abs(signed), signedDistance: signed, gradient };
 };
 
 export const pointToLineDistanceAndGradient = (point: DrawingPoint, a: DrawingPoint, b: DrawingPoint) => {
@@ -69,6 +90,12 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
     const [p, a, b] = equation.pointKeys, result = pointToLineDistanceAndGradient(coordinate(sketch, p), coordinate(sketch, a), coordinate(sketch, b));
     if (!result) return null;
     [p, a, b].forEach((key, i) => set(key, result.gradient[i * 2], result.gradient[i * 2 + 1]));
+    return row;
+  }
+  if (equation.dimension.kind === 'LINE_TO_LINE_DISTANCE') {
+    const [a0, a1, b0, b1] = equation.pointKeys, result = lineToLineDistanceAndGradient(coordinate(sketch, a0), coordinate(sketch, a1), coordinate(sketch, b0), coordinate(sketch, b1));
+    if (!result) return null;
+    [a0, a1, b0, b1].forEach((key, i) => set(key, result.gradient[i * 2], result.gradient[i * 2 + 1]));
     return row;
   }
   const [aKey, bKey] = equation.pointKeys, a = coordinate(sketch, aKey), b = coordinate(sketch, bKey), dx = b.x - a.x, dy = b.y - a.y;
