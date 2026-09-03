@@ -15,6 +15,9 @@ const geometryLayerIndex = workspace.indexOf('className="drawing-sketch-geometry
 const dimensionLayerIndex = workspace.indexOf('className="drawing-dimension-layer"');
 const supportExtensionIndex = workspace.indexOf('drawing-dimension-support-extension', dimensionLayerIndex);
 assert.ok(geometryLayerIndex >= 0 && dimensionLayerIndex > geometryLayerIndex && supportExtensionIndex > dimensionLayerIndex, 'midpoint support witnesses paint after committed Lines in the SVG presentation layer');
+const angleRenderer = workspace.slice(workspace.indexOf("if (dimension.kind === 'LINE_TO_LINE_ANGLE')"), workspace.indexOf('const geometry = annotationGeometry(dimension)'));
+assert.match(angleRenderer, /angleGeometry\.supportExtensions\.map/, 'finite-Line-to-arc reference extensions remain rendered');
+assert.doesNotMatch(angleRenderer, /angleGeometry\.support[AB]\.(?:start|end)/, 'mathematical Q-to-arc radii are not emitted as visible SVG lines');
 assert.match(css, /\.drawing-dimension-support-extension \{[^}]*stroke-dasharray:\s*4 3;[^}]*opacity:\s*1;[^}]*mix-blend-mode:\s*multiply;[^}]*pointer-events:\s*none;/s, 'support dashes remain visible over same-colour Lines without owning pointer hits');
 assert.match(workspace, /viewBox="0 0 7 7" refX="7" refY="3\.5" orient="auto-start-reverse"/);
 assert.doesNotMatch(css, /context-stroke/);
