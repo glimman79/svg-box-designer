@@ -25,7 +25,7 @@ export type LineAngleBasis = Readonly<{
   candidates: readonly LineAngleCandidate[];
 }>;
 export type LineAngleAnnotationGeometry = Readonly<{
-  /** Local display origin. `basis.intersection` remains the mathematical vertex. */
+  /** True intersection of the two infinite line supports. */
   center: DrawingPoint;
   radius: number;
   start: DrawingPoint;
@@ -35,10 +35,7 @@ export type LineAngleAnnotationGeometry = Readonly<{
   sweep: 0 | 1;
   supportA: Readonly<{ start: DrawingPoint; end: DrawingPoint }>;
   supportB: Readonly<{ start: DrawingPoint; end: DrawingPoint }>;
-  presentationRegion: 'interior' | 'exterior-positive' | 'exterior-negative';
-  startTangent: DrawingPoint;
-  endTangent: DrawingPoint;
-  /** Derived display-only bridges from finite segments to local witnesses. */
+  /** Derived display-only, collinear extensions from finite-segment midpoints. */
   supportExtensions: readonly Readonly<{ lineId: string; start: DrawingPoint; end: DrawingPoint }>[];
 }>;
 
@@ -75,25 +72,16 @@ const segmentContains = (line: ResolvedDrawingLine, p: DrawingPoint) => {
   return t >= -EPSILON && t <= 1 + EPSILON;
 };
 
-const closestSegmentPoint = (line: ResolvedDrawingLine, point: DrawingPoint): DrawingPoint => {
-  const d = direction(line), lengthSquared = d.x * d.x + d.y * d.y;
-  const t = Math.max(0, Math.min(1, ((point.x - line.start.x) * d.x + (point.y - line.start.y) * d.y) / lengthSquared));
-  return { x: line.start.x + d.x * t, y: line.start.y + d.y * t };
-};
-
-export const resolveLineAnglePresentationRegion = (basis: LineAngleBasis, anchor: DrawingPoint): LineAngleAnnotationGeometry['presentationRegion'] => {
-  const points = [basis.lineA.start, basis.lineA.end, basis.lineB.start, basis.lineB.end];
-  const minX = Math.min(...points.map(({ x }) => x)), maxX = Math.max(...points.map(({ x }) => x));
-  const minY = Math.min(...points.map(({ y }) => y)), maxY = Math.max(...points.map(({ y }) => y));
-  if (anchor.x >= minX && anchor.x <= maxX && anchor.y >= minY && anchor.y <= maxY) return 'interior';
-  const centroid = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
-  return cross(direction(basis.lineA), { x: anchor.x - centroid.x, y: anchor.y - centroid.y }) >= 0 ? 'exterior-positive' : 'exterior-negative';
-};
-
 export const resolveRequiredSupportExtensions = (basis: LineAngleBasis, targets: readonly [DrawingPoint, DrawingPoint]): LineAngleAnnotationGeometry['supportExtensions'] =>
-  [basis.lineA, basis.lineB].flatMap((line, index) => {
-    const start = closestSegmentPoint(line, targets[index]);
-    return Math.hypot(start.x - targets[index].x, start.y - targets[index].y) <= EPSILON ? [] : [{ lineId: line.id, start, end: targets[index] }];
+  [basis.lineA, basis.lineB].flatMap((line) => {
+    if (segmentContains(line, basis.intersection)) return [];
+    const midpoint = { x: (line.start.x + line.end.x) / 2, y: (line.start.y + line.end.y) / 2 };
+    const lineDirection = direction(line);
+    const target = targets.reduce((best, point) => {
+      const offset = (candidate: DrawingPoint) => ({ x: candidate.x - basis.intersection.x, y: candidate.y - basis.intersection.y });
+      return Math.abs(cross(lineDirection, offset(point))) < Math.abs(cross(lineDirection, offset(best))) ? point : best;
+    });
+    return [{ lineId: line.id, start: midpoint, end: target }];
   });
 
 /**
@@ -139,17 +127,14 @@ export const selectLineAngleCandidate = (basis: LineAngleBasis, cursor: DrawingP
 export const candidateForSector = (basis: LineAngleBasis, sector: DrawingAngleSector): LineAngleCandidate | null => basis.supportCandidates.find((candidate) => sameSector(candidate.sector, sector)) ?? null;
 
 export const deriveLineAngleAnnotation = (basis: LineAngleBasis, candidate: LineAngleCandidate, anchor: DrawingPoint, minimumRadius: number): LineAngleAnnotationGeometry => {
-  const radius = minimumRadius * 1.65;
+  const center = basis.intersection;
+  const cursorRadius = Math.hypot(anchor.x - center.x, anchor.y - center.y);
+  const radius = Math.max(minimumRadius, cursorRadius);
   const middle = candidate.startAngle + candidate.sweepAngle / 2;
-  const labelDistance = radius + minimumRadius * .45;
-  const center = { x: anchor.x - Math.cos(middle) * labelDistance, y: anchor.y - Math.sin(middle) * labelDistance };
   const start = { x: center.x + Math.cos(candidate.startAngle) * radius, y: center.y + Math.sin(candidate.startAngle) * radius };
   const endAngle = candidate.startAngle + candidate.sweepAngle;
   const end = { x: center.x + Math.cos(endAngle) * radius, y: center.y + Math.sin(endAngle) * radius };
-  return { center, radius, start, end, label: anchor, largeArc: candidate.sweepAngle > Math.PI ? 1 : 0, sweep: 1,
+  return { center, radius, start, end, label: { x: center.x + Math.cos(middle) * (radius + minimumRadius * .45), y: center.y + Math.sin(middle) * (radius + minimumRadius * .45) }, largeArc: candidate.sweepAngle > Math.PI ? 1 : 0, sweep: 1,
     supportA: { start: center, end: start }, supportB: { start: center, end },
-    presentationRegion: resolveLineAnglePresentationRegion(basis, anchor),
-    startTangent: { x: -Math.sin(candidate.startAngle), y: Math.cos(candidate.startAngle) },
-    endTangent: { x: -Math.sin(endAngle), y: Math.cos(endAngle) },
     supportExtensions: resolveRequiredSupportExtensions(basis, [start, end]) };
 };
