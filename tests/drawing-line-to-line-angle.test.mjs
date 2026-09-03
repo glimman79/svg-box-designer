@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { angleSectorKey, createLineAngleBasis, deriveLineAngleAnnotation, selectLineAngleCandidate } from '../.test-build/drawing-line-angle/drawingLineAngle.js';
+import { MAX_SUPPORT_INTERSECTION_DISTANCE_RATIO, angleSectorKey, createLineAngleBasis, deriveLineAngleAnnotation, selectLineAngleCandidate } from '../.test-build/drawing-line-angle/drawingLineAngle.js';
 import { appendDimension, canonicalDimensionReferencePairKey, createLineToLineAngleDimension, displayedDimensionMeasurement, formatAngleDimension } from '../.test-build/drawing-line-angle/drawingDimension.js';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-line-angle/drawingHistory.js';
 
@@ -17,6 +17,9 @@ const selected = cross.candidates.map((candidate) => {
   return selectLineAngleCandidate(cross, { x: Math.cos(middle) * 5, y: Math.sin(middle) * 5 });
 });
 assert.equal(new Set(selected.map(({ sector }) => angleSectorKey(sector))).size, 4, 'cursor motion reaches every physical sector');
+for (const candidate of cross.candidates) {
+  assert.deepEqual(deriveLineAngleAnnotation(cross, candidate, { x: 4, y: 1 }, 2).center, cross.intersection, 'every crossing sector uses the support intersection');
+}
 
 const reverse = createLineAngleBasis(diagonal, horizontal);
 assert.ok(reverse);
@@ -36,11 +39,40 @@ assert.ok(separated);
 assert.deepEqual(separated.intersection, { x: 0, y: 0 });
 assert.equal(separated.candidates.length, 3, 'common separated geometry exposes occupied plus two adjacent cells');
 const annotation = deriveLineAngleAnnotation(separated, separated.candidates[0], { x: 8, y: 3 }, 2);
-assert.deepEqual(annotation.center, { x: 8, y: 3 }, 'far support intersection is represented by derived local presentation');
+assert.deepEqual(annotation.center, { x: 0, y: 0 }, 'separated presentation uses the true support intersection, not its annotation anchor');
+assert.equal(annotation.supportExtensions.length, 2, 'both finite segments receive only the display extensions needed to reach the vertex');
+assert.deepEqual(annotation.supportExtensions.map(({ start, end }) => ({ start, end })), [
+  { start: { x: 10, y: 0 }, end: { x: 0, y: 0 } },
+  { start: { x: 2, y: 2 }, end: { x: 0, y: 0 } },
+]);
+for (const candidate of separated.candidates) {
+  assert.deepEqual(deriveLineAngleAnnotation(separated, candidate, { x: 8, y: 3 }, 2).center, separated.intersection, 'all three practical candidates share one geometric vertex');
+}
+const movedAnnotation = deriveLineAngleAnnotation(separated, separated.candidates[0], { x: 16, y: 6 }, 2);
+assert.deepEqual(movedAnnotation.center, annotation.center, 'moving annotation does not move its geometric vertex');
+assert.equal(movedAnnotation.radius, annotation.radius * 2, 'cursor distance controls arc radius independently');
+const placementOne = createLineToLineAngleDimension(separatedA, separatedB, { x: 8, y: 3 }, 'p1');
+const placementTwo = createLineToLineAngleDimension(separatedA, separatedB, { x: 16, y: 6 }, 'p2');
+assert.ok(placementOne && placementTwo);
+assert.equal(angleSectorKey(placementOne.angleSector), angleSectorKey(placementTwo.angleSector), 'cursor movement within one sector preserves semantic identity');
+assert.equal(placementOne.value, placementTwo.value, 'cursor movement within one sector preserves its measured angle');
+
+const oneSided = createLineAngleBasis(
+  line('a', { x: 0, y: 0 }, { x: 10, y: 0 }),
+  line('b', { x: 2, y: 2 }, { x: 6, y: 6 }),
+);
+assert.ok(oneSided);
+const oneSidedAnnotation = deriveLineAngleAnnotation(oneSided, oneSided.candidates[0], { x: 8, y: 3 }, 2);
+assert.deepEqual(oneSidedAnnotation.supportExtensions.map(({ lineId }) => lineId), ['b'], 'a segment already reaching Q receives no redundant extension');
 
 const parallel = createLineAngleBasis(horizontal, line('c', { x: -10, y: 5 }, { x: 10, y: 5 }));
 assert.equal(parallel, null, 'parallel lines fail closed without zero-angle or NaN candidates');
 assert.equal(createLineToLineAngleDimension(horizontal, line('c', { x: -10, y: 5 }, { x: 10, y: 5 }), { x: 0, y: 2 }, 'bad'), null);
+const nearParallel = createLineAngleBasis(
+  line('near-a', { x: 0, y: 0 }, { x: 1, y: 0 }),
+  line('near-b', { x: 0, y: 1 }, { x: 1, y: 1 + 1 / (MAX_SUPPORT_INTERSECTION_DISTANCE_RATIO * 2) }),
+);
+assert.equal(nearParallel, null, 'remote near-parallel intersections fail closed instead of producing runaway SVG or a fake local vertex');
 
 const makeDocument = () => ({ schemaVersion: 2, unit: 'mm', activeSketchId: 's', sketchOrder: ['s'], sketches: { s: { id: 's', name: 'Sketch', points: { aa: { id: 'aa', ...horizontal.start }, ab: { id: 'ab', ...horizontal.end }, ba: { id: 'ba', ...diagonal.start }, bb: { id: 'bb', ...diagonal.end } }, entities: { a: { id: 'a', type: 'line', startPointId: 'aa', endPointId: 'ab' }, b: { id: 'b', type: 'line', startPointId: 'ba', endPointId: 'bb' } }, entityOrder: ['a', 'b'], dimensions: {}, dimensionOrder: [] } } });
 const cursor = { x: 4, y: 1 };
@@ -63,4 +95,5 @@ const redone = redoDrawingDocument(undone.history, undone.document); assert.deep
 // after hypothetical pan/zoom and verify no model coordinate or sector changed.
 assert.deepEqual(redone.document.sketches.s.dimensions['angle-1'].angleSector, persisted.angleSector);
 assert.deepEqual(redone.document.sketches.s.points, before.sketches.s.points);
+assert.deepEqual(redone.document.sketches.s.entities, before.sketches.s.entities, 'derived support extensions never create or mutate Sketch entities');
 console.log('drawing line-to-line angle tests passed');

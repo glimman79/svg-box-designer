@@ -688,6 +688,7 @@ export function DrawingWorkspace({
                   const path = `M ${angleGeometry.start.x} ${angleGeometry.start.y} A ${angleGeometry.radius} ${angleGeometry.radius} 0 ${angleGeometry.largeArc} ${angleGeometry.sweep} ${angleGeometry.end.x} ${angleGeometry.end.y}`;
                   const selected = dimension.id === selectedDimensionId, hovered = dimension.id === hoveredDimensionId;
                   return <g key={dimension.id} className={`drawing-dimension is-reference is-angle${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}${dimension.id === 'preview' ? ' is-preview' : ''}`}>
+                    {angleGeometry.supportExtensions.map((extension) => <line key={extension.lineId} className="drawing-dimension-extension drawing-dimension-lineage drawing-dimension-support-extension" x1={extension.start.x} y1={extension.start.y} x2={extension.end.x} y2={extension.end.y} />)}
                     <line className="drawing-dimension-extension drawing-dimension-lineage" x1={angleGeometry.supportA.start.x} y1={angleGeometry.supportA.start.y} x2={angleGeometry.supportA.end.x} y2={angleGeometry.supportA.end.y} />
                     <line className="drawing-dimension-extension drawing-dimension-lineage" x1={angleGeometry.supportB.start.x} y1={angleGeometry.supportB.start.y} x2={angleGeometry.supportB.end.x} y2={angleGeometry.supportB.end.y} />
                     <path className="drawing-dimension-line drawing-dimension-angle-arc" d={path} fill="none" />
