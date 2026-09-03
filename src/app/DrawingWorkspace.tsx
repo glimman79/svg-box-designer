@@ -9,7 +9,7 @@ import { activateDrawingTool, finishDrawingConstruction, type DrawingActiveTool,
 import { useCadWheelCapture } from './useCadWheelCapture';
 import { CAD_PRIMARY_BUTTON, useCadCtrlSnapOverride, useCadEscapeToolExit, useCadPanGesture } from './cadInteraction';
 import { resolveCadToolPointerActivation, type CadToolActivationRecord } from './cadToolActivation';
-import { appendDimension, chooseLineDimensionKind, choosePointDimensionKind, createDimensionId, createLineDimension, createLineToLineAngleDimension, createPointToLineDimension, createPointToPointDimension, deleteDimension, derivePointToLineAnnotationGeometry, dimensionEditorWidthPixels, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_COLORS, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatAngleDimension, formatDimensionEditValue, formatDimensionValue, moveDimensionPlacement, parseLinearDimension, pointToLineDimensionOffset, preselectionReference, resolveDimensionLineReference, resolveDimensionPreselection, resolveDimensionPreselectionForTarget, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
+import { appendDimension, chooseLineDimensionKind, choosePointDimensionKind, createDimensionId, createLineDimension, createLineToLineAngleDimension, createPointToLineDimension, createPointToPointDimension, deleteDimension, deleteEntityWithDependentDimensions, derivePointToLineAnnotationGeometry, dimensionEditorWidthPixels, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_COLORS, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatAngleDimension, formatDimensionEditValue, formatDimensionValue, moveDimensionPlacement, parseLinearDimension, pointToLineDimensionOffset, preselectionReference, resolveDimensionLineReference, resolveDimensionPreselection, resolveDimensionPreselectionForTarget, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
 import { candidateForSector, createLineAngleBasis, deriveLineAngleAnnotation } from './drawingLineAngle';
 import { solveDrawingDimensionEdit } from './drawingConstraintSolver';
 import type { HistoryControlsProps } from './HistoryControls';
@@ -284,7 +284,11 @@ export function DrawingWorkspace({
 
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (panHandlers.onPointerDown(event)) return;
-    if ((event.target as Element).closest('.drawing-dimension-editor, .drawing-dimension-hit, .drawing-dimension-value-hit')) return;
+    const dimensionTarget = (event.target as Element).closest('.drawing-dimension-editor, .drawing-dimension-hit, .drawing-dimension-value-hit');
+    // In Select, let the model-space resolver arbitrate an annotation hit
+    // against finite sketch geometry beneath it. The annotation's own handler
+    // remains authoritative when there is no geometry candidate.
+    if (dimensionTarget && activeTool !== 'select') return;
     if (event.button !== CAD_PRIMARY_BUTTON) return;
     if (activeTool === 'select') {
       const hit = resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
@@ -600,9 +604,14 @@ export function DrawingWorkspace({
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { if (historyRef.current.undo.length > 0) { event.preventDefault(); undo(); } }
       else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { if (historyRef.current.redo.length > 0) { event.preventDefault(); redo(); } }
       else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedDimensionId) { event.preventDefault(); transactDocument((current) => deleteDimension(current, selectedDimensionId)); setSelectedDimensionId(null); }
+      else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedGeometry?.kind === 'line') {
+        event.preventDefault();
+        transactDocument((current) => deleteEntityWithDependentDimensions(current, selectedGeometry.lineId));
+        setSelectedGeometry(null);
+      }
     };
     window.addEventListener('keydown', onKeyDown); return () => window.removeEventListener('keydown', onKeyDown);
-  }, [document, selectedDimensionId]);
+  }, [document, selectedDimensionId, selectedGeometry]);
 
   const pixelsPerMm = viewport.width / viewBox.width;
   const labelInterval = getAxisLabelInterval(gridSpacing, pixelsPerMm);
