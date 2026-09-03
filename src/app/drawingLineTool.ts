@@ -70,6 +70,110 @@ export const updateLinePreview = (interaction: LineToolInteraction, pointer: Dra
   interaction.start ? { ...interaction, ...resolveLinePreviewPoint(interaction.start, pointer) } : interaction
 );
 
+type LineSpatialSnap = Readonly<{
+  active: boolean;
+  type: 'none' | 'endpoint' | 'line' | 'alignment';
+  effectivePoint: DrawingPoint;
+  xReference?: Readonly<{ candidatePoint: DrawingPoint; screenDistance: number }> | null;
+  yReference?: Readonly<{ candidatePoint: DrawingPoint; screenDistance: number }> | null;
+}>;
+
+export type LineEffectivePointResolution = Readonly<{
+  effectivePoint: DrawingPoint;
+  interaction: LineToolInteraction;
+}>;
+
+const ANGULAR_DIRECTION_EPSILON = 1e-12;
+const ANGULAR_COMPATIBILITY_EPSILON = 1e-9;
+
+const directionAt = (angleDegrees: number): DrawingPoint => {
+  const radians = angleDegrees * Math.PI / 180;
+  const x = Math.cos(radians);
+  const y = Math.sin(radians);
+  return {
+    x: Math.abs(x) <= ANGULAR_DIRECTION_EPSILON ? 0 : x,
+    y: Math.abs(y) <= ANGULAR_DIRECTION_EPSILON ? 0 : y,
+  };
+};
+
+const isPointOnDirection = (start: DrawingPoint, point: DrawingPoint, direction: DrawingPoint) => {
+  const dx = point.x - start.x;
+  const dy = point.y - start.y;
+  const length = Math.hypot(dx, dy);
+  return length > LINE_ZERO_LENGTH_TOLERANCE_MM
+    && dx * direction.x + dy * direction.y >= 0
+    && Math.abs(dx * direction.y - dy * direction.x) <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, length);
+};
+
+const reconcileAlignmentOnRay = (
+  start: DrawingPoint,
+  angularPoint: DrawingPoint,
+  angleDegrees: number,
+  spatialSnap: LineSpatialSnap,
+): DrawingPoint => {
+  const direction = directionAt(angleDegrees);
+  const intersections = [
+    spatialSnap.xReference && Math.abs(direction.x) > ANGULAR_DIRECTION_EPSILON
+      ? { axis: 'x' as const, target: spatialSnap.xReference.candidatePoint.x, t: (spatialSnap.xReference.candidatePoint.x - start.x) / direction.x, distance: spatialSnap.xReference.screenDistance }
+      : null,
+    spatialSnap.yReference && Math.abs(direction.y) > ANGULAR_DIRECTION_EPSILON
+      ? { axis: 'y' as const, target: spatialSnap.yReference.candidatePoint.y, t: (spatialSnap.yReference.candidatePoint.y - start.y) / direction.y, distance: spatialSnap.yReference.screenDistance }
+      : null,
+  ].filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null && Number.isFinite(candidate.t) && candidate.t >= 0);
+  if (intersections.length === 0) return angularPoint;
+
+  const [first, second] = intersections;
+  if (second && Math.abs(first.t - second.t) <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, first.t, second.t)) {
+    const candidate = { x: spatialSnap.xReference!.candidatePoint.x, y: spatialSnap.yReference!.candidatePoint.y };
+    if (isPointOnDirection(start, candidate, direction)) return candidate;
+  }
+  const chosen = second && second.distance < first.distance ? second : first;
+  const point = { x: start.x + chosen.t * direction.x, y: start.y + chosen.t * direction.y };
+  return chosen.axis === 'x' ? { ...point, x: chosen.target } : { ...point, y: chosen.target };
+};
+
+/** Resolves one authoritative Line endpoint and its matching angular presentation state. */
+export const resolveLineEffectivePoint = (
+  interaction: LineToolInteraction,
+  rawPointerPoint: DrawingPoint,
+  spatialSnap: LineSpatialSnap,
+): LineEffectivePointResolution => {
+  if (!interaction.start) return { effectivePoint: spatialSnap.effectivePoint, interaction };
+
+  if (spatialSnap.type === 'endpoint' || spatialSnap.type === 'line') {
+    const spatialAngle = resolveLinePreviewPoint(interaction.start, spatialSnap.effectivePoint);
+    const direction = spatialAngle.snappedAngleDegrees === null ? null : directionAt(spatialAngle.snappedAngleDegrees);
+    const angularExact = direction !== null && isPointOnDirection(interaction.start, spatialSnap.effectivePoint, direction);
+    const nextInteraction = {
+      ...interaction,
+      rawPointerPoint,
+      effectivePreviewPoint: spatialSnap.effectivePoint,
+      snapActive: angularExact,
+      snappedAngleDegrees: angularExact ? spatialAngle.snappedAngleDegrees : null,
+    };
+    return { effectivePoint: spatialSnap.effectivePoint, interaction: nextInteraction };
+  }
+
+  const angular = resolveLinePreviewPoint(interaction.start, rawPointerPoint);
+  if (!angular.snapActive || angular.snappedAngleDegrees === null) {
+    const effectivePoint = spatialSnap.active ? spatialSnap.effectivePoint : rawPointerPoint;
+    return { effectivePoint, interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snapActive: false, snappedAngleDegrees: null } };
+  }
+  const direction = directionAt(angular.snappedAngleDegrees);
+  const radialDistance = Math.hypot(rawPointerPoint.x - interaction.start.x, rawPointerPoint.y - interaction.start.y);
+  const angularPoint = {
+    x: interaction.start.x + radialDistance * direction.x,
+    y: interaction.start.y + radialDistance * direction.y,
+  };
+  const effectivePoint = spatialSnap.type === 'alignment'
+    ? reconcileAlignmentOnRay(interaction.start, angularPoint, angular.snappedAngleDegrees, spatialSnap)
+    : angularPoint;
+  return {
+    effectivePoint,
+    interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snapActive: true, snappedAngleDegrees: angular.snappedAngleDegrees },
+  };
+};
+
 /**
  * Arbitrates a globally snapped point with Line's angular presentation. Spatial snap owns the
  * endpoint; angular state is recomputed from that endpoint so compatible inferences coexist and
