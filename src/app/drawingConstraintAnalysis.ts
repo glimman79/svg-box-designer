@@ -18,6 +18,7 @@ export const constraintPointKey = (sketch: DrawingSketchV2, reference: DrawingPo
 };
 
 export const constraintEquation = (sketch: DrawingSketchV2, dimension: DrawingDimension): DrawingConstraintEquation | null => {
+  if (dimension.kind === 'LINE_TO_LINE_ANGLE') return null;
   if (dimension.kind === 'POINT_TO_LINE_DISTANCE') {
     const point = constraintPointKey(sketch, dimension.references[0]);
     const line = sketch.entities[dimension.references[1].entityId];

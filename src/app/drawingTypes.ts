@@ -33,7 +33,8 @@ export type DrawingGeometryReference =
   | Readonly<{ kind: 'datum'; datum: 'ORIGIN' | 'X_AXIS' | 'Y_AXIS' }>;
 export type DrawingPointReference = Exclude<DrawingGeometryReference, { kind: 'entity' }>;
 export type DrawingEntityReference = Extract<DrawingGeometryReference, { kind: 'entity' }>;
-export type DrawingDimensionKind = 'ALIGNED_DISTANCE' | 'HORIZONTAL_DISTANCE' | 'VERTICAL_DISTANCE' | 'POINT_TO_LINE_DISTANCE';
+export type DrawingDimensionKind = 'ALIGNED_DISTANCE' | 'HORIZONTAL_DISTANCE' | 'VERTICAL_DISTANCE' | 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE';
+export type DrawingAngleSector = Readonly<{ sideA: -1 | 1; sideB: -1 | 1 }>;
 export type DrawingDimensionRole = 'driving' | 'reference';
 type DrawingDimensionBase = Readonly<{
   id: string;
@@ -41,11 +42,11 @@ type DrawingDimensionBase = Readonly<{
   role: DrawingDimensionRole;
   /** Authoritative future target for driving dimensions; ignored for reference display. */
   value: number;
-  placement: Readonly<{ kind: 'linear'; offset: number }>;
+  placement: Readonly<{ kind: 'linear'; offset: number } | { kind: 'angular'; anchor: DrawingPoint; radius: number; offset: number }>;
 }>;
 export type DrawingDimension =
   | (DrawingDimensionBase & Readonly<{
-    kind: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE'>;
+    kind: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE'>;
     references: readonly [DrawingPointReference, DrawingPointReference];
   }>)
   | (DrawingDimensionBase & Readonly<{
@@ -57,6 +58,13 @@ export type DrawingDimension =
      */
     references: readonly [DrawingPointReference, DrawingEntityReference];
     movementPreference: 'point' | 'line';
+  }>)
+  | (DrawingDimensionBase & Readonly<{
+    kind: 'LINE_TO_LINE_ANGLE';
+    /** Canonical unordered pair: references[0].entityId is lexically first. */
+    references: readonly [DrawingEntityReference, DrawingEntityReference];
+    /** Signed half-plane membership relative to the canonical directed supports. */
+    angleSector: DrawingAngleSector;
   }>);
 
 export type DrawingSketchV1 = {

@@ -1,6 +1,7 @@
-import type { DrawingDimension, DrawingDimensionKind, DrawingDimensionRole, DrawingDocumentV2, DrawingEntityReference, DrawingGeometryReference, DrawingLineEntity, DrawingPoint, DrawingPointReference, DrawingSketchV2, ResolvedDrawingLine } from './drawingTypes';
+import type { DrawingAngleSector, DrawingDimension, DrawingDimensionKind, DrawingDimensionRole, DrawingDocumentV2, DrawingEntityReference, DrawingGeometryReference, DrawingLineEntity, DrawingPoint, DrawingPointReference, DrawingSketchV2, ResolvedDrawingLine } from './drawingTypes';
 import { pointIdForLineEndpoint, removeLineAndOrphans, resolveLine } from './drawingTopology.js';
 import { dimensionIncreasesConstraintRank } from './drawingConstraintAnalysis.js';
+import { candidateForSector, createLineAngleBasis, selectLineAngleCandidate } from './drawingLineAngle.js';
 
 export const DIMENSION_AXIS_EPSILON_MM = 1e-7;
 export const DIMENSION_INTERPRETATION_HYSTERESIS_PX = 3;
@@ -57,7 +58,7 @@ export const measurePointToLine = (point: DrawingPoint, line: ResolvedDrawingLin
 export const resolveDimensionLineReference = (sketch: DrawingSketchV2, reference: DrawingEntityReference): ResolvedDrawingLine | null => {
   const entity = sketch.entities[reference.entityId]; return entity?.type === 'line' ? resolveLine(sketch, entity) : null;
 };
-export const availableLineDimensionKinds = (line: ResolvedDrawingLine): Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE'>[] => {
+export const availableLineDimensionKinds = (line: ResolvedDrawingLine): Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE'>[] => {
   const dx = Math.abs(line.end.x - line.start.x), dy = Math.abs(line.end.y - line.start.y);
   if (dx <= DIMENSION_AXIS_EPSILON_MM && dy <= DIMENSION_AXIS_EPSILON_MM) return [];
   // Aligned is the canonical axis-line length. Zero projections and duplicate families are omitted.
@@ -101,7 +102,7 @@ export const preselectionReference = (candidate: DimensionPreselection): Drawing
   : candidate.kind === 'origin' ? { kind: 'datum', datum: 'ORIGIN' } : { kind: 'entity', entityId: candidate.lineId };
 
 /** Scores distance to each family's natural placement locus; a 3 px advantage switches families. */
-export const chooseLineDimensionKind = (line: ResolvedDrawingLine, cursor: DrawingPoint, previous?: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE'>, pixelsPerModelUnit = 1): Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE'> => {
+export const chooseLineDimensionKind = (line: ResolvedDrawingLine, cursor: DrawingPoint, previous?: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE'>, pixelsPerModelUnit = 1): Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE'> => {
   const kinds = availableLineDimensionKinds(line);
   const mid = { x: (line.start.x + line.end.x) / 2, y: (line.start.y + line.end.y) / 2 };
   const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y, length = Math.hypot(dx, dy) || 1;
@@ -111,7 +112,7 @@ export const chooseLineDimensionKind = (line: ResolvedDrawingLine, cursor: Drawi
   const winner = kinds.reduce((best, kind) => scores[kind] < scores[best] ? kind : best, kinds[0]);
   return previous && kinds.includes(previous) && scores[previous] <= scores[winner] + DIMENSION_INTERPRETATION_HYSTERESIS_PX ? previous : winner;
 };
-export const choosePointDimensionKind = (a: DrawingPoint, b: DrawingPoint, cursor: DrawingPoint, previous?: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE'>, pixelsPerModelUnit = 1) => chooseLineDimensionKind({ id: '', type: 'line', startPointId: '', endPointId: '', start: a, end: b }, cursor, previous, pixelsPerModelUnit);
+export const choosePointDimensionKind = (a: DrawingPoint, b: DrawingPoint, cursor: DrawingPoint, previous?: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE'>, pixelsPerModelUnit = 1) => chooseLineDimensionKind({ id: '', type: 'line', startPointId: '', endPointId: '', start: a, end: b }, cursor, previous, pixelsPerModelUnit);
 export const dimensionOffset = (line: ResolvedDrawingLine, cursor: DrawingPoint, kind: DrawingDimensionKind): number => {
   const mid = { x: (line.start.x + line.end.x) / 2, y: (line.start.y + line.end.y) / 2 };
   if (kind === 'HORIZONTAL_DISTANCE') return cursor.y - mid.y;
@@ -151,11 +152,16 @@ export const derivePointToLineAnnotationGeometry = (point: DrawingPoint, line: R
     lineExtension,
   };
 };
-export const createLineDimension = (line: ResolvedDrawingLine, kind: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE'>, cursor: DrawingPoint, id: string): DrawingDimension => ({ id, kind, role: 'driving', references: lineDimensionReferences(line), value: measureDimension(kind, line.start, line.end), placement: { kind: 'linear', offset: dimensionOffset(line, cursor, kind) } });
-export const createPointToPointDimension = (references: readonly [DrawingPointReference, DrawingPointReference], a: DrawingPoint, b: DrawingPoint, kind: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE'>, cursor: DrawingPoint, id: string): DrawingDimension => ({ id, kind, role: 'driving', references, value: measureDimension(kind, a, b), placement: { kind: 'linear', offset: dimensionOffset({ id: '', type: 'line', startPointId: '', endPointId: '', start: a, end: b }, cursor, kind) } });
+export const createLineDimension = (line: ResolvedDrawingLine, kind: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE'>, cursor: DrawingPoint, id: string): DrawingDimension => ({ id, kind, role: 'driving', references: lineDimensionReferences(line), value: measureDimension(kind, line.start, line.end), placement: { kind: 'linear', offset: dimensionOffset(line, cursor, kind) } });
+export const createPointToPointDimension = (references: readonly [DrawingPointReference, DrawingPointReference], a: DrawingPoint, b: DrawingPoint, kind: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE'>, cursor: DrawingPoint, id: string): DrawingDimension => ({ id, kind, role: 'driving', references, value: measureDimension(kind, a, b), placement: { kind: 'linear', offset: dimensionOffset({ id: '', type: 'line', startPointId: '', endPointId: '', start: a, end: b }, cursor, kind) } });
 export const createPointToLineDimension = (pointReference: DrawingPointReference, lineReference: DrawingEntityReference, point: DrawingPoint, line: ResolvedDrawingLine, movementPreference: 'point' | 'line', cursor: DrawingPoint, id: string): DrawingDimension | null => {
   const value = measurePointToLine(point, line); if (value === null) return null;
   return { id, kind: 'POINT_TO_LINE_DISTANCE', role: 'driving', references: [pointReference, lineReference], movementPreference, value, placement: { kind: 'linear', offset: pointToLineDimensionOffset(point, line, cursor) } };
+};
+export const createLineToLineAngleDimension = (first: ResolvedDrawingLine, second: ResolvedDrawingLine, cursor: DrawingPoint, id: string): DrawingDimension | null => {
+  const basis = createLineAngleBasis(first, second); if (!basis) return null;
+  const candidate = selectLineAngleCandidate(basis, cursor);
+  return { id, kind: 'LINE_TO_LINE_ANGLE', role: 'reference', references: basis.references, angleSector: candidate.sector, value: candidate.angleDegrees, placement: { kind: 'angular', anchor: cursor, radius: Math.hypot(cursor.x - basis.intersection.x, cursor.y - basis.intersection.y), offset: 0 } };
 };
 export const formatLinearDimension = (value: number): string => `${new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 3 }).format(value)} mm`;
 /** User-facing edit draft: the authoritative stored target, rounded only to the display policy. */
@@ -163,6 +169,7 @@ export const formatDimensionEditValue = (value: number): string => new Intl.Numb
 export const formatDimensionValue = (value: number, role: DrawingDimensionRole): string => role === 'reference'
   ? `(${formatLinearDimension(value)})`
   : formatLinearDimension(value);
+export const formatAngleDimension = (value: number): string => `${new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 3 }).format(value)}°`;
 export const parseLinearDimension = (input: string): number | null => {
   const match = input.trim().match(/^(?:\d+(?:\.\d*)?|\.\d+)\s*(?:mm)?$/i);
   if (!match) return null;
@@ -176,6 +183,7 @@ export const canonicalDimensionReferencePairKey = (input: DrawingDimension | rea
   const dimension = input as DrawingDimension;
   return dimension.kind === 'POINT_TO_LINE_DISTANCE'
     ? `point-line:${semanticGeometryReferenceKey(dimension.references[0])}|${semanticGeometryReferenceKey(dimension.references[1])}`
+    : dimension.kind === 'LINE_TO_LINE_ANGLE' ? `line-angle:${dimension.references.map(semanticGeometryReferenceKey).join('|')}:${dimension.angleSector.sideA}:${dimension.angleSector.sideB}`
     : dimension.references.map(semanticGeometryReferenceKey).sort().join('|');
 };
 
@@ -183,6 +191,7 @@ export type DimensionRoleClassification = Readonly<
   | { role: 'driving'; reason: 'independent' }
   | { role: 'reference'; reason: 'redundant' }
   | { role: 'reference'; reason: 'duplicate' }
+  | { role: 'reference'; reason: 'foundation' }
 >;
 
 export const classifyNewDimensionRole = (sketch: DrawingSketchV2, candidate: DrawingDimension): DimensionRoleClassification => {
@@ -190,6 +199,7 @@ export const classifyNewDimensionRole = (sketch: DrawingSketchV2, candidate: Dra
   const samePair = Object.values(sketch.dimensions).filter((dimension) =>
     canonicalDimensionReferencePairKey(dimension) === pairKey);
   if (samePair.some((dimension) => dimension.kind === candidate.kind)) return { role: 'reference', reason: 'duplicate' };
+  if (candidate.kind === 'LINE_TO_LINE_ANGLE') return { role: 'reference', reason: 'foundation' };
   return dimensionIncreasesConstraintRank(sketch, candidate)
     ? { role: 'driving', reason: 'independent' }
     : { role: 'reference', reason: 'redundant' };
@@ -197,6 +207,12 @@ export const classifyNewDimensionRole = (sketch: DrawingSketchV2, candidate: Dra
 
 /** Reference measurement is always resolved from current geometry, never stale `value`. */
 export const displayedDimensionMeasurement = (sketch: DrawingSketchV2, dimension: DrawingDimension): number | null => {
+  if (dimension.kind === 'LINE_TO_LINE_ANGLE') {
+    const first = resolveDimensionLineReference(sketch, dimension.references[0]), second = resolveDimensionLineReference(sketch, dimension.references[1]);
+    if (!first || !second) return null;
+    const basis = createLineAngleBasis(first, second), candidate = basis && candidateForSector(basis, dimension.angleSector);
+    return candidate?.angleDegrees ?? null;
+  }
   if (dimension.role === 'driving') return dimension.value;
   if (dimension.kind === 'POINT_TO_LINE_DISTANCE') {
     const point = resolveDrawingPointReference(sketch, dimension.references[0]), line = resolveDimensionLineReference(sketch, dimension.references[1]);
@@ -215,6 +231,7 @@ export const appendDimension = (document: DrawingDocumentV2, dimension: DrawingD
   if (!sketch) return document;
   const valid = dimension.kind === 'POINT_TO_LINE_DISTANCE'
     ? Boolean(resolveDrawingPointReference(sketch, dimension.references[0]) && resolveDimensionLineReference(sketch, dimension.references[1]))
+    : dimension.kind === 'LINE_TO_LINE_ANGLE' ? Boolean(resolveDimensionLineReference(sketch, dimension.references[0]) && resolveDimensionLineReference(sketch, dimension.references[1]))
     : dimension.references.every((r) => Boolean(resolveDrawingPointReference(sketch, r)));
   if (sketch.dimensions[dimension.id] || !valid) return document;
   const classification = classifyNewDimensionRole(sketch, dimension);
