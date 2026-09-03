@@ -17,6 +17,8 @@ const supportExtensionIndex = workspace.indexOf('drawing-dimension-support-exten
 assert.ok(geometryLayerIndex >= 0 && dimensionLayerIndex > geometryLayerIndex && supportExtensionIndex > dimensionLayerIndex, 'midpoint support witnesses paint after committed Lines in the SVG presentation layer');
 const angleRenderer = workspace.slice(workspace.indexOf("if (dimension.kind === 'LINE_TO_LINE_ANGLE')"), workspace.indexOf('const geometry = annotationGeometry(dimension)'));
 assert.match(angleRenderer, /angleGeometry\.supportExtensions\.map/, 'finite-Line-to-arc reference extensions remain rendered');
+assert.match(workspace, /drawing-dimension-distance-witness/, 'Line-to-Line Distance witnesses receive a presentation-only renderer class');
+assert.match(css, /\.drawing-dimension-distance-witness\s*\{\s*pointer-events:\s*none;/, 'Distance witnesses cannot intercept Line or canvas pointer interaction');
 assert.doesNotMatch(angleRenderer, /angleGeometry\.support[AB]\.(?:start|end)/, 'mathematical Q-to-arc radii are not emitted as visible SVG lines');
 assert.match(css, /\.drawing-dimension-support-extension \{[^}]*stroke-dasharray:\s*4 3;[^}]*opacity:\s*1;[^}]*mix-blend-mode:\s*multiply;[^}]*pointer-events:\s*none;/s, 'support dashes remain visible over same-colour Lines without owning pointer hits');
 assert.match(workspace, /viewBox="0 0 7 7" refX="7" refY="3\.5" orient="auto-start-reverse"/);
