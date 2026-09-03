@@ -40,11 +40,17 @@ assert.deepEqual(separated.intersection, { x: 0, y: 0 });
 assert.equal(separated.candidates.length, 3, 'common separated geometry exposes occupied plus two adjacent cells');
 const annotation = deriveLineAngleAnnotation(separated, separated.candidates[0], { x: 8, y: 3 }, 2);
 assert.deepEqual(annotation.center, { x: 0, y: 0 }, 'separated presentation uses the true support intersection, not its annotation anchor');
+assert.deepEqual(annotation.supportA, { start: annotation.center, end: annotation.start }, 'start radius remains available as mathematical Q-to-arc geometry');
+assert.deepEqual(annotation.supportB, { start: annotation.center, end: annotation.end }, 'end radius remains available as mathematical Q-to-arc geometry');
 assert.equal(annotation.supportExtensions.length, 2, 'both finite segments receive only the display extensions needed to reach the vertex');
 assert.deepEqual(annotation.supportExtensions.map(({ start }) => start), [
   { x: 15, y: 0 },
   { x: 4, y: 4 },
 ], 'separated support extensions start at derived finite-segment midpoints');
+assert.deepEqual(new Set(annotation.supportExtensions.map(({ end }) => `${end.x},${end.y}`)), new Set([
+  `${annotation.start.x},${annotation.start.y}`,
+  `${annotation.end.x},${annotation.end.y}`,
+]), 'each visible reference terminates at its corresponding angle-arc endpoint');
 for (const extension of annotation.supportExtensions) {
   const source = extension.lineId === separated.lineA.id ? separated.lineA : separated.lineB;
   const lineDirection = { x: source.end.x - source.start.x, y: source.end.y - source.start.y };
