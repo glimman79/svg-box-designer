@@ -59,6 +59,21 @@ assert.ok(sketchOf(deletion).points.P3); assert.equal(sketchOf(deletion).points.
 deletion = deleteEntityWithDependentDimensions(deletion, 'L3');
 assert.ok(sketchOf(deletion).points.P3, 'L2 still references P3');
 
+// Select/Delete uses this existing cascade as one history transaction. A
+// referenced Line and its Dimension disappear atomically and undo/redo restore
+// or remove the same dependency-safe document state.
+const beforeDelete = document;
+const deleteTx = transactDrawingDocument(EMPTY_DRAWING_HISTORY, beforeDelete, current => deleteEntityWithDependentDimensions(current, 'L2'));
+assert.equal(deleteTx.history.undo.length, 1);
+assert.equal(sketchOf(deleteTx.document).entities.L2, undefined);
+assert.equal(sketchOf(deleteTx.document).dimensions.D, undefined, 'dependent Dimension cannot retain a dangling Line reference');
+const undoDelete = undoDrawingDocument(deleteTx.history, deleteTx.document);
+assert.ok(sketchOf(undoDelete.document).entities.L2);
+assert.ok(sketchOf(undoDelete.document).dimensions.D);
+const redoDelete = redoDrawingDocument(undoDelete.history, undoDelete.document);
+assert.equal(sketchOf(redoDelete.document).entities.L2, undefined);
+assert.equal(sketchOf(redoDelete.document).dimensions.D, undefined);
+
 // Legacy migration is deterministic and deliberately does not merge equal coordinates.
 const legacy = { schemaVersion: 1, unit: 'mm', sketchOrder: ['s'], activeSketchId: 's', sketches: { s: { id: 's', name: 'S', entityOrder: ['a', 'b'], entities: {
   a: { id: 'a', type: 'line', start: { x: 0, y: 0 }, end: { x: 1, y: 0 } },
