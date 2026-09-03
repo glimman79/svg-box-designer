@@ -50,7 +50,7 @@ assert.match(workspace, /className=\{`cad-tool-button\$\{activeTool === 'select'
 assert.match(workspace, /activeTool === 'line' && lineCursor/, 'custom cursor only renders for active Line');
 assert.match(workspace, /data-arm="left"[\s\S]*data-arm="right"[\s\S]*data-arm="top"[\s\S]*data-arm="bottom"/, 'four separate arms structurally preserve the centre gap');
 assert.match(workspace, /drawing-line-cursor-dot[\s\S]*drawing-line-cursor-endpoint[\s\S]*drawing-line-cursor-line/, 'normal dot, endpoint ring, and line triangle are distinct marker states');
-assert.match(workspace, /placementPoint = nextInteraction\.effectivePreviewPoint \?\? point/, 'placement marker follows effective preview when angular snap applies');
+assert.match(workspace, /const lineResolution = resolveLineEffectivePoint\(interaction, rawPoint, snap\);[\s\S]*const placementPoint = lineResolution\.effectivePoint;/, 'placement marker follows the authoritative resolved endpoint');
 assert.match(workspace, /onPointerLeave=\{clearLineCursor\}/, 'pointer leave clears cursor presentation without cancelling chain state');
 assert.match(workspace, /activeSketch\?\.entityOrder/, 'inference reads committed entities from the active sketch');
 assert.match(css, /\.drawing-svg\.has-line-cursor,[\s\S]*cursor:\s*none;/, 'system cursor hides only in active Drawing SVG scope');

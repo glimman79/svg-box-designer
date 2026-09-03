@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes';
-import { appendEntityToActiveSketch, applyResolvedLineClick, cancelLineInteraction, EMPTY_LINE_INTERACTION, resolveLinePreviewPoint, updateLinePreviewAtSpatialPoint, type LineToolInteraction } from './drawingLineTool';
+import { appendEntityToActiveSketch, applyResolvedLineClick, cancelLineInteraction, EMPTY_LINE_INTERACTION, resolveLineEffectivePoint, type LineToolInteraction } from './drawingLineTool';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
 import { collectDrawingInferenceCandidates } from './drawingInference';
@@ -208,14 +208,9 @@ export function DrawingWorkspace({
     const candidates = collectDrawingInferenceCandidates(clientPoint, resolvedLines, drawingTransform, viewBox);
     const interaction = lineInteractionRef.current;
     const snap = resolveDrawingSnap({ rawPoint, candidates, previousSnap: drawingSnapRef.current, ctrlOverride: ctrlHeld });
-    const toolPoint = snap.active || !interaction.start
-      ? snap.effectivePoint
-      : resolveLinePreviewPoint(interaction.start, rawPoint).effectivePreviewPoint;
-    // D2.2b equivalent was: placementPoint = nextInteraction.effectivePreviewPoint ?? point.
-    const placementPoint = toolPoint;
-    const nextInteraction = snap.active
-      ? updateLinePreviewAtSpatialPoint(interaction, rawPoint, toolPoint)
-      : interaction.start ? { ...interaction, ...resolveLinePreviewPoint(interaction.start, rawPoint) } : interaction;
+    const lineResolution = resolveLineEffectivePoint(interaction, rawPoint, snap);
+    const placementPoint = lineResolution.effectivePoint;
+    const nextInteraction = lineResolution.interaction;
     const anchor = modelToOverlayPoint(placementPoint, drawingTransform, overlayTransform);
     setDrawingSnap(snap);
     drawingSnapRef.current = snap;
