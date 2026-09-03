@@ -9,7 +9,7 @@ import { activateDrawingTool, finishDrawingConstruction, type DrawingActiveTool,
 import { useCadWheelCapture } from './useCadWheelCapture';
 import { CAD_PRIMARY_BUTTON, useCadCtrlSnapOverride, useCadEscapeToolExit, useCadPanGesture } from './cadInteraction';
 import { resolveCadToolPointerActivation, type CadToolActivationRecord } from './cadToolActivation';
-import { appendDimension, chooseLineDimensionKind, choosePointDimensionKind, createDimensionId, createLineDimension, createLineToLineAngleDimension, createPointToLineDimension, createPointToPointDimension, deleteDimension, deleteEntityWithDependentDimensions, derivePointToLineAnnotationGeometry, dimensionEditorWidthPixels, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_COLORS, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatAngleDimension, formatDimensionEditValue, formatDimensionValue, moveDimensionPlacement, parseLinearDimension, pointToLineDimensionOffset, preselectionReference, resolveDimensionLineReference, resolveDimensionPreselection, resolveDimensionPreselectionForTarget, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
+import { appendDimension, chooseLineDimensionKind, choosePointDimensionKind, createDimensionId, createLineDimension, createLinePairDimension, createLineToLineAngleDimension, createPointToLineDimension, createPointToPointDimension, deleteDimension, deleteEntityWithDependentDimensions, deriveLineToLineAnnotationGeometry, derivePointToLineAnnotationGeometry, dimensionEditorWidthPixels, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_COLORS, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatAngleDimension, formatDimensionEditValue, formatDimensionValue, lineToLineDimensionOffset, moveDimensionPlacement, parseLinearDimension, pointToLineDimensionOffset, preselectionReference, resolveDimensionLineReference, resolveDimensionPreselection, resolveDimensionPreselectionForTarget, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
 import { candidateForSector, createLineAngleBasis, deriveLineAngleAnnotation } from './drawingLineAngle';
 import { solveDrawingDimensionEdit } from './drawingConstraintSolver';
 import type { HistoryControlsProps } from './HistoryControls';
@@ -316,8 +316,8 @@ export function DrawingWorkspace({
             const pointReference = preselectionReference(secondCandidate);
             if (pointReference.kind === 'entity' && pointReference.entityId !== dimensionTool.line.entityId) {
               const firstLine = resolveDimensionLineReference(activeSketch, dimensionTool.line), secondLine = resolveDimensionLineReference(activeSketch, pointReference);
-              const angle = firstLine && secondLine ? createLineToLineAngleDimension(firstLine, secondLine, point, 'preview') : null;
-              if (angle) { setDimensionTool({ phase: 'placementPreview', dimension: angle, cursor: point }); setDimensionPreselection(null); }
+              const relation = firstLine && secondLine ? createLinePairDimension(firstLine, secondLine, point, 'preview') : null;
+              if (relation) { setDimensionTool({ phase: 'placementPreview', dimension: relation, cursor: point }); setDimensionPreselection(null); }
               return;
             }
             const pointValue = resolveDrawingPointReference(activeSketch, pointReference);
@@ -340,6 +340,11 @@ export function DrawingWorkspace({
           transactDocument((current) => appendDimension(current, refreshed));
           const nextLifecycle = finishDrawingConstruction(toolLifecycle); setToolLifecycle(nextLifecycle);
           setDimensionTool(nextLifecycle.activeTool === 'dimension' ? { phase: 'waitingForFirstTarget' } : { phase: 'inactive' }); setDimensionPreselection(null); return;
+        }
+        if (preview.kind === 'LINE_TO_LINE_DISTANCE') {
+          const first = resolveDimensionLineReference(activeSketch, preview.references[0]), second = resolveDimensionLineReference(activeSketch, preview.references[1]);
+          const refreshed = first && second ? createLinePairDimension(first, second, point, createDimensionId()) : null; if (!refreshed || refreshed.kind !== 'LINE_TO_LINE_DISTANCE') return;
+          transactDocument((current) => appendDimension(current, refreshed)); const nextLifecycle = finishDrawingConstruction(toolLifecycle); setToolLifecycle(nextLifecycle); setDimensionTool(nextLifecycle.activeTool === 'dimension' ? { phase: 'waitingForFirstTarget' } : { phase: 'inactive' }); setDimensionPreselection(null); return;
         }
         const offsetLine = preview.kind === 'POINT_TO_LINE_DISTANCE' ? resolveDimensionLineReference(activeSketch, preview.references[1]) : (() => { const a = resolveDrawingPointReference(activeSketch, preview.references[0]), b = resolveDrawingPointReference(activeSketch, preview.references[1]); return a && b ? { id: '', type: 'line' as const, startPointId: '', endPointId: '', start: a, end: b } : null; })();
         if (!offsetLine) return;
@@ -420,7 +425,12 @@ export function DrawingWorkspace({
       const matrix = svgRef.current?.getScreenCTM(), sketch = activeSketch;
       const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
       const dimension = sketch?.dimensions[dimensionDrag.id];
-      const resolved = dimension && sketch && dimension.kind === 'POINT_TO_LINE_DISTANCE' ? resolveDimensionLineReference(sketch, dimension.references[1]) : dimension && sketch ? (() => { const a = resolveDrawingPointReference(sketch, dimension.references[0]), b = resolveDrawingPointReference(sketch, dimension.references[1]); return a && b ? { id: '', type: 'line' as const, startPointId: '', endPointId: '', start: a, end: b } : null; })() : null;
+      const resolved = dimension && sketch && dimension.kind === 'POINT_TO_LINE_DISTANCE' ? resolveDimensionLineReference(sketch, dimension.references[1]) : dimension && sketch && dimension.kind !== 'LINE_TO_LINE_DISTANCE' ? (() => { const a = resolveDrawingPointReference(sketch, dimension.references[0]), b = resolveDrawingPointReference(sketch, dimension.references[1]); return a && b ? { id: '', type: 'line' as const, startPointId: '', endPointId: '', start: a, end: b } : null; })() : null;
+      if (point && dimension?.kind === 'LINE_TO_LINE_DISTANCE' && sketch) {
+        const a = resolveDimensionLineReference(sketch, dimension.references[0]), b = resolveDimensionLineReference(sketch, dimension.references[1]);
+        if (a && b) { const offset = lineToLineDimensionOffset(a, b, point), exceeded = dimensionDrag.exceeded || Math.hypot(event.clientX - dimensionDrag.startClient.x, event.clientY - dimensionDrag.startClient.y) >= 4; setDimensionDrag({ ...dimensionDrag, previewOffset: offset, exceeded }); }
+        return;
+      }
       if (point && dimension && resolved) {
         const targetPoint = dimension.kind === 'POINT_TO_LINE_DISTANCE' && sketch
           ? resolveDrawingPointReference(sketch, dimension.references[0]) : null;
@@ -445,6 +455,9 @@ export function DrawingWorkspace({
           const first = resolveDimensionLineReference(activeSketch, d.references[0]), second = resolveDimensionLineReference(activeSketch, d.references[1]);
           const dimension = first && second ? createLineToLineAngleDimension(first, second, point, 'preview') : null;
           if (dimension) setDimensionTool({ ...dimensionTool, cursor: point, dimension });
+        } else if (d.kind === 'LINE_TO_LINE_DISTANCE') {
+          const first = resolveDimensionLineReference(activeSketch, d.references[0]), second = resolveDimensionLineReference(activeSketch, d.references[1]);
+          if (first && second) setDimensionTool({ ...dimensionTool, cursor: point, dimension: { ...d, placement: { kind: 'linear', offset: lineToLineDimensionOffset(first, second, point) } } });
         } else {
           const a = resolveDrawingPointReference(activeSketch, d.references[0]), b = resolveDrawingPointReference(activeSketch, d.references[1]);
           if (a && b) {
@@ -520,6 +533,10 @@ export function DrawingWorkspace({
   const annotationGeometry = (dimension: DrawingDimension) => {
     if (!activeSketch) return null;
     if (dimension.kind === 'LINE_TO_LINE_ANGLE') return null;
+    if (dimension.kind === 'LINE_TO_LINE_DISTANCE') {
+      const a = resolveDimensionLineReference(activeSketch, dimension.references[0]), b = resolveDimensionLineReference(activeSketch, dimension.references[1]);
+      return a && b ? deriveLineToLineAnnotationGeometry(a, b, dimension.placement.offset) : null;
+    }
     if (dimension.kind === 'POINT_TO_LINE_DISTANCE') {
       const point = resolveDrawingPointReference(activeSketch, dimension.references[0]), line = resolveDimensionLineReference(activeSketch, dimension.references[1]);
       if (!point || !line) return null;
