@@ -4,7 +4,7 @@ import { measureDimension, measureLineToLineDistance, measurePointToLine, resolv
 
 export const DRAWING_CONSTRAINT_TOLERANCE_MM = 1e-7;
 export const DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS = 80;
-const INITIAL_DAMPING = 1e-6, ITERATION_CONVERGENCE_MM = 1e-12;
+const INITIAL_DAMPING = 1e-6, ITERATION_CONVERGENCE_MM = 1e-12, DIRECT_TARGET_MOVEMENT_WEIGHT = 1_000_000_000;
 export type DrawingDimensionSolveFailureReason = 'INVALID_TARGET' | 'INVALID_ANGLE_TARGET' | 'MISSING_REFERENCE' | 'UNSUPPORTED_DEGENERATE_GEOMETRY' | 'UNDERDETERMINED_ORIENTATION' | 'UNSATISFIABLE_DIMENSION_SET' | 'SOLUTION_VERIFICATION_FAILED';
 export type DrawingDimensionSolveResult = Readonly<{ ok: true; document: DrawingDocumentV2; diagnostics: Readonly<{ constraintCount: number; residuals: readonly number[]; iterations: number; pointIds: readonly string[] }> }> | Readonly<{ ok: false; reason: DrawingDimensionSolveFailureReason; message: string }>;
 const failureMessages: Record<DrawingDimensionSolveFailureReason, string> = { INVALID_TARGET: 'Dimension must be 0 mm or greater.', INVALID_ANGLE_TARGET: 'Angle must be greater than 0° and less than 180°.', MISSING_REFERENCE: 'This dimension no longer has valid geometry.', UNSUPPORTED_DEGENERATE_GEOMETRY: 'This dimension cannot be solved from the current geometry.', UNDERDETERMINED_ORIENTATION: 'This dimension cannot be solved from the current geometry.', UNSATISFIABLE_DIMENSION_SET: 'This value conflicts with another driving dimension.', SOLUTION_VERIFICATION_FAILED: 'The dimension solution could not be verified.' };
@@ -56,11 +56,14 @@ const solveComponent = (sketch: DrawingSketchV2, component: ComponentState, vari
 
 /**
  * Projects live direct-manipulation targets onto the canonical Driving
- * equations.  The first pass varies only dragged points, which is the strong
- * target/weak-stay policy: untouched points remain exact stays whenever that
- * sub-problem has a solution.  Only then may the local constraint component
- * participate.  This deliberately reuses the Dimension component equations,
- * gradients, nonlinear solve, and final tolerance verification.
+ * equations.  The first pass normally varies only dragged points, keeping
+ * untouched points as exact stays whenever that sub-problem has a solution.
+ * An Angle is different: its equation is purely relational, so freezing every
+ * other participant would manufacture a positional/orientation anchor. Angle
+ * components therefore use the weighted full-component projection directly,
+ * with the already-applied pointer target receiving the strongest stay. This
+ * deliberately reuses the Dimension component equations, gradients, nonlinear
+ * solve, and final tolerance verification.
  */
 export const solveDrawingComponentDrag = (
   sketch: DrawingSketchV2,
@@ -124,8 +127,11 @@ export const solveDrawingComponentDrag = (
     // An exact rigid translation (or a target along remaining DOF) wins without
     // numerical adjustment.
     if (verifyDrawingDrivingDimensions(working, analyzed!.dimensionIds)) continue;
-    let variableIds: readonly string[] = draggedIds;
-    let solved = solveComponent(working, component, variableIds);
+    const hasDrivingAngle = component.equations.some(({ dimension }) => dimension.kind === 'LINE_TO_LINE_ANGLE');
+    let variableIds: readonly string[] = hasDrivingAngle ? component.pointIds : draggedIds;
+    let solved = solveComponent(working, component, variableIds, hasDrivingAngle
+      ? new Map(variableIds.map((id) => [id, draggedIds.includes(id) ? DIRECT_TARGET_MOVEMENT_WEIGHT : 1]))
+      : undefined);
     if (!solved) {
       variableIds = component.pointIds;
       solved = solveComponent(working, component, variableIds, new Map(variableIds.map((id) => [id, draggedIds.includes(id) ? 1_000 : 1])));
