@@ -1445,7 +1445,7 @@ button:disabled {
 .drawing-dimension-value-hit { fill: transparent; pointer-events: all; cursor: default; }
 .drawing-dimension-value-hit.is-editable { cursor: pointer; }
 .drawing-dimension.is-dragging .drawing-dimension-hit { cursor: grabbing; }
-.drawing-line-entity.is-geometry-selected { stroke: #168447; stroke-width: 2.2; }
+.drawing-line-entity.is-geometry-selected { stroke-width: 2.2; }
 .drawing-line-entity.is-dimension-preselected { stroke: var(--drawing-hover); stroke-width: 2.4; }
 .drawing-line-entity.is-geometry-preselected,
 .drawing-line-entity.is-geometry-dragging { stroke: var(--drawing-hover); stroke-width: 2.6; }
