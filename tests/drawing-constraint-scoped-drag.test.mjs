@@ -15,6 +15,7 @@ const make = (dimensions = [dimension('ab-a', 'ALIGNED_DISTANCE', 100, 'ab')]) =
 const sketch = document => document.sketches[document.activeSketchId];
 const length = (document, first, second) => Math.hypot(sketch(document).points[second].x-sketch(document).points[first].x, sketch(document).points[second].y-sketch(document).points[first].y);
 const edit = (document, id = 'ab-a', value = 120) => { const result = solveDrawingDimensionEdit({ document, dimensionId:id, targetValue:value }); assert.equal(result.ok,true); return result.document; };
+const datumDimension=(id,kind,value,pointId)=>({id,kind,value,role:'driving',references:[{kind:'datum',datum:'ORIGIN'},{kind:'sketchPoint',pointId}],placement:{kind:'linear',offset:5}});
 
 // Exact primary edit boundary: target and solved geometry commit together; unrelated geometry is untouched and draggable.
 {
@@ -23,6 +24,47 @@ const edit = (document, id = 'ab-a', value = 120) => { const result = solveDrawi
   assert.strictEqual(sketch(solved).points.c,sketch(before).points.c); assert.strictEqual(sketch(solved).points.d,sketch(before).points.d);
   const dragged = solveDrawingDragCandidate(solved,{kind:'line',lineId:'cd'},{x:17,y:-9}); assert.ok(dragged);
   assert.deepEqual(sketch(dragged).points.c,{id:'c',x:217,y:-9}); assert.deepEqual(sketch(dragged).points.d,{id:'d',x:257,y:-9});
+}
+
+// The transient orientation seed yields to real constraints. With both datum
+// coordinates fixed A is an exact pivot; with only X fixed its remaining Y
+// freedom participates in the best valid solution.
+{
+  const base=make([
+    dimension('ab-length','ALIGNED_DISTANCE',50,'left'),
+    datumDimension('a-x','HORIZONTAL_DISTANCE',0,'p1'),
+    datumDimension('a-y','VERTICAL_DISTANCE',100,'p1'),
+  ]);
+  const anchored=solveDrawingDragCandidate(base,{kind:'line',lineId:'right'},{x:10,y:20}); assert.ok(anchored);
+  assert.ok(Math.hypot(sketch(anchored).points.p1.x-sketch(base).points.p1.x,sketch(anchored).points.p1.y-sketch(base).points.p1.y)<1e-7,'hard datum constraints override the orientation stay');
+  assert.ok(Math.abs(length(anchored,'p1','p2')-50)<1e-7);
+  assert.notEqual(sketch(anchored).points.p2.y,sketch(base).points.p2.y,'AB rotates when its opposite endpoint is anchored');
+
+  const partial=make([
+    dimension('ab-length','ALIGNED_DISTANCE',50,'left'),
+    datumDimension('a-x','HORIZONTAL_DISTANCE',0,'p1'),
+  ]);
+  const partialDrag=solveDrawingDragCandidate(partial,{kind:'line',lineId:'right'},{x:10,y:20}); assert.ok(partialDrag);
+  assert.ok(Math.abs(sketch(partialDrag).points.p1.x)<1e-7);
+  assert.notEqual(sketch(partialDrag).points.p1.y,sketch(partial).points.p1.y,'legal Y motion is used before treating A as a fixed pivot');
+  assert.ok(Math.abs(length(partialDrag,'p1','p2')-50)<1e-7);
+}
+
+// Several indirectly affected length Lines inherit a coherent displacement;
+// the preference follows connectivity rather than entity creation order.
+{
+  const chain=make([
+    dimension('ab-length','ALIGNED_DISTANCE',50,'left'),
+    dimension('prior-length','ALIGNED_DISTANCE',40,'prior'),
+  ]), s=sketch(chain);
+  chain.sketches[chain.activeSketchId]={...s,
+    points:{...s.points,p0:{id:'p0',x:-40,y:100}},
+    entities:{prior:line('prior','p0','p1'),...s.entities},
+    entityOrder:['right','prior','left','ab','cd','ef'],
+  };
+  const moved=solveDrawingDragCandidate(chain,{kind:'line',lineId:'right'},{x:7,y:-11}); assert.ok(moved);
+  for (const id of ['p0','p1','p2']) assert.deepEqual(sketch(moved).points[id],{...sketch(chain).points[id],x:sketch(chain).points[id].x+7,y:sketch(chain).points[id].y-11});
+  assert.ok(Math.abs(length(moved,'p0','p1')-40)<1e-7 && Math.abs(length(moved,'p1','p2')-50)<1e-7);
 }
 
 // Reproduce the old document-wide poison path: one stale, unrelated equation made global validation fail.
@@ -60,9 +102,8 @@ for (const [dimensions, end, target] of [
   assert.ok(solveDrawingDragCandidate(solved,{kind:'line',lineId:'ef'},{x:-3,y:2}));
 }
 
-// A--B--C: only AB is length constrained. C is independent of the equation,
-// B uses its rotational DOF with A held, and dragging BC preserves both target
-// endpoints as strongly as the hard AB equation permits.
+// A--B--C: a direct B drag uses AB's rotational DOF with A held, while a BC
+// Line drag transiently prefers translating the indirectly affected AB.
 {
   const chain=make([dimension('ab-length','ALIGNED_DISTANCE',50,'left')]);
   const cDrag=solveDrawingDragCandidate(chain,{kind:'point',pointId:'p3'},{x:13,y:-8}); assert.ok(cDrag);
@@ -71,8 +112,13 @@ for (const [dimensions, end, target] of [
   const bDrag=solveDrawingDragCandidate(chain,{kind:'point',pointId:'p2'},{x:-10,y:20}); assert.ok(bDrag);
   assert.ok(Math.abs(length(bDrag,'p1','p2')-50)<1e-7); assert.deepEqual(sketch(bDrag).points.p1,sketch(chain).points.p1);
   const bcDrag=solveDrawingDragCandidate(chain,{kind:'line',lineId:'right'},{x:10,y:20}); assert.ok(bcDrag);
-  assert.ok(Math.abs(length(bcDrag,'p1','p2')-50)<1e-7); assert.deepEqual(sketch(bcDrag).points.p1,sketch(chain).points.p1);
+  assert.ok(Math.abs(length(bcDrag,'p1','p2')-50)<1e-7);
+  assert.deepEqual(sketch(bcDrag).points.p1,{id:'p1',x:10,y:120});
+  assert.deepEqual(sketch(bcDrag).points.p2,{id:'p2',x:60,y:120});
   assert.deepEqual(sketch(bcDrag).points.p3,{id:'p3',x:110,y:120});
+  const transaction=transactDrawingDocument(EMPTY_DRAWING_HISTORY,chain,()=>bcDrag);
+  assert.equal(transaction.history.undo.length,1,'one propagated pointer-up is one History step');
+  assert.deepEqual(sketch(undoDrawingDocument(transaction.history,transaction.document).document).points,sketch(chain).points);
 }
 
 // Reference equations never restrict motion, while a datum-anchored zero-DOF
@@ -82,8 +128,7 @@ for (const [dimensions, end, target] of [
   const free=solveDrawingDragCandidate(referenceOnly,{kind:'point',pointId:'b'},{x:25,y:30}); assert.ok(free);
   assert.deepEqual(sketch(free).points.b,{id:'b',x:125,y:30});
   const anchored=make([]), s=sketch(anchored);
-  const datumDimension=(id,kind,value)=>({id,kind,value,role:'driving',references:[{kind:'datum',datum:'ORIGIN'},{kind:'sketchPoint',pointId:'a'}],placement:{kind:'linear',offset:5}});
-  anchored.sketches[anchored.activeSketchId]={...s,dimensions:{ax:datumDimension('ax','HORIZONTAL_DISTANCE',0),ay:datumDimension('ay','VERTICAL_DISTANCE',0)},dimensionOrder:['ax','ay']};
+  anchored.sketches[anchored.activeSketchId]={...s,dimensions:{ax:datumDimension('ax','HORIZONTAL_DISTANCE',0,'a'),ay:datumDimension('ay','VERTICAL_DISTANCE',0,'a')},dimensionOrder:['ax','ay']};
   assert.strictEqual(solveDrawingDragCandidate(anchored,{kind:'point',pointId:'a'},{x:9,y:7}),anchored);
   assert.equal(transactDrawingDocument(EMPTY_DRAWING_HISTORY,anchored,()=>solveDrawingDragCandidate(anchored,{kind:'point',pointId:'a'},{x:9,y:7})).history.undo.length,0);
 }

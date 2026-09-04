@@ -60,6 +60,7 @@ const solveComponent = (sketch: DrawingSketchV2, component: ComponentState, vari
 export const solveDrawingComponentDrag = (
   sketch: DrawingSketchV2,
   targets: Readonly<Record<string, DrawingPoint>>,
+  intent?: Readonly<{ directPointIds?: readonly string[]; directLineIds?: readonly string[] }>,
 ): DrawingSketchV2 | null => {
   const targetIds = Object.keys(targets).filter((id) => Boolean(sketch.points[id]));
   if (targetIds.length !== Object.keys(targets).length || !targetIds.length) return null;
@@ -67,6 +68,43 @@ export const solveDrawingComponentDrag = (
   const touchedComponents = [...new Set(targetIds.map((id) => analysis.componentByPointId.get(id)).filter((component) => component && component.dimensionIds.length))];
   let working: DrawingSketchV2 = { ...sketch, points: { ...sketch.points } };
   for (const id of targetIds) working.points[id] = { ...working.points[id], ...targets[id] };
+
+  // A Line selected by the user already receives rigid endpoint targets. For
+  // every other length-constrained Line reached through that selection, seed
+  // its opposite endpoint with the same displacement. This is deliberately
+  // transient: the ordinary hard-equation solve below may correct (or entirely
+  // discard) the seed when another Driving constraint prevents translation.
+  // Starting the underdetermined solve at this coherent pose makes translation
+  // the stay solution without introducing an angular equation in the model.
+  const directPointIds = new Set(intent?.directPointIds ?? []);
+  const directLineIds = new Set(intent?.directLineIds ?? []);
+  if (directLineIds.size) {
+    const displacement = new Map<string, DrawingPoint>(targetIds.map((id) => [id, {
+      x: targets[id].x - sketch.points[id].x,
+      y: targets[id].y - sketch.points[id].y,
+    }]));
+    const propagatedLines = Object.values(sketch.dimensions).flatMap((dimension) => {
+      if (dimension.role !== 'driving' || dimension.kind !== 'ALIGNED_DISTANCE') return [];
+      const equation = constraintEquation(sketch, dimension);
+      if (!equation || equation.pointKeys.length !== 2 || equation.pointKeys.includes(DRAWING_ORIGIN_CONSTRAINT_KEY)) return [];
+      const [a, b] = equation.pointKeys;
+      const line = Object.values(sketch.entities).find((entity) =>
+        (entity.startPointId === a && entity.endPointId === b) || (entity.startPointId === b && entity.endPointId === a));
+      return line && !directLineIds.has(line.id) && !directPointIds.has(a) && !directPointIds.has(b) ? [{ line, a, b }] : [];
+    });
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const { a, b } of propagatedLines) {
+        const da = displacement.get(a), db = displacement.get(b);
+        if (da && !db) { displacement.set(b, da); changed = true; }
+        else if (db && !da) { displacement.set(a, db); changed = true; }
+      }
+    }
+    for (const [id, delta] of displacement) if (!targetIds.includes(id) && working.points[id]) {
+      const original = sketch.points[id];
+      working.points[id] = { ...original, x: original.x + delta.x, y: original.y + delta.y };
+    }
+  }
 
   for (const analyzed of touchedComponents) {
     const component: ComponentState = {

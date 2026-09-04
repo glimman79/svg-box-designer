@@ -67,7 +67,9 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
     const point = sketch.points[id];
     return [id, { x: point.x + delta.x, y: point.y + delta.y }];
   }));
-  const solvedSketch = solveDrawingComponentDrag(sketch, moves);
+  const solvedSketch = solveDrawingComponentDrag(sketch, moves, target.kind === 'point'
+    ? { directPointIds: [target.pointId] }
+    : { directLineIds: [target.lineId] });
   if (!solvedSketch) return null;
   const candidate = { ...document, sketches: { ...document.sketches, [sketch.id]: solvedSketch } };
   const affectedPointIds = new Set(Object.keys(sketch.points).filter((id) => {
