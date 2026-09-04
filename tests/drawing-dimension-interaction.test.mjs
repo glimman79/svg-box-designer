@@ -69,8 +69,8 @@ assert.match(workspace, /middle\.x[\s\S]*middle\.y/, 'dimension text remains att
 assert.match(workspace, /phase: 'lineTargetSelected'/, 'line-first intent has an explicit state instead of inspecting legacy references');
 assert.doesNotMatch(workspace, /const lineId = preview\.kind/, 'legacy preview is not reinterpreted by a click-time shape heuristic');
 assert.match(workspace, /createPointToPointDimension\(d\.references, a, b, kind, point, 'preview'\)/, 'legacy pointer movement re-derives kind and complete placement');
-assert.match(css, /\.drawing-dimension \{ color: #2db65b; \}/, 'passive dimensions use the brighter D2.5a4 CAD green');
+assert.match(css, /\.drawing-dimension \{ color: var\(--drawing-dimension\); \}/, 'passive dimensions use the global Dimension green token');
 assert.match(css, /is-line-target \{ cursor: default; \}[\s\S]*is-point-target \{ cursor: default; \}/, 'line and endpoint targets use normal arrows');
 assert.match(css, /\.drawing-svg\.has-dimension-cursor \{ cursor: crosshair; \}/, 'empty Dimension canvas uses crosshair');
-assert.match(css, /is-hovered \{ color: #2fb85f; \}[\s\S]*is-selected[^}]*#137a3e/, 'interactive states remain distinct from passive green');
+assert.match(css, /is-hovered \{ color: var\(--drawing-dimension-hover\); \}[\s\S]*is-selected[^}]*var\(--drawing-dimension-active\)/, 'interactive states remain distinct through semantic tokens');
 console.log('drawing dimension interaction tests passed');

@@ -86,10 +86,10 @@ assert.deepEqual(transform.clientToModelPoint({ x: 128.875, y: -35.75 }, ctm), {
 
 const css = fs.readFileSync('src/styles.css', 'utf8');
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
-assert.match(css, /\.drawing-line-entity\s*{[^}]*stroke:\s*#17283a;[^}]*stroke-width:\s*1\.8;/s, 'committed geometry uses strong graphite treatment');
+assert.match(css, /\.drawing-line-entity\s*{[^}]*stroke-width:\s*1\.8;/s, 'committed geometry keeps its non-scaling state-driven treatment');
 assert.match(css, /\.drawing-axis\s*{[^}]*stroke:\s*#64748b;[^}]*stroke-width:\s*1\.4;/s, 'axes remain structurally subordinate');
-assert.match(css, /\.drawing-line-preview\s*{[^}]*stroke-width:\s*1\.25;[^}]*stroke-dasharray:\s*5 4;/s, 'normal preview remains modest and dashed');
-assert.match(css, /\.drawing-line-preview\.is-angular-snapped\s*{[^}]*stroke:\s*#0284c7;[^}]*stroke-width:\s*1\.7;[^}]*stroke-dasharray:\s*none;/s, 'snapped preview is stronger and solid');
+assert.match(css, /--drawing-preview:\s*#0284c7;[\s\S]*\.drawing-line-preview\s*{[^}]*stroke:\s*var\(--drawing-preview\);[^}]*stroke-width:\s*1\.25;[^}]*stroke-dasharray:\s*5 4;/s, 'normal preview uses the global dark-blue token and is dashed');
+assert.match(css, /\.drawing-line-preview\.is-angular-snapped\s*{[^}]*stroke-width:\s*1\.7;[^}]*stroke-dasharray:\s*none;/s, 'snapped preview remains in the inherited dark-blue family and becomes solid');
 assert.match(workspace, /getScreenCTM\(\)/, 'accepted CTM pointer path remains present');
 assert.match(workspace, /drawing-line-preview\$\{lineInteraction\.snapActive \? ' is-angular-snapped' : ''\}/, 'snap state selects its distinct line style');
 

@@ -15,7 +15,6 @@ export const DIMENSION_TEXT_SIZE_PX = 10;
 // silhouette. 17 px makes the un-stroked HTML input about 121% of that 14 px
 // painted target, rather than comparing unlike 10 px SVG and 12 px CSS values.
 export const DIMENSION_EDITOR_TEXT_SIZE_PX = 17;
-export const DIMENSION_COLORS = { normal: '#2db65b', hover: '#2fb85f', active: '#137a3e' } as const;
 export const DIMENSION_EDITOR_HEIGHT_PX = 26;
 export const DIMENSION_EDITOR_HORIZONTAL_PADDING_PX = 4;
 export const DIMENSION_EDITOR_VERTICAL_PADDING_PX = 2;
