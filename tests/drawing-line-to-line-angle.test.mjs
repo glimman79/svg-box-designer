@@ -134,6 +134,53 @@ assert.equal(redundant.sketches.s.dimensions.opposite.role, 'reference', 'the eq
 const dragged = solveDrawingDragCandidate(redundant, { kind: 'point', pointId: 'bb' }, { x: 20, y: 20 });
 assert.ok(dragged && verifyDrawingDrivingDimensions(dragged.sketches.s, ['angle-1']), 'Direct Manipulation preserves Driving Angle while Reference contributes no equation');
 
+// An Angle supplies relative orientation only. Direct point intent must not be
+// projected around the old coordinates of all other Angle participants.
+const relationalDrag = solveDrawingDragCandidate(transaction.document, { kind: 'point', pointId: 'aa' }, { x: 5, y: 8 });
+assert.ok(relationalDrag && verifyDrawingDrivingDimensions(relationalDrag.sketches.s, ['angle-1']));
+assert.ok(Math.hypot(relationalDrag.sketches.s.points.aa.x + 5, relationalDrag.sketches.s.points.aa.y - 8) < 1e-7, 'direct Angle endpoint reaches its compatible pointer target');
+assert.ok(['ab', 'ba', 'bb'].some((id) => Math.hypot(
+  relationalDrag.sketches.s.points[id].x - transaction.document.sketches.s.points[id].x,
+  relationalDrag.sketches.s.points[id].y - transaction.document.sketches.s.points[id].y,
+) > 1e-4), 'the relational solve uses component DOF instead of inventing a stationary Angle frame');
+
+// A--B--C--D joins a length-constrained lead-in to an Angle at C. A is the
+// explicit target; the BC/CD pair is allowed to change global pose while both
+// hard equations remain exact, and one completed drag is still one History step.
+const chain = makeDocument(), chainSketch = chain.sketches.s;
+chain.sketches.s = { ...chainSketch,
+  points: { a: { id: 'a', x: 0, y: 0 }, b: { id: 'b', x: 10, y: 0 }, c: { id: 'c', x: 20, y: 0 }, d: { id: 'd', x: 30, y: 10 } },
+  entities: { ab: { id: 'ab', type: 'line', startPointId: 'a', endPointId: 'b' }, bc: { id: 'bc', type: 'line', startPointId: 'b', endPointId: 'c' }, cd: { id: 'cd', type: 'line', startPointId: 'c', endPointId: 'd' } },
+  entityOrder: ['ab', 'bc', 'cd'], dimensions: {}, dimensionOrder: [],
+};
+const chainAngle = createLineToLineAngleDimension(
+  { ...chain.sketches.s.entities.bc, start: chain.sketches.s.points.b, end: chain.sketches.s.points.c },
+  { ...chain.sketches.s.entities.cd, start: chain.sketches.s.points.c, end: chain.sketches.s.points.d },
+  { x: 18, y: 3 }, 'chain-angle',
+);
+assert.ok(chainAngle);
+chain.sketches.s.dimensions = {
+  length: { id: 'length', kind: 'ALIGNED_DISTANCE', role: 'driving', references: [{ kind: 'sketchPoint', pointId: 'a' }, { kind: 'sketchPoint', pointId: 'b' }], value: 10, placement: { kind: 'linear', offset: 2 } },
+  'chain-angle': { ...chainAngle, role: 'driving' },
+};
+chain.sketches.s.dimensionOrder = ['length', 'chain-angle'];
+const chainMoved = solveDrawingDragCandidate(chain, { kind: 'point', pointId: 'a' }, { x: -4, y: 7 });
+assert.ok(chainMoved && verifyDrawingDrivingDimensions(chainMoved.sketches.s, ['length', 'chain-angle']));
+assert.ok(Math.hypot(chainMoved.sketches.s.points.a.x + 4, chainMoved.sketches.s.points.a.y - 7) < 1e-7, 'free lead-in point retains direct target authority through the Angle component');
+assert.ok(['b', 'c', 'd'].some((id) => Math.hypot(chainMoved.sketches.s.points[id].x - chain.sketches.s.points[id].x, chainMoved.sketches.s.points[id].y - chain.sketches.s.points[id].y) > 1e-4), 'Angle-region motion propagates rather than falsely anchoring its old pose');
+const chainTransaction = transactDrawingDocument(EMPTY_DRAWING_HISTORY, chain, () => chainMoved);
+assert.equal(chainTransaction.history.undo.length, 1);
+assert.deepEqual(undoDrawingDocument(chainTransaction.history, chainTransaction.document).document.sketches.s.points, chain.sketches.s.points, 'one Undo restores a propagated Angle drag');
+
+const anchoredChain = structuredClone(chain);
+anchoredChain.sketches.s.dimensions.cx = { id: 'cx', kind: 'HORIZONTAL_DISTANCE', role: 'driving', references: [{ kind: 'datum', datum: 'ORIGIN' }, { kind: 'sketchPoint', pointId: 'c' }], value: 20, placement: { kind: 'linear', offset: 3 } };
+anchoredChain.sketches.s.dimensions.cy = { id: 'cy', kind: 'VERTICAL_DISTANCE', role: 'driving', references: [{ kind: 'datum', datum: 'ORIGIN' }, { kind: 'sketchPoint', pointId: 'c' }], value: 0, placement: { kind: 'linear', offset: 3 } };
+anchoredChain.sketches.s.dimensionOrder.push('cx', 'cy');
+const anchoredMoved = solveDrawingDragCandidate(anchoredChain, { kind: 'point', pointId: 'a' }, { x: -3, y: 4 });
+assert.ok(anchoredMoved && verifyDrawingDrivingDimensions(anchoredMoved.sketches.s, ['length', 'chain-angle', 'cx', 'cy']));
+assert.ok(Math.hypot(anchoredMoved.sketches.s.points.c.x - 20, anchoredMoved.sketches.s.points.c.y) < 1e-7, 'real datum equations keep an Angle-region endpoint anchored');
+assert.ok(Math.hypot(anchoredMoved.sketches.s.points.a.x + 3, anchoredMoved.sketches.s.points.a.y - 4) < 1e-7, 'other component DOF remains available around a real anchor');
+
 const sharedDocument = structuredClone(makeDocument());
 sharedDocument.sketches.s.entities.b.startPointId = 'ab';
 delete sharedDocument.sketches.s.points.ba;
