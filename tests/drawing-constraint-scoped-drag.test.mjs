@@ -33,14 +33,16 @@ const edit = (document, id = 'ab-a', value = 120) => { const result = solveDrawi
   assert.deepEqual(collectAffectedDrivingDimensions(solved,new Set(['e','f'])),[]);
   assert.ok(solveDrawingDragCandidate(solved,{kind:'line',lineId:'ef'},{x:7,y:3}),'unrelated stale equation cannot poison free geometry');
   assert.ok(solveDrawingDragCandidate(solved,{kind:'line',lineId:'ab'},{x:2,y:4}),'whole constrained Line translates after edit');
-  assert.equal(solveDrawingDragCandidate(solved,{kind:'point',pointId:'b'},{x:5,y:0}),null,'endpoint violation remains rejected');
+  const endpoint=solveDrawingDragCandidate(solved,{kind:'point',pointId:'b'},{x:5,y:20}); assert.ok(endpoint,'endpoint violation is solver-projected');
+  assert.ok(Math.abs(length(endpoint,'a','b')-120)<1e-7); assert.deepEqual(sketch(endpoint).points.a,sketch(solved).points.a);
 }
 
 // Stable shared point identity pulls in a neighboring Line's equation; references never do.
 {
   const document = make([dimension('left-h','HORIZONTAL_DISTANCE',50,'left'),dimension('display','ALIGNED_DISTANCE',1,'right','reference')]);
   assert.deepEqual(collectAffectedDrivingDimensions(document,new Set(['p2'])).map(d=>d.id),['left-h']);
-  assert.equal(solveDrawingDragCandidate(document,{kind:'point',pointId:'p2'},{x:1,y:0}),null);
+  const projected=solveDrawingDragCandidate(document,{kind:'point',pointId:'p2'},{x:1,y:7}); assert.ok(projected);
+  assert.ok(Math.abs(sketch(projected).points.p2.x-50)<1e-7); assert.equal(sketch(projected).points.p2.y,107);
   assert.ok(solveDrawingDragCandidate(document,{kind:'line',lineId:'ef'},{x:1,y:1}));
 }
 
@@ -56,6 +58,34 @@ for (const [dimensions, end, target] of [
   const solved = edit(source,'edit',target);
   assert.ok(solveDrawingDragCandidate(solved,{kind:'line',lineId:'ab'},{x:3,y:4}));
   assert.ok(solveDrawingDragCandidate(solved,{kind:'line',lineId:'ef'},{x:-3,y:2}));
+}
+
+// A--B--C: only AB is length constrained. C is independent of the equation,
+// B uses its rotational DOF with A held, and dragging BC preserves both target
+// endpoints as strongly as the hard AB equation permits.
+{
+  const chain=make([dimension('ab-length','ALIGNED_DISTANCE',50,'left')]);
+  const cDrag=solveDrawingDragCandidate(chain,{kind:'point',pointId:'p3'},{x:13,y:-8}); assert.ok(cDrag);
+  assert.deepEqual(sketch(cDrag).points.p3,{id:'p3',x:113,y:92});
+  assert.deepEqual(sketch(cDrag).points.p1,sketch(chain).points.p1); assert.deepEqual(sketch(cDrag).points.p2,sketch(chain).points.p2);
+  const bDrag=solveDrawingDragCandidate(chain,{kind:'point',pointId:'p2'},{x:-10,y:20}); assert.ok(bDrag);
+  assert.ok(Math.abs(length(bDrag,'p1','p2')-50)<1e-7); assert.deepEqual(sketch(bDrag).points.p1,sketch(chain).points.p1);
+  const bcDrag=solveDrawingDragCandidate(chain,{kind:'line',lineId:'right'},{x:10,y:20}); assert.ok(bcDrag);
+  assert.ok(Math.abs(length(bcDrag,'p1','p2')-50)<1e-7); assert.deepEqual(sketch(bcDrag).points.p1,sketch(chain).points.p1);
+  assert.deepEqual(sketch(bcDrag).points.p3,{id:'p3',x:110,y:120});
+}
+
+// Reference equations never restrict motion, while a datum-anchored zero-DOF
+// point rejects a drag as an exact no-op (and therefore cannot create history).
+{
+  const referenceOnly=make([dimension('display','ALIGNED_DISTANCE',999,'ab','reference')]);
+  const free=solveDrawingDragCandidate(referenceOnly,{kind:'point',pointId:'b'},{x:25,y:30}); assert.ok(free);
+  assert.deepEqual(sketch(free).points.b,{id:'b',x:125,y:30});
+  const anchored=make([]), s=sketch(anchored);
+  const datumDimension=(id,kind,value)=>({id,kind,value,role:'driving',references:[{kind:'datum',datum:'ORIGIN'},{kind:'sketchPoint',pointId:'a'}],placement:{kind:'linear',offset:5}});
+  anchored.sketches[anchored.activeSketchId]={...s,dimensions:{ax:datumDimension('ax','HORIZONTAL_DISTANCE',0),ay:datumDimension('ay','VERTICAL_DISTANCE',0)},dimensionOrder:['ax','ay']};
+  assert.strictEqual(solveDrawingDragCandidate(anchored,{kind:'point',pointId:'a'},{x:9,y:7}),anchored);
+  assert.equal(transactDrawingDocument(EMPTY_DRAWING_HISTORY,anchored,()=>solveDrawingDragCandidate(anchored,{kind:'point',pointId:'a'},{x:9,y:7})).history.undo.length,0);
 }
 
 // The edit and later unrelated drag are each one atomic history action with symmetric undo/redo.

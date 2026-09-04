@@ -35,7 +35,8 @@ for (const [kind, initial, target, expected] of originCases) {
 }
 let doc = base(); doc.sketches.s.points.b = { id: 'b', x: 50, y: 20 };
 let d = createPointToPointDimension([origin, point('b')], { x: 0, y: 0 }, doc.sketches.s.points.b, 'HORIZONTAL_DISTANCE', { x: 10, y: 10 }, 'd'); doc = install(doc, d);
-assert.equal(solveDrawingDragCandidate(doc, { kind: 'point', pointId: 'b' }, { x: 10, y: 0 }), null);
+const datumProjected = solveDrawingDragCandidate(doc, { kind: 'point', pointId: 'b' }, { x: 10, y: 7 });
+assert.ok(datumProjected); assert.ok(Math.abs(datumProjected.sketches.s.points.b.x - 50) < 1e-7); assert.equal(datumProjected.sketches.s.points.b.y, 27);
 assert.notEqual(solveDrawingDragCandidate(doc, { kind: 'point', pointId: 'b' }, { x: 0, y: 15 }), null);
 assert.equal(collectAffectedDrivingDimensions(doc, new Set(['a'])).length, 0);
 const reference = { ...d, id: 'r', role: 'reference' }; doc.sketches.s.dimensions = { r: reference };

@@ -1,4 +1,4 @@
-import { DRAWING_CONSTRAINT_TOLERANCE_MM } from './drawingConstraintSolver.js';
+import { DRAWING_CONSTRAINT_TOLERANCE_MM, solveDrawingComponentDrag } from './drawingConstraintSolver.js';
 import { measureDimension, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
 import { pointIdForLineEndpoint, updateSketchPoint } from './drawingTopology.js';
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes.js';
@@ -67,7 +67,13 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
     const point = sketch.points[id];
     return [id, { x: point.x + delta.x, y: point.y + delta.y }];
   }));
-  const candidate = applyDrawingPointMoves(document, moves);
-  const affectedDimensions = collectAffectedDrivingDimensions(document, new Set(ids));
-  return validateDrivingDimensions(candidate, affectedDimensions) ? candidate : null;
+  const solvedSketch = solveDrawingComponentDrag(sketch, moves);
+  if (!solvedSketch) return null;
+  const candidate = { ...document, sketches: { ...document.sketches, [sketch.id]: solvedSketch } };
+  const affectedPointIds = new Set(Object.keys(sketch.points).filter((id) => {
+    const before = sketch.points[id], after = solvedSketch.points[id];
+    return Math.hypot(before.x - after.x, before.y - after.y) > DRAWING_CONSTRAINT_TOLERANCE_MM;
+  }));
+  if (!affectedPointIds.size) return document;
+  return validateDrivingDimensions(candidate, collectAffectedDrivingDimensions(document, affectedPointIds)) ? candidate : null;
 };
