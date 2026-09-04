@@ -12,13 +12,34 @@ assert.equal(getGeometryConstraintVisualState(sketch({ ref: dimension('ref', 're
 const driven = sketch({ drive: dimension('drive', 'driving') });
 assert.equal(getGeometryConstraintVisualState(driven, { kind: 'line', lineId: 'line-a' }), 'CONSTRAINED');
 assert.equal(getGeometryConstraintVisualState(driven, { kind: 'point', pointId: 'b' }), 'CONSTRAINED', 'point participation follows stable topology identity');
-assert.equal(getGeometryConstraintVisualState(driven, { kind: 'line', lineId: 'line-shared' }), 'CONSTRAINED', 'a shared constrained endpoint restricts its adjacent line');
+assert.equal(getGeometryConstraintVisualState(driven, { kind: 'line', lineId: 'line-shared' }), 'FREE', 'AB length does not reduce BC endpoint mobility when A can compensate for B');
 assert.equal(getGeometryConstraintVisualState(driven, { kind: 'line', lineId: 'line-free' }), 'FREE');
+const reverseOrder = { ...driven, entityOrder: ['line-shared', 'line-a', 'line-free'] };
+assert.equal(getGeometryConstraintVisualState(reverseOrder, { kind: 'line', lineId: 'line-a' }), 'CONSTRAINED');
+assert.equal(getGeometryConstraintVisualState(reverseOrder, { kind: 'line', lineId: 'line-shared' }), 'FREE', 'per-Line mobility is independent of creation order');
 const multiple = sketch({ one: dimension('one', 'driving'), two: { ...dimension('two', 'driving'), kind: 'HORIZONTAL_DISTANCE' } });
 assert.equal(getGeometryConstraintVisualState(multiple, { kind: 'line', lineId: 'line-a' }), 'CONSTRAINED', 'dimension count is never a lock heuristic');
 assert.equal(getGeometryConstraintVisualState(sketch(), { kind: 'line', lineId: 'line-shared' }), 'FREE', 'topology alone is not a constraint');
 assert.equal(getGeometryConstraintVisualState(multiple, { kind: 'line', lineId: 'line-a' }, { isRigorous: true, degreesOfFreedom: 1 }), 'CONSTRAINED');
 assert.equal(getGeometryConstraintVisualState(multiple, { kind: 'line', lineId: 'line-a' }, { isRigorous: true, degreesOfFreedom: 0 }), 'FULLY_LOCKED', 'only explicit rigorous zero-DOF proof locks');
+
+const origin = { kind: 'datum', datum: 'ORIGIN' };
+const pointReference = (pointId) => ({ kind: 'sketchPoint', pointId });
+const datumDimension = (id, kind, pointId, value) => ({ id, kind, role: 'driving', value, references: [origin, pointReference(pointId)], placement: { kind: 'linear', offset: 5 } });
+const mixed = {
+  id: 'mixed', name: 'Mixed',
+  points: { a: point('a', 0, 0), b: point('b', 10, 0), c: point('c', 20, 0), d: point('d', 30, 0) },
+  entities: { ab: line('ab', 'a', 'b'), bc: line('bc', 'b', 'c'), cd: line('cd', 'c', 'd') },
+  entityOrder: ['ab', 'bc', 'cd'],
+  dimensions: {
+    ax: datumDimension('ax', 'HORIZONTAL_DISTANCE', 'a', 0), ay: datumDimension('ay', 'VERTICAL_DISTANCE', 'a', 0),
+    bx: datumDimension('bx', 'HORIZONTAL_DISTANCE', 'b', 10), by: datumDimension('by', 'VERTICAL_DISTANCE', 'b', 0),
+  },
+  dimensionOrder: ['ax', 'ay', 'bx', 'by'],
+};
+assert.equal(getGeometryConstraintVisualState(mixed, { kind: 'line', lineId: 'ab' }), 'FULLY_LOCKED', 'both endpoints have zero legitimate mobility');
+assert.equal(getGeometryConstraintVisualState(mixed, { kind: 'line', lineId: 'bc' }), 'CONSTRAINED', 'one fixed endpoint removes two of the Line endpoint freedoms');
+assert.equal(getGeometryConstraintVisualState(mixed, { kind: 'line', lineId: 'cd' }), 'FREE', 'a connected Line whose endpoints retain all four motions remains free');
 assert.equal(geometryConstraintVisualClass('FULLY_LOCKED'), 'geometry-fully-locked');
 assert.deepEqual(
   ['FREE', 'CONSTRAINED', 'FULLY_LOCKED'].map(geometryConstraintVisualClass),

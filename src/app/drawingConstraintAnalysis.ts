@@ -83,6 +83,11 @@ const matrixRank = (source: readonly (readonly number[])[]): number => {
   return rank;
 };
 
+export type DrawingPointMobilityAnalysis = Readonly<{
+  unconstrainedDegreesOfFreedom: number;
+  degreesOfFreedom: number;
+}>;
+
 const coordinate = (sketch: DrawingSketchV2, key: string): DrawingPoint => key === DRAWING_ORIGIN_CONSTRAINT_KEY ? { x: 0, y: 0 } : sketch.points[key];
 export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: DrawingConstraintEquation, pointOrder: readonly string[]): number[] | null => {
   const row = Array(pointOrder.length * 2).fill(0), set = (key: string, gx: number, gy: number) => { const i = pointOrder.indexOf(key); if (i >= 0) { row[i * 2] += gx; row[i * 2 + 1] += gy; } };
@@ -119,6 +124,44 @@ export const analyzeDrawingConstraints = (sketch: DrawingSketchV2, extraDriving?
     return { pointIds: pointSet, dimensionIds: componentEquations.map(({ dimension }) => dimension.id), variableCount, constraintRank, degreesOfFreedom: variableCount - constraintRank };
   });
   return { components, componentByPointId: new Map(components.flatMap((component) => [...component.pointIds].map((id) => [id, component] as const))) };
+};
+
+/**
+ * Measures the endpoint motion visible at a set of points after projecting the
+ * global constraint null space onto those coordinates.  The rank identity
+ *
+ *   dim(E null(J)) = rank([J; E]) - rank(J)
+ *
+ * avoids manufacturing a separate constraint heuristic (or an unstable
+ * explicit null-space basis). Reference dimensions and unsupported equations
+ * are excluded by the same canonical equation/Jacobian path used by component
+ * rank analysis.
+ */
+export const analyzeDrawingPointMobility = (
+  sketch: DrawingSketchV2,
+  selectedPointIds: readonly string[],
+): DrawingPointMobilityAnalysis => {
+  const pointOrder = Object.keys(sketch.points);
+  const selected = [...new Set(selectedPointIds)].filter((id) => sketch.points[id]);
+  const constraintRows = Object.values(sketch.dimensions)
+    .filter(({ role }) => role === 'driving')
+    .map((dimension) => constraintEquation(sketch, dimension))
+    .filter((equation): equation is DrawingConstraintEquation => Boolean(equation))
+    .map((equation) => constraintJacobianRow(sketch, equation, pointOrder))
+    .filter((row): row is number[] => Boolean(row));
+  const extractionRows = selected.flatMap((id) => {
+    const pointIndex = pointOrder.indexOf(id);
+    return [0, 1].map((axis) => {
+      const row = Array(pointOrder.length * 2).fill(0);
+      row[pointIndex * 2 + axis] = 1;
+      return row;
+    });
+  });
+  const constraintRank = matrixRank(constraintRows);
+  return {
+    unconstrainedDegreesOfFreedom: extractionRows.length,
+    degreesOfFreedom: matrixRank([...constraintRows, ...extractionRows]) - constraintRank,
+  };
 };
 
 export const dimensionIncreasesConstraintRank = (sketch: DrawingSketchV2, candidate: DrawingDimension): boolean => {
