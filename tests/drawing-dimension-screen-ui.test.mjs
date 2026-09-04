@@ -1,26 +1,26 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { DIMENSION_COLORS, DIMENSION_EDITOR_BORDER_PX, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_EDITOR_HORIZONTAL_PADDING_PX, DIMENSION_EDITOR_RADIUS_PX, DIMENSION_EDITOR_TEXT_SIZE_PX, DIMENSION_EDITOR_VERTICAL_PADDING_PX, DIMENSION_TEXT_SIZE_PX, dimensionEditorWidthPixels, formatDimensionEditValue } from '../.test-build/drawing-dimension-screen-ui/drawingDimension.js';
+import { DIMENSION_EDITOR_BORDER_PX, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_EDITOR_HORIZONTAL_PADDING_PX, DIMENSION_EDITOR_RADIUS_PX, DIMENSION_EDITOR_TEXT_SIZE_PX, DIMENSION_EDITOR_VERTICAL_PADDING_PX, DIMENSION_TEXT_SIZE_PX, dimensionEditorWidthPixels, formatDimensionEditValue } from '../.test-build/drawing-dimension-screen-ui/drawingDimension.js';
 
 const workspace = fs.readFileSync(new URL('../src/app/DrawingWorkspace.tsx', import.meta.url), 'utf8');
 const css = fs.readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
 
-assert.deepEqual(DIMENSION_COLORS, { normal: '#2db65b', hover: '#2fb85f', active: '#137a3e' });
-assert.ok(Object.values(DIMENSION_COLORS).every((color) => color !== '#000000' && color !== 'black'));
+assert.match(css, /--drawing-dimension:\s*#2db65b;[\s\S]*--drawing-dimension-hover:\s*#2fb85f;[\s\S]*--drawing-dimension-active:\s*#137a3e;/, 'Dimension palette has one semantic CSS authority');
 assert.match(workspace, /id=\{`dimension-arrow-\$\{state\}`\}/);
-assert.match(workspace, /fill=\{color\} stroke="none"/);
+assert.match(workspace, /className=\{`drawing-dimension-arrow is-\$\{state\}`\}/);
 assert.match(workspace, /markerStart=\{arrowMarker\} markerEnd=\{arrowMarker\}/);
 assert.match(workspace, /drawing-dimension-angle-arc[^>]*[\s\S]*markerStart=\{arrowMarker\} markerEnd=\{arrowMarker\}/, 'angle arc uses the same two-ended CAD arrow markers as linear dimensions');
 const geometryLayerIndex = workspace.indexOf('className="drawing-sketch-geometry"');
 const dimensionLayerIndex = workspace.indexOf('className="drawing-dimension-layer"');
-const supportExtensionIndex = workspace.indexOf('drawing-dimension-support-extension', dimensionLayerIndex);
+const supportExtensionIndex = workspace.indexOf('drawing-dimension-witness drawing-dimension-lineage', dimensionLayerIndex);
 assert.ok(geometryLayerIndex >= 0 && dimensionLayerIndex > geometryLayerIndex && supportExtensionIndex > dimensionLayerIndex, 'midpoint support witnesses paint after committed Lines in the SVG presentation layer');
 const angleRenderer = workspace.slice(workspace.indexOf("if (dimension.kind === 'LINE_TO_LINE_ANGLE')"), workspace.indexOf('const geometry = annotationGeometry(dimension)'));
 assert.match(angleRenderer, /angleGeometry\.supportExtensions\.map/, 'finite-Line-to-arc reference extensions remain rendered');
-assert.match(workspace, /drawing-dimension-distance-witness/, 'Line-to-Line Distance witnesses receive a presentation-only renderer class');
-assert.match(css, /\.drawing-dimension-distance-witness\s*\{\s*pointer-events:\s*none;/, 'Distance witnesses cannot intercept Line or canvas pointer interaction');
+assert.doesNotMatch(workspace, /drawing-dimension-distance-witness/, 'Distance no longer invents a cosmetic witness class');
+assert.match(workspace, /<line className="drawing-dimension-witness"[^>]*\/><line className="drawing-dimension-witness"/, 'every linear relation, including Line-to-Line Distance, renders exactly two canonical witnesses');
+assert.match(css, /\.drawing-dimension-witness\s*\{[^}]*stroke:\s*currentColor;[^}]*stroke-width:\s*0\.65;[^}]*stroke-dasharray:\s*none;[^}]*opacity:\s*0\.72;[^}]*pointer-events:\s*none;/s, 'canonical witnesses are thin, solid, secondary, Dimension green, and pointer-safe');
 assert.doesNotMatch(angleRenderer, /angleGeometry\.support[AB]\.(?:start|end)/, 'mathematical Q-to-arc radii are not emitted as visible SVG lines');
-assert.match(css, /\.drawing-dimension-support-extension \{[^}]*stroke-dasharray:\s*4 3;[^}]*opacity:\s*1;[^}]*mix-blend-mode:\s*multiply;[^}]*pointer-events:\s*none;/s, 'support dashes remain visible over same-colour Lines without owning pointer hits');
+assert.match(angleRenderer, /className="drawing-dimension-witness drawing-dimension-lineage"/, 'Angle support references share the canonical solid witness contract');
 assert.match(workspace, /viewBox="0 0 7 7" refX="7" refY="3\.5" orient="auto-start-reverse"/);
 assert.doesNotMatch(css, /context-stroke/);
 assert.equal(DIMENSION_TEXT_SIZE_PX, 10);
