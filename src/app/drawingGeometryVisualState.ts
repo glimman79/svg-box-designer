@@ -1,6 +1,6 @@
 import { sketchPointIdFromReference } from './drawingDimension.js';
 import type { DrawingSketchV2 } from './drawingTypes.js';
-import { analyzeDrawingConstraints } from './drawingConstraintAnalysis.js';
+import { analyzeDrawingConstraints, analyzeDrawingPointMobility } from './drawingConstraintAnalysis.js';
 
 export const GEOMETRY_CONSTRAINT_VISUAL_STATES = ['FREE', 'CONSTRAINED', 'FULLY_LOCKED'] as const;
 export type GeometryConstraintVisualState = typeof GEOMETRY_CONSTRAINT_VISUAL_STATES[number];
@@ -33,9 +33,10 @@ const hasDrivingRestriction = (sketch: DrawingSketchV2, pointIds: ReadonlySet<st
 
 /**
  * Derives presentation semantics from constraint authority; it never persists
- * visual state in geometry. Driving equations establish CONSTRAINED, reference
- * measurements do not, and FULLY_LOCKED requires an explicit rigorous zero-DOF
- * proof rather than a dimension-count or topology heuristic.
+ * visual state in geometry. A Line's state compares its attainable endpoint
+ * motion under Driving equations with its unconstrained endpoint motion.
+ * Reference measurements do not participate, and FULLY_LOCKED requires zero
+ * attainable endpoint motion rather than a dimension-count/topology heuristic.
  */
 export const getGeometryConstraintVisualState = (
   sketch: DrawingSketchV2,
@@ -44,6 +45,11 @@ export const getGeometryConstraintVisualState = (
 ): GeometryConstraintVisualState => {
   if (freedomProof?.isRigorous && freedomProof.degreesOfFreedom === 0) return 'FULLY_LOCKED';
   const pointIds = targetPointIds(sketch, target);
+  if (target.kind === 'line') {
+    const mobility = analyzeDrawingPointMobility(sketch, [...pointIds]);
+    if (mobility.degreesOfFreedom === mobility.unconstrainedDegreesOfFreedom) return 'FREE';
+    return mobility.degreesOfFreedom === 0 ? 'FULLY_LOCKED' : 'CONSTRAINED';
+  }
   if (!hasDrivingRestriction(sketch, pointIds)) return 'FREE';
   const analysis = analyzeDrawingConstraints(sketch);
   const components = [...pointIds].map((id) => analysis.componentByPointId.get(id)).filter((component) => component !== undefined);
