@@ -247,6 +247,38 @@ export const resolveLineToLineMovementIntent = (sketch: DrawingSketchV2, dimensi
   return { preferred, alternatives, reason: !alternatives.length ? 'ONLY_MOVABLE_CANDIDATE' : preferred.topologyClass !== alternatives[0].topologyClass || preferred.entityCount !== alternatives[0].entityCount ? 'LOWER_TOPOLOGY_COST' : preferred.drivingConstraintCount !== alternatives[0].drivingConstraintCount ? 'LOWER_CONSTRAINT_INTERFERENCE' : 'STABLE_CREATION_ORDER' };
 };
 
+/**
+ * Chooses the Line which should absorb a Driving Angle edit.  Unlike the
+ * distance intent, the candidates remain side-local: a shared endpoint is
+ * held by the stable side while the other endpoint rotates around it.  The
+ * component solver is still responsible for satisfying every hard equation.
+ */
+export const resolveLineToLineAngleMovementIntent = (sketch: DrawingSketchV2, dimension: DrawingDimension): PointToLineMovementIntent | null => {
+  if (dimension.kind !== 'LINE_TO_LINE_ANGLE') return null;
+  const measured = dimension.references.map((reference) => sketch.entities[reference.entityId]);
+  if (!measured[0] || !measured[1]) return null;
+  const analysis = analyzeDrawingConstraints(sketch);
+  const candidates = measured.map((line, index): PointToLineMovementCandidate => {
+    const other = measured[index === 0 ? 1 : 0]!;
+    const pointIds = [line.startPointId, line.endPointId].filter((id) => id !== other.startPointId && id !== other.endPointId);
+    const localPointIds = pointIds.length ? pointIds : [line.startPointId, line.endPointId];
+    const drivingConstraintCount = new Set(localPointIds.flatMap((id) => analysis.componentByPointId.get(id)?.dimensionIds ?? []).filter((id) => id !== dimension.id)).size;
+    return {
+      kind: 'CONNECTED_GEOMETRY_LOCAL_DEFORMATION', topologyClass: 'CONNECTED_COMPONENT', pointIds: localPointIds, lineIds: [line.id],
+      entityCount: 1, pointCount: localPointIds.length, sharedPointCount: [line.startPointId, line.endPointId].filter((id) => id === other.startPointId || id === other.endPointId).length,
+      drivingConstraintCount, degreesOfFreedom: drawingConstraintDegreesOfFreedomForPoints(sketch, localPointIds, dimension.id), creationOrder: sketch.entityOrder.indexOf(line.id),
+    };
+  });
+  // Hard feasibility is tried by solveComponent below. A positive local DOF
+  // keeps a partially constrained side eligible; among eligible measured
+  // Lines, persisted creation order is the ownership rule. Reference/selection
+  // order never participates.
+  candidates.sort((a, b) => (a.degreesOfFreedom <= 0 ? 1 : 0) - (b.degreesOfFreedom <= 0 ? 1 : 0)
+    || a.creationOrder - b.creationOrder);
+  const [preferred, ...alternatives] = candidates;
+  return { preferred, alternatives, reason: preferred.degreesOfFreedom > 0 && alternatives[0]?.degreesOfFreedom <= 0 ? 'ONLY_MOVABLE_CANDIDATE' : 'STABLE_CREATION_ORDER' };
+};
+
 const rigidLinePairTranslationCandidate = (sketch: DrawingSketchV2, edited: DrawingDimension, targetValue: number, intent: PointToLineMovementCandidate): DrawingSketchV2 | null => {
   if (edited.kind !== 'LINE_TO_LINE_DISTANCE' || intent.degreesOfFreedom <= 0) return null;
   const a = resolveDimensionLineReference(sketch, edited.references[0]), b = resolveDimensionLineReference(sketch, edited.references[1]); if (!a || !b) return null;
@@ -316,6 +348,20 @@ export const solveDrawingDimensionEdit = ({ document, dimensionId, targetValue }
     const lineIntent = resolveLineToLineMovementIntent(sketch, edited); if (!lineIntent) return fail('MISSING_REFERENCE');
     for (const candidateIntent of [lineIntent.preferred, ...lineIntent.alternatives]) { const candidate = rigidLinePairTranslationCandidate(sketch, edited, targetValue, candidateIntent); if (candidate) return finish(candidate, 0); }
     return fail('UNSATISFIABLE_DIMENSION_SET');
+  }
+  if (edited.kind === 'LINE_TO_LINE_ANGLE') {
+    const angleIntent = resolveLineToLineAngleMovementIntent(sketch, edited); if (!angleIntent) return fail('MISSING_REFERENCE');
+    for (const candidateIntent of [angleIntent.preferred, ...angleIntent.alternatives]) {
+      if (candidateIntent.degreesOfFreedom <= 0) continue;
+      const variableIds = candidateIntent.pointIds.filter((id) => component.pointIds.includes(id)), local = solveComponent(sketch, component, variableIds);
+      if (!local) continue;
+      const points = { ...sketch.points }; variableIds.forEach((id, i) => { points[id] = { ...points[id], x: local.values[i * 2], y: local.values[i * 2 + 1] }; });
+      const candidate = { ...sketch, points, dimensions: { ...sketch.dimensions, [dimensionId]: { ...edited, value: targetValue } } };
+      if (verifyDrawingDrivingDimensions(candidate, component.equations.map((equation) => equation.dimension.id))) return finish(candidate, local.iterations);
+    }
+    // Coupled constraints can leave neither side independently movable while
+    // retaining legitimate component DOF.  Preserve the established generic
+    // component solve as the final deterministic fallback.
   }
   if (edited.kind === 'POINT_TO_LINE_DISTANCE') {
     if (!movementIntent) return fail('MISSING_REFERENCE');

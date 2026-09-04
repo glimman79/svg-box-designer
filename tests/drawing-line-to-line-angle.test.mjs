@@ -112,11 +112,16 @@ assert.equal(analyzeDrawingConstraints(transaction.document.sketches.s).componen
 const sectorBeforeEdit = structuredClone(transaction.document.sketches.s.dimensions['angle-1'].angleSector);
 const edited = solveDrawingDimensionEdit({ document: transaction.document, dimensionId: 'angle-1', targetValue: 50 });
 assert.equal(edited.ok, true, 'Driving Angle is solved by the component solver');
+assert.notDeepEqual(edited.document.sketches.s.points.aa, transaction.document.sketches.s.points.aa, 'first-created Line is the preferred moving side');
+assert.deepEqual(edited.document.sketches.s.points.ba, transaction.document.sketches.s.points.ba, 'later-created Line start remains stable');
+assert.deepEqual(edited.document.sketches.s.points.bb, transaction.document.sketches.s.points.bb, 'later-created Line end remains stable');
 assert.ok(Math.abs(displayedDimensionMeasurement(edited.document.sketches.s, edited.document.sketches.s.dimensions['angle-1']) - 50) < 1e-7);
 assert.deepEqual(edited.document.sketches.s.dimensions['angle-1'].angleSector, sectorBeforeEdit, 'editing preserves the exact semantic sector');
 assert.ok(verifyDrawingDrivingDimensions(edited.document.sketches.s, ['angle-1']));
 const editTransaction = transactDrawingDocument(transaction.history, transaction.document, () => edited.document);
 assert.equal(editTransaction.history.undo.length, 2, 'a successful Angle edit creates exactly one additional History step');
+const editUndone = undoDrawingDocument(editTransaction.history, editTransaction.document);
+assert.deepEqual(editUndone.document, transaction.document, 'one Undo restores the complete pre-edit geometry, value, and sector');
 const zeroEdit = solveDrawingDimensionEdit({ document: edited.document, dimensionId: 'angle-1', targetValue: 0 });
 assert.equal(zeroEdit.ok, false, 'zero degrees remains deferred');
 assert.equal('document' in zeroEdit, false, 'a rejected solve supplies no replacement document for History');
@@ -137,10 +142,51 @@ const sharedB = { ...diagonal, startPointId: 'ab', start: sharedDocument.sketche
 const sharedAngle = createLineToLineAngleDimension(sharedA, sharedB, { x: 4, y: 1 }, 'shared-angle'); assert.ok(sharedAngle);
 const withSharedAngle = appendDimension(sharedDocument, sharedAngle), sharedEdit = solveDrawingDimensionEdit({ document: withSharedAngle, dimensionId: 'shared-angle', targetValue: 60 });
 assert.equal(sharedEdit.ok, true); assert.equal(sharedEdit.document.sketches.s.entities.a.endPointId, sharedEdit.document.sketches.s.entities.b.startPointId, 'shared SketchPoint topology survives solving');
+assert.deepEqual(sharedEdit.document.sketches.s.points.ab, withSharedAngle.sketches.s.points.ab, 'shared pivot remains stable rather than being detached');
+assert.deepEqual(sharedEdit.document.sketches.s.points.bb, withSharedAngle.sketches.s.points.bb, 'later-created shared Line remains stable');
+assert.notDeepEqual(sharedEdit.document.sketches.s.points.aa, withSharedAngle.sketches.s.points.aa, 'first-created side absorbs the shared-endpoint edit');
 
 const length = { id: 'length', kind: 'ALIGNED_DISTANCE', role: 'driving', references: [{ kind: 'point', entityId: 'a', point: 'start' }, { kind: 'point', entityId: 'a', point: 'end' }], value: 20, placement: { kind: 'linear', offset: 2 } };
 const withLength = appendDimension(transaction.document, length), lengthEdit = solveDrawingDimensionEdit({ document: withLength, dimensionId: 'angle-1', targetValue: 70 });
 assert.equal(lengthEdit.ok, true); assert.ok(verifyDrawingDrivingDimensions(lengthEdit.document.sketches.s, ['angle-1', 'length']), 'existing Driving length remains a hard equation');
+assert.deepEqual(lengthEdit.document.sketches.s.points.ba, withLength.sketches.s.points.ba, 'partially constrained first Line still moves before the later Line');
+assert.deepEqual(lengthEdit.document.sketches.s.points.bb, withLength.sketches.s.points.bb, 'length does not unnecessarily switch ownership');
+
+const reverseCreation = structuredClone(transaction.document);
+reverseCreation.sketches.s.entityOrder = ['b', 'a'];
+const reverseCreationEdit = solveDrawingDimensionEdit({ document: reverseCreation, dimensionId: 'angle-1', targetValue: 55 });
+assert.equal(reverseCreationEdit.ok, true);
+assert.deepEqual(reverseCreationEdit.document.sketches.s.points.aa, reverseCreation.sketches.s.points.aa, 'reversed creation order keeps later-created a stable');
+assert.deepEqual(reverseCreationEdit.document.sketches.s.points.ab, reverseCreation.sketches.s.points.ab, 'reversed creation order keeps both a endpoints stable');
+assert.notDeepEqual(reverseCreationEdit.document.sketches.s.points.ba, reverseCreation.sketches.s.points.ba, 'reversed creation order makes first-created b move');
+
+const selectedAB = createLineToLineAngleDimension(horizontal, diagonal, cursor, 'selected-ab');
+const selectedBA = createLineToLineAngleDimension(diagonal, horizontal, cursor, 'selected-ba');
+assert.ok(selectedAB && selectedBA);
+const selectionResults = [selectedAB, selectedBA].map((dimension) => {
+  const document = appendDimension(makeDocument(), dimension);
+  return solveDrawingDimensionEdit({ document, dimensionId: dimension.id, targetValue: 52 });
+});
+assert.ok(selectionResults.every(({ ok }) => ok));
+assert.deepEqual(selectionResults[0].document.sketches.s.points, selectionResults[1].document.sketches.s.points, 'selection order cannot change Angle movement ownership');
+
+const horizontalLock = { id: 'a-horizontal', kind: 'VERTICAL_DISTANCE', role: 'driving', references: length.references, value: 0, placement: { kind: 'linear', offset: 3 } };
+const firstLocked = appendDimension(withLength, horizontalLock);
+const fallbackEdit = solveDrawingDimensionEdit({ document: firstLocked, dimensionId: 'angle-1', targetValue: 65 });
+assert.equal(fallbackEdit.ok, true, 'a fully orientation-constrained first Line falls back to the second Line');
+assert.deepEqual(fallbackEdit.document.sketches.s.points.aa, firstLocked.sketches.s.points.aa);
+assert.deepEqual(fallbackEdit.document.sketches.s.points.ab, firstLocked.sketches.s.points.ab);
+assert.notDeepEqual(fallbackEdit.document.sketches.s.points.ba, firstLocked.sketches.s.points.ba);
+
+const impossible = structuredClone(transaction.document), origin = { kind: 'datum', datum: 'ORIGIN' };
+for (const [pointId, point] of Object.entries(impossible.sketches.s.points)) for (const [axis, kind] of [['x', 'HORIZONTAL_DISTANCE'], ['y', 'VERTICAL_DISTANCE']]) {
+  const id = `lock-${pointId}-${axis}`;
+  impossible.sketches.s.dimensions[id] = { id, kind, role: 'driving', references: [origin, { kind: 'sketchPoint', pointId }], value: Math.abs(point[axis]), placement: { kind: 'linear', offset: 3 } };
+  impossible.sketches.s.dimensionOrder.push(id);
+}
+const impossibleEdit = solveDrawingDimensionEdit({ document: impossible, dimensionId: 'angle-1', targetValue: 65 });
+assert.equal(impossibleEdit.ok, false, 'an impossible edit is rejected atomically');
+assert.equal('document' in impossibleEdit, false, 'failed ownership candidates cannot expose partial geometry or target changes');
 assert.equal(canonicalDimensionReferencePairKey(committed), canonicalDimensionReferencePairKey(createLineToLineAngleDimension(horizontal, diagonal, cursor, 'reverse')));
 const persisted = structuredClone(transaction.document.sketches.s.dimensions['angle-1']);
 const undone = undoDrawingDocument(transaction.history, transaction.document); assert.equal(undone.document.sketches.s.dimensionOrder.length, 0);
