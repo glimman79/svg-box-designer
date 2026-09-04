@@ -250,7 +250,6 @@ export const classifyNewDimensionRole = (sketch: DrawingSketchV2, candidate: Dra
   const samePair = Object.values(sketch.dimensions).filter((dimension) =>
     canonicalDimensionReferencePairKey(dimension) === pairKey);
   if (samePair.some((dimension) => dimension.kind === candidate.kind)) return { role: 'reference', reason: 'duplicate' };
-  if (candidate.kind === 'LINE_TO_LINE_ANGLE') return { role: 'reference', reason: 'foundation' };
   return dimensionIncreasesConstraintRank(sketch, candidate)
     ? { role: 'driving', reason: 'independent' }
     : { role: 'reference', reason: 'redundant' };

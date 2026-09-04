@@ -562,7 +562,8 @@ export function DrawingWorkspace({
   }).filter(Boolean) ?? [];
   const editingDimension = displayedDimensions.find(({ id }) => id === editingDimensionId);
   const editingGeometry = editingDimension ? annotationGeometry(editingDimension) : null;
-  const editingMiddle = editingGeometry ? { x: (editingGeometry.a.x + editingGeometry.b.x) / 2, y: (editingGeometry.a.y + editingGeometry.b.y) / 2 } : null;
+  const editingAngleGeometry = editingDimension?.kind === 'LINE_TO_LINE_ANGLE' ? angleAnnotationGeometry(editingDimension) : null;
+  const editingMiddle = editingAngleGeometry?.label ?? (editingGeometry ? { x: (editingGeometry.a.x + editingGeometry.b.x) / 2, y: (editingGeometry.a.y + editingGeometry.b.y) / 2 } : null);
   const editorAnchor = editingMiddle && svgRef.current && overlaySvgRef.current
     ? modelToOverlayPoint(editingMiddle, svgRef.current.getScreenCTM()!, overlaySvgRef.current.getScreenCTM()!) : null;
   const editorWidth = dimensionEditorWidthPixels(dimensionDraft);
@@ -713,13 +714,18 @@ export function DrawingWorkspace({
                   const measurement = activeSketch ? displayedDimensionMeasurement(activeSketch, dimension) : null; if (measurement === null) return null;
                   const path = `M ${angleGeometry.start.x} ${angleGeometry.start.y} A ${angleGeometry.radius} ${angleGeometry.radius} 0 ${angleGeometry.largeArc} ${angleGeometry.sweep} ${angleGeometry.end.x} ${angleGeometry.end.y}`;
                   const selected = dimension.id === selectedDimensionId, hovered = dimension.id === hoveredDimensionId;
-                  const arrowState = selected ? 'active' : hovered ? 'hover' : 'normal';
+                  const editing = dimension.id === editingDimensionId;
+                  const arrowState = selected || editing ? 'active' : hovered ? 'hover' : 'normal';
                   const arrowMarker = `url(#dimension-arrow-${arrowState})`;
-                  return <g key={dimension.id} className={`drawing-dimension is-reference is-angle${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}${dimension.id === 'preview' ? ' is-preview' : ''}`}>
+                  const beginDimensionEdit = () => { setSelectedDimensionId(dimension.id); if (dimension.role === 'reference') return; setEditingDimensionId(dimension.id); setDimensionDraft(formatDimensionEditValue(dimension.value)); setDimensionEditError(null); };
+                  const valueHitWidth = (formatAngleDimension(measurement).length * 6 + 12) / pixelsPerMm;
+                  return <g key={dimension.id} className={`drawing-dimension is-${dimension.role} is-angle${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}${editing ? ' is-editing' : ''}${dimension.id === 'preview' ? ' is-preview' : ''}`}>
                     {angleGeometry.supportExtensions.map((extension) => <line key={extension.lineId} className="drawing-dimension-witness drawing-dimension-lineage" x1={extension.start.x} y1={extension.start.y} x2={extension.end.x} y2={extension.end.y} />)}
                     <path className="drawing-dimension-line drawing-dimension-angle-arc" d={path} fill="none" markerStart={arrowMarker} markerEnd={arrowMarker} />
                     <text className="drawing-dimension-value" x={angleGeometry.label.x} y={angleGeometry.label.y} textAnchor="middle" style={{ fontSize: dimensionScreenPixelsToModelUnits(DIMENSION_TEXT_SIZE_PX, pixelsPerMm) }}>{formatAngleDimension(measurement)}</text>
                     {dimension.id !== 'preview' && <path className="drawing-dimension-hit" d={path} fill="none" onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => { if (event.button === CAD_PRIMARY_BUTTON) setSelectedDimensionId(dimension.id); }} />}
+                    {dimension.id !== 'preview' && <rect className={`drawing-dimension-value-hit${dimension.role === 'driving' ? ' is-editable' : ''}`} x={angleGeometry.label.x - valueHitWidth / 2} y={angleGeometry.label.y - 16 / pixelsPerMm} width={valueHitWidth} height={18 / pixelsPerMm} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => { if (event.button === CAD_PRIMARY_BUTTON) setSelectedDimensionId(dimension.id); }} onDoubleClick={beginDimensionEdit} />}
+                    {editing && dimensionEditError && <text className="drawing-dimension-error" x={angleGeometry.label.x} y={angleGeometry.label.y + 24 / pixelsPerMm} textAnchor="middle">{dimensionEditError}</text>}
                   </g>;
                 }
                 const geometry = annotationGeometry(dimension); if (!geometry) return null;
@@ -765,7 +771,7 @@ export function DrawingWorkspace({
             )}
           </svg>
           <svg ref={overlaySvgRef} className="drawing-label-overlay" viewBox={`0 0 ${viewport.width} ${viewport.height}`} aria-label="Model coordinate scale">
-            {editingDimension && editorAnchor && <foreignObject className="drawing-dimension-editor-frame" x={editorAnchor.x - editorWidth / 2} y={editorAnchor.y - DIMENSION_EDITOR_HEIGHT_PX + 2} width={editorWidth} height={DIMENSION_EDITOR_HEIGHT_PX}><input ref={dimensionEditorInputRef} className="drawing-dimension-editor" value={dimensionDraft} aria-label="Dimension value in millimetres" onChange={(event) => { setDimensionDraft(event.target.value); setDimensionEditError(null); }} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingDimensionId(null); setDimensionEditError(null); } if (event.key === 'Enter') { const parsed = parseLinearDimension(dimensionDraft); if (parsed === null) { setDimensionEditError('Dimension must be 0 mm or greater.'); return; } const result = solveDrawingDimensionEdit({ document, dimensionId: editingDimension.id, targetValue: parsed }); if (!result.ok) { setDimensionEditError(result.message); return; } transactDocument(() => result.document); setEditingDimensionId(null); setDimensionEditError(null); } }} /></foreignObject>}
+            {editingDimension && editorAnchor && <foreignObject className="drawing-dimension-editor-frame" x={editorAnchor.x - editorWidth / 2} y={editorAnchor.y - DIMENSION_EDITOR_HEIGHT_PX + 2} width={editorWidth} height={DIMENSION_EDITOR_HEIGHT_PX}><input ref={dimensionEditorInputRef} className="drawing-dimension-editor" value={dimensionDraft} aria-label={editingDimension.kind === 'LINE_TO_LINE_ANGLE' ? 'Dimension value in degrees' : 'Dimension value in millimetres'} onChange={(event) => { setDimensionDraft(event.target.value); setDimensionEditError(null); }} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingDimensionId(null); setDimensionEditError(null); } if (event.key === 'Enter') { const parsed = parseLinearDimension(dimensionDraft); if (parsed === null) { setDimensionEditError(editingDimension.kind === 'LINE_TO_LINE_ANGLE' ? 'Angle must be greater than 0° and less than 180°.' : 'Dimension must be 0 mm or greater.'); return; } const result = solveDrawingDimensionEdit({ document, dimensionId: editingDimension.id, targetValue: parsed }); if (!result.ok) { setDimensionEditError(result.message); return; } transactDocument(() => result.document); setEditingDimensionId(null); setDimensionEditError(null); } }} /></foreignObject>}
             {overlayGeometry && overlayGeometry.origin.y >= 0 && overlayGeometry.origin.y <= viewport.height && overlayGeometry.xLabels.filter(({ value }) => value !== 0).map((label) => (
               <text className="drawing-coordinate-label drawing-x-coordinate" data-label-side="below" key={`x-${label.value}`} x={label.anchor.x} y={label.anchor.y + 15} textAnchor="middle">{label.value}</text>
             ))}

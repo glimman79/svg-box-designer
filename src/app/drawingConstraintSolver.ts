@@ -1,13 +1,13 @@
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint, DrawingSketchV2 } from './drawingTypes';
-import { analyzeDrawingConstraints, constraintEquation, constraintPointKey, drawingConstraintDegreesOfFreedomForPoints, DRAWING_ORIGIN_CONSTRAINT_KEY, lineToLineDistanceAndGradient, pointToLineDistanceAndGradient } from './drawingConstraintAnalysis.js';
+import { analyzeDrawingConstraints, constraintEquation, constraintPointKey, drawingConstraintDegreesOfFreedomForPoints, DRAWING_ORIGIN_CONSTRAINT_KEY, lineToLineAngleAndGradient, lineToLineDistanceAndGradient, pointToLineDistanceAndGradient } from './drawingConstraintAnalysis.js';
 import { measureDimension, measureLineToLineDistance, measurePointToLine, resolveDimensionLineReference, resolveDrawingPointReference } from './drawingDimension.js';
 
 export const DRAWING_CONSTRAINT_TOLERANCE_MM = 1e-7;
 export const DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS = 80;
 const INITIAL_DAMPING = 1e-6, ITERATION_CONVERGENCE_MM = 1e-12;
-export type DrawingDimensionSolveFailureReason = 'INVALID_TARGET' | 'MISSING_REFERENCE' | 'UNSUPPORTED_DEGENERATE_GEOMETRY' | 'UNDERDETERMINED_ORIENTATION' | 'UNSATISFIABLE_DIMENSION_SET' | 'SOLUTION_VERIFICATION_FAILED';
+export type DrawingDimensionSolveFailureReason = 'INVALID_TARGET' | 'INVALID_ANGLE_TARGET' | 'MISSING_REFERENCE' | 'UNSUPPORTED_DEGENERATE_GEOMETRY' | 'UNDERDETERMINED_ORIENTATION' | 'UNSATISFIABLE_DIMENSION_SET' | 'SOLUTION_VERIFICATION_FAILED';
 export type DrawingDimensionSolveResult = Readonly<{ ok: true; document: DrawingDocumentV2; diagnostics: Readonly<{ constraintCount: number; residuals: readonly number[]; iterations: number; pointIds: readonly string[] }> }> | Readonly<{ ok: false; reason: DrawingDimensionSolveFailureReason; message: string }>;
-const failureMessages: Record<DrawingDimensionSolveFailureReason, string> = { INVALID_TARGET: 'Dimension must be 0 mm or greater.', MISSING_REFERENCE: 'This dimension no longer has valid geometry.', UNSUPPORTED_DEGENERATE_GEOMETRY: 'This dimension cannot be solved from the current geometry.', UNDERDETERMINED_ORIENTATION: 'This dimension cannot be solved from the current geometry.', UNSATISFIABLE_DIMENSION_SET: 'This value conflicts with another driving dimension.', SOLUTION_VERIFICATION_FAILED: 'The dimension solution could not be verified.' };
+const failureMessages: Record<DrawingDimensionSolveFailureReason, string> = { INVALID_TARGET: 'Dimension must be 0 mm or greater.', INVALID_ANGLE_TARGET: 'Angle must be greater than 0° and less than 180°.', MISSING_REFERENCE: 'This dimension no longer has valid geometry.', UNSUPPORTED_DEGENERATE_GEOMETRY: 'This dimension cannot be solved from the current geometry.', UNDERDETERMINED_ORIENTATION: 'This dimension cannot be solved from the current geometry.', UNSATISFIABLE_DIMENSION_SET: 'This value conflicts with another driving dimension.', SOLUTION_VERIFICATION_FAILED: 'The dimension solution could not be verified.' };
 export const drawingDimensionSolveFailureMessage = (reason: DrawingDimensionSolveFailureReason): string => failureMessages[reason];
 const fail = (reason: DrawingDimensionSolveFailureReason): DrawingDimensionSolveResult => ({ ok: false, reason, message: failureMessages[reason] });
 
@@ -25,7 +25,12 @@ const evaluateSystem = (sketch: DrawingSketchV2, component: ComponentState, vari
   const index = new Map(variableIds.map((id, i) => [id, i])), residuals: number[] = [], jacobian: number[][] = [];
   for (const equation of component.equations) {
     const row = Array(variableIds.length * 2).fill(0);
-    if (equation.dimension.kind === 'POINT_TO_LINE_DISTANCE') {
+    if (equation.dimension.kind === 'LINE_TO_LINE_ANGLE') {
+      const [a0, a1, b0, b1] = equation.pointKeys, sector = equation.dimension.angleSector;
+      const result = lineToLineAngleAndGradient(...([a0, a1, b0, b1].map((key) => coordinate(sketch, values, index, key)) as [DrawingPoint, DrawingPoint, DrawingPoint, DrawingPoint]), sector.sideA * sector.sideB as -1 | 1);
+      if (!result) return null;
+      residuals.push(result.angleDegrees - equation.target); [a0, a1, b0, b1].forEach((key, j) => { const i = index.get(key); if (i !== undefined) { row[i * 2] += result.gradient[j * 2]; row[i * 2 + 1] += result.gradient[j * 2 + 1]; } });
+    } else if (equation.dimension.kind === 'POINT_TO_LINE_DISTANCE') {
       const [p, a, b] = equation.pointKeys, result = pointToLineDistanceAndGradient(coordinate(sketch, values, index, p), coordinate(sketch, values, index, a), coordinate(sketch, values, index, b));
       if (!result) return null;
       residuals.push(result.distance - equation.target); [p, a, b].forEach((key, j) => { const i = index.get(key); if (i !== undefined) { row[i * 2] += result.gradient[j * 2]; row[i * 2 + 1] += result.gradient[j * 2 + 1]; } });
@@ -136,7 +141,7 @@ export const solveDrawingComponentDrag = (
   return working;
 };
 
-const measurement = (sketch: DrawingSketchV2, dimension: DrawingDimension): number | null => { if (dimension.kind === 'POINT_TO_LINE_DISTANCE') { const p = resolveDrawingPointReference(sketch, dimension.references[0]), l = resolveDimensionLineReference(sketch, dimension.references[1]); return p && l ? measurePointToLine(p, l) : null; } if (dimension.kind === 'LINE_TO_LINE_DISTANCE') { const a = resolveDimensionLineReference(sketch, dimension.references[0]), b = resolveDimensionLineReference(sketch, dimension.references[1]); return a && b ? measureLineToLineDistance(a, b) : null; } const a = resolveDrawingPointReference(sketch, dimension.references[0]), b = resolveDrawingPointReference(sketch, dimension.references[1]); return a && b ? measureDimension(dimension.kind, a, b) : null; };
+const measurement = (sketch: DrawingSketchV2, dimension: DrawingDimension): number | null => { if (dimension.kind === 'LINE_TO_LINE_ANGLE') { const equation = constraintEquation(sketch, dimension); if (!equation) return null; const [a0, a1, b0, b1] = equation.pointKeys, sector = dimension.angleSector; return lineToLineAngleAndGradient(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1], sector.sideA * sector.sideB as -1 | 1)?.angleDegrees ?? null; } if (dimension.kind === 'POINT_TO_LINE_DISTANCE') { const p = resolveDrawingPointReference(sketch, dimension.references[0]), l = resolveDimensionLineReference(sketch, dimension.references[1]); return p && l ? measurePointToLine(p, l) : null; } if (dimension.kind === 'LINE_TO_LINE_DISTANCE') { const a = resolveDimensionLineReference(sketch, dimension.references[0]), b = resolveDimensionLineReference(sketch, dimension.references[1]); return a && b ? measureLineToLineDistance(a, b) : null; } const a = resolveDrawingPointReference(sketch, dimension.references[0]), b = resolveDrawingPointReference(sketch, dimension.references[1]); return a && b ? measureDimension(dimension.kind, a, b) : null; };
 export const verifyDrawingDrivingDimensions = (sketch: DrawingSketchV2, ids: readonly string[]): readonly number[] | null => { const residuals = ids.map((id) => { const d = sketch.dimensions[id], value = d?.role === 'driving' ? measurement(sketch, d) : null; return d && value !== null ? Math.abs(value - d.value) : Infinity; }); return residuals.every((v) => Number.isFinite(v) && v <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? residuals : null; };
 
 export type PointToLineMovementCandidate = Readonly<{
@@ -287,10 +292,11 @@ const rigidLineTranslationCandidate = (sketch: DrawingSketchV2, edited: DrawingD
 
 export const solveDrawingDimensionEdit = ({ document, dimensionId, targetValue }: Readonly<{ document: DrawingDocumentV2; dimensionId: string; targetValue: number }>): DrawingDimensionSolveResult => {
   if (!Number.isFinite(targetValue) || targetValue < 0) return fail('INVALID_TARGET'); const sketch = document.sketches[document.activeSketchId], edited = sketch?.dimensions[dimensionId]; if (!sketch || !edited || edited.role !== 'driving') return fail('MISSING_REFERENCE');
-  if (edited.kind === 'LINE_TO_LINE_ANGLE') return fail('MISSING_REFERENCE');
+  if (edited.kind === 'LINE_TO_LINE_ANGLE' && (targetValue <= 0 || targetValue >= 180)) return fail('INVALID_ANGLE_TARGET');
+  if (edited.kind === 'LINE_TO_LINE_ANGLE') { const equation = constraintEquation(sketch, edited); if (!equation || !measurement(sketch, edited)) return fail('UNSUPPORTED_DEGENERATE_GEOMETRY'); }
   if (edited.kind === 'LINE_TO_LINE_DISTANCE') { const a = resolveDimensionLineReference(sketch, edited.references[0]), b = resolveDimensionLineReference(sketch, edited.references[1]); if (!a || !b || measureLineToLineDistance(a, b) === null) return fail('UNSUPPORTED_DEGENERATE_GEOMETRY'); }
   if (edited.kind === 'POINT_TO_LINE_DISTANCE') { const line = resolveDimensionLineReference(sketch, edited.references[1]); if (!line || measurePointToLine(resolveDrawingPointReference(sketch, edited.references[0])!, line) === null) return fail('UNSUPPORTED_DEGENERATE_GEOMETRY'); }
-  else if (edited.kind !== 'LINE_TO_LINE_DISTANCE') { const a = resolveDrawingPointReference(sketch, edited.references[0]), b = resolveDrawingPointReference(sketch, edited.references[1]); if (!a || !b) return fail('MISSING_REFERENCE'); const dx = b.x - a.x, dy = b.y - a.y; if (edited.kind === 'ALIGNED_DISTANCE' && (targetValue <= DRAWING_CONSTRAINT_TOLERANCE_MM || Math.hypot(dx, dy) <= DRAWING_CONSTRAINT_TOLERANCE_MM)) return fail('UNSUPPORTED_DEGENERATE_GEOMETRY'); if (edited.kind === 'HORIZONTAL_DISTANCE' && Math.abs(dx) <= DRAWING_CONSTRAINT_TOLERANCE_MM && targetValue > DRAWING_CONSTRAINT_TOLERANCE_MM) return fail('UNDERDETERMINED_ORIENTATION'); if (edited.kind === 'VERTICAL_DISTANCE' && Math.abs(dy) <= DRAWING_CONSTRAINT_TOLERANCE_MM && targetValue > DRAWING_CONSTRAINT_TOLERANCE_MM) return fail('UNDERDETERMINED_ORIENTATION'); }
+  else if (edited.kind !== 'LINE_TO_LINE_DISTANCE' && edited.kind !== 'LINE_TO_LINE_ANGLE') { const a = resolveDrawingPointReference(sketch, edited.references[0]), b = resolveDrawingPointReference(sketch, edited.references[1]); if (!a || !b) return fail('MISSING_REFERENCE'); const dx = b.x - a.x, dy = b.y - a.y; if (edited.kind === 'ALIGNED_DISTANCE' && (targetValue <= DRAWING_CONSTRAINT_TOLERANCE_MM || Math.hypot(dx, dy) <= DRAWING_CONSTRAINT_TOLERANCE_MM)) return fail('UNSUPPORTED_DEGENERATE_GEOMETRY'); if (edited.kind === 'HORIZONTAL_DISTANCE' && Math.abs(dx) <= DRAWING_CONSTRAINT_TOLERANCE_MM && targetValue > DRAWING_CONSTRAINT_TOLERANCE_MM) return fail('UNDERDETERMINED_ORIENTATION'); if (edited.kind === 'VERTICAL_DISTANCE' && Math.abs(dy) <= DRAWING_CONSTRAINT_TOLERANCE_MM && targetValue > DRAWING_CONSTRAINT_TOLERANCE_MM) return fail('UNDERDETERMINED_ORIENTATION'); }
   const component = componentForDimension(sketch, edited, targetValue); if (!component) return fail('MISSING_REFERENCE'); let preferred: readonly string[];
   const movementIntent = edited.kind === 'POINT_TO_LINE_DISTANCE' ? resolvePointToLineMovementIntent(sketch, edited) : null;
   const finish = (candidate: DrawingSketchV2, iterations: number): DrawingDimensionSolveResult => ({ ok: true, document: { ...document, sketches: { ...document.sketches, [sketch.id]: candidate } }, diagnostics: { constraintCount: component.equations.length, residuals: verifyDrawingDrivingDimensions(candidate, component.equations.map((equation) => equation.dimension.id))!, iterations, pointIds: component.pointIds } });
@@ -315,10 +321,11 @@ export const solveDrawingDimensionEdit = ({ document, dimensionId, targetValue }
     if (!movementIntent) return fail('MISSING_REFERENCE');
     preferred = movementIntent.preferred.pointIds;
   }
+  else if (edited.kind === 'LINE_TO_LINE_ANGLE') preferred = component.pointIds;
   else { const first = constraintPointKey(sketch, edited.references[0]); preferred = component.pointIds.filter((id) => id !== first); }
   let variableIds: readonly string[] = preferred.filter((id) => component.pointIds.includes(id)), solved = solveComponent(sketch, component, variableIds); if (!solved && variableIds.length !== component.pointIds.length) { variableIds = component.pointIds; solved = solveComponent(sketch, component, variableIds); } if (!solved) return fail('UNSATISFIABLE_DIMENSION_SET');
   const points = { ...sketch.points }; variableIds.forEach((id, i) => { points[id] = { ...points[id], x: solved!.values[i * 2], y: solved!.values[i * 2 + 1] }; }); const dimensions = { ...sketch.dimensions, [dimensionId]: { ...edited, value: targetValue } }; let solvedSketch = { ...sketch, points, dimensions };
-  if (edited.kind !== 'POINT_TO_LINE_DISTANCE') {
+  if (edited.kind !== 'POINT_TO_LINE_DISTANCE' && edited.kind !== 'LINE_TO_LINE_ANGLE') {
     const aKey = constraintPointKey(sketch, edited.references[0]), bKey = constraintPointKey(sketch, edited.references[1]), movableKey = bKey === DRAWING_ORIGIN_CONSTRAINT_KEY ? aKey : bKey, anchorKey = bKey === DRAWING_ORIGIN_CONSTRAINT_KEY ? bKey : aKey;
     if (movableKey && movableKey !== DRAWING_ORIGIN_CONSTRAINT_KEY && anchorKey && variableIds.includes(movableKey)) {
       const anchor = coordinate(solvedSketch, [], new Map(), anchorKey), movable = coordinate(solvedSketch, [], new Map(), movableKey), originalAnchor = coordinate(sketch, [], new Map(), anchorKey), originalMovable = coordinate(sketch, [], new Map(), movableKey); let polished: DrawingPoint;
