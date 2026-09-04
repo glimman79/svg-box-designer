@@ -47,7 +47,56 @@ const evaluateSystem = (sketch: DrawingSketchV2, component: ComponentState, vari
 };
 const norm = (v: readonly number[]) => v.reduce((s, x) => s + x * x, 0);
 const solveLinear = (matrix: number[][], rhs: number[]): number[] | null => { const a = matrix.map((r, i) => [...r, rhs[i]]), n = rhs.length; for (let c = 0; c < n; c += 1) { let p = c; for (let r = c + 1; r < n; r += 1) if (Math.abs(a[r][c]) > Math.abs(a[p][c])) p = r; if (Math.abs(a[p][c]) < 1e-14) return null; [a[c], a[p]] = [a[p], a[c]]; const d = a[c][c]; for (let j = c; j <= n; j += 1) a[c][j] /= d; for (let r = 0; r < n; r += 1) if (r !== c) { const f = a[r][c]; for (let j = c; j <= n; j += 1) a[r][j] -= f * a[c][j]; } } return a.map((r) => r[n]); };
-const solveComponent = (sketch: DrawingSketchV2, component: ComponentState, variableIds: readonly string[]) => { let values = variableIds.flatMap((id) => [sketch.points[id].x, sketch.points[id].y]), damping = INITIAL_DAMPING; for (let iteration = 0; iteration <= DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS; iteration += 1) { const system = evaluateSystem(sketch, component, variableIds, values); if (!system) return null; if (system.residuals.every((v) => Math.abs(v) <= ITERATION_CONVERGENCE_MM)) return { values, residuals: system.residuals, iterations: iteration }; if (iteration === DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS || !values.length) break; const n = values.length, normal = Array.from({ length: n }, () => Array(n).fill(0)), rhs = Array(n).fill(0); for (let r = 0; r < system.residuals.length; r += 1) for (let i = 0; i < n; i += 1) { rhs[i] -= system.jacobian[r][i] * system.residuals[r]; for (let j = 0; j < n; j += 1) normal[i][j] += system.jacobian[r][i] * system.jacobian[r][j]; } for (let i = 0; i < n; i += 1) normal[i][i] += damping; const delta = solveLinear(normal, rhs); if (!delta?.every(Number.isFinite)) break; const candidate = values.map((v, i) => v + delta[i]), next = evaluateSystem(sketch, component, variableIds, candidate); if (next && norm(next.residuals) < norm(system.residuals)) { values = candidate; damping = Math.max(1e-12, damping * .25); } else damping = Math.min(1e12, damping * 10); } return null; };
+const solveComponent = (sketch: DrawingSketchV2, component: ComponentState, variableIds: readonly string[], movementWeights?: ReadonlyMap<string, number>) => { let values = variableIds.flatMap((id) => [sketch.points[id].x, sketch.points[id].y]), damping = INITIAL_DAMPING; for (let iteration = 0; iteration <= DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS; iteration += 1) { const system = evaluateSystem(sketch, component, variableIds, values); if (!system) return null; if (system.residuals.every((v) => Math.abs(v) <= ITERATION_CONVERGENCE_MM)) return { values, residuals: system.residuals, iterations: iteration }; if (iteration === DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS || !values.length) break; const n = values.length, normal = Array.from({ length: n }, () => Array(n).fill(0)), rhs = Array(n).fill(0); for (let r = 0; r < system.residuals.length; r += 1) for (let i = 0; i < n; i += 1) { rhs[i] -= system.jacobian[r][i] * system.residuals[r]; for (let j = 0; j < n; j += 1) normal[i][j] += system.jacobian[r][i] * system.jacobian[r][j]; } for (let i = 0; i < n; i += 1) normal[i][i] += damping * (movementWeights?.get(variableIds[Math.floor(i / 2)]) ?? 1); const delta = solveLinear(normal, rhs); if (!delta?.every(Number.isFinite)) break; const candidate = values.map((v, i) => v + delta[i]), next = evaluateSystem(sketch, component, variableIds, candidate); if (next && norm(next.residuals) < norm(system.residuals)) { values = candidate; damping = Math.max(1e-12, damping * .25); } else damping = Math.min(1e12, damping * 10); } return null; };
+
+/**
+ * Projects live direct-manipulation targets onto the canonical Driving
+ * equations.  The first pass varies only dragged points, which is the strong
+ * target/weak-stay policy: untouched points remain exact stays whenever that
+ * sub-problem has a solution.  Only then may the local constraint component
+ * participate.  This deliberately reuses the Dimension component equations,
+ * gradients, nonlinear solve, and final tolerance verification.
+ */
+export const solveDrawingComponentDrag = (
+  sketch: DrawingSketchV2,
+  targets: Readonly<Record<string, DrawingPoint>>,
+): DrawingSketchV2 | null => {
+  const targetIds = Object.keys(targets).filter((id) => Boolean(sketch.points[id]));
+  if (targetIds.length !== Object.keys(targets).length || !targetIds.length) return null;
+  const analysis = analyzeDrawingConstraints(sketch);
+  const touchedComponents = [...new Set(targetIds.map((id) => analysis.componentByPointId.get(id)).filter((component) => component && component.dimensionIds.length))];
+  let working: DrawingSketchV2 = { ...sketch, points: { ...sketch.points } };
+  for (const id of targetIds) working.points[id] = { ...working.points[id], ...targets[id] };
+
+  for (const analyzed of touchedComponents) {
+    const component: ComponentState = {
+      pointIds: [...analyzed!.pointIds],
+      equations: analyzed!.dimensionIds.map((id) => {
+        const dimension = sketch.dimensions[id], equation = dimension && constraintEquation(sketch, dimension);
+        return equation ? { ...equation, target: dimension.value } : null;
+      }).filter((equation): equation is Equation => Boolean(equation)),
+    };
+    if (component.equations.length !== analyzed!.dimensionIds.length) return null;
+    const draggedIds = targetIds.filter((id) => analyzed!.pointIds.has(id));
+    // An exact rigid translation (or a target along remaining DOF) wins without
+    // numerical adjustment.
+    if (verifyDrawingDrivingDimensions(working, analyzed!.dimensionIds)) continue;
+    let variableIds: readonly string[] = draggedIds;
+    let solved = solveComponent(working, component, variableIds);
+    if (!solved) {
+      variableIds = component.pointIds;
+      solved = solveComponent(working, component, variableIds, new Map(variableIds.map((id) => [id, draggedIds.includes(id) ? 1_000 : 1])));
+    }
+    if (!solved) return null;
+    const points = { ...working.points };
+    variableIds.forEach((id, index) => {
+      points[id] = { ...points[id], x: solved!.values[index * 2], y: solved!.values[index * 2 + 1] };
+    });
+    working = { ...working, points };
+    if (!verifyDrawingDrivingDimensions(working, analyzed!.dimensionIds)) return null;
+  }
+  return working;
+};
 
 const measurement = (sketch: DrawingSketchV2, dimension: DrawingDimension): number | null => { if (dimension.kind === 'POINT_TO_LINE_DISTANCE') { const p = resolveDrawingPointReference(sketch, dimension.references[0]), l = resolveDimensionLineReference(sketch, dimension.references[1]); return p && l ? measurePointToLine(p, l) : null; } if (dimension.kind === 'LINE_TO_LINE_DISTANCE') { const a = resolveDimensionLineReference(sketch, dimension.references[0]), b = resolveDimensionLineReference(sketch, dimension.references[1]); return a && b ? measureLineToLineDistance(a, b) : null; } const a = resolveDrawingPointReference(sketch, dimension.references[0]), b = resolveDrawingPointReference(sketch, dimension.references[1]); return a && b ? measureDimension(dimension.kind, a, b) : null; };
 export const verifyDrawingDrivingDimensions = (sketch: DrawingSketchV2, ids: readonly string[]): readonly number[] | null => { const residuals = ids.map((id) => { const d = sketch.dimensions[id], value = d?.role === 'driving' ? measurement(sketch, d) : null; return d && value !== null ? Math.abs(value - d.value) : Infinity; }); return residuals.every((v) => Number.isFinite(v) && v <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? residuals : null; };
