@@ -1,6 +1,6 @@
 :root {
   /* Global Drawing presentation authority. These preserve the accepted CAD palette. */
-  --drawing-geometry-free: #2db65b;
+  --drawing-geometry-free: #33C757;
   --drawing-geometry-constrained: #137a3e;
   --drawing-geometry-locked: #111827;
   --drawing-hover: #06b6d4;

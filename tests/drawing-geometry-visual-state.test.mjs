@@ -26,7 +26,7 @@ const css = fs.readFileSync('src/styles.css', 'utf8');
 assert.match(workspace, /data-constraint-state=\{getGeometryConstraintVisualState/);
 assert.match(workspace, /if \(geometryDrag\.exceeded\) setSelectedGeometry\(null\)/, 'meaningful drag clears persistent selection at release');
 assert.match(workspace, /is-geometry-dragging/, 'active manipulation has explicit semantic state');
-assert.match(css, /--drawing-geometry-free:\s*#2db65b;/i);
+assert.match(css, /--drawing-geometry-free:\s*#33c757;/i);
 assert.match(css, /--drawing-geometry-constrained:\s*#137a3e;/i);
 assert.match(css, /--drawing-geometry-locked:\s*#111827;/i);
 assert.match(css, /\.drawing-line-entity\.geometry-free \{ stroke: var\(--drawing-geometry-free\); \}/i);
