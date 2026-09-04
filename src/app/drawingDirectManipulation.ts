@@ -1,5 +1,5 @@
 import { DRAWING_CONSTRAINT_TOLERANCE_MM, solveDrawingComponentDrag } from './drawingConstraintSolver.js';
-import { measureDimension, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
+import { displayedDimensionMeasurement, measureDimension, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
 import { pointIdForLineEndpoint, updateSketchPoint } from './drawingTopology.js';
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes.js';
 
@@ -42,6 +42,10 @@ export const validateDrivingDimensions = (document: DrawingDocumentV2, dimension
   const sketch = document.sketches[document.activeSketchId];
   if (!sketch) return false;
   return (dimensions ?? Object.values(sketch.dimensions).filter(({ role }) => role === 'driving')).every((dimension) => {
+    if (dimension.kind === 'LINE_TO_LINE_ANGLE' || dimension.kind === 'LINE_TO_LINE_DISTANCE') {
+      const value = displayedDimensionMeasurement(sketch, dimension);
+      return value !== null && Math.abs(value - dimension.value) <= DRAWING_CONSTRAINT_TOLERANCE_MM;
+    }
     if (dimension.kind === 'POINT_TO_LINE_DISTANCE') {
       const point = resolveDrawingPointReference(sketch, dimension.references[0]);
       const line = sketch.entities[dimension.references[1].entityId];

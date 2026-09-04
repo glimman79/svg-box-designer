@@ -18,7 +18,11 @@ export const constraintPointKey = (sketch: DrawingSketchV2, reference: DrawingPo
 };
 
 export const constraintEquation = (sketch: DrawingSketchV2, dimension: DrawingDimension): DrawingConstraintEquation | null => {
-  if (dimension.kind === 'LINE_TO_LINE_ANGLE') return null;
+  if (dimension.kind === 'LINE_TO_LINE_ANGLE') {
+    const a = sketch.entities[dimension.references[0].entityId], b = sketch.entities[dimension.references[1].entityId];
+    if (!a || !b || a.startPointId === a.endPointId || b.startPointId === b.endPointId) return null;
+    return { dimension, pointKeys: [a.startPointId, a.endPointId, b.startPointId, b.endPointId] };
+  }
   if (dimension.kind === 'LINE_TO_LINE_DISTANCE') {
     const a = sketch.entities[dimension.references[0].entityId], b = sketch.entities[dimension.references[1].entityId];
     if (!a || !b || a.startPointId === a.endPointId || b.startPointId === b.endPointId) return null;
@@ -32,6 +36,23 @@ export const constraintEquation = (sketch: DrawingSketchV2, dimension: DrawingDi
   }
   const a = constraintPointKey(sketch, dimension.references[0]), b = constraintPointKey(sketch, dimension.references[1]);
   return a && b && a !== b ? { dimension, pointKeys: [a, b] } : null;
+};
+
+/** Direction-only sector angle and derivative, in degrees. Opposite sectors
+ * intentionally have equal equations while retaining distinct persisted IDs. */
+export const lineToLineAngleAndGradient = (a0: DrawingPoint, a1: DrawingPoint, b0: DrawingPoint, b1: DrawingPoint, sideProduct: -1 | 1) => {
+  const coordinates = [a0.x, a0.y, a1.x, a1.y, b0.x, b0.y, b1.x, b1.y];
+  const value = (v: readonly number[]) => {
+    const ax = v[2] - v[0], ay = v[3] - v[1], bx = v[6] - v[4], by = v[7] - v[5];
+    const al = Math.hypot(ax, ay), bl = Math.hypot(bx, by); if (al <= DRAWING_CONSTRAINT_RANK_TOLERANCE.absolute || bl <= DRAWING_CONSTRAINT_RANK_TOLERANCE.absolute) return null;
+    // atan2(|cross|, dot) avoids acos' ill-conditioned derivative near its
+    // clamped endpoints while still measuring the directed support vectors.
+    const directed = Math.atan2(Math.abs(ax * by - ay * bx), ax * bx + ay * by) * 180 / Math.PI;
+    return sideProduct < 0 ? directed : 180 - directed;
+  };
+  const angleDegrees = value(coordinates); if (angleDegrees === null) return null;
+  const gradient = coordinates.map((coordinate, index) => { const h = 1e-6 * Math.max(1, Math.abs(coordinate)); const plus = [...coordinates], minus = [...coordinates]; plus[index] += h; minus[index] -= h; const p = value(plus), m = value(minus); return p === null || m === null ? 0 : (p - m) / (2 * h); });
+  return { angleDegrees, gradient };
 };
 
 export const lineToLineDistanceAndGradient = (a0: DrawingPoint, a1: DrawingPoint, b0: DrawingPoint, b1: DrawingPoint) => {
@@ -91,6 +112,12 @@ export type DrawingPointMobilityAnalysis = Readonly<{
 const coordinate = (sketch: DrawingSketchV2, key: string): DrawingPoint => key === DRAWING_ORIGIN_CONSTRAINT_KEY ? { x: 0, y: 0 } : sketch.points[key];
 export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: DrawingConstraintEquation, pointOrder: readonly string[]): number[] | null => {
   const row = Array(pointOrder.length * 2).fill(0), set = (key: string, gx: number, gy: number) => { const i = pointOrder.indexOf(key); if (i >= 0) { row[i * 2] += gx; row[i * 2 + 1] += gy; } };
+  if (equation.dimension.kind === 'LINE_TO_LINE_ANGLE') {
+    const [a0, a1, b0, b1] = equation.pointKeys, sector = equation.dimension.angleSector;
+    const result = lineToLineAngleAndGradient(coordinate(sketch, a0), coordinate(sketch, a1), coordinate(sketch, b0), coordinate(sketch, b1), sector.sideA * sector.sideB as -1 | 1);
+    if (!result) return null;
+    [a0, a1, b0, b1].forEach((key, i) => set(key, result.gradient[i * 2], result.gradient[i * 2 + 1])); return row;
+  }
   if (equation.dimension.kind === 'POINT_TO_LINE_DISTANCE') {
     const [p, a, b] = equation.pointKeys, result = pointToLineDistanceAndGradient(coordinate(sketch, p), coordinate(sketch, a), coordinate(sketch, b));
     if (!result) return null;
