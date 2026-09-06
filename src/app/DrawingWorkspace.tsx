@@ -17,7 +17,7 @@ import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, un
 import { pointIdForLineEndpoint, resolveLine } from './drawingTopology.js';
 import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
-import { deleteGeometricConstraint, deriveParallelMarkers } from './drawingParallelMarker.js';
+import { deleteGeometricConstraint, deriveParallelMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -292,7 +292,7 @@ export function DrawingWorkspace({
 
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (panHandlers.onPointerDown(event)) return;
-    if ((event.target as Element).closest('.drawing-parallel-marker')) return;
+    if ((event.target as Element).closest('.drawing-geometric-constraint-marker')) return;
     const dimensionTarget = (event.target as Element).closest('.drawing-dimension-editor, .drawing-dimension-hit, .drawing-dimension-value-hit');
     const explicitDimensionValueTarget = (event.target as Element).closest('.drawing-dimension-editor, .drawing-dimension-value-hit');
     // In Select, let the model-space resolver arbitrate an annotation hit
@@ -728,12 +728,12 @@ export function DrawingWorkspace({
               {parallelMarkers.map((marker) => {
                 const selected = marker.constraintId === selectedGeometricConstraintId;
                 const hovered = marker.constraintId === hoveredGeometricConstraintId;
-                return <g key={marker.id} className={`drawing-parallel-marker${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}`} data-constraint-id={marker.constraintId} data-line-id={marker.lineId}
+                return <g key={marker.id} className={`drawing-geometric-constraint-marker${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}`} data-constraint-id={marker.constraintId} data-line-id={marker.lineId}
                   onPointerEnter={() => setHoveredGeometricConstraintId(marker.constraintId)}
                   onPointerLeave={() => setHoveredGeometricConstraintId((current) => current === marker.constraintId ? null : current)}
                   onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry(null); }}>
-                  <circle className="drawing-parallel-marker-hit drawing-interactive-hit" cx={marker.x} cy={marker.y} r={9 / pixelsPerMm} />
-                  <text x={marker.x} y={marker.y} textAnchor="middle" dominantBaseline="central" style={{ fontSize: 18 / pixelsPerMm }}>{marker.label}</text>
+                  <circle className="drawing-geometric-constraint-marker-hit drawing-interactive-hit" cx={marker.x} cy={marker.y} r={9 / pixelsPerMm} />
+                  <text x={marker.x} y={marker.y} textAnchor="middle" dominantBaseline="central" style={{ fontSize: GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX / pixelsPerMm }}>{marker.label}</text>
                 </g>;
               })}
             </g>

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { deleteGeometricConstraint, deriveParallelMarkers } from '../.test-build/drawing-parallel-marker/drawingParallelMarker.js';
+import { deleteGeometricConstraint, deriveParallelMarkers, GEOMETRIC_CONSTRAINT_MARKER_OFFSET_PX, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, GEOMETRIC_CONSTRAINT_MARKER_SPACING_PX, layoutLineConstraintMarkers } from '../.test-build/drawing-parallel-marker/drawingParallelMarker.js';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-parallel-marker/drawingHistory.js';
 import { removeLineAndOrphans } from '../.test-build/drawing-parallel-marker/drawingTopology.js';
 
@@ -18,7 +18,25 @@ assert.deepEqual(deriveParallelMarkers(sketch), [
   { id: 'parallel:a:b:1', constraintId: constraint.id, lineId: 'b', x: 15, y: 22, label: '∥' },
 ], 'one semantic Parallel derives one offset marker beside each finite Line');
 assert.deepEqual(deriveParallelMarkers(sketch, 2).map(({ y }) => y), [6, 16], 'screen-space offset remains 12 px at 2 px/model-unit');
+assert.equal(GEOMETRIC_CONSTRAINT_MARKER_OFFSET_PX, 12);
+assert.equal(GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, 15, 'shared 15 px marker size is 83% of the former 18 px H/V size');
+assert.equal(GEOMETRIC_CONSTRAINT_MARKER_SPACING_PX, 22);
 assert.equal(Object.keys(sketch.geometricConstraints).length, 1, 'deriving two markers does not create a second constraint');
+
+const genericCandidates = ['first', 'second', 'third', 'fourth', 'fifth'].map((id) => ({ id, constraintId: id, lineId: 'a', label: id }));
+assert.deepEqual(layoutLineConstraintMarkers(sketch, genericCandidates, 2).map(({ x, y }) => [x, y]), [
+  [10, 6], [21, 6], [-1, 6], [32, 6], [-12, 6],
+], 'all marker kinds receive deterministic symmetric screen-space slots 0, +1, -1, +2, -2');
+
+const vertical = { id: 'vertical:a', kind: 'VERTICAL', references: [{ kind: 'entity', entityId: 'a' }] };
+const multiSketch = { ...sketch, geometricConstraints: { [constraint.id]: constraint, [vertical.id]: vertical }, geometricConstraintOrder: [constraint.id, vertical.id] };
+assert.deepEqual(deriveParallelMarkers(multiSketch).filter(({ lineId }) => lineId === 'a').map(({ label, x, y }) => [label, x, y]), [
+  ['∥', 10, 12], ['V', 32, 12],
+], 'Parallel and axis markers on one Line use distinct slots from the shared layout');
+const verticalDeleted = deleteGeometricConstraint({ ...document, sketches: { s: multiSketch } }, vertical.id);
+assert.deepEqual(deriveParallelMarkers(verticalDeleted.sketches.s).filter(({ lineId }) => lineId === 'a').map(({ label, x, y }) => [label, x, y]), [
+  ['∥', 10, 12],
+], 'deleting one constraint reflows the unrelated marker to slot zero');
 
 const deletion = transactDrawingDocument(EMPTY_DRAWING_HISTORY, document, (current) => deleteGeometricConstraint(current, constraint.id));
 assert.equal(deletion.changed, true);
