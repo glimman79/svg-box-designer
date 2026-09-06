@@ -14,9 +14,10 @@ const sketch = {
 const document = { schemaVersion: 2, unit: 'mm', sketches: { s: sketch }, sketchOrder: ['s'], activeSketchId: 's' };
 
 assert.deepEqual(deriveParallelMarkers(sketch), [
-  { id: 'parallel:a:b:0', constraintId: constraint.id, lineId: 'a', x: 10, y: 0 },
-  { id: 'parallel:a:b:1', constraintId: constraint.id, lineId: 'b', x: 15, y: 10 },
-], 'one semantic Parallel derives exactly one midpoint marker for each finite Line');
+  { id: 'parallel:a:b:0', constraintId: constraint.id, lineId: 'a', x: 10, y: 12, label: '∥' },
+  { id: 'parallel:a:b:1', constraintId: constraint.id, lineId: 'b', x: 15, y: 22, label: '∥' },
+], 'one semantic Parallel derives one offset marker beside each finite Line');
+assert.deepEqual(deriveParallelMarkers(sketch, 2).map(({ y }) => y), [6, 16], 'screen-space offset remains 12 px at 2 px/model-unit');
 assert.equal(Object.keys(sketch.geometricConstraints).length, 1, 'deriving two markers does not create a second constraint');
 
 const deletion = transactDrawingDocument(EMPTY_DRAWING_HISTORY, document, (current) => deleteGeometricConstraint(current, constraint.id));

@@ -1,0 +1,41 @@
+import assert from 'node:assert/strict';
+import { appendEntityToActiveSketch, automaticAxisConstraintKind } from '../.test-build/drawing-horizontal-vertical/drawingLineTool.js';
+import { analyzeDrawingConstraints } from '../.test-build/drawing-horizontal-vertical/drawingConstraintAnalysis.js';
+import { solveDrawingComponentDrag, verifyDrawingConstraints } from '../.test-build/drawing-horizontal-vertical/drawingConstraintSolver.js';
+import { deriveGeometricConstraintMarkers, deleteGeometricConstraint } from '../.test-build/drawing-horizontal-vertical/drawingParallelMarker.js';
+import { EMPTY_DRAWING_HISTORY, transactDrawingDocument, undoDrawingDocument, redoDrawingDocument } from '../.test-build/drawing-horizontal-vertical/drawingHistory.js';
+
+const empty = { schemaVersion: 2, unit: 'mm', activeSketchId: 's', sketchOrder: ['s'], sketches: { s: { id: 's', name: 'Sketch', points: {}, entities: {}, entityOrder: [], dimensions: {}, dimensionOrder: [], geometricConstraints: {}, geometricConstraintOrder: [] } } };
+const interaction = (angle, active = true) => ({ start: { x: 0, y: 0 }, startPointId: null, rawPointerPoint: { x: 10, y: 0 }, effectivePreviewPoint: { x: 10, y: 0 }, snapActive: active, snappedAngleDegrees: angle });
+assert.equal(automaticAxisConstraintKind(interaction(0)), 'HORIZONTAL');
+assert.equal(automaticAxisConstraintKind(interaction(180)), 'HORIZONTAL');
+assert.equal(automaticAxisConstraintKind(interaction(90)), 'VERTICAL');
+assert.equal(automaticAxisConstraintKind(interaction(270)), 'VERTICAL');
+assert.equal(automaticAxisConstraintKind(interaction(45)), null, 'non-axis angular snap creates no H/V');
+assert.equal(automaticAxisConstraintKind(interaction(0, false)), null, 'bypassed angular snap creates no H/V');
+
+const line = { id: 'a', type: 'line', start: { x: 0, y: 0 }, end: { x: 10, y: 0 } };
+const created = transactDrawingDocument(EMPTY_DRAWING_HISTORY, empty, doc => appendEntityToActiveSketch(doc, line, (() => { let n = 0; return () => `p${++n}`; })(), 'HORIZONTAL'));
+const sketch = created.document.sketches.s;
+assert.equal(created.history.undo.length, 1, 'Line and automatic constraint share one History transaction');
+assert.deepEqual(sketch.geometricConstraintOrder, ['horizontal:a']);
+assert.equal(deriveGeometricConstraintMarkers(sketch, 2)[0].label, 'H');
+assert.equal(deriveGeometricConstraintMarkers(sketch, 2)[0].y, 6, 'marker has constant 12 px perpendicular offset');
+assert.equal(analyzeDrawingConstraints(sketch).components[0].constraintRank, 1);
+assert.equal(analyzeDrawingConstraints(sketch).components[0].degreesOfFreedom, 3, 'H removes rotation only');
+const moved = solveDrawingComponentDrag(sketch, { p2: { x: 12, y: 5 } }, { directPointIds: ['p2'] });
+assert.ok(moved);
+assert.ok(Math.abs(moved.points.p2.y - moved.points.p1.y) < 1e-7, 'endpoint manipulation preserves horizontal equation');
+assert.ok(verifyDrawingConstraints(moved, [], ['horizontal:a']));
+const removed = deleteGeometricConstraint(created.document, 'horizontal:a');
+assert.ok(removed.sketches.s.entities.a, 'marker deletion preserves Line');
+assert.equal(deriveGeometricConstraintMarkers(removed.sketches.s).length, 0);
+const undone = undoDrawingDocument(created.history, created.document);
+assert.equal(undone.document.sketches.s.entityOrder.length, 0);
+assert.equal(undone.document.sketches.s.geometricConstraintOrder.length, 0);
+assert.equal(redoDrawingDocument(undone.history, undone.document).document.sketches.s.geometricConstraintOrder.length, 1);
+
+const verticalDoc = appendEntityToActiveSketch(empty, { ...line, end: { x: 0, y: 10 } }, (() => { let n = 0; return () => `v${++n}`; })(), 'VERTICAL');
+assert.equal(deriveGeometricConstraintMarkers(verticalDoc.sketches.s)[0].label, 'V');
+assert.equal(analyzeDrawingConstraints(verticalDoc.sketches.s).components[0].constraintRank, 1);
+console.log('drawing horizontal/vertical tests passed');

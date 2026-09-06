@@ -39,6 +39,11 @@ export const constraintEquation = (sketch: DrawingSketchV2, dimension: DrawingDi
 };
 
 export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricConstraint: DrawingGeometricConstraint): DrawingConstraintEquation | null => {
+  if (geometricConstraint.kind !== 'PARALLEL') {
+    const line = sketch.entities[geometricConstraint.references[0].entityId];
+    if (!line || line.startPointId === line.endPointId) return null;
+    return { geometricConstraint, pointKeys: [line.startPointId, line.endPointId] };
+  }
   const [aRef, bRef] = geometricConstraint.references;
   const a = sketch.entities[aRef.entityId], b = sketch.entities[bRef.entityId];
   if (!a || !b || a.id === b.id || a.startPointId === a.endPointId || b.startPointId === b.endPointId) return null;
@@ -132,6 +137,12 @@ export type DrawingPointMobilityAnalysis = Readonly<{
 const coordinate = (sketch: DrawingSketchV2, key: string): DrawingPoint => key === DRAWING_ORIGIN_CONSTRAINT_KEY ? { x: 0, y: 0 } : sketch.points[key];
 export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: DrawingConstraintEquation, pointOrder: readonly string[]): number[] | null => {
   const row = Array(pointOrder.length * 2).fill(0), set = (key: string, gx: number, gy: number) => { const i = pointOrder.indexOf(key); if (i >= 0) { row[i * 2] += gx; row[i * 2 + 1] += gy; } };
+  if (equation.geometricConstraint?.kind === 'HORIZONTAL' || equation.geometricConstraint?.kind === 'VERTICAL') {
+    const [a, b] = equation.pointKeys, horizontal = equation.geometricConstraint.kind === 'HORIZONTAL';
+    set(a, horizontal ? 0 : -1, horizontal ? -1 : 0);
+    set(b, horizontal ? 0 : 1, horizontal ? 1 : 0);
+    return row;
+  }
   if (equation.geometricConstraint?.kind === 'PARALLEL') {
     const [a0, a1, b0, b1] = equation.pointKeys, result = parallelAndGradient(coordinate(sketch, a0), coordinate(sketch, a1), coordinate(sketch, b0), coordinate(sketch, b1));
     if (!result) return null;
