@@ -298,10 +298,30 @@ export const deleteDimension = (document: DrawingDocumentV2, id: string): Drawin
   const dimensions = { ...sketch.dimensions }; delete dimensions[id];
   return { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch, dimensions, dimensionOrder: sketch.dimensionOrder.filter((item) => item !== id) } } };
 };
-export const moveDimensionPlacement = (document: DrawingDocumentV2, id: string, offset: number): DrawingDocumentV2 => {
+export const resolveDimensionAnnotationPlacement = (sketch: DrawingSketchV2, dimension: DrawingDimension, cursor: DrawingPoint): DrawingDimension['placement'] | null => {
+  if (dimension.kind === 'LINE_TO_LINE_ANGLE') {
+    const first = resolveDimensionLineReference(sketch, dimension.references[0]), second = resolveDimensionLineReference(sketch, dimension.references[1]);
+    const basis = first && second ? createLineAngleBasis(first, second) : null;
+    return basis ? { ...dimension.placement, kind: 'angular', anchor: cursor, radius: Math.hypot(cursor.x - basis.intersection.x, cursor.y - basis.intersection.y) } : null;
+  }
+  if (dimension.kind === 'LINE_TO_LINE_DISTANCE') {
+    const first = resolveDimensionLineReference(sketch, dimension.references[0]), second = resolveDimensionLineReference(sketch, dimension.references[1]);
+    return first && second ? { kind: 'linear', offset: lineToLineDimensionOffset(first, second, cursor) } : null;
+  }
+  if (dimension.kind === 'POINT_TO_LINE_DISTANCE') {
+    const point = resolveDrawingPointReference(sketch, dimension.references[0]), line = resolveDimensionLineReference(sketch, dimension.references[1]);
+    return point && line ? { kind: 'linear', offset: pointToLineDimensionOffset(point, line, cursor) } : null;
+  }
+  const a = resolveDrawingPointReference(sketch, dimension.references[0]), b = resolveDrawingPointReference(sketch, dimension.references[1]);
+  return a && b ? { kind: 'linear', offset: dimensionOffset({ id: '', type: 'line', startPointId: '', endPointId: '', start: a, end: b }, cursor, dimension.kind) } : null;
+};
+
+export const moveDimensionPlacement = (document: DrawingDocumentV2, id: string, placement: DrawingDimension['placement'] | number): DrawingDocumentV2 => {
   const sketch = document.sketches[document.activeSketchId], dimension = sketch?.dimensions[id];
-  if (!sketch || !dimension || dimension.placement.offset === offset) return document;
-  return { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch, dimensions: { ...sketch.dimensions, [id]: { ...dimension, placement: { ...dimension.placement, offset } } } } } };
+  if (!sketch || !dimension) return document;
+  const nextPlacement = typeof placement === 'number' ? { ...dimension.placement, offset: placement } : placement;
+  if (JSON.stringify(dimension.placement) === JSON.stringify(nextPlacement)) return document;
+  return { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch, dimensions: { ...sketch.dimensions, [id]: { ...dimension, placement: nextPlacement } } } } };
 };
 export const deleteEntityWithDependentDimensions = (document: DrawingDocumentV2, entityId: string): DrawingDocumentV2 => {
   const sketch = document.sketches[document.activeSketchId]; if (!sketch?.entities[entityId]) return document;

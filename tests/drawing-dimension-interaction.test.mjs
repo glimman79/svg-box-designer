@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
   availableLineDimensionKinds, chooseLineDimensionKind, collectDimensionReferenceCandidates,
-  createLineDimension, dimensionScreenPixelsToModelUnits, formatLinearDimension, moveDimensionPlacement, preselectionReference,
+  createLineDimension, createLineToLineAngleDimension, dimensionScreenPixelsToModelUnits, formatLinearDimension, moveDimensionPlacement, preselectionReference,
+  resolveDimensionAnnotationPlacement,
   resolveDimensionPreselection, resolveDimensionPreselectionForTarget,
 } from '../.test-build/drawing-dimension-interaction/drawingDimension.js';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-dimension-interaction/drawingTypes.js';
@@ -58,6 +59,24 @@ assert.equal(moved.sketches['sketch-1'].dimensions[dimension.id].value, dimensio
 assert.deepEqual(moved.sketches['sketch-1'].dimensions[dimension.id].references, dimension.references, 'references unchanged');
 assert.strictEqual(moveDimensionPlacement(document, 'missing', 4), document);
 
+const placementCursor = { x: 70, y: 90 };
+const placementLine = { ...line, startPointId: 'p0', endPointId: 'p1' };
+const placementSketch = { ...document.sketches['sketch-1'], points: { p0: { id: 'p0', ...line.start }, p1: { id: 'p1', ...line.end } }, entities: { [line.id]: placementLine }, entityOrder: [line.id] };
+for (const kind of ['ALIGNED_DISTANCE', 'HORIZONTAL_DISTANCE', 'VERTICAL_DISTANCE']) {
+  const candidate = createLineDimension(placementLine, kind, { x: 40, y: 80 }, `dimension-${kind}`);
+  const placement = resolveDimensionAnnotationPlacement(placementSketch, candidate, placementCursor);
+  assert.equal(placement?.kind, 'linear', `${kind} uses the shared annotation placement resolver`);
+  assert.equal(candidate.value, createLineDimension(line, kind, { x: 40, y: 80 }, 'comparison').value, 'placement resolution does not alter measurement');
+}
+const crossingA = { ...line, id: 'a', startPointId: 'a0', endPointId: 'a1', start: { x: -50, y: 0 }, end: { x: 50, y: 0 } };
+const crossingB = { ...line, id: 'b', startPointId: 'b0', endPointId: 'b1', start: { x: 0, y: -50 }, end: { x: 0, y: 50 } };
+let angleDocument = createDrawingDocumentV2();
+angleDocument = { ...angleDocument, sketches: { ...angleDocument.sketches, 'sketch-1': { ...angleDocument.sketches['sketch-1'], points: { a0: { id: 'a0', ...crossingA.start }, a1: { id: 'a1', ...crossingA.end }, b0: { id: 'b0', ...crossingB.start }, b1: { id: 'b1', ...crossingB.end } }, entities: { a: crossingA, b: crossingB }, entityOrder: ['a', 'b'] } } };
+const angle = createLineToLineAngleDimension(crossingA, crossingB, { x: 20, y: 20 }, 'angle');
+const movedAnglePlacement = resolveDimensionAnnotationPlacement(angleDocument.sketches['sketch-1'], angle, { x: 35, y: 35 });
+assert.deepEqual(movedAnglePlacement?.anchor, { x: 35, y: 35 }, 'Angle drag updates the existing annotation anchor');
+assert.deepEqual(angle.angleSector, createLineToLineAngleDimension(crossingA, crossingB, { x: 20, y: 20 }, 'angle-copy').angleSector, 'Angle placement does not redesign sector selection');
+
 for (const [value, expected] of [[120, '120 mm'], [120.5, '120.5 mm'], [120.125, '120.125 mm'], [120.1254, '120.125 mm'], [120.1255, '120.126 mm'], [98.39327, '98.393 mm'], [120.1, '120.1 mm'], [0, '0 mm']]) assert.equal(formatLinearDimension(value), expected);
 assert.equal(dimension.value, Math.hypot(100, 10), 'formatting never mutates stored precision');
 assert.equal(document.schemaVersion, 2, 'dimension graphics remain outside DrawingEntity/document entities');
@@ -70,7 +89,11 @@ assert.match(workspace, /phase: 'lineTargetSelected'/, 'line-first intent has an
 assert.doesNotMatch(workspace, /const lineId = preview\.kind/, 'legacy preview is not reinterpreted by a click-time shape heuristic');
 assert.match(workspace, /createPointToPointDimension\(d\.references, a, b, kind, point, 'preview'\)/, 'legacy pointer movement re-derives kind and complete placement');
 assert.match(css, /\.drawing-dimension \{ color: var\(--drawing-dimension\); \}/, 'passive dimensions use the global Dimension green token');
-assert.match(css, /is-line-target \{ cursor: default; \}[\s\S]*is-point-target \{ cursor: default; \}/, 'line and endpoint targets use normal arrows');
+assert.match(css, /\.drawing-svg\.has-geometry-cursor \.drawing-interactive-hit \{ cursor: pointer; \}/, 'one shared interactive target rule supplies the pointer cursor');
+assert.match(workspace, /drawing-line-entity drawing-interactive-hit/, 'selectable Sketch Lines consume shared cursor authority');
+assert.match(workspace, /drawing-dimension-hit drawing-interactive-hit/, 'Dimension line and arc handles consume shared cursor authority');
+assert.match(workspace, /drawing-dimension-value-hit drawing-interactive-hit/, 'Dimension text handles consume shared cursor authority');
+assert.match(workspace, /onPointerDown=\{\(event\) => beginDimensionAnnotationDrag\(event, dimension\)\}/, 'text and main graphics initiate one semantic drag operation');
 assert.match(css, /\.drawing-svg\.has-dimension-cursor \{ cursor: crosshair; \}/, 'empty Dimension canvas uses crosshair');
 assert.match(css, /is-hovered \{ color: var\(--drawing-dimension-hover\); \}[\s\S]*is-selected[^}]*var\(--drawing-dimension-active\)/, 'interactive states remain distinct through semantic tokens');
 console.log('drawing dimension interaction tests passed');

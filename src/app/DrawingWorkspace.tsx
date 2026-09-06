@@ -9,7 +9,7 @@ import { activateDrawingTool, finishDrawingConstruction, type DrawingActiveTool,
 import { useCadWheelCapture } from './useCadWheelCapture';
 import { CAD_PRIMARY_BUTTON, useCadCtrlSnapOverride, useCadEscapeToolExit, useCadPanGesture } from './cadInteraction';
 import { resolveCadToolPointerActivation, type CadToolActivationRecord } from './cadToolActivation';
-import { appendDimension, chooseLineDimensionKind, choosePointDimensionKind, createDimensionId, createLineDimension, createLinePairDimension, createLineToLineAngleDimension, createPointToLineDimension, createPointToPointDimension, deleteDimension, deleteEntityWithDependentDimensions, deriveLineToLineAnnotationGeometry, derivePointToLineAnnotationGeometry, dimensionEditorWidthPixels, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatAngleDimension, formatDimensionEditValue, formatDimensionValue, lineToLineDimensionOffset, moveDimensionPlacement, parseLinearDimension, pointToLineDimensionOffset, preselectionReference, resolveDimensionLineReference, resolveDimensionPreselection, resolveDimensionPreselectionForTarget, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
+import { appendDimension, chooseLineDimensionKind, choosePointDimensionKind, createDimensionId, createLineDimension, createLinePairDimension, createLineToLineAngleDimension, createPointToLineDimension, createPointToPointDimension, deleteDimension, deleteEntityWithDependentDimensions, deriveLineToLineAnnotationGeometry, derivePointToLineAnnotationGeometry, dimensionEditorWidthPixels, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatAngleDimension, formatDimensionEditValue, formatDimensionValue, lineToLineDimensionOffset, moveDimensionPlacement, parseLinearDimension, pointToLineDimensionOffset, preselectionReference, resolveDimensionAnnotationPlacement, resolveDimensionLineReference, resolveDimensionPreselection, resolveDimensionPreselectionForTarget, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
 import { candidateForSector, createLineAngleBasis, deriveLineAngleAnnotation } from './drawingLineAngle';
 import { solveDrawingDimensionEdit } from './drawingConstraintSolver';
 import type { HistoryControlsProps } from './HistoryControls';
@@ -53,6 +53,10 @@ type GeometryDragSession = Readonly<{
   pointerId: number; target: DrawingGeometryTarget; startClient: CoordinatePoint; startModel: DrawingPoint;
   startDocument: DrawingDocumentV2; candidate: DrawingDocumentV2; exceeded: boolean;
 }>;
+type DimensionAnnotationDragSession = Readonly<{
+  pointerId: number; id: string; startClient: CoordinatePoint;
+  startPlacement: DrawingDimension['placement']; previewPlacement: DrawingDimension['placement']; exceeded: boolean;
+}>;
 type DrawingPlacementResolution = Readonly<{
   rawPoint: DrawingPoint;
   effectivePoint: DrawingPoint;
@@ -95,7 +99,7 @@ export function DrawingWorkspace({
   const [dimensionEditError, setDimensionEditError] = useState<string | null>(null);
   const [dimensionPreselection, setDimensionPreselection] = useState<DimensionPreselection | null>(null);
   const [hoveredDimensionId, setHoveredDimensionId] = useState<string | null>(null);
-  const [dimensionDrag, setDimensionDrag] = useState<null | { id: string; startClient: CoordinatePoint; startOffset: number; previewOffset: number; exceeded: boolean }>(null);
+  const [dimensionDrag, setDimensionDrag] = useState<DimensionAnnotationDragSession | null>(null);
   const [geometryDrag, setGeometryDrag] = useState<GeometryDragSession | null>(null);
   const [geometryPreselection, setGeometryPreselection] = useState<DimensionPreselection | null>(null);
   const [selectedGeometry, setSelectedGeometry] = useState<DrawingGeometryTarget | null>(null);
@@ -285,16 +289,18 @@ export function DrawingWorkspace({
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (panHandlers.onPointerDown(event)) return;
     const dimensionTarget = (event.target as Element).closest('.drawing-dimension-editor, .drawing-dimension-hit, .drawing-dimension-value-hit');
+    const explicitDimensionValueTarget = (event.target as Element).closest('.drawing-dimension-editor, .drawing-dimension-value-hit');
     // In Select, let the model-space resolver arbitrate an annotation hit
     // against finite sketch geometry beneath it. The annotation's own handler
     // remains authoritative when there is no geometry candidate.
-    if (dimensionTarget && activeTool !== 'select') return;
+    if (dimensionTarget && (activeTool !== 'select' || explicitDimensionValueTarget)) return;
     if (event.button !== CAD_PRIMARY_BUTTON) return;
     if (activeTool === 'select') {
       const hit = resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
       const matrix = svgRef.current?.getScreenCTM();
       const startModel = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
       if (!hit || !startModel) { setSelectedGeometry(null); return; }
+      setDimensionDrag(null);
       const target: DrawingGeometryTarget | null = hit.kind === 'point'
         ? (() => { const pointId = pointIdFromHit(documentRef.current, hit.lineId, hit.point); return pointId ? { kind: 'point', pointId } : null; })()
         : hit.kind === 'line' ? { kind: 'line', lineId: hit.lineId } : null;
@@ -425,20 +431,10 @@ export function DrawingWorkspace({
       const matrix = svgRef.current?.getScreenCTM(), sketch = activeSketch;
       const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
       const dimension = sketch?.dimensions[dimensionDrag.id];
-      const resolved = dimension && sketch && dimension.kind === 'POINT_TO_LINE_DISTANCE' ? resolveDimensionLineReference(sketch, dimension.references[1]) : dimension && sketch && dimension.kind !== 'LINE_TO_LINE_DISTANCE' ? (() => { const a = resolveDrawingPointReference(sketch, dimension.references[0]), b = resolveDrawingPointReference(sketch, dimension.references[1]); return a && b ? { id: '', type: 'line' as const, startPointId: '', endPointId: '', start: a, end: b } : null; })() : null;
-      if (point && dimension?.kind === 'LINE_TO_LINE_DISTANCE' && sketch) {
-        const a = resolveDimensionLineReference(sketch, dimension.references[0]), b = resolveDimensionLineReference(sketch, dimension.references[1]);
-        if (a && b) { const offset = lineToLineDimensionOffset(a, b, point), exceeded = dimensionDrag.exceeded || Math.hypot(event.clientX - dimensionDrag.startClient.x, event.clientY - dimensionDrag.startClient.y) >= 4; setDimensionDrag({ ...dimensionDrag, previewOffset: offset, exceeded }); }
-        return;
-      }
-      if (point && dimension && resolved) {
-        const targetPoint = dimension.kind === 'POINT_TO_LINE_DISTANCE' && sketch
-          ? resolveDrawingPointReference(sketch, dimension.references[0]) : null;
-        const offset = dimension.kind === 'POINT_TO_LINE_DISTANCE' && targetPoint
-          ? pointToLineDimensionOffset(targetPoint, resolved, point)
-          : dimensionOffset(resolved, point, dimension.kind);
+      const placement = point && dimension && sketch ? resolveDimensionAnnotationPlacement(sketch, dimension, point) : null;
+      if (placement) {
         const exceeded = dimensionDrag.exceeded || Math.hypot(event.clientX - dimensionDrag.startClient.x, event.clientY - dimensionDrag.startClient.y) >= 4;
-        setDimensionDrag({ ...dimensionDrag, previewOffset: offset, exceeded });
+        setDimensionDrag({ ...dimensionDrag, previewPlacement: placement, exceeded });
       }
       return;
     }
@@ -558,7 +554,7 @@ export function DrawingWorkspace({
   const previewDimension = dimensionTool.phase === 'placementPreview' || dimensionTool.phase === 'lineTargetSelected' ? dimensionTool.dimension : null;
   const displayedDimensions = activeSketch?.dimensionOrder.map((id) => {
     const dimension = activeSketch.dimensions[id];
-    return dimensionDrag?.id === id ? { ...dimension, placement: { ...dimension.placement, offset: dimensionDrag.previewOffset } } : dimension;
+    return dimensionDrag?.id === id ? { ...dimension, placement: dimensionDrag.previewPlacement } : dimension;
   }).filter(Boolean) ?? [];
   const editingDimension = displayedDimensions.find(({ id }) => id === editingDimensionId);
   const editingGeometry = editingDimension ? annotationGeometry(editingDimension) : null;
@@ -580,8 +576,15 @@ export function DrawingWorkspace({
 
   const finishDimensionDrag = () => {
     if (!dimensionDrag) return;
-    if (dimensionDrag.exceeded) transactDocument((current) => moveDimensionPlacement(current, dimensionDrag.id, dimensionDrag.previewOffset));
+    if (dimensionDrag.exceeded) transactDocument((current) => moveDimensionPlacement(current, dimensionDrag.id, dimensionDrag.previewPlacement));
     setDimensionDrag(null);
+  };
+
+  const beginDimensionAnnotationDrag = (event: PointerEvent<SVGElement>, dimension: DrawingDimension) => {
+    if (event.button !== CAD_PRIMARY_BUTTON || editingDimensionId || activeTool !== 'select') return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setSelectedDimensionId(dimension.id);
+    setDimensionDrag({ pointerId: event.pointerId, id: dimension.id, startClient: { x: event.clientX, y: event.clientY }, startPlacement: dimension.placement, previewPlacement: dimension.placement, exceeded: false });
   };
 
   const undo = () => {
@@ -699,7 +702,7 @@ export function DrawingWorkspace({
             </g>
             <g className="drawing-sketch-geometry" aria-label="Committed sketch geometry">
               {resolvedLines.map((entity) => (
-                <line key={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} className={`drawing-line-entity ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${selectedGeometry?.kind === 'line' && selectedGeometry.lineId === entity.id ? ' is-geometry-selected' : ''}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
+                <line key={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} className={`drawing-line-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${selectedGeometry?.kind === 'line' && selectedGeometry.lineId === entity.id ? ' is-geometry-selected' : ''}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
               ))}
               {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); return p ? <circle className="drawing-geometry-point-preselection" cx={p.x} cy={p.y} r={5 / pixelsPerMm} /> : null; })()}
               {activeTool === 'select' && selectedGeometry?.kind === 'point' && activeSketch?.points[selectedGeometry.pointId] && <circle className={`drawing-geometry-point-selected${geometryDrag?.target.kind === 'point' && geometryDrag.target.pointId === selectedGeometry.pointId ? ' is-geometry-dragging' : ''}`} cx={activeSketch.points[selectedGeometry.pointId].x} cy={activeSketch.points[selectedGeometry.pointId].y} r={6 / pixelsPerMm} />}
@@ -719,12 +722,12 @@ export function DrawingWorkspace({
                   const arrowMarker = `url(#dimension-arrow-${arrowState})`;
                   const beginDimensionEdit = () => { setSelectedDimensionId(dimension.id); if (dimension.role === 'reference') return; setEditingDimensionId(dimension.id); setDimensionDraft(formatDimensionEditValue(dimension.value)); setDimensionEditError(null); };
                   const valueHitWidth = (formatAngleDimension(measurement).length * 6 + 12) / pixelsPerMm;
-                  return <g key={dimension.id} className={`drawing-dimension is-${dimension.role} is-angle${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}${editing ? ' is-editing' : ''}${dimension.id === 'preview' ? ' is-preview' : ''}`}>
+                  return <g key={dimension.id} className={`drawing-dimension is-${dimension.role} is-angle${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}${dimensionDrag?.id === dimension.id ? ' is-dragging' : ''}${editing ? ' is-editing' : ''}${dimension.id === 'preview' ? ' is-preview' : ''}`}>
                     {angleGeometry.supportExtensions.map((extension) => <line key={extension.lineId} className="drawing-dimension-witness drawing-dimension-lineage" x1={extension.start.x} y1={extension.start.y} x2={extension.end.x} y2={extension.end.y} />)}
                     <path className="drawing-dimension-line drawing-dimension-angle-arc" d={path} fill="none" markerStart={arrowMarker} markerEnd={arrowMarker} />
                     <text className="drawing-dimension-value" x={angleGeometry.label.x} y={angleGeometry.label.y} textAnchor="middle" style={{ fontSize: dimensionScreenPixelsToModelUnits(DIMENSION_TEXT_SIZE_PX, pixelsPerMm) }}>{formatAngleDimension(measurement)}</text>
-                    {dimension.id !== 'preview' && <path className="drawing-dimension-hit" d={path} fill="none" onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => { if (event.button === CAD_PRIMARY_BUTTON) setSelectedDimensionId(dimension.id); }} />}
-                    {dimension.id !== 'preview' && <rect className={`drawing-dimension-value-hit${dimension.role === 'driving' ? ' is-editable' : ''}`} x={angleGeometry.label.x - valueHitWidth / 2} y={angleGeometry.label.y - 16 / pixelsPerMm} width={valueHitWidth} height={18 / pixelsPerMm} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => { if (event.button === CAD_PRIMARY_BUTTON) setSelectedDimensionId(dimension.id); }} onDoubleClick={beginDimensionEdit} />}
+                    {dimension.id !== 'preview' && <path className="drawing-dimension-hit drawing-interactive-hit" d={path} fill="none" onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => beginDimensionAnnotationDrag(event, dimension)} />}
+                    {dimension.id !== 'preview' && <rect className="drawing-dimension-value-hit drawing-interactive-hit" x={angleGeometry.label.x - valueHitWidth / 2} y={angleGeometry.label.y - 16 / pixelsPerMm} width={valueHitWidth} height={18 / pixelsPerMm} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => beginDimensionAnnotationDrag(event, dimension)} onDoubleClick={beginDimensionEdit} />}
                     {editing && dimensionEditError && <text className="drawing-dimension-error" x={angleGeometry.label.x} y={angleGeometry.label.y + 24 / pixelsPerMm} textAnchor="middle">{dimensionEditError}</text>}
                   </g>;
                 }
@@ -760,8 +763,8 @@ export function DrawingWorkspace({
                   <line className="drawing-dimension-witness" x1={extensionA.start.x} y1={extensionA.start.y} x2={extensionA.end.x} y2={extensionA.end.y} /><line className="drawing-dimension-witness" x1={extensionB.start.x} y1={extensionB.start.y} x2={extensionB.end.x} y2={extensionB.end.y} />
                   <line className="drawing-dimension-line" markerStart={arrowMarker} markerEnd={arrowMarker} x1={geometry.a.x} y1={geometry.a.y} x2={geometry.b.x} y2={geometry.b.y} />
                   <text className="drawing-dimension-value" x={middle.x} y={middle.y - 4 / pixelsPerMm} textAnchor="middle" style={{ fontSize: dimensionScreenPixelsToModelUnits(DIMENSION_TEXT_SIZE_PX, pixelsPerMm) }} transform={`rotate(${textAngle} ${middle.x} ${middle.y})`}>{label}</text>
-                  {dimension.id !== 'preview' && <line className="drawing-dimension-hit" x1={geometry.a.x} y1={geometry.a.y} x2={geometry.b.x} y2={geometry.b.y} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || editingDimensionId) return; event.currentTarget.setPointerCapture(event.pointerId); setSelectedDimensionId(dimension.id); setDimensionDrag({ id: dimension.id, startClient: { x: event.clientX, y: event.clientY }, startOffset: dimension.placement.offset, previewOffset: dimension.placement.offset, exceeded: false }); }} />}
-                  {dimension.id !== 'preview' && <rect className={`drawing-dimension-value-hit${dimension.role === 'driving' ? ' is-editable' : ''}`} x={middle.x - valueHitWidth / 2} y={middle.y - 16 / pixelsPerMm} width={valueHitWidth} height={18 / pixelsPerMm} transform={`rotate(${textAngle} ${middle.x} ${middle.y})`} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => { if (event.button === CAD_PRIMARY_BUTTON) setSelectedDimensionId(dimension.id); }} onDoubleClick={beginDimensionEdit} />}
+                  {dimension.id !== 'preview' && <line className="drawing-dimension-hit drawing-interactive-hit" x1={geometry.a.x} y1={geometry.a.y} x2={geometry.b.x} y2={geometry.b.y} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => beginDimensionAnnotationDrag(event, dimension)} />}
+                  {dimension.id !== 'preview' && <rect className="drawing-dimension-value-hit drawing-interactive-hit" x={middle.x - valueHitWidth / 2} y={middle.y - 16 / pixelsPerMm} width={valueHitWidth} height={18 / pixelsPerMm} transform={`rotate(${textAngle} ${middle.x} ${middle.y})`} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => beginDimensionAnnotationDrag(event, dimension)} onDoubleClick={beginDimensionEdit} />}
                   {editingDimensionId === dimension.id && dimensionEditError && <text className="drawing-dimension-error" x={middle.x} y={middle.y + 24 / pixelsPerMm} textAnchor="middle">{dimensionEditError}</text>}
                 </g>;
               })}
