@@ -1439,7 +1439,11 @@ button:disabled {
 .drawing-dimension-arrow.is-hover path { fill: var(--drawing-dimension-hover); }
 .drawing-dimension-arrow.is-active path { fill: var(--drawing-dimension-active); }
 .drawing-dimension-value, .drawing-dimension-error { fill: currentColor; font-family: system-ui, sans-serif; font-weight: 400; paint-order: stroke; stroke: #f8fafc; stroke-width: 2px; vector-effect: non-scaling-stroke; }
-.drawing-parallel-marker { fill: #2563eb; font-family: system-ui, sans-serif; font-weight: 700; paint-order: stroke; stroke: #f8fafc; stroke-width: 3px; vector-effect: non-scaling-stroke; pointer-events: none; }
+.drawing-parallel-marker { color: #2563eb; cursor: default; }
+.drawing-parallel-marker text { fill: currentColor; font-family: system-ui, sans-serif; font-weight: 700; paint-order: stroke; stroke: #f8fafc; stroke-width: 3px; vector-effect: non-scaling-stroke; pointer-events: none; }
+.drawing-parallel-marker.is-hovered { color: var(--drawing-hover); }
+.drawing-parallel-marker.is-selected { color: var(--drawing-dimension-active); }
+.drawing-parallel-marker-hit { fill: transparent; stroke: none; pointer-events: all; }
 .drawing-dimension.is-hovered { color: var(--drawing-dimension-hover); }
 .drawing-dimension.is-selected, .drawing-dimension.is-editing, .drawing-dimension.is-dragging { color: var(--drawing-dimension-active); }
 .drawing-dimension.is-preview { opacity: 0.7; pointer-events: none; }
