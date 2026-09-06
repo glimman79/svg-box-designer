@@ -893,6 +893,7 @@ button:disabled {
 
 .drawing-svg {
   background: #fff;
+  cursor: crosshair;
 }
 
 .drawing-svg.has-line-cursor,
@@ -1453,7 +1454,7 @@ button:disabled {
 .drawing-dimension-point-selected { fill: #06b6d4; stroke: #f8fafc; }
 .drawing-svg.has-geometry-cursor.is-line-target, .drawing-svg.has-geometry-cursor.is-point-target,
 .drawing-svg.has-geometry-cursor.is-geometry-dragging { cursor: default; }
-.drawing-svg.has-geometry-cursor .drawing-interactive-hit { cursor: pointer; }
+.drawing-svg.has-geometry-cursor .drawing-interactive-hit { cursor: default; }
 .drawing-svg.has-dimension-cursor { cursor: crosshair; }
 .drawing-svg.has-dimension-cursor.is-line-target { cursor: default; }
 .drawing-svg.has-dimension-cursor.is-point-target { cursor: default; }

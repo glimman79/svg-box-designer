@@ -51,6 +51,7 @@ assert.match(workspace,/if \(geometryDrag\) \{ setGeometryDrag\(null\); return; 
 assert.match(workspace,/activeTool === 'select'[\s\S]*resolveDimensionCandidate[\s\S]*setSelectedGeometry\(target\)/,'Select click uses the shared finite-geometry hit resolver');
 assert.match(workspace,/selectedGeometry\?\.kind === 'line'[\s\S]*deleteEntityWithDependentDimensions\(current, selectedGeometry\.lineId\)/,'selected Line deletion uses the existing dependency cascade');
 assert.match(workspace,/onMouseDown=\{handleDrawingMouseDown\}/,'Drawing-local primary preventDefault remains');
-assert.match(css,/\.drawing-svg\.has-geometry-cursor \.drawing-interactive-hit \{ cursor: pointer; \}/,'resolved selectable geometry uses the shared interactive pointer cursor');
+assert.match(css,/\.drawing-svg \{[^}]*cursor: crosshair;/,'empty Drawing canvas overrides the generic viewport hand with a crosshair');
+assert.match(css,/\.drawing-svg\.has-geometry-cursor \.drawing-interactive-hit \{ cursor: default; \}/,'resolved selectable geometry uses the shared normal arrow cursor');
 assert.doesNotMatch(css,/has-geometry-cursor[^}]*cursor:\s*(?:move|grab|grabbing)/s,'Drawing geometry manipulation does not invent a movement cursor');
 console.log('drawing direct manipulation tests passed');
