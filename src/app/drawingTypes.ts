@@ -42,7 +42,13 @@ export type DrawingParallelConstraint = Readonly<{
   /** Canonical unordered Line pair: references[0].entityId is lexically first. */
   references: readonly [DrawingEntityReference, DrawingEntityReference];
 }>;
-export type DrawingGeometricConstraint = DrawingParallelConstraint;
+export type DrawingAxisConstraint = Readonly<{
+  id: string;
+  kind: 'HORIZONTAL' | 'VERTICAL';
+  /** Stable semantic Line identity; coordinates remain owned by its SketchPoints. */
+  references: readonly [DrawingEntityReference];
+}>;
+export type DrawingGeometricConstraint = DrawingParallelConstraint | DrawingAxisConstraint;
 type DrawingDimensionBase = Readonly<{
   id: string;
   /** Persistent solver semantics. Reference dimensions contribute no constraint equation. */
@@ -155,8 +161,18 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
           dimensionId,
           { ...dimension, role: (dimension.role === 'reference' ? 'reference' : 'driving') as DrawingDimensionRole },
         ]));
-      const geometricConstraints = Object.fromEntries(Object.entries(sketch.geometricConstraints).filter(([, constraint]) =>
-        constraint.kind === 'PARALLEL' && constraint.references.every(({ entityId }) => Boolean(sketch.entities[entityId]))));
+      const acceptedAxisLines = new Set<string>();
+      const geometricConstraints = Object.fromEntries(Object.entries(sketch.geometricConstraints).filter(([, constraint]) => {
+        if (!(constraint.kind === 'PARALLEL' || constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL')
+          || constraint.references.length !== (constraint.kind === 'PARALLEL' ? 2 : 1)
+          || constraint.references.some(({ entityId }) => !sketch.entities[entityId])) return false;
+        if (constraint.kind === 'PARALLEL') return true;
+        const lineId = constraint.references[0].entityId;
+        // A restored Line cannot safely carry duplicate or opposing axis intent.
+        if (acceptedAxisLines.has(lineId)) return false;
+        acceptedAxisLines.add(lineId);
+        return true;
+      }));
       return [id, { ...sketch, dimensions, dimensionOrder: sketch.dimensionOrder.filter((dimensionId) => Boolean(dimensions[dimensionId])), geometricConstraints,
         geometricConstraintOrder: sketch.geometricConstraintOrder.filter((constraintId) => Boolean(geometricConstraints[constraintId])) }];
     })),

@@ -1,4 +1,4 @@
-import type { DrawingDocumentV2, DrawingLineEntity, DrawingPoint } from './drawingTypes';
+import type { DrawingDocumentV2, DrawingGeometricConstraint, DrawingLineEntity, DrawingPoint } from './drawingTypes';
 
 export type DrawingLineDraft = Readonly<{ id: string; type: 'line'; start: DrawingPoint; end: DrawingPoint; startPointId?: string; endPointId?: string }>;
 
@@ -241,12 +241,19 @@ export const appendEntityToActiveSketch = (
   document: DrawingDocumentV2,
   entity: DrawingLineDraft,
   createPointId: () => string = () => `point-${crypto.randomUUID()}`,
+  automaticConstraintKind: 'HORIZONTAL' | 'VERTICAL' | null = null,
 ): DrawingDocumentV2 => {
   const activeSketch = document.sketches[document.activeSketchId];
   if (!activeSketch || activeSketch.entities[entity.id]) return document;
   const startPointId = entity.startPointId ?? createPointId();
   const endPointId = entity.endPointId ?? createPointId();
   const line: DrawingLineEntity = { id: entity.id, type: 'line', startPointId, endPointId };
+  const constraintId = automaticConstraintKind ? `${automaticConstraintKind.toLowerCase()}:${entity.id}` : null;
+  const duplicate = automaticConstraintKind && Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) =>
+    constraint.kind === automaticConstraintKind && constraint.references[0]?.entityId === entity.id);
+  const automaticConstraint: DrawingGeometricConstraint | null = constraintId && !duplicate
+    ? { id: constraintId, kind: automaticConstraintKind!, references: [{ kind: 'entity', entityId: entity.id }] }
+    : null;
   return {
     ...document,
     sketches: {
@@ -260,7 +267,16 @@ export const appendEntityToActiveSketch = (
         },
         entities: { ...activeSketch.entities, [entity.id]: line },
         entityOrder: [...activeSketch.entityOrder, entity.id],
+        geometricConstraints: automaticConstraint ? { ...(activeSketch.geometricConstraints ?? {}), [automaticConstraint.id]: automaticConstraint } : activeSketch.geometricConstraints,
+        geometricConstraintOrder: automaticConstraint ? [...(activeSketch.geometricConstraintOrder ?? []), automaticConstraint.id] : activeSketch.geometricConstraintOrder,
       },
     },
   };
+};
+
+/** Maps only the accepted angular-inference state, never rounded geometry, to design intent. */
+export const automaticAxisConstraintKind = (interaction: LineToolInteraction): 'HORIZONTAL' | 'VERTICAL' | null => {
+  if (!interaction.snapActive || interaction.snappedAngleDegrees === null) return null;
+  const angle = normalizeDegrees(interaction.snappedAngleDegrees);
+  return angle === 0 || angle === 180 ? 'HORIZONTAL' : angle === 90 || angle === 270 ? 'VERTICAL' : null;
 };

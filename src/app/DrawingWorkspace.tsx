@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes';
-import { appendEntityToActiveSketch, applyResolvedLineClick, cancelLineInteraction, EMPTY_LINE_INTERACTION, resolveLineEffectivePoint, type LineToolInteraction } from './drawingLineTool';
+import { appendEntityToActiveSketch, applyResolvedLineClick, automaticAxisConstraintKind, cancelLineInteraction, EMPTY_LINE_INTERACTION, resolveLineEffectivePoint, type LineToolInteraction } from './drawingLineTool';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
 import { collectDrawingInferenceCandidates } from './drawingInference';
@@ -136,7 +136,6 @@ export function DrawingWorkspace({
     const line = entity?.type === 'line' ? resolveLine(activeSketch, entity) : null;
     return line ? [line] : [];
   }) ?? [];
-  const parallelMarkers = activeSketch ? deriveParallelMarkers(activeSketch) : [];
   const gridSpacing = getDrawingGridSpacing(viewBox.width);
   const gridHierarchy = getDrawingGridHierarchy(gridSpacing);
   lineInteractionRef.current = lineInteraction;
@@ -237,10 +236,11 @@ export function DrawingWorkspace({
 
   const commitLinePoint = (point: DrawingPoint, reusedPointId: string | null) => {
     const pointId = reusedPointId ?? `point-${Date.now().toString(36)}-${++pointSequence.current}`;
+    const acceptedConstraintKind = automaticAxisConstraintKind(lineInteractionRef.current);
     const result = applyResolvedLineClick(lineInteractionRef.current, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`, pointId);
     setLineInteraction(result.interaction);
     lineInteractionRef.current = result.interaction;
-    if (result.entity) transactDocument((current) => appendEntityToActiveSketch(current, result.entity!));
+    if (result.entity) transactDocument((current) => appendEntityToActiveSketch(current, result.entity!, undefined, acceptedConstraintKind));
   };
 
   const resolveDimensionCandidate = (client: CoordinatePoint, target: 'any' | 'point' | 'line' = 'any'): DimensionPreselection | null => {
@@ -648,6 +648,7 @@ export function DrawingWorkspace({
   }, [document, hoveredGeometricConstraintId, selectedDimensionId, selectedGeometricConstraintId, selectedGeometry]);
 
   const pixelsPerMm = viewport.width / viewBox.width;
+  const parallelMarkers = activeSketch ? deriveParallelMarkers(activeSketch, pixelsPerMm) : [];
   const labelInterval = getAxisLabelInterval(gridSpacing, pixelsPerMm);
   const xLabelValues = getVisibleAxisValues(viewBox.x, viewBox.x + viewBox.width, labelInterval);
   const yLabelValues = getVisibleAxisValues(viewBox.y, viewBox.y + viewBox.height, labelInterval);
@@ -732,7 +733,7 @@ export function DrawingWorkspace({
                   onPointerLeave={() => setHoveredGeometricConstraintId((current) => current === marker.constraintId ? null : current)}
                   onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry(null); }}>
                   <circle className="drawing-parallel-marker-hit drawing-interactive-hit" cx={marker.x} cy={marker.y} r={9 / pixelsPerMm} />
-                  <text x={marker.x} y={marker.y} textAnchor="middle" dominantBaseline="central" style={{ fontSize: 18 / pixelsPerMm }}>∥</text>
+                  <text x={marker.x} y={marker.y} textAnchor="middle" dominantBaseline="central" style={{ fontSize: 18 / pixelsPerMm }}>{marker.label}</text>
                 </g>;
               })}
             </g>
