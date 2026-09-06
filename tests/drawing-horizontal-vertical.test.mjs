@@ -43,6 +43,7 @@ const css = await import('node:fs/promises').then(({ readFile }) => readFile(new
 const workspace = await import('node:fs/promises').then(({ readFile }) => readFile(new URL('../src/app/DrawingWorkspace.tsx', import.meta.url), 'utf8'));
 assert.match(css, /--drawing-geometric-constraint:\s*#2563eb/);
 assert.match(css, /\.drawing-geometric-constraint-marker text \{ fill: var\(--drawing-geometric-constraint\)/, 'normal glyph fill has its own blue authority instead of inheriting currentColor');
+assert.match(css, /\.drawing-geometric-constraint-marker text \{[^}]*font-weight: 400;/, 'all geometric constraint glyphs use one regular-weight style');
 assert.match(workspace, /fontSize: GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX \/ pixelsPerMm/, 'shared marker size remains constant in screen space');
 assert.match(workspace, /className="drawing-geometric-constraint-marker-hit[^>]*cx=\{marker\.x\} cy=\{marker\.y\}/, 'hit target follows the final slotted position');
 console.log('drawing horizontal/vertical tests passed');

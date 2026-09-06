@@ -3,7 +3,7 @@ import { resolveLine } from './drawingTopology.js';
 
 export const GEOMETRIC_CONSTRAINT_MARKER_OFFSET_PX = 12;
 export const GEOMETRIC_CONSTRAINT_MARKER_SPACING_PX = 22;
-export const GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX = 15;
+export const GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX = 12;
 export type DrawingGeometricConstraintMarker = Readonly<{
   id: string;
   constraintId: string;

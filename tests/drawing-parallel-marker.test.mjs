@@ -19,7 +19,7 @@ assert.deepEqual(deriveParallelMarkers(sketch), [
 ], 'one semantic Parallel derives one offset marker beside each finite Line');
 assert.deepEqual(deriveParallelMarkers(sketch, 2).map(({ y }) => y), [6, 16], 'screen-space offset remains 12 px at 2 px/model-unit');
 assert.equal(GEOMETRIC_CONSTRAINT_MARKER_OFFSET_PX, 12);
-assert.equal(GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, 15, 'shared 15 px marker size is 83% of the former 18 px H/V size');
+assert.equal(GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, 12, 'all geometric constraint glyphs share the refined 12 px marker size');
 assert.equal(GEOMETRIC_CONSTRAINT_MARKER_SPACING_PX, 22);
 assert.equal(Object.keys(sketch.geometricConstraints).length, 1, 'deriving two markers does not create a second constraint');
 
