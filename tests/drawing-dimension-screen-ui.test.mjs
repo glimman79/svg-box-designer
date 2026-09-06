@@ -68,7 +68,7 @@ assert.match(workspace, /const dimensionEditorInputRef = useCallback\(\(input: H
 assert.match(workspace, /<input ref=\{dimensionEditorInputRef\} className="drawing-dimension-editor" value=\{dimensionDraft\}/, 'the editor uses the stable mount callback rather than a render-driven selection effect');
 assert.doesNotMatch(workspace, /autoFocus className="drawing-dimension-editor"/, 'focus and selection share the mounted-input lifecycle');
 assert.match(workspace, /if \(dimension\.role === 'reference'\) return;[\s\S]*setEditingDimensionId\(dimension\.id\)/, 'reference dimensions remain non-editable');
-assert.match(workspace, /dimensionTarget && activeTool !== 'select'/, 'Select routes overlapping annotation hits through model-space geometry arbitration');
+assert.match(workspace, /dimensionTarget && \(activeTool !== 'select' \|\| explicitDimensionValueTarget\)/, 'value text remains authoritative while broad graphic hits use Select geometry arbitration');
 assert.match(workspace, /event\.key === 'Escape'[\s\S]*setEditingDimensionId\(null\)/, 'Escape retains the cancel path');
 assert.match(workspace, /event\.key === 'Enter'[\s\S]*solveDrawingDimensionEdit\([\s\S]*transactDocument\(\(\) => result\.document\)/, 'Enter retains the solver-backed transaction path');
 console.log('Drawing Dimension screen UI checks passed.');

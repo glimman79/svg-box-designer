@@ -51,6 +51,6 @@ assert.match(workspace,/if \(geometryDrag\) \{ setGeometryDrag\(null\); return; 
 assert.match(workspace,/activeTool === 'select'[\s\S]*resolveDimensionCandidate[\s\S]*setSelectedGeometry\(target\)/,'Select click uses the shared finite-geometry hit resolver');
 assert.match(workspace,/selectedGeometry\?\.kind === 'line'[\s\S]*deleteEntityWithDependentDimensions\(current, selectedGeometry\.lineId\)/,'selected Line deletion uses the existing dependency cascade');
 assert.match(workspace,/onMouseDown=\{handleDrawingMouseDown\}/,'Drawing-local primary preventDefault remains');
-assert.match(css,/has-geometry-cursor\.is-line-target[\s\S]*has-geometry-cursor\.is-point-target,[\s\S]*has-geometry-cursor\.is-geometry-dragging \{ cursor: default; \}/,'Select hover and active geometry drag reuse the Dimension normal-arrow cursor value');
-assert.doesNotMatch(css,/has-geometry-cursor[^}]*cursor:\s*(?:move|grab|grabbing|pointer)/s,'Drawing geometry manipulation has no movement or hand cursor');
+assert.match(css,/\.drawing-svg\.has-geometry-cursor \.drawing-interactive-hit \{ cursor: pointer; \}/,'resolved selectable geometry uses the shared interactive pointer cursor');
+assert.doesNotMatch(css,/has-geometry-cursor[^}]*cursor:\s*(?:move|grab|grabbing)/s,'Drawing geometry manipulation does not invent a movement cursor');
 console.log('drawing direct manipulation tests passed');

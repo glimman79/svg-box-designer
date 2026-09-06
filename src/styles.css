@@ -1441,10 +1441,8 @@ button:disabled {
 .drawing-dimension.is-hovered { color: var(--drawing-dimension-hover); }
 .drawing-dimension.is-selected, .drawing-dimension.is-editing, .drawing-dimension.is-dragging { color: var(--drawing-dimension-active); }
 .drawing-dimension.is-preview { opacity: 0.7; pointer-events: none; }
-.drawing-dimension-hit { stroke: transparent; stroke-width: 14; vector-effect: non-scaling-stroke; cursor: grab; }
-.drawing-dimension-value-hit { fill: transparent; pointer-events: all; cursor: default; }
-.drawing-dimension-value-hit.is-editable { cursor: pointer; }
-.drawing-dimension.is-dragging .drawing-dimension-hit { cursor: grabbing; }
+.drawing-dimension-hit { stroke: transparent; stroke-width: 14; vector-effect: non-scaling-stroke; pointer-events: stroke; }
+.drawing-dimension-value-hit { fill: transparent; pointer-events: all; }
 .drawing-line-entity.is-geometry-selected { stroke-width: 2.2; }
 .drawing-line-entity.is-dimension-preselected { stroke: var(--drawing-hover); stroke-width: 2.4; }
 .drawing-line-entity.is-geometry-preselected,
@@ -1455,6 +1453,7 @@ button:disabled {
 .drawing-dimension-point-selected { fill: #06b6d4; stroke: #f8fafc; }
 .drawing-svg.has-geometry-cursor.is-line-target, .drawing-svg.has-geometry-cursor.is-point-target,
 .drawing-svg.has-geometry-cursor.is-geometry-dragging { cursor: default; }
+.drawing-svg.has-geometry-cursor .drawing-interactive-hit { cursor: pointer; }
 .drawing-svg.has-dimension-cursor { cursor: crosshair; }
 .drawing-svg.has-dimension-cursor.is-line-target { cursor: default; }
 .drawing-svg.has-dimension-cursor.is-point-target { cursor: default; }
