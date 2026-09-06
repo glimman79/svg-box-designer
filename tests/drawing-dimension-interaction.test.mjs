@@ -89,7 +89,8 @@ assert.match(workspace, /phase: 'lineTargetSelected'/, 'line-first intent has an
 assert.doesNotMatch(workspace, /const lineId = preview\.kind/, 'legacy preview is not reinterpreted by a click-time shape heuristic');
 assert.match(workspace, /createPointToPointDimension\(d\.references, a, b, kind, point, 'preview'\)/, 'legacy pointer movement re-derives kind and complete placement');
 assert.match(css, /\.drawing-dimension \{ color: var\(--drawing-dimension\); \}/, 'passive dimensions use the global Dimension green token');
-assert.match(css, /\.drawing-svg\.has-geometry-cursor \.drawing-interactive-hit \{ cursor: pointer; \}/, 'one shared interactive target rule supplies the pointer cursor');
+assert.match(css, /\.drawing-svg \{[^}]*cursor: crosshair;/, 'empty Drawing canvas uses the global crosshair cursor');
+assert.match(css, /\.drawing-svg\.has-geometry-cursor \.drawing-interactive-hit \{ cursor: default; \}/, 'one shared interactive target rule supplies the normal arrow cursor');
 assert.match(workspace, /drawing-line-entity drawing-interactive-hit/, 'selectable Sketch Lines consume shared cursor authority');
 assert.match(workspace, /drawing-dimension-hit drawing-interactive-hit/, 'Dimension line and arc handles consume shared cursor authority');
 assert.match(workspace, /drawing-dimension-value-hit drawing-interactive-hit/, 'Dimension text handles consume shared cursor authority');
