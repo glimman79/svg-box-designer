@@ -25,7 +25,9 @@ export const removeLineAndOrphans = (sketch: DrawingSketchV2, lineId: string): D
   const removedPointIds = new Set(Object.keys(sketch.points).filter((id) => !points[id]));
   const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, dimension]) => dimension.references.every((reference) =>
     reference.kind === 'datum' || reference.kind === 'sketchPoint' ? reference.kind === 'datum' || !removedPointIds.has(reference.pointId) : reference.entityId !== lineId)));
-  return { ...sketch, points, entities, entityOrder: sketch.entityOrder.filter((id) => id !== lineId), dimensions, dimensionOrder: sketch.dimensionOrder.filter((id) => Boolean(dimensions[id])) };
+  const geometricConstraints = Object.fromEntries(Object.entries(sketch.geometricConstraints ?? {}).filter(([, constraint]) => constraint.references.every(({ entityId }) => entityId !== lineId)));
+  return { ...sketch, points, entities, entityOrder: sketch.entityOrder.filter((id) => id !== lineId), dimensions, dimensionOrder: sketch.dimensionOrder.filter((id) => Boolean(dimensions[id])),
+    geometricConstraints, geometricConstraintOrder: (sketch.geometricConstraintOrder ?? []).filter((id) => Boolean(geometricConstraints[id])) };
 };
 
 const finitePoint = (point: DrawingSketchPoint) => Number.isFinite(point.x) && Number.isFinite(point.y);
@@ -44,6 +46,9 @@ export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTop
       if (reference.kind === 'datum') { if (reference.datum !== 'ORIGIN') errors.push(`Unsupported datum reference: ${dimension.id}`); continue; }
       if (reference.kind === 'sketchPoint') { if (!sketch.points[reference.pointId]) errors.push(`Dimension reference cannot resolve: ${dimension.id}`); continue; }
       const line = sketch.entities[reference.entityId]; if (!line || (reference.kind === 'point' && !sketch.points[pointIdForLineEndpoint(line, reference.point)])) errors.push(`Dimension reference cannot resolve: ${dimension.id}`);
+    }
+    for (const constraint of Object.values(sketch.geometricConstraints ?? {})) {
+      if (constraint.kind !== 'PARALLEL' || constraint.references.some(({ entityId }) => !sketch.entities[entityId])) errors.push(`Geometric constraint reference cannot resolve: ${constraint.id}`);
     }
     const referenced = new Set(Object.values(sketch.entities).flatMap((line) => [line.startPointId, line.endPointId]));
     for (const id of Object.keys(sketch.points)) if (!referenced.has(id)) errors.push(`Orphan point: ${id}`);

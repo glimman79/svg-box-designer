@@ -133,6 +133,12 @@ export function DrawingWorkspace({
     const line = entity?.type === 'line' ? resolveLine(activeSketch, entity) : null;
     return line ? [line] : [];
   }) ?? [];
+  const parallelMarkers = activeSketch ? Object.values(activeSketch.geometricConstraints ?? {}).flatMap((constraint) => {
+    if (constraint.kind !== 'PARALLEL') return [];
+    const a = resolveDimensionLineReference(activeSketch, constraint.references[0]), b = resolveDimensionLineReference(activeSketch, constraint.references[1]);
+    if (!a || !b) return [];
+    return [{ id: constraint.id, x: (a.start.x + a.end.x + b.start.x + b.end.x) / 4, y: (a.start.y + a.end.y + b.start.y + b.end.y) / 4 }];
+  }) : [];
   const gridSpacing = getDrawingGridSpacing(viewBox.width);
   const gridHierarchy = getDrawingGridHierarchy(gridSpacing);
   lineInteractionRef.current = lineInteraction;
@@ -709,6 +715,9 @@ export function DrawingWorkspace({
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: dimensionPreselection.lineId, point: dimensionPreselection.point }); return p ? <circle className="drawing-dimension-point-preselection" cx={p.x} cy={p.y} r={5 / pixelsPerMm} /> : null; })()}
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'origin' && <circle className="drawing-dimension-point-preselection drawing-origin-preselection" cx={0} cy={0} r={6 / pixelsPerMm} />}
               {dimensionTool.phase === 'waitingForSecondTarget' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, dimensionTool.first); return p ? <circle className="drawing-dimension-point-selected" cx={p.x} cy={p.y} r={6 / pixelsPerMm} /> : null; })()}
+            </g>
+            <g className="drawing-geometric-constraint-layer" aria-label="Drawing geometric constraints">
+              {parallelMarkers.map((marker) => <text key={marker.id} className="drawing-parallel-marker" x={marker.x} y={marker.y} textAnchor="middle" dominantBaseline="central" style={{ fontSize: 18 / pixelsPerMm }}>∥</text>)}
             </g>
             <g className="drawing-dimension-layer" aria-label="Drawing dimensions">
               {[...displayedDimensions, ...(previewDimension ? [previewDimension] : [])].map((dimension) => {
