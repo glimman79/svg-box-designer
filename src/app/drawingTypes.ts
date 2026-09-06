@@ -36,6 +36,13 @@ export type DrawingEntityReference = Extract<DrawingGeometryReference, { kind: '
 export type DrawingDimensionKind = 'ALIGNED_DISTANCE' | 'HORIZONTAL_DISTANCE' | 'VERTICAL_DISTANCE' | 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE';
 export type DrawingAngleSector = Readonly<{ sideA: -1 | 1; sideB: -1 | 1 }>;
 export type DrawingDimensionRole = 'driving' | 'reference';
+export type DrawingParallelConstraint = Readonly<{
+  id: string;
+  kind: 'PARALLEL';
+  /** Canonical unordered Line pair: references[0].entityId is lexically first. */
+  references: readonly [DrawingEntityReference, DrawingEntityReference];
+}>;
+export type DrawingGeometricConstraint = DrawingParallelConstraint;
 type DrawingDimensionBase = Readonly<{
   id: string;
   /** Persistent solver semantics. Reference dimensions contribute no constraint equation. */
@@ -94,6 +101,8 @@ export type DrawingSketchV2 = Omit<DrawingSketchV1, 'entities'> & {
   entities: Record<string, DrawingEntity>;
   dimensions: Record<string, DrawingDimension>;
   dimensionOrder: string[];
+  geometricConstraints: Record<string, DrawingGeometricConstraint>;
+  geometricConstraintOrder: string[];
 };
 export type DrawingDocumentV2 = Omit<DrawingDocumentV1, 'schemaVersion' | 'sketches'> & {
   schemaVersion: 2;
@@ -135,7 +144,10 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
         points[endPointId] = { id: endPointId, ...entity.end };
         return [entityId, { id: entity.id, type: 'line', startPointId, endPointId } satisfies DrawingLineEntity];
       })) as Record<string, DrawingEntity>;
-      const sketch = { ...legacySketch, points, entities } as DrawingSketchV2;
+      const sketch = { ...legacySketch, points, entities,
+        geometricConstraints: legacySketch.geometricConstraints ?? {},
+        geometricConstraintOrder: legacySketch.geometricConstraintOrder ?? [],
+      } as DrawingSketchV2;
       // D2.5a3 migration: legacy schema-v2 dimensions without a role become driving.
       // An explicitly persisted reference role is retained and is never reclassified here.
       const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, dimension]) =>
@@ -143,7 +155,10 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
           dimensionId,
           { ...dimension, role: (dimension.role === 'reference' ? 'reference' : 'driving') as DrawingDimensionRole },
         ]));
-      return [id, { ...sketch, dimensions, dimensionOrder: sketch.dimensionOrder.filter((dimensionId) => Boolean(dimensions[dimensionId])) }];
+      const geometricConstraints = Object.fromEntries(Object.entries(sketch.geometricConstraints).filter(([, constraint]) =>
+        constraint.kind === 'PARALLEL' && constraint.references.every(({ entityId }) => Boolean(sketch.entities[entityId]))));
+      return [id, { ...sketch, dimensions, dimensionOrder: sketch.dimensionOrder.filter((dimensionId) => Boolean(dimensions[dimensionId])), geometricConstraints,
+        geometricConstraintOrder: sketch.geometricConstraintOrder.filter((constraintId) => Boolean(geometricConstraints[constraintId])) }];
     })),
   };
   return { ...document, schemaVersion: 2, sketches: Object.fromEntries(Object.entries(document.sketches).map(([id, sketch]) => {
@@ -154,7 +169,7 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
       points[endPointId] = { id: endPointId, ...entity.end };
       return [entityId, { id: entity.id, type: 'line', startPointId, endPointId } satisfies DrawingLineEntity];
     }));
-    return [id, { ...sketch, points, entities, dimensions: {}, dimensionOrder: [] }];
+    return [id, { ...sketch, points, entities, dimensions: {}, dimensionOrder: [], geometricConstraints: {}, geometricConstraintOrder: [] }];
   })) };
 };
 

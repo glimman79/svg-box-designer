@@ -80,6 +80,8 @@ const legacy = { schemaVersion: 1, unit: 'mm', sketchOrder: ['s'], activeSketchI
   b: { id: 'b', type: 'line', start: { x: 1, y: 0 }, end: { x: 2, y: 0 } },
 } } } };
 const migrated = migrateDrawingDocument(legacy);
+assert.deepEqual(migrated.sketches.s.geometricConstraints, {}, 'older documents restore with an empty geometric constraint collection');
+assert.deepEqual(migrated.sketches.s.geometricConstraintOrder, [], 'older documents restore with deterministic geometric constraint order');
 assert.equal(Object.keys(sketchOf(migrated).points).length, 4);
 assert.notEqual(sketchOf(migrated).entities.a.endPointId, sketchOf(migrated).entities.b.startPointId);
 assert.deepEqual(migrateDrawingDocument(migrated), migrated, 'normalization preserves stable ids');
