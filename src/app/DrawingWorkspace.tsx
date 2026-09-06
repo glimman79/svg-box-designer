@@ -17,6 +17,7 @@ import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, un
 import { pointIdForLineEndpoint, resolveLine } from './drawingTopology.js';
 import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
+import { deleteGeometricConstraint, deriveParallelMarkers } from './drawingParallelMarker.js';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -103,6 +104,8 @@ export function DrawingWorkspace({
   const [geometryDrag, setGeometryDrag] = useState<GeometryDragSession | null>(null);
   const [geometryPreselection, setGeometryPreselection] = useState<DimensionPreselection | null>(null);
   const [selectedGeometry, setSelectedGeometry] = useState<DrawingGeometryTarget | null>(null);
+  const [selectedGeometricConstraintId, setSelectedGeometricConstraintId] = useState<string | null>(null);
+  const [hoveredGeometricConstraintId, setHoveredGeometricConstraintId] = useState<string | null>(null);
   const documentRef = useRef(document);
   const historyRef = useRef(EMPTY_DRAWING_HISTORY);
   const [historyRevision, setHistoryRevision] = useState(0);
@@ -133,12 +136,7 @@ export function DrawingWorkspace({
     const line = entity?.type === 'line' ? resolveLine(activeSketch, entity) : null;
     return line ? [line] : [];
   }) ?? [];
-  const parallelMarkers = activeSketch ? Object.values(activeSketch.geometricConstraints ?? {}).flatMap((constraint) => {
-    if (constraint.kind !== 'PARALLEL') return [];
-    const a = resolveDimensionLineReference(activeSketch, constraint.references[0]), b = resolveDimensionLineReference(activeSketch, constraint.references[1]);
-    if (!a || !b) return [];
-    return [{ id: constraint.id, x: (a.start.x + a.end.x + b.start.x + b.end.x) / 4, y: (a.start.y + a.end.y + b.start.y + b.end.y) / 4 }];
-  }) : [];
+  const parallelMarkers = activeSketch ? deriveParallelMarkers(activeSketch) : [];
   const gridSpacing = getDrawingGridSpacing(viewBox.width);
   const gridHierarchy = getDrawingGridHierarchy(gridSpacing);
   lineInteractionRef.current = lineInteraction;
@@ -294,6 +292,7 @@ export function DrawingWorkspace({
 
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (panHandlers.onPointerDown(event)) return;
+    if ((event.target as Element).closest('.drawing-parallel-marker')) return;
     const dimensionTarget = (event.target as Element).closest('.drawing-dimension-editor, .drawing-dimension-hit, .drawing-dimension-value-hit');
     const explicitDimensionValueTarget = (event.target as Element).closest('.drawing-dimension-editor, .drawing-dimension-value-hit');
     // In Select, let the model-space resolver arbitrate an annotation hit
@@ -602,6 +601,7 @@ export function DrawingWorkspace({
     setDimensionEditError(null);
     setSelectedDimensionId(null);
     setSelectedGeometry(null);
+    setSelectedGeometricConstraintId(null);
     setDocument(result.document);
     setHistoryRevision((revision) => revision + 1);
   };
@@ -615,6 +615,7 @@ export function DrawingWorkspace({
     setDimensionEditError(null);
     setSelectedDimensionId(null);
     setSelectedGeometry(null);
+    setSelectedGeometricConstraintId(null);
     setDocument(result.document);
     setHistoryRevision((revision) => revision + 1);
   };
@@ -630,6 +631,12 @@ export function DrawingWorkspace({
       if ((event.target as HTMLElement).tagName === 'INPUT') return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { if (historyRef.current.undo.length > 0) { event.preventDefault(); undo(); } }
       else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { if (historyRef.current.redo.length > 0) { event.preventDefault(); redo(); } }
+      else if ((event.key === 'Delete' || event.key === 'Backspace') && (hoveredGeometricConstraintId || selectedGeometricConstraintId)) {
+        event.preventDefault();
+        transactDocument((current) => deleteGeometricConstraint(current, hoveredGeometricConstraintId ?? selectedGeometricConstraintId!));
+        setHoveredGeometricConstraintId(null);
+        setSelectedGeometricConstraintId(null);
+      }
       else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedDimensionId) { event.preventDefault(); transactDocument((current) => deleteDimension(current, selectedDimensionId)); setSelectedDimensionId(null); }
       else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedGeometry?.kind === 'line') {
         event.preventDefault();
@@ -638,7 +645,7 @@ export function DrawingWorkspace({
       }
     };
     window.addEventListener('keydown', onKeyDown); return () => window.removeEventListener('keydown', onKeyDown);
-  }, [document, selectedDimensionId, selectedGeometry]);
+  }, [document, hoveredGeometricConstraintId, selectedDimensionId, selectedGeometricConstraintId, selectedGeometry]);
 
   const pixelsPerMm = viewport.width / viewBox.width;
   const labelInterval = getAxisLabelInterval(gridSpacing, pixelsPerMm);
@@ -717,7 +724,17 @@ export function DrawingWorkspace({
               {dimensionTool.phase === 'waitingForSecondTarget' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, dimensionTool.first); return p ? <circle className="drawing-dimension-point-selected" cx={p.x} cy={p.y} r={6 / pixelsPerMm} /> : null; })()}
             </g>
             <g className="drawing-geometric-constraint-layer" aria-label="Drawing geometric constraints">
-              {parallelMarkers.map((marker) => <text key={marker.id} className="drawing-parallel-marker" x={marker.x} y={marker.y} textAnchor="middle" dominantBaseline="central" style={{ fontSize: 18 / pixelsPerMm }}>∥</text>)}
+              {parallelMarkers.map((marker) => {
+                const selected = marker.constraintId === selectedGeometricConstraintId;
+                const hovered = marker.constraintId === hoveredGeometricConstraintId;
+                return <g key={marker.id} className={`drawing-parallel-marker${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}`} data-constraint-id={marker.constraintId} data-line-id={marker.lineId}
+                  onPointerEnter={() => setHoveredGeometricConstraintId(marker.constraintId)}
+                  onPointerLeave={() => setHoveredGeometricConstraintId((current) => current === marker.constraintId ? null : current)}
+                  onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry(null); }}>
+                  <circle className="drawing-parallel-marker-hit drawing-interactive-hit" cx={marker.x} cy={marker.y} r={9 / pixelsPerMm} />
+                  <text x={marker.x} y={marker.y} textAnchor="middle" dominantBaseline="central" style={{ fontSize: 18 / pixelsPerMm }}>∥</text>
+                </g>;
+              })}
             </g>
             <g className="drawing-dimension-layer" aria-label="Drawing dimensions">
               {[...displayedDimensions, ...(previewDimension ? [previewDimension] : [])].map((dimension) => {
