@@ -37,12 +37,14 @@ export type DrawingInference = Readonly<{
   entityId: string;
   candidatePoint: DrawingPoint;
   screenDistance: number;
+  constructionKey?: string;
 }> | Readonly<{
   type: 'alignment-y';
   referenceId: string;
   entityId: string;
   candidatePoint: DrawingPoint;
   screenDistance: number;
+  constructionKey?: string;
 }>;
 
 export const NO_DRAWING_INFERENCE: DrawingInference = { type: 'none', screenDistance: null };
@@ -103,6 +105,7 @@ export const collectDrawingInferenceCandidates = (
   drawingToClientTransform: AffineTransform,
   visibleBounds?: DrawingModelBounds,
   activeLineStart?: DrawingPoint | null,
+  activeAngularDegrees?: number | null,
 ): DrawingInferenceCandidates => {
   const endpoints: Array<Extract<DrawingInference, { type: 'endpoint' }>> = [];
   for (const line of lines) {
@@ -147,7 +150,35 @@ export const collectDrawingInferenceCandidates = (
     perpendiculars.push({ type: 'perpendicular', entityId: line.id, candidatePoint, screenDistance: Math.hypot(pointerClientPoint.x - screen.x, pointerClientPoint.y - screen.y) });
   }
   if (visibleBounds) {
+    const radians = activeAngularDegrees === null || activeAngularDegrees === undefined ? null : activeAngularDegrees * Math.PI / 180;
+    const angularDirection = radians === null ? null : {
+      x: Math.abs(Math.cos(radians)) <= 1e-12 ? 0 : Math.cos(radians),
+      y: Math.abs(Math.sin(radians)) <= 1e-12 ? 0 : Math.sin(radians),
+    };
+    const constructionKey = angularDirection && activeLineStart
+      ? `${activeLineStart.x},${activeLineStart.y}:${activeAngularDegrees}` : undefined;
     for (const reference of collectDrawingReferencePoints(lines).filter(({ point }) => isPointInDrawingBounds(point, visibleBounds))) {
+      if (angularDirection && activeLineStart) {
+        if (Math.abs(angularDirection.x) > 1e-12) {
+          const t = (reference.point.x - activeLineStart.x) / angularDirection.x;
+          if (Number.isFinite(t) && t >= 0) {
+            const candidatePoint = { x: reference.point.x, y: activeLineStart.y + t * angularDirection.y };
+            const screen = toScreenPoint(candidatePoint, drawingToClientTransform);
+            alignmentsX.push({ type: 'alignment-x', referenceId: reference.id, entityId: reference.entityId, candidatePoint,
+              screenDistance: Math.hypot(pointerClientPoint.x - screen.x, pointerClientPoint.y - screen.y), constructionKey });
+          }
+        }
+        if (Math.abs(angularDirection.y) > 1e-12) {
+          const t = (reference.point.y - activeLineStart.y) / angularDirection.y;
+          if (Number.isFinite(t) && t >= 0) {
+            const candidatePoint = { x: activeLineStart.x + t * angularDirection.x, y: reference.point.y };
+            const screen = toScreenPoint(candidatePoint, drawingToClientTransform);
+            alignmentsY.push({ type: 'alignment-y', referenceId: reference.id, entityId: reference.entityId, candidatePoint,
+              screenDistance: Math.hypot(pointerClientPoint.x - screen.x, pointerClientPoint.y - screen.y), constructionKey });
+          }
+        }
+        continue;
+      }
       const xScreen = toScreenPoint({ x: reference.point.x, y: 0 }, drawingToClientTransform);
       const yScreen = toScreenPoint({ x: 0, y: reference.point.y }, drawingToClientTransform);
       const pointerModel = clientToModelPointForInference(pointerClientPoint, drawingToClientTransform);

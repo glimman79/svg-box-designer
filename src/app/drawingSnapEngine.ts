@@ -67,10 +67,15 @@ const chooseEndpoint = (candidates: ReadonlyArray<EndpointInference>, previous: 
 };
 
 const chooseAxis = <T extends AlignmentXInference | AlignmentYInference>(items: ReadonlyArray<T>, old: T | null): T | null => {
-  const held = old && items.find((item) => item.referenceId === old.referenceId);
-  if (held && held.screenDistance <= DRAWING_ALIGNMENT_SNAP_RELEASE_PX) return held;
   const first = items[0];
-  return first && first.screenDistance <= DRAWING_ALIGNMENT_SNAP_ACQUIRE_PX ? first : null;
+  const acquired = first && first.screenDistance <= DRAWING_ALIGNMENT_SNAP_ACQUIRE_PX ? first : null;
+  const held = old && items.find((item) => item.referenceId === old.referenceId
+    && item.constructionKey === old.constructionKey);
+  if (!held || held.screenDistance > DRAWING_ALIGNMENT_SNAP_RELEASE_PX) return acquired;
+  // Keep a released-radius target stable, but allow an acquired target that is
+  // clearly (at least two pixels) better to take over deterministically.
+  return acquired && acquired.referenceId !== held.referenceId
+    && acquired.screenDistance + 2 <= held.screenDistance ? acquired : held;
 };
 
 const choosePerpendicular = (items: ReadonlyArray<PerpendicularInference>, previous: DrawingSnap | null) => {
