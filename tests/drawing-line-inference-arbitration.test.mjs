@@ -90,7 +90,7 @@ assert.equal(endpointConflict.interaction.snapActive, false, 'blue angular state
 const ctrlResolved = line.resolveLineEffectivePoint(interaction, pointAt(44), none(pointAt(44)));
 exactAngle(ctrlResolved.effectivePoint, 45, 'Ctrl-bypassed spatial snap retains Line-specific angular inference');
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
-assert.match(workspace, /resolveLineEffectivePoint\(interaction, rawPoint, snap\)/, 'workspace consumes the authoritative Line resolution');
+assert.match(workspace, /resolveLineEffectivePoint\(interaction, rawPoint, snap, previousChainedAxisKind\)/, 'workspace consumes the authoritative Line resolution');
 assert.match(workspace, /commitLinePoint\(effectivePoint, endpointPointId, placement\.interaction\)/, 'commit receives the inference state accepted with its effective point');
 assert.match(workspace, /drawing-line-cursor-endpoint/);
 assert.match(workspace, /drawing-line-cursor-line/);
