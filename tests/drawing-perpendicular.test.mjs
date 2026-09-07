@@ -72,6 +72,50 @@ test('horizontal/vertical corner creation is order-independent and never adds re
   }
 });
 
+test('restarted Line inference keeps H/V intent, exact geometry, and shared endpoint topology ahead of lower-error perpendicular', () => {
+  const cases = [
+    { firstAxis: 'HORIZONTAL', firstStart: { x: 0, y: 0 }, joint: { x: 20, y: 0 }, rawEnd: { x: 20.1, y: 30 }, secondAxis: 'VERTICAL', exactCoordinate: ['x', 20] },
+    { firstAxis: 'HORIZONTAL', firstStart: { x: 20, y: 0 }, joint: { x: 0, y: 0 }, rawEnd: { x: -0.1, y: -30 }, secondAxis: 'VERTICAL', exactCoordinate: ['x', 0] },
+    { firstAxis: 'VERTICAL', firstStart: { x: 0, y: 0 }, joint: { x: 0, y: 20 }, rawEnd: { x: 30, y: 20.1 }, secondAxis: 'HORIZONTAL', exactCoordinate: ['y', 20] },
+    { firstAxis: 'VERTICAL', firstStart: { x: 0, y: 20 }, joint: { x: 0, y: 0 }, rawEnd: { x: -30, y: -0.1 }, secondAxis: 'HORIZONTAL', exactCoordinate: ['y', 0] },
+  ];
+
+  for (const { firstAxis, firstStart, joint, rawEnd, secondAxis, exactCoordinate } of cases) {
+    let document = add(createDrawingDocumentV2(), { ...line('first', firstStart, joint), endPointId: 'joint' }, null, firstAxis);
+    const existing = { id: 'first', type: 'line', start: firstStart, end: joint };
+    const candidates = collectDrawingInferenceCandidates(rawEnd, [existing], transform, undefined, joint);
+    const perpendicular = candidates.perpendiculars[0];
+    const angularPoint = resolveLineEffectivePoint(
+      { ...EMPTY_LINE_INTERACTION, start: joint, startPointId: 'joint' },
+      rawEnd,
+      { active: false, type: 'none', effectivePoint: rawEnd },
+    ).effectivePoint;
+    const angularError = Math.hypot(rawEnd.x - angularPoint.x, rawEnd.y - angularPoint.y);
+    assert.ok(perpendicular.screenDistance < angularError, 'perpendicular candidate has the smaller numerical pixel error');
+
+    const snap = resolveDrawingSnap({ rawPoint: rawEnd, candidates, previousSnap: null, ctrlOverride: false });
+    assert.equal(snap.type, 'perpendicular', 'spatial inference exposes the competing perpendicular candidate');
+    const accepted = resolveLineEffectivePoint({ ...EMPTY_LINE_INTERACTION, start: joint, startPointId: 'joint' }, rawEnd, snap);
+    assert.equal(automaticAxisConstraintKind(accepted.interaction), secondAxis);
+    assert.equal(accepted.interaction.perpendicularLineId, null);
+    assert.equal(accepted.effectivePoint[exactCoordinate[0]], exactCoordinate[1], `${secondAxis} effective point is exact`);
+
+    document = add(document, { ...line('second', joint, accepted.effectivePoint), startPointId: 'joint' }, accepted.interaction.perpendicularLineId, secondAxis);
+    const sketch = document.sketches['sketch-1'];
+    assert.deepEqual(Object.values(sketch.geometricConstraints).map(({ kind }) => kind), [firstAxis, secondAxis]);
+    assert.equal(sketch.entities.first.endPointId, sketch.entities.second.startPointId, 'tool restart reuses the shared SketchPoint');
+    assert.equal(Object.values(sketch.geometricConstraints).filter(({ kind }) => kind === 'COINCIDENT').length, 0, 'shared topology needs no duplicate Coincident');
+    assert.equal(deriveRightAngleMarkers(sketch).length, 0, 'axis corner has no Perpendicular marker');
+  }
+});
+
+test('delayed workspace commit captures click-time inference instead of later hover state', () => {
+  const workspace = readFileSync(new URL('../src/app/DrawingWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(workspace, /commitLinePoint\(effectivePoint, endpointPointId, placement\.interaction\)/);
+  assert.match(workspace, /automaticAxisConstraintKind\(acceptedInteraction\)/);
+  assert.doesNotMatch(workspace, /automaticAxisConstraintKind\(lineInteractionRef\.current\)/);
+});
+
 test('one semantic relationship derives one screen-stable geometric right-angle marker and no glyph markers', () => {
   let document = add(createDrawingDocumentV2(), line('a', { x: 0, y: 0 }, { x: 20, y: 0 }), null, 'HORIZONTAL');
   document = add(document, { ...line('b', { x: 0, y: 0 }, { x: 0, y: 20 }), startPointId: 'a-p1' }, 'a');

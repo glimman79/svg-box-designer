@@ -79,7 +79,7 @@ assert.match(styles, /\.drawing-line-preview\s*\{[^}]*stroke:\s*var\(--drawing-p
 assert.match(workspace, /snap\.type === 'endpoint' && <circle/, 'endpoint marker remains a ring');
 assert.match(workspace, /snap\.type === 'line' && <path/, 'line marker remains a triangle');
 assert.match(workspace, /if \(panHandlers\.onPointerMove\(event\)\) return;[\s\S]*resolvePlacement/, 'right-pan exits before inference');
-assert.match(workspace, /const effectivePoint = placement\.effectivePoint;[\s\S]*commitLinePoint\(effectivePoint, endpointPointId\)/, 'commit closes over displayed effectivePoint');
+assert.match(workspace, /const effectivePoint = placement\.effectivePoint;[\s\S]*commitLinePoint\(effectivePoint, endpointPointId, placement\.interaction\)/, 'commit closes over displayed effectivePoint and its accepted inference');
 assert.match(workspace, /if \(event\.button === CAD_PRIMARY_BUTTON\) event\.preventDefault\(\);/, 'accepted Drawing-local primary mousedown fix remains');
 assert.doesNotMatch(workspace, /setDocument[\s\S]{0,120}drawing-alignment-guide/, 'guides never enter DrawingDocument');
 

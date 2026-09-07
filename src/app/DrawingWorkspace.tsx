@@ -235,10 +235,12 @@ export function DrawingWorkspace({
   activeToolRef.current = activeTool;
   resolvePlacementRef.current = resolvePlacement;
 
-  const commitLinePoint = (point: DrawingPoint, reusedPointId: string | null) => {
+  const commitLinePoint = (point: DrawingPoint, reusedPointId: string | null, acceptedInteraction: LineToolInteraction) => {
     const pointId = reusedPointId ?? `point-${Date.now().toString(36)}-${++pointSequence.current}`;
-    const acceptedConstraintKind = automaticAxisConstraintKind(lineInteractionRef.current);
-    const acceptedPerpendicularLineId = lineInteractionRef.current.perpendicularLineId;
+    // The delayed click transaction must consume the inference accepted at the
+    // click, not mutable hover state observed during the delay.
+    const acceptedConstraintKind = automaticAxisConstraintKind(acceptedInteraction);
+    const acceptedPerpendicularLineId = acceptedInteraction.perpendicularLineId;
     const result = applyResolvedLineClick(lineInteractionRef.current, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`, pointId);
     setLineInteraction(result.interaction);
     lineInteractionRef.current = result.interaction;
@@ -412,7 +414,7 @@ export function DrawingWorkspace({
       if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current);
       pendingLineClickRef.current = window.setTimeout(() => {
         pendingLineClickRef.current = null;
-        commitLinePoint(effectivePoint, endpointPointId);
+        commitLinePoint(effectivePoint, endpointPointId, placement.interaction);
       }, 220);
       return;
     }

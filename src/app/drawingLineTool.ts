@@ -150,10 +150,18 @@ export const resolveLineEffectivePoint = (
   const angular = resolveLinePreviewPoint(interaction.start, rawPointerPoint);
   const acceptedAxis = angular.snapActive && angular.snappedAngleDegrees !== null
     && [0, 90, 180, 270].includes(normalizeDegrees(angular.snappedAngleDegrees));
-  if (acceptedAxis && spatialSnap.type === 'perpendicular') return {
-    effectivePoint: angular.effectivePreviewPoint,
-    interaction: { ...interaction, ...angular, perpendicularLineId: null },
-  };
+  if (acceptedAxis && spatialSnap.type === 'perpendicular') {
+    const direction = directionAt(angular.snappedAngleDegrees!);
+    const radialDistance = Math.hypot(rawPointerPoint.x - interaction.start.x, rawPointerPoint.y - interaction.start.y);
+    const effectivePoint = {
+      x: interaction.start.x + radialDistance * direction.x,
+      y: interaction.start.y + radialDistance * direction.y,
+    };
+    return {
+      effectivePoint,
+      interaction: { ...interaction, ...angular, effectivePreviewPoint: effectivePoint, perpendicularLineId: null },
+    };
+  }
 
   if (spatialSnap.type === 'perpendicular') return {
     effectivePoint: spatialSnap.effectivePoint,
