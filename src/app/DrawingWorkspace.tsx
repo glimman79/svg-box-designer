@@ -18,6 +18,7 @@ import { pointIdForLineEndpoint, resolveLine } from './drawingTopology.js';
 import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
 import { deleteGeometricConstraint, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
+import { deriveCoincidentMarkers, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -651,6 +652,7 @@ export function DrawingWorkspace({
   const pixelsPerMm = viewport.width / viewBox.width;
   const parallelMarkers = activeSketch ? deriveParallelMarkers(activeSketch, pixelsPerMm) : [];
   const rightAngleMarkers = activeSketch ? deriveRightAngleMarkers(activeSketch, pixelsPerMm) : [];
+  const coincidentMarkers = activeSketch ? deriveCoincidentMarkers(activeSketch, pixelsPerMm) : [];
   const labelInterval = getAxisLabelInterval(gridSpacing, pixelsPerMm);
   const xLabelValues = getVisibleAxisValues(viewBox.x, viewBox.x + viewBox.width, labelInterval);
   const yLabelValues = getVisibleAxisValues(viewBox.y, viewBox.y + viewBox.height, labelInterval);
@@ -748,6 +750,19 @@ export function DrawingWorkspace({
                   onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry(null); }}>
                   <path className="drawing-right-angle-marker-hit drawing-interactive-hit" d={path} />
                   <path className="drawing-right-angle-marker-shape" d={path} />
+                </g>;
+              })}
+              {coincidentMarkers.map((marker) => {
+                const selected = marker.constraintId === selectedGeometricConstraintId;
+                const hovered = marker.constraintId === hoveredGeometricConstraintId;
+                const r = POINT_CONSTRAINT_MARKER_SIZE_PX / 4 / pixelsPerMm;
+                return <g key={marker.id} className={`drawing-geometric-constraint-marker drawing-coincident-marker${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}`} data-constraint-id={marker.constraintId}
+                  onPointerEnter={() => setHoveredGeometricConstraintId(marker.constraintId)}
+                  onPointerLeave={() => setHoveredGeometricConstraintId((current) => current === marker.constraintId ? null : current)}
+                  onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry(null); }}>
+                  <circle className="drawing-geometric-constraint-marker-hit drawing-interactive-hit" cx={marker.x} cy={marker.y} r={POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX / pixelsPerMm} />
+                  <circle className="drawing-coincident-marker-shape" cx={marker.x - r} cy={marker.y} r={r} />
+                  <circle className="drawing-coincident-marker-shape" cx={marker.x + r} cy={marker.y} r={r} />
                 </g>;
               })}
             </g>

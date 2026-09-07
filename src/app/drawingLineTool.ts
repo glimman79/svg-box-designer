@@ -1,4 +1,5 @@
 import type { DrawingDocumentV2, DrawingGeometricConstraint, DrawingLineEntity, DrawingPoint } from './drawingTypes';
+import { canonicalCoincidentPointPair } from './drawingCoincidentConstraint.js';
 
 export type DrawingLineDraft = Readonly<{ id: string; type: 'line'; start: DrawingPoint; end: DrawingPoint; startPointId?: string; endPointId?: string }>;
 
@@ -263,6 +264,7 @@ export const appendEntityToActiveSketch = (
   createPointId: () => string = () => `point-${crypto.randomUUID()}`,
   automaticConstraintKind: 'HORIZONTAL' | 'VERTICAL' | null = null,
   perpendicularLineId: string | null = null,
+  acceptedEndpointSnaps: Readonly<{ startPointId?: string; endPointId?: string }> | null = null,
 ): DrawingDocumentV2 => {
   const activeSketch = document.sketches[document.activeSketchId];
   if (!activeSketch || activeSketch.entities[entity.id]) return document;
@@ -283,7 +285,17 @@ export const appendEntityToActiveSketch = (
   const perpendicularConstraint: DrawingGeometricConstraint | null = perpendicularId && pair && !perpendicularDuplicate
     ? { id: perpendicularId, kind: 'PERPENDICULAR', references: pair.map((entityId) => ({ kind: 'entity' as const, entityId })) as [{ kind: 'entity'; entityId: string }, { kind: 'entity'; entityId: string }] }
     : null;
-  const addedConstraints = [automaticConstraint, perpendicularConstraint].filter(Boolean) as DrawingGeometricConstraint[];
+  const coincidentConstraints = ([['startPointId', startPointId], ['endPointId', endPointId]] as const).flatMap(([endpoint, createdPointId]) => {
+    const targetPointId = acceptedEndpointSnaps?.[endpoint];
+    const pointPair = targetPointId && activeSketch.points[targetPointId] ? canonicalCoincidentPointPair(createdPointId, targetPointId) : null;
+    if (!pointPair) return [];
+    const duplicatePair = Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'COINCIDENT'
+      && constraint.references.map(({ pointId }) => pointId).sort().join('\0') === pointPair.join('\0'));
+    if (duplicatePair) return [];
+    return [{ id: `coincident:${pointPair[0]}:${pointPair[1]}`, kind: 'COINCIDENT' as const,
+      references: pointPair.map((pointId) => ({ kind: 'sketchPoint' as const, pointId })) as [{ kind: 'sketchPoint'; pointId: string }, { kind: 'sketchPoint'; pointId: string }] }];
+  });
+  const addedConstraints = [automaticConstraint, perpendicularConstraint, ...coincidentConstraints].filter(Boolean) as DrawingGeometricConstraint[];
   return {
     ...document,
     sketches: {

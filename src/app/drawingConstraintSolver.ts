@@ -1,5 +1,5 @@
 import type { DrawingDimension, DrawingDocumentV2, DrawingGeometricConstraint, DrawingPoint, DrawingSketchV2 } from './drawingTypes';
-import { analyzeDrawingConstraints, constraintEquation, constraintPointKey, drawingConstraintDegreesOfFreedomForPoints, DRAWING_ORIGIN_CONSTRAINT_KEY, geometricConstraintEquation, lineToLineAngleAndGradient, lineToLineDistanceAndGradient, parallelAndGradient, perpendicularAndGradient, pointToLineDistanceAndGradient } from './drawingConstraintAnalysis.js';
+import { analyzeDrawingConstraints, constraintEquation, constraintPointKey, drawingConstraintDegreesOfFreedomForPoints, DRAWING_ORIGIN_CONSTRAINT_KEY, geometricConstraintEquation, geometricConstraintEquations, lineToLineAngleAndGradient, lineToLineDistanceAndGradient, parallelAndGradient, perpendicularAndGradient, pointToLineDistanceAndGradient } from './drawingConstraintAnalysis.js';
 import { measureDimension, measureLineToLineDistance, measurePointToLine, resolveDimensionLineReference, resolveDrawingPointReference } from './drawingDimension.js';
 
 export const DRAWING_CONSTRAINT_TOLERANCE_MM = 1e-7;
@@ -11,14 +11,14 @@ const failureMessages: Record<DrawingDimensionSolveFailureReason, string> = { IN
 export const drawingDimensionSolveFailureMessage = (reason: DrawingDimensionSolveFailureReason): string => failureMessages[reason];
 const fail = (reason: DrawingDimensionSolveFailureReason): DrawingDimensionSolveResult => ({ ok: false, reason, message: failureMessages[reason] });
 
-type Equation = Readonly<{ dimension?: DrawingDimension; geometricConstraint?: DrawingGeometricConstraint; pointKeys: readonly string[]; target: number }>;
+type Equation = Readonly<{ dimension?: DrawingDimension; geometricConstraint?: DrawingGeometricConstraint; pointKeys: readonly string[]; coordinateAxis?: 'x' | 'y'; target: number }>;
 type ComponentState = Readonly<{ pointIds: readonly string[]; equations: readonly Equation[] }>;
 const componentForDimension = (sketch: DrawingSketchV2, dimension: DrawingDimension, target: number): ComponentState | null => {
   const editedEquation = constraintEquation(sketch, dimension); if (!editedEquation) return null;
   const seed = editedEquation.pointKeys.find((key) => key !== DRAWING_ORIGIN_CONSTRAINT_KEY), component = seed ? analyzeDrawingConstraints(sketch).componentByPointId.get(seed) : null;
   if (!component?.dimensionIds.includes(dimension.id)) return null;
   const equations = [...component.dimensionIds.map((id): Equation | null => { const item = sketch.dimensions[id], equation = item?.role === 'driving' ? constraintEquation(sketch, item) : null; return item && equation ? { ...equation, target: id === dimension.id ? target : item.value } : null; }),
-    ...component.geometricConstraintIds.map((id): Equation | null => { const item = (sketch.geometricConstraints ?? {})[id], equation = item && geometricConstraintEquation(sketch, item); return item && equation ? { ...equation, target: 0 } : null; })];
+    ...component.geometricConstraintIds.flatMap((id): Equation[] => { const item = (sketch.geometricConstraints ?? {})[id]; return item ? geometricConstraintEquations(sketch, item).map((equation) => ({ ...equation, target: 0 })) : []; })];
   return equations.some((item) => !item) ? null : { pointIds: [...component.pointIds], equations: equations as Equation[] };
 };
 const coordinate = (sketch: DrawingSketchV2, values: readonly number[], index: ReadonlyMap<string, number>, key: string): DrawingPoint => { if (key === DRAWING_ORIGIN_CONSTRAINT_KEY) return { x: 0, y: 0 }; const i = index.get(key); return i === undefined ? sketch.points[key] : { x: values[i * 2], y: values[i * 2 + 1] }; };
@@ -26,7 +26,12 @@ const evaluateSystem = (sketch: DrawingSketchV2, component: ComponentState, vari
   const index = new Map(variableIds.map((id, i) => [id, i])), residuals: number[] = [], jacobian: number[][] = [];
   for (const equation of component.equations) {
     const row = Array(variableIds.length * 2).fill(0);
-    if (equation.geometricConstraint?.kind === 'HORIZONTAL' || equation.geometricConstraint?.kind === 'VERTICAL') {
+    if (equation.geometricConstraint?.kind === 'COINCIDENT') {
+      const [aKey, bKey] = equation.pointKeys, axis = equation.coordinateAxis === 'x' ? 0 : 1;
+      const a = coordinate(sketch, values, index, aKey), b = coordinate(sketch, values, index, bKey);
+      residuals.push(axis === 0 ? a.x - b.x : a.y - b.y);
+      const ai = index.get(aKey), bi = index.get(bKey); if (ai !== undefined) row[ai * 2 + axis] += 1; if (bi !== undefined) row[bi * 2 + axis] -= 1;
+    } else if (equation.geometricConstraint?.kind === 'HORIZONTAL' || equation.geometricConstraint?.kind === 'VERTICAL') {
       const [aKey, bKey] = equation.pointKeys, a = coordinate(sketch, values, index, aKey), b = coordinate(sketch, values, index, bKey);
       const horizontal = equation.geometricConstraint.kind === 'HORIZONTAL';
       residuals.push(horizontal ? b.y - a.y : b.x - a.x);
@@ -131,9 +136,9 @@ export const solveDrawingComponentDrag = (
       equations: [...analyzed!.dimensionIds.map((id) => {
         const dimension = sketch.dimensions[id], equation = dimension && constraintEquation(sketch, dimension);
         return equation ? { ...equation, target: dimension.value } : null;
-      }), ...analyzed!.geometricConstraintIds.map((id) => { const geometricConstraint = (sketch.geometricConstraints ?? {})[id], equation = geometricConstraint && geometricConstraintEquation(sketch, geometricConstraint); return equation ? { ...equation, target: 0 } : null; })].filter((equation): equation is Equation => Boolean(equation)),
+      }), ...analyzed!.geometricConstraintIds.flatMap((id) => { const geometricConstraint = (sketch.geometricConstraints ?? {})[id]; return geometricConstraint ? geometricConstraintEquations(sketch, geometricConstraint).map((equation) => ({ ...equation, target: 0 })) : []; })].filter((equation): equation is Equation => Boolean(equation)),
     };
-    if (component.equations.length !== analyzed!.dimensionIds.length + analyzed!.geometricConstraintIds.length) return null;
+    if (component.equations.length < analyzed!.dimensionIds.length + analyzed!.geometricConstraintIds.length) return null;
     const draggedIds = targetIds.filter((id) => analyzed!.pointIds.has(id));
     // An exact rigid translation (or a target along remaining DOF) wins without
     // numerical adjustment.
@@ -162,7 +167,7 @@ const measurement = (sketch: DrawingSketchV2, dimension: DrawingDimension): numb
 export const verifyDrawingDrivingDimensions = (sketch: DrawingSketchV2, ids: readonly string[]): readonly number[] | null => { const residuals = ids.map((id) => { const d = sketch.dimensions[id], value = d?.role === 'driving' ? measurement(sketch, d) : null; return d && value !== null ? Math.abs(value - d.value) : Infinity; }); return residuals.every((v) => Number.isFinite(v) && v <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? residuals : null; };
 export const verifyDrawingConstraints = (sketch: DrawingSketchV2, dimensionIds: readonly string[], geometricConstraintIds: readonly string[]): readonly number[] | null => {
   const dimensions = verifyDrawingDrivingDimensions(sketch, dimensionIds); if (!dimensions) return null;
-  const geometric = geometricConstraintIds.map((id) => { const constraint = (sketch.geometricConstraints ?? {})[id], equation = constraint && geometricConstraintEquation(sketch, constraint); if (!equation) return Infinity; if (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL') { const [a, b] = equation.pointKeys; return Math.abs(constraint.kind === 'HORIZONTAL' ? sketch.points[b].y - sketch.points[a].y : sketch.points[b].x - sketch.points[a].x); } const [a0, a1, b0, b1] = equation.pointKeys; return Math.abs((constraint.kind === 'PARALLEL' ? parallelAndGradient : perpendicularAndGradient)(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1])?.residual ?? Infinity); });
+  const geometric = geometricConstraintIds.map((id) => { const constraint = (sketch.geometricConstraints ?? {})[id], equation = constraint && geometricConstraintEquation(sketch, constraint); if (!equation) return Infinity; if (constraint.kind === 'COINCIDENT') { const [a, b] = equation.pointKeys; return Math.max(Math.abs(sketch.points[a].x - sketch.points[b].x), Math.abs(sketch.points[a].y - sketch.points[b].y)); } if (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL') { const [a, b] = equation.pointKeys; return Math.abs(constraint.kind === 'HORIZONTAL' ? sketch.points[b].y - sketch.points[a].y : sketch.points[b].x - sketch.points[a].x); } const [a0, a1, b0, b1] = equation.pointKeys; return Math.abs((constraint.kind === 'PARALLEL' ? parallelAndGradient : perpendicularAndGradient)(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1])?.residual ?? Infinity); });
   return geometric.every((value) => Number.isFinite(value) && value <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? [...dimensions, ...geometric] : null;
 };
 
@@ -360,7 +365,7 @@ const solveAngleToParallel = (document: DrawingDocumentV2, sketch: DrawingSketch
   const analyzed = analyzeDrawingConstraints(base).componentByPointId.get(seedEquation.pointKeys[0]); if (!analyzed) return fail('MISSING_REFERENCE');
   const component: ComponentState = { pointIds: [...analyzed.pointIds], equations: [
     ...analyzed.dimensionIds.map((dimensionId) => { const dimension = base.dimensions[dimensionId], equation = constraintEquation(base, dimension); return equation ? { ...equation, target: dimension.value } : null; }),
-    ...analyzed.geometricConstraintIds.map((constraintId) => { const constraint = base.geometricConstraints[constraintId], equation = geometricConstraintEquation(base, constraint); return equation ? { ...equation, target: 0 } : null; }),
+    ...analyzed.geometricConstraintIds.flatMap((constraintId) => { const constraint = base.geometricConstraints[constraintId]; return constraint ? geometricConstraintEquations(base, constraint).map((equation) => ({ ...equation, target: 0 })) : []; }),
   ].filter((equation): equation is Equation => Boolean(equation)) };
   const intent = resolveLineToLineAngleMovementIntent(sketch, edited); if (!intent) return fail('MISSING_REFERENCE');
   for (const candidateIntent of [intent.preferred, ...intent.alternatives]) {

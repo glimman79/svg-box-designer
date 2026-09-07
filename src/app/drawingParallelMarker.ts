@@ -71,7 +71,7 @@ export const deriveGeometricConstraintMarkers = (sketch: DrawingSketchV2, pixels
   const order = new Map((sketch.geometricConstraintOrder ?? []).map((id, index) => [id, index]));
   const constraints = Object.values(sketch.geometricConstraints ?? {}).sort((a, b) =>
     (order.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.id) ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
-  const candidates = constraints.filter((constraint) => constraint.kind !== 'PERPENDICULAR').flatMap((constraint) =>
+  const candidates = constraints.filter((constraint) => constraint.kind !== 'PERPENDICULAR' && constraint.kind !== 'COINCIDENT').flatMap((constraint) =>
     constraint.references.map(({ entityId }, index) => ({
         id: `${constraint.id}:${index}`,
         constraintId: constraint.id,
