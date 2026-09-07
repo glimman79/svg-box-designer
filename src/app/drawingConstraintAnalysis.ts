@@ -4,7 +4,7 @@ import type { DrawingDimension, DrawingGeometricConstraint, DrawingPoint, Drawin
 export const DRAWING_CONSTRAINT_RANK_TOLERANCE = Object.freeze({ absolute: 1e-10, relative: 1e-9 });
 export const DRAWING_ORIGIN_CONSTRAINT_KEY = 'datum:ORIGIN';
 
-export type DrawingConstraintEquation = Readonly<{ dimension?: DrawingDimension; geometricConstraint?: DrawingGeometricConstraint; pointKeys: readonly string[] }>;
+export type DrawingConstraintEquation = Readonly<{ dimension?: DrawingDimension; geometricConstraint?: DrawingGeometricConstraint; pointKeys: readonly string[]; coordinateAxis?: 'x' | 'y' }>;
 export type DrawingConstraintComponentAnalysis = Readonly<{ pointIds: ReadonlySet<string>; dimensionIds: readonly string[]; geometricConstraintIds: readonly string[]; variableCount: number; constraintRank: number; degreesOfFreedom: number }>;
 export type DrawingConstraintAnalysis = Readonly<{ components: readonly DrawingConstraintComponentAnalysis[]; componentByPointId: ReadonlyMap<string, DrawingConstraintComponentAnalysis> }>;
 
@@ -39,6 +39,10 @@ export const constraintEquation = (sketch: DrawingSketchV2, dimension: DrawingDi
 };
 
 export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricConstraint: DrawingGeometricConstraint): DrawingConstraintEquation | null => {
+  if (geometricConstraint.kind === 'COINCIDENT') {
+    const [a, b] = geometricConstraint.references.map(({ pointId }) => pointId);
+    return a !== b && sketch.points[a] && sketch.points[b] ? { geometricConstraint, pointKeys: [a, b], coordinateAxis: 'x' } : null;
+  }
   if (geometricConstraint.kind !== 'PARALLEL' && geometricConstraint.kind !== 'PERPENDICULAR') {
     const line = sketch.entities[geometricConstraint.references[0].entityId];
     if (!line || line.startPointId === line.endPointId) return null;
@@ -48,6 +52,12 @@ export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricCo
   const a = sketch.entities[aRef.entityId], b = sketch.entities[bRef.entityId];
   if (!a || !b || a.id === b.id || a.startPointId === a.endPointId || b.startPointId === b.endPointId) return null;
   return { geometricConstraint, pointKeys: [a.startPointId, a.endPointId, b.startPointId, b.endPointId] };
+};
+
+/** A semantic Coincident contributes one exact equation per coordinate axis. */
+export const geometricConstraintEquations = (sketch: DrawingSketchV2, constraint: DrawingGeometricConstraint): DrawingConstraintEquation[] => {
+  const first = geometricConstraintEquation(sketch, constraint);
+  return !first ? [] : constraint.kind === 'COINCIDENT' ? [first, { ...first, coordinateAxis: 'y' }] : [first];
 };
 
 /** Normalized direction cross product. Its zero set includes both parallel and anti-parallel directions. */
@@ -150,6 +160,10 @@ export type DrawingPointMobilityAnalysis = Readonly<{
 const coordinate = (sketch: DrawingSketchV2, key: string): DrawingPoint => key === DRAWING_ORIGIN_CONSTRAINT_KEY ? { x: 0, y: 0 } : sketch.points[key];
 export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: DrawingConstraintEquation, pointOrder: readonly string[]): number[] | null => {
   const row = Array(pointOrder.length * 2).fill(0), set = (key: string, gx: number, gy: number) => { const i = pointOrder.indexOf(key); if (i >= 0) { row[i * 2] += gx; row[i * 2 + 1] += gy; } };
+  if (equation.geometricConstraint?.kind === 'COINCIDENT') {
+    const [a, b] = equation.pointKeys, x = equation.coordinateAxis === 'x';
+    set(a, x ? 1 : 0, x ? 0 : 1); set(b, x ? -1 : 0, x ? 0 : -1); return row;
+  }
   if (equation.geometricConstraint?.kind === 'HORIZONTAL' || equation.geometricConstraint?.kind === 'VERTICAL') {
     const [a, b] = equation.pointKeys, horizontal = equation.geometricConstraint.kind === 'HORIZONTAL';
     set(a, horizontal ? 0 : -1, horizontal ? -1 : 0);
@@ -192,7 +206,7 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
 
 export const analyzeDrawingConstraints = (sketch: DrawingSketchV2, extraDriving?: DrawingDimension): DrawingConstraintAnalysis => {
   const equations = [...[...Object.values(sketch.dimensions).filter(({ role }) => role === 'driving'), ...(extraDriving ? [{ ...extraDriving, role: 'driving' as const }] : [])].map((d) => constraintEquation(sketch, d)),
-    ...Object.values(sketch.geometricConstraints ?? {}).map((constraint) => geometricConstraintEquation(sketch, constraint))].filter((e): e is DrawingConstraintEquation => Boolean(e));
+    ...Object.values(sketch.geometricConstraints ?? {}).flatMap((constraint) => geometricConstraintEquations(sketch, constraint))].filter((e): e is DrawingConstraintEquation => Boolean(e));
   const parent = new Map(Object.keys(sketch.points).map((id) => [id, id]));
   const find = (id: string): string => { const p = parent.get(id)!; if (p === id) return id; const root = find(p); parent.set(id, root); return root; };
   for (const equation of equations) { const keys = equation.pointKeys.filter((key) => key !== DRAWING_ORIGIN_CONSTRAINT_KEY); for (const key of keys.slice(1)) parent.set(find(key), find(keys[0])); }
@@ -201,7 +215,7 @@ export const analyzeDrawingConstraints = (sketch: DrawingSketchV2, extraDriving?
     const pointSet = new Set(pointIds), componentEquations = equations.filter((e) => e.pointKeys.some((key) => pointSet.has(key)));
     const rows = componentEquations.map((e) => constraintJacobianRow(sketch, e, pointIds)).filter((r): r is number[] => Boolean(r));
     const constraintRank = matrixRank(rows), variableCount = pointIds.length * 2;
-    return { pointIds: pointSet, dimensionIds: componentEquations.flatMap(({ dimension }) => dimension ? [dimension.id] : []), geometricConstraintIds: componentEquations.flatMap(({ geometricConstraint }) => geometricConstraint ? [geometricConstraint.id] : []), variableCount, constraintRank, degreesOfFreedom: variableCount - constraintRank };
+    return { pointIds: pointSet, dimensionIds: [...new Set(componentEquations.flatMap(({ dimension }) => dimension ? [dimension.id] : []))], geometricConstraintIds: [...new Set(componentEquations.flatMap(({ geometricConstraint }) => geometricConstraint ? [geometricConstraint.id] : []))], variableCount, constraintRank, degreesOfFreedom: variableCount - constraintRank };
   });
   return { components, componentByPointId: new Map(components.flatMap((component) => [...component.pointIds].map((id) => [id, component] as const))) };
 };
@@ -229,7 +243,7 @@ export const analyzeDrawingPointMobility = (
     .filter((equation): equation is DrawingConstraintEquation => Boolean(equation))
     .map((equation) => constraintJacobianRow(sketch, equation, pointOrder))
     .filter((row): row is number[] => Boolean(row));
-  constraintRows.push(...Object.values(sketch.geometricConstraints ?? {}).map((constraint) => geometricConstraintEquation(sketch, constraint)).filter((equation): equation is DrawingConstraintEquation => Boolean(equation)).map((equation) => constraintJacobianRow(sketch, equation, pointOrder)).filter((row): row is number[] => Boolean(row)));
+  constraintRows.push(...Object.values(sketch.geometricConstraints ?? {}).flatMap((constraint) => geometricConstraintEquations(sketch, constraint)).map((equation) => constraintJacobianRow(sketch, equation, pointOrder)).filter((row): row is number[] => Boolean(row)));
   const extractionRows = selected.flatMap((id) => {
     const pointIndex = pointOrder.indexOf(id);
     return [0, 1].map((axis) => {
@@ -256,7 +270,7 @@ export const drawingConstraintDegreesOfFreedomForPoints = (sketch: DrawingSketch
     .filter(({ id, role }) => role === 'driving' && id !== excludedDimensionId)
     .map((dimension) => constraintEquation(sketch, dimension))
     .filter((equation): equation is DrawingConstraintEquation => Boolean(equation));
-  equations.push(...Object.values(sketch.geometricConstraints ?? {}).map((constraint) => geometricConstraintEquation(sketch, constraint)).filter((equation): equation is DrawingConstraintEquation => Boolean(equation)));
+  equations.push(...Object.values(sketch.geometricConstraints ?? {}).flatMap((constraint) => geometricConstraintEquations(sketch, constraint)));
   const rows = equations.map((equation) => constraintJacobianRow(sketch, equation, pointIds)).filter((row): row is number[] => Boolean(row));
   return pointIds.length * 2 - matrixRank(rows);
 };

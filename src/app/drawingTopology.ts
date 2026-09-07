@@ -25,7 +25,9 @@ export const removeLineAndOrphans = (sketch: DrawingSketchV2, lineId: string): D
   const removedPointIds = new Set(Object.keys(sketch.points).filter((id) => !points[id]));
   const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, dimension]) => dimension.references.every((reference) =>
     reference.kind === 'datum' || reference.kind === 'sketchPoint' ? reference.kind === 'datum' || !removedPointIds.has(reference.pointId) : reference.entityId !== lineId)));
-  const geometricConstraints = Object.fromEntries(Object.entries(sketch.geometricConstraints ?? {}).filter(([, constraint]) => constraint.references.every(({ entityId }) => entityId !== lineId)));
+  const geometricConstraints = Object.fromEntries(Object.entries(sketch.geometricConstraints ?? {}).filter(([, constraint]) => constraint.kind === 'COINCIDENT'
+    ? constraint.references.every(({ pointId }) => !removedPointIds.has(pointId))
+    : constraint.references.every(({ entityId }) => entityId !== lineId)));
   return { ...sketch, points, entities, entityOrder: sketch.entityOrder.filter((id) => id !== lineId), dimensions, dimensionOrder: sketch.dimensionOrder.filter((id) => Boolean(dimensions[id])),
     geometricConstraints, geometricConstraintOrder: (sketch.geometricConstraintOrder ?? []).filter((id) => Boolean(geometricConstraints[id])) };
 };
@@ -34,6 +36,7 @@ const finitePoint = (point: DrawingSketchPoint) => Number.isFinite(point.x) && N
 export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTopologyValidation => {
   const errors: string[] = [];
   for (const sketch of Object.values(document.sketches)) {
+    const coincidentPairs = new Set<string>();
     for (const [id, point] of Object.entries(sketch.points)) {
       if (point.id !== id) errors.push(`Point key/id mismatch: ${id}`);
       if (!finitePoint(point)) errors.push(`Malformed point coordinate: ${id}`);
@@ -48,6 +51,12 @@ export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTop
       const line = sketch.entities[reference.entityId]; if (!line || (reference.kind === 'point' && !sketch.points[pointIdForLineEndpoint(line, reference.point)])) errors.push(`Dimension reference cannot resolve: ${dimension.id}`);
     }
     for (const constraint of Object.values(sketch.geometricConstraints ?? {})) {
+      if (constraint.kind === 'COINCIDENT') {
+        const [a, b] = constraint.references;
+        if (constraint.references.length !== 2 || a.kind !== 'sketchPoint' || b.kind !== 'sketchPoint' || a.pointId === b.pointId || !sketch.points[a.pointId] || !sketch.points[b.pointId]) errors.push(`Geometric constraint reference cannot resolve: ${constraint.id}`);
+        else { const key = [a.pointId, b.pointId].sort().join('\0'); if (coincidentPairs.has(key)) errors.push(`Duplicate Coincident constraint: ${constraint.id}`); coincidentPairs.add(key); }
+        continue;
+      }
       const expectedReferences = constraint.kind === 'PARALLEL' || constraint.kind === 'PERPENDICULAR' ? 2 : 1;
       if (constraint.references.length !== expectedReferences || constraint.references.some(({ entityId }) => !sketch.entities[entityId])
         || expectedReferences === 2 && constraint.references[0]?.entityId === constraint.references[1]?.entityId) errors.push(`Geometric constraint reference cannot resolve: ${constraint.id}`);

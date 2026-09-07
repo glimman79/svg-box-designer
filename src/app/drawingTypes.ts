@@ -54,7 +54,13 @@ export type DrawingAxisConstraint = Readonly<{
   /** Stable semantic Line identity; coordinates remain owned by its SketchPoints. */
   references: readonly [DrawingEntityReference];
 }>;
-export type DrawingGeometricConstraint = DrawingParallelConstraint | DrawingPerpendicularConstraint | DrawingAxisConstraint;
+export type DrawingCoincidentConstraint = Readonly<{
+  id: string;
+  kind: 'COINCIDENT';
+  /** Canonical unordered pair of distinct stable SketchPoint identities. */
+  references: readonly [Readonly<{ kind: 'sketchPoint'; pointId: string }>, Readonly<{ kind: 'sketchPoint'; pointId: string }>];
+}>;
+export type DrawingGeometricConstraint = DrawingParallelConstraint | DrawingPerpendicularConstraint | DrawingAxisConstraint | DrawingCoincidentConstraint;
 type DrawingDimensionBase = Readonly<{
   id: string;
   /** Persistent solver semantics. Reference dimensions contribute no constraint equation. */
@@ -169,6 +175,14 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
         ]));
       const acceptedAxisLines = new Set<string>(), acceptedPairs = new Set<string>();
       const geometricConstraints = Object.fromEntries(Object.entries(sketch.geometricConstraints).filter(([, constraint]) => {
+        if (constraint.kind === 'COINCIDENT') {
+          if (constraint.references.length !== 2 || constraint.references.some((reference) => reference.kind !== 'sketchPoint' || !sketch.points[reference.pointId])) return false;
+          const ids = constraint.references.map(({ pointId }) => pointId).sort();
+          if (ids[0] === ids[1]) return false;
+          const key = `COINCIDENT:${ids[0]}:${ids[1]}`;
+          if (acceptedPairs.has(key)) return false;
+          acceptedPairs.add(key); return true;
+        }
         if (!(constraint.kind === 'PARALLEL' || constraint.kind === 'PERPENDICULAR' || constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL')
           || constraint.references.length !== (constraint.kind === 'PARALLEL' || constraint.kind === 'PERPENDICULAR' ? 2 : 1)
           || constraint.references.some(({ entityId }) => !sketch.entities[entityId])) return false;
@@ -187,6 +201,8 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
         return true;
       }).map(([constraintId, constraint]) => constraint.kind === 'PERPENDICULAR'
         ? [constraintId, { ...constraint, references: [...constraint.references].sort((a, b) => a.entityId.localeCompare(b.entityId)) }]
+        : constraint.kind === 'COINCIDENT'
+          ? [constraintId, { ...constraint, references: [...constraint.references].sort((a, b) => a.pointId.localeCompare(b.pointId)) }]
         : [constraintId, constraint]));
       return [id, { ...sketch, dimensions, dimensionOrder: sketch.dimensionOrder.filter((dimensionId) => Boolean(dimensions[dimensionId])), geometricConstraints,
         geometricConstraintOrder: sketch.geometricConstraintOrder.filter((constraintId) => Boolean(geometricConstraints[constraintId])) }];
