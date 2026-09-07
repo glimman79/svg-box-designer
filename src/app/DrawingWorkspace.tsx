@@ -217,7 +217,14 @@ export function DrawingWorkspace({
     const interaction = lineInteractionRef.current;
     const candidates = collectDrawingInferenceCandidates(clientPoint, resolvedLines, drawingTransform, viewBox, interaction.start);
     const snap = resolveDrawingSnap({ rawPoint, candidates, previousSnap: drawingSnapRef.current, ctrlOverride: ctrlHeld });
-    const lineResolution = resolveLineEffectivePoint(interaction, rawPoint, snap);
+    const previousChainedAxisConstraint = interaction.previousChainedLineId
+      ? Object.values(documentRef.current.sketches[documentRef.current.activeSketchId]?.geometricConstraints ?? {}).find((constraint) =>
+        (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL')
+        && constraint.references[0]?.entityId === interaction.previousChainedLineId)
+      : null;
+    const previousChainedAxisKind = previousChainedAxisConstraint?.kind === 'HORIZONTAL' || previousChainedAxisConstraint?.kind === 'VERTICAL'
+      ? previousChainedAxisConstraint.kind : null;
+    const lineResolution = resolveLineEffectivePoint(interaction, rawPoint, snap, previousChainedAxisKind);
     const placementPoint = lineResolution.effectivePoint;
     const nextInteraction = lineResolution.interaction;
     const anchor = modelToOverlayPoint(placementPoint, drawingTransform, overlayTransform);
@@ -244,7 +251,13 @@ export function DrawingWorkspace({
     const result = applyResolvedLineClick(lineInteractionRef.current, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`, pointId);
     setLineInteraction(result.interaction);
     lineInteractionRef.current = result.interaction;
-    if (result.entity) transactDocument((current) => appendEntityToActiveSketch(current, result.entity!, undefined, acceptedConstraintKind, acceptedPerpendicularLineId));
+    if (result.entity) {
+      // Spatial hysteresis belongs to one segment; the continuation starts with
+      // fresh inference while retaining its endpoint and previous Line identity.
+      setDrawingSnap(null);
+      drawingSnapRef.current = null;
+      transactDocument((current) => appendEntityToActiveSketch(current, result.entity!, undefined, acceptedConstraintKind, acceptedPerpendicularLineId));
+    }
   };
 
   const resolveDimensionCandidate = (client: CoordinatePoint, target: 'any' | 'point' | 'line' = 'any'): DimensionPreselection | null => {
@@ -288,6 +301,7 @@ export function DrawingWorkspace({
     lineInteractionRef.current = empty;
     setLineInteraction(empty);
     setDrawingSnap(null);
+    drawingSnapRef.current = null;
     setCadCursor(null);
     setToolLifecycle(activateDrawingTool('select'));
     setDimensionTool({ phase: 'inactive' });
@@ -499,6 +513,7 @@ export function DrawingWorkspace({
     setLineInteraction(cancelLineInteraction());
     lineInteractionRef.current = cancelLineInteraction();
     setDrawingSnap(null);
+    drawingSnapRef.current = null;
     setCadCursor(null);
     setToolLifecycle(activateDrawingTool(tool, activationMode));
     setDimensionTool(tool === 'dimension' ? { phase: 'waitingForFirstTarget' } : { phase: 'inactive' });
@@ -530,6 +545,7 @@ export function DrawingWorkspace({
     pendingLineClickRef.current = null;
     setLineInteraction(cancelLineInteraction());
     setDrawingSnap(null);
+    drawingSnapRef.current = null;
     setCadCursor(null);
     lineInteractionRef.current = cancelLineInteraction();
     setToolLifecycle((current) => finishDrawingConstruction(current));

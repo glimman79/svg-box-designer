@@ -57,6 +57,7 @@ export type LineToolInteraction = Readonly<{
   snapActive: boolean;
   snappedAngleDegrees: number | null;
   perpendicularLineId: string | null;
+  previousChainedLineId: string | null;
 }>;
 
 export const EMPTY_LINE_INTERACTION: LineToolInteraction = {
@@ -67,6 +68,7 @@ export const EMPTY_LINE_INTERACTION: LineToolInteraction = {
   snapActive: false,
   snappedAngleDegrees: null,
   perpendicularLineId: null,
+  previousChainedLineId: null,
 };
 
 export const updateLinePreview = (interaction: LineToolInteraction, pointer: DrawingPoint): LineToolInteraction => (
@@ -141,6 +143,7 @@ export const resolveLineEffectivePoint = (
   interaction: LineToolInteraction,
   rawPointerPoint: DrawingPoint,
   spatialSnap: LineSpatialSnap,
+  previousChainedAxisKind: 'HORIZONTAL' | 'VERTICAL' | null = null,
 ): LineEffectivePointResolution => {
   if (!interaction.start) return { effectivePoint: spatialSnap.effectivePoint, interaction };
 
@@ -160,6 +163,22 @@ export const resolveLineEffectivePoint = (
     return {
       effectivePoint,
       interaction: { ...interaction, ...angular, effectivePreviewPoint: effectivePoint, perpendicularLineId: null },
+    };
+  }
+
+  // A perpendicular accepted against the directly previous authored segment
+  // carries enough semantic information to continue an axis-constrained chain,
+  // even when the raw pointer lies outside Line's independent angular window.
+  if (spatialSnap.type === 'perpendicular'
+    && spatialSnap.entityId === interaction.previousChainedLineId
+    && previousChainedAxisKind) {
+    const snappedAngleDegrees = previousChainedAxisKind === 'HORIZONTAL' ? 90 : 0;
+    const effectivePoint = previousChainedAxisKind === 'HORIZONTAL'
+      ? { x: interaction.start.x, y: spatialSnap.effectivePoint.y }
+      : { x: spatialSnap.effectivePoint.x, y: interaction.start.y };
+    return {
+      effectivePoint,
+      interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snapActive: true, snappedAngleDegrees, perpendicularLineId: null },
     };
   }
 
@@ -244,14 +263,16 @@ export const applyLineClick = (
   if (Math.hypot(dx, dy) <= LINE_ZERO_LENGTH_TOLERANCE_MM) {
     return { interaction: { ...interaction, ...preview }, entity: null };
   }
+  const id = createId();
   return {
     interaction: {
       ...EMPTY_LINE_INTERACTION,
       start: effectivePoint,
       rawPointerPoint: effectivePoint,
       effectivePreviewPoint: effectivePoint,
+      previousChainedLineId: id,
     },
-    entity: { id: createId(), type: 'line', start: interaction.start, end: effectivePoint },
+    entity: { id, type: 'line', start: interaction.start, end: effectivePoint },
   };
 };
 
@@ -259,9 +280,10 @@ export const applyLineClick = (
 export const applyResolvedLineClick = (interaction: LineToolInteraction, point: DrawingPoint, createId: () => string, pointId: string | null = null): LineClickResult => {
   if (!interaction.start) return { interaction: { ...EMPTY_LINE_INTERACTION, start: point, startPointId: pointId, rawPointerPoint: point, effectivePreviewPoint: point }, entity: null };
   if (Math.hypot(point.x - interaction.start.x, point.y - interaction.start.y) <= LINE_ZERO_LENGTH_TOLERANCE_MM) return { interaction, entity: null };
+  const id = createId();
   return {
-    interaction: { ...EMPTY_LINE_INTERACTION, start: point, startPointId: pointId, rawPointerPoint: point, effectivePreviewPoint: point },
-    entity: { id: createId(), type: 'line', start: interaction.start, end: point, startPointId: interaction.startPointId ?? undefined, endPointId: pointId ?? undefined },
+    interaction: { ...EMPTY_LINE_INTERACTION, start: point, startPointId: pointId, rawPointerPoint: point, effectivePreviewPoint: point, previousChainedLineId: id },
+    entity: { id, type: 'line', start: interaction.start, end: point, startPointId: interaction.startPointId ?? undefined, endPointId: pointId ?? undefined },
   };
 };
 
