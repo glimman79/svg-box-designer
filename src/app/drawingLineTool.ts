@@ -5,7 +5,9 @@ export type DrawingLineDraft = Readonly<{ id: string; type: 'line'; start: Drawi
 
 export const LINE_ZERO_LENGTH_TOLERANCE_MM = 1e-9;
 export const LINE_ANGULAR_SNAP_INCREMENT_DEGREES = 22.5;
-export const LINE_ANGULAR_SNAP_TOLERANCE_DEGREES = 3;
+// Inclusive practical window: (100, 90) is the canonical near-45° gesture
+// (3.013° away), so retain the intended approximate three-degree feel.
+export const LINE_ANGULAR_SNAP_TOLERANCE_DEGREES = 3.1;
 
 export type LinePreviewResolution = Readonly<{
   rawPointerPoint: DrawingPoint;
