@@ -143,6 +143,17 @@ export const resolveLineEffectivePoint = (
 ): LineEffectivePointResolution => {
   if (!interaction.start) return { effectivePoint: spatialSnap.effectivePoint, interaction };
 
+  // Axis intent is accepted from the Line tool's angular inference, not inferred
+  // from the eventual coordinates.  It has CATIA-style priority over a
+  // simultaneously available perpendicular spatial candidate.
+  const angular = resolveLinePreviewPoint(interaction.start, rawPointerPoint);
+  const acceptedAxis = angular.snapActive && angular.snappedAngleDegrees !== null
+    && [0, 90, 180, 270].includes(normalizeDegrees(angular.snappedAngleDegrees));
+  if (acceptedAxis && spatialSnap.type === 'perpendicular') return {
+    effectivePoint: angular.effectivePreviewPoint,
+    interaction: { ...interaction, ...angular, perpendicularLineId: null },
+  };
+
   if (spatialSnap.type === 'perpendicular') return {
     effectivePoint: spatialSnap.effectivePoint,
     interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snapActive: true, snappedAngleDegrees: null, perpendicularLineId: spatialSnap.entityId ?? null },
@@ -163,7 +174,6 @@ export const resolveLineEffectivePoint = (
     return { effectivePoint: spatialSnap.effectivePoint, interaction: nextInteraction };
   }
 
-  const angular = resolveLinePreviewPoint(interaction.start, rawPointerPoint);
   if (!angular.snapActive || angular.snappedAngleDegrees === null) {
     const effectivePoint = spatialSnap.active ? spatialSnap.effectivePoint : rawPointerPoint;
     return { effectivePoint, interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snapActive: false, snappedAngleDegrees: null, perpendicularLineId: null } };
@@ -265,7 +275,8 @@ export const appendEntityToActiveSketch = (
   const automaticConstraint: DrawingGeometricConstraint | null = constraintId && !duplicate
     ? { id: constraintId, kind: automaticConstraintKind!, references: [{ kind: 'entity', entityId: entity.id }] }
     : null;
-  const pair = perpendicularLineId && activeSketch.entities[perpendicularLineId] ? [entity.id, perpendicularLineId].sort() : null;
+  // The two automatic intents are deliberately exclusive: accepted H/V wins.
+  const pair = !automaticConstraintKind && perpendicularLineId && activeSketch.entities[perpendicularLineId] ? [entity.id, perpendicularLineId].sort() : null;
   const perpendicularId = pair ? `perpendicular:${pair[0]}:${pair[1]}` : null;
   const perpendicularDuplicate = pair && Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'PERPENDICULAR'
     && constraint.references.map(({ entityId }) => entityId).sort().join(':') === pair.join(':'));
