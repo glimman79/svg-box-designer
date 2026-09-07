@@ -29,6 +29,8 @@ export type DrawingInference = Readonly<{
   candidatePoint: DrawingPoint;
   segmentParameter: number;
   screenDistance: number;
+  lineStart: DrawingPoint;
+  lineEnd: DrawingPoint;
 }> | Readonly<{
   type: 'alignment-x';
   referenceId: string;
@@ -125,6 +127,8 @@ export const collectDrawingInferenceCandidates = (
         },
         segmentParameter: parameter,
         screenDistance,
+        lineStart: line.start,
+        lineEnd: line.end,
       });
   }
   const alignmentsX: Array<Extract<DrawingInference, { type: 'alignment-x' }>> = [];
@@ -156,8 +160,8 @@ export const collectDrawingInferenceCandidates = (
   }
   const stableSort = <T extends { screenDistance: number; referenceId?: string }>(a: T, b: T) => a.screenDistance - b.screenDistance || (a.referenceId ?? '').localeCompare(b.referenceId ?? '');
   return {
-    endpoints: endpoints.sort((a, b) => a.screenDistance - b.screenDistance),
-    lines: lineCandidates.sort((a, b) => a.screenDistance - b.screenDistance),
+    endpoints: endpoints.sort((a, b) => a.screenDistance - b.screenDistance || `${a.entityId}:${a.endpoint}`.localeCompare(`${b.entityId}:${b.endpoint}`)),
+    lines: lineCandidates.sort((a, b) => a.screenDistance - b.screenDistance || a.entityId.localeCompare(b.entityId)),
     alignmentsX: alignmentsX.sort(stableSort),
     alignmentsY: alignmentsY.sort(stableSort),
     perpendiculars: perpendiculars.sort((a, b) => a.screenDistance - b.screenDistance || a.entityId.localeCompare(b.entityId)),

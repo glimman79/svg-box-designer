@@ -82,6 +82,13 @@ type LineSpatialSnap = Readonly<{
   effectivePoint: DrawingPoint;
   xReference?: Readonly<{ candidatePoint: DrawingPoint; screenDistance: number }> | null;
   yReference?: Readonly<{ candidatePoint: DrawingPoint; screenDistance: number }> | null;
+  lineStart?: DrawingPoint;
+  lineEnd?: DrawingPoint;
+  channels?: Readonly<{
+    xAlignment: Readonly<{ candidatePoint: DrawingPoint; screenDistance: number }> | null;
+    yAlignment: Readonly<{ candidatePoint: DrawingPoint; screenDistance: number }> | null;
+    perpendicular: Readonly<{ entityId: string; candidatePoint: DrawingPoint; screenDistance: number }> | null;
+  }>;
 }>;
 
 export type LineEffectivePointResolution = Readonly<{
@@ -109,6 +116,18 @@ const isPointOnDirection = (start: DrawingPoint, point: DrawingPoint, direction:
   return length > LINE_ZERO_LENGTH_TOLERANCE_MM
     && dx * direction.x + dy * direction.y >= 0
     && Math.abs(dx * direction.y - dy * direction.x) <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, length);
+};
+
+const intersectRayWithFiniteSegment = (origin: DrawingPoint, direction: DrawingPoint, a?: DrawingPoint, b?: DrawingPoint): DrawingPoint | null => {
+  if (!a || !b) return null;
+  const sx = b.x - a.x, sy = b.y - a.y;
+  const denominator = direction.x * sy - direction.y * sx;
+  if (Math.abs(denominator) <= ANGULAR_DIRECTION_EPSILON) return null;
+  const ax = a.x - origin.x, ay = a.y - origin.y;
+  const rayParameter = (ax * sy - ay * sx) / denominator;
+  const segmentParameter = (ax * direction.y - ay * direction.x) / denominator;
+  if (rayParameter < 0 || segmentParameter < -ANGULAR_COMPATIBILITY_EPSILON || segmentParameter > 1 + ANGULAR_COMPATIBILITY_EPSILON) return null;
+  return { x: origin.x + rayParameter * direction.x, y: origin.y + rayParameter * direction.y };
 };
 
 const reconcileAlignmentOnRay = (
@@ -144,8 +163,15 @@ export const resolveLineEffectivePoint = (
   rawPointerPoint: DrawingPoint,
   spatialSnap: LineSpatialSnap,
   previousChainedAxisKind: 'HORIZONTAL' | 'VERTICAL' | null = null,
+  ctrlOverride = false,
 ): LineEffectivePointResolution => {
-  if (!interaction.start) return { effectivePoint: spatialSnap.effectivePoint, interaction };
+  if (!interaction.start) return { effectivePoint: ctrlOverride ? rawPointerPoint : spatialSnap.effectivePoint, interaction };
+  // Layer 0 is repeated here as the final correctness guard. Future candidate
+  // channels cannot accidentally reintroduce Line authoring inference under Ctrl.
+  if (ctrlOverride) return {
+    effectivePoint: rawPointerPoint,
+    interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: rawPointerPoint, snapActive: false, snappedAngleDegrees: null, perpendicularLineId: null },
+  };
 
   // Axis intent is accepted from the Line tool's angular inference, not inferred
   // from the eventual coordinates.  It has CATIA-style priority over a
@@ -188,18 +214,28 @@ export const resolveLineEffectivePoint = (
   };
 
   if (spatialSnap.type === 'endpoint' || spatialSnap.type === 'line') {
-    const spatialAngle = resolveLinePreviewPoint(interaction.start, spatialSnap.effectivePoint);
-    const direction = spatialAngle.snappedAngleDegrees === null ? null : directionAt(spatialAngle.snappedAngleDegrees);
-    const angularExact = direction !== null && isPointOnDirection(interaction.start, spatialSnap.effectivePoint, direction);
+    // Endpoint/finite target owns position. Construction proposals are validation
+    // outputs only: incompatible semantics and guides disappear rather than move it.
+    const direction = angular.snappedAngleDegrees === null ? null : directionAt(angular.snappedAngleDegrees);
+    // A construction ray may compose with a finite Line. Never intersect its
+    // infinite support when the result falls outside the segment.
+    const composedLinePoint = spatialSnap.type === 'line' && direction
+      ? intersectRayWithFiniteSegment(interaction.start, direction, spatialSnap.lineStart, spatialSnap.lineEnd) : null;
+    const acceptedPoint = composedLinePoint ?? spatialSnap.effectivePoint;
+    const angularExact = direction !== null && isPointOnDirection(interaction.start, acceptedPoint, direction);
+    const perpendicular = spatialSnap.channels?.perpendicular ?? null;
+    const perpendicularExact = perpendicular !== null
+      && Math.hypot(perpendicular.candidatePoint.x - acceptedPoint.x, perpendicular.candidatePoint.y - acceptedPoint.y)
+        <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, Math.hypot(acceptedPoint.x - interaction.start.x, acceptedPoint.y - interaction.start.y));
     const nextInteraction = {
       ...interaction,
       rawPointerPoint,
-      effectivePreviewPoint: spatialSnap.effectivePoint,
+      effectivePreviewPoint: acceptedPoint,
       snapActive: angularExact,
-      snappedAngleDegrees: angularExact ? spatialAngle.snappedAngleDegrees : null,
-      perpendicularLineId: null,
+      snappedAngleDegrees: angularExact ? angular.snappedAngleDegrees : null,
+      perpendicularLineId: perpendicularExact ? perpendicular.entityId : null,
     };
-    return { effectivePoint: spatialSnap.effectivePoint, interaction: nextInteraction };
+    return { effectivePoint: acceptedPoint, interaction: nextInteraction };
   }
 
   if (!angular.snapActive || angular.snappedAngleDegrees === null) {
@@ -212,8 +248,11 @@ export const resolveLineEffectivePoint = (
     x: interaction.start.x + radialDistance * direction.x,
     y: interaction.start.y + radialDistance * direction.y,
   };
-  const effectivePoint = spatialSnap.type === 'alignment'
-    ? reconcileAlignmentOnRay(interaction.start, angularPoint, angular.snappedAngleDegrees, spatialSnap)
+  const alignmentSnap = spatialSnap.channels && (spatialSnap.channels.xAlignment || spatialSnap.channels.yAlignment)
+    ? { ...spatialSnap, xReference: spatialSnap.channels.xAlignment, yReference: spatialSnap.channels.yAlignment }
+    : spatialSnap;
+  const effectivePoint = alignmentSnap.type === 'alignment' || spatialSnap.channels?.xAlignment || spatialSnap.channels?.yAlignment
+    ? reconcileAlignmentOnRay(interaction.start, angularPoint, angular.snappedAngleDegrees, alignmentSnap)
     : angularPoint;
   return {
     effectivePoint,
@@ -307,7 +346,8 @@ export const appendEntityToActiveSketch = (
   const automaticConstraint: DrawingGeometricConstraint | null = constraintId && !duplicate
     ? { id: constraintId, kind: automaticConstraintKind!, references: [{ kind: 'entity', entityId: entity.id }] }
     : null;
-  // The two automatic intents are deliberately exclusive: accepted H/V wins.
+  // Accepted axis intent already expresses the right-angle chain; preserve the
+  // D2.5e6c policy by avoiding a redundant Perpendicular relation there.
   const pair = !automaticConstraintKind && perpendicularLineId && activeSketch.entities[perpendicularLineId] ? [entity.id, perpendicularLineId].sort() : null;
   const perpendicularId = pair ? `perpendicular:${pair[0]}:${pair[1]}` : null;
   const perpendicularDuplicate = pair && Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'PERPENDICULAR'
