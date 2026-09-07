@@ -42,13 +42,19 @@ export type DrawingParallelConstraint = Readonly<{
   /** Canonical unordered Line pair: references[0].entityId is lexically first. */
   references: readonly [DrawingEntityReference, DrawingEntityReference];
 }>;
+export type DrawingPerpendicularConstraint = Readonly<{
+  id: string;
+  kind: 'PERPENDICULAR';
+  /** Canonical unordered Line pair: references[0].entityId is lexically first. */
+  references: readonly [DrawingEntityReference, DrawingEntityReference];
+}>;
 export type DrawingAxisConstraint = Readonly<{
   id: string;
   kind: 'HORIZONTAL' | 'VERTICAL';
   /** Stable semantic Line identity; coordinates remain owned by its SketchPoints. */
   references: readonly [DrawingEntityReference];
 }>;
-export type DrawingGeometricConstraint = DrawingParallelConstraint | DrawingAxisConstraint;
+export type DrawingGeometricConstraint = DrawingParallelConstraint | DrawingPerpendicularConstraint | DrawingAxisConstraint;
 type DrawingDimensionBase = Readonly<{
   id: string;
   /** Persistent solver semantics. Reference dimensions contribute no constraint equation. */
@@ -161,18 +167,27 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
           dimensionId,
           { ...dimension, role: (dimension.role === 'reference' ? 'reference' : 'driving') as DrawingDimensionRole },
         ]));
-      const acceptedAxisLines = new Set<string>();
+      const acceptedAxisLines = new Set<string>(), acceptedPairs = new Set<string>();
       const geometricConstraints = Object.fromEntries(Object.entries(sketch.geometricConstraints).filter(([, constraint]) => {
-        if (!(constraint.kind === 'PARALLEL' || constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL')
-          || constraint.references.length !== (constraint.kind === 'PARALLEL' ? 2 : 1)
+        if (!(constraint.kind === 'PARALLEL' || constraint.kind === 'PERPENDICULAR' || constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL')
+          || constraint.references.length !== (constraint.kind === 'PARALLEL' || constraint.kind === 'PERPENDICULAR' ? 2 : 1)
           || constraint.references.some(({ entityId }) => !sketch.entities[entityId])) return false;
-        if (constraint.kind === 'PARALLEL') return true;
+        if (constraint.kind === 'PARALLEL' || constraint.kind === 'PERPENDICULAR') {
+          const ids = constraint.references.map(({ entityId }) => entityId).sort();
+          if (ids[0] === ids[1]) return false;
+          const key = `${constraint.kind}:${ids[0]}:${ids[1]}`;
+          if (acceptedPairs.has(key)) return false;
+          acceptedPairs.add(key);
+          return true;
+        }
         const lineId = constraint.references[0].entityId;
         // A restored Line cannot safely carry duplicate or opposing axis intent.
         if (acceptedAxisLines.has(lineId)) return false;
         acceptedAxisLines.add(lineId);
         return true;
-      }));
+      }).map(([constraintId, constraint]) => constraint.kind === 'PERPENDICULAR'
+        ? [constraintId, { ...constraint, references: [...constraint.references].sort((a, b) => a.entityId.localeCompare(b.entityId)) }]
+        : [constraintId, constraint]));
       return [id, { ...sketch, dimensions, dimensionOrder: sketch.dimensionOrder.filter((dimensionId) => Boolean(dimensions[dimensionId])), geometricConstraints,
         geometricConstraintOrder: sketch.geometricConstraintOrder.filter((constraintId) => Boolean(geometricConstraints[constraintId])) }];
     })),

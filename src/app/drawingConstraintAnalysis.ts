@@ -39,7 +39,7 @@ export const constraintEquation = (sketch: DrawingSketchV2, dimension: DrawingDi
 };
 
 export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricConstraint: DrawingGeometricConstraint): DrawingConstraintEquation | null => {
-  if (geometricConstraint.kind !== 'PARALLEL') {
+  if (geometricConstraint.kind !== 'PARALLEL' && geometricConstraint.kind !== 'PERPENDICULAR') {
     const line = sketch.entities[geometricConstraint.references[0].entityId];
     if (!line || line.startPointId === line.endPointId) return null;
     return { geometricConstraint, pointKeys: [line.startPointId, line.endPointId] };
@@ -57,6 +57,19 @@ export const parallelAndGradient = (a0: DrawingPoint, a1: DrawingPoint, b0: Draw
     const ax = v[2] - v[0], ay = v[3] - v[1], bx = v[6] - v[4], by = v[7] - v[5];
     const length = Math.hypot(ax, ay) * Math.hypot(bx, by);
     return length <= DRAWING_CONSTRAINT_RANK_TOLERANCE.absolute ? null : (ax * by - ay * bx) / length;
+  };
+  const residual = value(coordinates); if (residual === null) return null;
+  const gradient = coordinates.map((coordinate, index) => { const h = 1e-6 * Math.max(1, Math.abs(coordinate)); const plus = [...coordinates], minus = [...coordinates]; plus[index] += h; minus[index] -= h; const p = value(plus), m = value(minus); return p === null || m === null ? 0 : (p - m) / (2 * h); });
+  return { residual, gradient };
+};
+
+/** Normalized direction dot product; translation and separation do not enter this equation. */
+export const perpendicularAndGradient = (a0: DrawingPoint, a1: DrawingPoint, b0: DrawingPoint, b1: DrawingPoint) => {
+  const coordinates = [a0.x, a0.y, a1.x, a1.y, b0.x, b0.y, b1.x, b1.y];
+  const value = (v: readonly number[]) => {
+    const ax = v[2] - v[0], ay = v[3] - v[1], bx = v[6] - v[4], by = v[7] - v[5];
+    const length = Math.hypot(ax, ay) * Math.hypot(bx, by);
+    return length <= DRAWING_CONSTRAINT_RANK_TOLERANCE.absolute ? null : (ax * bx + ay * by) / length;
   };
   const residual = value(coordinates); if (residual === null) return null;
   const gradient = coordinates.map((coordinate, index) => { const h = 1e-6 * Math.max(1, Math.abs(coordinate)); const plus = [...coordinates], minus = [...coordinates]; plus[index] += h; minus[index] -= h; const p = value(plus), m = value(minus); return p === null || m === null ? 0 : (p - m) / (2 * h); });
@@ -143,8 +156,10 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
     set(b, horizontal ? 0 : 1, horizontal ? 1 : 0);
     return row;
   }
-  if (equation.geometricConstraint?.kind === 'PARALLEL') {
-    const [a0, a1, b0, b1] = equation.pointKeys, result = parallelAndGradient(coordinate(sketch, a0), coordinate(sketch, a1), coordinate(sketch, b0), coordinate(sketch, b1));
+  if (equation.geometricConstraint?.kind === 'PARALLEL' || equation.geometricConstraint?.kind === 'PERPENDICULAR') {
+    const [a0, a1, b0, b1] = equation.pointKeys, result = equation.geometricConstraint.kind === 'PARALLEL'
+      ? parallelAndGradient(coordinate(sketch, a0), coordinate(sketch, a1), coordinate(sketch, b0), coordinate(sketch, b1))
+      : perpendicularAndGradient(coordinate(sketch, a0), coordinate(sketch, a1), coordinate(sketch, b0), coordinate(sketch, b1));
     if (!result) return null;
     [a0, a1, b0, b1].forEach((key, i) => set(key, result.gradient[i * 2], result.gradient[i * 2 + 1])); return row;
   }

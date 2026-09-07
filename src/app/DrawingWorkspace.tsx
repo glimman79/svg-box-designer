@@ -213,8 +213,8 @@ export function DrawingWorkspace({
     if (!drawingTransform || !overlayTransform) return null;
     const rawPoint = clientToModelPoint(clientPoint, drawingTransform);
     if (!rawPoint) return null;
-    const candidates = collectDrawingInferenceCandidates(clientPoint, resolvedLines, drawingTransform, viewBox);
     const interaction = lineInteractionRef.current;
+    const candidates = collectDrawingInferenceCandidates(clientPoint, resolvedLines, drawingTransform, viewBox, interaction.start);
     const snap = resolveDrawingSnap({ rawPoint, candidates, previousSnap: drawingSnapRef.current, ctrlOverride: ctrlHeld });
     const lineResolution = resolveLineEffectivePoint(interaction, rawPoint, snap);
     const placementPoint = lineResolution.effectivePoint;
@@ -237,10 +237,11 @@ export function DrawingWorkspace({
   const commitLinePoint = (point: DrawingPoint, reusedPointId: string | null) => {
     const pointId = reusedPointId ?? `point-${Date.now().toString(36)}-${++pointSequence.current}`;
     const acceptedConstraintKind = automaticAxisConstraintKind(lineInteractionRef.current);
+    const acceptedPerpendicularLineId = lineInteractionRef.current.perpendicularLineId;
     const result = applyResolvedLineClick(lineInteractionRef.current, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`, pointId);
     setLineInteraction(result.interaction);
     lineInteractionRef.current = result.interaction;
-    if (result.entity) transactDocument((current) => appendEntityToActiveSketch(current, result.entity!, undefined, acceptedConstraintKind));
+    if (result.entity) transactDocument((current) => appendEntityToActiveSketch(current, result.entity!, undefined, acceptedConstraintKind, acceptedPerpendicularLineId));
   };
 
   const resolveDimensionCandidate = (client: CoordinatePoint, target: 'any' | 'point' | 'line' = 'any'): DimensionPreselection | null => {
@@ -828,6 +829,7 @@ export function DrawingWorkspace({
                 {lineCursor.snap.type === 'endpoint' && <circle className="drawing-line-cursor-endpoint" cx="0" cy="0" r="5.5" />}
                 {lineCursor.snap.type === 'line' && <path className="drawing-line-cursor-line" d="M 0 -6 L 6 5 L -6 5 Z" />}
                 {lineCursor.snap.type === 'alignment' && <rect className="drawing-line-cursor-alignment" x="-5" y="-5" width="10" height="10" />}
+                {lineCursor.snap.type === 'perpendicular' && <text className="drawing-line-cursor-perpendicular" x="0" y="4">⟂</text>}
               </g>
               </g>
             )}

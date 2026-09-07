@@ -4,6 +4,7 @@ import type { AffineTransform, CoordinatePoint } from './drawingTransform';
 export const DRAWING_ENDPOINT_INFERENCE_TOLERANCE_PX = 9;
 export const DRAWING_LINE_INFERENCE_TOLERANCE_PX = 8;
 export const DRAWING_ALIGNMENT_INFERENCE_TOLERANCE_PX = 8;
+export const DRAWING_PERPENDICULAR_INFERENCE_TOLERANCE_PX = 8;
 
 export type DrawingModelBounds = Readonly<{ x: number; y: number; width: number; height: number }>;
 export type DrawingReferencePoint = Readonly<{ id: string; entityId: string; point: DrawingPoint }>;
@@ -11,6 +12,11 @@ export type DrawingReferencePoint = Readonly<{ id: string; entityId: string; poi
 export type DrawingInference = Readonly<{
   type: 'none';
   screenDistance: null;
+}> | Readonly<{
+  type: 'perpendicular';
+  entityId: string;
+  candidatePoint: DrawingPoint;
+  screenDistance: number;
 }> | Readonly<{
   type: 'endpoint';
   entityId: string;
@@ -43,6 +49,7 @@ export type DrawingInferenceCandidates = Readonly<{
   lines: ReadonlyArray<Extract<DrawingInference, { type: 'line' }>>;
   alignmentsX: ReadonlyArray<Extract<DrawingInference, { type: 'alignment-x' }>>;
   alignmentsY: ReadonlyArray<Extract<DrawingInference, { type: 'alignment-y' }>>;
+  perpendiculars: ReadonlyArray<Extract<DrawingInference, { type: 'perpendicular' }>>;
 }>;
 
 const toScreenPoint = (point: CoordinatePoint, transform: AffineTransform): CoordinatePoint => ({
@@ -93,6 +100,7 @@ export const collectDrawingInferenceCandidates = (
   lines: ReadonlyArray<ResolvedDrawingLine>,
   drawingToClientTransform: AffineTransform,
   visibleBounds?: DrawingModelBounds,
+  activeLineStart?: DrawingPoint | null,
 ): DrawingInferenceCandidates => {
   const endpoints: Array<Extract<DrawingInference, { type: 'endpoint' }>> = [];
   for (const line of lines) {
@@ -121,6 +129,19 @@ export const collectDrawingInferenceCandidates = (
   }
   const alignmentsX: Array<Extract<DrawingInference, { type: 'alignment-x' }>> = [];
   const alignmentsY: Array<Extract<DrawingInference, { type: 'alignment-y' }>> = [];
+  const perpendiculars: Array<Extract<DrawingInference, { type: 'perpendicular' }>> = [];
+  if (activeLineStart) for (const line of lines) {
+    const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y, length = Math.hypot(dx, dy);
+    if (length <= 1e-9) continue;
+    const nx = -dy / length, ny = dx / length;
+    const pointerModel = clientToModelPointForInference(pointerClientPoint, drawingToClientTransform);
+    if (!pointerModel) continue;
+    const radial = (pointerModel.x - activeLineStart.x) * nx + (pointerModel.y - activeLineStart.y) * ny;
+    if (Math.abs(radial) <= 1e-9) continue;
+    const candidatePoint = { x: activeLineStart.x + radial * nx, y: activeLineStart.y + radial * ny };
+    const screen = toScreenPoint(candidatePoint, drawingToClientTransform);
+    perpendiculars.push({ type: 'perpendicular', entityId: line.id, candidatePoint, screenDistance: Math.hypot(pointerClientPoint.x - screen.x, pointerClientPoint.y - screen.y) });
+  }
   if (visibleBounds) {
     for (const reference of collectDrawingReferencePoints(lines).filter(({ point }) => isPointInDrawingBounds(point, visibleBounds))) {
       const xScreen = toScreenPoint({ x: reference.point.x, y: 0 }, drawingToClientTransform);
@@ -139,6 +160,7 @@ export const collectDrawingInferenceCandidates = (
     lines: lineCandidates.sort((a, b) => a.screenDistance - b.screenDistance),
     alignmentsX: alignmentsX.sort(stableSort),
     alignmentsY: alignmentsY.sort(stableSort),
+    perpendiculars: perpendiculars.sort((a, b) => a.screenDistance - b.screenDistance || a.entityId.localeCompare(b.entityId)),
   };
 };
 

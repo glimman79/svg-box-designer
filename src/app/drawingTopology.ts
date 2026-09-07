@@ -48,8 +48,9 @@ export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTop
       const line = sketch.entities[reference.entityId]; if (!line || (reference.kind === 'point' && !sketch.points[pointIdForLineEndpoint(line, reference.point)])) errors.push(`Dimension reference cannot resolve: ${dimension.id}`);
     }
     for (const constraint of Object.values(sketch.geometricConstraints ?? {})) {
-      const expectedReferences = constraint.kind === 'PARALLEL' ? 2 : 1;
-      if (constraint.references.length !== expectedReferences || constraint.references.some(({ entityId }) => !sketch.entities[entityId])) errors.push(`Geometric constraint reference cannot resolve: ${constraint.id}`);
+      const expectedReferences = constraint.kind === 'PARALLEL' || constraint.kind === 'PERPENDICULAR' ? 2 : 1;
+      if (constraint.references.length !== expectedReferences || constraint.references.some(({ entityId }) => !sketch.entities[entityId])
+        || expectedReferences === 2 && constraint.references[0]?.entityId === constraint.references[1]?.entityId) errors.push(`Geometric constraint reference cannot resolve: ${constraint.id}`);
     }
     const referenced = new Set(Object.values(sketch.entities).flatMap((line) => [line.startPointId, line.endPointId]));
     for (const id of Object.keys(sketch.points)) if (!referenced.has(id)) errors.push(`Orphan point: ${id}`);
