@@ -7,9 +7,13 @@ export const DRAWING_LINE_SNAP_ACQUIRE_PX = 8;
 export const DRAWING_LINE_SNAP_RELEASE_PX = 11;
 export const DRAWING_ALIGNMENT_SNAP_ACQUIRE_PX = 8;
 export const DRAWING_ALIGNMENT_SNAP_RELEASE_PX = 11;
+export const DRAWING_PERPENDICULAR_SNAP_ACQUIRE_PX = 8;
+export const DRAWING_PERPENDICULAR_SNAP_RELEASE_PX = 11;
 
 export type DrawingSnap = Readonly<{
   type: 'none'; active: false; effectivePoint: DrawingPoint; screenDistance: null;
+}> | Readonly<{
+  type: 'perpendicular'; active: true; effectivePoint: DrawingPoint; entityId: string; screenDistance: number;
 }> | Readonly<{
   type: 'endpoint'; active: true; effectivePoint: DrawingPoint; entityId: string;
   endpoint: 'start' | 'end'; screenDistance: number;
@@ -27,6 +31,7 @@ export type DrawingInferenceCandidates = Readonly<{
   lines: ReadonlyArray<Extract<DrawingInference, { type: 'line' }>>;
   alignmentsX: ReadonlyArray<Extract<DrawingInference, { type: 'alignment-x' }>>;
   alignmentsY: ReadonlyArray<Extract<DrawingInference, { type: 'alignment-y' }>>;
+  perpendiculars: ReadonlyArray<Extract<DrawingInference, { type: 'perpendicular' }>>;
 }>;
 
 const sameCandidate = (candidate: DrawingInference, previous: DrawingSnap) => candidate.type === previous.type
@@ -38,7 +43,9 @@ const fromCandidate = (candidate: Exclude<DrawingInference, { type: 'none' }>): 
   ? { active: true, type: 'endpoint', effectivePoint: candidate.candidatePoint, entityId: candidate.entityId, endpoint: candidate.endpoint, screenDistance: candidate.screenDistance }
   : candidate.type === 'line'
     ? { active: true, type: 'line', effectivePoint: candidate.candidatePoint, entityId: candidate.entityId, segmentParameter: candidate.segmentParameter, screenDistance: candidate.screenDistance }
-    : { active: true, type: 'alignment', effectivePoint: candidate.candidatePoint, screenDistance: candidate.screenDistance, xReference: candidate.type === 'alignment-x' ? candidate : null, yReference: candidate.type === 'alignment-y' ? candidate : null };
+    : candidate.type === 'perpendicular'
+      ? { active: true, type: 'perpendicular', effectivePoint: candidate.candidatePoint, entityId: candidate.entityId, screenDistance: candidate.screenDistance }
+      : { active: true, type: 'alignment', effectivePoint: candidate.candidatePoint, screenDistance: candidate.screenDistance, xReference: candidate.type === 'alignment-x' ? candidate : null, yReference: candidate.type === 'alignment-y' ? candidate : null };
 
 /** Pure Drawing-wide spatial snap arbitration. Tool-specific inference does not belong here. */
 export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOverride }: {
@@ -57,13 +64,15 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
     && previousSnap?.type === 'line') return fromCandidate(endpoint);
 
   if (previousSnap?.active) {
-    const candidate = (previousSnap.type === 'endpoint' ? candidates.endpoints : previousSnap.type === 'line' ? candidates.lines : [])
+    const candidate = (previousSnap.type === 'endpoint' ? candidates.endpoints : previousSnap.type === 'line' ? candidates.lines : previousSnap.type === 'perpendicular' ? candidates.perpendiculars : [])
       .find((item) => sameCandidate(item, previousSnap));
-    const release = previousSnap.type === 'endpoint' ? DRAWING_ENDPOINT_SNAP_RELEASE_PX : DRAWING_LINE_SNAP_RELEASE_PX;
+    const release = previousSnap.type === 'endpoint' ? DRAWING_ENDPOINT_SNAP_RELEASE_PX : previousSnap.type === 'perpendicular' ? DRAWING_PERPENDICULAR_SNAP_RELEASE_PX : DRAWING_LINE_SNAP_RELEASE_PX;
     if (candidate && sameCandidate(candidate, previousSnap) && candidate.screenDistance <= release) return fromCandidate(candidate);
   }
   if (endpoint && endpoint.screenDistance <= DRAWING_ENDPOINT_SNAP_ACQUIRE_PX) return fromCandidate(endpoint);
   if (line && line.screenDistance <= DRAWING_LINE_SNAP_ACQUIRE_PX) return fromCandidate(line);
+  const perpendicular = candidates.perpendiculars[0];
+  if (perpendicular && perpendicular.screenDistance <= DRAWING_PERPENDICULAR_SNAP_ACQUIRE_PX) return fromCandidate(perpendicular);
   const retained = previousSnap?.type === 'alignment' ? previousSnap : null;
   const chooseAxis = <T extends Extract<DrawingInference, { type: 'alignment-x' | 'alignment-y' }>>(items: ReadonlyArray<T>, old: T | null): T | null => {
     const held = old && items.find((item) => item.referenceId === old.referenceId);

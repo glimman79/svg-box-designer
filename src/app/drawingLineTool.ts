@@ -55,6 +55,7 @@ export type LineToolInteraction = Readonly<{
   effectivePreviewPoint: DrawingPoint | null;
   snapActive: boolean;
   snappedAngleDegrees: number | null;
+  perpendicularLineId: string | null;
 }>;
 
 export const EMPTY_LINE_INTERACTION: LineToolInteraction = {
@@ -64,15 +65,17 @@ export const EMPTY_LINE_INTERACTION: LineToolInteraction = {
   effectivePreviewPoint: null,
   snapActive: false,
   snappedAngleDegrees: null,
+  perpendicularLineId: null,
 };
 
 export const updateLinePreview = (interaction: LineToolInteraction, pointer: DrawingPoint): LineToolInteraction => (
-  interaction.start ? { ...interaction, ...resolveLinePreviewPoint(interaction.start, pointer) } : interaction
+  interaction.start ? { ...interaction, ...resolveLinePreviewPoint(interaction.start, pointer), perpendicularLineId: null } : interaction
 );
 
 type LineSpatialSnap = Readonly<{
   active: boolean;
-  type: 'none' | 'endpoint' | 'line' | 'alignment';
+  type: 'none' | 'endpoint' | 'line' | 'alignment' | 'perpendicular';
+  entityId?: string;
   effectivePoint: DrawingPoint;
   xReference?: Readonly<{ candidatePoint: DrawingPoint; screenDistance: number }> | null;
   yReference?: Readonly<{ candidatePoint: DrawingPoint; screenDistance: number }> | null;
@@ -140,6 +143,11 @@ export const resolveLineEffectivePoint = (
 ): LineEffectivePointResolution => {
   if (!interaction.start) return { effectivePoint: spatialSnap.effectivePoint, interaction };
 
+  if (spatialSnap.type === 'perpendicular') return {
+    effectivePoint: spatialSnap.effectivePoint,
+    interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snapActive: true, snappedAngleDegrees: null, perpendicularLineId: spatialSnap.entityId ?? null },
+  };
+
   if (spatialSnap.type === 'endpoint' || spatialSnap.type === 'line') {
     const spatialAngle = resolveLinePreviewPoint(interaction.start, spatialSnap.effectivePoint);
     const direction = spatialAngle.snappedAngleDegrees === null ? null : directionAt(spatialAngle.snappedAngleDegrees);
@@ -150,6 +158,7 @@ export const resolveLineEffectivePoint = (
       effectivePreviewPoint: spatialSnap.effectivePoint,
       snapActive: angularExact,
       snappedAngleDegrees: angularExact ? spatialAngle.snappedAngleDegrees : null,
+      perpendicularLineId: null,
     };
     return { effectivePoint: spatialSnap.effectivePoint, interaction: nextInteraction };
   }
@@ -157,7 +166,7 @@ export const resolveLineEffectivePoint = (
   const angular = resolveLinePreviewPoint(interaction.start, rawPointerPoint);
   if (!angular.snapActive || angular.snappedAngleDegrees === null) {
     const effectivePoint = spatialSnap.active ? spatialSnap.effectivePoint : rawPointerPoint;
-    return { effectivePoint, interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snapActive: false, snappedAngleDegrees: null } };
+    return { effectivePoint, interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snapActive: false, snappedAngleDegrees: null, perpendicularLineId: null } };
   }
   const direction = directionAt(angular.snappedAngleDegrees);
   const radialDistance = Math.hypot(rawPointerPoint.x - interaction.start.x, rawPointerPoint.y - interaction.start.y);
@@ -170,7 +179,7 @@ export const resolveLineEffectivePoint = (
     : angularPoint;
   return {
     effectivePoint,
-    interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snapActive: true, snappedAngleDegrees: angular.snappedAngleDegrees },
+    interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snapActive: true, snappedAngleDegrees: angular.snappedAngleDegrees, perpendicularLineId: null },
   };
 };
 
@@ -189,6 +198,7 @@ export const updateLinePreviewAtSpatialPoint = (interaction: LineToolInteraction
     effectivePreviewPoint,
     snapActive: compatible,
     snappedAngleDegrees: compatible ? effectiveInference.snappedAngleDegrees : null,
+    perpendicularLineId: null,
   };
 };
 
@@ -242,6 +252,7 @@ export const appendEntityToActiveSketch = (
   entity: DrawingLineDraft,
   createPointId: () => string = () => `point-${crypto.randomUUID()}`,
   automaticConstraintKind: 'HORIZONTAL' | 'VERTICAL' | null = null,
+  perpendicularLineId: string | null = null,
 ): DrawingDocumentV2 => {
   const activeSketch = document.sketches[document.activeSketchId];
   if (!activeSketch || activeSketch.entities[entity.id]) return document;
@@ -254,6 +265,14 @@ export const appendEntityToActiveSketch = (
   const automaticConstraint: DrawingGeometricConstraint | null = constraintId && !duplicate
     ? { id: constraintId, kind: automaticConstraintKind!, references: [{ kind: 'entity', entityId: entity.id }] }
     : null;
+  const pair = perpendicularLineId && activeSketch.entities[perpendicularLineId] ? [entity.id, perpendicularLineId].sort() : null;
+  const perpendicularId = pair ? `perpendicular:${pair[0]}:${pair[1]}` : null;
+  const perpendicularDuplicate = pair && Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'PERPENDICULAR'
+    && constraint.references.map(({ entityId }) => entityId).sort().join(':') === pair.join(':'));
+  const perpendicularConstraint: DrawingGeometricConstraint | null = perpendicularId && pair && !perpendicularDuplicate
+    ? { id: perpendicularId, kind: 'PERPENDICULAR', references: pair.map((entityId) => ({ kind: 'entity' as const, entityId })) as [{ kind: 'entity'; entityId: string }, { kind: 'entity'; entityId: string }] }
+    : null;
+  const addedConstraints = [automaticConstraint, perpendicularConstraint].filter(Boolean) as DrawingGeometricConstraint[];
   return {
     ...document,
     sketches: {
@@ -267,8 +286,8 @@ export const appendEntityToActiveSketch = (
         },
         entities: { ...activeSketch.entities, [entity.id]: line },
         entityOrder: [...activeSketch.entityOrder, entity.id],
-        geometricConstraints: automaticConstraint ? { ...(activeSketch.geometricConstraints ?? {}), [automaticConstraint.id]: automaticConstraint } : activeSketch.geometricConstraints,
-        geometricConstraintOrder: automaticConstraint ? [...(activeSketch.geometricConstraintOrder ?? []), automaticConstraint.id] : activeSketch.geometricConstraintOrder,
+        geometricConstraints: addedConstraints.length ? { ...(activeSketch.geometricConstraints ?? {}), ...Object.fromEntries(addedConstraints.map((constraint) => [constraint.id, constraint])) } : activeSketch.geometricConstraints,
+        geometricConstraintOrder: addedConstraints.length ? [...(activeSketch.geometricConstraintOrder ?? []), ...addedConstraints.map(({ id }) => id)] : activeSketch.geometricConstraintOrder,
       },
     },
   };

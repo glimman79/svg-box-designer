@@ -920,6 +920,13 @@ button:disabled {
   stroke-width: 1.8;
 }
 
+.drawing-line-cursor-perpendicular {
+  fill: var(--drawing-geometric-constraint);
+  font-size: 12px;
+  font-weight: 400;
+  text-anchor: middle;
+}
+
 .drawing-line-cursor-alignment {
   fill: none;
 }

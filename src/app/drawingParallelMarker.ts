@@ -64,7 +64,7 @@ export const deriveGeometricConstraintMarkers = (sketch: DrawingSketchV2, pixels
         id: `${constraint.id}:${index}`,
         constraintId: constraint.id,
         lineId: entityId,
-        label: constraint.kind === 'PARALLEL' ? '∥' : constraint.kind === 'HORIZONTAL' ? 'H' : 'V',
+        label: constraint.kind === 'PARALLEL' ? '∥' : constraint.kind === 'PERPENDICULAR' ? '⟂' : constraint.kind === 'HORIZONTAL' ? 'H' : 'V',
     })));
   return layoutLineConstraintMarkers(sketch, candidates, pixelsPerModelUnit);
 };
