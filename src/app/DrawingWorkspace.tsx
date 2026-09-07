@@ -50,6 +50,7 @@ type CadCursorPresentation = Readonly<{
   snap: DrawingSnap;
   xGuideReference: CoordinatePoint | null;
   yGuideReference: CoordinatePoint | null;
+  perpendicularActive: boolean;
 }> | null;
 type GeometryDragSession = Readonly<{
   pointerId: number; target: DrawingGeometryTarget; startClient: CoordinatePoint; startModel: DrawingPoint;
@@ -64,6 +65,11 @@ type DrawingPlacementResolution = Readonly<{
   effectivePoint: DrawingPoint;
   spatialSnap: DrawingSnap;
   interaction: LineToolInteraction;
+  position: Readonly<{ kind: 'endpoint'; point: DrawingPoint; pointId: string; entityId: string; endpoint: 'start' | 'end' }>
+    | Readonly<{ kind: 'line-body'; point: DrawingPoint; entityId: string; segmentParameter: number }>
+    | Readonly<{ kind: 'construction'; point: DrawingPoint }>
+    | Readonly<{ kind: 'raw'; point: DrawingPoint }>;
+  ctrlActive: boolean;
 }>;
 
 export const initialDrawingViewBox: DrawingViewBox = { x: -400, y: -300, width: 800, height: 600 };
@@ -224,7 +230,7 @@ export function DrawingWorkspace({
       : null;
     const previousChainedAxisKind = previousChainedAxisConstraint?.kind === 'HORIZONTAL' || previousChainedAxisConstraint?.kind === 'VERTICAL'
       ? previousChainedAxisConstraint.kind : null;
-    const lineResolution = resolveLineEffectivePoint(interaction, rawPoint, snap, previousChainedAxisKind);
+    const lineResolution = resolveLineEffectivePoint(interaction, rawPoint, snap, previousChainedAxisKind, ctrlHeld);
     const placementPoint = lineResolution.effectivePoint;
     const nextInteraction = lineResolution.interaction;
     const anchor = modelToOverlayPoint(placementPoint, drawingTransform, overlayTransform);
@@ -232,12 +238,25 @@ export function DrawingWorkspace({
     drawingSnapRef.current = snap;
     setLineInteraction(nextInteraction);
     lineInteractionRef.current = nextInteraction;
-    const xGuideReference = snap.type === 'alignment' && snap.xReference
-      ? modelToOverlayPoint(snap.xReference.candidatePoint, drawingTransform, overlayTransform) : null;
-    const yGuideReference = snap.type === 'alignment' && snap.yReference
-      ? modelToOverlayPoint(snap.yReference.candidatePoint, drawingTransform, overlayTransform) : null;
-    setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference } : null);
-    return { rawPoint, effectivePoint: placementPoint, spatialSnap: snap, interaction: nextInteraction };
+    const xInference = snap.channels.xAlignment;
+    const yInference = snap.channels.yAlignment;
+    // Visual truth: only channels exactly satisfied by the authoritative point render.
+    const xGuideReference = xInference && placementPoint.x === xInference.candidatePoint.x
+      ? modelToOverlayPoint(xInference.candidatePoint, drawingTransform, overlayTransform) : null;
+    const yGuideReference = yInference && placementPoint.y === yInference.candidatePoint.y
+      ? modelToOverlayPoint(yInference.candidatePoint, drawingTransform, overlayTransform) : null;
+    setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference,
+      perpendicularActive: snap.type === 'perpendicular' || nextInteraction.perpendicularLineId !== null } : null);
+    const endpointPointId = snap.type === 'endpoint' && activeSketch
+      ? pointIdForLineEndpoint(activeSketch.entities[snap.entityId], snap.endpoint) : null;
+    const position: DrawingPlacementResolution['position'] = ctrlHeld
+      ? { kind: 'raw', point: rawPoint }
+      : snap.type === 'endpoint' && endpointPointId
+        ? { kind: 'endpoint', point: snap.effectivePoint, pointId: endpointPointId, entityId: snap.entityId, endpoint: snap.endpoint }
+        : snap.type === 'line'
+          ? { kind: 'line-body', point: placementPoint, entityId: snap.entityId, segmentParameter: snap.segmentParameter }
+          : snap.active || nextInteraction.snapActive ? { kind: 'construction', point: placementPoint } : { kind: 'raw', point: rawPoint };
+    return { rawPoint, effectivePoint: placementPoint, spatialSnap: snap, interaction: nextInteraction, position, ctrlActive: ctrlHeld };
   };
   activeToolRef.current = activeTool;
   resolvePlacementRef.current = resolvePlacement;
@@ -248,7 +267,7 @@ export function DrawingWorkspace({
     // click, not mutable hover state observed during the delay.
     const acceptedConstraintKind = automaticAxisConstraintKind(acceptedInteraction);
     const acceptedPerpendicularLineId = acceptedInteraction.perpendicularLineId;
-    const result = applyResolvedLineClick(lineInteractionRef.current, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`, pointId);
+    const result = applyResolvedLineClick(acceptedInteraction, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`, pointId);
     setLineInteraction(result.interaction);
     lineInteractionRef.current = result.interaction;
     if (result.entity) {
@@ -422,9 +441,8 @@ export function DrawingWorkspace({
       // Resolve synchronously at acceptance time. The delayed commit owns this immutable point.
       const placement = resolvePlacement({ x: event.clientX, y: event.clientY }, event.ctrlKey || ctrlSnapOverride);
       if (!placement) return;
-      const effectivePoint = placement.effectivePoint;
-      const endpointPointId = placement.spatialSnap.type === 'endpoint' && activeSketch
-        ? pointIdForLineEndpoint(activeSketch.entities[placement.spatialSnap.entityId], placement.spatialSnap.endpoint) : null;
+      const effectivePoint = placement.position.point;
+      const endpointPointId = placement.position.kind === 'endpoint' ? placement.position.pointId : null;
       if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current);
       pendingLineClickRef.current = window.setTimeout(() => {
         pendingLineClickRef.current = null;
@@ -864,8 +882,8 @@ export function DrawingWorkspace({
             {overlayGeometry && overlayGeometry.origin.x >= 0 && overlayGeometry.origin.x <= viewport.width && <text className="drawing-axis-letter drawing-y-indicator" x={overlayGeometry.yIndicatorAnchor.x + 7} y={overlayGeometry.yIndicatorAnchor.y + 15}>Y</text>}
             {activeTool === 'line' && lineCursor && (
               <g className="drawing-alignment-presentation" aria-hidden="true">
-                {lineCursor.snap.type === 'alignment' && lineCursor.xGuideReference && <line className="drawing-alignment-guide" data-axis="x" x1={lineCursor.xGuideReference.x} y1={lineCursor.xGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
-                {lineCursor.snap.type === 'alignment' && lineCursor.yGuideReference && <line className="drawing-alignment-guide" data-axis="y" x1={lineCursor.yGuideReference.x} y1={lineCursor.yGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
+                {lineCursor.xGuideReference && <line className="drawing-alignment-guide" data-axis="x" x1={lineCursor.xGuideReference.x} y1={lineCursor.xGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
+                {lineCursor.yGuideReference && <line className="drawing-alignment-guide" data-axis="y" x1={lineCursor.yGuideReference.x} y1={lineCursor.yGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
               <g className="drawing-line-cursor drawing-cad-cursor" data-inference={lineCursor.snap.type} transform={`translate(${lineCursor.anchor.x} ${lineCursor.anchor.y})`} aria-hidden="true">
                 <line className="drawing-line-cursor-arm" data-arm="left" x1="-22" y1="0" x2="-7" y2="0" />
                 <line className="drawing-line-cursor-arm" data-arm="right" x1="7" y1="0" x2="22" y2="0" />
@@ -876,6 +894,7 @@ export function DrawingWorkspace({
                 {lineCursor.snap.type === 'line' && <path className="drawing-line-cursor-line" d="M 0 -6 L 6 5 L -6 5 Z" />}
                 {lineCursor.snap.type === 'alignment' && <rect className="drawing-line-cursor-alignment" x="-5" y="-5" width="10" height="10" />}
                 {lineCursor.snap.type === 'perpendicular' && <path className="drawing-line-cursor-perpendicular" d="M -5 5 L -5 -5 L 5 -5" />}
+                {lineCursor.snap.type !== 'perpendicular' && lineCursor.perpendicularActive && <path className="drawing-line-cursor-perpendicular" d="M -5 5 L -5 -5 L 5 -5" />}
               </g>
               </g>
             )}
