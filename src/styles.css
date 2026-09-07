@@ -921,10 +921,9 @@ button:disabled {
 }
 
 .drawing-line-cursor-perpendicular {
-  fill: var(--drawing-geometric-constraint);
-  font-size: 12px;
-  font-weight: 400;
-  text-anchor: middle;
+  fill: none;
+  stroke: var(--drawing-geometric-constraint);
+  stroke-width: 1.4px;
 }
 
 .drawing-line-cursor-alignment {
@@ -1452,6 +1451,10 @@ button:disabled {
 .drawing-geometric-constraint-marker.is-hovered text { fill: var(--drawing-hover); }
 .drawing-geometric-constraint-marker.is-selected text { fill: var(--drawing-dimension-active); }
 .drawing-geometric-constraint-marker-hit { fill: transparent; stroke: none; pointer-events: all; }
+.drawing-right-angle-marker-shape { fill: none; stroke: var(--drawing-geometric-constraint); stroke-width: 1.25px; vector-effect: non-scaling-stroke; pointer-events: none; }
+.drawing-right-angle-marker.is-hovered .drawing-right-angle-marker-shape { stroke: var(--drawing-hover); }
+.drawing-right-angle-marker.is-selected .drawing-right-angle-marker-shape { stroke: var(--drawing-dimension-active); }
+.drawing-right-angle-marker-hit { fill: none; stroke: transparent; stroke-width: 12px; vector-effect: non-scaling-stroke; pointer-events: stroke; }
 .drawing-dimension.is-hovered { color: var(--drawing-dimension-hover); }
 .drawing-dimension.is-selected, .drawing-dimension.is-editing, .drawing-dimension.is-dragging { color: var(--drawing-dimension-active); }
 .drawing-dimension.is-preview { opacity: 0.7; pointer-events: none; }

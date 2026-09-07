@@ -17,7 +17,7 @@ import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, un
 import { pointIdForLineEndpoint, resolveLine } from './drawingTopology.js';
 import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
-import { deleteGeometricConstraint, deriveParallelMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
+import { deleteGeometricConstraint, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -650,6 +650,7 @@ export function DrawingWorkspace({
 
   const pixelsPerMm = viewport.width / viewBox.width;
   const parallelMarkers = activeSketch ? deriveParallelMarkers(activeSketch, pixelsPerMm) : [];
+  const rightAngleMarkers = activeSketch ? deriveRightAngleMarkers(activeSketch, pixelsPerMm) : [];
   const labelInterval = getAxisLabelInterval(gridSpacing, pixelsPerMm);
   const xLabelValues = getVisibleAxisValues(viewBox.x, viewBox.x + viewBox.width, labelInterval);
   const yLabelValues = getVisibleAxisValues(viewBox.y, viewBox.y + viewBox.height, labelInterval);
@@ -735,6 +736,18 @@ export function DrawingWorkspace({
                   onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry(null); }}>
                   <circle className="drawing-geometric-constraint-marker-hit drawing-interactive-hit" cx={marker.x} cy={marker.y} r={9 / pixelsPerMm} />
                   <text x={marker.x} y={marker.y} textAnchor="middle" dominantBaseline="central" style={{ fontSize: GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX / pixelsPerMm }}>{marker.label}</text>
+                </g>;
+              })}
+              {rightAngleMarkers.map((marker) => {
+                const selected = marker.constraintId === selectedGeometricConstraintId;
+                const hovered = marker.constraintId === hoveredGeometricConstraintId;
+                const path = `M ${marker.p1.x} ${marker.p1.y} L ${marker.p2.x} ${marker.p2.y} L ${marker.p3.x} ${marker.p3.y}`;
+                return <g key={marker.id} className={`drawing-geometric-constraint-marker drawing-right-angle-marker${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}`} data-constraint-id={marker.constraintId}
+                  onPointerEnter={() => setHoveredGeometricConstraintId(marker.constraintId)}
+                  onPointerLeave={() => setHoveredGeometricConstraintId((current) => current === marker.constraintId ? null : current)}
+                  onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry(null); }}>
+                  <path className="drawing-right-angle-marker-hit drawing-interactive-hit" d={path} />
+                  <path className="drawing-right-angle-marker-shape" d={path} />
                 </g>;
               })}
             </g>
@@ -829,7 +842,7 @@ export function DrawingWorkspace({
                 {lineCursor.snap.type === 'endpoint' && <circle className="drawing-line-cursor-endpoint" cx="0" cy="0" r="5.5" />}
                 {lineCursor.snap.type === 'line' && <path className="drawing-line-cursor-line" d="M 0 -6 L 6 5 L -6 5 Z" />}
                 {lineCursor.snap.type === 'alignment' && <rect className="drawing-line-cursor-alignment" x="-5" y="-5" width="10" height="10" />}
-                {lineCursor.snap.type === 'perpendicular' && <text className="drawing-line-cursor-perpendicular" x="0" y="4">⟂</text>}
+                {lineCursor.snap.type === 'perpendicular' && <path className="drawing-line-cursor-perpendicular" d="M -5 5 L -5 -5 L 5 -5" />}
               </g>
               </g>
             )}

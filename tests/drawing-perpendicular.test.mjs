@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/drawing-perpendicular/drawingTypes.js';
-import { appendEntityToActiveSketch } from '../.test-build/drawing-perpendicular/drawingLineTool.js';
+import { appendEntityToActiveSketch, automaticAxisConstraintKind, EMPTY_LINE_INTERACTION, resolveLineEffectivePoint } from '../.test-build/drawing-perpendicular/drawingLineTool.js';
 import { perpendicularAndGradient } from '../.test-build/drawing-perpendicular/drawingConstraintAnalysis.js';
 import { solveDrawingComponentDrag, verifyDrawingConstraints } from '../.test-build/drawing-perpendicular/drawingConstraintSolver.js';
-import { deriveGeometricConstraintMarkers, GEOMETRIC_CONSTRAINT_MARKER_OFFSET_PX, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, GEOMETRIC_CONSTRAINT_MARKER_SPACING_PX } from '../.test-build/drawing-perpendicular/drawingParallelMarker.js';
+import { deriveGeometricConstraintMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_OFFSET_PX, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, GEOMETRIC_CONSTRAINT_MARKER_SPACING_PX, RIGHT_ANGLE_MARKER_SIZE_PX } from '../.test-build/drawing-perpendicular/drawingParallelMarker.js';
 import { collectDrawingInferenceCandidates } from '../.test-build/drawing-perpendicular/drawingInference.js';
 import { resolveDrawingSnap } from '../.test-build/drawing-perpendicular/drawingSnapEngine.js';
 
@@ -47,14 +48,66 @@ test('solver preserves direction-only perpendicular relation while translation, 
   assert.notEqual(Math.hypot(solved.points['b-p1'].x - solved.points['a-p1'].x, solved.points['b-p1'].y - solved.points['a-p1'].y), beforeDistance);
 });
 
-test('one semantic relationship derives two globally slotted markers', () => {
+test('H/V intent is exclusive and has priority over a simultaneous perpendicular candidate in every axis direction', () => {
+  for (const end of [{ x: 20, y: 0 }, { x: -20, y: 0 }, { x: 0, y: 20 }, { x: 0, y: -20 }]) {
+    const interaction = { ...EMPTY_LINE_INTERACTION, start: { x: 0, y: 0 } };
+    const resolution = resolveLineEffectivePoint(interaction, end, { active: true, type: 'perpendicular', entityId: 'existing', effectivePoint: end });
+    const axis = automaticAxisConstraintKind(resolution.interaction);
+    assert.ok(axis === 'HORIZONTAL' || axis === 'VERTICAL');
+    assert.equal(resolution.interaction.perpendicularLineId, null);
+    let document = add(createDrawingDocumentV2(), line('existing', { x: 0, y: 0 }, { x: 10, y: 10 }));
+    document = add(document, line('new', { x: 0, y: 0 }, resolution.effectivePoint), 'existing', axis);
+    assert.deepEqual(Object.values(document.sketches['sketch-1'].geometricConstraints).map(({ kind }) => kind), [axis]);
+  }
+});
+
+test('horizontal/vertical corner creation is order-independent and never adds redundant perpendicular', () => {
+  for (const [firstAxis, secondAxis, firstEnd, secondEnd] of [
+    ['VERTICAL', 'HORIZONTAL', { x: 0, y: 20 }, { x: 20, y: 20 }],
+    ['HORIZONTAL', 'VERTICAL', { x: -20, y: 0 }, { x: -20, y: -20 }],
+  ]) {
+    let document = add(createDrawingDocumentV2(), { ...line('first', { x: 0, y: 0 }, firstEnd), endPointId: 'joint' }, null, firstAxis);
+    document = add(document, { ...line('second', firstEnd, secondEnd), startPointId: 'joint' }, 'first', secondAxis);
+    assert.deepEqual(Object.values(document.sketches['sketch-1'].geometricConstraints).map(({ kind }) => kind), [firstAxis, secondAxis]);
+  }
+});
+
+test('one semantic relationship derives one screen-stable geometric right-angle marker and no glyph markers', () => {
   let document = add(createDrawingDocumentV2(), line('a', { x: 0, y: 0 }, { x: 20, y: 0 }), null, 'HORIZONTAL');
-  document = add(document, line('b', { x: 30, y: 0 }, { x: 30, y: 20 }), 'a');
+  document = add(document, { ...line('b', { x: 0, y: 0 }, { x: 0, y: 20 }), startPointId: 'a-p1' }, 'a');
   const markers = deriveGeometricConstraintMarkers(document.sketches['sketch-1']);
-  assert.equal(markers.filter(({ label }) => label === '⟂').length, 2);
-  assert.equal(new Set(markers.map(({ id }) => id)).size, 3);
-  assert.equal(new Set(markers.map(({ x, y }) => `${x}:${y}`)).size, 3);
+  assert.deepEqual(markers.map(({ label }) => label), ['H']);
+  const [corner] = deriveRightAngleMarkers(document.sketches['sketch-1'], 2);
+  assert.equal(deriveRightAngleMarkers(document.sketches['sketch-1'], 2).length, 1);
+  assert.deepEqual(corner.corner, document.sketches['sketch-1'].points['a-p1']);
+  assert.equal(Math.hypot(corner.p1.x - corner.corner.x, corner.p1.y - corner.corner.y) * 2, RIGHT_ANGLE_MARKER_SIZE_PX);
+  assert.equal(Math.hypot(corner.p3.x - corner.corner.x, corner.p3.y - corner.corner.y) * 2, RIGHT_ANGLE_MARKER_SIZE_PX);
   assert.deepEqual([GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, GEOMETRIC_CONSTRAINT_MARKER_OFFSET_PX, GEOMETRIC_CONSTRAINT_MARKER_SPACING_PX], [12, 12, 22]);
+});
+
+test('right-angle marker follows shared endpoint for reversed arbitrary rotated lines and supports intersection fallback', () => {
+  const root = Math.SQRT1_2;
+  let document = add(createDrawingDocumentV2(), { ...line('z', { x: 10 - 20 * root, y: 10 - 20 * root }, { x: 10, y: 10 }), endPointId: 'joint' });
+  document = add(document, { ...line('a', { x: 10 - 20 * root, y: 10 + 20 * root }, { x: 10, y: 10 }), endPointId: 'joint' }, 'z');
+  const [marker] = deriveRightAngleMarkers(document.sketches['sketch-1']);
+  assert.equal(marker.corner.id, 'joint');
+  const u = { x: marker.p1.x - marker.corner.x, y: marker.p1.y - marker.corner.y };
+  const v = { x: marker.p3.x - marker.corner.x, y: marker.p3.y - marker.corner.y };
+  assert.ok(Math.abs(u.x * v.x + u.y * v.y) < 1e-10);
+
+  let separate = add(createDrawingDocumentV2(), line('x', { x: 0, y: 0 }, { x: 10, y: 0 }));
+  separate = add(separate, line('y', { x: 5, y: 5 }, { x: 5, y: 15 }), 'x');
+  assert.deepEqual(deriveRightAngleMarkers(separate.sketches['sketch-1'])[0].corner, { x: 5, y: 0 });
+});
+
+test('workspace renders geometric paths with blue styling and contains no perpendicular text glyph', () => {
+  const workspace = readFileSync(new URL('../src/app/DrawingWorkspace.tsx', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(workspace, /⟂/);
+  assert.match(workspace, /drawing-right-angle-marker-hit/);
+  assert.match(workspace, /drawing-right-angle-marker-shape/);
+  assert.match(css, /\.drawing-right-angle-marker-shape \{[^}]*stroke: var\(--drawing-geometric-constraint\)/);
+  assert.match(css, /\.drawing-right-angle-marker-hit \{[^}]*stroke: transparent;[^}]*pointer-events: stroke;/);
 });
 
 test('restore rejects self/duplicates and canonicalizes reversed line pairs', () => {
