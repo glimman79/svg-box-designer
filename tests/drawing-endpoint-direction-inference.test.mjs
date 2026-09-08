@@ -121,14 +121,17 @@ test('Ctrl clears every transient channel and restores raw placement', () => {
   assert.deepEqual(overridden.snap.channels, { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null, pointReference: null });
 });
 
-test('workspace renders an infinite pointer-transparent transient point-reference guide', () => {
-  const guide = inference.deriveInfiniteSupportGuide({ x: 100, y: 50 }, { x: 99.5, y: 51 }, { width: 800, height: 600 });
-  assert.ok(guide);
-  assert.ok(guide.start.x > 100 && guide.end.x < 100 && guide.start.y < 50 && guide.end.y > 50);
+test('workspace renders only the source-to-effective-point transient reference segment', () => {
+  const source = { x: 100, y: 50 };
+  const effectivePoint = { x: -300, y: 850 };
+  const guide = inference.derivePointReferenceGuide(source, effectivePoint);
+  assert.deepEqual(guide, { start: source, end: effectivePoint });
+  assert.equal(inference.derivePointReferenceGuide(source, source), null, 'zero-length presentation is suppressed');
   const workspace = readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
   const styles = readFileSync('src/styles.css', 'utf8');
   assert.match(workspace, /drawing-point-reference-guide/);
   assert.match(workspace, /data-incident-line-id/);
-  assert.match(workspace, /lineCursor\.pointReferenceGuide\.start/);
-  assert.match(styles, /\.drawing-point-reference-guide[\s\S]*?pointer-events:\s*none/);
+  assert.match(workspace, /derivePointReferenceGuide\(source, anchor\)/, 'visible endpoints do not come from viewport corners');
+  assert.doesNotMatch(workspace, /deriveInfiniteSupportGuide/);
+  assert.match(styles, /--drawing-inference:\s*#38bdf8;[\s\S]*?\.drawing-point-reference-guide\s*\{[^}]*stroke:\s*var\(--drawing-inference\);[^}]*pointer-events:\s*none/s);
 });

@@ -113,22 +113,15 @@ const projectClientPointToInfiniteSupport = (
   };
 };
 
-/** Presentation segment for an infinite support, extended beyond every viewport corner. */
-export const deriveInfiniteSupportGuide = (
-  origin: CoordinatePoint,
-  directionPoint: CoordinatePoint,
-  viewport: Readonly<{ width: number; height: number }>,
-): Readonly<{ start: CoordinatePoint; end: CoordinatePoint }> | null => {
-  const dx = directionPoint.x - origin.x, dy = directionPoint.y - origin.y;
-  const length = Math.hypot(dx, dy);
-  if (length <= Number.EPSILON) return null;
-  const extent = Math.hypot(viewport.width, viewport.height) * 2;
-  const ux = dx / length, uy = dy / length;
-  return {
-    start: { x: origin.x - extent * ux, y: origin.y - extent * uy },
-    end: { x: origin.x + extent * ux, y: origin.y + extent * uy },
-  };
-};
+/** Screen-space presentation only: joins a reference source to the effective pointer. */
+export const derivePointReferenceGuide = (
+  source: CoordinatePoint,
+  target: CoordinatePoint,
+): Readonly<{ start: CoordinatePoint; end: CoordinatePoint }> | null => (
+  Math.hypot(target.x - source.x, target.y - source.y) <= Number.EPSILON
+    ? null
+    : { start: source, end: target }
+);
 
 /** Extracts stable, meaningful geometric vertices without coupling inference to a tool. */
 export const collectDrawingReferencePoints = (entities: ReadonlyArray<ResolvedDrawingLine>): DrawingReferencePoint[] => {

@@ -4,8 +4,7 @@
   --drawing-geometry-constrained: #137a3e;
   --drawing-geometry-locked: #111827;
   --drawing-hover: #06b6d4;
-  --drawing-preview: #0284c7;
-  --drawing-alignment-guide: #c084fc;
+  --drawing-inference: #38bdf8;
   --drawing-dimension: #2db65b;
   --drawing-dimension-hover: #2fb85f;
   --drawing-dimension-active: #137a3e;
@@ -857,7 +856,7 @@ button:disabled {
 }
 
 .drawing-line-entity.is-inference-target {
-  stroke: var(--drawing-alignment-guide);
+  stroke: var(--drawing-inference);
   stroke-width: 3.5;
   pointer-events: none;
 }
@@ -867,7 +866,7 @@ button:disabled {
 .drawing-line-entity.geometry-fully-locked { stroke: var(--drawing-geometry-locked); }
 
 .drawing-line-preview {
-  stroke: var(--drawing-preview);
+  stroke: var(--drawing-inference);
   stroke-width: 1.25;
   stroke-dasharray: 5 4;
 }
@@ -922,14 +921,14 @@ button:disabled {
 .drawing-line-cursor-line,
 .drawing-line-cursor-alignment {
   fill: #fff;
-  stroke: #0284c7;
+  stroke: var(--drawing-inference);
   stroke-width: 1.8;
 }
 
 .drawing-line-cursor-perpendicular,
 .drawing-line-cursor-parallel {
   fill: none;
-  stroke: var(--drawing-geometric-constraint);
+  stroke: var(--drawing-inference);
   stroke-width: 1.4px;
 }
 
@@ -938,7 +937,7 @@ button:disabled {
 }
 
 .drawing-alignment-guide {
-  stroke: var(--drawing-alignment-guide);
+  stroke: var(--drawing-inference);
   stroke-width: 1.25;
   stroke-dasharray: 5 4;
   vector-effect: non-scaling-stroke;
@@ -946,7 +945,7 @@ button:disabled {
 }
 
 .drawing-point-reference-guide {
-  stroke: #38bdf8;
+  stroke: var(--drawing-inference);
   stroke-width: 1;
   stroke-dasharray: 5 5;
   vector-effect: non-scaling-stroke;
@@ -956,7 +955,7 @@ button:disabled {
 
 .drawing-same-axis-reference-highlight {
   fill: rgb(2 132 199 / 0.12);
-  stroke: var(--drawing-alignment-guide);
+  stroke: var(--drawing-inference);
   stroke-width: 1.5;
   pointer-events: none;
 }
