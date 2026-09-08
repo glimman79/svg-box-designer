@@ -50,14 +50,14 @@ for (const degrees of [8, 18, 20]) test(`Perpendicular at ${degrees} degrees doe
   assert.equal(result.snap.type, 'perpendicular', 'Perpendicular is acquired through candidate collection');
   assert.ok(angularError(result.placement.effectivePoint, degrees) < 1e-9, 'final geometry follows the acquired Perpendicular');
   assert.equal(result.placement.interaction.snappedAngleDegrees, null, 'no angular relation is active');
-  assert.equal(result.placement.interaction.snapActive, false, 'angular-blue presentation is false');
+  assert.equal(lines.hasAngularPresentationTruth(result.placement.interaction), false, 'angular-blue presentation is false');
 });
 
 for (const degrees of [22.5, 45, 67.5, 90, 225]) test(`acquired ${degrees} degree construction is exact and presented`, () => {
   const raw = pointAt(degrees + 1, 100);
   const result = author({ pointer: raw, scene: [] });
   assert.equal(result.placement.interaction.snappedAngleDegrees, degrees);
-  assert.equal(result.placement.interaction.snapActive, true);
+  assert.equal(lines.hasAngularPresentationTruth(result.placement.interaction), true);
   assert.ok(angularError(result.placement.effectivePoint, degrees) < 1e-9);
 });
 
@@ -112,7 +112,7 @@ test('Endpoint defeats an incompatible angular proposal rather than counting wea
   assert.equal(result.snap.type, 'endpoint');
   assert.deepEqual(result.placement.effectivePoint, endpoint);
   assert.equal(result.placement.interaction.snappedAngleDegrees, null);
-  assert.equal(result.placement.interaction.snapActive, false);
+  assert.equal(lines.hasAngularPresentationTruth(result.placement.interaction), false);
 });
 
 test('Endpoint, angular, and reference relations coexist at one final point', () => {
@@ -142,7 +142,7 @@ test('Ctrl clears acquired and hysteretic inference and authors the raw point', 
   const overridden = author({ pointer: raw, scene: [referenceLine('owner', endpoint)], previousSnap: acquired.snap, ctrl: true });
   assert.equal(overridden.snap.type, 'none');
   assert.deepEqual(overridden.placement.effectivePoint, raw);
-  assert.equal(overridden.placement.interaction.snapActive, false);
+  assert.equal(lines.hasAngularPresentationTruth(overridden.placement.interaction), false);
   assert.equal(overridden.placement.interaction.perpendicularLineId, null);
   assert.deepEqual(overridden.snap.channels, { xAlignment: null, yAlignment: null, perpendicular: null });
 });

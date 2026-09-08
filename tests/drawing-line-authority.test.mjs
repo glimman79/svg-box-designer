@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { resolveDrawingSnap } from '../.test-build/drawing-line-authority/drawingSnapEngine.js';
-import { EMPTY_LINE_INTERACTION, automaticAxisConstraintKind, resolveLineEffectivePoint } from '../.test-build/drawing-line-authority/drawingLineTool.js';
+import { EMPTY_LINE_INTERACTION, automaticAxisConstraintKind, hasAngularPresentationTruth, resolveLineEffectivePoint } from '../.test-build/drawing-line-authority/drawingLineTool.js';
 
 const raw = { x: 10.2, y: 0.3 };
 const empty = { endpoints: [], lines: [], alignmentsX: [], alignmentsY: [], perpendiculars: [] };
@@ -52,7 +52,7 @@ assert.equal(ctrlSnap.type, 'none');
 assert.deepEqual(ctrlSnap.channels, { xAlignment: null, yAlignment: null, perpendicular: null });
 const ctrl = resolveLineEffectivePoint(interaction, raw, acquiredEndpoint, 'HORIZONTAL', true);
 assert.deepEqual(ctrl.effectivePoint, raw);
-assert.equal(ctrl.interaction.snapActive, false);
+assert.equal(hasAngularPresentationTruth(ctrl.interaction), false);
 assert.equal(ctrl.interaction.perpendicularLineId, null);
 assert.equal(ctrl.interaction.startPointId, 'start');
 assert.equal(ctrl.interaction.previousChainedLineId, 'previous');

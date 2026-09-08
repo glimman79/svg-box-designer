@@ -56,7 +56,6 @@ export type LineToolInteraction = Readonly<{
   startPointId: string | null;
   rawPointerPoint: DrawingPoint | null;
   effectivePreviewPoint: DrawingPoint | null;
-  snapActive: boolean;
   snappedAngleDegrees: number | null;
   perpendicularLineId: string | null;
   previousChainedLineId: string | null;
@@ -67,14 +66,17 @@ export const EMPTY_LINE_INTERACTION: LineToolInteraction = {
   startPointId: null,
   rawPointerPoint: null,
   effectivePreviewPoint: null,
-  snapActive: false,
   snappedAngleDegrees: null,
   perpendicularLineId: null,
   previousChainedLineId: null,
 };
 
 export const updateLinePreview = (interaction: LineToolInteraction, pointer: DrawingPoint): LineToolInteraction => (
-  interaction.start ? { ...interaction, ...resolveLinePreviewPoint(interaction.start, pointer), perpendicularLineId: null } : interaction
+  interaction.start ? (() => {
+    const preview = resolveLinePreviewPoint(interaction.start!, pointer);
+    return { ...interaction, rawPointerPoint: preview.rawPointerPoint, effectivePreviewPoint: preview.effectivePreviewPoint,
+      snappedAngleDegrees: preview.snappedAngleDegrees, perpendicularLineId: null };
+  })() : interaction
 );
 
 type LineSpatialSnap = Readonly<{
@@ -172,12 +174,12 @@ export const resolveLineEffectivePoint = (
   // channels cannot accidentally reintroduce Line authoring inference under Ctrl.
   if (ctrlOverride) return {
     effectivePoint: rawPointerPoint,
-    interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: rawPointerPoint, snapActive: false, snappedAngleDegrees: null, perpendicularLineId: null },
+    interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: rawPointerPoint, snappedAngleDegrees: null, perpendicularLineId: null },
   };
 
   // Axis intent is accepted from the Line tool's angular inference, not inferred
-  // from the eventual coordinates.  It has CATIA-style priority over a
-  // simultaneously available perpendicular spatial candidate.
+  // from the eventual coordinates. It has priority over a simultaneously
+  // available perpendicular spatial candidate.
   const angular = resolveLinePreviewPoint(interaction.start, rawPointerPoint);
   const acceptedAxis = angular.snapActive && angular.snappedAngleDegrees !== null
     && [0, 90, 180, 270].includes(normalizeDegrees(angular.snappedAngleDegrees));
@@ -190,7 +192,8 @@ export const resolveLineEffectivePoint = (
     };
     return {
       effectivePoint,
-      interaction: { ...interaction, ...angular, effectivePreviewPoint: effectivePoint, perpendicularLineId: null },
+      interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint,
+        snappedAngleDegrees: angular.snappedAngleDegrees, perpendicularLineId: null },
     };
   }
 
@@ -206,13 +209,13 @@ export const resolveLineEffectivePoint = (
       : { x: spatialSnap.effectivePoint.x, y: interaction.start.y };
     return {
       effectivePoint,
-      interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snapActive: true, snappedAngleDegrees, perpendicularLineId: null },
+      interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees, perpendicularLineId: null },
     };
   }
 
   if (spatialSnap.type === 'perpendicular') return {
     effectivePoint: spatialSnap.effectivePoint,
-    interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snapActive: true, snappedAngleDegrees: null, perpendicularLineId: spatialSnap.entityId ?? null },
+    interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snappedAngleDegrees: null, perpendicularLineId: spatialSnap.entityId ?? null },
   };
 
   if (spatialSnap.type === 'endpoint' || spatialSnap.type === 'line') {
@@ -233,7 +236,6 @@ export const resolveLineEffectivePoint = (
       ...interaction,
       rawPointerPoint,
       effectivePreviewPoint: acceptedPoint,
-      snapActive: angularExact,
       snappedAngleDegrees: angularExact ? angular.snappedAngleDegrees : null,
       perpendicularLineId: perpendicularExact ? perpendicular.entityId : null,
     };
@@ -242,7 +244,7 @@ export const resolveLineEffectivePoint = (
 
   if (!angular.snapActive || angular.snappedAngleDegrees === null) {
     const effectivePoint = spatialSnap.active ? spatialSnap.effectivePoint : rawPointerPoint;
-    return { effectivePoint, interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snapActive: false, snappedAngleDegrees: null, perpendicularLineId: null } };
+    return { effectivePoint, interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees: null, perpendicularLineId: null } };
   }
   const direction = directionAt(angular.snappedAngleDegrees);
   const radialDistance = Math.hypot(rawPointerPoint.x - interaction.start.x, rawPointerPoint.y - interaction.start.y);
@@ -258,7 +260,7 @@ export const resolveLineEffectivePoint = (
     : angularPoint;
   return {
     effectivePoint,
-    interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snapActive: true, snappedAngleDegrees: angular.snappedAngleDegrees, perpendicularLineId: null },
+    interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees: angular.snappedAngleDegrees, perpendicularLineId: null },
   };
 };
 
@@ -270,13 +272,11 @@ export const resolveLineEffectivePoint = (
 export const updateLinePreviewAtSpatialPoint = (interaction: LineToolInteraction, rawPointerPoint: DrawingPoint, effectivePreviewPoint: DrawingPoint): LineToolInteraction => {
   if (!interaction.start) return interaction;
   const effectiveInference = resolveLinePreviewPoint(interaction.start, effectivePreviewPoint);
-  const compatible = effectiveInference.snapActive;
   return {
     ...interaction,
     rawPointerPoint,
     effectivePreviewPoint,
-    snapActive: compatible,
-    snappedAngleDegrees: compatible ? effectiveInference.snappedAngleDegrees : null,
+    snappedAngleDegrees: effectiveInference.snappedAngleDegrees,
     perpendicularLineId: null,
   };
 };
@@ -390,7 +390,13 @@ export const appendEntityToActiveSketch = (
 
 /** Maps only the accepted angular-inference state, never rounded geometry, to design intent. */
 export const automaticAxisConstraintKind = (interaction: LineToolInteraction): 'HORIZONTAL' | 'VERTICAL' | null => {
-  if (!interaction.snapActive || interaction.snappedAngleDegrees === null) return null;
+  if (interaction.snappedAngleDegrees === null) return null;
   const angle = normalizeDegrees(interaction.snappedAngleDegrees);
   return angle === 0 || angle === 180 ? 'HORIZONTAL' : angle === 90 || angle === 270 ? 'VERTICAL' : null;
 };
+
+/** Angular presentation is derived from acquired intent and the final displayed geometry. */
+export const hasAngularPresentationTruth = (interaction: LineToolInteraction): boolean => interaction.start !== null
+  && interaction.effectivePreviewPoint !== null
+  && interaction.snappedAngleDegrees !== null
+  && isPointOnDirection(interaction.start, interaction.effectivePreviewPoint, directionAt(interaction.snappedAngleDegrees));

@@ -6,7 +6,7 @@ import { deriveGeometricConstraintMarkers, deleteGeometricConstraint } from '../
 import { EMPTY_DRAWING_HISTORY, transactDrawingDocument, undoDrawingDocument, redoDrawingDocument } from '../.test-build/drawing-horizontal-vertical/drawingHistory.js';
 
 const empty = { schemaVersion: 2, unit: 'mm', activeSketchId: 's', sketchOrder: ['s'], sketches: { s: { id: 's', name: 'Sketch', points: {}, entities: {}, entityOrder: [], dimensions: {}, dimensionOrder: [], geometricConstraints: {}, geometricConstraintOrder: [] } } };
-const interaction = (angle, active = true) => ({ start: { x: 0, y: 0 }, startPointId: null, rawPointerPoint: { x: 10, y: 0 }, effectivePreviewPoint: { x: 10, y: 0 }, snapActive: active, snappedAngleDegrees: angle });
+const interaction = (angle, active = true) => ({ start: { x: 0, y: 0 }, startPointId: null, rawPointerPoint: { x: 10, y: 0 }, effectivePreviewPoint: { x: 10, y: 0 }, snappedAngleDegrees: active ? angle : null });
 assert.equal(automaticAxisConstraintKind(interaction(0)), 'HORIZONTAL');
 assert.equal(automaticAxisConstraintKind(interaction(180)), 'HORIZONTAL');
 assert.equal(automaticAxisConstraintKind(interaction(90)), 'VERTICAL');

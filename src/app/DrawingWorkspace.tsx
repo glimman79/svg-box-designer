@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes';
-import { appendEntityToActiveSketch, applyResolvedLineClick, automaticAxisConstraintKind, cancelLineInteraction, EMPTY_LINE_INTERACTION, resolveLineEffectivePoint, resolveLinePreviewPoint, type LineToolInteraction } from './drawingLineTool';
+import { appendEntityToActiveSketch, applyResolvedLineClick, automaticAxisConstraintKind, cancelLineInteraction, EMPTY_LINE_INTERACTION, hasAngularPresentationTruth, resolveLineEffectivePoint, resolveLinePreviewPoint, type LineToolInteraction } from './drawingLineTool';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
 import { collectDrawingInferenceCandidates } from './drawingInference';
@@ -257,7 +257,7 @@ export function DrawingWorkspace({
         ? { kind: 'endpoint', point: snap.effectivePoint, pointId: endpointPointId, entityId: snap.entityId, endpoint: snap.endpoint }
         : snap.type === 'line'
           ? { kind: 'line-body', point: placementPoint, entityId: snap.entityId, segmentParameter: snap.segmentParameter }
-          : snap.active || nextInteraction.snapActive ? { kind: 'construction', point: placementPoint } : { kind: 'raw', point: rawPoint };
+          : snap.active || nextInteraction.snappedAngleDegrees !== null ? { kind: 'construction', point: placementPoint } : { kind: 'raw', point: rawPoint };
     return { rawPoint, effectivePoint: placementPoint, spatialSnap: snap, interaction: nextInteraction, position, ctrlActive: ctrlHeld };
   };
   activeToolRef.current = activeTool;
@@ -864,7 +864,7 @@ export function DrawingWorkspace({
               })}
             </g>
             {activeTool === 'line' && lineInteraction.start && lineInteraction.effectivePreviewPoint && (
-              <line className={`drawing-line-preview${lineInteraction.snapActive ? ' is-angular-snapped' : ''}`} x1={lineInteraction.start.x} y1={lineInteraction.start.y} x2={lineInteraction.effectivePreviewPoint.x} y2={lineInteraction.effectivePreviewPoint.y} />
+              <line className={`drawing-line-preview${hasAngularPresentationTruth(lineInteraction) ? ' is-angular-snapped' : ''}`} x1={lineInteraction.start.x} y1={lineInteraction.start.y} x2={lineInteraction.effectivePreviewPoint.x} y2={lineInteraction.effectivePreviewPoint.y} />
             )}
           </svg>
           <svg ref={overlaySvgRef} className="drawing-label-overlay" viewBox={`0 0 ${viewport.width} ${viewport.height}`} aria-label="Model coordinate scale">
