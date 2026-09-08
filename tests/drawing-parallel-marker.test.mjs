@@ -56,7 +56,21 @@ assert.equal(Object.keys(lineDeleted.geometricConstraints).length, 0, 'deleting 
 assert.equal(deriveParallelMarkers(lineDeleted).length, 0, 'line dependency cleanup removes both marker representations');
 
 const workspace = readFileSync(new URL('../src/app/DrawingWorkspace.tsx', import.meta.url), 'utf8');
-assert.match(workspace, /fill="currentColor" style=\{\{ fontSize: GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX \/ pixelsPerMm \}\}>\{marker\.label\}<\/text>/,
-  'persistent glyph owns a visible presentation color at the renderer boundary');
+const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
+const parallelRenderer = workspace.slice(workspace.indexOf("const isParallel = marker.label === '∥'"), workspace.indexOf('{rightAngleMarkers.map'));
+assert.ok(parallelRenderer.length > 0, 'persistent Parallel has an explicit renderer branch');
+assert.equal((parallelRenderer.match(/<line className="drawing-parallel-marker-stroke"/g) ?? []).length, 2,
+  'each persistent Parallel symbol paints exactly two SVG Line strokes');
+assert.doesNotMatch(parallelRenderer, /isParallel[^]*?<text[^>]*>∥<\/text>/,
+  'persistent Parallel is not painted as Unicode text');
+for (const stroke of parallelRenderer.matchAll(/<line className="drawing-parallel-marker-stroke"([^>]*)\/>/g)) {
+  assert.match(stroke[1], /x1=\{[^}]+\} y1=\{[^}]+\} x2=\{[^}]+\} y2=\{[^}]+\}/, 'stroke has non-empty endpoint geometry');
+  assert.match(stroke[1], /fill="none" stroke="currentColor" strokeWidth="1\.25" strokeLinecap="round" vectorEffect="non-scaling-stroke"/, 'stroke owns reliable non-scaling paint');
+  assert.doesNotMatch(stroke[1], /(?:opacity=\{?0|display="none")/, 'stroke is not visually suppressed');
+}
+assert.match(parallelRenderer, /data-constraint-id=\{marker\.constraintId\} data-line-id=\{marker\.lineId\}/,
+  'visible geometry and unchanged hit target share the semantic constraint and Line association');
+assert.match(css, /\.drawing-parallel-marker\.is-hovered \{ color: var\(--drawing-hover\); \}/, 'Parallel strokes retain the existing hover color');
+assert.match(css, /\.drawing-parallel-marker\.is-selected \{ color: var\(--drawing-dimension-active\); \}/, 'Parallel strokes retain the existing selected color');
 
 console.log('drawing parallel marker tests passed');

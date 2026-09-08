@@ -20,6 +20,7 @@ const sketch = created.document.sketches.s;
 assert.equal(created.history.undo.length, 1, 'Line and automatic constraint share one History transaction');
 assert.deepEqual(sketch.geometricConstraintOrder, ['horizontal:a']);
 assert.equal(deriveGeometricConstraintMarkers(sketch, 2)[0].label, 'H');
+assert.notEqual(deriveGeometricConstraintMarkers(sketch, 2)[0].label, '∥', 'H does not derive Parallel marker geometry');
 assert.equal(deriveGeometricConstraintMarkers(sketch, 2)[0].y, 6, 'marker has constant 12 px perpendicular offset');
 assert.equal(analyzeDrawingConstraints(sketch).components[0].constraintRank, 1);
 assert.equal(analyzeDrawingConstraints(sketch).components[0].degreesOfFreedom, 3, 'H removes rotation only');
@@ -37,6 +38,7 @@ assert.equal(redoDrawingDocument(undone.history, undone.document).document.sketc
 
 const verticalDoc = appendEntityToActiveSketch(empty, { ...line, end: { x: 0, y: 10 } }, (() => { let n = 0; return () => `v${++n}`; })(), 'VERTICAL');
 assert.equal(deriveGeometricConstraintMarkers(verticalDoc.sketches.s)[0].label, 'V');
+assert.notEqual(deriveGeometricConstraintMarkers(verticalDoc.sketches.s)[0].label, '∥', 'V does not derive Parallel marker geometry');
 assert.equal(analyzeDrawingConstraints(verticalDoc.sketches.s).components[0].constraintRank, 1);
 
 const css = await import('node:fs/promises').then(({ readFile }) => readFile(new URL('../src/styles.css', import.meta.url), 'utf8'));
