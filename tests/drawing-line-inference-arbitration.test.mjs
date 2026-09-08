@@ -87,11 +87,28 @@ const endpointConflict = line.resolveLineEffectivePoint(interaction, pointAt(45)
 assert.equal(endpointConflict.effectivePoint, incompatibleEndpoint, 'incompatible endpoint still retains higher-priority ownership');
 assert.equal(line.hasAngularPresentationTruth(endpointConflict.interaction), false, 'blue angular state never describes the incompatible endpoint');
 
+// The authoritative endpoint and the acquired reference are geometrically equal,
+// but independently calculated decimal coordinates are not JavaScript-identical.
+const floatingReference = { type: 'alignment-x', referenceId: 'reference-x', constructionKey: 'x:reference-x', referencePoint: { x: 0.1 + 0.2, y: 80 }, candidatePoint: { x: 0.1 + 0.2, y: 20 }, screenDistance: 1 };
+const floatingEndpoint = { x: 0.3, y: 20 };
+const floatingTruth = line.resolveLineEffectivePoint(interaction, pointAt(180), {
+  active: true, type: 'endpoint', effectivePoint: floatingEndpoint,
+  channels: { xAlignment: floatingReference, yAlignment: null, perpendicular: null },
+});
+assert.notEqual(floatingEndpoint.x, floatingReference.candidatePoint.x, 'fixture reaches the former strict-equality presentation defect');
+assert.equal(line.hasAngularPresentationTruth(floatingTruth.interaction), true, 'angular presentation remains active at the independently calculated point');
+assert.equal(floatingTruth.resolvedReferences.x, floatingReference, 'final resolution retains acquired, geometrically true X identity');
+assert.equal(floatingTruth.resolvedReferences.y, null);
+
 const ctrlResolved = line.resolveLineEffectivePoint(interaction, pointAt(44), none(pointAt(44)));
 exactAngle(ctrlResolved.effectivePoint, 45, 'Ctrl-bypassed spatial snap retains Line-specific angular inference');
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 assert.match(workspace, /resolveLineEffectivePoint\(interaction, rawPoint, snap, previousChainedAxisKind, ctrlHeld\)/, 'workspace consumes the authoritative Line resolution with the final Ctrl guard');
 assert.match(workspace, /commitLinePoint\(effectivePoint, endpointPointId, placement\.interaction\)/, 'commit receives the inference state accepted with its effective point');
+assert.match(workspace, /lineResolution\.resolvedReferences\.x/, 'workspace renders the authoritative resolved X truth');
+assert.doesNotMatch(workspace, /placementPoint\.x === xInference\.candidatePoint\.x/, 'workspace does not independently decide X geometric truth');
+assert.doesNotMatch(workspace, /placementPoint\.y === yInference\.candidatePoint\.y/, 'workspace does not independently decide Y geometric truth');
+assert.match(workspace, /setDrawingSnap\(null\); drawingSnapRef\.current = null;/, 'cursor-clear boundaries synchronously clear state and hysteresis ref');
 assert.match(workspace, /drawing-line-cursor-endpoint/);
 assert.match(workspace, /drawing-line-cursor-line/);
 assert.match(workspace, /drawing-line-cursor-alignment/);

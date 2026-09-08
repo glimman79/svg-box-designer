@@ -240,13 +240,10 @@ export function DrawingWorkspace({
     drawingSnapRef.current = snap;
     setLineInteraction(nextInteraction);
     lineInteractionRef.current = nextInteraction;
-    const xInference = snap.channels.xAlignment;
-    const yInference = snap.channels.yAlignment;
-    // Visual truth: only channels exactly satisfied by the authoritative point render.
-    const xGuideReference = xInference && placementPoint.x === xInference.candidatePoint.x
-      ? modelToOverlayPoint(xInference.referencePoint ?? xInference.candidatePoint, drawingTransform, overlayTransform) : null;
-    const yGuideReference = yInference && placementPoint.y === yInference.candidatePoint.y
-      ? modelToOverlayPoint(yInference.referencePoint ?? yInference.candidatePoint, drawingTransform, overlayTransform) : null;
+    const xGuideReference = lineResolution.resolvedReferences.x
+      ? modelToOverlayPoint(lineResolution.resolvedReferences.x.referencePoint ?? lineResolution.resolvedReferences.x.candidatePoint, drawingTransform, overlayTransform) : null;
+    const yGuideReference = lineResolution.resolvedReferences.y
+      ? modelToOverlayPoint(lineResolution.resolvedReferences.y.referencePoint ?? lineResolution.resolvedReferences.y.candidatePoint, drawingTransform, overlayTransform) : null;
     setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference,
       perpendicularActive: snap.type === 'perpendicular' || nextInteraction.perpendicularLineId !== null } : null);
     const endpointPointId = snap.type === 'endpoint' && activeSketch
@@ -300,7 +297,7 @@ export function DrawingWorkspace({
   });
   const { isPanning, panHandlers } = useCadPanGesture({
     viewportRef: svgRef,
-    onPanStart: () => { setCadCursor(null); setDrawingSnap(null); },
+    onPanStart: () => { setCadCursor(null); setDrawingSnap(null); drawingSnapRef.current = null; },
     onPan: ({ dx, dy }) => {
       const matrix = svgRef.current?.getScreenCTM();
       if (!matrix) return;
@@ -557,7 +554,7 @@ export function DrawingWorkspace({
     selectTool(tool);
   };
 
-  const clearCadCursor = () => { lastPointerClientRef.current = null; setCadCursor(null); setDrawingSnap(null); setDimensionPreselection(null); if (!geometryDrag) setGeometryPreselection(null); };
+  const clearCadCursor = () => { lastPointerClientRef.current = null; setCadCursor(null); setDrawingSnap(null); drawingSnapRef.current = null; setDimensionPreselection(null); if (!geometryDrag) setGeometryPreselection(null); };
   const clearLineCursor = clearCadCursor;
 
   const finishLine = () => {
