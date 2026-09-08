@@ -36,6 +36,7 @@ export type DrawingInference = Readonly<{
   referenceId: string;
   entityId: string;
   candidatePoint: DrawingPoint;
+  referencePoint?: DrawingPoint;
   screenDistance: number;
   constructionKey?: string;
 }> | Readonly<{
@@ -43,6 +44,7 @@ export type DrawingInference = Readonly<{
   referenceId: string;
   entityId: string;
   candidatePoint: DrawingPoint;
+  referencePoint?: DrawingPoint;
   screenDistance: number;
   constructionKey?: string;
 }>;
@@ -164,7 +166,7 @@ export const collectDrawingInferenceCandidates = (
           if (Number.isFinite(t) && t >= 0) {
             const candidatePoint = { x: reference.point.x, y: activeLineStart.y + t * angularDirection.y };
             const screen = toScreenPoint(candidatePoint, drawingToClientTransform);
-            alignmentsX.push({ type: 'alignment-x', referenceId: reference.id, entityId: reference.entityId, candidatePoint,
+            alignmentsX.push({ type: 'alignment-x', referenceId: reference.id, entityId: reference.entityId, candidatePoint, referencePoint: reference.point,
               screenDistance: Math.hypot(pointerClientPoint.x - screen.x, pointerClientPoint.y - screen.y), constructionKey });
           }
         }
@@ -173,7 +175,7 @@ export const collectDrawingInferenceCandidates = (
           if (Number.isFinite(t) && t >= 0) {
             const candidatePoint = { x: activeLineStart.x + t * angularDirection.x, y: reference.point.y };
             const screen = toScreenPoint(candidatePoint, drawingToClientTransform);
-            alignmentsY.push({ type: 'alignment-y', referenceId: reference.id, entityId: reference.entityId, candidatePoint,
+            alignmentsY.push({ type: 'alignment-y', referenceId: reference.id, entityId: reference.entityId, candidatePoint, referencePoint: reference.point,
               screenDistance: Math.hypot(pointerClientPoint.x - screen.x, pointerClientPoint.y - screen.y), constructionKey });
           }
         }

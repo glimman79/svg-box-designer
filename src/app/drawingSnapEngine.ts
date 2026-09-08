@@ -78,6 +78,25 @@ const chooseAxis = <T extends AlignmentXInference | AlignmentYInference>(items: 
     && acquired.screenDistance + 2 <= held.screenDistance ? acquired : held;
 };
 
+type ComposedReferenceInference = AlignmentXInference | AlignmentYInference;
+
+const chooseComposedReference = (
+  xItems: ReadonlyArray<AlignmentXInference>,
+  yItems: ReadonlyArray<AlignmentYInference>,
+  oldChannels: DrawingSnapChannels,
+): ComposedReferenceInference | null => {
+  const items = [...xItems, ...yItems].sort((a, b) => a.screenDistance - b.screenDistance
+    || a.referenceId.localeCompare(b.referenceId)
+    || (a.type === b.type ? 0 : a.type === 'alignment-x' ? -1 : 1));
+  const acquired = items[0]?.screenDistance <= DRAWING_ALIGNMENT_SNAP_ACQUIRE_PX ? items[0] : null;
+  const old = oldChannels.xAlignment ?? oldChannels.yAlignment;
+  const held = old && items.find((item) => item.type === old.type
+    && item.referenceId === old.referenceId && item.constructionKey === old.constructionKey);
+  if (!held || held.screenDistance > DRAWING_ALIGNMENT_SNAP_RELEASE_PX) return acquired;
+  return acquired && (acquired.type !== held.type || acquired.referenceId !== held.referenceId)
+    && acquired.screenDistance + 2 <= held.screenDistance ? acquired : held;
+};
+
 const choosePerpendicular = (items: ReadonlyArray<PerpendicularInference>, previous: DrawingSnap | null) => {
   const old = previous?.channels?.perpendicular ?? (previous?.type === 'perpendicular' ? {
     type: 'perpendicular' as const, entityId: previous.entityId, candidatePoint: previous.effectivePoint, screenDistance: previous.screenDistance,
@@ -98,8 +117,16 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
   if (ctrlOverride) return none();
 
   const oldChannels = previousSnap?.channels ?? emptyChannels;
-  const xReference = chooseAxis(candidates.alignmentsX, oldChannels.xAlignment);
-  const yReference = chooseAxis(candidates.alignmentsY, oldChannels.yAlignment);
+  const hasComposedReferences = candidates.alignmentsX.some(({ constructionKey }) => constructionKey !== undefined)
+    || candidates.alignmentsY.some(({ constructionKey }) => constructionKey !== undefined);
+  const composedReference = hasComposedReferences
+    ? chooseComposedReference(candidates.alignmentsX, candidates.alignmentsY, oldChannels) : null;
+  const xReference = hasComposedReferences
+    ? composedReference?.type === 'alignment-x' ? composedReference : null
+    : chooseAxis(candidates.alignmentsX, oldChannels.xAlignment);
+  const yReference = hasComposedReferences
+    ? composedReference?.type === 'alignment-y' ? composedReference : null
+    : chooseAxis(candidates.alignmentsY, oldChannels.yAlignment);
   const perpendicular = choosePerpendicular(candidates.perpendiculars, previousSnap);
   const channels: DrawingSnapChannels = { xAlignment: xReference, yAlignment: yReference, perpendicular };
 
