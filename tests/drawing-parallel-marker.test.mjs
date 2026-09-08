@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { deleteGeometricConstraint, deriveParallelMarkers, GEOMETRIC_CONSTRAINT_MARKER_OFFSET_PX, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, GEOMETRIC_CONSTRAINT_MARKER_SPACING_PX, layoutLineConstraintMarkers } from '../.test-build/drawing-parallel-marker/drawingParallelMarker.js';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-parallel-marker/drawingHistory.js';
 import { removeLineAndOrphans } from '../.test-build/drawing-parallel-marker/drawingTopology.js';
+import { readFileSync } from 'node:fs';
 
 const constraint = { id: 'parallel:a:b', kind: 'PARALLEL', references: [{ kind: 'entity', entityId: 'a' }, { kind: 'entity', entityId: 'b' }] };
 const sketch = {
@@ -53,5 +54,9 @@ assert.equal(deriveParallelMarkers(redone.document.sketches.s).length, 0, 'Redo 
 const lineDeleted = removeLineAndOrphans(sketch, 'a');
 assert.equal(Object.keys(lineDeleted.geometricConstraints).length, 0, 'deleting a participating Line removes the dependent constraint');
 assert.equal(deriveParallelMarkers(lineDeleted).length, 0, 'line dependency cleanup removes both marker representations');
+
+const workspace = readFileSync(new URL('../src/app/DrawingWorkspace.tsx', import.meta.url), 'utf8');
+assert.match(workspace, /fill="currentColor" style=\{\{ fontSize: GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX \/ pixelsPerMm \}\}>\{marker\.label\}<\/text>/,
+  'persistent glyph owns a visible presentation color at the renderer boundary');
 
 console.log('drawing parallel marker tests passed');

@@ -232,8 +232,8 @@ test('workspace renders geometric paths with blue styling and contains no perpen
   const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
   assert.doesNotMatch(workspace, /⟂/);
   assert.match(workspace, /drawing-right-angle-marker-hit/);
-  assert.match(workspace, /drawing-right-angle-marker-shape/);
-  assert.match(css, /\.drawing-right-angle-marker-shape \{[^}]*stroke: var\(--drawing-geometric-constraint\)/);
+  assert.match(workspace, /className="drawing-right-angle-marker-shape"[^>]*fill="none" stroke="currentColor"/);
+  assert.match(css, /\.drawing-right-angle-marker-shape \{[^}]*stroke: currentColor/);
   assert.match(css, /\.drawing-right-angle-marker-hit \{[^}]*stroke: transparent;[^}]*pointer-events: stroke;/);
 });
 
