@@ -13,12 +13,50 @@ const bounds = { x: -500, y: -500, width: 1000, height: 1000 };
 const resolvedLine = (id, startPointId, endPointId, start, end) => ({ id, type: 'line', startPointId, endPointId, start, end });
 const angled = resolvedLine('AB', 'A', 'B', { x: 0, y: 0 }, { x: 100, y: 50 });
 
-const pipeline = ({ pointer, scene, start = { x: -100, y: -50 }, previousSnap = null, ctrl = false, angular = null }) => {
-  const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, identity, bounds, start, angular);
+const pipeline = ({ pointer, scene, start = { x: -100, y: -50 }, previousSnap = null, ctrl = false, angular = null, transform = identity, visibleBounds = bounds }) => {
+  const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, transform, visibleBounds, start, angular);
   const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap, ctrlOverride: ctrl });
   const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId: 'new-start' };
   return { candidates, snap, resolved: lineTool.resolveLineEffectivePoint(interaction, pointer, snap, null, ctrl) };
 };
+
+test('endpoint Parallel uses nearest rendered infinite support far from its source at every zoom', () => {
+  // This anisotropic CTM mirrors the browser failure: model-space orthogonal
+  // projection puts the sample about 28 px from its candidate even though it is
+  // only 7 px from the rendered support. The endpoint is over 2,000 px away.
+  const transform = { a: 1, b: 0, c: 0, d: 10, e: 10, f: 20 };
+  const screenNormalAtSevenPx = { x: -70 / Math.sqrt(104), y: 14 / Math.sqrt(104) };
+  for (const scale of [1, 2]) {
+    const scaled = { ...transform, a: transform.a * scale, d: transform.d * scale };
+    for (const sign of [-1, 1]) {
+      const pointer = {
+        x: 10 + 100 * scale + sign * 400 * scale + screenNormalAtSevenPx.x,
+        y: 20 + 500 * scale + sign * 2_000 * scale + screenNormalAtSevenPx.y,
+      };
+      const result = pipeline({ pointer, scene: [angled], transform: scaled,
+        visibleBounds: { x: 50, y: 25, width: 500, height: 500 } });
+      assert.equal(result.snap.type, 'parallel');
+      assert.equal(result.snap.entityId, 'AB');
+      assert.equal(result.snap.sourcePointId, 'B');
+      assert.ok(Math.abs(result.snap.screenDistance - 7) < 1e-9);
+      assert.ok(Math.hypot(pointer.x - (10 + 100 * scale), pointer.y - (20 + 500 * scale)) > 2_000);
+    }
+    const offSupport = pipeline({ pointer: {
+      x: 10 + 100 * scale + 400 * scale + screenNormalAtSevenPx.x * 2,
+      y: 20 + 500 * scale + 2_000 * scale + screenNormalAtSevenPx.y * 2,
+    }, scene: [angled], transform: scaled });
+    assert.notEqual(offSupport.snap.type, 'parallel');
+  }
+});
+
+test('screen-space support distance selects each incident direction independently', () => {
+  const transform = { a: 2, b: 0, c: 0, d: 4, e: 10, f: 20 };
+  const second = resolvedLine('BC', 'B', 'C', { x: 100, y: 50 }, { x: 100, y: 150 });
+  const alongAB = pipeline({ pointer: { x: 610, y: 620 }, scene: [angled, second], transform });
+  assert.equal(alongAB.snap.entityId, 'AB');
+  const alongBC = pipeline({ pointer: { x: 211, y: 700 }, scene: [angled, second], transform });
+  assert.equal(alongBC.snap.entityId, 'BC');
+});
 
 test('endpoint-derived Parallel retains topology identity through production commit and markers', () => {
   const result = pipeline({ pointer: { x: 202, y: 102 }, scene: [angled] });
