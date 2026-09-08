@@ -27,7 +27,7 @@ const interaction = { ...EMPTY_LINE_INTERACTION, start: { x: 0, y: 0 }, startPoi
 const exact = resolveLineEffectivePoint(interaction, raw, acquiredEndpoint);
 assert.deepEqual(exact.effectivePoint, { x: 10, y: 0 }, 'endpoint coordinate cannot be projected');
 assert.equal(automaticAxisConstraintKind(exact.interaction), 'HORIZONTAL');
-assert.equal(exact.interaction.perpendicularLineId, 'target');
+assert.equal(exact.interaction.perpendicularLineId, null, 'H authority excludes a compatible Perpendicular channel');
 
 const inexactEndpoint = resolveDrawingSnap({ rawPoint: raw, candidates: { ...empty, endpoints: [endpoint('off-axis', { x: 10, y: .1 }, 1)], perpendiculars: [perpendicular] }, previousSnap: null, ctrlOverride: false });
 const inexact = resolveLineEffectivePoint(interaction, raw, inexactEndpoint);

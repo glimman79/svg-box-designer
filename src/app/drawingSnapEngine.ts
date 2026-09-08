@@ -106,8 +106,9 @@ const choosePerpendicular = (items: ReadonlyArray<PerpendicularInference>, previ
 };
 
 /** Pure Drawing-wide channel acquisition followed by positional authority arbitration. */
-export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOverride }: {
+export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOverride, axisDirectionActive = false }: {
   rawPoint: DrawingPoint; candidates: DrawingInferenceCandidates; previousSnap: DrawingSnap | null; ctrlOverride: boolean;
+  axisDirectionActive?: boolean;
 }): DrawingSnap => {
   const emptyChannels: DrawingSnapChannels = { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null };
   const none = (channels = emptyChannels): DrawingSnap => ({ active: false, type: 'none', effectivePoint: rawPoint, screenDistance: null, channels });
@@ -117,8 +118,10 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
   const oldChannels = previousSnap?.channels ?? emptyChannels;
   const xReference = chooseAxis(candidates.alignmentsX, oldChannels.xAlignment);
   const yReference = chooseAxis(candidates.alignmentsY, oldChannels.yAlignment);
-  const perpendicular = choosePerpendicular(candidates.perpendiculars, previousSnap);
-  const parallel = chooseParallel(candidates.parallels ?? [], previousSnap);
+  // H/V is the exclusive direction authority. Retention is evaluated only in
+  // the non-axis direction domain, while point-reference channels stay global.
+  const perpendicular = axisDirectionActive ? null : choosePerpendicular(candidates.perpendiculars, previousSnap);
+  const parallel = axisDirectionActive ? null : chooseParallel(candidates.parallels ?? [], previousSnap);
   const channels: DrawingSnapChannels = { xAlignment: xReference, yAlignment: yReference, perpendicular, parallel };
 
   // Hysteresis stabilizes a class; it never changes this authority ordering.
