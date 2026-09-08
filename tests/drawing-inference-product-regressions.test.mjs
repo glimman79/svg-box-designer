@@ -70,6 +70,7 @@ for (const spec of [
   assert.equal(result.placement.interaction.snappedAngleDegrees, spec.degrees);
   assert.ok(Math.hypot(result.placement.effectivePoint.x - exact.x, result.placement.effectivePoint.y - exact.y) < 1e-9);
   assert.ok(result.snap.channels[spec.channel], 'reference guide remains available');
+  assert.equal(result.placement.resolvedReferences[spec.channel === 'xAlignment' ? 'x' : 'y'], result.snap.channels[spec.channel], 'resolved guide truth preserves the acquired identity');
   assert.equal(result.snap.channels.perpendicular, null);
 });
 
@@ -92,6 +93,7 @@ for (const degrees of [22.5, 45, 67.5]) for (const axis of ['x', 'y']) test(`${d
   assert.ok(Math.abs(result.placement.effectivePoint[axis] - reference[axis]) < 1e-9);
   assert.equal(result.placement.interaction.snappedAngleDegrees, degrees);
   assert.ok(result.snap.channels[`${axis}Alignment`]);
+  assert.equal(result.placement.resolvedReferences[axis], result.snap.channels[`${axis}Alignment`]);
 });
 
 test('Endpoint position authority preserves a compatible angular relation and freezes the accepted click', () => {
@@ -123,6 +125,16 @@ test('Endpoint, angular, and reference relations coexist at one final point', ()
   assert.deepEqual(result.placement.effectivePoint, endpoint);
   assert.equal(result.placement.interaction.snappedAngleDegrees, 45);
   assert.ok(result.snap.channels.xAlignment, 'reference guide remains active');
+  assert.equal(result.placement.resolvedReferences.x, result.snap.channels.xAlignment, 'endpoint authority preserves final reference truth');
+
+  const finiteReference = { ...result.snap.channels.xAlignment, candidatePoint: { ...result.snap.channels.xAlignment.candidatePoint, x: endpoint.x + 1e-12 } };
+  const finite = lines.resolveLineEffectivePoint(interaction, pointAt(46), {
+    active: true, type: 'line', entityId: 'finite-owner', effectivePoint: endpoint, segmentParameter: 0.5,
+    lineStart: { x: endpoint.x - 20, y: endpoint.y + 20 }, lineEnd: { x: endpoint.x + 20, y: endpoint.y - 20 },
+    channels: { xAlignment: finiteReference, yAlignment: null, perpendicular: null },
+  });
+  assert.equal(finite.interaction.snappedAngleDegrees, 45);
+  assert.equal(finite.resolvedReferences.x, finiteReference, 'finite Line composition preserves geometrically true acquired reference identity');
 });
 
 test('Angular, X reference, and Y reference coexist at their common point', () => {
@@ -133,6 +145,8 @@ test('Angular, X reference, and Y reference coexist at their common point', () =
   assert.equal(result.placement.interaction.snappedAngleDegrees, 45);
   assert.ok(result.snap.channels.xAlignment);
   assert.ok(result.snap.channels.yAlignment);
+  assert.equal(result.placement.resolvedReferences.x, result.snap.channels.xAlignment);
+  assert.equal(result.placement.resolvedReferences.y, result.snap.channels.yAlignment);
 });
 
 test('Ctrl clears acquired and hysteretic inference and authors the raw point', () => {

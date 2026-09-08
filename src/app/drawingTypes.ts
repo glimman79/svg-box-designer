@@ -221,3 +221,5 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
 };
 
 export const createDrawingDocumentV2 = (): DrawingDocumentV2 => migrateDrawingDocument(createDrawingDocumentV1());
+/** Shared model-space tolerance for Drawing geometric truth and degeneracy checks. */
+export const DRAWING_MODEL_SPACE_TOLERANCE = 1e-9;
