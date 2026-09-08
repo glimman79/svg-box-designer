@@ -4,7 +4,7 @@ import { appendEntityToActiveSketch, applyResolvedLineClick, automaticAxisConstr
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
 import { collectDrawingInferenceCandidates } from './drawingInference';
-import { resolveDrawingSnap, type DrawingSnap } from './drawingSnapEngine';
+import { resolveDrawingSnap, suppressDirectionRelations, type DrawingSnap } from './drawingSnapEngine';
 import { activateDrawingTool, finishDrawingConstruction, type DrawingActiveTool, type DrawingToolLifecycle } from './drawingToolLifecycle';
 import { useCadWheelCapture } from './useCadWheelCapture';
 import { CAD_PRIMARY_BUTTON, useCadCtrlSnapOverride, useCadEscapeToolExit, useCadPanGesture } from './cadInteraction';
@@ -227,7 +227,7 @@ export function DrawingWorkspace({
       angularIntent?.snapActive ? angularIntent.snappedAngleDegrees : null);
     const axisDirectionActive = angularIntent?.snapActive === true && angularIntent.snappedAngleDegrees !== null
       && [0, 90, 180, 270].includes(angularIntent.snappedAngleDegrees);
-    const snap = resolveDrawingSnap({ rawPoint, candidates, previousSnap: drawingSnapRef.current, ctrlOverride: ctrlHeld, axisDirectionActive });
+    let snap = resolveDrawingSnap({ rawPoint, candidates, previousSnap: drawingSnapRef.current, ctrlOverride: ctrlHeld, axisDirectionActive });
     const previousChainedAxisConstraint = interaction.previousChainedLineId
       ? Object.values(documentRef.current.sketches[documentRef.current.activeSketchId]?.geometricConstraints ?? {}).find((constraint) =>
         (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL')
@@ -238,6 +238,7 @@ export function DrawingWorkspace({
     const lineResolution = resolveLineEffectivePoint(interaction, rawPoint, snap, previousChainedAxisKind, ctrlHeld);
     const placementPoint = lineResolution.effectivePoint;
     const nextInteraction = lineResolution.interaction;
+    if (automaticAxisConstraintKind(nextInteraction)) snap = suppressDirectionRelations(snap);
     const anchor = modelToOverlayPoint(placementPoint, drawingTransform, overlayTransform);
     setDrawingSnap(snap);
     drawingSnapRef.current = snap;
@@ -277,7 +278,7 @@ export function DrawingWorkspace({
     // The delayed click transaction must consume the inference accepted at the
     // click, not mutable hover state observed during the delay.
     const acceptedConstraintKind = automaticAxisConstraintKind(acceptedInteraction);
-    const acceptedPerpendicularLineId = acceptedInteraction.perpendicularLineId;
+    const acceptedPerpendicularLineId = acceptedConstraintKind ? null : acceptedInteraction.perpendicularLineId;
     const result = applyResolvedLineClick(acceptedInteraction, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`, pointId);
     setLineInteraction(result.interaction);
     lineInteractionRef.current = result.interaction;
