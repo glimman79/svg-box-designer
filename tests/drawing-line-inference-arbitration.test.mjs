@@ -106,6 +106,10 @@ const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 assert.match(workspace, /resolveLineEffectivePoint\(interaction, rawPoint, snap, previousChainedAxisKind, ctrlHeld\)/, 'workspace consumes the authoritative Line resolution with the final Ctrl guard');
 assert.match(workspace, /commitLinePoint\(effectivePoint, endpointPointId, placement\.interaction\)/, 'commit receives the inference state accepted with its effective point');
 assert.match(workspace, /lineResolution\.resolvedReferences\.x/, 'workspace renders the authoritative resolved X truth');
+assert.match(workspace, /sameAxisReferenceCandidate = lineResolution\.resolvedReferences\.x\?\.positionOwnership === 'reference-only'/,
+  'same-axis highlight is derived only from authoritative resolved truth');
+assert.match(workspace, /drawing-same-axis-reference-highlight/, 'workspace renders the transient source-point halo');
+assert.doesNotMatch(workspace, /transactDocument[\s\S]{0,120}sameAxisReference/, 'reference presentation does not create History');
 assert.doesNotMatch(workspace, /placementPoint\.x === xInference\.candidatePoint\.x/, 'workspace does not independently decide X geometric truth');
 assert.doesNotMatch(workspace, /placementPoint\.y === yInference\.candidatePoint\.y/, 'workspace does not independently decide Y geometric truth');
 assert.match(workspace, /setDrawingSnap\(null\); drawingSnapRef\.current = null;/, 'cursor-clear boundaries synchronously clear state and hysteresis ref');

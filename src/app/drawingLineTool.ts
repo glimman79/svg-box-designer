@@ -118,8 +118,12 @@ const resolvedReferencesAt = (point: DrawingPoint, spatialSnap: LineSpatialSnap)
   const x = spatialSnap.channels?.xAlignment ?? spatialSnap.xReference ?? null;
   const y = spatialSnap.channels?.yAlignment ?? spatialSnap.yReference ?? null;
   return {
-    x: x && coordinatesGeometricallyEqual(point.x, x.candidatePoint.x) ? x : null,
-    y: y && coordinatesGeometricallyEqual(point.y, y.candidatePoint.y) ? y : null,
+    x: x && coordinatesGeometricallyEqual(point.x, (x.referencePoint ?? x.candidatePoint).x)
+      && !(x.positionOwnership === 'reference-only' && spatialSnap.type === 'endpoint'
+        && coordinatesGeometricallyEqual(point.x, x.referencePoint!.x) && coordinatesGeometricallyEqual(point.y, x.referencePoint!.y)) ? x : null,
+    y: y && coordinatesGeometricallyEqual(point.y, (y.referencePoint ?? y.candidatePoint).y)
+      && !(y.positionOwnership === 'reference-only' && spatialSnap.type === 'endpoint'
+        && coordinatesGeometricallyEqual(point.x, y.referencePoint!.x) && coordinatesGeometricallyEqual(point.y, y.referencePoint!.y)) ? y : null,
   };
 };
 
@@ -168,10 +172,10 @@ const reconcileAlignmentOnRay = (
 ): DrawingPoint => {
   const direction = directionAt(angleDegrees);
   const intersections = [
-    spatialSnap.xReference && Math.abs(direction.x) > ANGULAR_DIRECTION_EPSILON
+    spatialSnap.xReference && spatialSnap.xReference.positionOwnership !== 'reference-only' && Math.abs(direction.x) > ANGULAR_DIRECTION_EPSILON
       ? { axis: 'x' as const, target: spatialSnap.xReference.candidatePoint.x, t: (spatialSnap.xReference.candidatePoint.x - start.x) / direction.x, distance: spatialSnap.xReference.screenDistance }
       : null,
-    spatialSnap.yReference && Math.abs(direction.y) > ANGULAR_DIRECTION_EPSILON
+    spatialSnap.yReference && spatialSnap.yReference.positionOwnership !== 'reference-only' && Math.abs(direction.y) > ANGULAR_DIRECTION_EPSILON
       ? { axis: 'y' as const, target: spatialSnap.yReference.candidatePoint.y, t: (spatialSnap.yReference.candidatePoint.y - start.y) / direction.y, distance: spatialSnap.yReference.screenDistance }
       : null,
   ].filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null && Number.isFinite(candidate.t) && candidate.t >= 0);

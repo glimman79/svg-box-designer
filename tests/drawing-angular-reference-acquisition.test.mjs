@@ -104,4 +104,71 @@ assert.equal(pipeline({ raw: ctrlRaw, lines: [pLine], ctrl: true }).snap.type, '
 assert.deepEqual(pipeline({ raw: ctrlRaw, lines: [pLine], ctrl: true }).resolved.effectivePoint, ctrlRaw);
 assert.equal(pipeline({ raw: ctrlRaw, lines: [pLine] }).snap.channels.xAlignment.entityId, 'held', 'Ctrl release restores composition immediately');
 
+// Same-axis relations use the source point itself as their screen-space witness.
+// Clear topology candidates in this focused composition helper so Endpoint's
+// independently tested higher authority does not obscure reference-only behavior.
+const sameAxis = ({ raw, lines, transform = identity, previous = null, ctrl = false }) => {
+  const angular = resolveLinePreviewPoint(start, raw);
+  const client = { x: transform.a * raw.x + transform.c * raw.y + transform.e, y: transform.b * raw.x + transform.d * raw.y + transform.f };
+  const candidates = collectDrawingInferenceCandidates(client, lines, transform, bounds, start,
+    !ctrl && angular.snapActive ? angular.snappedAngleDegrees : null);
+  const snap = resolveDrawingSnap({ rawPoint: raw, candidates: { ...candidates, endpoints: [], lines: [], perpendiculars: [] }, previousSnap: previous, ctrlOverride: ctrl });
+  return { candidates, snap, resolved: resolveLineEffectivePoint(interaction, raw, snap, null, ctrl) };
+};
+
+for (const spec of [
+  { angle: 0, raw: { x: 100, y: 0 }, point: { x: 100, y: 0 }, channel: 'yAlignment', axis: 'y' },
+  { angle: 180, raw: { x: -100, y: 0 }, point: { x: -100, y: 0 }, channel: 'yAlignment', axis: 'y' },
+  { angle: 90, raw: { x: 0, y: 100 }, point: { x: 0, y: 100 }, channel: 'xAlignment', axis: 'x' },
+  { angle: 270, raw: { x: 0, y: -100 }, point: { x: 0, y: -100 }, channel: 'xAlignment', axis: 'x' },
+]) {
+  const id = `same-${spec.angle}`;
+  const result = sameAxis({ raw: spec.raw, lines: [referenceLine(id, spec.point)] });
+  const reference = result.snap.channels[spec.channel];
+  assert.equal(reference?.positionOwnership, 'reference-only', `${spec.angle} degree same-axis relation is explicit`);
+  assert.equal(reference?.referenceId, `${id}:start`);
+  assert.equal(reference?.entityId, id);
+  assert.deepEqual(reference?.referencePoint, spec.point);
+  assert.deepEqual(result.resolved.effectivePoint, spec.raw, 'reference-only relation does not move angular Q');
+  assert.equal(result.resolved.resolvedReferences[spec.axis], reference, 'acquired same-axis identity reaches resolvedReferences');
+}
+
+let mismatch = sameAxis({ raw: { x: 100, y: 0 }, lines: [referenceLine('off-y', { x: 100, y: 1 })] });
+assert.equal(mismatch.candidates.alignmentsY.length, 0, 'Horizontal rejects a model-space-incompatible Y relation');
+mismatch = sameAxis({ raw: { x: 0, y: 100 }, lines: [referenceLine('off-x', { x: 1, y: 100 })] });
+assert.equal(mismatch.candidates.alignmentsX.length, 0, 'Vertical rejects a model-space-incompatible X relation');
+
+const hCompatible = sameAxis({ raw: { x: 100, y: 0 }, lines: [referenceLine('hx', { x: 100, y: 40 }), referenceLine('hy', { x: 104, y: 0 })] });
+assert.equal(hCompatible.resolved.effectivePoint.x, 100, 'Horizontal X remains position-defining');
+assert.equal(hCompatible.resolved.resolvedReferences.x?.entityId, 'hx');
+assert.equal(hCompatible.resolved.resolvedReferences.y?.entityId, 'hy');
+const vCompatible = sameAxis({ raw: { x: 0, y: 100 }, lines: [referenceLine('vy', { x: 40, y: 100 }), referenceLine('vx', { x: 0, y: 104 })] });
+assert.equal(vCompatible.resolved.effectivePoint.y, 100, 'Vertical Y remains position-defining');
+assert.equal(vCompatible.resolved.resolvedReferences.y?.entityId, 'vy');
+assert.equal(vCompatible.resolved.resolvedReferences.x?.entityId, 'vx');
+
+const samePoints = [referenceLine('a', { x: 100, y: 0 }), referenceLine('b', { x: 104, y: 0 })];
+const acquiredSame = sameAxis({ raw: { x: 100, y: 0 }, lines: samePoints });
+assert.equal(acquiredSame.snap.channels.yAlignment.entityId, 'a');
+const heldSame = sameAxis({ raw: { x: 102.5, y: 0 }, lines: samePoints, previous: acquiredSame.snap });
+assert.equal(heldSame.snap.channels.yAlignment.entityId, 'a', 'held identity wins until another source is better by two pixels');
+const switchedSame = sameAxis({ raw: { x: 104, y: 0 }, lines: samePoints, previous: acquiredSame.snap });
+assert.equal(switchedSame.snap.channels.yAlignment.entityId, 'b', 'shared two-pixel switching advantage applies');
+const retainedSame = sameAxis({ raw: { x: 111, y: 0 }, lines: [samePoints[0]], previous: acquiredSame.snap });
+assert.equal(retainedSame.snap.channels.yAlignment.entityId, 'a', 'same-axis identity retains at eleven pixels');
+assert.equal(sameAxis({ raw: { x: 111.1, y: 0 }, lines: [samePoints[0]], previous: acquiredSame.snap }).snap.channels.yAlignment, null,
+  'same-axis identity releases beyond eleven pixels');
+
+for (const scale of [0.5, 4]) {
+  const transform = { ...identity, a: scale, d: scale };
+  const point = { x: 100, y: 0 };
+  const raw = { x: point.x + 7.9 / scale, y: 0 };
+  assert.equal(sameAxis({ raw, transform, lines: [referenceLine(`same-zoom-${scale}`, point)] }).snap.channels.yAlignment?.entityId, `same-zoom-${scale}`);
+}
+
+const ctrlSame = sameAxis({ raw: { x: 100, y: 0 }, lines: [referenceLine('ctrl-same', { x: 100, y: 0 })], previous: acquiredSame.snap, ctrl: true });
+assert.equal(ctrlSame.snap.channels.yAlignment, null);
+assert.equal(ctrlSame.resolved.resolvedReferences.y, null);
+assert.deepEqual(ctrlSame.resolved.effectivePoint, { x: 100, y: 0 });
+
 console.log('Drawing angular/reference acquisition pipeline tests passed');

@@ -938,6 +938,13 @@ button:disabled {
   pointer-events: none;
 }
 
+.drawing-same-axis-reference-highlight {
+  fill: rgb(2 132 199 / 0.12);
+  stroke: var(--drawing-alignment-guide);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
 @media (max-width: 900px) {
   .drawing-workspace {
     grid-template-columns: 56px minmax(0, 1fr);
