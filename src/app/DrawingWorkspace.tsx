@@ -786,7 +786,7 @@ export function DrawingWorkspace({
                   onPointerLeave={() => setHoveredGeometricConstraintId((current) => current === marker.constraintId ? null : current)}
                   onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry(null); }}>
                   <circle className="drawing-geometric-constraint-marker-hit drawing-interactive-hit" cx={marker.x} cy={marker.y} r={9 / pixelsPerMm} />
-                  <text x={marker.x} y={marker.y} textAnchor="middle" dominantBaseline="central" style={{ fontSize: GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX / pixelsPerMm }}>{marker.label}</text>
+                  <text x={marker.x} y={marker.y} textAnchor="middle" dominantBaseline="central" fill="currentColor" style={{ fontSize: GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX / pixelsPerMm }}>{marker.label}</text>
                 </g>;
               })}
               {rightAngleMarkers.map((marker) => {
@@ -798,7 +798,7 @@ export function DrawingWorkspace({
                   onPointerLeave={() => setHoveredGeometricConstraintId((current) => current === marker.constraintId ? null : current)}
                   onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry(null); }}>
                   <path className="drawing-right-angle-marker-hit drawing-interactive-hit" d={path} />
-                  <path className="drawing-right-angle-marker-shape" d={path} />
+                  <path className="drawing-right-angle-marker-shape" d={path} fill="none" stroke="currentColor" />
                 </g>;
               })}
               {coincidentMarkers.map((marker) => {
