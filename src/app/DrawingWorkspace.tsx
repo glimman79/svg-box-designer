@@ -225,7 +225,9 @@ export function DrawingWorkspace({
     const angularIntent = !ctrlHeld && interaction.start ? resolveLinePreviewPoint(interaction.start, rawPoint) : null;
     const candidates = collectDrawingInferenceCandidates(clientPoint, resolvedLines, drawingTransform, viewBox, interaction.start,
       angularIntent?.snapActive ? angularIntent.snappedAngleDegrees : null);
-    const snap = resolveDrawingSnap({ rawPoint, candidates, previousSnap: drawingSnapRef.current, ctrlOverride: ctrlHeld });
+    const axisDirectionActive = angularIntent?.snapActive === true && angularIntent.snappedAngleDegrees !== null
+      && [0, 90, 180, 270].includes(angularIntent.snappedAngleDegrees);
+    const snap = resolveDrawingSnap({ rawPoint, candidates, previousSnap: drawingSnapRef.current, ctrlOverride: ctrlHeld, axisDirectionActive });
     const previousChainedAxisConstraint = interaction.previousChainedLineId
       ? Object.values(documentRef.current.sketches[documentRef.current.activeSketchId]?.geometricConstraints ?? {}).find((constraint) =>
         (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL')

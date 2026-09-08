@@ -35,7 +35,8 @@ const author = ({ pointer, scene, transform = identity, previousSnap = null, ctr
   };
   const angular = lines.resolveLinePreviewPoint(start, rawModel);
   const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, transform, bounds, start, angular.snappedAngleDegrees);
-  const snap = snaps.resolveDrawingSnap({ rawPoint: rawModel, candidates, previousSnap, ctrlOverride: ctrl });
+  const axisDirectionActive = angular.snapActive && [0, 90, 180, 270].includes(angular.snappedAngleDegrees);
+  const snap = snaps.resolveDrawingSnap({ rawPoint: rawModel, candidates, previousSnap, ctrlOverride: ctrl, axisDirectionActive });
   const placement = lines.resolveLineEffectivePoint(interaction, rawModel, snap, null, ctrl);
   return { rawModel, angular, candidates, snap, placement };
 };
@@ -173,6 +174,40 @@ for (const degrees of [18, 198]) test(`Parallel target identity drives and retai
   assert.equal(retained.snap.channels.parallel.entityId, 'parallel-target');
   assert.equal(retained.placement.interaction.parallelLineId, 'parallel-target');
   assert.equal(lines.hasAngularPresentationTruth(retained.placement.interaction), false);
+});
+
+for (const spec of [
+  { axis: 'HORIZONTAL', degrees: 0, targetDegrees: 5 },
+  { axis: 'VERTICAL', degrees: 90, targetDegrees: 95 },
+]) test(`retained Parallel cannot override ${spec.axis} direction authority`, () => {
+  const targetDirection = pointAt(spec.targetDegrees, 40);
+  const scene = [referenceLine('parallel-target', { x: 400, y: 400 }, { x: 400 + targetDirection.x, y: 400 + targetDirection.y })];
+  const acquired = author({ pointer: pointAt(spec.targetDegrees), scene });
+  assert.equal(acquired.snap.type, 'parallel');
+  const axis = author({ pointer: pointAt(spec.degrees, 120), scene, previousSnap: acquired.snap });
+  assert.equal(axis.snap.channels.parallel, null, 'retained target is removed from accepted channels');
+  assert.equal(axis.snap.channels.perpendicular, null);
+  assert.equal(axis.placement.interaction.parallelLineId, null);
+  assert.equal(axis.placement.interaction.perpendicularLineId, null);
+  assert.equal(lines.automaticAxisConstraintKind(axis.placement.interaction), spec.axis);
+  assert.ok(angularError(axis.placement.effectivePoint, spec.degrees) < 1e-9);
+});
+
+for (const spec of [
+  { axis: 'HORIZONTAL', degrees: 0, targetDegrees: 95 },
+  { axis: 'VERTICAL', degrees: 90, targetDegrees: 5 },
+]) test(`retained Perpendicular cannot override ${spec.axis} direction authority`, () => {
+  const targetDirection = pointAt(spec.targetDegrees, 40);
+  const scene = [referenceLine('perpendicular-target', { x: 400, y: 400 }, { x: 400 + targetDirection.x, y: 400 + targetDirection.y })];
+  const acquired = author({ pointer: pointAt(spec.degrees + 5), scene });
+  assert.equal(acquired.snap.type, 'perpendicular');
+  const axis = author({ pointer: pointAt(spec.degrees, 120), scene, previousSnap: acquired.snap });
+  assert.equal(axis.snap.channels.parallel, null);
+  assert.equal(axis.snap.channels.perpendicular, null, 'retained target is removed from accepted channels');
+  assert.equal(axis.placement.interaction.parallelLineId, null);
+  assert.equal(axis.placement.interaction.perpendicularLineId, null);
+  assert.equal(lines.automaticAxisConstraintKind(axis.placement.interaction), spec.axis);
+  assert.ok(angularError(axis.placement.effectivePoint, spec.degrees) < 1e-9);
 });
 
 test('automatic axis semantics suppress Perpendicular and Parallel remains transient-only at commit', () => {

@@ -256,7 +256,9 @@ export const resolveLineEffectivePoint = (
       ? intersectRayWithFiniteSegment(interaction.start, direction, spatialSnap.lineStart, spatialSnap.lineEnd) : null;
     const acceptedPoint = composedLinePoint ?? spatialSnap.effectivePoint;
     const angularExact = direction !== null && isPointOnDirection(interaction.start, acceptedPoint, direction);
-    const perpendicular = spatialSnap.channels?.perpendicular ?? null;
+    // A compatible endpoint/finite-Line position may preserve H/V, but no
+    // lower-priority Line relation may coexist with that axis authority.
+    const perpendicular = acceptedAxis ? null : spatialSnap.channels?.perpendicular ?? null;
     const perpendicularExact = perpendicular !== null
       && Math.hypot(perpendicular.candidatePoint.x - acceptedPoint.x, perpendicular.candidatePoint.y - acceptedPoint.y)
         <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, Math.hypot(acceptedPoint.x - interaction.start.x, acceptedPoint.y - interaction.start.y));
