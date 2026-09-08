@@ -68,7 +68,7 @@ test('a chained perpendicular to the previous axis Line maps to exact opposite-a
   ];
   for (const { previousAxis, raw, perpendicularPoint, expected, coordinate } of cases) {
     const interaction = { ...EMPTY_LINE_INTERACTION, start: { x: 0, y: 0 }, previousChainedLineId: 'previous' };
-    assert.equal(resolveLineEffectivePoint(interaction, raw, { active: false, type: 'none', effectivePoint: raw }).interaction.snapActive, false,
+    assert.equal(resolveLineEffectivePoint(interaction, raw, { active: false, type: 'none', effectivePoint: raw }).interaction.snappedAngleDegrees, null,
       'raw pointer is deliberately outside the independent three-degree axis window');
     const accepted = resolveLineEffectivePoint(interaction, raw,
       { active: true, type: 'perpendicular', entityId: 'previous', effectivePoint: perpendicularPoint }, previousAxis);

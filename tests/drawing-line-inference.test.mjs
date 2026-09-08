@@ -35,7 +35,7 @@ assert.equal(inference.resolveDrawingInference({ x: 60, y: 12 }, activeLines, id
 let interaction = lineTool.applyLineClick(lineTool.EMPTY_LINE_INTERACTION, { x: 0, y: 0 }, () => 'new-line').interaction;
 const raw = { x: 19, y: 18 };
 interaction = lineTool.updateLinePreview(interaction, raw);
-assert.equal(interaction.snapActive, true, 'D2.2a remains authoritative near 45 degrees');
+assert.equal(lineTool.hasAngularPresentationTruth(interaction), true, 'D2.2a remains authoritative near 45 degrees');
 assert.ok(Math.abs(interaction.effectivePreviewPoint.x - interaction.effectivePreviewPoint.y) < 1e-10, 'effective preview retains exact 45 degree geometry');
 const beforeInference = structuredClone(interaction);
 assert.equal(inference.resolveDrawingInference({ x: 10, y: 10 }, [line], identity).type, 'endpoint');

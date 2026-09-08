@@ -26,19 +26,19 @@ for (const degrees of [90, 45, 22.5]) {
   const endpoint = pointAt(degrees);
   const resolved = line.updateLinePreviewAtSpatialPoint(interaction, pointAt(degrees + 1), endpoint);
   assert.equal(resolved.effectivePreviewPoint, endpoint, `${degrees} endpoint remains the exact semantic snap object`);
-  assert.equal(resolved.snapActive, true, `${degrees} endpoint and angular inference coexist`);
+  assert.equal(line.hasAngularPresentationTruth(resolved), true, `${degrees} endpoint and angular inference coexist`);
   assert.equal(resolved.snappedAngleDegrees, degrees);
   const committed = line.applyResolvedLineClick(resolved, resolved.effectivePreviewPoint, () => `line-${degrees}`).entity;
   assert.equal(committed.end, endpoint, `${degrees} preview and commit are identical`);
 }
 const horizontalEndpoint = pointAt(0);
 const replaced = line.updateLinePreviewAtSpatialPoint(interaction, pointAt(90), horizontalEndpoint);
-assert.equal(replaced.snapActive, true);
+assert.equal(line.hasAngularPresentationTruth(replaced), true);
 assert.equal(replaced.snappedAngleDegrees, 0, 'visual follows actual endpoint geometry rather than stale 90 degrees');
 const incompatible = pointAt(13);
 const conflict = line.updateLinePreviewAtSpatialPoint(interaction, pointAt(0), incompatible);
 assert.equal(conflict.effectivePreviewPoint, incompatible);
-assert.equal(conflict.snapActive, false, 'incompatible endpoint cannot retain a false angular visual');
+assert.equal(line.hasAngularPresentationTruth(conflict), false, 'incompatible endpoint cannot retain a false angular visual');
 assert.equal(conflict.snappedAngleDegrees, null);
 const ctrlAngular = line.resolveLinePreviewPoint(start, pointAt(44));
 assert.equal(ctrlAngular.snapActive, true);
@@ -48,7 +48,7 @@ for (const degrees of [0, 22.5, 45, 67.5, 90]) {
   const raw = pointAt(degrees + 2, 120);
   const spatial = alignment({ ...raw, x: raw.x + 4, y: raw.y - 3 }, { x: raw.x + 4, y: raw.y - 3 });
   const resolved = line.resolveLineEffectivePoint(interaction, raw, spatial);
-  assert.equal(resolved.interaction.snapActive, true, `${degrees} remains angular-snapped during X/Y inference`);
+  assert.equal(line.hasAngularPresentationTruth(resolved.interaction), true, `${degrees} remains angular-snapped during X/Y inference`);
   assert.equal(resolved.interaction.effectivePreviewPoint, resolved.effectivePoint, `${degrees} has one authoritative preview endpoint`);
   exactAngle(resolved.effectivePoint, degrees, `${degrees} geometry is exact`);
   const committed = line.applyResolvedLineClick(resolved.interaction, resolved.effectivePoint, () => `hard-${degrees}`).entity;
@@ -75,17 +75,17 @@ assert.ok(Number.isFinite(unstable.effectivePoint.x) && Number.isFinite(unstable
 
 const releasedRaw = pointAt(94);
 const released = line.resolveLineEffectivePoint(interaction, releasedRaw, alignment({ ...releasedRaw, x: releasedRaw.x + 2 }, { x: releasedRaw.x + 2 }));
-assert.equal(released.interaction.snapActive, false, 'existing three-degree angular release boundary remains unchanged');
+assert.equal(line.hasAngularPresentationTruth(released.interaction), false, 'existing three-degree angular release boundary remains unchanged');
 assert.deepEqual(released.effectivePoint, { ...releasedRaw, x: releasedRaw.x + 2 }, 'released angle follows normal spatial inference');
 
 const exactEndpoint = pointAt(45);
 const endpointResolution = line.resolveLineEffectivePoint(interaction, pointAt(44), { active: true, type: 'endpoint', effectivePoint: exactEndpoint });
 assert.equal(endpointResolution.effectivePoint, exactEndpoint, 'endpoint target retains higher-priority ownership');
-assert.equal(endpointResolution.interaction.snapActive, true, 'exactly compatible endpoint may also report angular snap');
+assert.equal(line.hasAngularPresentationTruth(endpointResolution.interaction), true, 'exactly compatible endpoint may also report angular snap');
 const incompatibleEndpoint = pointAt(44);
 const endpointConflict = line.resolveLineEffectivePoint(interaction, pointAt(45), { active: true, type: 'endpoint', effectivePoint: incompatibleEndpoint });
 assert.equal(endpointConflict.effectivePoint, incompatibleEndpoint, 'incompatible endpoint still retains higher-priority ownership');
-assert.equal(endpointConflict.interaction.snapActive, false, 'blue angular state never describes the incompatible endpoint');
+assert.equal(line.hasAngularPresentationTruth(endpointConflict.interaction), false, 'blue angular state never describes the incompatible endpoint');
 
 const ctrlResolved = line.resolveLineEffectivePoint(interaction, pointAt(44), none(pointAt(44)));
 exactAngle(ctrlResolved.effectivePoint, 45, 'Ctrl-bypassed spatial snap retains Line-specific angular inference');

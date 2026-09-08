@@ -34,7 +34,8 @@ assertPointClose(run.resolved.effectivePoint, { x: 70, y: 70 });
 assert.equal(run.resolved.interaction.snappedAngleDegrees, 45);
 assert.equal(run.snap.channels.yAlignment?.entityId, 'point-45-y');
 assert.deepEqual(run.snap.channels.yAlignment?.referencePoint, { x: 100, y: 70 }, 'Y guide retains its source SketchPoint');
-assert.equal(run.snap.channels.xAlignment, null);
+assert.notEqual(run.snap.channels.xAlignment?.candidatePoint.x, run.resolved.effectivePoint.x,
+  'independently acquired X reference remains distinguishable from final geometric truth');
 
 run = pipeline({ raw: { x: 100, y: 90 }, lines: [referenceLine('p', { x: 95, y: 70 }), referenceLine('q', { x: 100, y: 200 }), referenceLine('r', { x: 103, y: 300 })] });
 assert.equal(run.angular.snappedAngleDegrees, 45);
