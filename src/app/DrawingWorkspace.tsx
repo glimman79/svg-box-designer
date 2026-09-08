@@ -51,7 +51,7 @@ type CadCursorPresentation = Readonly<{
   xGuideReference: CoordinatePoint | null;
   yGuideReference: CoordinatePoint | null;
   sameAxisReference: CoordinatePoint | null;
-  perpendicularActive: boolean;
+  lineReference: Readonly<{ relation: 'parallel' | 'perpendicular'; targetLineId: string }> | null;
 }> | null;
 type GeometryDragSession = Readonly<{
   pointerId: number; target: DrawingGeometryTarget; startClient: CoordinatePoint; startModel: DrawingPoint;
@@ -250,8 +250,12 @@ export function DrawingWorkspace({
         ? lineResolution.resolvedReferences.y : null;
     const sameAxisReference = sameAxisReferenceCandidate
       ? modelToOverlayPoint(sameAxisReferenceCandidate.referencePoint ?? sameAxisReferenceCandidate.candidatePoint, drawingTransform, overlayTransform) : null;
-    setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference, sameAxisReference,
-      perpendicularActive: snap.type === 'perpendicular' || nextInteraction.perpendicularLineId !== null } : null);
+    const lineReference = nextInteraction.parallelLineId
+      ? { relation: 'parallel' as const, targetLineId: nextInteraction.parallelLineId }
+      : nextInteraction.perpendicularLineId
+        ? { relation: 'perpendicular' as const, targetLineId: nextInteraction.perpendicularLineId }
+        : null;
+    setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference, sameAxisReference, lineReference } : null);
     const endpointPointId = snap.type === 'endpoint' && activeSketch
       ? pointIdForLineEndpoint(activeSketch.entities[snap.entityId], snap.endpoint) : null;
     const position: DrawingPlacementResolution['position'] = ctrlHeld
@@ -280,7 +284,8 @@ export function DrawingWorkspace({
       // fresh inference while retaining its endpoint and previous Line identity.
       setDrawingSnap(null);
       drawingSnapRef.current = null;
-      transactDocument((current) => appendEntityToActiveSketch(current, result.entity!, undefined, acceptedConstraintKind, acceptedPerpendicularLineId));
+      transactDocument((current) => appendEntityToActiveSketch(current, result.entity!, undefined, acceptedConstraintKind,
+        acceptedPerpendicularLineId));
     }
   };
 
@@ -761,7 +766,7 @@ export function DrawingWorkspace({
             </g>
             <g className="drawing-sketch-geometry" aria-label="Committed sketch geometry">
               {resolvedLines.map((entity) => (
-                <line key={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} className={`drawing-line-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${selectedGeometry?.kind === 'line' && selectedGeometry.lineId === entity.id ? ' is-geometry-selected' : ''}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
+                <line key={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} data-inference-target={lineCursor?.lineReference?.targetLineId === entity.id ? lineCursor.lineReference.relation : undefined} className={`drawing-line-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${lineCursor?.lineReference?.targetLineId === entity.id ? ' is-inference-target' : ''}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${selectedGeometry?.kind === 'line' && selectedGeometry.lineId === entity.id ? ' is-geometry-selected' : ''}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
               ))}
               {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); return p ? <circle className="drawing-geometry-point-preselection" cx={p.x} cy={p.y} r={5 / pixelsPerMm} /> : null; })()}
               {activeTool === 'select' && selectedGeometry?.kind === 'point' && activeSketch?.points[selectedGeometry.pointId] && <circle className={`drawing-geometry-point-selected${geometryDrag?.target.kind === 'point' && geometryDrag.target.pointId === selectedGeometry.pointId ? ' is-geometry-dragging' : ''}`} cx={activeSketch.points[selectedGeometry.pointId].x} cy={activeSketch.points[selectedGeometry.pointId].y} r={6 / pixelsPerMm} />}
@@ -900,7 +905,8 @@ export function DrawingWorkspace({
                 {lineCursor.snap.type === 'line' && <path className="drawing-line-cursor-line" d="M 0 -6 L 6 5 L -6 5 Z" />}
                 {lineCursor.snap.type === 'alignment' && <rect className="drawing-line-cursor-alignment" x="-5" y="-5" width="10" height="10" />}
                 {lineCursor.snap.type === 'perpendicular' && <path className="drawing-line-cursor-perpendicular" d="M -5 5 L -5 -5 L 5 -5" />}
-                {lineCursor.snap.type !== 'perpendicular' && lineCursor.perpendicularActive && <path className="drawing-line-cursor-perpendicular" d="M -5 5 L -5 -5 L 5 -5" />}
+                {lineCursor.lineReference?.relation === 'perpendicular' && lineCursor.snap.type !== 'perpendicular' && <path className="drawing-line-cursor-perpendicular" d="M -5 5 L -5 -5 L 5 -5" />}
+                {lineCursor.lineReference?.relation === 'parallel' && <path className="drawing-line-cursor-parallel" d="M -6 -3 L 6 -3 M -6 3 L 6 3" />}
               </g>
               </g>
             )}

@@ -7,6 +7,7 @@ const built = (name) => pathToFileURL(path.resolve(`.test-build/drawing-inferenc
 const inference = await import(built('drawingInference'));
 const snaps = await import(built('drawingSnapEngine'));
 const lines = await import(built('drawingLineTool'));
+const drawingTypes = await import(built('drawingTypes'));
 
 const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 const bounds = { x: -1000, y: -1000, width: 2000, height: 2000 };
@@ -158,7 +159,28 @@ test('Ctrl clears acquired and hysteretic inference and authors the raw point', 
   assert.deepEqual(overridden.placement.effectivePoint, raw);
   assert.equal(lines.hasAngularPresentationTruth(overridden.placement.interaction), false);
   assert.equal(overridden.placement.interaction.perpendicularLineId, null);
-  assert.deepEqual(overridden.snap.channels, { xAlignment: null, yAlignment: null, perpendicular: null });
+  assert.deepEqual(overridden.snap.channels, { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null });
+});
+
+for (const degrees of [18, 198]) test(`Parallel target identity drives and retains the ${degrees} degree branch`, () => {
+  const direction = pointAt(18, 40);
+  const scene = [referenceLine('parallel-target', { x: 400, y: 400 }, { x: 400 + direction.x, y: 400 + direction.y })];
+  const acquired = author({ pointer: pointAt(degrees, 100), scene });
+  assert.equal(acquired.snap.type, 'parallel');
+  assert.equal(acquired.placement.interaction.parallelLineId, 'parallel-target');
+  assert.equal(acquired.placement.interaction.perpendicularLineId, null);
+  const retained = author({ pointer: pointAt(degrees, 250), scene, previousSnap: acquired.snap });
+  assert.equal(retained.snap.channels.parallel.entityId, 'parallel-target');
+  assert.equal(retained.placement.interaction.parallelLineId, 'parallel-target');
+  assert.equal(lines.hasAngularPresentationTruth(retained.placement.interaction), false);
+});
+
+test('automatic axis semantics suppress Perpendicular and Parallel remains transient-only at commit', () => {
+  let document = lines.appendEntityToActiveSketch(drawingTypes.createDrawingDocumentV2(),
+    referenceLine('target', { x: 0, y: 0 }, { x: 20, y: 0 }), () => 'target-point', null);
+  document = lines.appendEntityToActiveSketch(document, referenceLine('axis', { x: 0, y: 10 }, { x: 20, y: 10 }),
+    () => 'axis-point', 'HORIZONTAL', 'target');
+  assert.deepEqual(Object.values(document.sketches['sketch-1'].geometricConstraints).map(({ kind }) => kind), ['HORIZONTAL']);
 });
 
 for (const scale of [0.5, 4]) test(`endpoint acquisition remains screen-space stable at ${scale}x`, () => {

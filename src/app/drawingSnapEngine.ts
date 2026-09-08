@@ -9,10 +9,13 @@ export const DRAWING_ALIGNMENT_SNAP_ACQUIRE_PX = 8;
 export const DRAWING_ALIGNMENT_SNAP_RELEASE_PX = 11;
 export const DRAWING_PERPENDICULAR_SNAP_ACQUIRE_PX = 8;
 export const DRAWING_PERPENDICULAR_SNAP_RELEASE_PX = 11;
+export const DRAWING_PARALLEL_SNAP_ACQUIRE_PX = 8;
+export const DRAWING_PARALLEL_SNAP_RELEASE_PX = 11;
 
 type EndpointInference = Extract<DrawingInference, { type: 'endpoint' }>;
 type LineInference = Extract<DrawingInference, { type: 'line' }>;
 type PerpendicularInference = Extract<DrawingInference, { type: 'perpendicular' }>;
+type ParallelInference = Extract<DrawingInference, { type: 'parallel' }>;
 type AlignmentXInference = Extract<DrawingInference, { type: 'alignment-x' }>;
 type AlignmentYInference = Extract<DrawingInference, { type: 'alignment-y' }>;
 
@@ -22,6 +25,7 @@ export type DrawingSnapChannels = Readonly<{
   xAlignment: AlignmentXInference | null;
   yAlignment: AlignmentYInference | null;
   perpendicular: PerpendicularInference | null;
+  parallel: ParallelInference | null;
 }>;
 
 type SnapBase = Readonly<{ channels: DrawingSnapChannels }>;
@@ -29,6 +33,8 @@ export type DrawingSnap = (Readonly<{
   type: 'none'; active: false; effectivePoint: DrawingPoint; screenDistance: null;
 }> | Readonly<{
   type: 'perpendicular'; active: true; effectivePoint: DrawingPoint; entityId: string; screenDistance: number;
+}> | Readonly<{
+  type: 'parallel'; active: true; effectivePoint: DrawingPoint; entityId: string; screenDistance: number;
 }> | Readonly<{
   type: 'endpoint'; active: true; effectivePoint: DrawingPoint; entityId: string;
   endpoint: 'start' | 'end'; screenDistance: number;
@@ -47,6 +53,7 @@ export type DrawingInferenceCandidates = Readonly<{
   alignmentsX: ReadonlyArray<AlignmentXInference>;
   alignmentsY: ReadonlyArray<AlignmentYInference>;
   perpendiculars: ReadonlyArray<PerpendicularInference>;
+  parallels: ReadonlyArray<ParallelInference>;
 }>;
 
 const endpointIdentity = (candidate: EndpointInference) => `${candidate.entityId}:${candidate.endpoint}`;
@@ -71,11 +78,21 @@ const chooseAxis = <T extends AlignmentXInference | AlignmentYInference>(items: 
   const acquired = first && first.screenDistance <= DRAWING_ALIGNMENT_SNAP_ACQUIRE_PX ? first : null;
   const held = old && items.find((item) => item.referenceId === old.referenceId
     && item.constructionKey === old.constructionKey);
-  if (!held || held.screenDistance > DRAWING_ALIGNMENT_SNAP_RELEASE_PX) return acquired;
-  // Keep a released-radius target stable, but allow an acquired target that is
-  // clearly (at least two pixels) better to take over deterministically.
+  if (!held || (held.positionOwnership !== 'reference-only' && held.screenDistance > DRAWING_ALIGNMENT_SNAP_RELEASE_PX)) return acquired;
+  // A same-axis target stays with its unchanged construction identity; proximity
+  // remains relevant only when a different eligible target replaces it.
   return acquired && acquired.referenceId !== held.referenceId
     && acquired.screenDistance + 2 <= held.screenDistance ? acquired : held;
+};
+
+const chooseParallel = (items: ReadonlyArray<ParallelInference>, previous: DrawingSnap | null) => {
+  const old = previous?.channels?.parallel ?? (previous?.type === 'parallel' ? {
+    type: 'parallel' as const, entityId: previous.entityId, candidatePoint: previous.effectivePoint, screenDistance: previous.screenDistance,
+  } : null);
+  const held = old && items.find(({ entityId }) => entityId === old.entityId);
+  if (held && held.screenDistance <= DRAWING_PARALLEL_SNAP_RELEASE_PX) return held;
+  const first = items[0];
+  return first && first.screenDistance <= DRAWING_PARALLEL_SNAP_ACQUIRE_PX ? first : null;
 };
 
 const choosePerpendicular = (items: ReadonlyArray<PerpendicularInference>, previous: DrawingSnap | null) => {
@@ -92,7 +109,7 @@ const choosePerpendicular = (items: ReadonlyArray<PerpendicularInference>, previ
 export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOverride }: {
   rawPoint: DrawingPoint; candidates: DrawingInferenceCandidates; previousSnap: DrawingSnap | null; ctrlOverride: boolean;
 }): DrawingSnap => {
-  const emptyChannels: DrawingSnapChannels = { xAlignment: null, yAlignment: null, perpendicular: null };
+  const emptyChannels: DrawingSnapChannels = { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null };
   const none = (channels = emptyChannels): DrawingSnap => ({ active: false, type: 'none', effectivePoint: rawPoint, screenDistance: null, channels });
   // Layer 0 hard guard: no acquired or retained channel can survive Ctrl.
   if (ctrlOverride) return none();
@@ -101,7 +118,8 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
   const xReference = chooseAxis(candidates.alignmentsX, oldChannels.xAlignment);
   const yReference = chooseAxis(candidates.alignmentsY, oldChannels.yAlignment);
   const perpendicular = choosePerpendicular(candidates.perpendiculars, previousSnap);
-  const channels: DrawingSnapChannels = { xAlignment: xReference, yAlignment: yReference, perpendicular };
+  const parallel = chooseParallel(candidates.parallels ?? [], previousSnap);
+  const channels: DrawingSnapChannels = { xAlignment: xReference, yAlignment: yReference, perpendicular, parallel };
 
   // Hysteresis stabilizes a class; it never changes this authority ordering.
   const endpoint = chooseEndpoint(candidates.endpoints, previousSnap);
@@ -114,6 +132,8 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
     ? retainedLine : candidates.lines.find(({ screenDistance }) => screenDistance <= DRAWING_LINE_SNAP_ACQUIRE_PX);
   if (line) return { active: true, type: 'line', effectivePoint: line.candidatePoint, entityId: line.entityId,
     segmentParameter: line.segmentParameter, screenDistance: line.screenDistance, lineStart: line.lineStart, lineEnd: line.lineEnd, channels };
+  if (parallel) return { active: true, type: 'parallel', effectivePoint: parallel.candidatePoint,
+    entityId: parallel.entityId, screenDistance: parallel.screenDistance, channels };
   if (perpendicular) return { active: true, type: 'perpendicular', effectivePoint: perpendicular.candidatePoint,
     entityId: perpendicular.entityId, screenDistance: perpendicular.screenDistance, channels };
   if (xReference || yReference) return { active: true, type: 'alignment',
