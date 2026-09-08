@@ -77,6 +77,33 @@ const toScreenPoint = (point: CoordinatePoint, transform: AffineTransform): Coor
   y: transform.b * point.x + transform.d * point.y + transform.f,
 });
 
+/** Nearest point on an infinite model-space support, measured in client space. */
+const projectClientPointToInfiniteSupport = (
+  pointerClientPoint: CoordinatePoint,
+  origin: DrawingPoint,
+  direction: DrawingPoint,
+  transform: AffineTransform,
+): Readonly<{ candidatePoint: DrawingPoint; screenDistance: number }> | null => {
+  const originScreen = toScreenPoint(origin, transform);
+  // Transform a vector without translation. SVG screen CTMs need not have equal
+  // x/y scales, so a model-space orthogonal projection is not generally the
+  // nearest point to the rendered support.
+  const screenDirection = {
+    x: transform.a * direction.x + transform.c * direction.y,
+    y: transform.b * direction.x + transform.d * direction.y,
+  };
+  const screenLengthSquared = screenDirection.x ** 2 + screenDirection.y ** 2;
+  if (screenLengthSquared <= Number.EPSILON) return null;
+  const parameter = ((pointerClientPoint.x - originScreen.x) * screenDirection.x
+    + (pointerClientPoint.y - originScreen.y) * screenDirection.y) / screenLengthSquared;
+  const candidatePoint = { x: origin.x + parameter * direction.x, y: origin.y + parameter * direction.y };
+  const candidateScreen = toScreenPoint(candidatePoint, transform);
+  return {
+    candidatePoint,
+    screenDistance: Math.hypot(pointerClientPoint.x - candidateScreen.x, pointerClientPoint.y - candidateScreen.y),
+  };
+};
+
 /** Extracts stable, meaningful geometric vertices without coupling inference to a tool. */
 export const collectDrawingReferencePoints = (entities: ReadonlyArray<ResolvedDrawingLine>): DrawingReferencePoint[] => {
   const references: DrawingReferencePoint[] = [];
@@ -194,16 +221,13 @@ export const collectDrawingInferenceCandidates = (
         if (length <= 1e-9) continue;
         let ux = dx / length, uy = dy / length;
         if (uy < 0 || Math.abs(uy) <= 1e-12 && ux < 0) { ux = -ux; uy = -uy; }
-        const pointerModel = clientToModelPointForInference(pointerClientPoint, drawingToClientTransform);
-        if (!pointerModel) continue;
-        const parameter = (pointerModel.x - reference.point.x) * ux + (pointerModel.y - reference.point.y) * uy;
-        const candidatePoint = { x: reference.point.x + parameter * ux, y: reference.point.y + parameter * uy };
-        const screen = toScreenPoint(candidatePoint, drawingToClientTransform);
+        const projection = projectClientPointToInfiniteSupport(pointerClientPoint, reference.point, { x: ux, y: uy }, drawingToClientTransform);
+        if (!projection) continue;
         parallels.push({ type: 'parallel', entityId: line.id, sourcePointId: reference.id,
           sourceScreenDistance: Math.hypot(pointerClientPoint.x - toScreenPoint(reference.point, drawingToClientTransform).x,
             pointerClientPoint.y - toScreenPoint(reference.point, drawingToClientTransform).y),
           canonicalDirection: { x: ux, y: uy }, constructionKey: `endpoint-parallel:${reference.id}:${line.id}`,
-          candidatePoint, screenDistance: Math.hypot(pointerClientPoint.x - screen.x, pointerClientPoint.y - screen.y) });
+          candidatePoint: projection.candidatePoint, screenDistance: projection.screenDistance });
       }
       if (angularDirection && activeLineStart) {
         if (Math.abs(angularDirection.x) > 1e-12) {
