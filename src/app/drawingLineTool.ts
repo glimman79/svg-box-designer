@@ -393,6 +393,7 @@ export const appendEntityToActiveSketch = (
   automaticConstraintKind: 'HORIZONTAL' | 'VERTICAL' | null = null,
   perpendicularLineId: string | null = null,
   acceptedEndpointSnaps: Readonly<{ startPointId?: string; endPointId?: string }> | null = null,
+  parallelLineId: string | null = null,
 ): DrawingDocumentV2 => {
   const activeSketch = document.sketches[document.activeSketchId];
   if (!activeSketch || activeSketch.entities[entity.id]) return document;
@@ -414,6 +415,13 @@ export const appendEntityToActiveSketch = (
   const perpendicularConstraint: DrawingGeometricConstraint | null = perpendicularId && pair && !perpendicularDuplicate
     ? { id: perpendicularId, kind: 'PERPENDICULAR', references: pair.map((entityId) => ({ kind: 'entity' as const, entityId })) as [{ kind: 'entity'; entityId: string }, { kind: 'entity'; entityId: string }] }
     : null;
+  const parallelPair = !automaticConstraintKind && parallelLineId && activeSketch.entities[parallelLineId] ? [entity.id, parallelLineId].sort() : null;
+  const parallelId = parallelPair ? `parallel:${parallelPair[0]}:${parallelPair[1]}` : null;
+  const parallelDuplicate = parallelPair && Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'PARALLEL'
+    && constraint.references.map(({ entityId }) => entityId).sort().join(':') === parallelPair.join(':'));
+  const parallelConstraint: DrawingGeometricConstraint | null = parallelId && parallelPair && !parallelDuplicate
+    ? { id: parallelId, kind: 'PARALLEL', references: parallelPair.map((entityId) => ({ kind: 'entity' as const, entityId })) as [{ kind: 'entity'; entityId: string }, { kind: 'entity'; entityId: string }] }
+    : null;
   const coincidentConstraints = ([['startPointId', startPointId], ['endPointId', endPointId]] as const).flatMap(([endpoint, createdPointId]) => {
     const targetPointId = acceptedEndpointSnaps?.[endpoint];
     const pointPair = targetPointId && activeSketch.points[targetPointId] ? canonicalCoincidentPointPair(createdPointId, targetPointId) : null;
@@ -424,7 +432,7 @@ export const appendEntityToActiveSketch = (
     return [{ id: `coincident:${pointPair[0]}:${pointPair[1]}`, kind: 'COINCIDENT' as const,
       references: pointPair.map((pointId) => ({ kind: 'sketchPoint' as const, pointId })) as [{ kind: 'sketchPoint'; pointId: string }, { kind: 'sketchPoint'; pointId: string }] }];
   });
-  const addedConstraints = [automaticConstraint, perpendicularConstraint, ...coincidentConstraints].filter(Boolean) as DrawingGeometricConstraint[];
+  const addedConstraints = [automaticConstraint, perpendicularConstraint, parallelConstraint, ...coincidentConstraints].filter(Boolean) as DrawingGeometricConstraint[];
   return {
     ...document,
     sketches: {

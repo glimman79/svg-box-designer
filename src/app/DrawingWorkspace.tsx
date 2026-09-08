@@ -279,6 +279,7 @@ export function DrawingWorkspace({
     // click, not mutable hover state observed during the delay.
     const acceptedConstraintKind = automaticAxisConstraintKind(acceptedInteraction);
     const acceptedPerpendicularLineId = acceptedConstraintKind ? null : acceptedInteraction.perpendicularLineId;
+    const acceptedParallelLineId = acceptedConstraintKind ? null : acceptedInteraction.parallelLineId;
     const result = applyResolvedLineClick(acceptedInteraction, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`, pointId);
     setLineInteraction(result.interaction);
     lineInteractionRef.current = result.interaction;
@@ -288,7 +289,7 @@ export function DrawingWorkspace({
       setDrawingSnap(null);
       drawingSnapRef.current = null;
       transactDocument((current) => appendEntityToActiveSketch(current, result.entity!, undefined, acceptedConstraintKind,
-        acceptedPerpendicularLineId));
+        acceptedPerpendicularLineId, null, acceptedParallelLineId));
     }
   };
 
