@@ -2,6 +2,13 @@ import assert from 'node:assert/strict';
 import { deleteGeometricConstraint, deriveParallelMarkers, GEOMETRIC_CONSTRAINT_MARKER_OFFSET_PX, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, GEOMETRIC_CONSTRAINT_MARKER_SPACING_PX, layoutLineConstraintMarkers } from '../.test-build/drawing-parallel-marker/drawingParallelMarker.js';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-parallel-marker/drawingHistory.js';
 import { removeLineAndOrphans } from '../.test-build/drawing-parallel-marker/drawingTopology.js';
+import { createDrawingDocumentV2 } from '../.test-build/drawing-parallel-marker/drawingTypes.js';
+import { appendEntityToActiveSketch, applyResolvedLineClick, EMPTY_LINE_INTERACTION, resolveLineEffectivePoint } from '../.test-build/drawing-parallel-marker/drawingLineTool.js';
+import { collectDrawingInferenceCandidates } from '../.test-build/drawing-parallel-marker/drawingInference.js';
+import { resolveDrawingSnap } from '../.test-build/drawing-parallel-marker/drawingSnapEngine.js';
+import { DrawingWorkspace, initialDrawingViewBox } from '../.test-build/drawing-parallel-marker/DrawingWorkspace.js';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
 import { readFileSync } from 'node:fs';
 
 const constraint = { id: 'parallel:a:b', kind: 'PARALLEL', references: [{ kind: 'entity', entityId: 'a' }, { kind: 'entity', entityId: 'b' }] };
@@ -13,6 +20,64 @@ const sketch = {
   geometricConstraints: { [constraint.id]: constraint }, geometricConstraintOrder: [constraint.id],
 };
 const document = { schemaVersion: 2, unit: 'mm', sketches: { s: sketch }, sketchOrder: ['s'], activeSketchId: 's' };
+
+// Follow the production pointer-candidate -> snap -> Line resolution -> click -> append transaction.
+const transform = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+let authoredDocument = appendEntityToActiveSketch(createDrawingDocumentV2(),
+  { id: 'reference', type: 'line', start: { x: 0, y: 0 }, end: { x: 30, y: 15 } }, (() => { let n = 0; return () => `reference-p${++n}`; })());
+const reference = { id: 'reference', start: { x: 0, y: 0 }, end: { x: 30, y: 15 } };
+const authoringStart = { x: 5, y: 20 };
+const rawPointer = { x: 25, y: 31 };
+const candidates = collectDrawingInferenceCandidates(rawPointer, [reference], transform, undefined, authoringStart, null);
+const snap = resolveDrawingSnap({ rawPoint: rawPointer, candidates, previousSnap: null, ctrlOverride: false });
+assert.equal(snap.type, 'parallel', 'production candidate acquisition accepts Parallel');
+const resolved = resolveLineEffectivePoint({ ...EMPTY_LINE_INTERACTION, start: authoringStart }, rawPointer, snap);
+assert.equal(resolved.interaction.parallelLineId, 'reference', 'production preview retains the inferred reference Line');
+const click = applyResolvedLineClick(resolved.interaction, resolved.effectivePoint, () => 'authored');
+authoredDocument = appendEntityToActiveSketch(authoredDocument, click.entity,
+  (() => { let n = 0; return () => `authored-p${++n}`; })(), null, null, null, resolved.interaction.parallelLineId);
+const authoredSketch = authoredDocument.sketches['sketch-1'];
+const [authoredConstraint] = Object.values(authoredSketch.geometricConstraints);
+assert.equal(authoredConstraint.kind, 'PARALLEL', 'production Line append transaction stores Parallel intent');
+assert.deepEqual(authoredConstraint.references.map(({ entityId }) => entityId), ['authored', 'reference']);
+assert.deepEqual(authoredSketch.geometricConstraintOrder, [authoredConstraint.id], 'stored Parallel is ordered in the same transaction');
+const authoredMarkers = deriveParallelMarkers(authoredSketch, 1);
+assert.equal(authoredMarkers.length, 2, 'the production-authored constraint derives one marker per Line');
+assert.deepEqual(authoredMarkers.map(({ constraintId, lineId }) => [constraintId, lineId]), [
+  [authoredConstraint.id, 'authored'], [authoredConstraint.id, 'reference'],
+]);
+assert.ok(authoredMarkers.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y)), 'production-authored marker coordinates are finite');
+const geometricOnlyDocument = appendEntityToActiveSketch(createDrawingDocumentV2(),
+  { id: 'plain-a', type: 'line', start: { x: 0, y: 0 }, end: { x: 30, y: 15 } }, () => 'plain-a-point');
+const geometricOnlyPair = appendEntityToActiveSketch(geometricOnlyDocument,
+  { id: 'plain-b', type: 'line', start: { x: 0, y: 20 }, end: { x: 30, y: 35 } }, () => 'plain-b-point');
+assert.equal(deriveParallelMarkers(geometricOnlyPair.sketches['sketch-1']).length, 0,
+  'geometrically Parallel Lines without stored semantic intent do not manufacture markers');
+
+const markup = renderToStaticMarkup(createElement(DrawingWorkspace, {
+  document: authoredDocument, setDocument: () => {}, viewBox: initialDrawingViewBox, setViewBox: () => {},
+}));
+const parallelGroups = [...markup.matchAll(/<g class="drawing-geometric-constraint-marker drawing-parallel-marker"[^>]*>(.*?)<\/g>/g)];
+assert.equal(parallelGroups.length, 2, 'actual DrawingWorkspace DOM contains two persistent Parallel groups');
+assert.equal(parallelGroups.flatMap(([, contents]) => [...contents.matchAll(/<line class="drawing-parallel-marker-stroke"/g)]).length, 4,
+  'actual DrawingWorkspace DOM contains four Parallel strokes');
+for (const [, contents] of parallelGroups) {
+  const strokes = [...contents.matchAll(/<line class="drawing-parallel-marker-stroke"([^>]*)>/g)];
+  assert.equal(strokes.length, 2);
+  for (const [, attributes] of strokes) {
+    for (const name of ['x1', 'y1', 'x2', 'y2']) assert.ok(Number.isFinite(Number(attributes.match(new RegExp(`${name}="([^"]+)"`))?.[1])));
+    assert.match(attributes, /stroke="currentColor"/);
+    assert.match(attributes, /stroke-width="1\.25"/);
+    assert.match(attributes, /vector-effect="non-scaling-stroke"/);
+    assert.doesNotMatch(attributes, /(?:opacity="0"|visibility="hidden"|display="none")/);
+  }
+}
+for (const pixelsPerMm of [0.5, 1, 4]) {
+  const halfLength = GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX / 2 / pixelsPerMm;
+  const screenLength = halfLength * 2 * pixelsPerMm;
+  assert.equal(screenLength, 12, `Parallel stroke remains 12 CSS px at ${pixelsPerMm} px/mm`);
+  assert.ok(screenLength > 3 && screenLength < 30);
+}
 
 assert.deepEqual(deriveParallelMarkers(sketch), [
   { id: 'parallel:a:b:0', constraintId: constraint.id, lineId: 'a', x: 10, y: 12, label: '∥' },
