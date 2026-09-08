@@ -1465,6 +1465,9 @@ button:disabled {
 .drawing-geometric-constraint-marker.is-hovered text { fill: var(--drawing-hover); }
 .drawing-geometric-constraint-marker.is-selected text { fill: var(--drawing-dimension-active); }
 .drawing-geometric-constraint-marker-hit { fill: transparent; stroke: none; pointer-events: all; }
+.drawing-parallel-marker-stroke { pointer-events: none; }
+.drawing-parallel-marker.is-hovered { color: var(--drawing-hover); }
+.drawing-parallel-marker.is-selected { color: var(--drawing-dimension-active); }
 .drawing-right-angle-marker-shape { fill: none; stroke: currentColor; stroke-width: 1.25px; vector-effect: non-scaling-stroke; pointer-events: none; }
 .drawing-coincident-marker-shape { fill: none; stroke: var(--drawing-geometric-constraint); stroke-width: 1.25px; vector-effect: non-scaling-stroke; pointer-events: none; }
 .drawing-coincident-marker.is-hovered .drawing-coincident-marker-shape { stroke: var(--drawing-hover); }
