@@ -7,7 +7,11 @@ const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 const bounds = { x: -500, y: -500, width: 1000, height: 1000 };
 const start = { x: 0, y: 0 };
 const interaction = { ...EMPTY_LINE_INTERACTION, start, startPointId: 'origin', previousChainedLineId: 'chain' };
-const referenceLine = (id, point) => ({ id, type: 'line', start: point, end: { x: point.x - 31, y: point.y } });
+const referenceLine = (id, point) => ({ id, type: 'line', start: point, end: { x: point.x - 31, y: point.y - 47 } });
+const assertPointClose = (actual, expected) => {
+  assert.ok(Math.abs(actual.x - expected.x) < 1e-10, `${actual.x} != ${expected.x}`);
+  assert.ok(Math.abs(actual.y - expected.y) < 1e-10, `${actual.y} != ${expected.y}`);
+};
 
 const pipeline = ({ raw, lines, transform = identity, previous = null, ctrl = false }) => {
   const angular = resolveLinePreviewPoint(start, raw);
@@ -18,7 +22,21 @@ const pipeline = ({ raw, lines, transform = identity, previous = null, ctrl = fa
   return { angular, candidates, snap, resolved: resolveLineEffectivePoint(interaction, raw, snap, null, ctrl) };
 };
 
-let run = pipeline({ raw: { x: 100, y: 90 }, lines: [referenceLine('p', { x: 95, y: 70 }), referenceLine('q', { x: 100, y: 200 }), referenceLine('r', { x: 103, y: 300 })] });
+let run = pipeline({ raw: { x: 102, y: 98 }, lines: [referenceLine('point-45-x', { x: 100, y: 70 })] });
+assertPointClose(run.resolved.effectivePoint, { x: 100, y: 100 });
+assert.equal(run.resolved.interaction.snappedAngleDegrees, 45);
+assert.equal(run.snap.channels.xAlignment?.entityId, 'point-45-x');
+assert.deepEqual(run.snap.channels.xAlignment?.referencePoint, { x: 100, y: 70 }, 'X guide retains its source SketchPoint');
+assert.equal(run.snap.channels.yAlignment, null);
+
+run = pipeline({ raw: { x: 72, y: 68 }, lines: [referenceLine('point-45-y', { x: 100, y: 70 })] });
+assertPointClose(run.resolved.effectivePoint, { x: 70, y: 70 });
+assert.equal(run.resolved.interaction.snappedAngleDegrees, 45);
+assert.equal(run.snap.channels.yAlignment?.entityId, 'point-45-y');
+assert.deepEqual(run.snap.channels.yAlignment?.referencePoint, { x: 100, y: 70 }, 'Y guide retains its source SketchPoint');
+assert.equal(run.snap.channels.xAlignment, null);
+
+run = pipeline({ raw: { x: 100, y: 90 }, lines: [referenceLine('p', { x: 95, y: 70 }), referenceLine('q', { x: 100, y: 200 }), referenceLine('r', { x: 103, y: 300 })] });
 assert.equal(run.angular.snappedAngleDegrees, 45);
 assert.deepEqual(run.resolved.effectivePoint, { x: 95, y: 95 });
 assert.equal(run.snap.channels.xAlignment.entityId, 'p', 'composed X distance beats raw-X-nearest distractor');
@@ -37,6 +55,8 @@ for (const [angle, radius] of [[22.5, 100], [67.5, 100], [225, 100], [157.5, 100
   assert.equal(result.angular.snappedAngleDegrees, angle);
   assert.equal(result.snap.channels.xAlignment?.entityId, `angle-${angle}`);
   assert.equal(result.resolved.interaction.snappedAngleDegrees, angle);
+  assert.ok(Math.abs(result.resolved.effectivePoint.x - target.x) < 1e-10);
+  assert.ok(Math.abs(result.resolved.effectivePoint.y - target.y) < 1e-10, `${angle} degree intersection is mathematically exact`);
 }
 
 run = pipeline({ raw: { x: 100, y: 2 }, lines: [referenceLine('horizontal', { x: 95, y: 40 }), referenceLine('parallel-y', { x: 200, y: 2 })] });
@@ -51,6 +71,15 @@ assert.equal(run.snap.channels.xAlignment, null);
 
 const behind = pipeline({ raw: { x: 100, y: 90 }, lines: [referenceLine('behind', { x: -95, y: -70 })] });
 assert.equal(behind.snap.channels.xAlignment, null, 'behind-ray axis intersection is never generated');
+
+run = pipeline({ raw: { x: 100, y: 100 }, lines: [referenceLine('far-x', { x: 94, y: 180 }), referenceLine('near-y', { x: 180, y: 102 })] });
+assert.equal(run.snap.channels.yAlignment?.entityId, 'near-y', 'closest composed intersection wins across X and Y references');
+assert.equal(run.snap.channels.xAlignment, null);
+
+run = pipeline({ raw: { x: 100, y: 100 }, lines: [referenceLine('endpoint', { x: 100, y: 100 }), referenceLine('reference', { x: 100, y: 70 })] });
+assert.equal(run.snap.type, 'endpoint', 'real endpoint retains positional authority over angular/reference');
+assert.equal(run.snap.entityId, 'endpoint');
+assert.deepEqual(run.resolved.effectivePoint, { x: 100, y: 100 });
 
 const pLine = referenceLine('held', { x: 95, y: 70 });
 const acquired = pipeline({ raw: { x: 100, y: 90 }, lines: [pLine] });

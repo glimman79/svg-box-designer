@@ -244,9 +244,9 @@ export function DrawingWorkspace({
     const yInference = snap.channels.yAlignment;
     // Visual truth: only channels exactly satisfied by the authoritative point render.
     const xGuideReference = xInference && placementPoint.x === xInference.candidatePoint.x
-      ? modelToOverlayPoint(xInference.candidatePoint, drawingTransform, overlayTransform) : null;
+      ? modelToOverlayPoint(xInference.referencePoint ?? xInference.candidatePoint, drawingTransform, overlayTransform) : null;
     const yGuideReference = yInference && placementPoint.y === yInference.candidatePoint.y
-      ? modelToOverlayPoint(yInference.candidatePoint, drawingTransform, overlayTransform) : null;
+      ? modelToOverlayPoint(yInference.referencePoint ?? yInference.candidatePoint, drawingTransform, overlayTransform) : null;
     setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference,
       perpendicularActive: snap.type === 'perpendicular' || nextInteraction.perpendicularLineId !== null } : null);
     const endpointPointId = snap.type === 'endpoint' && activeSketch
