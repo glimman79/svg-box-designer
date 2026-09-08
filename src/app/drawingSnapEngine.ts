@@ -147,3 +147,21 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
     screenDistance: Math.max(xReference?.screenDistance ?? 0, yReference?.screenDistance ?? 0), xReference, yReference, channels };
   return none(channels);
 };
+
+/** Removes Line-to-Line direction presentation after final H/V authority is known. */
+export const suppressDirectionRelations = (snap: DrawingSnap): DrawingSnap => {
+  const channels = { ...snap.channels, perpendicular: null, parallel: null };
+  if (snap.type !== 'parallel' && snap.type !== 'perpendicular') return { ...snap, channels };
+  const xReference = channels.xAlignment;
+  const yReference = channels.yAlignment;
+  if (xReference || yReference) return {
+    active: true,
+    type: 'alignment',
+    effectivePoint: snap.effectivePoint,
+    screenDistance: Math.max(xReference?.screenDistance ?? 0, yReference?.screenDistance ?? 0),
+    xReference,
+    yReference,
+    channels,
+  };
+  return { active: false, type: 'none', effectivePoint: snap.effectivePoint, screenDistance: null, channels };
+};

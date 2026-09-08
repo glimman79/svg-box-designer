@@ -130,11 +130,32 @@ const resolvedReferencesAt = (point: DrawingPoint, spatialSnap: LineSpatialSnap)
   };
 };
 
-const lineResolution = (effectivePoint: DrawingPoint, interaction: LineToolInteraction, spatialSnap: LineSpatialSnap): LineEffectivePointResolution => ({
-  effectivePoint,
-  interaction,
-  resolvedReferences: resolvedReferencesAt(effectivePoint, spatialSnap),
-});
+const finalAxisAngle = (start: DrawingPoint | null, end: DrawingPoint): 0 | 90 | 180 | 270 | null => {
+  if (!start) return null;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= LINE_ZERO_LENGTH_TOLERANCE_MM) return null;
+  if (Math.abs(dy) <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, length)) return dx >= 0 ? 0 : 180;
+  if (Math.abs(dx) <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, length)) return dy >= 0 ? 90 : 270;
+  return null;
+};
+
+/** Final geometry, rather than candidate acquisition order, owns automatic axis semantics. */
+const lineResolution = (effectivePoint: DrawingPoint, interaction: LineToolInteraction, spatialSnap: LineSpatialSnap): LineEffectivePointResolution => {
+  const axisAngle = finalAxisAngle(interaction.start, effectivePoint);
+  const acceptedInteraction = axisAngle === null ? interaction : {
+    ...interaction,
+    snappedAngleDegrees: axisAngle,
+    perpendicularLineId: null,
+    parallelLineId: null,
+  };
+  return {
+    effectivePoint,
+    interaction: acceptedInteraction,
+    resolvedReferences: resolvedReferencesAt(effectivePoint, spatialSnap),
+  };
+};
 
 const directionAt = (angleDegrees: number): DrawingPoint => {
   const radians = angleDegrees * Math.PI / 180;
@@ -205,13 +226,15 @@ export const resolveLineEffectivePoint = (
   if (!interaction.start) return lineResolution(ctrlOverride ? rawPointerPoint : spatialSnap.effectivePoint, interaction, spatialSnap);
   // Layer 0 is repeated here as the final correctness guard. Future candidate
   // channels cannot accidentally reintroduce Line authoring inference under Ctrl.
-  if (ctrlOverride) return lineResolution(rawPointerPoint,
-    { ...interaction, rawPointerPoint, effectivePreviewPoint: rawPointerPoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: null },
-    { active: false, type: 'none', effectivePoint: rawPointerPoint });
+  if (ctrlOverride) return {
+    effectivePoint: rawPointerPoint,
+    interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: rawPointerPoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: null },
+    resolvedReferences: { x: null, y: null },
+  };
 
-  // Axis intent is accepted from the Line tool's angular inference, not inferred
-  // from the eventual coordinates. It has priority over a simultaneously
-  // available perpendicular spatial candidate.
+  // Raw-pointer axis intent has priority over a simultaneously available
+  // Line-to-Line candidate. The centralized final-geometry guard below also
+  // covers an axis produced by the candidate itself.
   const angular = resolveLinePreviewPoint(interaction.start, rawPointerPoint);
   const acceptedAxis = angular.snapActive && angular.snappedAngleDegrees !== null
     && [0, 90, 180, 270].includes(normalizeDegrees(angular.snappedAngleDegrees));
@@ -302,12 +325,16 @@ export const resolveLineEffectivePoint = (
 export const updateLinePreviewAtSpatialPoint = (interaction: LineToolInteraction, rawPointerPoint: DrawingPoint, effectivePreviewPoint: DrawingPoint): LineToolInteraction => {
   if (!interaction.start) return interaction;
   const effectiveInference = resolveLinePreviewPoint(interaction.start, effectivePreviewPoint);
-  return {
+  const nextInteraction = {
     ...interaction,
     rawPointerPoint,
     effectivePreviewPoint,
     snappedAngleDegrees: effectiveInference.snappedAngleDegrees,
     perpendicularLineId: null,
+  };
+  return finalAxisAngle(interaction.start, effectivePreviewPoint) === null ? nextInteraction : {
+    ...nextInteraction,
+    parallelLineId: null,
   };
 };
 

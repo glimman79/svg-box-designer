@@ -36,8 +36,9 @@ const author = ({ pointer, scene, transform = identity, previousSnap = null, ctr
   const angular = lines.resolveLinePreviewPoint(start, rawModel);
   const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, transform, bounds, start, angular.snappedAngleDegrees);
   const axisDirectionActive = angular.snapActive && [0, 90, 180, 270].includes(angular.snappedAngleDegrees);
-  const snap = snaps.resolveDrawingSnap({ rawPoint: rawModel, candidates, previousSnap, ctrlOverride: ctrl, axisDirectionActive });
-  const placement = lines.resolveLineEffectivePoint(interaction, rawModel, snap, null, ctrl);
+  const candidateSnap = snaps.resolveDrawingSnap({ rawPoint: rawModel, candidates, previousSnap, ctrlOverride: ctrl, axisDirectionActive });
+  const placement = lines.resolveLineEffectivePoint(interaction, rawModel, candidateSnap, null, ctrl);
+  const snap = lines.automaticAxisConstraintKind(placement.interaction) ? snaps.suppressDirectionRelations(candidateSnap) : candidateSnap;
   return { rawModel, angular, candidates, snap, placement };
 };
 
@@ -194,6 +195,48 @@ for (const spec of [
 });
 
 for (const spec of [
+  { name: 'target H + new H', axis: 'HORIZONTAL', targetDegrees: 0, pointer: { x: 100, y: 6 }, relation: 'parallel' },
+  { name: 'target V + new V', axis: 'VERTICAL', targetDegrees: 90, pointer: { x: 6, y: 100 }, relation: 'parallel' },
+  { name: 'target H + new V', axis: 'VERTICAL', targetDegrees: 0, pointer: { x: 6, y: 100 }, relation: 'perpendicular' },
+  { name: 'target V + new H', axis: 'HORIZONTAL', targetDegrees: 90, pointer: { x: 100, y: 6 }, relation: 'perpendicular' },
+]) test(`${spec.name} derives exclusive axis semantics from final geometry`, () => {
+  const targetDirection = pointAt(spec.targetDegrees, 40);
+  const target = referenceLine('axis-target', { x: 400, y: 400 }, { x: 400 + targetDirection.x, y: 400 + targetDirection.y });
+  const acquired = author({ pointer: spec.pointer, scene: [target] });
+  assert.equal(acquired.angular.snapActive, false, 'raw pointer begins outside the H/V angular window');
+  assert.equal(lines.automaticAxisConstraintKind(acquired.placement.interaction), spec.axis);
+  assert.equal(acquired.placement.interaction.parallelLineId, null);
+  assert.equal(acquired.placement.interaction.perpendicularLineId, null);
+  assert.equal(acquired.snap.type, 'none', `${spec.relation} cursor presentation is removed`);
+  assert.equal(acquired.snap.channels.parallel, null);
+  assert.equal(acquired.snap.channels.perpendicular, null);
+
+  const priorTargetDegrees = spec.relation === 'parallel' ? spec.targetDegrees + 5 : spec.targetDegrees + 95;
+  const priorDirection = pointAt(priorTargetDegrees, 40);
+  const priorTarget = referenceLine('axis-target', { x: 400, y: 400 }, { x: 400 + priorDirection.x, y: 400 + priorDirection.y });
+  const retainedPointer = spec.relation === 'parallel' ? pointAt(priorTargetDegrees) : pointAt(priorTargetDegrees + 90);
+  const retained = author({ pointer: retainedPointer, scene: [priorTarget] });
+  assert.equal(retained.snap.type, spec.relation);
+  const axisAfterRetention = author({ pointer: spec.pointer, scene: [target], previousSnap: retained.snap });
+  assert.equal(lines.automaticAxisConstraintKind(axisAfterRetention.placement.interaction), spec.axis);
+  assert.equal(axisAfterRetention.placement.interaction.parallelLineId, null);
+  assert.equal(axisAfterRetention.placement.interaction.perpendicularLineId, null);
+  assert.equal(axisAfterRetention.snap.type, 'none');
+});
+
+test('final H/V authority retains a compatible point reference while removing the Line relation', () => {
+  const target = referenceLine('horizontal-target', { x: 400, y: 400 }, { x: 440, y: 400 });
+  const pointReference = referenceLine('point-reference', { x: 100, y: 40 }, { x: 130, y: 57 });
+  const result = author({ pointer: { x: 100, y: 6 }, scene: [target, pointReference] });
+  assert.equal(lines.automaticAxisConstraintKind(result.placement.interaction), 'HORIZONTAL');
+  assert.ok(result.snap.channels.xAlignment, 'visible point reference remains acquired');
+  assert.equal(result.placement.resolvedReferences.x, result.snap.channels.xAlignment);
+  assert.equal(result.placement.interaction.parallelLineId, null);
+  assert.equal(result.placement.interaction.perpendicularLineId, null);
+  assert.equal(result.snap.type, 'alignment');
+});
+
+for (const spec of [
   { axis: 'HORIZONTAL', degrees: 0, targetDegrees: 95 },
   { axis: 'VERTICAL', degrees: 90, targetDegrees: 5 },
 ]) test(`retained Perpendicular cannot override ${spec.axis} direction authority`, () => {
@@ -216,6 +259,12 @@ test('automatic axis semantics suppress Perpendicular and Parallel remains trans
   document = lines.appendEntityToActiveSketch(document, referenceLine('axis', { x: 0, y: 10 }, { x: 20, y: 10 }),
     () => 'axis-point', 'HORIZONTAL', 'target');
   assert.deepEqual(Object.values(document.sketches['sketch-1'].geometricConstraints).map(({ kind }) => kind), ['HORIZONTAL']);
+
+  document = lines.appendEntityToActiveSketch(document, referenceLine('vertical-axis', { x: 30, y: 0 }, { x: 30, y: 20 }),
+    () => 'vertical-axis-point', 'VERTICAL', 'target');
+  assert.deepEqual(Object.values(document.sketches['sketch-1'].geometricConstraints).map(({ kind }) => kind), ['HORIZONTAL', 'VERTICAL']);
+  assert.equal(Object.values(document.sketches['sketch-1'].geometricConstraints).filter(({ kind }) => kind === 'PARALLEL').length, 0);
+  assert.equal(Object.values(document.sketches['sketch-1'].geometricConstraints).filter(({ kind }) => kind === 'PERPENDICULAR').length, 0);
 });
 
 for (const scale of [0.5, 4]) test(`endpoint acquisition remains screen-space stable at ${scale}x`, () => {
