@@ -3,7 +3,7 @@ import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawin
 import { appendEntityToActiveSketch, applyResolvedLineClick, automaticAxisConstraintKind, cancelLineInteraction, EMPTY_LINE_INTERACTION, hasAngularPresentationTruth, resolveLineEffectivePoint, resolveLinePreviewPoint, type LineToolInteraction } from './drawingLineTool';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
-import { collectDrawingInferenceCandidates, deriveInfiniteSupportGuide } from './drawingInference';
+import { collectDrawingInferenceCandidates, derivePointReferenceGuide } from './drawingInference';
 import { resolveDrawingSnap, suppressDirectionRelations, type DrawingSnap } from './drawingSnapEngine';
 import { activateDrawingTool, finishDrawingConstruction, type DrawingActiveTool, type DrawingToolLifecycle } from './drawingToolLifecycle';
 import { useCadWheelCapture } from './useCadWheelCapture';
@@ -259,12 +259,10 @@ export function DrawingWorkspace({
       : nextInteraction.perpendicularLineId
         ? { relation: 'perpendicular' as const, targetLineId: nextInteraction.perpendicularLineId }
         : null;
-    const pointReferenceGuide = snap.type === 'point-reference'
+    const pointReferenceGuide = snap.type === 'point-reference' && anchor
       ? (() => {
-        const origin = modelToOverlayPoint(snap.supportOrigin, drawingTransform, overlayTransform);
-        const directionPoint = modelToOverlayPoint({ x: snap.supportOrigin.x + snap.supportDirection.x,
-          y: snap.supportOrigin.y + snap.supportDirection.y }, drawingTransform, overlayTransform);
-        return origin && directionPoint ? deriveInfiniteSupportGuide(origin, directionPoint, viewport) : null;
+        const source = modelToOverlayPoint(snap.supportOrigin, drawingTransform, overlayTransform);
+        return source ? derivePointReferenceGuide(source, anchor) : null;
       })() : null;
     setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference, sameAxisReference, lineReference, pointReferenceGuide } : null);
     const endpointPointId = snap.type === 'endpoint' && activeSketch
