@@ -3,7 +3,7 @@ import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawin
 import { appendEntityToActiveSketch, applyResolvedLineClick, automaticAxisConstraintKind, cancelLineInteraction, EMPTY_LINE_INTERACTION, hasAngularPresentationTruth, resolveLineEffectivePoint, resolveLinePreviewPoint, type LineToolInteraction } from './drawingLineTool';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
-import { collectDrawingInferenceCandidates } from './drawingInference';
+import { collectDrawingInferenceCandidates, deriveInfiniteSupportGuide } from './drawingInference';
 import { resolveDrawingSnap, suppressDirectionRelations, type DrawingSnap } from './drawingSnapEngine';
 import { activateDrawingTool, finishDrawingConstruction, type DrawingActiveTool, type DrawingToolLifecycle } from './drawingToolLifecycle';
 import { useCadWheelCapture } from './useCadWheelCapture';
@@ -45,13 +45,14 @@ type CoordinateOverlayGeometry = {
   xIndicatorAnchor: CoordinatePoint;
   yIndicatorAnchor: CoordinatePoint;
 };
-type CadCursorPresentation = Readonly<{
+export type CadCursorPresentation = Readonly<{
   anchor: CoordinatePoint;
   snap: DrawingSnap;
   xGuideReference: CoordinatePoint | null;
   yGuideReference: CoordinatePoint | null;
   sameAxisReference: CoordinatePoint | null;
   lineReference: Readonly<{ relation: 'parallel' | 'perpendicular'; targetLineId: string }> | null;
+  perpendicularSupportGuide: Readonly<{ start: CoordinatePoint; end: CoordinatePoint }> | null;
 }> | null;
 type GeometryDragSession = Readonly<{
   pointerId: number; target: DrawingGeometryTarget; startClient: CoordinatePoint; startModel: DrawingPoint;
@@ -258,7 +259,14 @@ export function DrawingWorkspace({
       : nextInteraction.perpendicularLineId
         ? { relation: 'perpendicular' as const, targetLineId: nextInteraction.perpendicularLineId }
         : null;
-    setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference, sameAxisReference, lineReference } : null);
+    const perpendicularSupportGuide = snap.type === 'perpendicular' && snap.supportOrigin && snap.supportDirection
+      ? (() => {
+        const origin = modelToOverlayPoint(snap.supportOrigin!, drawingTransform, overlayTransform);
+        const directionPoint = modelToOverlayPoint({ x: snap.supportOrigin!.x + snap.supportDirection!.x,
+          y: snap.supportOrigin!.y + snap.supportDirection!.y }, drawingTransform, overlayTransform);
+        return origin && directionPoint ? deriveInfiniteSupportGuide(origin, directionPoint, viewport) : null;
+      })() : null;
+    setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference, sameAxisReference, lineReference, perpendicularSupportGuide } : null);
     const endpointPointId = snap.type === 'endpoint' && activeSketch
       ? pointIdForLineEndpoint(activeSketch.entities[snap.entityId], snap.endpoint) : null;
     const position: DrawingPlacementResolution['position'] = ctrlHeld
@@ -902,6 +910,11 @@ export function DrawingWorkspace({
             {overlayGeometry && overlayGeometry.origin.x >= 0 && overlayGeometry.origin.x <= viewport.width && <text className="drawing-axis-letter drawing-y-indicator" x={overlayGeometry.yIndicatorAnchor.x + 7} y={overlayGeometry.yIndicatorAnchor.y + 15}>Y</text>}
             {activeTool === 'line' && lineCursor && (
               <g className="drawing-alignment-presentation" aria-hidden="true">
+                {lineCursor.perpendicularSupportGuide && <line className="drawing-perpendicular-support-guide"
+                  data-source-point-id={lineCursor.snap.type === 'perpendicular' ? lineCursor.snap.sourcePointId : undefined}
+                  data-target-line-id={lineCursor.snap.type === 'perpendicular' ? lineCursor.snap.entityId : undefined}
+                  x1={lineCursor.perpendicularSupportGuide.start.x} y1={lineCursor.perpendicularSupportGuide.start.y}
+                  x2={lineCursor.perpendicularSupportGuide.end.x} y2={lineCursor.perpendicularSupportGuide.end.y} />}
                 {lineCursor.xGuideReference && <line className="drawing-alignment-guide" data-axis="x" x1={lineCursor.xGuideReference.x} y1={lineCursor.xGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
                 {lineCursor.yGuideReference && <line className="drawing-alignment-guide" data-axis="y" x1={lineCursor.yGuideReference.x} y1={lineCursor.yGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
                 {lineCursor.sameAxisReference && <circle className="drawing-same-axis-reference-highlight" cx={lineCursor.sameAxisReference.x} cy={lineCursor.sameAxisReference.y} r="7" />}

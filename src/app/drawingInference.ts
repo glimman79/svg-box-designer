@@ -16,16 +16,16 @@ export type DrawingInference = Readonly<{
 }> | Readonly<{
   type: 'parallel';
   entityId: string;
-  /** Present when a committed SketchPoint, rather than the active start, owns the construction support. */
-  sourcePointId?: string;
-  sourceScreenDistance?: number;
-  canonicalDirection?: DrawingPoint;
-  constructionKey?: string;
   candidatePoint: DrawingPoint;
   screenDistance: number;
 }> | Readonly<{
   type: 'perpendicular';
   entityId: string;
+  /** Endpoint-owned supports retain topology and presentation geometry. */
+  sourcePointId?: string;
+  supportOrigin?: DrawingPoint;
+  supportDirection?: DrawingPoint;
+  constructionKey?: string;
   candidatePoint: DrawingPoint;
   screenDistance: number;
 }> | Readonly<{
@@ -101,6 +101,23 @@ const projectClientPointToInfiniteSupport = (
   return {
     candidatePoint,
     screenDistance: Math.hypot(pointerClientPoint.x - candidateScreen.x, pointerClientPoint.y - candidateScreen.y),
+  };
+};
+
+/** Presentation segment for an infinite support, extended beyond every viewport corner. */
+export const deriveInfiniteSupportGuide = (
+  origin: CoordinatePoint,
+  directionPoint: CoordinatePoint,
+  viewport: Readonly<{ width: number; height: number }>,
+): Readonly<{ start: CoordinatePoint; end: CoordinatePoint }> | null => {
+  const dx = directionPoint.x - origin.x, dy = directionPoint.y - origin.y;
+  const length = Math.hypot(dx, dy);
+  if (length <= Number.EPSILON) return null;
+  const extent = Math.hypot(viewport.width, viewport.height) * 2;
+  const ux = dx / length, uy = dy / length;
+  return {
+    start: { x: origin.x - extent * ux, y: origin.y - extent * uy },
+    end: { x: origin.x + extent * ux, y: origin.y + extent * uy },
   };
 };
 
@@ -219,14 +236,13 @@ export const collectDrawingInferenceCandidates = (
         candidate.startPointId === reference.id || candidate.endPointId === reference.id)) {
         const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y, length = Math.hypot(dx, dy);
         if (length <= 1e-9) continue;
-        let ux = dx / length, uy = dy / length;
-        if (uy < 0 || Math.abs(uy) <= 1e-12 && ux < 0) { ux = -ux; uy = -uy; }
-        const projection = projectClientPointToInfiniteSupport(pointerClientPoint, reference.point, { x: ux, y: uy }, drawingToClientTransform);
+        let nx = -dy / length, ny = dx / length;
+        if (ny < 0 || Math.abs(ny) <= 1e-12 && nx < 0) { nx = -nx; ny = -ny; }
+        const supportDirection = { x: nx, y: ny };
+        const projection = projectClientPointToInfiniteSupport(pointerClientPoint, reference.point, supportDirection, drawingToClientTransform);
         if (!projection) continue;
-        parallels.push({ type: 'parallel', entityId: line.id, sourcePointId: reference.id,
-          sourceScreenDistance: Math.hypot(pointerClientPoint.x - toScreenPoint(reference.point, drawingToClientTransform).x,
-            pointerClientPoint.y - toScreenPoint(reference.point, drawingToClientTransform).y),
-          canonicalDirection: { x: ux, y: uy }, constructionKey: `endpoint-parallel:${reference.id}:${line.id}`,
+        perpendiculars.push({ type: 'perpendicular', entityId: line.id, sourcePointId: reference.id,
+          supportOrigin: reference.point, supportDirection, constructionKey: `endpoint-perpendicular:${reference.id}:${line.id}`,
           candidatePoint: projection.candidatePoint, screenDistance: projection.screenDistance });
       }
       if (angularDirection && activeLineStart) {
@@ -280,11 +296,10 @@ export const collectDrawingInferenceCandidates = (
     lines: lineCandidates.sort((a, b) => a.screenDistance - b.screenDistance || a.entityId.localeCompare(b.entityId)),
     alignmentsX: alignmentsX.sort(stableSort),
     alignmentsY: alignmentsY.sort(stableSort),
-    perpendiculars: perpendiculars.sort((a, b) => a.screenDistance - b.screenDistance || a.entityId.localeCompare(b.entityId)),
-    parallels: parallels.sort((a, b) => (Math.abs(a.screenDistance - b.screenDistance) > 1e-9 ? a.screenDistance - b.screenDistance : 0)
+    perpendiculars: perpendiculars.sort((a, b) => (Math.abs(a.screenDistance - b.screenDistance) > 1e-9 ? a.screenDistance - b.screenDistance : 0)
       || Number(Boolean(b.sourcePointId)) - Number(Boolean(a.sourcePointId))
-      || (a.sourceScreenDistance ?? Infinity) - (b.sourceScreenDistance ?? Infinity)
       || (a.constructionKey ?? a.entityId).localeCompare(b.constructionKey ?? b.entityId)),
+    parallels: parallels.sort((a, b) => a.screenDistance - b.screenDistance || a.entityId.localeCompare(b.entityId)),
   };
 };
 

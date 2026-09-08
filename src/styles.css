@@ -945,6 +945,15 @@ button:disabled {
   pointer-events: none;
 }
 
+.drawing-perpendicular-support-guide {
+  stroke: #38bdf8;
+  stroke-width: 1;
+  stroke-dasharray: 5 5;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
 .drawing-same-axis-reference-highlight {
   fill: rgb(2 132 199 / 0.12);
   stroke: var(--drawing-alignment-guide);

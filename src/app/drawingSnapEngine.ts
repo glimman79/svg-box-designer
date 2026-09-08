@@ -33,9 +33,9 @@ export type DrawingSnap = (Readonly<{
   type: 'none'; active: false; effectivePoint: DrawingPoint; screenDistance: null;
 }> | Readonly<{
   type: 'perpendicular'; active: true; effectivePoint: DrawingPoint; entityId: string; screenDistance: number;
+  sourcePointId?: string; supportOrigin?: DrawingPoint; supportDirection?: DrawingPoint; constructionKey?: string;
 }> | Readonly<{
   type: 'parallel'; active: true; effectivePoint: DrawingPoint; entityId: string; screenDistance: number;
-  sourcePointId?: string; canonicalDirection?: DrawingPoint; constructionKey?: string;
 }> | Readonly<{
   type: 'endpoint'; active: true; effectivePoint: DrawingPoint; entityId: string;
   endpoint: 'start' | 'end'; screenDistance: number;
@@ -90,8 +90,7 @@ const chooseParallel = (items: ReadonlyArray<ParallelInference>, previous: Drawi
   const old = previous?.channels?.parallel ?? (previous?.type === 'parallel' ? {
     type: 'parallel' as const, entityId: previous.entityId, candidatePoint: previous.effectivePoint, screenDistance: previous.screenDistance,
   } : null);
-  const held = old && items.find(({ entityId, constructionKey }) => entityId === old.entityId
-    && constructionKey === old.constructionKey);
+  const held = old && items.find(({ entityId }) => entityId === old.entityId);
   if (held && held.screenDistance <= DRAWING_PARALLEL_SNAP_RELEASE_PX) return held;
   const first = items[0];
   return first && first.screenDistance <= DRAWING_PARALLEL_SNAP_ACQUIRE_PX ? first : null;
@@ -101,7 +100,8 @@ const choosePerpendicular = (items: ReadonlyArray<PerpendicularInference>, previ
   const old = previous?.channels?.perpendicular ?? (previous?.type === 'perpendicular' ? {
     type: 'perpendicular' as const, entityId: previous.entityId, candidatePoint: previous.effectivePoint, screenDistance: previous.screenDistance,
   } : null);
-  const held = old && items.find(({ entityId }) => entityId === old.entityId);
+  const held = old && items.find(({ entityId, constructionKey }) => entityId === old.entityId
+    && constructionKey === old.constructionKey);
   if (held && held.screenDistance <= DRAWING_PERPENDICULAR_SNAP_RELEASE_PX) return held;
   const first = items[0];
   return first && first.screenDistance <= DRAWING_PERPENDICULAR_SNAP_ACQUIRE_PX ? first : null;
@@ -138,10 +138,11 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
   if (line) return { active: true, type: 'line', effectivePoint: line.candidatePoint, entityId: line.entityId,
     segmentParameter: line.segmentParameter, screenDistance: line.screenDistance, lineStart: line.lineStart, lineEnd: line.lineEnd, channels };
   if (parallel) return { active: true, type: 'parallel', effectivePoint: parallel.candidatePoint,
-    entityId: parallel.entityId, sourcePointId: parallel.sourcePointId, canonicalDirection: parallel.canonicalDirection,
-    constructionKey: parallel.constructionKey, screenDistance: parallel.screenDistance, channels };
+    entityId: parallel.entityId, screenDistance: parallel.screenDistance, channels };
   if (perpendicular) return { active: true, type: 'perpendicular', effectivePoint: perpendicular.candidatePoint,
-    entityId: perpendicular.entityId, screenDistance: perpendicular.screenDistance, channels };
+    entityId: perpendicular.entityId, sourcePointId: perpendicular.sourcePointId, supportOrigin: perpendicular.supportOrigin,
+    supportDirection: perpendicular.supportDirection, constructionKey: perpendicular.constructionKey,
+    screenDistance: perpendicular.screenDistance, channels };
   if (xReference || yReference) return { active: true, type: 'alignment',
     effectivePoint: {
       x: xReference?.positionOwnership !== 'reference-only' ? xReference?.candidatePoint.x ?? rawPoint.x : rawPoint.x,
