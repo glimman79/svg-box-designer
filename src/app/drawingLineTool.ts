@@ -59,6 +59,7 @@ export type LineToolInteraction = Readonly<{
   effectivePreviewPoint: DrawingPoint | null;
   snappedAngleDegrees: number | null;
   perpendicularLineId: string | null;
+  parallelLineId: string | null;
   previousChainedLineId: string | null;
 }>;
 
@@ -69,6 +70,7 @@ export const EMPTY_LINE_INTERACTION: LineToolInteraction = {
   effectivePreviewPoint: null,
   snappedAngleDegrees: null,
   perpendicularLineId: null,
+  parallelLineId: null,
   previousChainedLineId: null,
 };
 
@@ -76,7 +78,7 @@ export const updateLinePreview = (interaction: LineToolInteraction, pointer: Dra
   interaction.start ? (() => {
     const preview = resolveLinePreviewPoint(interaction.start!, pointer);
     return { ...interaction, rawPointerPoint: preview.rawPointerPoint, effectivePreviewPoint: preview.effectivePreviewPoint,
-      snappedAngleDegrees: preview.snappedAngleDegrees, perpendicularLineId: null };
+      snappedAngleDegrees: preview.snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null };
   })() : interaction
 );
 
@@ -85,7 +87,7 @@ type LineAlignmentYReference = Extract<DrawingInference, { type: 'alignment-y' }
 
 type LineSpatialSnap = Readonly<{
   active: boolean;
-  type: 'none' | 'endpoint' | 'line' | 'alignment' | 'perpendicular';
+  type: 'none' | 'endpoint' | 'line' | 'alignment' | 'perpendicular' | 'parallel';
   entityId?: string;
   effectivePoint: DrawingPoint;
   xReference?: LineAlignmentXReference | null;
@@ -96,6 +98,7 @@ type LineSpatialSnap = Readonly<{
     xAlignment: LineAlignmentXReference | null;
     yAlignment: LineAlignmentYReference | null;
     perpendicular: Readonly<{ entityId: string; candidatePoint: DrawingPoint; screenDistance: number }> | null;
+    parallel: Readonly<{ entityId: string; candidatePoint: DrawingPoint; screenDistance: number }> | null;
   }>;
 }>;
 
@@ -203,7 +206,7 @@ export const resolveLineEffectivePoint = (
   // Layer 0 is repeated here as the final correctness guard. Future candidate
   // channels cannot accidentally reintroduce Line authoring inference under Ctrl.
   if (ctrlOverride) return lineResolution(rawPointerPoint,
-    { ...interaction, rawPointerPoint, effectivePreviewPoint: rawPointerPoint, snappedAngleDegrees: null, perpendicularLineId: null },
+    { ...interaction, rawPointerPoint, effectivePreviewPoint: rawPointerPoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: null },
     { active: false, type: 'none', effectivePoint: rawPointerPoint });
 
   // Axis intent is accepted from the Line tool's angular inference, not inferred
@@ -212,7 +215,7 @@ export const resolveLineEffectivePoint = (
   const angular = resolveLinePreviewPoint(interaction.start, rawPointerPoint);
   const acceptedAxis = angular.snapActive && angular.snappedAngleDegrees !== null
     && [0, 90, 180, 270].includes(normalizeDegrees(angular.snappedAngleDegrees));
-  if (acceptedAxis && spatialSnap.type === 'perpendicular') {
+  if (acceptedAxis && (spatialSnap.type === 'perpendicular' || spatialSnap.type === 'parallel')) {
     const direction = directionAt(angular.snappedAngleDegrees!);
     const radialDistance = Math.hypot(rawPointerPoint.x - interaction.start.x, rawPointerPoint.y - interaction.start.y);
     const effectivePoint = {
@@ -220,7 +223,7 @@ export const resolveLineEffectivePoint = (
       y: interaction.start.y + radialDistance * direction.y,
     };
     return lineResolution(effectivePoint, { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint,
-      snappedAngleDegrees: angular.snappedAngleDegrees, perpendicularLineId: null }, spatialSnap);
+      snappedAngleDegrees: angular.snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null }, spatialSnap);
   }
 
   // A perpendicular accepted against the directly previous authored segment
@@ -234,11 +237,14 @@ export const resolveLineEffectivePoint = (
       ? { x: interaction.start.x, y: spatialSnap.effectivePoint.y }
       : { x: spatialSnap.effectivePoint.x, y: interaction.start.y };
     return lineResolution(effectivePoint,
-      { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees, perpendicularLineId: null }, spatialSnap);
+      { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null }, spatialSnap);
   }
 
   if (spatialSnap.type === 'perpendicular') return lineResolution(spatialSnap.effectivePoint,
-    { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snappedAngleDegrees: null, perpendicularLineId: spatialSnap.entityId ?? null }, spatialSnap);
+    { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snappedAngleDegrees: null, perpendicularLineId: spatialSnap.entityId ?? null, parallelLineId: null }, spatialSnap);
+
+  if (spatialSnap.type === 'parallel') return lineResolution(spatialSnap.effectivePoint,
+    { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: spatialSnap.entityId ?? null }, spatialSnap);
 
   if (spatialSnap.type === 'endpoint' || spatialSnap.type === 'line') {
     // Endpoint/finite target owns position. Construction proposals are validation
@@ -260,6 +266,7 @@ export const resolveLineEffectivePoint = (
       effectivePreviewPoint: acceptedPoint,
       snappedAngleDegrees: angularExact ? angular.snappedAngleDegrees : null,
       perpendicularLineId: perpendicularExact ? perpendicular.entityId : null,
+      parallelLineId: null,
     };
     return lineResolution(acceptedPoint, nextInteraction, spatialSnap);
   }
@@ -267,7 +274,7 @@ export const resolveLineEffectivePoint = (
   if (!angular.snapActive || angular.snappedAngleDegrees === null) {
     const effectivePoint = spatialSnap.active ? spatialSnap.effectivePoint : rawPointerPoint;
     return lineResolution(effectivePoint,
-      { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees: null, perpendicularLineId: null }, spatialSnap);
+      { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: null }, spatialSnap);
   }
   const direction = directionAt(angular.snappedAngleDegrees);
   const radialDistance = Math.hypot(rawPointerPoint.x - interaction.start.x, rawPointerPoint.y - interaction.start.y);
@@ -282,7 +289,7 @@ export const resolveLineEffectivePoint = (
     ? reconcileAlignmentOnRay(interaction.start, angularPoint, angular.snappedAngleDegrees, alignmentSnap)
     : angularPoint;
   return lineResolution(effectivePoint,
-    { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees: angular.snappedAngleDegrees, perpendicularLineId: null }, spatialSnap);
+    { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees: angular.snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null }, spatialSnap);
 };
 
 /**

@@ -856,6 +856,12 @@ button:disabled {
   stroke-width: 1.8;
 }
 
+.drawing-line-entity.is-inference-target {
+  stroke: var(--drawing-alignment-guide);
+  stroke-width: 3.5;
+  pointer-events: none;
+}
+
 .drawing-line-entity.geometry-free { stroke: var(--drawing-geometry-free); }
 .drawing-line-entity.geometry-constrained { stroke: var(--drawing-geometry-constrained); }
 .drawing-line-entity.geometry-fully-locked { stroke: var(--drawing-geometry-locked); }
@@ -920,7 +926,8 @@ button:disabled {
   stroke-width: 1.8;
 }
 
-.drawing-line-cursor-perpendicular {
+.drawing-line-cursor-perpendicular,
+.drawing-line-cursor-parallel {
   fill: none;
   stroke: var(--drawing-geometric-constraint);
   stroke-width: 1.4px;

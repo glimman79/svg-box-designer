@@ -156,8 +156,16 @@ const switchedSame = sameAxis({ raw: { x: 104, y: 0 }, lines: samePoints, previo
 assert.equal(switchedSame.snap.channels.yAlignment.entityId, 'b', 'shared two-pixel switching advantage applies');
 const retainedSame = sameAxis({ raw: { x: 111, y: 0 }, lines: [samePoints[0]], previous: acquiredSame.snap });
 assert.equal(retainedSame.snap.channels.yAlignment.entityId, 'a', 'same-axis identity retains at eleven pixels');
-assert.equal(sameAxis({ raw: { x: 111.1, y: 0 }, lines: [samePoints[0]], previous: acquiredSame.snap }).snap.channels.yAlignment, null,
-  'same-axis identity releases beyond eleven pixels');
+const farRetainedSame = sameAxis({ raw: { x: 180, y: 0 }, lines: [samePoints[0]], previous: acquiredSame.snap });
+assert.equal(farRetainedSame.snap.channels.yAlignment.entityId, 'a', 'compatible same-axis identity remains active far beyond acquisition proximity');
+assert.equal(farRetainedSame.resolved.resolvedReferences.y?.entityId, 'a', 'retained identity remains presentation truth');
+assert.equal(sameAxis({ raw: { x: 150, y: 20 }, lines: [samePoints[0]], previous: farRetainedSame.snap }).snap.channels.yAlignment, null,
+  'changing to an incompatible construction releases retained same-axis identity');
+const verticalPoint = referenceLine('vertical-held', { x: 0, y: 100 });
+const verticalAcquired = sameAxis({ raw: { x: 0, y: 100 }, lines: [verticalPoint] });
+const verticalFarRetained = sameAxis({ raw: { x: 0, y: 220 }, lines: [verticalPoint], previous: verticalAcquired.snap });
+assert.equal(verticalFarRetained.snap.channels.xAlignment.entityId, 'vertical-held', 'Vertical X reference retains far from its source point');
+assert.equal(verticalFarRetained.resolved.resolvedReferences.x?.entityId, 'vertical-held');
 
 for (const scale of [0.5, 4]) {
   const transform = { ...identity, a: scale, d: scale };
