@@ -16,6 +16,11 @@ export type DrawingInference = Readonly<{
 }> | Readonly<{
   type: 'parallel';
   entityId: string;
+  /** Present when a committed SketchPoint, rather than the active start, owns the construction support. */
+  sourcePointId?: string;
+  sourceScreenDistance?: number;
+  canonicalDirection?: DrawingPoint;
+  constructionKey?: string;
   candidatePoint: DrawingPoint;
   screenDistance: number;
 }> | Readonly<{
@@ -75,14 +80,15 @@ const toScreenPoint = (point: CoordinatePoint, transform: AffineTransform): Coor
 /** Extracts stable, meaningful geometric vertices without coupling inference to a tool. */
 export const collectDrawingReferencePoints = (entities: ReadonlyArray<ResolvedDrawingLine>): DrawingReferencePoint[] => {
   const references: DrawingReferencePoint[] = [];
-  const coordinates = new Set<string>();
+  const identities = new Set<string>();
   for (const entity of entities) {
-    const points = entity.type === 'line' ? ([['start', entity.start], ['end', entity.end]] as const) : [];
-    for (const [name, point] of points) {
-      const coordinateKey = `${point.x},${point.y}`;
-      if (coordinates.has(coordinateKey)) continue;
-      coordinates.add(coordinateKey);
-      references.push({ id: `${entity.id}:${name}`, entityId: entity.id, point });
+    const points = entity.type === 'line' ? ([['start', entity.start, entity.startPointId], ['end', entity.end, entity.endPointId]] as const) : [];
+    for (const [name, point, semanticPointId] of points) {
+      // Legacy in-memory fixtures have no point IDs; committed topology always does.
+      const identity = semanticPointId ?? `${point.x},${point.y}`;
+      if (identities.has(identity)) continue;
+      identities.add(identity);
+      references.push({ id: semanticPointId ?? `${entity.id}:${name}`, entityId: entity.id, point });
     }
   }
   return references;
@@ -179,6 +185,26 @@ export const collectDrawingInferenceCandidates = (
     const constructionKey = angularDirection && activeLineStart
       ? `${activeLineStart.x},${activeLineStart.y}:${activeAngularDegrees}` : undefined;
     for (const reference of collectDrawingReferencePoints(lines).filter(({ point }) => isPointInDrawingBounds(point, visibleBounds))) {
+      // Topological incidence is exclusively semantic: coordinate-equal independent
+      // points cannot lend each other their Lines. Each target remains a separate
+      // candidate even when multiple incident Lines have equivalent directions.
+      if (activeLineStart) for (const line of lines.filter((candidate) =>
+        candidate.startPointId === reference.id || candidate.endPointId === reference.id)) {
+        const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y, length = Math.hypot(dx, dy);
+        if (length <= 1e-9) continue;
+        let ux = dx / length, uy = dy / length;
+        if (uy < 0 || Math.abs(uy) <= 1e-12 && ux < 0) { ux = -ux; uy = -uy; }
+        const pointerModel = clientToModelPointForInference(pointerClientPoint, drawingToClientTransform);
+        if (!pointerModel) continue;
+        const parameter = (pointerModel.x - reference.point.x) * ux + (pointerModel.y - reference.point.y) * uy;
+        const candidatePoint = { x: reference.point.x + parameter * ux, y: reference.point.y + parameter * uy };
+        const screen = toScreenPoint(candidatePoint, drawingToClientTransform);
+        parallels.push({ type: 'parallel', entityId: line.id, sourcePointId: reference.id,
+          sourceScreenDistance: Math.hypot(pointerClientPoint.x - toScreenPoint(reference.point, drawingToClientTransform).x,
+            pointerClientPoint.y - toScreenPoint(reference.point, drawingToClientTransform).y),
+          canonicalDirection: { x: ux, y: uy }, constructionKey: `endpoint-parallel:${reference.id}:${line.id}`,
+          candidatePoint, screenDistance: Math.hypot(pointerClientPoint.x - screen.x, pointerClientPoint.y - screen.y) });
+      }
       if (angularDirection && activeLineStart) {
         if (Math.abs(angularDirection.x) > 1e-12) {
           const t = (reference.point.x - activeLineStart.x) / angularDirection.x;
@@ -231,7 +257,10 @@ export const collectDrawingInferenceCandidates = (
     alignmentsX: alignmentsX.sort(stableSort),
     alignmentsY: alignmentsY.sort(stableSort),
     perpendiculars: perpendiculars.sort((a, b) => a.screenDistance - b.screenDistance || a.entityId.localeCompare(b.entityId)),
-    parallels: parallels.sort((a, b) => a.screenDistance - b.screenDistance || a.entityId.localeCompare(b.entityId)),
+    parallels: parallels.sort((a, b) => (Math.abs(a.screenDistance - b.screenDistance) > 1e-9 ? a.screenDistance - b.screenDistance : 0)
+      || Number(Boolean(b.sourcePointId)) - Number(Boolean(a.sourcePointId))
+      || (a.sourceScreenDistance ?? Infinity) - (b.sourceScreenDistance ?? Infinity)
+      || (a.constructionKey ?? a.entityId).localeCompare(b.constructionKey ?? b.entityId)),
   };
 };
 

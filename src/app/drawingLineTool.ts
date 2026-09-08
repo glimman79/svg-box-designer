@@ -98,8 +98,12 @@ type LineSpatialSnap = Readonly<{
     xAlignment: LineAlignmentXReference | null;
     yAlignment: LineAlignmentYReference | null;
     perpendicular: Readonly<{ entityId: string; candidatePoint: DrawingPoint; screenDistance: number }> | null;
-    parallel: Readonly<{ entityId: string; candidatePoint: DrawingPoint; screenDistance: number }> | null;
+    parallel: Readonly<{ entityId: string; candidatePoint: DrawingPoint; screenDistance: number; sourcePointId?: string;
+      canonicalDirection?: DrawingPoint; constructionKey?: string }> | null;
   }>;
+  sourcePointId?: string;
+  canonicalDirection?: DrawingPoint;
+  constructionKey?: string;
 }>;
 
 export type LineEffectivePointResolution = Readonly<{
@@ -266,8 +270,27 @@ export const resolveLineEffectivePoint = (
   if (spatialSnap.type === 'perpendicular') return lineResolution(spatialSnap.effectivePoint,
     { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snappedAngleDegrees: null, perpendicularLineId: spatialSnap.entityId ?? null, parallelLineId: null }, spatialSnap);
 
-  if (spatialSnap.type === 'parallel') return lineResolution(spatialSnap.effectivePoint,
-    { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: spatialSnap.entityId ?? null }, spatialSnap);
+  if (spatialSnap.type === 'parallel') {
+    const direction = spatialSnap.canonicalDirection;
+    let effectivePoint = spatialSnap.effectivePoint;
+    if (direction) {
+      const proposals = [
+        spatialSnap.channels?.xAlignment && spatialSnap.channels.xAlignment.positionOwnership !== 'reference-only' && Math.abs(direction.x) > ANGULAR_DIRECTION_EPSILON
+          ? { point: { x: spatialSnap.channels.xAlignment.candidatePoint.x,
+            y: effectivePoint.y + (spatialSnap.channels.xAlignment.candidatePoint.x - effectivePoint.x) * direction.y / direction.x },
+            distance: spatialSnap.channels.xAlignment.screenDistance } : null,
+        spatialSnap.channels?.yAlignment && spatialSnap.channels.yAlignment.positionOwnership !== 'reference-only' && Math.abs(direction.y) > ANGULAR_DIRECTION_EPSILON
+          ? { point: { x: effectivePoint.x + (spatialSnap.channels.yAlignment.candidatePoint.y - effectivePoint.y) * direction.x / direction.y,
+            y: spatialSnap.channels.yAlignment.candidatePoint.y }, distance: spatialSnap.channels.yAlignment.screenDistance } : null,
+      ].filter((proposal): proposal is NonNullable<typeof proposal> => proposal !== null);
+      if (proposals.length) effectivePoint = proposals.sort((a, b) => a.distance - b.distance)[0].point;
+    }
+    const parallelIsExact = !direction || isPointOnDirection(interaction.start, effectivePoint, direction)
+      || isPointOnDirection(interaction.start, effectivePoint, { x: -direction.x, y: -direction.y });
+    return lineResolution(effectivePoint,
+      { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees: null,
+        perpendicularLineId: null, parallelLineId: parallelIsExact ? spatialSnap.entityId ?? null : null }, spatialSnap);
+  }
 
   if (spatialSnap.type === 'endpoint' || spatialSnap.type === 'line') {
     // Endpoint/finite target owns position. Construction proposals are validation
