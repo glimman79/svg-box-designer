@@ -6,9 +6,22 @@ export const DRAWING_LINE_INFERENCE_TOLERANCE_PX = 8;
 export const DRAWING_ALIGNMENT_INFERENCE_TOLERANCE_PX = 8;
 export const DRAWING_PERPENDICULAR_INFERENCE_TOLERANCE_PX = 8;
 export const DRAWING_PARALLEL_INFERENCE_TOLERANCE_PX = 8;
+export const DRAWING_POINT_REFERENCE_INFERENCE_TOLERANCE_PX = 8;
 
 export type DrawingModelBounds = Readonly<{ x: number; y: number; width: number; height: number }>;
 export type DrawingReferencePoint = Readonly<{ id: string; entityId: string; point: DrawingPoint }>;
+
+export type PointReferenceConstruction = Readonly<{
+  type: 'point-reference';
+  kind: 'normal-to-incident-line';
+  sourcePointId: string;
+  incidentLineId: string;
+  supportOrigin: DrawingPoint;
+  supportDirection: DrawingPoint;
+  constructionKey: string;
+  candidatePoint: DrawingPoint;
+  screenDistance: number;
+}>;
 
 export type DrawingInference = Readonly<{
   type: 'none';
@@ -21,14 +34,9 @@ export type DrawingInference = Readonly<{
 }> | Readonly<{
   type: 'perpendicular';
   entityId: string;
-  /** Endpoint-owned supports retain topology and presentation geometry. */
-  sourcePointId?: string;
-  supportOrigin?: DrawingPoint;
-  supportDirection?: DrawingPoint;
-  constructionKey?: string;
   candidatePoint: DrawingPoint;
   screenDistance: number;
-}> | Readonly<{
+}> | PointReferenceConstruction | Readonly<{
   type: 'endpoint';
   entityId: string;
   endpoint: 'start' | 'end';
@@ -70,6 +78,7 @@ export type DrawingInferenceCandidates = Readonly<{
   alignmentsY: ReadonlyArray<Extract<DrawingInference, { type: 'alignment-y' }>>;
   perpendiculars: ReadonlyArray<Extract<DrawingInference, { type: 'perpendicular' }>>;
   parallels: ReadonlyArray<Extract<DrawingInference, { type: 'parallel' }>>;
+  pointReferences: ReadonlyArray<PointReferenceConstruction>;
 }>;
 
 const toScreenPoint = (point: CoordinatePoint, transform: AffineTransform): CoordinatePoint => ({
@@ -199,6 +208,7 @@ export const collectDrawingInferenceCandidates = (
   const alignmentsY: Array<Extract<DrawingInference, { type: 'alignment-y' }>> = [];
   const perpendiculars: Array<Extract<DrawingInference, { type: 'perpendicular' }>> = [];
   const parallels: Array<Extract<DrawingInference, { type: 'parallel' }>> = [];
+  const pointReferences: PointReferenceConstruction[] = [];
   if (activeLineStart) for (const line of lines) {
     const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y, length = Math.hypot(dx, dy);
     if (length <= 1e-9) continue;
@@ -229,20 +239,25 @@ export const collectDrawingInferenceCandidates = (
     const constructionKey = angularDirection && activeLineStart
       ? `${activeLineStart.x},${activeLineStart.y}:${activeAngularDegrees}` : undefined;
     for (const reference of collectDrawingReferencePoints(lines).filter(({ point }) => isPointInDrawingBounds(point, visibleBounds))) {
-      // Topological incidence is exclusively semantic: coordinate-equal independent
-      // points cannot lend each other their Lines. Each target remains a separate
-      // candidate even when multiple incident Lines have equivalent directions.
-      if (activeLineStart) for (const line of lines.filter((candidate) =>
+      // Point-owned normal constructions are position references, just like X/Y.
+      // Their source topology is semantic, never coordinate equality.
+      const directionsAtPoint: DrawingPoint[] = [];
+      for (const line of lines.filter((candidate) =>
         candidate.startPointId === reference.id || candidate.endPointId === reference.id)) {
         const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y, length = Math.hypot(dx, dy);
         if (length <= 1e-9) continue;
         let nx = -dy / length, ny = dx / length;
         if (ny < 0 || Math.abs(ny) <= 1e-12 && nx < 0) { nx = -nx; ny = -ny; }
         const supportDirection = { x: nx, y: ny };
+        // H/V own coincident axis constructions. At a multi-Line point, retain
+        // only the first stable source for each other geometrically equal support.
+        if (Math.abs(nx) <= 1e-12 || Math.abs(ny) <= 1e-12
+          || directionsAtPoint.some((direction) => Math.abs(direction.x * ny - direction.y * nx) <= 1e-12)) continue;
+        directionsAtPoint.push(supportDirection);
         const projection = projectClientPointToInfiniteSupport(pointerClientPoint, reference.point, supportDirection, drawingToClientTransform);
         if (!projection) continue;
-        perpendiculars.push({ type: 'perpendicular', entityId: line.id, sourcePointId: reference.id,
-          supportOrigin: reference.point, supportDirection, constructionKey: `endpoint-perpendicular:${reference.id}:${line.id}`,
+        pointReferences.push({ type: 'point-reference', kind: 'normal-to-incident-line', incidentLineId: line.id, sourcePointId: reference.id,
+          supportOrigin: reference.point, supportDirection, constructionKey: `point-normal:${reference.id}:${line.id}`,
           candidatePoint: projection.candidatePoint, screenDistance: projection.screenDistance });
       }
       if (angularDirection && activeLineStart) {
@@ -296,10 +311,9 @@ export const collectDrawingInferenceCandidates = (
     lines: lineCandidates.sort((a, b) => a.screenDistance - b.screenDistance || a.entityId.localeCompare(b.entityId)),
     alignmentsX: alignmentsX.sort(stableSort),
     alignmentsY: alignmentsY.sort(stableSort),
-    perpendiculars: perpendiculars.sort((a, b) => (Math.abs(a.screenDistance - b.screenDistance) > 1e-9 ? a.screenDistance - b.screenDistance : 0)
-      || Number(Boolean(b.sourcePointId)) - Number(Boolean(a.sourcePointId))
-      || (a.constructionKey ?? a.entityId).localeCompare(b.constructionKey ?? b.entityId)),
+    perpendiculars: perpendiculars.sort((a, b) => a.screenDistance - b.screenDistance || a.entityId.localeCompare(b.entityId)),
     parallels: parallels.sort((a, b) => a.screenDistance - b.screenDistance || a.entityId.localeCompare(b.entityId)),
+    pointReferences: pointReferences.sort((a, b) => a.screenDistance - b.screenDistance || a.constructionKey.localeCompare(b.constructionKey)),
   };
 };
 

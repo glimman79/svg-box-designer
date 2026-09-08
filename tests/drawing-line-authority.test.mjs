@@ -49,7 +49,7 @@ assert.equal(automaticAxisConstraintKind(composed.interaction), 'HORIZONTAL');
 
 const ctrlSnap = resolveDrawingSnap({ rawPoint: raw, candidates: { ...empty, endpoints: [endpoint('joint', { x: 10, y: 0 }, 1)], perpendiculars: [perpendicular] }, previousSnap: acquiredEndpoint, ctrlOverride: true });
 assert.equal(ctrlSnap.type, 'none');
-assert.deepEqual(ctrlSnap.channels, { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null });
+assert.deepEqual(ctrlSnap.channels, { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null, pointReference: null });
 const ctrl = resolveLineEffectivePoint(interaction, raw, acquiredEndpoint, 'HORIZONTAL', true);
 assert.deepEqual(ctrl.effectivePoint, raw);
 assert.equal(hasAngularPresentationTruth(ctrl.interaction), false);

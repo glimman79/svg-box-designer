@@ -11,6 +11,8 @@ export const DRAWING_PERPENDICULAR_SNAP_ACQUIRE_PX = 8;
 export const DRAWING_PERPENDICULAR_SNAP_RELEASE_PX = 11;
 export const DRAWING_PARALLEL_SNAP_ACQUIRE_PX = 8;
 export const DRAWING_PARALLEL_SNAP_RELEASE_PX = 11;
+export const DRAWING_POINT_REFERENCE_SNAP_ACQUIRE_PX = 8;
+export const DRAWING_POINT_REFERENCE_SNAP_RELEASE_PX = 11;
 
 type EndpointInference = Extract<DrawingInference, { type: 'endpoint' }>;
 type LineInference = Extract<DrawingInference, { type: 'line' }>;
@@ -18,6 +20,7 @@ type PerpendicularInference = Extract<DrawingInference, { type: 'perpendicular' 
 type ParallelInference = Extract<DrawingInference, { type: 'parallel' }>;
 type AlignmentXInference = Extract<DrawingInference, { type: 'alignment-x' }>;
 type AlignmentYInference = Extract<DrawingInference, { type: 'alignment-y' }>;
+type PointReferenceInference = Extract<DrawingInference, { type: 'point-reference' }>;
 
 /** Independent transient channels. Positional arbitration may choose only one point,
  * but it must not erase compatible construction/presentation intent. */
@@ -26,14 +29,17 @@ export type DrawingSnapChannels = Readonly<{
   yAlignment: AlignmentYInference | null;
   perpendicular: PerpendicularInference | null;
   parallel: ParallelInference | null;
+  pointReference: PointReferenceInference | null;
 }>;
 
 type SnapBase = Readonly<{ channels: DrawingSnapChannels }>;
 export type DrawingSnap = (Readonly<{
   type: 'none'; active: false; effectivePoint: DrawingPoint; screenDistance: null;
 }> | Readonly<{
+  type: 'point-reference'; active: true; effectivePoint: DrawingPoint; screenDistance: number;
+  sourcePointId: string; incidentLineId: string; supportOrigin: DrawingPoint; supportDirection: DrawingPoint; constructionKey: string;
+}> | Readonly<{
   type: 'perpendicular'; active: true; effectivePoint: DrawingPoint; entityId: string; screenDistance: number;
-  sourcePointId?: string; supportOrigin?: DrawingPoint; supportDirection?: DrawingPoint; constructionKey?: string;
 }> | Readonly<{
   type: 'parallel'; active: true; effectivePoint: DrawingPoint; entityId: string; screenDistance: number;
 }> | Readonly<{
@@ -55,6 +61,7 @@ export type DrawingInferenceCandidates = Readonly<{
   alignmentsY: ReadonlyArray<AlignmentYInference>;
   perpendiculars: ReadonlyArray<PerpendicularInference>;
   parallels: ReadonlyArray<ParallelInference>;
+  pointReferences: ReadonlyArray<PointReferenceInference>;
 }>;
 
 const endpointIdentity = (candidate: EndpointInference) => `${candidate.entityId}:${candidate.endpoint}`;
@@ -100,11 +107,18 @@ const choosePerpendicular = (items: ReadonlyArray<PerpendicularInference>, previ
   const old = previous?.channels?.perpendicular ?? (previous?.type === 'perpendicular' ? {
     type: 'perpendicular' as const, entityId: previous.entityId, candidatePoint: previous.effectivePoint, screenDistance: previous.screenDistance,
   } : null);
-  const held = old && items.find(({ entityId, constructionKey }) => entityId === old.entityId
-    && constructionKey === old.constructionKey);
+  const held = old && items.find(({ entityId }) => entityId === old.entityId);
   if (held && held.screenDistance <= DRAWING_PERPENDICULAR_SNAP_RELEASE_PX) return held;
   const first = items[0];
   return first && first.screenDistance <= DRAWING_PERPENDICULAR_SNAP_ACQUIRE_PX ? first : null;
+};
+
+const choosePointReference = (items: ReadonlyArray<PointReferenceInference>, previous: DrawingSnap | null) => {
+  const held = previous?.channels?.pointReference && items.find(({ constructionKey }) =>
+    constructionKey === previous.channels.pointReference?.constructionKey);
+  if (held && held.screenDistance <= DRAWING_POINT_REFERENCE_SNAP_RELEASE_PX) return held;
+  const first = items[0];
+  return first && first.screenDistance <= DRAWING_POINT_REFERENCE_SNAP_ACQUIRE_PX ? first : null;
 };
 
 /** Pure Drawing-wide channel acquisition followed by positional authority arbitration. */
@@ -112,7 +126,7 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
   rawPoint: DrawingPoint; candidates: DrawingInferenceCandidates; previousSnap: DrawingSnap | null; ctrlOverride: boolean;
   axisDirectionActive?: boolean;
 }): DrawingSnap => {
-  const emptyChannels: DrawingSnapChannels = { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null };
+  const emptyChannels: DrawingSnapChannels = { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null, pointReference: null };
   const none = (channels = emptyChannels): DrawingSnap => ({ active: false, type: 'none', effectivePoint: rawPoint, screenDistance: null, channels });
   // Layer 0 hard guard: no acquired or retained channel can survive Ctrl.
   if (ctrlOverride) return none();
@@ -124,7 +138,8 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
   // the non-axis direction domain, while point-reference channels stay global.
   const perpendicular = axisDirectionActive ? null : choosePerpendicular(candidates.perpendiculars, previousSnap);
   const parallel = axisDirectionActive ? null : chooseParallel(candidates.parallels ?? [], previousSnap);
-  const channels: DrawingSnapChannels = { xAlignment: xReference, yAlignment: yReference, perpendicular, parallel };
+  const pointReference = choosePointReference(candidates.pointReferences ?? [], previousSnap);
+  const channels: DrawingSnapChannels = { xAlignment: xReference, yAlignment: yReference, perpendicular, parallel, pointReference };
 
   // Hysteresis stabilizes a class; it never changes this authority ordering.
   const endpoint = chooseEndpoint(candidates.endpoints, previousSnap);
@@ -137,12 +152,14 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
     ? retainedLine : candidates.lines.find(({ screenDistance }) => screenDistance <= DRAWING_LINE_SNAP_ACQUIRE_PX);
   if (line) return { active: true, type: 'line', effectivePoint: line.candidatePoint, entityId: line.entityId,
     segmentParameter: line.segmentParameter, screenDistance: line.screenDistance, lineStart: line.lineStart, lineEnd: line.lineEnd, channels };
+  if (pointReference) return { active: true, type: 'point-reference', effectivePoint: pointReference.candidatePoint,
+    screenDistance: pointReference.screenDistance, sourcePointId: pointReference.sourcePointId,
+    incidentLineId: pointReference.incidentLineId, supportOrigin: pointReference.supportOrigin,
+    supportDirection: pointReference.supportDirection, constructionKey: pointReference.constructionKey, channels };
   if (parallel) return { active: true, type: 'parallel', effectivePoint: parallel.candidatePoint,
     entityId: parallel.entityId, screenDistance: parallel.screenDistance, channels };
   if (perpendicular) return { active: true, type: 'perpendicular', effectivePoint: perpendicular.candidatePoint,
-    entityId: perpendicular.entityId, sourcePointId: perpendicular.sourcePointId, supportOrigin: perpendicular.supportOrigin,
-    supportDirection: perpendicular.supportDirection, constructionKey: perpendicular.constructionKey,
-    screenDistance: perpendicular.screenDistance, channels };
+    entityId: perpendicular.entityId, screenDistance: perpendicular.screenDistance, channels };
   if (xReference || yReference) return { active: true, type: 'alignment',
     effectivePoint: {
       x: xReference?.positionOwnership !== 'reference-only' ? xReference?.candidatePoint.x ?? rawPoint.x : rawPoint.x,
