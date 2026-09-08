@@ -87,7 +87,7 @@ type LineAlignmentYReference = Extract<DrawingInference, { type: 'alignment-y' }
 
 type LineSpatialSnap = Readonly<{
   active: boolean;
-  type: 'none' | 'endpoint' | 'line' | 'alignment' | 'perpendicular' | 'parallel';
+  type: 'none' | 'endpoint' | 'line' | 'alignment' | 'point-reference' | 'perpendicular' | 'parallel';
   entityId?: string;
   effectivePoint: DrawingPoint;
   xReference?: LineAlignmentXReference | null;
@@ -99,6 +99,7 @@ type LineSpatialSnap = Readonly<{
     yAlignment: LineAlignmentYReference | null;
     perpendicular: Readonly<{ entityId: string; candidatePoint: DrawingPoint; screenDistance: number }> | null;
     parallel: Readonly<{ entityId: string; candidatePoint: DrawingPoint; screenDistance: number }> | null;
+    pointReference?: Readonly<{ candidatePoint: DrawingPoint; screenDistance: number }> | null;
   }>;
 }>;
 

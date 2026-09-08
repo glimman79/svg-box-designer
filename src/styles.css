@@ -945,7 +945,7 @@ button:disabled {
   pointer-events: none;
 }
 
-.drawing-perpendicular-support-guide {
+.drawing-point-reference-guide {
   stroke: #38bdf8;
   stroke-width: 1;
   stroke-dasharray: 5 5;
