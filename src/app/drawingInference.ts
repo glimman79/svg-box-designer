@@ -1,4 +1,4 @@
-import type { DrawingPoint, ResolvedDrawingLine } from './drawingTypes';
+import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingPoint, type ResolvedDrawingLine } from './drawingTypes.js';
 import type { AffineTransform, CoordinatePoint } from './drawingTransform';
 
 export const DRAWING_ENDPOINT_INFERENCE_TOLERANCE_PX = 9;
@@ -37,6 +37,7 @@ export type DrawingInference = Readonly<{
   entityId: string;
   candidatePoint: DrawingPoint;
   referencePoint?: DrawingPoint;
+  positionOwnership: 'defines-position' | 'reference-only';
   screenDistance: number;
   constructionKey?: string;
 }> | Readonly<{
@@ -45,6 +46,7 @@ export type DrawingInference = Readonly<{
   entityId: string;
   candidatePoint: DrawingPoint;
   referencePoint?: DrawingPoint;
+  positionOwnership: 'defines-position' | 'reference-only';
   screenDistance: number;
   constructionKey?: string;
 }>;
@@ -167,8 +169,14 @@ export const collectDrawingInferenceCandidates = (
             const candidatePoint = { x: reference.point.x, y: activeLineStart.y + t * angularDirection.y };
             const screen = toScreenPoint(candidatePoint, drawingToClientTransform);
             alignmentsX.push({ type: 'alignment-x', referenceId: reference.id, entityId: reference.entityId, candidatePoint, referencePoint: reference.point,
-              screenDistance: Math.hypot(pointerClientPoint.x - screen.x, pointerClientPoint.y - screen.y), constructionKey });
+              positionOwnership: 'defines-position', screenDistance: Math.hypot(pointerClientPoint.x - screen.x, pointerClientPoint.y - screen.y), constructionKey });
           }
+        } else if (Math.abs(reference.point.x - activeLineStart.x)
+          <= DRAWING_MODEL_SPACE_TOLERANCE * Math.max(1, Math.abs(reference.point.x), Math.abs(activeLineStart.x))) {
+          const witness = toScreenPoint(reference.point, drawingToClientTransform);
+          alignmentsX.push({ type: 'alignment-x', referenceId: reference.id, entityId: reference.entityId,
+            candidatePoint: reference.point, referencePoint: reference.point, positionOwnership: 'reference-only',
+            screenDistance: Math.hypot(pointerClientPoint.x - witness.x, pointerClientPoint.y - witness.y), constructionKey });
         }
         if (Math.abs(angularDirection.y) > 1e-12) {
           const t = (reference.point.y - activeLineStart.y) / angularDirection.y;
@@ -176,8 +184,14 @@ export const collectDrawingInferenceCandidates = (
             const candidatePoint = { x: activeLineStart.x + t * angularDirection.x, y: reference.point.y };
             const screen = toScreenPoint(candidatePoint, drawingToClientTransform);
             alignmentsY.push({ type: 'alignment-y', referenceId: reference.id, entityId: reference.entityId, candidatePoint, referencePoint: reference.point,
-              screenDistance: Math.hypot(pointerClientPoint.x - screen.x, pointerClientPoint.y - screen.y), constructionKey });
+              positionOwnership: 'defines-position', screenDistance: Math.hypot(pointerClientPoint.x - screen.x, pointerClientPoint.y - screen.y), constructionKey });
           }
+        } else if (Math.abs(reference.point.y - activeLineStart.y)
+          <= DRAWING_MODEL_SPACE_TOLERANCE * Math.max(1, Math.abs(reference.point.y), Math.abs(activeLineStart.y))) {
+          const witness = toScreenPoint(reference.point, drawingToClientTransform);
+          alignmentsY.push({ type: 'alignment-y', referenceId: reference.id, entityId: reference.entityId,
+            candidatePoint: reference.point, referencePoint: reference.point, positionOwnership: 'reference-only',
+            screenDistance: Math.hypot(pointerClientPoint.x - witness.x, pointerClientPoint.y - witness.y), constructionKey });
         }
         continue;
       }
@@ -187,8 +201,10 @@ export const collectDrawingInferenceCandidates = (
       if (!pointerModel) continue;
       const rawXScreen = toScreenPoint({ x: pointerModel.x, y: 0 }, drawingToClientTransform);
       const rawYScreen = toScreenPoint({ x: 0, y: pointerModel.y }, drawingToClientTransform);
-      alignmentsX.push({ type: 'alignment-x', referenceId: reference.id, entityId: reference.entityId, candidatePoint: reference.point, screenDistance: Math.hypot(rawXScreen.x - xScreen.x, rawXScreen.y - xScreen.y) });
-      alignmentsY.push({ type: 'alignment-y', referenceId: reference.id, entityId: reference.entityId, candidatePoint: reference.point, screenDistance: Math.hypot(rawYScreen.x - yScreen.x, rawYScreen.y - yScreen.y) });
+      alignmentsX.push({ type: 'alignment-x', referenceId: reference.id, entityId: reference.entityId, candidatePoint: reference.point,
+        positionOwnership: 'defines-position', screenDistance: Math.hypot(rawXScreen.x - xScreen.x, rawXScreen.y - xScreen.y) });
+      alignmentsY.push({ type: 'alignment-y', referenceId: reference.id, entityId: reference.entityId, candidatePoint: reference.point,
+        positionOwnership: 'defines-position', screenDistance: Math.hypot(rawYScreen.x - yScreen.x, rawYScreen.y - yScreen.y) });
     }
   }
   const stableSort = <T extends { screenDistance: number; referenceId?: string }>(a: T, b: T) => a.screenDistance - b.screenDistance || (a.referenceId ?? '').localeCompare(b.referenceId ?? '');

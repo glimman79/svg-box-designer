@@ -117,7 +117,10 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
   if (perpendicular) return { active: true, type: 'perpendicular', effectivePoint: perpendicular.candidatePoint,
     entityId: perpendicular.entityId, screenDistance: perpendicular.screenDistance, channels };
   if (xReference || yReference) return { active: true, type: 'alignment',
-    effectivePoint: { x: xReference?.candidatePoint.x ?? rawPoint.x, y: yReference?.candidatePoint.y ?? rawPoint.y },
+    effectivePoint: {
+      x: xReference?.positionOwnership !== 'reference-only' ? xReference?.candidatePoint.x ?? rawPoint.x : rawPoint.x,
+      y: yReference?.positionOwnership !== 'reference-only' ? yReference?.candidatePoint.y ?? rawPoint.y : rawPoint.y,
+    },
     screenDistance: Math.max(xReference?.screenDistance ?? 0, yReference?.screenDistance ?? 0), xReference, yReference, channels };
   return none(channels);
 };

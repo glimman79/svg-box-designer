@@ -50,6 +50,7 @@ type CadCursorPresentation = Readonly<{
   snap: DrawingSnap;
   xGuideReference: CoordinatePoint | null;
   yGuideReference: CoordinatePoint | null;
+  sameAxisReference: CoordinatePoint | null;
   perpendicularActive: boolean;
 }> | null;
 type GeometryDragSession = Readonly<{
@@ -240,11 +241,16 @@ export function DrawingWorkspace({
     drawingSnapRef.current = snap;
     setLineInteraction(nextInteraction);
     lineInteractionRef.current = nextInteraction;
-    const xGuideReference = lineResolution.resolvedReferences.x
+    const xGuideReference = lineResolution.resolvedReferences.x?.positionOwnership !== 'reference-only' && lineResolution.resolvedReferences.x
       ? modelToOverlayPoint(lineResolution.resolvedReferences.x.referencePoint ?? lineResolution.resolvedReferences.x.candidatePoint, drawingTransform, overlayTransform) : null;
-    const yGuideReference = lineResolution.resolvedReferences.y
+    const yGuideReference = lineResolution.resolvedReferences.y?.positionOwnership !== 'reference-only' && lineResolution.resolvedReferences.y
       ? modelToOverlayPoint(lineResolution.resolvedReferences.y.referencePoint ?? lineResolution.resolvedReferences.y.candidatePoint, drawingTransform, overlayTransform) : null;
-    setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference,
+    const sameAxisReferenceCandidate = lineResolution.resolvedReferences.x?.positionOwnership === 'reference-only'
+      ? lineResolution.resolvedReferences.x : lineResolution.resolvedReferences.y?.positionOwnership === 'reference-only'
+        ? lineResolution.resolvedReferences.y : null;
+    const sameAxisReference = sameAxisReferenceCandidate
+      ? modelToOverlayPoint(sameAxisReferenceCandidate.referencePoint ?? sameAxisReferenceCandidate.candidatePoint, drawingTransform, overlayTransform) : null;
+    setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference, sameAxisReference,
       perpendicularActive: snap.type === 'perpendicular' || nextInteraction.perpendicularLineId !== null } : null);
     const endpointPointId = snap.type === 'endpoint' && activeSketch
       ? pointIdForLineEndpoint(activeSketch.entities[snap.entityId], snap.endpoint) : null;
@@ -883,6 +889,7 @@ export function DrawingWorkspace({
               <g className="drawing-alignment-presentation" aria-hidden="true">
                 {lineCursor.xGuideReference && <line className="drawing-alignment-guide" data-axis="x" x1={lineCursor.xGuideReference.x} y1={lineCursor.xGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
                 {lineCursor.yGuideReference && <line className="drawing-alignment-guide" data-axis="y" x1={lineCursor.yGuideReference.x} y1={lineCursor.yGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
+                {lineCursor.sameAxisReference && <circle className="drawing-same-axis-reference-highlight" cx={lineCursor.sameAxisReference.x} cy={lineCursor.sameAxisReference.y} r="7" />}
               <g className="drawing-line-cursor drawing-cad-cursor" data-inference={lineCursor.snap.type} transform={`translate(${lineCursor.anchor.x} ${lineCursor.anchor.y})`} aria-hidden="true">
                 <line className="drawing-line-cursor-arm" data-arm="left" x1="-22" y1="0" x2="-7" y2="0" />
                 <line className="drawing-line-cursor-arm" data-arm="right" x1="7" y1="0" x2="22" y2="0" />
