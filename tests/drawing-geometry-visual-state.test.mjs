@@ -50,7 +50,7 @@ assert.deepEqual(
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const css = fs.readFileSync('src/styles.css', 'utf8');
 assert.match(workspace, /data-constraint-state=\{getGeometryConstraintVisualState/);
-assert.match(workspace, /if \(geometryDrag\.exceeded\) setSelectedGeometry\(null\)/, 'meaningful drag clears persistent selection at release');
+assert.match(workspace, /if \(geometryDrag\.exceeded\) setSelectedGeometry\(\[\]\)/, 'meaningful drag clears persistent selection at release');
 assert.match(workspace, /is-geometry-dragging/, 'active manipulation has explicit semantic state');
 assert.match(css, /--drawing-geometry-free:\s*#33c757;/i);
 assert.match(css, /--drawing-geometry-constrained:\s*#137a3e;/i);
@@ -58,8 +58,7 @@ assert.match(css, /--drawing-geometry-locked:\s*#111827;/i);
 assert.match(css, /\.drawing-line-entity\.geometry-free \{ stroke: var\(--drawing-geometry-free\); \}/i);
 assert.match(css, /\.drawing-line-entity\.geometry-constrained \{ stroke: var\(--drawing-geometry-constrained\); \}/i);
 assert.match(css, /\.drawing-line-entity\.geometry-fully-locked \{ stroke: var\(--drawing-geometry-locked\); \}/i);
-assert.match(css, /\.drawing-line-entity\.is-geometry-selected \{ stroke-width: 2\.2; \}/, 'selection preserves the permanent state stroke');
-assert.doesNotMatch(css, /\.drawing-line-entity\.is-geometry-selected\s*\{[^}]*stroke\s*:/s, 'selection cannot introduce a fourth permanent green');
+assert.match(css, /\.drawing-line-entity\.is-geometry-selected \{ stroke: var\(--drawing-hover\); stroke-width: 2\.6; \}/, 'selected interaction blue persistently overrides the permanent solver color');
 assert.match(css, /--drawing-hover:\s*#06b6d4;[\s\S]*\.drawing-line-entity\.is-geometry-preselected,[\s\S]*\.drawing-line-entity\.is-geometry-dragging \{ stroke: var\(--drawing-hover\); stroke-width: 2\.6; \}/, 'light-blue hover temporarily overrides every permanent state through one semantic token');
 assert.match(css, /\.drawing-line-entity\.is-dimension-preselected \{ stroke: var\(--drawing-hover\); stroke-width: 2\.4; \}/, 'Dimension preselection uses only the shared temporary hover authority');
 assert.doesNotMatch(css, /\.drawing-line-entity[^}]*stroke:\s*(?:#2db65b|var\(--drawing-dimension(?:-hover|-active)?\))/i, 'Dimension green and the old FREE green cannot control committed geometry');
@@ -68,12 +67,14 @@ const committedLineStrokeRules = [...css.matchAll(/([^{}]*\.drawing-line-entity[
   .filter(([, , declarations]) => /(?:^|;)\s*stroke\s*:/.test(declarations))
   .map(([, selector, declarations]) => ({ selector: selector.trim(), stroke: declarations.match(/(?:^|;)\s*stroke\s*:\s*([^;]+)/)?.[1].trim() }));
 assert.deepEqual(committedLineStrokeRules, [
+  { selector: '.drawing-line-entity.is-inference-target', stroke: 'var(--drawing-inference)' },
   { selector: '.drawing-line-entity.geometry-free', stroke: 'var(--drawing-geometry-free)' },
   { selector: '.drawing-line-entity.geometry-constrained', stroke: 'var(--drawing-geometry-constrained)' },
   { selector: '.drawing-line-entity.geometry-fully-locked', stroke: 'var(--drawing-geometry-locked)' },
+  { selector: '.drawing-line-entity.is-geometry-selected', stroke: 'var(--drawing-hover)' },
   { selector: '.drawing-line-entity.is-dimension-preselected', stroke: 'var(--drawing-hover)' },
   { selector: '.drawing-line-entity.is-geometry-preselected,\n.drawing-line-entity.is-geometry-dragging', stroke: 'var(--drawing-hover)' },
-], 'committed Lines have three permanent stroke authorities and only temporary light-blue overrides');
+], 'committed Lines retain three solver authorities plus separate selected and temporary interaction overrides');
 assert.match(css, /drawing-geometry-point-preselection[^}]*stroke: #0e7490;[^}]*stroke-width: 2;/, 'accepted endpoint feedback remains unchanged');
 assert.match(css, /has-geometry-cursor\.is-line-target[\s\S]*cursor: default;/, 'geometry uses normal Dimension arrow convention');
 assert.doesNotMatch(css, /has-geometry-cursor[^}]*cursor:\s*(?:move|grab|grabbing|pointer)/s);

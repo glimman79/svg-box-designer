@@ -51,15 +51,17 @@ export const addPointOnLinearSupportConstraint = (document: DrawingDocumentV2, p
 
 export const POINT_CONSTRAINT_MARKER_SIZE_PX = 8;
 export const POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX = 9;
+export const POINT_CONSTRAINT_MARKER_OFFSET_PX = 12;
 export type DrawingPointConstraintMarker = Readonly<{ id: string; constraintId: string; pointIds: readonly string[]; x: number; y: number }>;
 
 /** Generic point-associated placement keeps glyph dimensions and offset stable on screen. */
-export const deriveCoincidentMarkers = (sketch: DrawingSketchV2, _pixelsPerModelUnit = 1): DrawingPointConstraintMarker[] =>
+export const deriveCoincidentMarkers = (sketch: DrawingSketchV2, pixelsPerModelUnit = 1): DrawingPointConstraintMarker[] =>
   Object.values(sketch.geometricConstraints ?? {}).flatMap((constraint) => {
     if (constraint.kind !== 'COINCIDENT') return [];
     const pointIds = constraint.variant === 'point-linear-support'
       ? [constraint.references[0].pointId] : constraint.references.map(({ pointId }) => pointId);
     const points = pointIds.map((id) => sketch.points[id]);
     if (points.some((point) => !point)) return [];
-    return [{ id: constraint.id, constraintId: constraint.id, pointIds, x: points[0].x, y: points[0].y }];
+    const offset = POINT_CONSTRAINT_MARKER_OFFSET_PX / pixelsPerModelUnit;
+    return [{ id: constraint.id, constraintId: constraint.id, pointIds, x: points[0].x + offset, y: points[0].y - offset }];
   });

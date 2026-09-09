@@ -22,9 +22,9 @@ test('semantic selection toggle supports ordered mixed selections without a size
 });
 
 test('Select and Constraints route to the shared toggle without stealing authoring or starting drags', () => {
-  assert.match(workspaceSource, /if \(activeTool === 'select'\)[\s\S]*const toggleSelection = event\.ctrlKey \|\| constraintsPanelOpen/);
-  assert.match(workspaceSource, /setSelectedGeometry\(\(current\) => toggleSelection \? toggleDrawingGeometrySelection\(current, target\) : \[target\]\)/);
-  assert.match(workspaceSource, /if \(!toggleSelection\) \{[\s\S]*setGeometryDrag/);
+  assert.match(workspaceSource, /if \(activeTool === 'select'\)[\s\S]*const beginDrag = !event\.ctrlKey && !constraintsPanelOpen/);
+  assert.match(workspaceSource, /setSelectedGeometry\(\(current\) => routeDrawingGeometryPointerSelection\(current, target, event\.ctrlKey, constraintsPanelOpen\)\.selection\)/);
+  assert.match(workspaceSource, /if \(beginDrag\) \{[\s\S]*setGeometryDrag/);
   assert.match(workspaceSource, /if \(!event\.ctrlKey && !constraintsPanelOpen\) setSelectedGeometry\(\[\]\)/, 'Ctrl or constraint-picking misses preserve accumulated references');
   assert.doesNotMatch(workspaceSource, /event\.shiftKey/, 'Shift follows the ordinary Select path');
 });

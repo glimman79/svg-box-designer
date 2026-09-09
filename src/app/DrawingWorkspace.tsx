@@ -80,6 +80,17 @@ const formatViewBox = ({ x, y, width, height }: DrawingViewBox) => `${x} ${y} ${
 /** Restrained, zoom-independent radius for first-class SketchPoint picking. */
 export const DRAWING_SKETCH_POINT_HIT_RADIUS_PX = 7;
 
+export const drawingGeometrySelectionClass = (selection: readonly DrawingSelectionRef[], target: DrawingSelectionRef) =>
+  selection.some((ref) => ref.kind === target.kind && (ref.kind === 'line'
+    ? ref.lineId === (target as Extract<DrawingSelectionRef, { kind: 'line' }>).lineId
+    : ref.pointId === (target as Extract<DrawingSelectionRef, { kind: 'point' }>).pointId)) ? ' is-geometry-selected' : '';
+
+/** The selection and drag policy used by the production root pointer route. */
+export const routeDrawingGeometryPointerSelection = (selection: readonly DrawingSelectionRef[], target: DrawingSelectionRef, ctrlKey: boolean, constraintsOpen: boolean) => {
+  const toggle = ctrlKey || constraintsOpen;
+  return { selection: toggle ? toggleDrawingGeometrySelection(selection, target) : [target], beginDrag: !toggle } as const;
+};
+
 export function DrawingWorkspace({
   document,
   setDocument,
@@ -376,21 +387,23 @@ export function DrawingWorkspace({
     if (event.button !== CAD_PRIMARY_BUTTON) return;
     if (activeTool === 'select') {
       const explicitPointId = (event.target as Element).closest<SVGCircleElement>('[data-sketch-point-id]')?.dataset.sketchPointId;
-      const hit = explicitPointId ? null : resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
+      const explicitLineId = (event.target as Element).closest<SVGLineElement>('[data-sketch-line-id]')?.dataset.sketchLineId;
+      const hit = explicitPointId || explicitLineId ? null : resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
       const matrix = svgRef.current?.getScreenCTM();
       const startModel = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
-      if ((!hit && !explicitPointId) || !startModel) { if (!event.ctrlKey && !constraintsPanelOpen) setSelectedGeometry([]); return; }
+      if ((!hit && !explicitPointId && !explicitLineId) || !startModel) { if (!event.ctrlKey && !constraintsPanelOpen) setSelectedGeometry([]); return; }
       setDimensionDrag(null);
       const target: DrawingGeometryTarget | null = explicitPointId
         ? { kind: 'point', pointId: explicitPointId }
+        : explicitLineId ? { kind: 'line', lineId: explicitLineId }
         : hit?.kind === 'point'
         ? (() => { const pointId = pointIdFromHit(documentRef.current, hit.lineId, hit.point); return pointId ? { kind: 'point', pointId } : null; })()
         : hit?.kind === 'line' ? { kind: 'line', lineId: hit.lineId } : null;
       if (!target) return;
-      const toggleSelection = event.ctrlKey || constraintsPanelOpen;
-      setSelectedGeometry((current) => toggleSelection ? toggleDrawingGeometrySelection(current, target) : [target]);
+      const beginDrag = !event.ctrlKey && !constraintsPanelOpen;
+      setSelectedGeometry((current) => routeDrawingGeometryPointerSelection(current, target, event.ctrlKey, constraintsPanelOpen).selection);
       setSelectedDimensionId(null); setSelectedGeometricConstraintId(null);
-      if (!toggleSelection) {
+      if (beginDrag) {
         event.currentTarget.setPointerCapture(event.pointerId);
         setGeometryDrag({ pointerId: event.pointerId, target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false });
       }
@@ -809,7 +822,7 @@ export function DrawingWorkspace({
             </g>
             <g className="drawing-sketch-geometry" aria-label="Committed sketch geometry">
               {resolvedLines.map((entity) => (
-                <line key={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} data-inference-target={lineCursor?.lineReference?.targetLineId === entity.id ? lineCursor.lineReference.relation : undefined} className={`drawing-line-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${lineCursor?.lineReference?.targetLineId === entity.id ? ' is-inference-target' : ''}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${selectedGeometry.some((ref) => ref.kind === 'line' && ref.lineId === entity.id) ? ' is-geometry-selected' : ''}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
+                <line key={entity.id} data-sketch-line-id={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} data-inference-target={lineCursor?.lineReference?.targetLineId === entity.id ? lineCursor.lineReference.relation : undefined} className={`drawing-line-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${lineCursor?.lineReference?.targetLineId === entity.id ? ' is-inference-target' : ''}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'line', lineId: entity.id })}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
               ))}
               {activeTool === 'select' && activeSketch && Object.values(activeSketch.points).map((point) => (
                 <circle key={point.id} className="drawing-sketch-point-hit drawing-interactive-hit" data-sketch-point-id={point.id}

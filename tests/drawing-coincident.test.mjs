@@ -61,11 +61,13 @@ test('accepted endpoint snap creates Coincident only for a retained distinct poi
   assert.equal(Object.values(shared.sketches['sketch-1'].geometricConstraints).filter(({ kind }) => kind === 'COINCIDENT').length, 1);
 });
 
-test('one square marker is located at its coincident point and deletion/history preserve all geometry', () => {
+test('one square marker is screen-stably offset beside its coincident point and deletion/history preserve all geometry', () => {
   let document = addCoincidentConstraint(base(), 'a-p2', 'b-p1');
   const [m1] = deriveCoincidentMarkers(document.sketches['sketch-1'], 1), [m2] = deriveCoincidentMarkers(document.sketches['sketch-1'], 2);
   assert.equal(deriveCoincidentMarkers(document.sketches['sketch-1']).length, 1);
-  assert.equal(m1.x, document.sketches['sketch-1'].points['a-p2'].x); assert.equal(m2.x, m1.x);
+  const point = document.sketches['sketch-1'].points['a-p2'];
+  assert.deepEqual({ x: m1.x - point.x, y: m1.y - point.y }, { x: 12, y: -12 });
+  assert.deepEqual({ x: (m2.x - point.x) * 2, y: (m2.y - point.y) * 2 }, { x: 12, y: -12 });
   assert.equal(POINT_CONSTRAINT_MARKER_SIZE_PX, 8);
   const before = document, transaction = transactDrawingDocument(EMPTY_DRAWING_HISTORY, document, (current) => deleteGeometricConstraint(current, m1.constraintId));
   document = transaction.document; assert.equal(Object.keys(document.sketches['sketch-1'].points).length, 4); assert.equal(Object.keys(document.sketches['sketch-1'].entities).length, 2);
@@ -87,7 +89,8 @@ test('point/linear-support Coincident is one scalar equation, remains outside th
   assert.ok(solved); assert.ok(Math.abs(solved.points['carrier-p1'].y) < 1e-7); assert.ok(solved.points['carrier-p1'].x > 100);
   solved = solveDrawingComponentDrag(solved, { 'carrier-p1': { x: -40, y: 0 } }, { directPointIds: ['carrier-p1'] });
   assert.ok(solved); assert.ok(solved.points['carrier-p1'].x < 0); assert.ok(Math.abs(solved.points['carrier-p1'].y) < 1e-7);
-  const [marker] = deriveCoincidentMarkers(solved); assert.deepEqual({ x: marker.x, y: marker.y }, { x: solved.points['carrier-p1'].x, y: solved.points['carrier-p1'].y });
+  const [marker] = deriveCoincidentMarkers(solved, 2), point = solved.points['carrier-p1'];
+  assert.deepEqual({ x: marker.x - point.x, y: marker.y - point.y }, { x: 6, y: -6 });
   assert.equal(Object.keys(solved.points).length, 4, 'no hidden point was introduced');
 });
 
