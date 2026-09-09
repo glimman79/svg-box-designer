@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-constraints-tool/drawingTypes.js';
 import { appendEntityToActiveSketch } from '../.test-build/drawing-constraints-tool/drawingLineTool.js';
-import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, initialConstraintsPanelPosition, toggleDrawingGeometrySelection } from '../.test-build/drawing-constraints-tool/drawingConstraintsTool.js';
+import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, getExistingAxisConstraintForLine, initialConstraintsPanelPosition, toggleDrawingGeometrySelection } from '../.test-build/drawing-constraints-tool/drawingConstraintsTool.js';
 
 const line = (id, y = 0) => ({ id, type: 'line', start: { x: 0, y }, end: { x: 20, y: y + 3 }, startPointId: `${id}:a`, endPointId: `${id}:b` });
 const add = (document, draft) => appendEntityToActiveSketch(document, draft);
@@ -41,6 +41,13 @@ test('moved launcher and close button share the one existing panel state', () =>
   assert.match(appSource, /constraintsPanelOpen=\{drawingConstraintsPanelOpen\} setConstraintsPanelOpen=\{setDrawingConstraintsPanelOpen\}/, 'workspace receives that same state authority');
   assert.match(workspaceSource, /aria-label="Close Constraints"[\s\S]*?setConstraintsPanelOpen\(false\)/, 'close button still closes the shared panel');
   assert.equal((workspaceSource.match(/className="drawing-constraints-panel"/g) ?? []).length, 1, 'exactly one floating panel is rendered');
+});
+
+test('OK clears only semantic selection while Escape exits Constraints after higher-priority interactions', () => {
+  assert.match(workspaceSource, /const finishConstraintSelection = \(\) => setSelectedGeometry\(\[\]\)/);
+  assert.match(workspaceSource, /drawing-constraints-actions[\s\S]*disabled=\{selectedGeometry\.length === 0\}[\s\S]*onClick=\{finishConstraintSelection\}>OK/);
+  assert.match(workspaceSource, /if \(editingDimensionId\)[\s\S]*if \(activeToolRef\.current === 'select' && constraintsPanelOpen\) \{\s*setConstraintsPanelOpen\(false\);\s*setSelectedGeometry\(\[\]\);/);
+  assert.match(workspaceSource, /onClick=\{\(\) => transactDocument\(\(current\) => applyDrawingConstraint\(current, item\)\)\}/, 'constraint application does not clear the selection');
 });
 
 test('floating panel defaults from the current frame right edge and retains session state', () => {
@@ -81,6 +88,38 @@ test('central applicability handles line, point, mixed, and larger selections', 
   assert.deepEqual(enabled(document, [{ kind: 'point', pointId: 'a:a' }, { kind: 'point', pointId: 'b:a' }]), ['coincidence']);
   assert.deepEqual(enabled(document, [{ kind: 'point', pointId: 'a:a' }, { kind: 'line', lineId: 'b' }]), ['coincidence']);
   assert.deepEqual(enabled(document, [{ kind: 'line', lineId: 'a' }, { kind: 'line', lineId: 'b' }, { kind: 'point', pointId: 'a:a' }]), []);
+});
+
+test('one existing axis constraint locks both manual axis choices and the application authority', () => {
+  let document = add(createDrawingDocumentV2(), line('axis'));
+  const selection = [{ kind: 'line', lineId: 'axis' }];
+  const horizontal = getDrawingConstraintApplicability(selection, document).find(({ kind }) => kind === 'horizontal');
+  document = applyDrawingConstraint(document, horizontal);
+  const constrained = document;
+  const sketch = document.sketches[document.activeSketchId];
+  assert.equal(getExistingAxisConstraintForLine(sketch, 'axis')?.kind, 'HORIZONTAL');
+  assert.deepEqual(enabled(document, selection), []);
+  const vertical = getDrawingConstraintApplicability(selection, document).find(({ kind }) => kind === 'vertical');
+  assert.equal(vertical.disabledReason, 'Line already has a Horizontal/Vertical constraint');
+  const endpointsBeforeBypass = { a: sketch.points['axis:a'], b: sketch.points['axis:b'] };
+  const bypass = { ...vertical, applicable: true, creatable: true, enabled: true };
+  assert.strictEqual(applyDrawingConstraint(document, bypass), constrained, 'stale or direct UI data cannot add the opposing axis');
+  assert.deepEqual({ a: sketch.points['axis:a'], b: sketch.points['axis:b'] }, endpointsBeforeBypass, 'rejection cannot collapse or otherwise move the Line');
+
+  const withoutAxis = { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch, geometricConstraints: {}, geometricConstraintOrder: [] } } };
+  assert.deepEqual(enabled(withoutAxis, selection), ['horizontal', 'vertical'], 'deleting the marker constraint unlocks both choices');
+});
+
+test('vertical axis intent also locks both choices and degenerate Lines offer neither', () => {
+  let document = add(createDrawingDocumentV2(), line('axis'));
+  const selection = [{ kind: 'line', lineId: 'axis' }];
+  document = applyDrawingConstraint(document, getDrawingConstraintApplicability(selection, document).find(({ kind }) => kind === 'vertical'));
+  assert.deepEqual(enabled(document, selection), []);
+  const horizontal = getDrawingConstraintApplicability(selection, document).find(({ kind }) => kind === 'horizontal');
+  assert.strictEqual(applyDrawingConstraint(document, { ...horizontal, applicable: true, creatable: true, enabled: true }), document);
+
+  const degenerate = add(createDrawingDocumentV2(), { ...line('zero'), end: { x: 0, y: 0 } });
+  assert.deepEqual(enabled(degenerate, [{ kind: 'line', lineId: 'zero' }]), []);
 });
 
 test('Coincidence normalizes point/linear-edge order and rejects a degenerate support', () => {

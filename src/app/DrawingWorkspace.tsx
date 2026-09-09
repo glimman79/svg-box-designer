@@ -133,6 +133,7 @@ export function DrawingWorkspace({
   const [geometryDrag, setGeometryDrag] = useState<GeometryDragSession | null>(null);
   const [geometryPreselection, setGeometryPreselection] = useState<DimensionPreselection | null>(null);
   const [selectedGeometry, setSelectedGeometry] = useState<readonly DrawingSelectionRef[]>([]);
+  const finishConstraintSelection = () => setSelectedGeometry([]);
   const [constraintsPanelPosition, setConstraintsPanelPosition] = useState<{ x: number; y: number } | null>(null);
   const constraintsPanelDragRef = useRef<{ pointerId: number; dx: number; dy: number } | null>(null);
   const [selectedGeometricConstraintId, setSelectedGeometricConstraintId] = useState<string | null>(null);
@@ -361,6 +362,11 @@ export function DrawingWorkspace({
     if (geometryDrag) { setGeometryDrag(null); return; }
     if (dimensionDrag) { setDimensionDrag(null); return; }
     if (editingDimensionId) { setEditingDimensionId(null); setDimensionEditError(null); return; }
+    if (activeToolRef.current === 'select' && constraintsPanelOpen) {
+      setConstraintsPanelOpen(false);
+      setSelectedGeometry([]);
+      return;
+    }
     if (activeToolRef.current === 'select') return;
     if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current);
     pendingLineClickRef.current = null;
@@ -789,6 +795,7 @@ export function DrawingWorkspace({
               <strong>Constraints</strong><button type="button" aria-label="Close Constraints" onPointerDown={(event) => event.stopPropagation()} onClick={() => setConstraintsPanelOpen(false)}>×</button>
             </div>
             <div className="drawing-constraints-grid">{getDrawingConstraintApplicability(selectedGeometry, document).map((item) => { const catalog = DRAWING_CONSTRAINT_CATALOG.find(({ kind }) => kind === item.kind)!; return <button key={item.kind} type="button" disabled={!item.enabled} title={item.disabledReason} onClick={() => transactDocument((current) => applyDrawingConstraint(current, item))}>{catalog.label}</button>; })}</div>
+            <div className="drawing-constraints-actions"><button type="button" disabled={selectedGeometry.length === 0} onClick={finishConstraintSelection}>OK</button></div>
           </div>}
           <svg
             ref={svgRef}
