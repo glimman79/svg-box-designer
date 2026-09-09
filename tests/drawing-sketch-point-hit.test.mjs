@@ -30,6 +30,9 @@ assert.match(markup, /class="drawing-sketch-point-hit drawing-interactive-hit" d
 const source = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 assert.match(source, /closest<SVGCircleElement>\('\[data-sketch-point-id\]'\)\?\.dataset\.sketchPointId/, 'the real root pointer handler acquires semantic identity from the DOM target');
 assert.match(source, /explicitPointId\s*\? \{ kind: 'point', pointId: explicitPointId \}/, 'the DOM identity becomes the selected Point ref directly');
-assert.match(source, /event\.shiftKey[\s\S]*current\.filter[\s\S]*\[\.\.\.current, target\]/, 'the pointer path retains exact Shift remove and ordered append');
+assert.match(source, /const toggleSelection = event\.ctrlKey \|\| constraintsPanelOpen/, 'Select Ctrl and the open Constraints panel share the geometry-toggle route');
+assert.match(source, /toggleSelection \? toggleDrawingGeometrySelection\(current, target\) : \[target\]/, 'normal Select replacement and semantic toggle use explicit policies');
+assert.doesNotMatch(source, /event\.shiftKey/, 'Shift is not a semantic geometry multi-selection modifier');
+assert.match(source, /if \(!toggleSelection\) \{[\s\S]*setGeometryDrag/, 'only an ordinary replacing Select click may begin direct manipulation');
 
 console.log('Drawing SketchPoint rendered interaction-layer regression tests passed');
