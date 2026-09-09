@@ -907,6 +907,30 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.drawing-constraints-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 7px 7px;
+}
+
+.drawing-constraints-actions button {
+  min-width: 52px;
+  min-height: 27px;
+  padding: 3px 12px;
+  color: #f3f4f6;
+  background: #2563eb;
+  border: 1px solid #3b82f6;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.drawing-constraints-actions button:disabled {
+  color: #6b7280;
+  background: #171e2a;
+  border-color: #293241;
+  cursor: not-allowed;
+}
+
 .drawing-geometry-point-selected {
   fill: rgb(59 130 246 / 24%);
   stroke: #2563eb;

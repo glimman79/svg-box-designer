@@ -32,6 +32,12 @@ const existing = (sketch: DrawingSketchV2, kind: DrawingConstraintChoice, refs: 
     && constraint.references.map((ref) => 'entityId' in ref ? ref.entityId : ref.pointId).sort().join('\0') === ids);
 };
 
+/** Returns the existing hard axis intent for a Line, regardless of its constraint ID. */
+export const getExistingAxisConstraintForLine = (sketch: DrawingSketchV2, lineId: string) =>
+  Object.values(sketch.geometricConstraints ?? {}).find((constraint) =>
+    (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL')
+    && constraint.references.some((reference) => 'entityId' in reference && reference.entityId === lineId));
+
 /** The sole selection-to-constraint policy authority. */
 export const getDrawingConstraintApplicability = (selection: readonly DrawingSelectionRef[], document: DrawingDocumentV2): readonly DrawingConstraintApplicability[] => {
   const sketch = document.sketches[document.activeSketchId];
@@ -41,18 +47,21 @@ export const getDrawingConstraintApplicability = (selection: readonly DrawingSel
     const twoLines = selection.length === 2 && selection.every((ref) => ref.kind === 'line') && selection[0].lineId !== selection[1].lineId;
     const twoPoints = selection.length === 2 && selection.every((ref) => ref.kind === 'point') && selection[0].pointId !== selection[1].pointId;
     const pointAndLine = selection.length === 2 && selection.some((ref) => ref.kind === 'point') && selection.some((ref) => ref.kind === 'line');
-    const selectedLine = pointAndLine ? selection.find((ref): ref is Extract<DrawingSelectionRef, { kind: 'line' }> => ref.kind === 'line') : undefined;
+    const selectedLine = (oneLine || pointAndLine) ? selection.find((ref): ref is Extract<DrawingSelectionRef, { kind: 'line' }> => ref.kind === 'line') : undefined;
     const line = selectedLine && sketch?.entities[selectedLine.lineId];
     const a = line && sketch?.points[line.startPointId], b = line && sketch?.points[line.endPointId];
     const validLinearSupport = Boolean(a && b && Math.hypot(b.x - a.x, b.y - a.y) > 1e-9);
-    const applicable = (kind === 'horizontal' || kind === 'vertical') ? oneLine
+    const applicable = (kind === 'horizontal' || kind === 'vertical') ? oneLine && validLinearSupport
       : (kind === 'parallelism' || kind === 'perpendicular') ? twoLines : kind === 'coincidence' ? twoPoints || pointAndLine && validLinearSupport : false;
     const references = applicable ? [...selection].sort((a, b) => a.kind === b.kind
       ? (a.kind === 'line' ? a.lineId : a.pointId).localeCompare(b.kind === 'line' ? b.lineId : b.pointId)
       : a.kind === 'point' ? -1 : 1) : [];
-    const creatable = Boolean(sketch && implemented && applicable && !existing(sketch, kind, references));
+    const axisAlreadyConstrained = Boolean(sketch && selectedLine && (kind === 'horizontal' || kind === 'vertical')
+      && getExistingAxisConstraintForLine(sketch, selectedLine.lineId));
+    const creatable = Boolean(sketch && implemented && applicable && !axisAlreadyConstrained && !existing(sketch, kind, references));
     return { kind, implemented, applicable, creatable, enabled: implemented && applicable && creatable, references,
-      disabledReason: !implemented ? 'Not implemented yet' : !applicable ? 'Not applicable to this selection' : !creatable ? 'Already present' : undefined };
+      disabledReason: !implemented ? 'Not implemented yet' : !applicable ? 'Not applicable to this selection'
+        : axisAlreadyConstrained ? 'Line already has a Horizontal/Vertical constraint' : !creatable ? 'Already present' : undefined };
   });
 };
 
@@ -60,6 +69,10 @@ export const getDrawingConstraintApplicability = (selection: readonly DrawingSel
 export const applyDrawingConstraint = (document: DrawingDocumentV2, applicability: DrawingConstraintApplicability): DrawingDocumentV2 => {
   if (!applicability.enabled) return document;
   const refs = applicability.references;
+  if (applicability.kind === 'horizontal' || applicability.kind === 'vertical') {
+    const current = getDrawingConstraintApplicability(refs, document).find(({ kind }) => kind === applicability.kind);
+    if (!current?.enabled) return document;
+  }
   if (applicability.kind === 'coincidence' && refs[0]?.kind === 'point' && refs[1]?.kind === 'point') {
     const withConstraint = addCoincidentConstraint(document, refs[0].pointId, refs[1].pointId);
     if (withConstraint === document) return document;
