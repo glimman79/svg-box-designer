@@ -19,7 +19,7 @@ import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, t
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
 import { deleteGeometricConstraint, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
 import { deriveCoincidentMarkers, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
-import { applyDrawingConstraint, clampConstraintsPanelPosition, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, type DrawingSelectionRef } from './drawingConstraintsTool.js';
+import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, initialConstraintsPanelPosition, type DrawingSelectionRef } from './drawingConstraintsTool.js';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -96,6 +96,8 @@ export function DrawingWorkspace({
   onHistoryControllerChange?: (controller: HistoryControlsProps | null) => void;
 }) {
   const toolSidebarRef = useRef<HTMLElement>(null);
+  const canvasFrameRef = useRef<HTMLDivElement>(null);
+  const constraintsPanelRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const overlaySvgRef = useRef<SVGSVGElement>(null);
   const [viewport, setViewport] = useState({ width: 800, height: 600 });
@@ -118,7 +120,7 @@ export function DrawingWorkspace({
   const [geometryDrag, setGeometryDrag] = useState<GeometryDragSession | null>(null);
   const [geometryPreselection, setGeometryPreselection] = useState<DimensionPreselection | null>(null);
   const [selectedGeometry, setSelectedGeometry] = useState<readonly DrawingSelectionRef[]>([]);
-  const [constraintsPanelPosition, setConstraintsPanelPosition] = useState({ x: 78, y: 58 });
+  const [constraintsPanelPosition, setConstraintsPanelPosition] = useState<{ x: number; y: number } | null>(null);
   const constraintsPanelDragRef = useRef<{ pointerId: number; dx: number; dy: number } | null>(null);
   const [selectedGeometricConstraintId, setSelectedGeometricConstraintId] = useState<string | null>(null);
   const [hoveredGeometricConstraintId, setHoveredGeometricConstraintId] = useState<string | null>(null);
@@ -132,6 +134,12 @@ export function DrawingWorkspace({
     sidebar.addEventListener('selectionstart', preventToolChromeSelection);
     return () => sidebar.removeEventListener('selectionstart', preventToolChromeSelection);
   }, []);
+  useLayoutEffect(() => {
+    if (!constraintsPanelOpen || constraintsPanelPosition) return;
+    const frame = canvasFrameRef.current?.getBoundingClientRect();
+    const panel = constraintsPanelRef.current?.getBoundingClientRect();
+    if (frame && panel) setConstraintsPanelPosition(initialConstraintsPanelPosition(frame, panel));
+  }, [constraintsPanelOpen, constraintsPanelPosition]);
   const [lineInteraction, setLineInteraction] = useState<LineToolInteraction>(EMPTY_LINE_INTERACTION);
   const [cadCursor, setCadCursor] = useState<CadCursorPresentation>(null);
   const lineCursor = cadCursor; // Line is currently the sole consumer of the shared CAD cursor.
@@ -748,7 +756,7 @@ export function DrawingWorkspace({
         <button type="button" className={`cad-tool-button${activeTool === 'line' ? ' is-active' : ''}`} aria-pressed={activeTool === 'line'} onPointerDown={(event) => activateToolFromPointer('line', event)} onClick={(event) => activateToolFromKeyboard('line', event)}>Line</button>
       </aside>
       <section className="canvas-card drawing-canvas-card workspace-canvas">
-        <div className="canvas-frame">
+        <div ref={canvasFrameRef} className="canvas-frame">
           <div className="drawing-status" aria-live="polite">
             <strong>{activeSketch?.name ?? 'No active sketch'}</strong><span>Unit: {document.unit}</span><span>Grid: {gridSpacing} mm</span><span>Active Tool: {activeTool === 'line' ? 'Line' : activeTool === 'dimension' ? 'Dimension' : 'Select'}</span>
           </div>
@@ -757,10 +765,11 @@ export function DrawingWorkspace({
             <button type="button" onClick={() => zoom(0.8)} aria-label="Zoom out">−</button>
             <button type="button" onClick={() => setViewBox(initialDrawingViewBox)}>Fit</button>
           </div>
-          {constraintsPanelOpen && <div className="drawing-constraints-panel" role="dialog" aria-label="Constraints" style={{ left: constraintsPanelPosition.x, top: constraintsPanelPosition.y }} onPointerDown={(event) => event.stopPropagation()}>
-            <div className="drawing-constraints-header" onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || (event.target as Element).closest('button')) return; event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); constraintsPanelDragRef.current = { pointerId: event.pointerId, dx: event.clientX - constraintsPanelPosition.x, dy: event.clientY - constraintsPanelPosition.y }; }}
-              onPointerMove={(event) => { const drag = constraintsPanelDragRef.current; if (!drag || drag.pointerId !== event.pointerId) return; const frame = event.currentTarget.closest('.canvas-frame')?.getBoundingClientRect(); if (frame) setConstraintsPanelPosition(clampConstraintsPanelPosition({ x: event.clientX - frame.left - drag.dx, y: event.clientY - frame.top - drag.dy }, frame)); }}
-              onPointerUp={(event) => { if (constraintsPanelDragRef.current?.pointerId === event.pointerId) constraintsPanelDragRef.current = null; }}>
+          {constraintsPanelOpen && <div ref={constraintsPanelRef} className="drawing-constraints-panel" role="dialog" aria-label="Constraints" style={{ left: constraintsPanelPosition?.x ?? 0, top: constraintsPanelPosition?.y ?? 58, visibility: constraintsPanelPosition ? 'visible' : 'hidden' }} onPointerDown={(event) => event.stopPropagation()}>
+            <div className="drawing-constraints-header" onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || (event.target as Element).closest('button')) return; const panel = constraintsPanelRef.current?.getBoundingClientRect(); if (!panel) return; event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); const grab = constraintsPanelGrabOffset({ x: event.clientX, y: event.clientY }, panel); constraintsPanelDragRef.current = { pointerId: event.pointerId, dx: grab.x, dy: grab.y }; }}
+              onPointerMove={(event) => { const drag = constraintsPanelDragRef.current; if (!drag || drag.pointerId !== event.pointerId) return; const frame = canvasFrameRef.current?.getBoundingClientRect(); const panel = constraintsPanelRef.current?.getBoundingClientRect(); if (frame && panel) { const desired = constraintsPanelDragPosition({ x: event.clientX, y: event.clientY }, frame, { x: drag.dx, y: drag.dy }); setConstraintsPanelPosition(clampConstraintsPanelPosition(desired, frame, panel)); } }}
+              onPointerUp={(event) => { if (constraintsPanelDragRef.current?.pointerId === event.pointerId) constraintsPanelDragRef.current = null; }}
+              onPointerCancel={(event) => { if (constraintsPanelDragRef.current?.pointerId === event.pointerId) constraintsPanelDragRef.current = null; }}>
               <strong>Constraints</strong><button type="button" aria-label="Close Constraints" onPointerDown={(event) => event.stopPropagation()} onClick={() => setConstraintsPanelOpen(false)}>×</button>
             </div>
             <div className="drawing-constraints-grid">{getDrawingConstraintApplicability(selectedGeometry, document).map((item) => { const catalog = DRAWING_CONSTRAINT_CATALOG.find(({ kind }) => kind === item.kind)!; return <button key={item.kind} type="button" disabled={!item.enabled} title={item.disabledReason} onClick={() => transactDocument((current) => applyDrawingConstraint(current, item))}>{catalog.label}</button>; })}</div>
