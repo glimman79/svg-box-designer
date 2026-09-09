@@ -101,6 +101,8 @@ assert.ok(preview);
 assert.equal(preview.role, 'reference', 'preview remains non-authoritative until commit classification');
 assert.deepEqual(preview.references.map(({ entityId }) => entityId), ['a', 'b']);
 assert.equal(formatAngleDimension(preview.value), '45°');
+assert.equal(formatAngleDimension(35, 'driving'), '35°', 'driving Angle text has no parentheses');
+assert.equal(formatAngleDimension(35, 'reference'), '(35°)', 'reference Angle text wraps the complete value and degree symbol');
 const before = makeDocument();
 assert.equal(before.sketches.s.dimensionOrder.length, 0, 'preview does not mutate Sketch or History');
 const committed = { ...preview, id: 'angle-1' };

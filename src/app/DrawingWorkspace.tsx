@@ -79,8 +79,8 @@ export const initialDrawingViewBox: DrawingViewBox = { x: -400, y: -300, width: 
 const formatViewBox = ({ x, y, width, height }: DrawingViewBox) => `${x} ${y} ${width} ${height}`;
 /** Restrained, zoom-independent radius for first-class SketchPoint picking. */
 export const DRAWING_SKETCH_POINT_HIT_RADIUS_PX = 7;
-/** Compact screen-space marker radius; intentionally independent from the Point hit target. */
-export const DRAWING_SELECTED_POINT_RADIUS_PX = 2.5;
+/** Compact screen-space interaction marker radius; intentionally independent from the Point hit target. */
+export const DRAWING_INTERACTION_POINT_RADIUS_PX = 2.5;
 
 export const drawingGeometrySelectionClass = (selection: readonly DrawingSelectionRef[], target: DrawingSelectionRef) =>
   selection.some((ref) => ref.kind === target.kind && (ref.kind === 'line'
@@ -840,9 +840,9 @@ export function DrawingWorkspace({
                   onPointerLeave={() => setGeometryPreselection((current) => current?.kind === 'point' && current.pointId === point.id ? null : current)} />
               ))}
               {activeSketch && selectedGeometry.flatMap((ref) => ref.kind === 'point' && activeSketch.points[ref.pointId]
-                ? [<circle key={ref.pointId} className="drawing-geometry-point-selected" cx={activeSketch.points[ref.pointId].x} cy={activeSketch.points[ref.pointId].y} r={DRAWING_SELECTED_POINT_RADIUS_PX / pixelsPerMm} />] : [])}
-              {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = geometryPreselection.pointId ? activeSketch.points[geometryPreselection.pointId] : resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); return p ? <circle className="drawing-geometry-point-preselection" cx={p.x} cy={p.y} r={5 / pixelsPerMm} /> : null; })()}
-              {activeTool === 'dimension' && dimensionPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: dimensionPreselection.lineId, point: dimensionPreselection.point }); return p ? <circle className="drawing-dimension-point-preselection" cx={p.x} cy={p.y} r={5 / pixelsPerMm} /> : null; })()}
+                ? [<circle key={ref.pointId} className="drawing-geometry-point-selected" cx={activeSketch.points[ref.pointId].x} cy={activeSketch.points[ref.pointId].y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} />] : [])}
+              {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = geometryPreselection.pointId ? activeSketch.points[geometryPreselection.pointId] : resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); return p ? <circle className="drawing-geometry-point-preselection" cx={p.x} cy={p.y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} /> : null; })()}
+              {activeTool === 'dimension' && dimensionPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: dimensionPreselection.lineId, point: dimensionPreselection.point }); return p ? <circle className="drawing-dimension-point-preselection" cx={p.x} cy={p.y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} /> : null; })()}
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'origin' && <circle className="drawing-dimension-point-preselection drawing-origin-preselection" cx={0} cy={0} r={6 / pixelsPerMm} />}
               {dimensionTool.phase === 'waitingForSecondTarget' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, dimensionTool.first); return p ? <circle className="drawing-dimension-point-selected" cx={p.x} cy={p.y} r={6 / pixelsPerMm} /> : null; })()}
             </g>
@@ -900,11 +900,12 @@ export function DrawingWorkspace({
                   const arrowState = selected || editing ? 'active' : hovered ? 'hover' : 'normal';
                   const arrowMarker = `url(#dimension-arrow-${arrowState})`;
                   const beginDimensionEdit = () => { setSelectedDimensionId(dimension.id); if (dimension.role === 'reference') return; setEditingDimensionId(dimension.id); setDimensionDraft(formatDimensionEditValue(dimension.value)); setDimensionEditError(null); };
-                  const valueHitWidth = (formatAngleDimension(measurement).length * 6 + 12) / pixelsPerMm;
+                  const label = formatAngleDimension(measurement, dimension.role);
+                  const valueHitWidth = (label.length * 6 + 12) / pixelsPerMm;
                   return <g key={dimension.id} className={`drawing-dimension is-${dimension.role} is-angle${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}${dimensionDrag?.id === dimension.id ? ' is-dragging' : ''}${editing ? ' is-editing' : ''}${dimension.id === 'preview' ? ' is-preview' : ''}`}>
                     {angleGeometry.supportExtensions.map((extension) => <line key={extension.lineId} className="drawing-dimension-witness drawing-dimension-lineage" x1={extension.start.x} y1={extension.start.y} x2={extension.end.x} y2={extension.end.y} />)}
                     <path className="drawing-dimension-line drawing-dimension-angle-arc" d={path} fill="none" markerStart={arrowMarker} markerEnd={arrowMarker} />
-                    <text className="drawing-dimension-value" x={angleGeometry.label.x} y={angleGeometry.label.y} textAnchor="middle" style={{ fontSize: dimensionScreenPixelsToModelUnits(DIMENSION_TEXT_SIZE_PX, pixelsPerMm) }}>{formatAngleDimension(measurement)}</text>
+                    <text className="drawing-dimension-value" x={angleGeometry.label.x} y={angleGeometry.label.y} textAnchor="middle" style={{ fontSize: dimensionScreenPixelsToModelUnits(DIMENSION_TEXT_SIZE_PX, pixelsPerMm) }}>{label}</text>
                     {dimension.id !== 'preview' && <path className="drawing-dimension-hit drawing-interactive-hit" d={path} fill="none" onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => beginDimensionAnnotationDrag(event, dimension)} />}
                     {dimension.id !== 'preview' && <rect className="drawing-dimension-value-hit drawing-interactive-hit" x={angleGeometry.label.x - valueHitWidth / 2} y={angleGeometry.label.y - 16 / pixelsPerMm} width={valueHitWidth} height={18 / pixelsPerMm} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => beginDimensionAnnotationDrag(event, dimension)} onDoubleClick={beginDimensionEdit} />}
                     {editing && dimensionEditError && <text className="drawing-dimension-error" x={angleGeometry.label.x} y={angleGeometry.label.y + 24 / pixelsPerMm} textAnchor="middle">{dimensionEditError}</text>}
