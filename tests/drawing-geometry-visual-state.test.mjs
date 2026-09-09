@@ -54,7 +54,7 @@ assert.match(workspace, /if \(geometryDrag\.exceeded\) setSelectedGeometry\(\[\]
 assert.match(workspace, /is-geometry-dragging/, 'active manipulation has explicit semantic state');
 const normalLineColors = {
   FREE: ['--drawing-line-free', '#39ff5a'],
-  CONSTRAINED: ['--drawing-line-constrained', '#00e64d'],
+  CONSTRAINED: ['--drawing-line-constrained', '#00a83e'],
   FULLY_LOCKED: ['--drawing-line-fully-locked', '#111827'],
 };
 for (const [state, [token, color]] of Object.entries(normalLineColors)) {
