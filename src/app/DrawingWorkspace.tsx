@@ -83,12 +83,16 @@ export function DrawingWorkspace({
   setDocument,
   viewBox,
   setViewBox,
+  constraintsPanelOpen,
+  setConstraintsPanelOpen,
   onHistoryControllerChange,
 }: {
   document: DrawingDocumentV2;
   setDocument: Dispatch<SetStateAction<DrawingDocumentV2>>;
   viewBox: DrawingViewBox;
   setViewBox: Dispatch<SetStateAction<DrawingViewBox>>;
+  constraintsPanelOpen: boolean;
+  setConstraintsPanelOpen: Dispatch<SetStateAction<boolean>>;
   onHistoryControllerChange?: (controller: HistoryControlsProps | null) => void;
 }) {
   const toolSidebarRef = useRef<HTMLElement>(null);
@@ -114,7 +118,6 @@ export function DrawingWorkspace({
   const [geometryDrag, setGeometryDrag] = useState<GeometryDragSession | null>(null);
   const [geometryPreselection, setGeometryPreselection] = useState<DimensionPreselection | null>(null);
   const [selectedGeometry, setSelectedGeometry] = useState<readonly DrawingSelectionRef[]>([]);
-  const [constraintsPanelOpen, setConstraintsPanelOpen] = useState(false);
   const [constraintsPanelPosition, setConstraintsPanelPosition] = useState({ x: 78, y: 58 });
   const constraintsPanelDragRef = useRef<{ pointerId: number; dx: number; dy: number } | null>(null);
   const [selectedGeometricConstraintId, setSelectedGeometricConstraintId] = useState<string | null>(null);
@@ -743,9 +746,6 @@ export function DrawingWorkspace({
       <aside ref={toolSidebarRef} className="drawing-tool-sidebar" aria-label="Drawing tools" onPointerDownCapture={preventToolChromePointerSelection} onMouseDownCapture={preventToolChromeMouseSelection}>
         <button type="button" className={`cad-tool-button${activeTool === 'select' ? ' is-active' : ''}`} aria-pressed={activeTool === 'select'} onPointerDown={(event) => activateToolFromPointer('select', event)} onClick={(event) => activateToolFromKeyboard('select', event)}>Select</button>
         <button type="button" className={`cad-tool-button${activeTool === 'line' ? ' is-active' : ''}`} aria-pressed={activeTool === 'line'} onPointerDown={(event) => activateToolFromPointer('line', event)} onClick={(event) => activateToolFromKeyboard('line', event)}>Line</button>
-        <button type="button" className={`cad-tool-button${constraintsPanelOpen ? ' is-active' : ''}`} aria-pressed={constraintsPanelOpen}
-          onPointerDown={(event) => { if (event.button === CAD_PRIMARY_BUTTON) setConstraintsPanelOpen((open) => !open); }}
-          onClick={(event) => { if (event.detail === 0) setConstraintsPanelOpen((open) => !open); }}>Constraints</button>
       </aside>
       <section className="canvas-card drawing-canvas-card workspace-canvas">
         <div className="canvas-frame">
