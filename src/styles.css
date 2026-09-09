@@ -1,9 +1,10 @@
 :root {
-  /* Global Drawing presentation authority. These preserve the accepted CAD palette. */
-  --drawing-geometry-free: #33C757;
-  --drawing-geometry-constrained: #137a3e;
-  --drawing-geometry-locked: #111827;
+  /* The only three normal committed-Line solver-state colors: two greens and graphite. */
+  --drawing-line-free: #39ff5a;
+  --drawing-line-constrained: #00c853;
+  --drawing-line-fully-locked: #111827;
   --drawing-hover: #06b6d4;
+  --drawing-selected-point: #1d4ed8;
   --drawing-inference: #38bdf8;
   --drawing-dimension: #2db65b;
   --drawing-dimension-hover: #2fb85f;
@@ -931,14 +932,6 @@ button:disabled {
   cursor: not-allowed;
 }
 
-.drawing-geometry-point-selected {
-  fill: rgb(59 130 246 / 24%);
-  stroke: #2563eb;
-  stroke-width: 2px;
-  vector-effect: non-scaling-stroke;
-  pointer-events: none;
-}
-
 .drawing-line-entity,
 .drawing-line-preview {
   vector-effect: non-scaling-stroke;
@@ -948,6 +941,7 @@ button:disabled {
 
 .drawing-line-entity {
   stroke-width: 1.8;
+  stroke-opacity: 1;
 }
 
 .drawing-line-entity.is-inference-target {
@@ -956,9 +950,9 @@ button:disabled {
   pointer-events: none;
 }
 
-.drawing-line-entity.geometry-free { stroke: var(--drawing-geometry-free); }
-.drawing-line-entity.geometry-constrained { stroke: var(--drawing-geometry-constrained); }
-.drawing-line-entity.geometry-fully-locked { stroke: var(--drawing-geometry-locked); }
+.drawing-line-entity.geometry-free { stroke: var(--drawing-line-free); }
+.drawing-line-entity.geometry-constrained { stroke: var(--drawing-line-constrained); }
+.drawing-line-entity.geometry-fully-locked { stroke: var(--drawing-line-fully-locked); }
 
 .drawing-line-preview {
   stroke: var(--drawing-inference);
@@ -1590,7 +1584,7 @@ button:disabled {
 .drawing-line-entity.is-geometry-preselected,
 .drawing-line-entity.is-geometry-dragging { stroke: var(--drawing-hover); stroke-width: 2.6; }
 .drawing-geometry-point-preselection, .drawing-geometry-point-selected { fill: #f8fafc; stroke: #0e7490; stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
-.drawing-geometry-point-selected { fill: var(--drawing-hover); stroke: #f8fafc; }
+.drawing-geometry-point-selected { fill: var(--drawing-selected-point); stroke: none; }
 .drawing-dimension-point-preselection, .drawing-dimension-point-selected { fill: #f8fafc; stroke: #06b6d4; stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
 .drawing-dimension-point-selected { fill: #06b6d4; stroke: #f8fafc; }
 .drawing-svg.has-geometry-cursor.is-line-target, .drawing-svg.has-geometry-cursor.is-point-target,

@@ -52,12 +52,19 @@ const css = fs.readFileSync('src/styles.css', 'utf8');
 assert.match(workspace, /data-constraint-state=\{getGeometryConstraintVisualState/);
 assert.match(workspace, /if \(geometryDrag\.exceeded\) setSelectedGeometry\(\[\]\)/, 'meaningful drag clears persistent selection at release');
 assert.match(workspace, /is-geometry-dragging/, 'active manipulation has explicit semantic state');
-assert.match(css, /--drawing-geometry-free:\s*#33c757;/i);
-assert.match(css, /--drawing-geometry-constrained:\s*#137a3e;/i);
-assert.match(css, /--drawing-geometry-locked:\s*#111827;/i);
-assert.match(css, /\.drawing-line-entity\.geometry-free \{ stroke: var\(--drawing-geometry-free\); \}/i);
-assert.match(css, /\.drawing-line-entity\.geometry-constrained \{ stroke: var\(--drawing-geometry-constrained\); \}/i);
-assert.match(css, /\.drawing-line-entity\.geometry-fully-locked \{ stroke: var\(--drawing-geometry-locked\); \}/i);
+const normalLineColors = {
+  FREE: ['--drawing-line-free', '#39ff5a'],
+  CONSTRAINED: ['--drawing-line-constrained', '#00c853'],
+  FULLY_LOCKED: ['--drawing-line-fully-locked', '#111827'],
+};
+for (const [state, [token, color]] of Object.entries(normalLineColors)) {
+  assert.match(css, new RegExp(`${token}:\\s*${color};`, 'i'), `${state} has its exact authoritative color`);
+}
+assert.equal(Object.values(normalLineColors).filter(([, color]) => color !== '#111827').length, 2, 'normal Line status has exactly two green authorities');
+assert.match(css, /\.drawing-line-entity\s*\{[^}]*stroke-opacity:\s*1;/s, 'committed Line status cannot blend through CSS stroke opacity');
+assert.match(css, /\.drawing-line-entity\.geometry-free \{ stroke: var\(--drawing-line-free\); \}/i);
+assert.match(css, /\.drawing-line-entity\.geometry-constrained \{ stroke: var\(--drawing-line-constrained\); \}/i);
+assert.match(css, /\.drawing-line-entity\.geometry-fully-locked \{ stroke: var\(--drawing-line-fully-locked\); \}/i);
 assert.match(css, /\.drawing-line-entity\.is-geometry-selected \{ stroke: var\(--drawing-hover\); stroke-width: 2\.6; \}/, 'selected interaction blue persistently overrides the permanent solver color');
 assert.match(css, /--drawing-hover:\s*#06b6d4;[\s\S]*\.drawing-line-entity\.is-geometry-preselected,[\s\S]*\.drawing-line-entity\.is-geometry-dragging \{ stroke: var\(--drawing-hover\); stroke-width: 2\.6; \}/, 'light-blue hover temporarily overrides every permanent state through one semantic token');
 assert.match(css, /\.drawing-line-entity\.is-dimension-preselected \{ stroke: var\(--drawing-hover\); stroke-width: 2\.4; \}/, 'Dimension preselection uses only the shared temporary hover authority');
@@ -68,9 +75,9 @@ const committedLineStrokeRules = [...css.matchAll(/([^{}]*\.drawing-line-entity[
   .map(([, selector, declarations]) => ({ selector: selector.trim(), stroke: declarations.match(/(?:^|;)\s*stroke\s*:\s*([^;]+)/)?.[1].trim() }));
 assert.deepEqual(committedLineStrokeRules, [
   { selector: '.drawing-line-entity.is-inference-target', stroke: 'var(--drawing-inference)' },
-  { selector: '.drawing-line-entity.geometry-free', stroke: 'var(--drawing-geometry-free)' },
-  { selector: '.drawing-line-entity.geometry-constrained', stroke: 'var(--drawing-geometry-constrained)' },
-  { selector: '.drawing-line-entity.geometry-fully-locked', stroke: 'var(--drawing-geometry-locked)' },
+  { selector: '.drawing-line-entity.geometry-free', stroke: 'var(--drawing-line-free)' },
+  { selector: '.drawing-line-entity.geometry-constrained', stroke: 'var(--drawing-line-constrained)' },
+  { selector: '.drawing-line-entity.geometry-fully-locked', stroke: 'var(--drawing-line-fully-locked)' },
   { selector: '.drawing-line-entity.is-geometry-selected', stroke: 'var(--drawing-hover)' },
   { selector: '.drawing-line-entity.is-dimension-preselected', stroke: 'var(--drawing-hover)' },
   { selector: '.drawing-line-entity.is-geometry-preselected,\n.drawing-line-entity.is-geometry-dragging', stroke: 'var(--drawing-hover)' },
