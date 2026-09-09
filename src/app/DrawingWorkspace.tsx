@@ -77,6 +77,8 @@ type DrawingPlacementResolution = Readonly<{
 
 export const initialDrawingViewBox: DrawingViewBox = { x: -400, y: -300, width: 800, height: 600 };
 const formatViewBox = ({ x, y, width, height }: DrawingViewBox) => `${x} ${y} ${width} ${height}`;
+/** Restrained, zoom-independent radius for first-class SketchPoint picking. */
+export const DRAWING_SKETCH_POINT_HIT_RADIUS_PX = 7;
 
 export function DrawingWorkspace({
   document,
@@ -373,14 +375,17 @@ export function DrawingWorkspace({
     if (dimensionTarget && (activeTool !== 'select' || explicitDimensionValueTarget)) return;
     if (event.button !== CAD_PRIMARY_BUTTON) return;
     if (activeTool === 'select') {
-      const hit = resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
+      const explicitPointId = (event.target as Element).closest<SVGCircleElement>('[data-sketch-point-id]')?.dataset.sketchPointId;
+      const hit = explicitPointId ? null : resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
       const matrix = svgRef.current?.getScreenCTM();
       const startModel = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
-      if (!hit || !startModel) { if (!event.shiftKey) setSelectedGeometry([]); return; }
+      if ((!hit && !explicitPointId) || !startModel) { if (!event.shiftKey) setSelectedGeometry([]); return; }
       setDimensionDrag(null);
-      const target: DrawingGeometryTarget | null = hit.kind === 'point'
+      const target: DrawingGeometryTarget | null = explicitPointId
+        ? { kind: 'point', pointId: explicitPointId }
+        : hit?.kind === 'point'
         ? (() => { const pointId = pointIdFromHit(documentRef.current, hit.lineId, hit.point); return pointId ? { kind: 'point', pointId } : null; })()
-        : hit.kind === 'line' ? { kind: 'line', lineId: hit.lineId } : null;
+        : hit?.kind === 'line' ? { kind: 'line', lineId: hit.lineId } : null;
       if (!target) return;
       const key = (ref: DrawingSelectionRef) => ref.kind === 'line' ? `line:${ref.lineId}` : `point:${ref.pointId}`;
       setSelectedGeometry((current) => event.shiftKey
@@ -808,9 +813,15 @@ export function DrawingWorkspace({
               {resolvedLines.map((entity) => (
                 <line key={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} data-inference-target={lineCursor?.lineReference?.targetLineId === entity.id ? lineCursor.lineReference.relation : undefined} className={`drawing-line-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${lineCursor?.lineReference?.targetLineId === entity.id ? ' is-inference-target' : ''}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${selectedGeometry.some((ref) => ref.kind === 'line' && ref.lineId === entity.id) ? ' is-geometry-selected' : ''}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
               ))}
+              {activeTool === 'select' && activeSketch && Object.values(activeSketch.points).map((point) => (
+                <circle key={point.id} className="drawing-sketch-point-hit drawing-interactive-hit" data-sketch-point-id={point.id}
+                  cx={point.x} cy={point.y} r={DRAWING_SKETCH_POINT_HIT_RADIUS_PX / pixelsPerMm}
+                  onPointerEnter={() => setGeometryPreselection({ kind: 'point', lineId: '', point: 'start', pointId: point.id, clientPoint: point, distancePx: 0 })}
+                  onPointerLeave={() => setGeometryPreselection((current) => current?.kind === 'point' && current.pointId === point.id ? null : current)} />
+              ))}
               {activeSketch && selectedGeometry.flatMap((ref) => ref.kind === 'point' && activeSketch.points[ref.pointId]
                 ? [<circle key={ref.pointId} className="drawing-geometry-point-selected" cx={activeSketch.points[ref.pointId].x} cy={activeSketch.points[ref.pointId].y} r={6 / pixelsPerMm} />] : [])}
-              {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); return p ? <circle className="drawing-geometry-point-preselection" cx={p.x} cy={p.y} r={5 / pixelsPerMm} /> : null; })()}
+              {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = geometryPreselection.pointId ? activeSketch.points[geometryPreselection.pointId] : resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); return p ? <circle className="drawing-geometry-point-preselection" cx={p.x} cy={p.y} r={5 / pixelsPerMm} /> : null; })()}
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: dimensionPreselection.lineId, point: dimensionPreselection.point }); return p ? <circle className="drawing-dimension-point-preselection" cx={p.x} cy={p.y} r={5 / pixelsPerMm} /> : null; })()}
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'origin' && <circle className="drawing-dimension-point-preselection drawing-origin-preselection" cx={0} cy={0} r={6 / pixelsPerMm} />}
               {dimensionTool.phase === 'waitingForSecondTarget' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, dimensionTool.first); return p ? <circle className="drawing-dimension-point-selected" cx={p.x} cy={p.y} r={6 / pixelsPerMm} /> : null; })()}
