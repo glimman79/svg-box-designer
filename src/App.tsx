@@ -627,6 +627,7 @@ function App() {
   const [drawingDocument, setDrawingDocument] = useState(createDrawingDocumentV2);
   const [drawingViewBox, setDrawingViewBox] = useState(initialDrawingViewBox);
   const [drawingActiveTool, setDrawingActiveTool] = useState<'select' | 'line' | 'dimension'>('select');
+  const [drawingConstraintsPanelOpen, setDrawingConstraintsPanelOpen] = useState(false);
   const [drawingHistoryController, setDrawingHistoryController] = useState<HistoryControlsProps | null>(null);
   const updateDrawingHistoryController = useCallback((controller: HistoryControlsProps | null) => setDrawingHistoryController(controller), []);
   useEffect(() => {
@@ -2218,6 +2219,7 @@ function App() {
         {activeWorkspace === 'drawing' && <div className="toolbar-actions drawing-operation-toolbar" aria-label="Drawing operations">
           <HistoryControls canUndo={drawingHistoryController?.canUndo ?? false} canRedo={drawingHistoryController?.canRedo ?? false} onUndo={drawingHistoryController?.onUndo ?? (() => undefined)} onRedo={drawingHistoryController?.onRedo ?? (() => undefined)} />
           <button className={`toolbar-button cad-tool-button${drawingActiveTool === 'dimension' ? ' is-active' : ''}`} type="button" aria-pressed={drawingActiveTool === 'dimension'} title="Create a drawing dimension" onPointerDown={(event) => { if (event.button === 0) { event.preventDefault(); window.dispatchEvent(new CustomEvent('drawing:activate-dimension', { detail: { timestamp: event.timeStamp, x: event.clientX, y: event.clientY } })); } }} onClick={(event) => { if (event.detail === 0) window.dispatchEvent(new CustomEvent('drawing:activate-dimension')); }}><span aria-hidden="true">↔</span> Dimension</button>
+          <button className={`toolbar-button cad-tool-button${drawingConstraintsPanelOpen ? ' is-active' : ''}`} type="button" aria-pressed={drawingConstraintsPanelOpen} onPointerDown={(event) => { if (event.button === 0) { event.preventDefault(); setDrawingConstraintsPanelOpen((open) => !open); } }} onClick={(event) => { if (event.detail === 0) setDrawingConstraintsPanelOpen((open) => !open); }}>Constraints</button>
         </div>}
       </header>
 
@@ -2253,7 +2255,7 @@ function App() {
 
       {errorMessage && <div className="notice">{errorMessage}</div>}
 
-      {activeWorkspace === 'drawing' ? <DrawingWorkspace document={drawingDocument} viewBox={drawingViewBox} setViewBox={setDrawingViewBox} setDocument={setDrawingDocument} onHistoryControllerChange={updateDrawingHistoryController} /> : <section className="workspace workspace-shell" aria-label="SVG connection workspace">
+      {activeWorkspace === 'drawing' ? <DrawingWorkspace document={drawingDocument} viewBox={drawingViewBox} setViewBox={setDrawingViewBox} setDocument={setDrawingDocument} constraintsPanelOpen={drawingConstraintsPanelOpen} setConstraintsPanelOpen={setDrawingConstraintsPanelOpen} onHistoryControllerChange={updateDrawingHistoryController} /> : <section className="workspace workspace-shell" aria-label="SVG connection workspace">
         <aside className="tool-sidebar" aria-label="Tool sidebar">
           {([
             ['select', 'Select', 'Select and inspect existing edges'],
