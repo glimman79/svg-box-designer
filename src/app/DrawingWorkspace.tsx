@@ -19,7 +19,7 @@ import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, t
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
 import { deleteGeometricConstraint, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
 import { deriveCoincidentMarkers, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
-import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, initialConstraintsPanelPosition, type DrawingSelectionRef } from './drawingConstraintsTool.js';
+import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, initialConstraintsPanelPosition, toggleDrawingGeometrySelection, type DrawingSelectionRef } from './drawingConstraintsTool.js';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -379,7 +379,7 @@ export function DrawingWorkspace({
       const hit = explicitPointId ? null : resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
       const matrix = svgRef.current?.getScreenCTM();
       const startModel = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
-      if ((!hit && !explicitPointId) || !startModel) { if (!event.shiftKey) setSelectedGeometry([]); return; }
+      if ((!hit && !explicitPointId) || !startModel) { if (!event.ctrlKey && !constraintsPanelOpen) setSelectedGeometry([]); return; }
       setDimensionDrag(null);
       const target: DrawingGeometryTarget | null = explicitPointId
         ? { kind: 'point', pointId: explicitPointId }
@@ -387,12 +387,10 @@ export function DrawingWorkspace({
         ? (() => { const pointId = pointIdFromHit(documentRef.current, hit.lineId, hit.point); return pointId ? { kind: 'point', pointId } : null; })()
         : hit?.kind === 'line' ? { kind: 'line', lineId: hit.lineId } : null;
       if (!target) return;
-      const key = (ref: DrawingSelectionRef) => ref.kind === 'line' ? `line:${ref.lineId}` : `point:${ref.pointId}`;
-      setSelectedGeometry((current) => event.shiftKey
-        ? current.some((ref) => key(ref) === key(target)) ? current.filter((ref) => key(ref) !== key(target)) : [...current, target]
-        : [target]);
+      const toggleSelection = event.ctrlKey || constraintsPanelOpen;
+      setSelectedGeometry((current) => toggleSelection ? toggleDrawingGeometrySelection(current, target) : [target]);
       setSelectedDimensionId(null); setSelectedGeometricConstraintId(null);
-      if (!event.shiftKey) {
+      if (!toggleSelection) {
         event.currentTarget.setPointerCapture(event.pointerId);
         setGeometryDrag({ pointerId: event.pointerId, target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false });
       }

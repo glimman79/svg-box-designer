@@ -3,6 +3,15 @@ import { solveDrawingComponentDrag } from './drawingConstraintSolver.js';
 import type { DrawingDocumentV2, DrawingGeometricConstraint, DrawingSketchV2 } from './drawingTypes.js';
 
 export type DrawingSelectionRef = Readonly<{ kind: 'line'; lineId: string }> | Readonly<{ kind: 'point'; pointId: string }>;
+const drawingSelectionKey = (ref: DrawingSelectionRef) => ref.kind === 'line' ? `line:${ref.lineId}` : `point:${ref.pointId}`;
+
+/** Toggles exactly one stable semantic target while preserving the order of every other selection. */
+export const toggleDrawingGeometrySelection = (selection: readonly DrawingSelectionRef[], target: DrawingSelectionRef): readonly DrawingSelectionRef[] => {
+  const targetKey = drawingSelectionKey(target);
+  return selection.some((ref) => drawingSelectionKey(ref) === targetKey)
+    ? selection.filter((ref) => drawingSelectionKey(ref) !== targetKey)
+    : [...selection, target];
+};
 export type DrawingConstraintChoice = 'distance' | 'length' | 'angle' | 'radiusDiameter' | 'symmetry' | 'midpoint' | 'fix' | 'coincidence' | 'concentricity' | 'tangency' | 'parallelism' | 'perpendicular' | 'horizontal' | 'vertical';
 export const DRAWING_CONSTRAINT_CATALOG: readonly Readonly<{ kind: DrawingConstraintChoice; label: string }>[] = [
   ['distance', 'Distance'], ['length', 'Length'], ['angle', 'Angle'], ['radiusDiameter', 'Radius / Diameter'],

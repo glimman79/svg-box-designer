@@ -3,13 +3,31 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-constraints-tool/drawingTypes.js';
 import { appendEntityToActiveSketch } from '../.test-build/drawing-constraints-tool/drawingLineTool.js';
-import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, initialConstraintsPanelPosition } from '../.test-build/drawing-constraints-tool/drawingConstraintsTool.js';
+import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, initialConstraintsPanelPosition, toggleDrawingGeometrySelection } from '../.test-build/drawing-constraints-tool/drawingConstraintsTool.js';
 
 const line = (id, y = 0) => ({ id, type: 'line', start: { x: 0, y }, end: { x: 20, y: y + 3 }, startPointId: `${id}:a`, endPointId: `${id}:b` });
 const add = (document, draft) => appendEntityToActiveSketch(document, draft);
 const enabled = (document, selection) => getDrawingConstraintApplicability(selection, document).filter((item) => item.enabled).map((item) => item.kind);
 const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 const workspaceSource = readFileSync(new URL('../src/app/DrawingWorkspace.tsx', import.meta.url), 'utf8');
+
+test('semantic selection toggle supports ordered mixed selections without a size cap', () => {
+  const p1 = { kind: 'point', pointId: 'p1' }, p2 = { kind: 'point', pointId: 'p2' };
+  const l1 = { kind: 'line', lineId: 'l1' }, l2 = { kind: 'line', lineId: 'l2' };
+  let selection = [];
+  for (const target of [p1, p2, l1, l2]) selection = toggleDrawingGeometrySelection(selection, target);
+  assert.deepEqual(selection, [p1, p2, l1, l2]);
+  assert.deepEqual(toggleDrawingGeometrySelection(selection, p2), [p1, l1, l2]);
+  assert.deepEqual(toggleDrawingGeometrySelection(selection, l1), [p1, p2, l2]);
+});
+
+test('Select and Constraints route to the shared toggle without stealing authoring or starting drags', () => {
+  assert.match(workspaceSource, /if \(activeTool === 'select'\)[\s\S]*const toggleSelection = event\.ctrlKey \|\| constraintsPanelOpen/);
+  assert.match(workspaceSource, /setSelectedGeometry\(\(current\) => toggleSelection \? toggleDrawingGeometrySelection\(current, target\) : \[target\]\)/);
+  assert.match(workspaceSource, /if \(!toggleSelection\) \{[\s\S]*setGeometryDrag/);
+  assert.match(workspaceSource, /if \(!event\.ctrlKey && !constraintsPanelOpen\) setSelectedGeometry\(\[\]\)/, 'Ctrl or constraint-picking misses preserve accumulated references');
+  assert.doesNotMatch(workspaceSource, /event\.shiftKey/, 'Shift follows the ordinary Select path');
+});
 
 test('Constraints launcher is directly after Dimension in the top bar and absent from the drawing sidebar', () => {
   const topBar = appSource.match(/drawing-operation-toolbar[\s\S]*?<\/div>}/)?.[0] ?? '';
