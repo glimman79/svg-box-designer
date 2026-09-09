@@ -1,4 +1,4 @@
-import { addCoincidentConstraint } from './drawingCoincidentConstraint.js';
+import { addCoincidentConstraint, addPointOnLinearSupportConstraint } from './drawingCoincidentConstraint.js';
 import { solveDrawingComponentDrag } from './drawingConstraintSolver.js';
 import type { DrawingDocumentV2, DrawingGeometricConstraint, DrawingSketchV2 } from './drawingTypes.js';
 
@@ -17,7 +17,7 @@ export type DrawingConstraintApplicability = Readonly<{
 }>;
 
 const existing = (sketch: DrawingSketchV2, kind: DrawingConstraintChoice, refs: readonly DrawingSelectionRef[]) => {
-  const semanticKind = kind === 'parallelism' ? 'PARALLEL' : kind.toUpperCase();
+  const semanticKind = kind === 'parallelism' ? 'PARALLEL' : kind === 'coincidence' ? 'COINCIDENT' : kind.toUpperCase();
   const ids = refs.map((ref) => ref.kind === 'line' ? ref.lineId : ref.pointId).sort().join('\0');
   return Object.values(sketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === semanticKind
     && constraint.references.map((ref) => 'entityId' in ref ? ref.entityId : ref.pointId).sort().join('\0') === ids);
@@ -31,9 +31,16 @@ export const getDrawingConstraintApplicability = (selection: readonly DrawingSel
     const oneLine = selection.length === 1 && selection[0].kind === 'line';
     const twoLines = selection.length === 2 && selection.every((ref) => ref.kind === 'line') && selection[0].lineId !== selection[1].lineId;
     const twoPoints = selection.length === 2 && selection.every((ref) => ref.kind === 'point') && selection[0].pointId !== selection[1].pointId;
+    const pointAndLine = selection.length === 2 && selection.some((ref) => ref.kind === 'point') && selection.some((ref) => ref.kind === 'line');
+    const selectedLine = pointAndLine ? selection.find((ref): ref is Extract<DrawingSelectionRef, { kind: 'line' }> => ref.kind === 'line') : undefined;
+    const line = selectedLine && sketch?.entities[selectedLine.lineId];
+    const a = line && sketch?.points[line.startPointId], b = line && sketch?.points[line.endPointId];
+    const validLinearSupport = Boolean(a && b && Math.hypot(b.x - a.x, b.y - a.y) > 1e-9);
     const applicable = (kind === 'horizontal' || kind === 'vertical') ? oneLine
-      : (kind === 'parallelism' || kind === 'perpendicular') ? twoLines : kind === 'coincidence' ? twoPoints : false;
-    const references = applicable ? [...selection].sort((a, b) => (a.kind === 'line' ? a.lineId : a.pointId).localeCompare(b.kind === 'line' ? b.lineId : b.pointId)) : [];
+      : (kind === 'parallelism' || kind === 'perpendicular') ? twoLines : kind === 'coincidence' ? twoPoints || pointAndLine && validLinearSupport : false;
+    const references = applicable ? [...selection].sort((a, b) => a.kind === b.kind
+      ? (a.kind === 'line' ? a.lineId : a.pointId).localeCompare(b.kind === 'line' ? b.lineId : b.pointId)
+      : a.kind === 'point' ? -1 : 1) : [];
     const creatable = Boolean(sketch && implemented && applicable && !existing(sketch, kind, references));
     return { kind, implemented, applicable, creatable, enabled: implemented && applicable && creatable, references,
       disabledReason: !implemented ? 'Not implemented yet' : !applicable ? 'Not applicable to this selection' : !creatable ? 'Already present' : undefined };
@@ -49,6 +56,15 @@ export const applyDrawingConstraint = (document: DrawingDocumentV2, applicabilit
     if (withConstraint === document) return document;
     const sketch = withConstraint.sketches[withConstraint.activeSketchId], point = sketch.points[refs[1].pointId];
     const solved = solveDrawingComponentDrag(sketch, { [point.id]: point }, { directPointIds: [point.id] });
+    return solved ? { ...withConstraint, sketches: { ...withConstraint.sketches, [sketch.id]: solved } } : document;
+  }
+  if (applicability.kind === 'coincidence' && refs[0]?.kind === 'point' && refs[1]?.kind === 'line') {
+    const withConstraint = addPointOnLinearSupportConstraint(document, refs[0].pointId, refs[1].lineId);
+    if (withConstraint === document) return document;
+    const sketch = withConstraint.sketches[withConstraint.activeSketchId], line = sketch.entities[refs[1].lineId];
+    if (!line) return document;
+    const targets = { [line.startPointId]: sketch.points[line.startPointId], [line.endPointId]: sketch.points[line.endPointId] };
+    const solved = solveDrawingComponentDrag(sketch, targets, { directLineIds: [line.id] });
     return solved ? { ...withConstraint, sketches: { ...withConstraint.sketches, [sketch.id]: solved } } : document;
   }
   const sketch = document.sketches[document.activeSketchId];

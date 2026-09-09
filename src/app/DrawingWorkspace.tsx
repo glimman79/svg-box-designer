@@ -848,14 +848,13 @@ export function DrawingWorkspace({
               {coincidentMarkers.map((marker) => {
                 const selected = marker.constraintId === selectedGeometricConstraintId;
                 const hovered = marker.constraintId === hoveredGeometricConstraintId;
-                const r = POINT_CONSTRAINT_MARKER_SIZE_PX / 4 / pixelsPerMm;
+                const size = POINT_CONSTRAINT_MARKER_SIZE_PX / pixelsPerMm;
                 return <g key={marker.id} className={`drawing-geometric-constraint-marker drawing-coincident-marker${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}`} data-constraint-id={marker.constraintId}
                   onPointerEnter={() => setHoveredGeometricConstraintId(marker.constraintId)}
                   onPointerLeave={() => setHoveredGeometricConstraintId((current) => current === marker.constraintId ? null : current)}
                   onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry([]); }}>
                   <circle className="drawing-geometric-constraint-marker-hit drawing-interactive-hit" cx={marker.x} cy={marker.y} r={POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX / pixelsPerMm} />
-                  <circle className="drawing-coincident-marker-shape" cx={marker.x - r} cy={marker.y} r={r} />
-                  <circle className="drawing-coincident-marker-shape" cx={marker.x + r} cy={marker.y} r={r} />
+                  <rect className="drawing-coincident-marker-shape" x={marker.x - size / 2} y={marker.y - size / 2} width={size} height={size} />
                 </g>;
               })}
             </g>

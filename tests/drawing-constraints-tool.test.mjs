@@ -61,8 +61,25 @@ test('central applicability handles line, point, mixed, and larger selections', 
   assert.deepEqual(enabled(document, [{ kind: 'line', lineId: 'a' }]), ['horizontal', 'vertical']);
   assert.deepEqual(enabled(document, [{ kind: 'line', lineId: 'b' }, { kind: 'line', lineId: 'a' }]), ['parallelism', 'perpendicular']);
   assert.deepEqual(enabled(document, [{ kind: 'point', pointId: 'a:a' }, { kind: 'point', pointId: 'b:a' }]), ['coincidence']);
-  assert.deepEqual(enabled(document, [{ kind: 'point', pointId: 'a:a' }, { kind: 'line', lineId: 'b' }]), []);
+  assert.deepEqual(enabled(document, [{ kind: 'point', pointId: 'a:a' }, { kind: 'line', lineId: 'b' }]), ['coincidence']);
   assert.deepEqual(enabled(document, [{ kind: 'line', lineId: 'a' }, { kind: 'line', lineId: 'b' }, { kind: 'point', pointId: 'a:a' }]), []);
+});
+
+test('Coincidence normalizes point/linear-edge order and rejects a degenerate support', () => {
+  let document = add(add(createDrawingDocumentV2(), line('support')), line('carrier', 20));
+  const forward = [{ kind: 'point', pointId: 'carrier:a' }, { kind: 'line', lineId: 'support' }];
+  const reverse = [...forward].reverse();
+  const a = getDrawingConstraintApplicability(forward, document).find(({ kind }) => kind === 'coincidence');
+  const b = getDrawingConstraintApplicability(reverse, document).find(({ kind }) => kind === 'coincidence');
+  assert.deepEqual(a.references, b.references);
+  document = applyDrawingConstraint(document, a);
+  assert.ok(document.sketches[document.activeSketchId].geometricConstraints['coincident:carrier:a:support:support']);
+  assert.equal(getDrawingConstraintApplicability(reverse, document).find(({ kind }) => kind === 'coincidence').enabled, false);
+
+  const sketch = document.sketches[document.activeSketchId];
+  const degenerate = { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch,
+    points: { ...sketch.points, 'support:b': { ...sketch.points['support:b'], x: sketch.points['support:a'].x, y: sketch.points['support:a'].y } } } } };
+  assert.equal(getDrawingConstraintApplicability(forward, degenerate).find(({ kind }) => kind === 'coincidence').enabled, false);
 });
 
 test('application uses canonical semantic IDs and disables duplicates', () => {

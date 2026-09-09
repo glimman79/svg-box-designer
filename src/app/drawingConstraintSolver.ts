@@ -1,5 +1,5 @@
 import type { DrawingDimension, DrawingDocumentV2, DrawingGeometricConstraint, DrawingPoint, DrawingSketchV2 } from './drawingTypes';
-import { analyzeDrawingConstraints, constraintEquation, constraintPointKey, drawingConstraintDegreesOfFreedomForPoints, DRAWING_ORIGIN_CONSTRAINT_KEY, geometricConstraintEquation, geometricConstraintEquations, lineToLineAngleAndGradient, lineToLineDistanceAndGradient, parallelAndGradient, perpendicularAndGradient, pointToLineDistanceAndGradient } from './drawingConstraintAnalysis.js';
+import { analyzeDrawingConstraints, constraintEquation, constraintPointKey, drawingConstraintDegreesOfFreedomForPoints, DRAWING_ORIGIN_CONSTRAINT_KEY, geometricConstraintEquation, geometricConstraintEquations, lineToLineAngleAndGradient, lineToLineDistanceAndGradient, parallelAndGradient, perpendicularAndGradient, pointOnLinearSupportAndGradient, pointToLineDistanceAndGradient } from './drawingConstraintAnalysis.js';
 import { measureDimension, measureLineToLineDistance, measurePointToLine, resolveDimensionLineReference, resolveDrawingPointReference } from './drawingDimension.js';
 
 export const DRAWING_CONSTRAINT_TOLERANCE_MM = 1e-7;
@@ -27,6 +27,12 @@ const evaluateSystem = (sketch: DrawingSketchV2, component: ComponentState, vari
   for (const equation of component.equations) {
     const row = Array(variableIds.length * 2).fill(0);
     if (equation.geometricConstraint?.kind === 'COINCIDENT') {
+      if (equation.geometricConstraint.variant === 'point-linear-support') {
+        const [p, a, b] = equation.pointKeys, result = pointOnLinearSupportAndGradient(coordinate(sketch, values, index, p), coordinate(sketch, values, index, a), coordinate(sketch, values, index, b));
+        if (!result) return null;
+        residuals.push(result.residual); [p, a, b].forEach((key, j) => { const i = index.get(key); if (i !== undefined) { row[i * 2] += result.gradient[j * 2]; row[i * 2 + 1] += result.gradient[j * 2 + 1]; } });
+        jacobian.push(row); continue;
+      }
       const [aKey, bKey] = equation.pointKeys, axis = equation.coordinateAxis === 'x' ? 0 : 1;
       const a = coordinate(sketch, values, index, aKey), b = coordinate(sketch, values, index, bKey);
       residuals.push(axis === 0 ? a.x - b.x : a.y - b.y);
@@ -167,7 +173,7 @@ const measurement = (sketch: DrawingSketchV2, dimension: DrawingDimension): numb
 export const verifyDrawingDrivingDimensions = (sketch: DrawingSketchV2, ids: readonly string[]): readonly number[] | null => { const residuals = ids.map((id) => { const d = sketch.dimensions[id], value = d?.role === 'driving' ? measurement(sketch, d) : null; return d && value !== null ? Math.abs(value - d.value) : Infinity; }); return residuals.every((v) => Number.isFinite(v) && v <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? residuals : null; };
 export const verifyDrawingConstraints = (sketch: DrawingSketchV2, dimensionIds: readonly string[], geometricConstraintIds: readonly string[]): readonly number[] | null => {
   const dimensions = verifyDrawingDrivingDimensions(sketch, dimensionIds); if (!dimensions) return null;
-  const geometric = geometricConstraintIds.map((id) => { const constraint = (sketch.geometricConstraints ?? {})[id], equation = constraint && geometricConstraintEquation(sketch, constraint); if (!equation) return Infinity; if (constraint.kind === 'COINCIDENT') { const [a, b] = equation.pointKeys; return Math.max(Math.abs(sketch.points[a].x - sketch.points[b].x), Math.abs(sketch.points[a].y - sketch.points[b].y)); } if (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL') { const [a, b] = equation.pointKeys; return Math.abs(constraint.kind === 'HORIZONTAL' ? sketch.points[b].y - sketch.points[a].y : sketch.points[b].x - sketch.points[a].x); } const [a0, a1, b0, b1] = equation.pointKeys; return Math.abs((constraint.kind === 'PARALLEL' ? parallelAndGradient : perpendicularAndGradient)(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1])?.residual ?? Infinity); });
+  const geometric = geometricConstraintIds.map((id) => { const constraint = (sketch.geometricConstraints ?? {})[id], equation = constraint && geometricConstraintEquation(sketch, constraint); if (!equation) return Infinity; if (constraint.kind === 'COINCIDENT') { const [a, b, c] = equation.pointKeys; return constraint.variant === 'point-linear-support' ? Math.abs(pointOnLinearSupportAndGradient(sketch.points[a], sketch.points[b], sketch.points[c])?.residual ?? Infinity) : Math.max(Math.abs(sketch.points[a].x - sketch.points[b].x), Math.abs(sketch.points[a].y - sketch.points[b].y)); } if (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL') { const [a, b] = equation.pointKeys; return Math.abs(constraint.kind === 'HORIZONTAL' ? sketch.points[b].y - sketch.points[a].y : sketch.points[b].x - sketch.points[a].x); } const [a0, a1, b0, b1] = equation.pointKeys; return Math.abs((constraint.kind === 'PARALLEL' ? parallelAndGradient : perpendicularAndGradient)(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1])?.residual ?? Infinity); });
   return geometric.every((value) => Number.isFinite(value) && value <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? [...dimensions, ...geometric] : null;
 };
 

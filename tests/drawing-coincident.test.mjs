@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/drawing-coincident/drawingTypes.js';
 import { appendEntityToActiveSketch } from '../.test-build/drawing-coincident/drawingLineTool.js';
-import { addCoincidentConstraint, canonicalCoincidentPointPair, createCoincidentConstraint, deriveCoincidentMarkers, POINT_CONSTRAINT_MARKER_OFFSET_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from '../.test-build/drawing-coincident/drawingCoincidentConstraint.js';
+import { addCoincidentConstraint, addPointOnLinearSupportConstraint, canonicalCoincidentPointPair, createCoincidentConstraint, createPointOnLinearSupportConstraint, deriveCoincidentMarkers, POINT_CONSTRAINT_MARKER_SIZE_PX } from '../.test-build/drawing-coincident/drawingCoincidentConstraint.js';
 import { analyzeDrawingConstraints, constraintJacobianRow, geometricConstraintEquations } from '../.test-build/drawing-coincident/drawingConstraintAnalysis.js';
 import { solveDrawingComponentDrag, verifyDrawingConstraints } from '../.test-build/drawing-coincident/drawingConstraintSolver.js';
 import { deleteGeometricConstraint } from '../.test-build/drawing-coincident/drawingParallelMarker.js';
@@ -61,17 +61,49 @@ test('accepted endpoint snap creates Coincident only for a retained distinct poi
   assert.equal(Object.values(shared.sketches['sketch-1'].geometricConstraints).filter(({ kind }) => kind === 'COINCIDENT').length, 1);
 });
 
-test('one point marker is screen-stable and deletion/history preserve all geometry', () => {
+test('one square marker is located at its coincident point and deletion/history preserve all geometry', () => {
   let document = addCoincidentConstraint(base(), 'a-p2', 'b-p1');
   const [m1] = deriveCoincidentMarkers(document.sketches['sketch-1'], 1), [m2] = deriveCoincidentMarkers(document.sketches['sketch-1'], 2);
   assert.equal(deriveCoincidentMarkers(document.sketches['sketch-1']).length, 1);
-  assert.equal((m1.x - 15) * 1, POINT_CONSTRAINT_MARKER_OFFSET_PX); assert.equal((m2.x - 15) * 2, POINT_CONSTRAINT_MARKER_OFFSET_PX);
+  assert.equal(m1.x, document.sketches['sketch-1'].points['a-p2'].x); assert.equal(m2.x, m1.x);
   assert.equal(POINT_CONSTRAINT_MARKER_SIZE_PX, 8);
   const before = document, transaction = transactDrawingDocument(EMPTY_DRAWING_HISTORY, document, (current) => deleteGeometricConstraint(current, m1.constraintId));
   document = transaction.document; assert.equal(Object.keys(document.sketches['sketch-1'].points).length, 4); assert.equal(Object.keys(document.sketches['sketch-1'].entities).length, 2);
   assert.deepEqual(document.sketches['sketch-1'].points, before.sketches['sketch-1'].points);
   const undone = undoDrawingDocument(transaction.history, document); assert.equal(Object.keys(undone.document.sketches['sketch-1'].geometricConstraints).length, 1);
   assert.equal(Object.keys(redoDrawingDocument(undone.history, undone.document).document.sketches['sketch-1'].geometricConstraints).length, 0);
+});
+
+test('point/linear-support Coincident is one scalar equation, remains outside the segment, and slides', () => {
+  let document = add(add(createDrawingDocumentV2(), line('support', { x: 0, y: 0 }, { x: 100, y: 0 })), line('carrier', { x: 150, y: 20 }, { x: 160, y: 30 }));
+  let sketch = document.sketches['sketch-1'];
+  const relation = createPointOnLinearSupportConstraint(sketch, 'carrier-p1', 'support');
+  assert.equal(relation.variant, 'point-linear-support');
+  document = addPointOnLinearSupportConstraint(document, 'carrier-p1', 'support'); sketch = document.sketches['sketch-1'];
+  const constraint = sketch.geometricConstraints[relation.id], equations = geometricConstraintEquations(sketch, constraint);
+  assert.equal(equations.length, 1);
+  assert.equal(analyzeDrawingConstraints(sketch).componentByPointId.get('carrier-p1').constraintRank, 1);
+  let solved = solveDrawingComponentDrag(sketch, { 'carrier-p1': { x: 150, y: 0 } }, { directPointIds: ['carrier-p1'] });
+  assert.ok(solved); assert.ok(Math.abs(solved.points['carrier-p1'].y) < 1e-7); assert.ok(solved.points['carrier-p1'].x > 100);
+  solved = solveDrawingComponentDrag(solved, { 'carrier-p1': { x: -40, y: 0 } }, { directPointIds: ['carrier-p1'] });
+  assert.ok(solved); assert.ok(solved.points['carrier-p1'].x < 0); assert.ok(Math.abs(solved.points['carrier-p1'].y) < 1e-7);
+  const [marker] = deriveCoincidentMarkers(solved); assert.deepEqual({ x: marker.x, y: marker.y }, { x: solved.points['carrier-p1'].x, y: solved.points['carrier-p1'].y });
+  assert.equal(Object.keys(solved.points).length, 4, 'no hidden point was introduced');
+});
+
+test('any selected semantic edge can define support without an edge-count assumption', () => {
+  let document = createDrawingDocumentV2();
+  for (let index = 1; index <= 6; index += 1) document = add(document, line(`edge-${index}`, { x: index * 20, y: index }, { x: index * 20 + 10, y: index + 5 }));
+  const sketch = document.sketches['sketch-1'];
+  assert.equal(createPointOnLinearSupportConstraint(sketch, 'edge-1-p1', 'edge-5').references[1].entityId, 'edge-5');
+});
+
+test('degenerate linear support fails without a relation or marker', () => {
+  const document = add(createDrawingDocumentV2(), line('zero', { x: 4, y: 4 }, { x: 4, y: 4 }));
+  const sketch = document.sketches['sketch-1'];
+  assert.equal(createPointOnLinearSupportConstraint(sketch, 'zero-p1', 'zero'), null);
+  assert.equal(addPointOnLinearSupportConstraint(document, 'zero-p1', 'zero'), document);
+  assert.deepEqual(deriveCoincidentMarkers(sketch), []);
 });
 
 test('restore canonicalizes valid pairs, rejects self/missing/duplicates, and topology deletion cleans dependencies', () => {
@@ -86,5 +118,6 @@ test('restore canonicalizes valid pairs, rejects self/missing/duplicates, and to
 test('workspace exposes selectable CAD-blue Coincident shapes and keyboard constraint deletion', () => {
   const workspace = readFileSync(new URL('../src/app/DrawingWorkspace.tsx', import.meta.url), 'utf8'), css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
   assert.match(workspace, /drawing-coincident-marker/); assert.match(workspace, /Delete.*Backspace/s); assert.match(workspace, /setSelectedGeometricConstraintId\(marker.constraintId\)/);
+  assert.match(workspace, /<rect className="drawing-coincident-marker-shape"/);
   assert.match(css, /\.drawing-coincident-marker-shape \{[^}]*stroke: var\(--drawing-geometric-constraint\)/);
 });
