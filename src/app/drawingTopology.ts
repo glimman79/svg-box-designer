@@ -26,7 +26,9 @@ export const removeLineAndOrphans = (sketch: DrawingSketchV2, lineId: string): D
   const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, dimension]) => dimension.references.every((reference) =>
     reference.kind === 'datum' || reference.kind === 'sketchPoint' ? reference.kind === 'datum' || !removedPointIds.has(reference.pointId) : reference.entityId !== lineId)));
   const geometricConstraints = Object.fromEntries(Object.entries(sketch.geometricConstraints ?? {}).filter(([, constraint]) => constraint.kind === 'COINCIDENT'
-    ? constraint.references.every(({ pointId }) => !removedPointIds.has(pointId))
+    ? constraint.variant === 'point-linear-support'
+      ? !removedPointIds.has(constraint.references[0].pointId) && constraint.references[1].entityId !== lineId
+      : constraint.references.every(({ pointId }) => !removedPointIds.has(pointId))
     : constraint.references.every(({ entityId }) => entityId !== lineId)));
   return { ...sketch, points, entities, entityOrder: sketch.entityOrder.filter((id) => id !== lineId), dimensions, dimensionOrder: sketch.dimensionOrder.filter((id) => Boolean(dimensions[id])),
     geometricConstraints, geometricConstraintOrder: (sketch.geometricConstraintOrder ?? []).filter((id) => Boolean(geometricConstraints[id])) };
@@ -52,6 +54,14 @@ export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTop
     }
     for (const constraint of Object.values(sketch.geometricConstraints ?? {})) {
       if (constraint.kind === 'COINCIDENT') {
+        if (constraint.variant === 'point-linear-support') {
+          const [point, edge] = constraint.references;
+          const line = sketch.entities[edge.entityId], a = line && sketch.points[line.startPointId], b = line && sketch.points[line.endPointId];
+          const key = `${point.pointId}\0${edge.entityId}`;
+          if (!sketch.points[point.pointId] || !line || !a || !b || Math.hypot(b.x - a.x, b.y - a.y) <= 1e-9) errors.push(`Geometric constraint reference cannot resolve: ${constraint.id}`);
+          else if (coincidentPairs.has(key)) errors.push(`Duplicate Coincident constraint: ${constraint.id}`); else coincidentPairs.add(key);
+          continue;
+        }
         const [a, b] = constraint.references;
         if (constraint.references.length !== 2 || a.kind !== 'sketchPoint' || b.kind !== 'sketchPoint' || a.pointId === b.pointId || !sketch.points[a.pointId] || !sketch.points[b.pointId]) errors.push(`Geometric constraint reference cannot resolve: ${constraint.id}`);
         else { const key = [a.pointId, b.pointId].sort().join('\0'); if (coincidentPairs.has(key)) errors.push(`Duplicate Coincident constraint: ${constraint.id}`); coincidentPairs.add(key); }

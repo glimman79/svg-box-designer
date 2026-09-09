@@ -427,10 +427,10 @@ export const appendEntityToActiveSketch = (
     const targetPointId = acceptedEndpointSnaps?.[endpoint];
     const pointPair = targetPointId && activeSketch.points[targetPointId] ? canonicalCoincidentPointPair(createdPointId, targetPointId) : null;
     if (!pointPair) return [];
-    const duplicatePair = Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'COINCIDENT'
+    const duplicatePair = Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'COINCIDENT' && constraint.variant !== 'point-linear-support'
       && constraint.references.map(({ pointId }) => pointId).sort().join('\0') === pointPair.join('\0'));
     if (duplicatePair) return [];
-    return [{ id: `coincident:${pointPair[0]}:${pointPair[1]}`, kind: 'COINCIDENT' as const,
+    return [{ id: `coincident:${pointPair[0]}:${pointPair[1]}`, kind: 'COINCIDENT' as const, variant: 'point-point' as const,
       references: pointPair.map((pointId) => ({ kind: 'sketchPoint' as const, pointId })) as [{ kind: 'sketchPoint'; pointId: string }, { kind: 'sketchPoint'; pointId: string }] }];
   });
   const addedConstraints = [automaticConstraint, perpendicularConstraint, parallelConstraint, ...coincidentConstraints].filter(Boolean) as DrawingGeometricConstraint[];

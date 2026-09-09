@@ -54,12 +54,21 @@ export type DrawingAxisConstraint = Readonly<{
   /** Stable semantic Line identity; coordinates remain owned by its SketchPoints. */
   references: readonly [DrawingEntityReference];
 }>;
-export type DrawingCoincidentConstraint = Readonly<{
+export type DrawingPointCoincidentConstraint = Readonly<{
   id: string;
   kind: 'COINCIDENT';
+  variant: 'point-point';
   /** Canonical unordered pair of distinct stable SketchPoint identities. */
   references: readonly [Readonly<{ kind: 'sketchPoint'; pointId: string }>, Readonly<{ kind: 'sketchPoint'; pointId: string }>];
 }>;
+export type DrawingPointOnLinearSupportConstraint = Readonly<{
+  id: string;
+  kind: 'COINCIDENT';
+  variant: 'point-linear-support';
+  /** A point and a stable semantic linear edge; the edge's parent is irrelevant. */
+  references: readonly [Readonly<{ kind: 'sketchPoint'; pointId: string }>, DrawingEntityReference];
+}>;
+export type DrawingCoincidentConstraint = DrawingPointCoincidentConstraint | DrawingPointOnLinearSupportConstraint;
 export type DrawingGeometricConstraint = DrawingParallelConstraint | DrawingPerpendicularConstraint | DrawingAxisConstraint | DrawingCoincidentConstraint;
 type DrawingDimensionBase = Readonly<{
   id: string;
@@ -176,10 +185,17 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
       const acceptedAxisLines = new Set<string>(), acceptedPairs = new Set<string>();
       const geometricConstraints = Object.fromEntries(Object.entries(sketch.geometricConstraints).filter(([, constraint]) => {
         if (constraint.kind === 'COINCIDENT') {
-          if (constraint.references.length !== 2 || constraint.references.some((reference) => reference.kind !== 'sketchPoint' || !sketch.points[reference.pointId])) return false;
-          const ids = constraint.references.map(({ pointId }) => pointId).sort();
-          if (ids[0] === ids[1]) return false;
-          const key = `COINCIDENT:${ids[0]}:${ids[1]}`;
+          const legacyVariant = constraint.variant ?? 'point-point';
+          if (constraint.references.length !== 2 || constraint.references[0].kind !== 'sketchPoint' || !sketch.points[constraint.references[0].pointId]) return false;
+          const second = constraint.references[1];
+          if (legacyVariant === 'point-linear-support') {
+            if (second.kind !== 'entity' || !sketch.entities[second.entityId]) return false;
+            const edge = sketch.entities[second.entityId], a = sketch.points[edge.startPointId], b = sketch.points[edge.endPointId];
+            if (!a || !b || Math.hypot(b.x - a.x, b.y - a.y) <= DRAWING_MODEL_SPACE_TOLERANCE) return false;
+          } else if (second.kind !== 'sketchPoint' || !sketch.points[second.pointId] || constraint.references[0].pointId === second.pointId) return false;
+          const key = legacyVariant === 'point-linear-support'
+            ? `COINCIDENT:${constraint.references[0].pointId}:support:${(second as DrawingEntityReference).entityId}`
+            : `COINCIDENT:${[constraint.references[0].pointId, (second as { pointId: string }).pointId].sort().join(':')}`;
           if (acceptedPairs.has(key)) return false;
           acceptedPairs.add(key); return true;
         }
@@ -201,8 +217,8 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
         return true;
       }).map(([constraintId, constraint]) => constraint.kind === 'PERPENDICULAR'
         ? [constraintId, { ...constraint, references: [...constraint.references].sort((a, b) => a.entityId.localeCompare(b.entityId)) }]
-        : constraint.kind === 'COINCIDENT'
-          ? [constraintId, { ...constraint, references: [...constraint.references].sort((a, b) => a.pointId.localeCompare(b.pointId)) }]
+        : constraint.kind === 'COINCIDENT' && constraint.variant !== 'point-linear-support'
+          ? [constraintId, { ...constraint, variant: 'point-point', references: [...constraint.references].sort((a, b) => a.pointId.localeCompare(b.pointId)) }]
         : [constraintId, constraint]));
       return [id, { ...sketch, dimensions, dimensionOrder: sketch.dimensionOrder.filter((dimensionId) => Boolean(dimensions[dimensionId])), geometricConstraints,
         geometricConstraintOrder: sketch.geometricConstraintOrder.filter((constraintId) => Boolean(geometricConstraints[constraintId])) }];

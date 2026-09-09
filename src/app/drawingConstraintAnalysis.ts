@@ -40,6 +40,12 @@ export const constraintEquation = (sketch: DrawingSketchV2, dimension: DrawingDi
 
 export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricConstraint: DrawingGeometricConstraint): DrawingConstraintEquation | null => {
   if (geometricConstraint.kind === 'COINCIDENT') {
+    if (geometricConstraint.variant === 'point-linear-support') {
+      const pointId = geometricConstraint.references[0].pointId, line = sketch.entities[geometricConstraint.references[1].entityId];
+      if (!sketch.points[pointId] || !line || line.startPointId === line.endPointId
+        || !pointOnLinearSupportAndGradient(sketch.points[pointId], sketch.points[line.startPointId], sketch.points[line.endPointId])) return null;
+      return { geometricConstraint, pointKeys: [pointId, line.startPointId, line.endPointId] };
+    }
     const [a, b] = geometricConstraint.references.map(({ pointId }) => pointId);
     return a !== b && sketch.points[a] && sketch.points[b] ? { geometricConstraint, pointKeys: [a, b], coordinateAxis: 'x' } : null;
   }
@@ -54,10 +60,22 @@ export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricCo
   return { geometricConstraint, pointKeys: [a.startPointId, a.endPointId, b.startPointId, b.endPointId] };
 };
 
-/** A semantic Coincident contributes one exact equation per coordinate axis. */
+/** Point/point contributes two axes; point/support contributes one collinearity equation. */
 export const geometricConstraintEquations = (sketch: DrawingSketchV2, constraint: DrawingGeometricConstraint): DrawingConstraintEquation[] => {
   const first = geometricConstraintEquation(sketch, constraint);
-  return !first ? [] : constraint.kind === 'COINCIDENT' ? [first, { ...first, coordinateAxis: 'y' }] : [first];
+  return !first ? [] : constraint.kind === 'COINCIDENT' && constraint.variant !== 'point-linear-support' ? [first, { ...first, coordinateAxis: 'y' }] : [first];
+};
+
+/** Signed normal distance to AB's infinite support; no segment parameter or clamp exists. */
+export const pointOnLinearSupportAndGradient = (p: DrawingPoint, a: DrawingPoint, b: DrawingPoint) => {
+  const coordinates = [p.x, p.y, a.x, a.y, b.x, b.y];
+  const value = (v: readonly number[]) => {
+    const dx = v[4] - v[2], dy = v[5] - v[3], length = Math.hypot(dx, dy);
+    return length <= DRAWING_CONSTRAINT_RANK_TOLERANCE.absolute ? null : (dx * (v[1] - v[3]) - dy * (v[0] - v[2])) / length;
+  };
+  const residual = value(coordinates); if (residual === null) return null;
+  const gradient = coordinates.map((coordinate, index) => { const h = 1e-6 * Math.max(1, Math.abs(coordinate)); const plus = [...coordinates], minus = [...coordinates]; plus[index] += h; minus[index] -= h; const pv = value(plus), mv = value(minus); return pv === null || mv === null ? 0 : (pv - mv) / (2 * h); });
+  return { residual, gradient };
 };
 
 /** Normalized direction cross product. Its zero set includes both parallel and anti-parallel directions. */
@@ -161,6 +179,11 @@ const coordinate = (sketch: DrawingSketchV2, key: string): DrawingPoint => key =
 export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: DrawingConstraintEquation, pointOrder: readonly string[]): number[] | null => {
   const row = Array(pointOrder.length * 2).fill(0), set = (key: string, gx: number, gy: number) => { const i = pointOrder.indexOf(key); if (i >= 0) { row[i * 2] += gx; row[i * 2 + 1] += gy; } };
   if (equation.geometricConstraint?.kind === 'COINCIDENT') {
+    if (equation.geometricConstraint.variant === 'point-linear-support') {
+      const [p, a, b] = equation.pointKeys, result = pointOnLinearSupportAndGradient(coordinate(sketch, p), coordinate(sketch, a), coordinate(sketch, b));
+      if (!result) return null;
+      [p, a, b].forEach((key, i) => set(key, result.gradient[i * 2], result.gradient[i * 2 + 1])); return row;
+    }
     const [a, b] = equation.pointKeys, x = equation.coordinateAxis === 'x';
     set(a, x ? 1 : 0, x ? 0 : 1); set(b, x ? -1 : 0, x ? 0 : -1); return row;
   }
