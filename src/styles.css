@@ -844,6 +844,77 @@ button:disabled {
   border-color: #2dd4bf;
 }
 
+.drawing-constraints-panel {
+  position: absolute;
+  z-index: 8;
+  width: 292px;
+  color: #e5e7eb;
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 7px;
+  box-shadow: 0 12px 30px rgb(15 23 42 / 28%);
+  overflow: hidden;
+}
+
+.drawing-constraints-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  padding: 2px 5px 2px 10px;
+  font-size: 12px;
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.drawing-constraints-header button {
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  color: #e5e7eb;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.drawing-constraints-header button:hover { background: #374151; }
+
+.drawing-constraints-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding: 7px;
+  border-top: 1px solid #374151;
+}
+
+.drawing-constraints-grid button {
+  min-height: 29px;
+  padding: 4px 7px;
+  color: #f3f4f6;
+  background: #1f2937;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.drawing-constraints-grid button:disabled {
+  color: #6b7280;
+  background: #171e2a;
+  border-color: #293241;
+  cursor: not-allowed;
+}
+
+.drawing-geometry-point-selected {
+  fill: rgb(59 130 246 / 24%);
+  stroke: #2563eb;
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
 .drawing-line-entity,
 .drawing-line-preview {
   vector-effect: non-scaling-stroke;

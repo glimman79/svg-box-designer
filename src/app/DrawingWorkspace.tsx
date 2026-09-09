@@ -19,6 +19,7 @@ import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, t
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
 import { deleteGeometricConstraint, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
 import { deriveCoincidentMarkers, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
+import { applyDrawingConstraint, clampConstraintsPanelPosition, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, type DrawingSelectionRef } from './drawingConstraintsTool.js';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -112,7 +113,10 @@ export function DrawingWorkspace({
   const [dimensionDrag, setDimensionDrag] = useState<DimensionAnnotationDragSession | null>(null);
   const [geometryDrag, setGeometryDrag] = useState<GeometryDragSession | null>(null);
   const [geometryPreselection, setGeometryPreselection] = useState<DimensionPreselection | null>(null);
-  const [selectedGeometry, setSelectedGeometry] = useState<DrawingGeometryTarget | null>(null);
+  const [selectedGeometry, setSelectedGeometry] = useState<readonly DrawingSelectionRef[]>([]);
+  const [constraintsPanelOpen, setConstraintsPanelOpen] = useState(false);
+  const [constraintsPanelPosition, setConstraintsPanelPosition] = useState({ x: 78, y: 58 });
+  const constraintsPanelDragRef = useRef<{ pointerId: number; dx: number; dy: number } | null>(null);
   const [selectedGeometricConstraintId, setSelectedGeometricConstraintId] = useState<string | null>(null);
   const [hoveredGeometricConstraintId, setHoveredGeometricConstraintId] = useState<string | null>(null);
   const documentRef = useRef(document);
@@ -361,16 +365,21 @@ export function DrawingWorkspace({
       const hit = resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
       const matrix = svgRef.current?.getScreenCTM();
       const startModel = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
-      if (!hit || !startModel) { setSelectedGeometry(null); return; }
+      if (!hit || !startModel) { if (!event.shiftKey) setSelectedGeometry([]); return; }
       setDimensionDrag(null);
       const target: DrawingGeometryTarget | null = hit.kind === 'point'
         ? (() => { const pointId = pointIdFromHit(documentRef.current, hit.lineId, hit.point); return pointId ? { kind: 'point', pointId } : null; })()
         : hit.kind === 'line' ? { kind: 'line', lineId: hit.lineId } : null;
       if (!target) return;
-      event.currentTarget.setPointerCapture(event.pointerId);
-      setSelectedGeometry(target);
-      setSelectedDimensionId(null);
-      setGeometryDrag({ pointerId: event.pointerId, target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false });
+      const key = (ref: DrawingSelectionRef) => ref.kind === 'line' ? `line:${ref.lineId}` : `point:${ref.pointId}`;
+      setSelectedGeometry((current) => event.shiftKey
+        ? current.some((ref) => key(ref) === key(target)) ? current.filter((ref) => key(ref) !== key(target)) : [...current, target]
+        : [target]);
+      setSelectedDimensionId(null); setSelectedGeometricConstraintId(null);
+      if (!event.shiftKey) {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setGeometryDrag({ pointerId: event.pointerId, target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false });
+      }
       return;
     }
     if (activeTool === 'dimension') {
@@ -633,7 +642,7 @@ export function DrawingWorkspace({
     if (geometryDrag.exceeded && geometryDrag.candidate !== geometryDrag.startDocument) transactDocument(() => geometryDrag.candidate);
     // A meaningful drag owns only transient interaction emphasis. A click keeps
     // the existing persistent selection semantics for future selection tools.
-    if (geometryDrag.exceeded) setSelectedGeometry(null);
+    if (geometryDrag.exceeded) setSelectedGeometry([]);
     setGeometryDrag(null);
   };
 
@@ -658,7 +667,7 @@ export function DrawingWorkspace({
     setEditingDimensionId(null);
     setDimensionEditError(null);
     setSelectedDimensionId(null);
-    setSelectedGeometry(null);
+    setSelectedGeometry([]);
     setSelectedGeometricConstraintId(null);
     setDocument(result.document);
     setHistoryRevision((revision) => revision + 1);
@@ -672,7 +681,7 @@ export function DrawingWorkspace({
     setEditingDimensionId(null);
     setDimensionEditError(null);
     setSelectedDimensionId(null);
-    setSelectedGeometry(null);
+    setSelectedGeometry([]);
     setSelectedGeometricConstraintId(null);
     setDocument(result.document);
     setHistoryRevision((revision) => revision + 1);
@@ -696,10 +705,11 @@ export function DrawingWorkspace({
         setSelectedGeometricConstraintId(null);
       }
       else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedDimensionId) { event.preventDefault(); transactDocument((current) => deleteDimension(current, selectedDimensionId)); setSelectedDimensionId(null); }
-      else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedGeometry?.kind === 'line') {
+      else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedGeometry.length === 1 && selectedGeometry[0].kind === 'line') {
         event.preventDefault();
-        transactDocument((current) => deleteEntityWithDependentDimensions(current, selectedGeometry.lineId));
-        setSelectedGeometry(null);
+        const selectedLineId = (selectedGeometry[0] as Extract<DrawingSelectionRef, { kind: 'line' }>).lineId;
+        transactDocument((current) => deleteEntityWithDependentDimensions(current, selectedLineId));
+        setSelectedGeometry([]);
       }
     };
     window.addEventListener('keydown', onKeyDown); return () => window.removeEventListener('keydown', onKeyDown);
@@ -733,6 +743,9 @@ export function DrawingWorkspace({
       <aside ref={toolSidebarRef} className="drawing-tool-sidebar" aria-label="Drawing tools" onPointerDownCapture={preventToolChromePointerSelection} onMouseDownCapture={preventToolChromeMouseSelection}>
         <button type="button" className={`cad-tool-button${activeTool === 'select' ? ' is-active' : ''}`} aria-pressed={activeTool === 'select'} onPointerDown={(event) => activateToolFromPointer('select', event)} onClick={(event) => activateToolFromKeyboard('select', event)}>Select</button>
         <button type="button" className={`cad-tool-button${activeTool === 'line' ? ' is-active' : ''}`} aria-pressed={activeTool === 'line'} onPointerDown={(event) => activateToolFromPointer('line', event)} onClick={(event) => activateToolFromKeyboard('line', event)}>Line</button>
+        <button type="button" className={`cad-tool-button${constraintsPanelOpen ? ' is-active' : ''}`} aria-pressed={constraintsPanelOpen}
+          onPointerDown={(event) => { if (event.button === CAD_PRIMARY_BUTTON) setConstraintsPanelOpen((open) => !open); }}
+          onClick={(event) => { if (event.detail === 0) setConstraintsPanelOpen((open) => !open); }}>Constraints</button>
       </aside>
       <section className="canvas-card drawing-canvas-card workspace-canvas">
         <div className="canvas-frame">
@@ -744,6 +757,14 @@ export function DrawingWorkspace({
             <button type="button" onClick={() => zoom(0.8)} aria-label="Zoom out">−</button>
             <button type="button" onClick={() => setViewBox(initialDrawingViewBox)}>Fit</button>
           </div>
+          {constraintsPanelOpen && <div className="drawing-constraints-panel" role="dialog" aria-label="Constraints" style={{ left: constraintsPanelPosition.x, top: constraintsPanelPosition.y }} onPointerDown={(event) => event.stopPropagation()}>
+            <div className="drawing-constraints-header" onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || (event.target as Element).closest('button')) return; event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); constraintsPanelDragRef.current = { pointerId: event.pointerId, dx: event.clientX - constraintsPanelPosition.x, dy: event.clientY - constraintsPanelPosition.y }; }}
+              onPointerMove={(event) => { const drag = constraintsPanelDragRef.current; if (!drag || drag.pointerId !== event.pointerId) return; const frame = event.currentTarget.closest('.canvas-frame')?.getBoundingClientRect(); if (frame) setConstraintsPanelPosition(clampConstraintsPanelPosition({ x: event.clientX - frame.left - drag.dx, y: event.clientY - frame.top - drag.dy }, frame)); }}
+              onPointerUp={(event) => { if (constraintsPanelDragRef.current?.pointerId === event.pointerId) constraintsPanelDragRef.current = null; }}>
+              <strong>Constraints</strong><button type="button" aria-label="Close Constraints" onPointerDown={(event) => event.stopPropagation()} onClick={() => setConstraintsPanelOpen(false)}>×</button>
+            </div>
+            <div className="drawing-constraints-grid">{getDrawingConstraintApplicability(selectedGeometry, document).map((item) => { const catalog = DRAWING_CONSTRAINT_CATALOG.find(({ kind }) => kind === item.kind)!; return <button key={item.kind} type="button" disabled={!item.enabled} title={item.disabledReason} onClick={() => transactDocument((current) => applyDrawingConstraint(current, item))}>{catalog.label}</button>; })}</div>
+          </div>}
           <svg
             ref={svgRef}
             className={`design-svg cad-viewport-interaction drawing-svg${isPanning ? ' is-panning' : ''}${activeTool === 'line' ? ' has-line-cursor' : ''}${activeTool === 'dimension' ? ` has-dimension-cursor is-${dimensionPreselection?.kind ?? 'normal'}-target` : ''}${activeTool === 'select' ? ` has-geometry-cursor is-${geometryPreselection?.kind ?? 'normal'}-target${geometryDrag ? ' is-geometry-dragging' : ''}` : ''}`}
@@ -776,10 +797,11 @@ export function DrawingWorkspace({
             </g>
             <g className="drawing-sketch-geometry" aria-label="Committed sketch geometry">
               {resolvedLines.map((entity) => (
-                <line key={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} data-inference-target={lineCursor?.lineReference?.targetLineId === entity.id ? lineCursor.lineReference.relation : undefined} className={`drawing-line-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${lineCursor?.lineReference?.targetLineId === entity.id ? ' is-inference-target' : ''}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${selectedGeometry?.kind === 'line' && selectedGeometry.lineId === entity.id ? ' is-geometry-selected' : ''}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
+                <line key={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} data-inference-target={lineCursor?.lineReference?.targetLineId === entity.id ? lineCursor.lineReference.relation : undefined} className={`drawing-line-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${lineCursor?.lineReference?.targetLineId === entity.id ? ' is-inference-target' : ''}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${selectedGeometry.some((ref) => ref.kind === 'line' && ref.lineId === entity.id) ? ' is-geometry-selected' : ''}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
               ))}
+              {activeSketch && selectedGeometry.flatMap((ref) => ref.kind === 'point' && activeSketch.points[ref.pointId]
+                ? [<circle key={ref.pointId} className="drawing-geometry-point-selected" cx={activeSketch.points[ref.pointId].x} cy={activeSketch.points[ref.pointId].y} r={6 / pixelsPerMm} />] : [])}
               {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); return p ? <circle className="drawing-geometry-point-preselection" cx={p.x} cy={p.y} r={5 / pixelsPerMm} /> : null; })()}
-              {activeTool === 'select' && selectedGeometry?.kind === 'point' && activeSketch?.points[selectedGeometry.pointId] && <circle className={`drawing-geometry-point-selected${geometryDrag?.target.kind === 'point' && geometryDrag.target.pointId === selectedGeometry.pointId ? ' is-geometry-dragging' : ''}`} cx={activeSketch.points[selectedGeometry.pointId].x} cy={activeSketch.points[selectedGeometry.pointId].y} r={6 / pixelsPerMm} />}
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: dimensionPreselection.lineId, point: dimensionPreselection.point }); return p ? <circle className="drawing-dimension-point-preselection" cx={p.x} cy={p.y} r={5 / pixelsPerMm} /> : null; })()}
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'origin' && <circle className="drawing-dimension-point-preselection drawing-origin-preselection" cx={0} cy={0} r={6 / pixelsPerMm} />}
               {dimensionTool.phase === 'waitingForSecondTarget' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, dimensionTool.first); return p ? <circle className="drawing-dimension-point-selected" cx={p.x} cy={p.y} r={6 / pixelsPerMm} /> : null; })()}
@@ -794,7 +816,7 @@ export function DrawingWorkspace({
                 return <g key={marker.id} className={`drawing-geometric-constraint-marker${isParallel ? ' drawing-parallel-marker' : ''}${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}`} data-constraint-id={marker.constraintId} data-line-id={marker.lineId}
                   onPointerEnter={() => setHoveredGeometricConstraintId(marker.constraintId)}
                   onPointerLeave={() => setHoveredGeometricConstraintId((current) => current === marker.constraintId ? null : current)}
-                  onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry(null); }}>
+                  onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry([]); }}>
                   <circle className="drawing-geometric-constraint-marker-hit drawing-interactive-hit" cx={marker.x} cy={marker.y} r={9 / pixelsPerMm} />
                   {isParallel ? <>
                     <line className="drawing-parallel-marker-stroke" x1={marker.x - parallelStrokeHalfGap} y1={marker.y - parallelStrokeHalfLength} x2={marker.x - parallelStrokeHalfGap} y2={marker.y + parallelStrokeHalfLength} fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
@@ -809,7 +831,7 @@ export function DrawingWorkspace({
                 return <g key={marker.id} className={`drawing-geometric-constraint-marker drawing-right-angle-marker${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}`} data-constraint-id={marker.constraintId}
                   onPointerEnter={() => setHoveredGeometricConstraintId(marker.constraintId)}
                   onPointerLeave={() => setHoveredGeometricConstraintId((current) => current === marker.constraintId ? null : current)}
-                  onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry(null); }}>
+                  onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry([]); }}>
                   <path className="drawing-right-angle-marker-hit drawing-interactive-hit" d={path} />
                   <path className="drawing-right-angle-marker-shape" d={path} fill="none" stroke="currentColor" />
                 </g>;
@@ -821,7 +843,7 @@ export function DrawingWorkspace({
                 return <g key={marker.id} className={`drawing-geometric-constraint-marker drawing-coincident-marker${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}`} data-constraint-id={marker.constraintId}
                   onPointerEnter={() => setHoveredGeometricConstraintId(marker.constraintId)}
                   onPointerLeave={() => setHoveredGeometricConstraintId((current) => current === marker.constraintId ? null : current)}
-                  onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry(null); }}>
+                  onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry([]); }}>
                   <circle className="drawing-geometric-constraint-marker-hit drawing-interactive-hit" cx={marker.x} cy={marker.y} r={POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX / pixelsPerMm} />
                   <circle className="drawing-coincident-marker-shape" cx={marker.x - r} cy={marker.y} r={r} />
                   <circle className="drawing-coincident-marker-shape" cx={marker.x + r} cy={marker.y} r={r} />
