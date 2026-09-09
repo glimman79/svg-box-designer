@@ -1559,6 +1559,7 @@ button:disabled {
 .drawing-dimension.is-preview { opacity: 0.7; pointer-events: none; }
 .drawing-dimension-hit { stroke: transparent; stroke-width: 14; vector-effect: non-scaling-stroke; pointer-events: stroke; }
 .drawing-dimension-value-hit { fill: transparent; pointer-events: all; }
+.drawing-sketch-point-hit { fill: transparent; stroke: none; pointer-events: all; }
 .drawing-line-entity.is-geometry-selected { stroke-width: 2.2; }
 .drawing-line-entity.is-dimension-preselected { stroke: var(--drawing-hover); stroke-width: 2.4; }
 .drawing-line-entity.is-geometry-preselected,
