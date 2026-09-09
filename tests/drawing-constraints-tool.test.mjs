@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-constraints-tool/drawingTypes.js';
 import { appendEntityToActiveSketch } from '../.test-build/drawing-constraints-tool/drawingLineTool.js';
-import { applyDrawingConstraint, clampConstraintsPanelPosition, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability } from '../.test-build/drawing-constraints-tool/drawingConstraintsTool.js';
+import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, initialConstraintsPanelPosition } from '../.test-build/drawing-constraints-tool/drawingConstraintsTool.js';
 
 const line = (id, y = 0) => ({ id, type: 'line', start: { x: 0, y }, end: { x: 20, y: y + 3 }, startPointId: `${id}:a`, endPointId: `${id}:b` });
 const add = (document, draft) => appendEntityToActiveSketch(document, draft);
@@ -25,9 +25,30 @@ test('moved launcher and close button share the one existing panel state', () =>
   assert.equal((workspaceSource.match(/className="drawing-constraints-panel"/g) ?? []).length, 1, 'exactly one floating panel is rendered');
 });
 
-test('floating panel position and session restoration remain at the accepted authority', () => {
-  assert.match(workspaceSource, /useState\(\{ x: 78, y: 58 \}\)/, 'accepted right-side default is unchanged');
-  assert.match(workspaceSource, /style=\{\{ left: constraintsPanelPosition\.x, top: constraintsPanelPosition\.y \}\}/, 'reopening reuses session position state');
+test('floating panel defaults from the current frame right edge and retains session state', () => {
+  assert.deepEqual(initialConstraintsPanelPosition({ width: 1400, height: 700 }, { width: 292, height: 330 }), { x: 1076, y: 58 });
+  assert.deepEqual(initialConstraintsPanelPosition({ width: 900, height: 700 }, { width: 292, height: 330 }), { x: 576, y: 58 });
+  assert.doesNotMatch(workspaceSource, /x: 78/, 'arbitrary left-relative x is no longer position authority');
+  assert.match(workspaceSource, /if \(!constraintsPanelOpen \|\| constraintsPanelPosition\) return/, 'an existing default or user position is not recalculated on reopen');
+  assert.match(workspaceSource, /left: constraintsPanelPosition\?\.x/, 'the session position remains render authority');
+});
+
+test('dragging preserves each grab offset in frame-local coordinates without a start jump', () => {
+  const frame = { left: 240, top: 120 };
+  const panel = { left: 1140, top: 220 };
+  for (const x of [8, 146, 284]) {
+    const pointer = { x: panel.left + x, y: panel.top + 12 };
+    const grab = constraintsPanelGrabOffset(pointer, panel);
+    assert.deepEqual(constraintsPanelDragPosition(pointer, frame, grab), { x: 900, y: 100 });
+    assert.deepEqual(constraintsPanelDragPosition({ x: pointer.x + 100, y: pointer.y + 50 }, frame, grab), { x: 1000, y: 150 });
+  }
+});
+
+test('drag clamping follows the desired position and changes it only at a boundary', () => {
+  const bounds = { width: 1400, height: 700 };
+  const panel = { width: 292, height: 330 };
+  assert.deepEqual(clampConstraintsPanelPosition({ x: 1000, y: 150 }, bounds, panel), { x: 1000, y: 150 });
+  assert.deepEqual(clampConstraintsPanelPosition({ x: 1390, y: 690 }, bounds, panel), { x: 1320, y: 668 });
 });
 
 test('catalog is the exact stable fourteen-option product catalog', () => {

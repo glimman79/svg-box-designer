@@ -69,3 +69,23 @@ export const clampConstraintsPanelPosition = (position: Readonly<{ x: number; y:
   x: Math.max(0, Math.min(position.x, Math.max(0, bounds.width - Math.min(80, panel.width)))),
   y: Math.max(0, Math.min(position.y, Math.max(0, bounds.height - Math.min(32, panel.height)))),
 });
+
+export const initialConstraintsPanelPosition = (
+  bounds: Readonly<{ width: number; height: number }>,
+  panel: Readonly<{ width: number; height: number }>,
+  rightMargin = 32,
+) => clampConstraintsPanelPosition({ x: bounds.width - panel.width - rightMargin, y: 58 }, bounds, panel);
+
+export const constraintsPanelGrabOffset = (
+  pointerClient: Readonly<{ x: number; y: number }>,
+  panelRect: Readonly<{ left: number; top: number }>,
+) => ({ x: pointerClient.x - panelRect.left, y: pointerClient.y - panelRect.top });
+
+export const constraintsPanelDragPosition = (
+  pointerClient: Readonly<{ x: number; y: number }>,
+  frameRect: Readonly<{ left: number; top: number }>,
+  grabOffset: Readonly<{ x: number; y: number }>,
+) => ({
+  x: pointerClient.x - frameRect.left - grabOffset.x,
+  y: pointerClient.y - frameRect.top - grabOffset.y,
+});
