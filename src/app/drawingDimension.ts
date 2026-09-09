@@ -219,7 +219,10 @@ export const formatDimensionEditValue = (value: number): string => new Intl.Numb
 export const formatDimensionValue = (value: number, role: DrawingDimensionRole): string => role === 'reference'
   ? `(${formatLinearDimension(value)})`
   : formatLinearDimension(value);
-export const formatAngleDimension = (value: number): string => `${new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 3 }).format(value)}°`;
+export const formatAngleDimension = (value: number, role: DrawingDimensionRole = 'driving'): string => {
+  const formattedValue = `${new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 3 }).format(value)}°`;
+  return role === 'reference' ? `(${formattedValue})` : formattedValue;
+};
 export const parseLinearDimension = (input: string): number | null => {
   const match = input.trim().match(/^(?:\d+(?:\.\d*)?|\.\d+)\s*(?:mm)?$/i);
   if (!match) return null;

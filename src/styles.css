@@ -1,7 +1,7 @@
 :root {
   /* The only three normal committed-Line solver-state colors: two greens and graphite. */
   --drawing-line-free: #39ff5a;
-  --drawing-line-constrained: #00c853;
+  --drawing-line-constrained: #00e64d;
   --drawing-line-fully-locked: #111827;
   --drawing-hover: #06b6d4;
   --drawing-selected-point: #1d4ed8;
