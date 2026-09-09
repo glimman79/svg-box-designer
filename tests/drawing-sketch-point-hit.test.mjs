@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { DrawingWorkspace, DRAWING_SKETCH_POINT_HIT_RADIUS_PX, drawingGeometrySelectionClass, routeDrawingGeometryPointerSelection } from '../.test-build/drawing-sketch-point-hit/DrawingWorkspace.js';
+import { DrawingWorkspace, DRAWING_SELECTED_POINT_RADIUS_PX, DRAWING_SKETCH_POINT_HIT_RADIUS_PX, drawingGeometrySelectionClass, routeDrawingGeometryPointerSelection } from '../.test-build/drawing-sketch-point-hit/DrawingWorkspace.js';
 
 const points = {
   shared: { id: 'shared', x: 0, y: 0 },
@@ -23,6 +23,12 @@ const markup = renderToStaticMarkup(React.createElement(DrawingWorkspace, {
 }));
 
 assert.equal(DRAWING_SKETCH_POINT_HIT_RADIUS_PX, 7, 'point picking uses a restrained seven-screen-pixel radius');
+assert.equal(DRAWING_SELECTED_POINT_RADIUS_PX, 2.5, 'selected Point is a compact five-screen-pixel marker');
+assert.ok(DRAWING_SELECTED_POINT_RADIUS_PX < DRAWING_SKETCH_POINT_HIT_RADIUS_PX, 'visible selection and pointer hit sizes remain independent');
+for (const pixelsPerMm of [0.5, 4]) {
+  assert.equal((DRAWING_SELECTED_POINT_RADIUS_PX / pixelsPerMm) * pixelsPerMm * 2, 5, 'selected Point remains five screen pixels across zoom scales');
+  assert.equal((DRAWING_SKETCH_POINT_HIT_RADIUS_PX / pixelsPerMm) * pixelsPerMm, 7, 'Point hit radius remains seven screen pixels across zoom scales');
+}
 assert.equal((markup.match(/data-sketch-point-id="shared"/g) ?? []).length, 1, 'a shared SketchPoint renders one stable semantic target');
 assert.equal((markup.match(/data-sketch-point-id=/g) ?? []).length, 3, 'every semantic SketchPoint is rendered before selection');
 assert.match(markup, /class="drawing-sketch-point-hit drawing-interactive-hit" data-sketch-point-id="shared"/, 'the real workspace render contains the transparent point hit element');
@@ -42,6 +48,11 @@ assert.equal(drawingGeometrySelectionClass(selection.selection, { kind: 'line', 
 assert.equal(drawingGeometrySelectionClass(selection.selection, { kind: 'line', lineId: 'b' }), '');
 
 const source = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
+const css = fs.readFileSync('src/styles.css', 'utf8');
+assert.match(source, /r=\{DRAWING_SELECTED_POINT_RADIUS_PX \/ pixelsPerMm\}/, 'selected Point marker uses the zoom-independent visible radius');
+assert.match(source, /r=\{DRAWING_SKETCH_POINT_HIT_RADIUS_PX \/ pixelsPerMm\}/, 'the independently rendered hit target retains its larger zoom-independent radius');
+assert.match(css, /--drawing-selected-point:\s*#1d4ed8;/i);
+assert.match(css, /\.drawing-geometry-point-selected \{ fill: var\(--drawing-selected-point\); stroke: none; \}/, 'selected Point uses only the compact dark-blue presentation authority');
 assert.match(source, /closest<SVGCircleElement>\('\[data-sketch-point-id\]'\)\?\.dataset\.sketchPointId/, 'the real root pointer handler acquires semantic identity from the DOM target');
 assert.match(source, /explicitPointId\s*\? \{ kind: 'point', pointId: explicitPointId \}/, 'the DOM identity becomes the selected Point ref directly');
 assert.match(source, /routeDrawingGeometryPointerSelection\(current, target, event\.ctrlKey, constraintsPanelOpen\)\.selection/, 'the rendered target uses the shared production selection route with functional state');
