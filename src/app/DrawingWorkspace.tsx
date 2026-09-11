@@ -402,7 +402,7 @@ export function DrawingWorkspace({
       const matrix = svgRef.current?.getScreenCTM();
       const startModel = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
       if (!hit && !explicitPointId && !explicitLineId) {
-        if (!event.ctrlKey && !constraintsPanelOpen) {
+        if (!event.ctrlKey) {
           setSelectedGeometry([]);
           setSelectedDimensionId(null);
           setSelectedGeometricConstraintId(null);
