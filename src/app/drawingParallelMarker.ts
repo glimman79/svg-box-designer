@@ -12,6 +12,8 @@ export type DrawingGeometricConstraintMarker = Readonly<{
   x: number;
   y: number;
   label: string;
+  ux?: number;
+  uy?: number;
 }>;
 
 /** Compatibility type retained for existing marker consumers. */
@@ -62,6 +64,7 @@ export const layoutLineConstraintMarkers = (
       ...candidate,
       x: (line.start.x + line.end.x) / 2 - dy / length * perpendicularOffset + dx / length * alongLineOffset,
       y: (line.start.y + line.end.y) / 2 + dx / length * perpendicularOffset + dy / length * alongLineOffset,
+      ...(candidate.label === 'MIDPOINT' ? { ux: dx / length, uy: dy / length } : {}),
     }];
   });
 };
@@ -72,11 +75,11 @@ export const deriveLineConstraintMarkerCandidates = (sketch: DrawingSketchV2): L
   const constraints = Object.values(sketch.geometricConstraints ?? {}).sort((a, b) =>
     (order.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.id) ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
   return constraints.filter((constraint) => constraint.kind !== 'PERPENDICULAR' && constraint.kind !== 'COINCIDENT').flatMap((constraint) =>
-    constraint.references.map(({ entityId }, index) => ({
+    (constraint.kind === 'MIDPOINT' ? [constraint.references[1]] : constraint.references).map(({ entityId }, index) => ({
       id: `${constraint.id}:${index}`,
       constraintId: constraint.id,
       lineId: entityId,
-      label: constraint.kind === 'PARALLEL' ? '∥' : constraint.kind === 'HORIZONTAL' ? 'H' : 'V',
+      label: constraint.kind === 'MIDPOINT' ? 'MIDPOINT' : constraint.kind === 'PARALLEL' ? '∥' : constraint.kind === 'HORIZONTAL' ? 'H' : 'V',
     })));
 };
 

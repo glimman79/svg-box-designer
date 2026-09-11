@@ -4,6 +4,10 @@ import { readFileSync } from 'node:fs';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-constraints-tool/drawingTypes.js';
 import { appendEntityToActiveSketch } from '../.test-build/drawing-constraints-tool/drawingLineTool.js';
 import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, getExistingAxisConstraintForLine, initialConstraintsPanelPosition, toggleDrawingGeometrySelection } from '../.test-build/drawing-constraints-tool/drawingConstraintsTool.js';
+import { analyzeDrawingConstraints, constraintJacobianRow, geometricConstraintEquations } from '../.test-build/drawing-constraints-tool/drawingConstraintAnalysis.js';
+import { EMPTY_DRAWING_HISTORY, transactDrawingDocument, undoDrawingDocument, redoDrawingDocument } from '../.test-build/drawing-constraints-tool/drawingHistory.js';
+import { solveDrawingComponentDrag } from '../.test-build/drawing-constraints-tool/drawingConstraintSolver.js';
+import { deleteGeometricConstraint, deriveGeometricConstraintMarkers } from '../.test-build/drawing-constraints-tool/drawingParallelMarker.js';
 
 const line = (id, y = 0) => ({ id, type: 'line', start: { x: 0, y }, end: { x: 20, y: y + 3 }, startPointId: `${id}:a`, endPointId: `${id}:b` });
 const add = (document, draft) => appendEntityToActiveSketch(document, draft);
@@ -86,8 +90,66 @@ test('central applicability handles line, point, mixed, and larger selections', 
   assert.deepEqual(enabled(document, [{ kind: 'line', lineId: 'a' }]), ['horizontal', 'vertical']);
   assert.deepEqual(enabled(document, [{ kind: 'line', lineId: 'b' }, { kind: 'line', lineId: 'a' }]), ['parallelism', 'perpendicular']);
   assert.deepEqual(enabled(document, [{ kind: 'point', pointId: 'a:a' }, { kind: 'point', pointId: 'b:a' }]), ['coincidence']);
-  assert.deepEqual(enabled(document, [{ kind: 'point', pointId: 'a:a' }, { kind: 'line', lineId: 'b' }]), ['coincidence']);
+  assert.deepEqual(enabled(document, [{ kind: 'point', pointId: 'a:a' }, { kind: 'line', lineId: 'b' }]), ['midpoint', 'coincidence']);
   assert.deepEqual(enabled(document, [{ kind: 'line', lineId: 'a' }, { kind: 'line', lineId: 'b' }, { kind: 'point', pointId: 'a:a' }]), []);
+});
+
+test('Midpoint applicability, canonical equations, solve, duplicate and endpoint guards', () => {
+  let document = add(add(createDrawingDocumentV2(), line('target')), line('connected', 20));
+  const sketch = document.sketches[document.activeSketchId];
+  sketch.entities.connected = { ...sketch.entities.connected, startPointId: 'p' };
+  sketch.points.p = { id: 'p', x: 30, y: 20 };
+  const selections = [[{ kind: 'point', pointId: 'p' }, { kind: 'line', lineId: 'target' }], [{ kind: 'line', lineId: 'target' }, { kind: 'point', pointId: 'p' }]];
+  for (const selection of selections) assert.equal(getDrawingConstraintApplicability(selection, document).find(({ kind }) => kind === 'midpoint').enabled, true);
+  for (const selection of [[{ kind: 'line', lineId: 'target' }], [{ kind: 'point', pointId: 'p' }], [{ kind: 'point', pointId: 'target:a' }, { kind: 'point', pointId: 'p' }], [{ kind: 'line', lineId: 'target' }, { kind: 'line', lineId: 'connected' }], [{ kind: 'point', pointId: 'target:a' }, { kind: 'line', lineId: 'target' }]])
+    assert.equal(getDrawingConstraintApplicability(selection, document).find(({ kind }) => kind === 'midpoint').enabled, false);
+  const choice = getDrawingConstraintApplicability(selections[0], document).find(({ kind }) => kind === 'midpoint');
+  const result = applyDrawingConstraint(document, choice), solved = result.sketches[result.activeSketchId];
+  assert.equal(solved.points.p.id, 'p');
+  assert.ok(Math.abs(solved.points.p.x - 10) < 1e-7 && Math.abs(solved.points.p.y - 1.5) < 1e-7);
+  assert.equal(solved.entities.connected.startPointId, 'p', 'shared topology is preserved');
+  assert.equal(analyzeDrawingConstraints(solved).components.find((component) => component.pointIds.has('p')).constraintRank, 2);
+  const equations = geometricConstraintEquations(solved, solved.geometricConstraints['midpoint:p:target']);
+  assert.deepEqual(equations.map((equation) => equation.coordinateAxis), ['x', 'y']);
+  assert.deepEqual(constraintJacobianRow(solved, equations[0], ['p', 'target:a', 'target:b']), [1, 0, -.5, 0, -.5, 0]);
+  assert.deepEqual(constraintJacobianRow(solved, equations[1], ['p', 'target:a', 'target:b']), [0, 1, 0, -.5, 0, -.5]);
+  assert.equal(getDrawingConstraintApplicability(selections[0], result).find(({ kind }) => kind === 'midpoint').enabled, false);
+  assert.equal(applyDrawingConstraint(result, choice), result, 'stale applicability cannot bypass the production duplicate guard');
+  const dragged = solveDrawingComponentDrag(solved, { 'target:b': { x: 70, y: 80 } }, { directPointIds: ['target:b'] });
+  assert.ok(dragged);
+  assert.ok(Math.abs(dragged.points.p.x - (dragged.points['target:a'].x + dragged.points['target:b'].x) / 2) < 1e-7);
+  assert.ok(Math.abs(dragged.points.p.y - (dragged.points['target:a'].y + dragged.points['target:b'].y) / 2) < 1e-7);
+  const marker = deriveGeometricConstraintMarkers(solved, 2)[0];
+  assert.equal(marker.label, 'MIDPOINT');
+  assert.ok(Math.abs(Math.hypot(marker.ux, marker.uy) - 1) < 1e-12, 'marker carries target Line orientation');
+  const removed = deleteGeometricConstraint(result, 'midpoint:p:target');
+  assert.ok(removed.sketches[removed.activeSketchId].points.p && removed.sketches[removed.activeSketchId].entities.target);
+});
+
+test('Midpoint narrowly replaces same point/support Coincidence in one document update', () => {
+  let document = add(add(createDrawingDocumentV2(), line('target')), line('other', 20));
+  const sketch = document.sketches[document.activeSketchId];
+  sketch.points.p = { id: 'p', x: 3, y: 8 };
+  sketch.entities.other = { ...sketch.entities.other, startPointId: 'p' };
+  sketch.geometricConstraints = {
+    same: { id: 'same', kind: 'COINCIDENT', variant: 'point-linear-support', references: [{ kind: 'sketchPoint', pointId: 'p' }, { kind: 'entity', entityId: 'target' }] },
+    other: { id: 'other', kind: 'COINCIDENT', variant: 'point-linear-support', references: [{ kind: 'sketchPoint', pointId: 'p' }, { kind: 'entity', entityId: 'other' }] },
+  };
+  sketch.geometricConstraintOrder = ['same', 'other'];
+  const selection = [{ kind: 'point', pointId: 'p' }, { kind: 'line', lineId: 'target' }];
+  const choice = getDrawingConstraintApplicability(selection, document).find(({ kind }) => kind === 'midpoint');
+  const result = applyDrawingConstraint(document, choice), constraints = result.sketches[result.activeSketchId].geometricConstraints;
+  assert.equal(constraints.same, undefined);
+  assert.ok(constraints.other);
+  assert.equal(constraints['midpoint:p:target'].kind, 'MIDPOINT');
+  const transaction = transactDrawingDocument(EMPTY_DRAWING_HISTORY, document, () => result);
+  assert.equal(transaction.history.undo.length, 1, 'replacement is one History action');
+  const undone = undoDrawingDocument(transaction.history, transaction.document);
+  assert.ok(undone.document.sketches[document.activeSketchId].geometricConstraints.same);
+  assert.equal(undone.document.sketches[document.activeSketchId].geometricConstraints['midpoint:p:target'], undefined);
+  const redone = redoDrawingDocument(undone.history, undone.document);
+  assert.equal(redone.document.sketches[document.activeSketchId].geometricConstraints.same, undefined);
+  assert.ok(redone.document.sketches[document.activeSketchId].geometricConstraints['midpoint:p:target']);
 });
 
 test('one existing axis constraint locks both manual axis choices and the application authority', () => {

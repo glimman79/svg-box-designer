@@ -42,7 +42,7 @@ export const getExistingAxisConstraintForLine = (sketch: DrawingSketchV2, lineId
 export const getDrawingConstraintApplicability = (selection: readonly DrawingSelectionRef[], document: DrawingDocumentV2): readonly DrawingConstraintApplicability[] => {
   const sketch = document.sketches[document.activeSketchId];
   return DRAWING_CONSTRAINT_CATALOG.map(({ kind }) => {
-    const implemented = ['coincidence', 'parallelism', 'perpendicular', 'horizontal', 'vertical'].includes(kind);
+    const implemented = ['midpoint', 'coincidence', 'parallelism', 'perpendicular', 'horizontal', 'vertical'].includes(kind);
     const oneLine = selection.length === 1 && selection[0].kind === 'line';
     const twoLines = selection.length === 2 && selection.every((ref) => ref.kind === 'line') && selection[0].lineId !== selection[1].lineId;
     const twoPoints = selection.length === 2 && selection.every((ref) => ref.kind === 'point') && selection[0].pointId !== selection[1].pointId;
@@ -51,8 +51,11 @@ export const getDrawingConstraintApplicability = (selection: readonly DrawingSel
     const line = selectedLine && sketch?.entities[selectedLine.lineId];
     const a = line && sketch?.points[line.startPointId], b = line && sketch?.points[line.endPointId];
     const validLinearSupport = Boolean(a && b && Math.hypot(b.x - a.x, b.y - a.y) > 1e-9);
+    const selectedPoint = pointAndLine ? selection.find((ref): ref is Extract<DrawingSelectionRef, { kind: 'point' }> => ref.kind === 'point') : undefined;
+    const externalPoint = Boolean(selectedPoint && line && selectedPoint.pointId !== line.startPointId && selectedPoint.pointId !== line.endPointId);
     const applicable = (kind === 'horizontal' || kind === 'vertical') ? oneLine && validLinearSupport
-      : (kind === 'parallelism' || kind === 'perpendicular') ? twoLines : kind === 'coincidence' ? twoPoints || pointAndLine && validLinearSupport : false;
+      : (kind === 'parallelism' || kind === 'perpendicular') ? twoLines : kind === 'coincidence' ? twoPoints || pointAndLine && validLinearSupport
+        : kind === 'midpoint' ? pointAndLine && validLinearSupport && externalPoint : false;
     const references = applicable ? [...selection].sort((a, b) => a.kind === b.kind
       ? (a.kind === 'line' ? a.lineId : a.pointId).localeCompare(b.kind === 'line' ? b.lineId : b.pointId)
       : a.kind === 'point' ? -1 : 1) : [];
@@ -69,6 +72,25 @@ export const getDrawingConstraintApplicability = (selection: readonly DrawingSel
 export const applyDrawingConstraint = (document: DrawingDocumentV2, applicability: DrawingConstraintApplicability): DrawingDocumentV2 => {
   if (!applicability.enabled) return document;
   const refs = applicability.references;
+  if (applicability.kind === 'midpoint') {
+    const current = getDrawingConstraintApplicability(refs, document).find(({ kind }) => kind === 'midpoint');
+    const pointRef = refs.find((ref): ref is Extract<DrawingSelectionRef, { kind: 'point' }> => ref.kind === 'point');
+    const lineRef = refs.find((ref): ref is Extract<DrawingSelectionRef, { kind: 'line' }> => ref.kind === 'line');
+    if (!current?.enabled || !pointRef || !lineRef) return document;
+    const sketch = document.sketches[document.activeSketchId], line = sketch?.entities[lineRef.lineId];
+    if (!sketch || !line || pointRef.pointId === line.startPointId || pointRef.pointId === line.endPointId) return document;
+    const id = `midpoint:${pointRef.pointId}:${lineRef.lineId}`;
+    const constraint: DrawingGeometricConstraint = { id, kind: 'MIDPOINT', references: [{ kind: 'sketchPoint', pointId: pointRef.pointId }, { kind: 'entity', entityId: lineRef.lineId }] };
+    const geometricConstraints = { ...sketch.geometricConstraints };
+    const redundant = Object.values(geometricConstraints).filter((item) => item.kind === 'COINCIDENT' && item.variant === 'point-linear-support'
+      && item.references[0].pointId === pointRef.pointId && item.references[1].entityId === lineRef.lineId).map(({ id }) => id);
+    redundant.forEach((constraintId) => delete geometricConstraints[constraintId]);
+    geometricConstraints[id] = constraint;
+    const withConstraint = { ...sketch, geometricConstraints, geometricConstraintOrder: [...sketch.geometricConstraintOrder.filter((constraintId) => !redundant.includes(constraintId)), id] };
+    const targets = { [line.startPointId]: sketch.points[line.startPointId], [line.endPointId]: sketch.points[line.endPointId] };
+    const solved = solveDrawingComponentDrag(withConstraint, targets, { directLineIds: [line.id] });
+    return solved ? { ...document, sketches: { ...document.sketches, [sketch.id]: solved } } : document;
+  }
   if (applicability.kind === 'horizontal' || applicability.kind === 'vertical') {
     const current = getDrawingConstraintApplicability(refs, document).find(({ kind }) => kind === applicability.kind);
     if (!current?.enabled) return document;

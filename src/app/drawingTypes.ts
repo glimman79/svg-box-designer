@@ -68,8 +68,14 @@ export type DrawingPointOnLinearSupportConstraint = Readonly<{
   /** A point and a stable semantic linear edge; the edge's parent is irrelevant. */
   references: readonly [Readonly<{ kind: 'sketchPoint'; pointId: string }>, DrawingEntityReference];
 }>;
+export type DrawingMidpointConstraint = Readonly<{
+  id: string;
+  kind: 'MIDPOINT';
+  /** The existing SketchPoint constrained to the midpoint of the semantic Line. */
+  references: readonly [Readonly<{ kind: 'sketchPoint'; pointId: string }>, DrawingEntityReference];
+}>;
 export type DrawingCoincidentConstraint = DrawingPointCoincidentConstraint | DrawingPointOnLinearSupportConstraint;
-export type DrawingGeometricConstraint = DrawingParallelConstraint | DrawingPerpendicularConstraint | DrawingAxisConstraint | DrawingCoincidentConstraint;
+export type DrawingGeometricConstraint = DrawingParallelConstraint | DrawingPerpendicularConstraint | DrawingAxisConstraint | DrawingCoincidentConstraint | DrawingMidpointConstraint;
 type DrawingDimensionBase = Readonly<{
   id: string;
   /** Persistent solver semantics. Reference dimensions contribute no constraint equation. */
@@ -184,6 +190,15 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
         ]));
       const acceptedAxisLines = new Set<string>(), acceptedPairs = new Set<string>();
       const geometricConstraints = Object.fromEntries(Object.entries(sketch.geometricConstraints).filter(([, constraint]) => {
+        if (constraint.kind === 'MIDPOINT') {
+          if (constraint.references.length !== 2 || constraint.references[0].kind !== 'sketchPoint' || constraint.references[1].kind !== 'entity') return false;
+          const pointId = constraint.references[0].pointId, line = sketch.entities[constraint.references[1].entityId];
+          const a = line && sketch.points[line.startPointId], b = line && sketch.points[line.endPointId];
+          if (!sketch.points[pointId] || !line || !a || !b || pointId === line.startPointId || pointId === line.endPointId || Math.hypot(b.x - a.x, b.y - a.y) <= DRAWING_MODEL_SPACE_TOLERANCE) return false;
+          const key = `MIDPOINT:${pointId}:${line.id}`;
+          if (acceptedPairs.has(key)) return false;
+          acceptedPairs.add(key); return true;
+        }
         if (constraint.kind === 'COINCIDENT') {
           const legacyVariant = constraint.variant ?? 'point-point';
           if (constraint.references.length !== 2 || constraint.references[0].kind !== 'sketchPoint' || !sketch.points[constraint.references[0].pointId]) return false;
