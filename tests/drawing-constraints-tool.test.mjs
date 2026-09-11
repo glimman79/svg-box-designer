@@ -25,7 +25,7 @@ test('Select and Constraints route to the shared toggle without stealing authori
   assert.match(workspaceSource, /if \(activeTool === 'select'\)[\s\S]*const beginDrag = !event\.ctrlKey && !constraintsPanelOpen/);
   assert.match(workspaceSource, /setSelectedGeometry\(\(current\) => routeDrawingGeometryPointerSelection\(current, target, event\.ctrlKey, constraintsPanelOpen\)\.selection\)/);
   assert.match(workspaceSource, /if \(beginDrag\) \{[\s\S]*setGeometryDrag/);
-  assert.match(workspaceSource, /if \(!event\.ctrlKey && !constraintsPanelOpen\) \{[\s\S]*?setSelectedGeometry\(\[\]\)[\s\S]*?\}/, 'Ctrl or constraint-picking misses preserve accumulated references');
+  assert.match(workspaceSource, /if \(!event\.ctrlKey\) \{[\s\S]*?setSelectedGeometry\(\[\]\)[\s\S]*?setSelectedDimensionId\(null\)[\s\S]*?setSelectedGeometricConstraintId\(null\)[\s\S]*?\}/, 'an empty-canvas click clears every selection authority while Constraints stays active');
   assert.doesNotMatch(workspaceSource, /event\.shiftKey/, 'Shift follows the ordinary Select path');
 });
 

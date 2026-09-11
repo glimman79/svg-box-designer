@@ -69,10 +69,10 @@ assert.doesNotMatch(source, /event\.shiftKey/, 'Shift is not a semantic geometry
 assert.match(source, /const beginDrag = !event\.ctrlKey && !constraintsPanelOpen;[\s\S]*if \(beginDrag\) \{[\s\S]*setGeometryDrag/, 'only an ordinary replacing Select click may begin direct manipulation');
 const emptyMissStart = source.indexOf('if (!hit && !explicitPointId && !explicitLineId)');
 const emptyMissBranch = source.slice(emptyMissStart, source.indexOf('setDimensionDrag(null)', emptyMissStart));
-assert.match(emptyMissBranch, /if \(!event\.ctrlKey && !constraintsPanelOpen\)/, 'only an unmodified ordinary Select miss clears selection');
+assert.match(emptyMissBranch, /if \(!event\.ctrlKey\)/, 'an unmodified Select miss clears selection whether or not Constraints is open');
 assert.match(emptyMissBranch, /setSelectedGeometry\(\[\]\)/, 'an ordinary empty-canvas miss clears all geometry selection');
 assert.match(emptyMissBranch, /setSelectedDimensionId\(null\)/, 'an ordinary empty-canvas miss clears persistent Dimension selection');
 assert.match(emptyMissBranch, /setSelectedGeometricConstraintId\(null\)/, 'an ordinary empty-canvas miss clears persistent geometric-constraint selection');
-assert.ok(emptyMissBranch.indexOf('!constraintsPanelOpen') < emptyMissBranch.indexOf('setSelectedGeometry([])'), 'the Constraints-panel exception guards selection clearing');
+assert.doesNotMatch(emptyMissBranch, /!constraintsPanelOpen/, 'Constraints does not preserve accumulated selection after an empty-canvas click');
 
 console.log('Drawing SketchPoint rendered interaction-layer regression tests passed');
