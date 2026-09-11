@@ -284,18 +284,28 @@ export const resolveLineEffectivePoint = (
     { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: spatialSnap.entityId ?? null }, spatialSnap);
 
   if (spatialSnap.type === 'endpoint' || spatialSnap.type === 'line') {
-    // Endpoint/finite target owns position. Construction proposals are validation
-    // outputs only: incompatible semantics and guides disappear rather than move it.
+    // An endpoint owns its exact position; a finite Line owns its positional support.
+    // Compatible direction authority may select the point where its ray meets that support.
     const direction = angular.snappedAngleDegrees === null ? null : directionAt(angular.snappedAngleDegrees);
+    const perpendicular = acceptedAxis ? null : spatialSnap.channels?.perpendicular ?? null;
+    const perpendicularDirection = perpendicular && perpendicular.entityId === spatialSnap.entityId
+      ? (() => {
+        const dx = perpendicular.candidatePoint.x - interaction.start!.x;
+        const dy = perpendicular.candidatePoint.y - interaction.start!.y;
+        const length = Math.hypot(dx, dy);
+        return length > LINE_ZERO_LENGTH_TOLERANCE_MM ? { x: dx / length, y: dy / length } : null;
+      })()
+      : null;
     // A construction ray may compose with a finite Line. Never intersect its
     // infinite support when the result falls outside the segment.
-    const composedLinePoint = spatialSnap.type === 'line' && direction
+    const perpendicularLinePoint = spatialSnap.type === 'line' && perpendicularDirection
+      ? intersectRayWithFiniteSegment(interaction.start, perpendicularDirection, spatialSnap.lineStart, spatialSnap.lineEnd) : null;
+    const angularLinePoint = spatialSnap.type === 'line' && direction
       ? intersectRayWithFiniteSegment(interaction.start, direction, spatialSnap.lineStart, spatialSnap.lineEnd) : null;
-    const acceptedPoint = composedLinePoint ?? spatialSnap.effectivePoint;
+    const acceptedPoint = perpendicularLinePoint ?? angularLinePoint ?? spatialSnap.effectivePoint;
     const angularExact = direction !== null && isPointOnDirection(interaction.start, acceptedPoint, direction);
     // A compatible endpoint/finite-Line position may preserve H/V, but no
     // lower-priority Line relation may coexist with that axis authority.
-    const perpendicular = acceptedAxis ? null : spatialSnap.channels?.perpendicular ?? null;
     const perpendicularExact = perpendicular !== null && (isPerpendicularAt(
       interaction.start, acceptedPoint, perpendicular.lineStart, perpendicular.lineEnd,
     ) || (!perpendicular.lineStart && !perpendicular.lineEnd

@@ -165,12 +165,42 @@ test('finite Line position preserves only geometrically true arbitrary-angle Per
   document = lines.appendEntityToActiveSketch(document, click.entity, () => 'authored-point', null, accepted.interaction.perpendicularLineId);
   assert.equal(Object.values(document.sketches['sketch-1'].geometricConstraints).filter(({ kind }) => kind === 'PERPENDICULAR').length, 1);
 
-  const offFoot = { x: foot.x + targetDirection.x / targetLength * 4, y: foot.y + targetDirection.y / targetLength * 4 };
+  const offFoot = { x: foot.x + targetDirection.x / targetLength * 12, y: foot.y + targetDirection.y / targetLength * 12 };
   const offCandidates = inference.collectDrawingInferenceCandidates(offFoot, [target], identity, bounds, authoredStart, null);
   const offSnap = snaps.resolveDrawingSnap({ rawPoint: offFoot, candidates: offCandidates, previousSnap: null, ctrlOverride: false });
   assert.equal(offSnap.type, 'line');
   const rejected = lines.resolveLineEffectivePoint(targetInteraction, offFoot, offSnap);
   assert.equal(rejected.interaction.perpendicularLineId, null, 'Line-body proximity cannot fake perpendicular final geometry');
+});
+
+test('same-target Line-body acquisition composes retained Perpendicular direction at the foot', () => {
+  const target = referenceLine('retained-perpendicular-target', { x: 0, y: 0 }, { x: 100, y: 100 / Math.sqrt(3) });
+  const foot = { x: 60, y: 60 / Math.sqrt(3) };
+  const targetDirection = { x: target.end.x - target.start.x, y: target.end.y - target.start.y };
+  const targetLength = Math.hypot(targetDirection.x, targetDirection.y);
+  const tangent = { x: targetDirection.x / targetLength, y: targetDirection.y / targetLength };
+  const normal = { x: -tangent.y, y: tangent.x };
+  const authoredStart = { x: foot.x - normal.x * 80, y: foot.y - normal.y * 80 };
+  const pointer = {
+    x: foot.x + tangent.x * 4 + normal.x * 3,
+    y: foot.y + tangent.y * 4 + normal.y * 3,
+  };
+  const interaction = { ...lines.EMPTY_LINE_INTERACTION, start: authoredStart, startPointId: 'authored-start' };
+  const candidates = inference.collectDrawingInferenceCandidates(pointer, [target], identity, bounds, authoredStart, null);
+  const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap: null, ctrlOverride: false });
+
+  assert.equal(snap.type, 'line', 'existing finite Line acquisition owns position');
+  assert.equal(snap.entityId, target.id);
+  assert.equal(snap.channels.perpendicular?.entityId, target.id, 'accepted direction target survives positional arbitration');
+  assert.ok(Math.hypot(snap.effectivePoint.x - foot.x, snap.effectivePoint.y - foot.y) > 3,
+    'the raw-pointer projection is deliberately not the perpendicular foot');
+
+  const accepted = lines.resolveLineEffectivePoint(interaction, pointer, snap);
+  assert.ok(Math.hypot(accepted.effectivePoint.x - foot.x, accepted.effectivePoint.y - foot.y) < 1e-9,
+    'accepted Perpendicular direction intersects the same finite target at the foot');
+  assert.equal(accepted.interaction.perpendicularLineId, target.id);
+  assert.deepEqual(accepted.interaction.effectivePreviewPoint, accepted.effectivePoint,
+    'preview and frozen click consume the same accepted point');
 });
 
 test('endpoint topology authority coexists with a true non-axis Perpendicular target', () => {
