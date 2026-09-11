@@ -36,6 +36,8 @@ export type DrawingInference = Readonly<{
   entityId: string;
   candidatePoint: DrawingPoint;
   screenDistance: number;
+  lineStart?: DrawingPoint;
+  lineEnd?: DrawingPoint;
 }> | PointReferenceConstruction | Readonly<{
   type: 'endpoint';
   entityId: string;
@@ -212,7 +214,9 @@ export const collectDrawingInferenceCandidates = (
     if (Math.abs(radial) > 1e-9) {
       const candidatePoint = { x: activeLineStart.x + radial * nx, y: activeLineStart.y + radial * ny };
       const screen = toScreenPoint(candidatePoint, drawingToClientTransform);
-      perpendiculars.push({ type: 'perpendicular', entityId: line.id, candidatePoint, screenDistance: Math.hypot(pointerClientPoint.x - screen.x, pointerClientPoint.y - screen.y) });
+      perpendiculars.push({ type: 'perpendicular', entityId: line.id, candidatePoint,
+        screenDistance: Math.hypot(pointerClientPoint.x - screen.x, pointerClientPoint.y - screen.y),
+        lineStart: line.start, lineEnd: line.end });
     }
     const ux = dx / length, uy = dy / length;
     const parallelRadial = (pointerModel.x - activeLineStart.x) * ux + (pointerModel.y - activeLineStart.y) * uy;

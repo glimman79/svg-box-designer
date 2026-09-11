@@ -140,6 +140,52 @@ test('Endpoint, angular, and reference relations coexist at one final point', ()
   assert.equal(finite.resolvedReferences.x, finiteReference, 'finite Line composition preserves geometrically true acquired reference identity');
 });
 
+test('finite Line position preserves only geometrically true arbitrary-angle Perpendicular intent through click and commit', () => {
+  const target = referenceLine('rotated-target', { x: 0, y: 0 }, { x: 100, y: 100 / Math.sqrt(3) });
+  const foot = { x: 60, y: 60 / Math.sqrt(3) };
+  const targetDirection = { x: target.end.x - target.start.x, y: target.end.y - target.start.y };
+  const targetLength = Math.hypot(targetDirection.x, targetDirection.y);
+  const normal = { x: -targetDirection.y / targetLength, y: targetDirection.x / targetLength };
+  const authoredStart = { x: foot.x - normal.x * 80, y: foot.y - normal.y * 80 };
+  const targetInteraction = { ...lines.EMPTY_LINE_INTERACTION, start: authoredStart, startPointId: 'authored-start' };
+  const pointer = { x: foot.x + normal.x * 3, y: foot.y + normal.y * 3 };
+  const angular = lines.resolveLinePreviewPoint(authoredStart, pointer);
+  const candidates = inference.collectDrawingInferenceCandidates(pointer, [target], identity, bounds, authoredStart, angular.snappedAngleDegrees);
+  const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap: null, ctrlOverride: false });
+  assert.equal(snap.type, 'line', 'finite segment retains positional authority');
+  assert.equal(snap.entityId, target.id);
+  const accepted = lines.resolveLineEffectivePoint(targetInteraction, pointer, snap);
+  assert.ok(Math.hypot(accepted.effectivePoint.x - foot.x, accepted.effectivePoint.y - foot.y) < 1e-9);
+  assert.equal(accepted.interaction.perpendicularLineId, target.id, 'final geometry preserves the acquired target identity');
+  assert.equal(lines.automaticAxisConstraintKind(accepted.interaction), null, 'rotated authored Line is not H/V');
+
+  const click = lines.applyResolvedLineClick(accepted.interaction, accepted.effectivePoint, () => 'authored-line', 'foot-point');
+  assert.equal(click.entity.endPointId, 'foot-point');
+  let document = lines.appendEntityToActiveSketch(drawingTypes.createDrawingDocumentV2(), target, () => 'target-point');
+  document = lines.appendEntityToActiveSketch(document, click.entity, () => 'authored-point', null, accepted.interaction.perpendicularLineId);
+  assert.equal(Object.values(document.sketches['sketch-1'].geometricConstraints).filter(({ kind }) => kind === 'PERPENDICULAR').length, 1);
+
+  const offFoot = { x: foot.x + targetDirection.x / targetLength * 4, y: foot.y + targetDirection.y / targetLength * 4 };
+  const offCandidates = inference.collectDrawingInferenceCandidates(offFoot, [target], identity, bounds, authoredStart, null);
+  const offSnap = snaps.resolveDrawingSnap({ rawPoint: offFoot, candidates: offCandidates, previousSnap: null, ctrlOverride: false });
+  assert.equal(offSnap.type, 'line');
+  const rejected = lines.resolveLineEffectivePoint(targetInteraction, offFoot, offSnap);
+  assert.equal(rejected.interaction.perpendicularLineId, null, 'Line-body proximity cannot fake perpendicular final geometry');
+});
+
+test('endpoint topology authority coexists with a true non-axis Perpendicular target', () => {
+  const target = referenceLine('endpoint-perpendicular-target', { x: 0, y: 0 }, { x: 100, y: 100 / Math.sqrt(3) });
+  const authoredStart = { x: 100 / Math.sqrt(3), y: -100 };
+  const targetInteraction = { ...lines.EMPTY_LINE_INTERACTION, start: authoredStart, startPointId: 'authored-start' };
+  const candidates = inference.collectDrawingInferenceCandidates(target.start, [target], identity, bounds, authoredStart, null);
+  const snap = snaps.resolveDrawingSnap({ rawPoint: target.start, candidates, previousSnap: null, ctrlOverride: false });
+  assert.equal(snap.type, 'endpoint');
+  const accepted = lines.resolveLineEffectivePoint(targetInteraction, target.start, snap);
+  assert.equal(accepted.interaction.perpendicularLineId, target.id);
+  const click = lines.applyResolvedLineClick(accepted.interaction, accepted.effectivePoint, () => 'endpoint-authored', 'existing-target-point');
+  assert.equal(click.entity.endPointId, 'existing-target-point', 'click reuses authoritative endpoint topology');
+});
+
 test('Angular, X reference, and Y reference coexist at their common point', () => {
   const q = pointAt(45);
   const scene = [referenceLine('x-owner', { x: q.x, y: q.y + 60 }), referenceLine('y-owner', { x: q.x + 60, y: q.y })];
