@@ -93,8 +93,22 @@ test('point/linear-support Coincident is one scalar equation, remains outside th
   const [marker] = deriveCoincidentMarkers(solved, 2), point = solved.points['carrier-p1'];
   assert.deepEqual({ x: marker.x - point.x, y: marker.y - point.y }, { x: 6, y: -6 });
   assert.equal(Object.keys(solved.points).length, 4, 'no hidden point was introduced');
-  assert.deepEqual(deriveSelectedCoincidentReferenceMarker(solved, relation.id), { constraintId: relation.id, x: -40, y: 0 }, 'selected reference uses the infinite support projection without clamping');
+  assert.deepEqual(deriveSelectedCoincidentReferenceMarker(solved, relation.id), { constraintId: relation.id, x: 50, y: 12 }, 'selected reference identifies the finite target Line at its shared midpoint marker slot');
+  const horizontal = { id: 'horizontal:support', kind: 'HORIZONTAL', references: [{ kind: 'entity', entityId: 'support' }] };
+  const withHorizontal = { ...solved, geometricConstraints: { ...solved.geometricConstraints, [horizontal.id]: horizontal }, geometricConstraintOrder: [...solved.geometricConstraintOrder, horizontal.id] };
+  assert.deepEqual(deriveSelectedCoincidentReferenceMarker(withHorizontal, relation.id), { constraintId: relation.id, x: 72, y: 12 }, 'selected reference takes the next deterministic shared Line-marker slot beside H');
+  assert.deepEqual(deriveSelectedCoincidentReferenceMarker(withHorizontal, relation.id, 2), { constraintId: relation.id, x: 61, y: 6 }, 'selected Line reference offset and collision spacing remain screen-stable');
   assert.equal(deriveSelectedCoincidentReferenceMarker(solved, null), null, 'deselection removes derived presentation');
+});
+
+test('selected point/vertical-support Coincident avoids the V midpoint marker', () => {
+  let document = add(add(createDrawingDocumentV2(), line('support', { x: 10, y: 0 }, { x: 10, y: 100 })), line('carrier', { x: 30, y: 30 }, { x: 40, y: 40 }));
+  document = addPointOnLinearSupportConstraint(document, 'carrier-p1', 'support');
+  const sketch = document.sketches['sketch-1'];
+  const relation = Object.values(sketch.geometricConstraints).find(({ kind }) => kind === 'COINCIDENT');
+  const vertical = { id: 'vertical:support', kind: 'VERTICAL', references: [{ kind: 'entity', entityId: 'support' }] };
+  const withVertical = { ...sketch, geometricConstraints: { ...sketch.geometricConstraints, [vertical.id]: vertical }, geometricConstraintOrder: [...sketch.geometricConstraintOrder, vertical.id] };
+  assert.deepEqual(deriveSelectedCoincidentReferenceMarker(withVertical, relation.id), { constraintId: relation.id, x: -2, y: 72 }, 'selected reference takes the next deterministic shared Line-marker slot beside V');
 });
 
 test('any selected semantic edge can define support without an edge-count assumption', () => {
