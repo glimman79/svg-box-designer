@@ -97,7 +97,8 @@ type LineSpatialSnap = Readonly<{
   channels?: Readonly<{
     xAlignment: LineAlignmentXReference | null;
     yAlignment: LineAlignmentYReference | null;
-    perpendicular: Readonly<{ entityId: string; candidatePoint: DrawingPoint; screenDistance: number }> | null;
+    perpendicular: Readonly<{ entityId: string; candidatePoint: DrawingPoint; screenDistance: number;
+      lineStart?: DrawingPoint; lineEnd?: DrawingPoint }> | null;
     parallel: Readonly<{ entityId: string; candidatePoint: DrawingPoint; screenDistance: number }> | null;
     pointReference?: Readonly<{ candidatePoint: DrawingPoint; screenDistance: number }> | null;
   }>;
@@ -175,6 +176,16 @@ const isPointOnDirection = (start: DrawingPoint, point: DrawingPoint, direction:
   return length > LINE_ZERO_LENGTH_TOLERANCE_MM
     && dx * direction.x + dy * direction.y >= 0
     && Math.abs(dx * direction.y - dy * direction.x) <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, length);
+};
+
+const isPerpendicularAt = (start: DrawingPoint, end: DrawingPoint, lineStart?: DrawingPoint, lineEnd?: DrawingPoint) => {
+  if (!lineStart || !lineEnd) return false;
+  const authoredX = end.x - start.x, authoredY = end.y - start.y;
+  const targetX = lineEnd.x - lineStart.x, targetY = lineEnd.y - lineStart.y;
+  const authoredLength = Math.hypot(authoredX, authoredY), targetLength = Math.hypot(targetX, targetY);
+  return authoredLength > LINE_ZERO_LENGTH_TOLERANCE_MM && targetLength > LINE_ZERO_LENGTH_TOLERANCE_MM
+    && Math.abs(authoredX * targetX + authoredY * targetY)
+      <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, authoredLength * targetLength);
 };
 
 const intersectRayWithFiniteSegment = (origin: DrawingPoint, direction: DrawingPoint, a?: DrawingPoint, b?: DrawingPoint): DrawingPoint | null => {
@@ -283,9 +294,11 @@ export const resolveLineEffectivePoint = (
     // A compatible endpoint/finite-Line position may preserve H/V, but no
     // lower-priority Line relation may coexist with that axis authority.
     const perpendicular = acceptedAxis ? null : spatialSnap.channels?.perpendicular ?? null;
-    const perpendicularExact = perpendicular !== null
+    const perpendicularExact = perpendicular !== null && (isPerpendicularAt(
+      interaction.start, acceptedPoint, perpendicular.lineStart, perpendicular.lineEnd,
+    ) || (!perpendicular.lineStart && !perpendicular.lineEnd
       && Math.hypot(perpendicular.candidatePoint.x - acceptedPoint.x, perpendicular.candidatePoint.y - acceptedPoint.y)
-        <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, Math.hypot(acceptedPoint.x - interaction.start.x, acceptedPoint.y - interaction.start.y));
+        <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, Math.hypot(acceptedPoint.x - interaction.start.x, acceptedPoint.y - interaction.start.y))));
     const nextInteraction = {
       ...interaction,
       rawPointerPoint,
