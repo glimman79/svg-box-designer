@@ -80,8 +80,8 @@ assert.match(styles, /\.drawing-line-entity\.is-inference-target\s*\{[^}]*stroke
 assert.match(styles, /\.drawing-line-cursor-perpendicular,[\s\S]*?\.drawing-line-cursor-parallel\s*\{[^}]*stroke:\s*var\(--drawing-inference\);/s, 'transient relation cursor glyphs use CAD blue');
 assert.match(styles, /\.drawing-same-axis-reference-highlight\s*\{[^}]*stroke:\s*var\(--drawing-inference\);/s, 'reference-only point halo uses CAD blue');
 assert.doesNotMatch(styles, /--drawing-alignment-guide|#c084fc/, 'the retired purple preview styling is absent');
-assert.match(workspace, /snap\.type === 'endpoint' && <circle/, 'endpoint marker remains a ring');
-assert.match(workspace, /snap\.type === 'line' && <path/, 'line marker remains a triangle');
+assert.match(workspace, /snap\.type === 'endpoint' && <rect/, 'endpoint marker is the larger Point square');
+assert.match(workspace, /snap\.type === 'line' && <rect/, 'line marker is a square');
 assert.match(workspace, /if \(panHandlers\.onPointerMove\(event\)\) return;[\s\S]*resolvePlacement/, 'right-pan exits before inference');
 assert.match(workspace, /const effectivePoint = placement\.position\.point;[\s\S]*commitLinePoint\(effectivePoint, endpointPointId, placement\.interaction\)/, 'commit closes over the immutable authoritative position and its accepted inference');
 assert.match(workspace, /if \(event\.button === CAD_PRIMARY_BUTTON\) event\.preventDefault\(\);/, 'accepted Drawing-local primary mousedown fix remains');

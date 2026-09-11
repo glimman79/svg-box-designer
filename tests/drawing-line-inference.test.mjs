@@ -49,7 +49,7 @@ assert.match(workspace, /className=\{`cad-tool-button\$\{activeTool === 'line' \
 assert.match(workspace, /className=\{`cad-tool-button\$\{activeTool === 'select' \? ' is-active' : ''\}`\} aria-pressed=\{activeTool === 'select'\}/, 'Select has mutually exclusive tool-state presentation');
 assert.match(workspace, /activeTool === 'line' && lineCursor/, 'custom cursor only renders for active Line');
 assert.match(workspace, /data-arm="left"[\s\S]*data-arm="right"[\s\S]*data-arm="top"[\s\S]*data-arm="bottom"/, 'four separate arms structurally preserve the centre gap');
-assert.match(workspace, /drawing-line-cursor-dot[\s\S]*drawing-line-cursor-endpoint[\s\S]*drawing-line-cursor-line/, 'normal dot, endpoint ring, and line triangle are distinct marker states');
+assert.match(workspace, /drawing-line-cursor-dot[\s\S]*drawing-line-cursor-endpoint[\s\S]*drawing-line-cursor-line/, 'normal dot, Point square, and smaller Line square are distinct marker states');
 assert.match(workspace, /const lineResolution = resolveLineEffectivePoint\(interaction, rawPoint, snap, previousChainedAxisKind, ctrlHeld\);[\s\S]*const placementPoint = lineResolution\.effectivePoint;/, 'placement marker follows the authoritative resolved endpoint and final Ctrl guard');
 assert.match(workspace, /onPointerLeave=\{clearLineCursor\}/, 'pointer leave clears cursor presentation without cancelling chain state');
 assert.match(workspace, /activeSketch\?\.entityOrder/, 'inference reads committed entities from the active sketch');

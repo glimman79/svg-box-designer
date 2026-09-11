@@ -82,7 +82,7 @@ assert.deepEqual(committedLineStrokeRules, [
   { selector: '.drawing-line-entity.is-dimension-preselected', stroke: 'var(--drawing-hover)' },
   { selector: '.drawing-line-entity.is-geometry-preselected,\n.drawing-line-entity.is-geometry-dragging', stroke: 'var(--drawing-hover)' },
 ], 'committed Lines retain three solver authorities plus separate selected and temporary interaction overrides');
-assert.match(css, /drawing-geometry-point-preselection[^}]*stroke: #0e7490;[^}]*stroke-width: 2;/, 'accepted endpoint feedback remains unchanged');
+assert.match(css, /drawing-geometry-point-preselection[^}]*fill: #0e7490;[^}]*stroke: none;/, 'Point preselection uses the stronger blue square fill');
 assert.match(css, /has-geometry-cursor\.is-line-target[\s\S]*cursor: default;/, 'geometry uses normal Dimension arrow convention');
 assert.doesNotMatch(css, /has-geometry-cursor[^}]*cursor:\s*(?:move|grab|grabbing|pointer)/s);
 

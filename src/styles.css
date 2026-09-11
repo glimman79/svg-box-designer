@@ -1013,6 +1013,8 @@ button:disabled {
   stroke: var(--drawing-inference);
   stroke-width: 1.8;
 }
+.drawing-line-cursor-line { fill: var(--drawing-inference); stroke: none; }
+.drawing-line-cursor-endpoint { fill: #0e7490; stroke: none; }
 
 .drawing-line-cursor-perpendicular,
 .drawing-line-cursor-parallel {
@@ -1569,6 +1571,7 @@ button:disabled {
 .drawing-coincident-marker-shape { fill: none; stroke: var(--drawing-geometric-constraint); stroke-width: 1.25px; vector-effect: non-scaling-stroke; pointer-events: none; }
 .drawing-coincident-marker.is-hovered .drawing-coincident-marker-shape { stroke: var(--drawing-hover); }
 .drawing-coincident-marker.is-selected .drawing-coincident-marker-shape { stroke: var(--drawing-dimension-active); }
+.drawing-coincident-reference-marker { stroke: var(--drawing-dimension-active); pointer-events: none; }
 .drawing-right-angle-marker.is-hovered .drawing-right-angle-marker-shape { stroke: var(--drawing-hover); }
 .drawing-right-angle-marker.is-selected .drawing-right-angle-marker-shape { stroke: var(--drawing-dimension-active); }
 .drawing-right-angle-marker-hit { fill: none; stroke: transparent; stroke-width: 12px; vector-effect: non-scaling-stroke; pointer-events: stroke; }
@@ -1583,7 +1586,7 @@ button:disabled {
 .drawing-line-entity.is-dimension-preselected { stroke: var(--drawing-hover); stroke-width: 2.4; }
 .drawing-line-entity.is-geometry-preselected,
 .drawing-line-entity.is-geometry-dragging { stroke: var(--drawing-hover); stroke-width: 2.6; }
-.drawing-geometry-point-preselection, .drawing-geometry-point-selected { fill: #f8fafc; stroke: #0e7490; stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
+.drawing-geometry-point-preselection, .drawing-geometry-point-selected { fill: #0e7490; stroke: none; vector-effect: non-scaling-stroke; pointer-events: none; }
 .drawing-geometry-point-selected { fill: var(--drawing-selected-point); stroke: none; }
 .drawing-dimension-point-preselection, .drawing-dimension-point-selected { fill: #f8fafc; stroke: #06b6d4; stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
 .drawing-dimension-point-selected { fill: #06b6d4; stroke: #f8fafc; }
