@@ -944,15 +944,15 @@ button:disabled {
   stroke-opacity: 1;
 }
 
-.drawing-line-entity.is-inference-target {
-  stroke: var(--drawing-inference);
-  stroke-width: 3.5;
-  pointer-events: none;
-}
-
 .drawing-line-entity.geometry-free { stroke: var(--drawing-line-free); }
 .drawing-line-entity.geometry-constrained { stroke: var(--drawing-line-constrained); }
 .drawing-line-entity.geometry-fully-locked { stroke: var(--drawing-line-fully-locked); }
+
+.drawing-line-entity.is-inference-target {
+  stroke: var(--drawing-inference);
+  stroke-width: 1.8;
+  pointer-events: none;
+}
 
 .drawing-line-preview {
   stroke: var(--drawing-inference);
@@ -1017,10 +1017,16 @@ button:disabled {
 .drawing-line-cursor-endpoint { fill: #0e7490; stroke: none; }
 
 .drawing-line-cursor-perpendicular,
-.drawing-line-cursor-parallel {
+.drawing-line-cursor-parallel,
+.drawing-line-relation-preview {
   fill: none;
   stroke: var(--drawing-inference);
   stroke-width: 1.4px;
+}
+
+.drawing-line-relation-preview {
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
 }
 
 .drawing-line-cursor-alignment {

@@ -55,6 +55,7 @@ export const resolveLinePreviewPoint = (
 export type LineToolInteraction = Readonly<{
   start: DrawingPoint | null;
   startPointId: string | null;
+  startLineId: string | null;
   rawPointerPoint: DrawingPoint | null;
   effectivePreviewPoint: DrawingPoint | null;
   snappedAngleDegrees: number | null;
@@ -66,6 +67,7 @@ export type LineToolInteraction = Readonly<{
 export const EMPTY_LINE_INTERACTION: LineToolInteraction = {
   start: null,
   startPointId: null,
+  startLineId: null,
   rawPointerPoint: null,
   effectivePreviewPoint: null,
   snappedAngleDegrees: null,
@@ -389,8 +391,8 @@ export const applyLineClick = (
 };
 
 /** Commits a point already resolved by global/tool arbitration without reapplying angular inference. */
-export const applyResolvedLineClick = (interaction: LineToolInteraction, point: DrawingPoint, createId: () => string, pointId: string | null = null): LineClickResult => {
-  if (!interaction.start) return { interaction: { ...EMPTY_LINE_INTERACTION, start: point, startPointId: pointId, rawPointerPoint: point, effectivePreviewPoint: point }, entity: null };
+export const applyResolvedLineClick = (interaction: LineToolInteraction, point: DrawingPoint, createId: () => string, pointId: string | null = null, lineId: string | null = null): LineClickResult => {
+  if (!interaction.start) return { interaction: { ...EMPTY_LINE_INTERACTION, start: point, startPointId: pointId, startLineId: lineId, rawPointerPoint: point, effectivePreviewPoint: point }, entity: null };
   if (Math.hypot(point.x - interaction.start.x, point.y - interaction.start.y) <= LINE_ZERO_LENGTH_TOLERANCE_MM) return { interaction, entity: null };
   const id = createId();
   return {
@@ -408,6 +410,7 @@ export const appendEntityToActiveSketch = (
   perpendicularLineId: string | null = null,
   acceptedEndpointSnaps: Readonly<{ startPointId?: string; endPointId?: string }> | null = null,
   parallelLineId: string | null = null,
+  acceptedLineBodySnaps: Readonly<{ startLineId?: string; endLineId?: string }> | null = null,
 ): DrawingDocumentV2 => {
   const activeSketch = document.sketches[document.activeSketchId];
   if (!activeSketch || activeSketch.entities[entity.id]) return document;
@@ -446,7 +449,17 @@ export const appendEntityToActiveSketch = (
     return [{ id: `coincident:${pointPair[0]}:${pointPair[1]}`, kind: 'COINCIDENT' as const, variant: 'point-point' as const,
       references: pointPair.map((pointId) => ({ kind: 'sketchPoint' as const, pointId })) as [{ kind: 'sketchPoint'; pointId: string }, { kind: 'sketchPoint'; pointId: string }] }];
   });
-  const addedConstraints = [automaticConstraint, perpendicularConstraint, parallelConstraint, ...coincidentConstraints].filter(Boolean) as DrawingGeometricConstraint[];
+  const pointOnLineConstraints = ([['startLineId', startPointId], ['endLineId', endPointId]] as const).flatMap(([endpoint, pointId]) => {
+    const targetLineId = acceptedLineBodySnaps?.[endpoint];
+    const targetLine = targetLineId ? activeSketch.entities[targetLineId] : null;
+    if (!targetLine || targetLine.type !== 'line' || targetLine.startPointId === pointId || targetLine.endPointId === pointId) return [];
+    const duplicate = Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'COINCIDENT'
+      && constraint.variant === 'point-linear-support' && constraint.references[0].pointId === pointId
+      && constraint.references[1].entityId === targetLineId);
+    return duplicate ? [] : [{ id: `coincident:${pointId}:support:${targetLineId}`, kind: 'COINCIDENT' as const,
+      variant: 'point-linear-support' as const, references: [{ kind: 'sketchPoint' as const, pointId }, { kind: 'entity' as const, entityId: targetLineId }] as const }];
+  });
+  const addedConstraints = [automaticConstraint, perpendicularConstraint, parallelConstraint, ...coincidentConstraints, ...pointOnLineConstraints].filter(Boolean) as DrawingGeometricConstraint[];
   return {
     ...document,
     sketches: {

@@ -65,6 +65,8 @@ assert.match(css, /\.drawing-line-entity\s*\{[^}]*stroke-opacity:\s*1;/s, 'commi
 assert.match(css, /\.drawing-line-entity\.geometry-free \{ stroke: var\(--drawing-line-free\); \}/i);
 assert.match(css, /\.drawing-line-entity\.geometry-constrained \{ stroke: var\(--drawing-line-constrained\); \}/i);
 assert.match(css, /\.drawing-line-entity\.geometry-fully-locked \{ stroke: var\(--drawing-line-fully-locked\); \}/i);
+assert.match(css, /\.drawing-line-entity\.is-inference-target \{[^}]*stroke: var\(--drawing-inference\);[^}]*stroke-width: 1\.8;/s,
+  'transient relation target overrides solver color at the normal Line stroke weight');
 assert.match(css, /\.drawing-line-entity\.is-geometry-selected \{ stroke: var\(--drawing-hover\); stroke-width: 2\.6; \}/, 'selected interaction blue persistently overrides the permanent solver color');
 assert.match(css, /--drawing-hover:\s*#06b6d4;[\s\S]*\.drawing-line-entity\.is-geometry-preselected,[\s\S]*\.drawing-line-entity\.is-geometry-dragging \{ stroke: var\(--drawing-hover\); stroke-width: 2\.6; \}/, 'light-blue hover temporarily overrides every permanent state through one semantic token');
 assert.match(css, /\.drawing-line-entity\.is-dimension-preselected \{ stroke: var\(--drawing-hover\); stroke-width: 2\.4; \}/, 'Dimension preselection uses only the shared temporary hover authority');
@@ -74,10 +76,10 @@ const committedLineStrokeRules = [...css.matchAll(/([^{}]*\.drawing-line-entity[
   .filter(([, , declarations]) => /(?:^|;)\s*stroke\s*:/.test(declarations))
   .map(([, selector, declarations]) => ({ selector: selector.trim(), stroke: declarations.match(/(?:^|;)\s*stroke\s*:\s*([^;]+)/)?.[1].trim() }));
 assert.deepEqual(committedLineStrokeRules, [
-  { selector: '.drawing-line-entity.is-inference-target', stroke: 'var(--drawing-inference)' },
   { selector: '.drawing-line-entity.geometry-free', stroke: 'var(--drawing-line-free)' },
   { selector: '.drawing-line-entity.geometry-constrained', stroke: 'var(--drawing-line-constrained)' },
   { selector: '.drawing-line-entity.geometry-fully-locked', stroke: 'var(--drawing-line-fully-locked)' },
+  { selector: '.drawing-line-entity.is-inference-target', stroke: 'var(--drawing-inference)' },
   { selector: '.drawing-line-entity.is-geometry-selected', stroke: 'var(--drawing-hover)' },
   { selector: '.drawing-line-entity.is-dimension-preselected', stroke: 'var(--drawing-hover)' },
   { selector: '.drawing-line-entity.is-geometry-preselected,\n.drawing-line-entity.is-geometry-dragging', stroke: 'var(--drawing-hover)' },
