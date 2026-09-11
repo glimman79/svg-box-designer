@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/drawing-coincident/drawingTypes.js';
 import { appendEntityToActiveSketch } from '../.test-build/drawing-coincident/drawingLineTool.js';
-import { addCoincidentConstraint, addPointOnLinearSupportConstraint, canonicalCoincidentPointPair, createCoincidentConstraint, createPointOnLinearSupportConstraint, deriveCoincidentMarkers, POINT_CONSTRAINT_MARKER_SIZE_PX } from '../.test-build/drawing-coincident/drawingCoincidentConstraint.js';
+import { addCoincidentConstraint, addPointOnLinearSupportConstraint, canonicalCoincidentPointPair, createCoincidentConstraint, createPointOnLinearSupportConstraint, deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_SIZE_PX } from '../.test-build/drawing-coincident/drawingCoincidentConstraint.js';
 import { analyzeDrawingConstraints, constraintJacobianRow, geometricConstraintEquations } from '../.test-build/drawing-coincident/drawingConstraintAnalysis.js';
 import { solveDrawingComponentDrag, verifyDrawingConstraints } from '../.test-build/drawing-coincident/drawingConstraintSolver.js';
 import { deleteGeometricConstraint } from '../.test-build/drawing-coincident/drawingParallelMarker.js';
@@ -69,6 +69,7 @@ test('one square marker is screen-stably offset beside its coincident point and 
   assert.deepEqual({ x: m1.x - point.x, y: m1.y - point.y }, { x: 12, y: -12 });
   assert.deepEqual({ x: (m2.x - point.x) * 2, y: (m2.y - point.y) * 2 }, { x: 12, y: -12 });
   assert.equal(POINT_CONSTRAINT_MARKER_SIZE_PX, 8);
+  assert.deepEqual(deriveSelectedCoincidentReferenceMarker(document.sketches['sketch-1'], m1.constraintId), { constraintId: m1.constraintId, x: 20, y: 5 }, 'selected point/point relation derives one temporary indication at its other Point');
   const before = document, transaction = transactDrawingDocument(EMPTY_DRAWING_HISTORY, document, (current) => deleteGeometricConstraint(current, m1.constraintId));
   document = transaction.document; assert.equal(Object.keys(document.sketches['sketch-1'].points).length, 4); assert.equal(Object.keys(document.sketches['sketch-1'].entities).length, 2);
   assert.deepEqual(document.sketches['sketch-1'].points, before.sketches['sketch-1'].points);
@@ -92,6 +93,8 @@ test('point/linear-support Coincident is one scalar equation, remains outside th
   const [marker] = deriveCoincidentMarkers(solved, 2), point = solved.points['carrier-p1'];
   assert.deepEqual({ x: marker.x - point.x, y: marker.y - point.y }, { x: 6, y: -6 });
   assert.equal(Object.keys(solved.points).length, 4, 'no hidden point was introduced');
+  assert.deepEqual(deriveSelectedCoincidentReferenceMarker(solved, relation.id), { constraintId: relation.id, x: -40, y: 0 }, 'selected reference uses the infinite support projection without clamping');
+  assert.equal(deriveSelectedCoincidentReferenceMarker(solved, null), null, 'deselection removes derived presentation');
 });
 
 test('any selected semantic edge can define support without an edge-count assumption', () => {
@@ -122,5 +125,6 @@ test('workspace exposes selectable CAD-blue Coincident shapes and keyboard const
   const workspace = readFileSync(new URL('../src/app/DrawingWorkspace.tsx', import.meta.url), 'utf8'), css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
   assert.match(workspace, /drawing-coincident-marker/); assert.match(workspace, /Delete.*Backspace/s); assert.match(workspace, /setSelectedGeometricConstraintId\(marker.constraintId\)/);
   assert.match(workspace, /<rect className="drawing-coincident-marker-shape"/);
+  assert.match(workspace, /drawing-coincident-reference-marker drawing-coincident-marker-shape/);
   assert.match(css, /\.drawing-coincident-marker-shape \{[^}]*stroke: var\(--drawing-geometric-constraint\)/);
 });

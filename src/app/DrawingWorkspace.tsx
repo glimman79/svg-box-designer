@@ -18,7 +18,7 @@ import { pointIdForLineEndpoint, resolveLine } from './drawingTopology.js';
 import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
 import { deleteGeometricConstraint, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
-import { deriveCoincidentMarkers, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
+import { deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
 import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, initialConstraintsPanelPosition, toggleDrawingGeometrySelection, type DrawingSelectionRef } from './drawingConstraintsTool.js';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
@@ -81,6 +81,8 @@ const formatViewBox = ({ x, y, width, height }: DrawingViewBox) => `${x} ${y} ${
 export const DRAWING_SKETCH_POINT_HIT_RADIUS_PX = 7;
 /** Compact screen-space interaction marker radius; intentionally independent from the Point hit target. */
 export const DRAWING_INTERACTION_POINT_RADIUS_PX = 2.5;
+export const DRAWING_LINE_HOVER_MARKER_SIZE_PX = 3;
+export const DRAWING_POINT_HOVER_MARKER_SIZE_PX = 5;
 
 export const drawingGeometrySelectionClass = (selection: readonly DrawingSelectionRef[], target: DrawingSelectionRef) =>
   selection.some((ref) => ref.kind === target.kind && (ref.kind === 'line'
@@ -754,6 +756,7 @@ export function DrawingWorkspace({
   const parallelMarkers = activeSketch ? deriveParallelMarkers(activeSketch, pixelsPerMm) : [];
   const rightAngleMarkers = activeSketch ? deriveRightAngleMarkers(activeSketch, pixelsPerMm) : [];
   const coincidentMarkers = activeSketch ? deriveCoincidentMarkers(activeSketch, pixelsPerMm) : [];
+  const selectedCoincidentReferenceMarker = activeSketch ? deriveSelectedCoincidentReferenceMarker(activeSketch, selectedGeometricConstraintId) : null;
   const labelInterval = getAxisLabelInterval(gridSpacing, pixelsPerMm);
   const xLabelValues = getVisibleAxisValues(viewBox.x, viewBox.x + viewBox.width, labelInterval);
   const yLabelValues = getVisibleAxisValues(viewBox.y, viewBox.y + viewBox.height, labelInterval);
@@ -841,7 +844,7 @@ export function DrawingWorkspace({
               ))}
               {activeSketch && selectedGeometry.flatMap((ref) => ref.kind === 'point' && activeSketch.points[ref.pointId]
                 ? [<circle key={ref.pointId} className="drawing-geometry-point-selected" cx={activeSketch.points[ref.pointId].x} cy={activeSketch.points[ref.pointId].y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} />] : [])}
-              {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = geometryPreselection.pointId ? activeSketch.points[geometryPreselection.pointId] : resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); return p ? <circle className="drawing-geometry-point-preselection" cx={p.x} cy={p.y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} /> : null; })()}
+              {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = geometryPreselection.pointId ? activeSketch.points[geometryPreselection.pointId] : resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); const size = DRAWING_POINT_HOVER_MARKER_SIZE_PX / pixelsPerMm; return p ? <rect className="drawing-geometry-point-preselection" x={p.x - size / 2} y={p.y - size / 2} width={size} height={size} /> : null; })()}
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: dimensionPreselection.lineId, point: dimensionPreselection.point }); return p ? <circle className="drawing-dimension-point-preselection" cx={p.x} cy={p.y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} /> : null; })()}
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'origin' && <circle className="drawing-dimension-point-preselection drawing-origin-preselection" cx={0} cy={0} r={6 / pixelsPerMm} />}
               {dimensionTool.phase === 'waitingForSecondTarget' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, dimensionTool.first); return p ? <circle className="drawing-dimension-point-selected" cx={p.x} cy={p.y} r={6 / pixelsPerMm} /> : null; })()}
@@ -888,6 +891,7 @@ export function DrawingWorkspace({
                   <rect className="drawing-coincident-marker-shape" x={marker.x - size / 2} y={marker.y - size / 2} width={size} height={size} />
                 </g>;
               })}
+              {selectedCoincidentReferenceMarker && (() => { const size = POINT_CONSTRAINT_MARKER_SIZE_PX / pixelsPerMm; return <rect className="drawing-coincident-reference-marker drawing-coincident-marker-shape" data-constraint-reference-id={selectedCoincidentReferenceMarker.constraintId} x={selectedCoincidentReferenceMarker.x - size / 2} y={selectedCoincidentReferenceMarker.y - size / 2} width={size} height={size} />; })()}
             </g>
             <g className="drawing-dimension-layer" aria-label="Drawing dimensions">
               {[...displayedDimensions, ...(previewDimension ? [previewDimension] : [])].map((dimension) => {
@@ -984,8 +988,8 @@ export function DrawingWorkspace({
                 <line className="drawing-line-cursor-arm" data-arm="top" x1="0" y1="-22" x2="0" y2="-7" />
                 <line className="drawing-line-cursor-arm" data-arm="bottom" x1="0" y1="7" x2="0" y2="22" />
                 {lineCursor.snap.type === 'none' && <circle className="drawing-line-cursor-dot" cx="0" cy="0" r="2.5" />}
-                {lineCursor.snap.type === 'endpoint' && <circle className="drawing-line-cursor-endpoint" cx="0" cy="0" r="5.5" />}
-                {lineCursor.snap.type === 'line' && <path className="drawing-line-cursor-line" d="M 0 -6 L 6 5 L -6 5 Z" />}
+                {lineCursor.snap.type === 'endpoint' && <rect className="drawing-line-cursor-endpoint" x={-DRAWING_POINT_HOVER_MARKER_SIZE_PX / 2} y={-DRAWING_POINT_HOVER_MARKER_SIZE_PX / 2} width={DRAWING_POINT_HOVER_MARKER_SIZE_PX} height={DRAWING_POINT_HOVER_MARKER_SIZE_PX} />}
+                {lineCursor.snap.type === 'line' && <rect className="drawing-line-cursor-line" x={-DRAWING_LINE_HOVER_MARKER_SIZE_PX / 2} y={-DRAWING_LINE_HOVER_MARKER_SIZE_PX / 2} width={DRAWING_LINE_HOVER_MARKER_SIZE_PX} height={DRAWING_LINE_HOVER_MARKER_SIZE_PX} />}
                 {lineCursor.snap.type === 'alignment' && <rect className="drawing-line-cursor-alignment" x="-5" y="-5" width="10" height="10" />}
                 {lineCursor.snap.type === 'perpendicular' && <path className="drawing-line-cursor-perpendicular" d="M -5 5 L -5 -5 L 5 -5" />}
                 {lineCursor.lineReference?.relation === 'perpendicular' && lineCursor.snap.type !== 'perpendicular' && <path className="drawing-line-cursor-perpendicular" d="M -5 5 L -5 -5 L 5 -5" />}

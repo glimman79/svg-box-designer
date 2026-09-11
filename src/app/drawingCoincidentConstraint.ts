@@ -53,6 +53,7 @@ export const POINT_CONSTRAINT_MARKER_SIZE_PX = 8;
 export const POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX = 9;
 export const POINT_CONSTRAINT_MARKER_OFFSET_PX = 12;
 export type DrawingPointConstraintMarker = Readonly<{ id: string; constraintId: string; pointIds: readonly string[]; x: number; y: number }>;
+export type DrawingCoincidentReferenceMarker = Readonly<{ constraintId: string; x: number; y: number }>;
 
 /** Generic point-associated placement keeps glyph dimensions and offset stable on screen. */
 export const deriveCoincidentMarkers = (sketch: DrawingSketchV2, pixelsPerModelUnit = 1): DrawingPointConstraintMarker[] =>
@@ -65,3 +66,21 @@ export const deriveCoincidentMarkers = (sketch: DrawingSketchV2, pixelsPerModelU
     const offset = POINT_CONSTRAINT_MARKER_OFFSET_PX / pixelsPerModelUnit;
     return [{ id: constraint.id, constraintId: constraint.id, pointIds, x: points[0].x + offset, y: points[0].y - offset }];
   });
+
+/** Presentation-only target for inspecting one selected Coincident relation. */
+export const deriveSelectedCoincidentReferenceMarker = (sketch: DrawingSketchV2, constraintId: string | null): DrawingCoincidentReferenceMarker | null => {
+  if (!constraintId) return null;
+  const constraint = (sketch.geometricConstraints ?? {})[constraintId];
+  if (!constraint || constraint.kind !== 'COINCIDENT') return null;
+  if (constraint.variant !== 'point-linear-support') {
+    const point = sketch.points[constraint.references[1].pointId];
+    return point ? { constraintId, x: point.x, y: point.y } : null;
+  }
+  const point = sketch.points[constraint.references[0].pointId], line = sketch.entities[constraint.references[1].entityId];
+  const a = line && sketch.points[line.startPointId], b = line && sketch.points[line.endPointId];
+  if (!point || !line || line.type !== 'line' || !a || !b) return null;
+  const dx = b.x - a.x, dy = b.y - a.y, lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared <= DRAWING_MODEL_SPACE_TOLERANCE * DRAWING_MODEL_SPACE_TOLERANCE) return null;
+  const parameter = ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared;
+  return { constraintId, x: a.x + parameter * dx, y: a.y + parameter * dy };
+};
