@@ -1,4 +1,5 @@
 import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingCoincidentConstraint, type DrawingDocumentV2, type DrawingSketchV2 } from './drawingTypes.js';
+import { deriveLineConstraintMarkerCandidates, layoutLineConstraintMarkers } from './drawingParallelMarker.js';
 
 export const canonicalCoincidentPointPair = (pointAId: string, pointBId: string): readonly [string, string] | null =>
   pointAId === pointBId ? null : [...([pointAId, pointBId] as const)].sort((a, b) => a.localeCompare(b)) as [string, string];
@@ -68,7 +69,7 @@ export const deriveCoincidentMarkers = (sketch: DrawingSketchV2, pixelsPerModelU
   });
 
 /** Presentation-only target for inspecting one selected Coincident relation. */
-export const deriveSelectedCoincidentReferenceMarker = (sketch: DrawingSketchV2, constraintId: string | null): DrawingCoincidentReferenceMarker | null => {
+export const deriveSelectedCoincidentReferenceMarker = (sketch: DrawingSketchV2, constraintId: string | null, pixelsPerModelUnit = 1): DrawingCoincidentReferenceMarker | null => {
   if (!constraintId) return null;
   const constraint = (sketch.geometricConstraints ?? {})[constraintId];
   if (!constraint || constraint.kind !== 'COINCIDENT') return null;
@@ -76,11 +77,9 @@ export const deriveSelectedCoincidentReferenceMarker = (sketch: DrawingSketchV2,
     const point = sketch.points[constraint.references[1].pointId];
     return point ? { constraintId, x: point.x, y: point.y } : null;
   }
-  const point = sketch.points[constraint.references[0].pointId], line = sketch.entities[constraint.references[1].entityId];
-  const a = line && sketch.points[line.startPointId], b = line && sketch.points[line.endPointId];
-  if (!point || !line || line.type !== 'line' || !a || !b) return null;
-  const dx = b.x - a.x, dy = b.y - a.y, lengthSquared = dx * dx + dy * dy;
-  if (lengthSquared <= DRAWING_MODEL_SPACE_TOLERANCE * DRAWING_MODEL_SPACE_TOLERANCE) return null;
-  const parameter = ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared;
-  return { constraintId, x: a.x + parameter * dx, y: a.y + parameter * dy };
+  const lineId = constraint.references[1].entityId;
+  const candidate = { id: `${constraintId}:selected-reference`, constraintId, lineId, label: '' };
+  const markers = layoutLineConstraintMarkers(sketch, [...deriveLineConstraintMarkerCandidates(sketch), candidate], pixelsPerModelUnit);
+  const marker = markers.find(({ id }) => id === candidate.id);
+  return marker ? { constraintId, x: marker.x, y: marker.y } : null;
 };

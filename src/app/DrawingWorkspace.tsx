@@ -401,7 +401,15 @@ export function DrawingWorkspace({
       const hit = explicitPointId || explicitLineId ? null : resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
       const matrix = svgRef.current?.getScreenCTM();
       const startModel = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
-      if ((!hit && !explicitPointId && !explicitLineId) || !startModel) { if (!event.ctrlKey && !constraintsPanelOpen) setSelectedGeometry([]); return; }
+      if (!hit && !explicitPointId && !explicitLineId) {
+        if (!event.ctrlKey && !constraintsPanelOpen) {
+          setSelectedGeometry([]);
+          setSelectedDimensionId(null);
+          setSelectedGeometricConstraintId(null);
+        }
+        return;
+      }
+      if (!startModel) return;
       setDimensionDrag(null);
       const target: DrawingGeometryTarget | null = explicitPointId
         ? { kind: 'point', pointId: explicitPointId }
@@ -756,7 +764,7 @@ export function DrawingWorkspace({
   const parallelMarkers = activeSketch ? deriveParallelMarkers(activeSketch, pixelsPerMm) : [];
   const rightAngleMarkers = activeSketch ? deriveRightAngleMarkers(activeSketch, pixelsPerMm) : [];
   const coincidentMarkers = activeSketch ? deriveCoincidentMarkers(activeSketch, pixelsPerMm) : [];
-  const selectedCoincidentReferenceMarker = activeSketch ? deriveSelectedCoincidentReferenceMarker(activeSketch, selectedGeometricConstraintId) : null;
+  const selectedCoincidentReferenceMarker = activeSketch ? deriveSelectedCoincidentReferenceMarker(activeSketch, selectedGeometricConstraintId, pixelsPerMm) : null;
   const labelInterval = getAxisLabelInterval(gridSpacing, pixelsPerMm);
   const xLabelValues = getVisibleAxisValues(viewBox.x, viewBox.x + viewBox.width, labelInterval);
   const yLabelValues = getVisibleAxisValues(viewBox.y, viewBox.y + viewBox.height, labelInterval);

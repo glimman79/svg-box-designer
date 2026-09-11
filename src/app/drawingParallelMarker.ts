@@ -28,7 +28,7 @@ export type DrawingRightAngleMarker = Readonly<{
   p3: Readonly<{ x: number; y: number }>;
 }>;
 
-type LineMarkerCandidate = Readonly<{
+export type LineMarkerCandidate = Readonly<{
   id: string;
   constraintId: string;
   lineId: string;
@@ -66,19 +66,23 @@ export const layoutLineConstraintMarkers = (
   });
 };
 
-/** Derive presentation-only markers beside their finite Lines. */
-export const deriveGeometricConstraintMarkers = (sketch: DrawingSketchV2, pixelsPerModelUnit = 1): DrawingGeometricConstraintMarker[] => {
+/** Ordered semantic candidates consumed by the shared Line marker layout. */
+export const deriveLineConstraintMarkerCandidates = (sketch: DrawingSketchV2): LineMarkerCandidate[] => {
   const order = new Map((sketch.geometricConstraintOrder ?? []).map((id, index) => [id, index]));
   const constraints = Object.values(sketch.geometricConstraints ?? {}).sort((a, b) =>
     (order.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.id) ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
-  const candidates = constraints.filter((constraint) => constraint.kind !== 'PERPENDICULAR' && constraint.kind !== 'COINCIDENT').flatMap((constraint) =>
+  return constraints.filter((constraint) => constraint.kind !== 'PERPENDICULAR' && constraint.kind !== 'COINCIDENT').flatMap((constraint) =>
     constraint.references.map(({ entityId }, index) => ({
-        id: `${constraint.id}:${index}`,
-        constraintId: constraint.id,
-        lineId: entityId,
-        label: constraint.kind === 'PARALLEL' ? '∥' : constraint.kind === 'HORIZONTAL' ? 'H' : 'V',
+      id: `${constraint.id}:${index}`,
+      constraintId: constraint.id,
+      lineId: entityId,
+      label: constraint.kind === 'PARALLEL' ? '∥' : constraint.kind === 'HORIZONTAL' ? 'H' : 'V',
     })));
-  return layoutLineConstraintMarkers(sketch, candidates, pixelsPerModelUnit);
+};
+
+/** Derive presentation-only markers beside their finite Lines. */
+export const deriveGeometricConstraintMarkers = (sketch: DrawingSketchV2, pixelsPerModelUnit = 1): DrawingGeometricConstraintMarker[] => {
+  return layoutLineConstraintMarkers(sketch, deriveLineConstraintMarkerCandidates(sketch), pixelsPerModelUnit);
 };
 
 const unitFrom = (from: { x: number; y: number }, to: { x: number; y: number }) => {
