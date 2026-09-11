@@ -39,6 +39,13 @@ export const constraintEquation = (sketch: DrawingSketchV2, dimension: DrawingDi
 };
 
 export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricConstraint: DrawingGeometricConstraint): DrawingConstraintEquation | null => {
+  if (geometricConstraint.kind === 'MIDPOINT') {
+    const pointId = geometricConstraint.references[0].pointId, line = sketch.entities[geometricConstraint.references[1].entityId];
+    if (!sketch.points[pointId] || !line || line.startPointId === line.endPointId || pointId === line.startPointId || pointId === line.endPointId) return null;
+    const a = sketch.points[line.startPointId], b = sketch.points[line.endPointId];
+    if (!a || !b || Math.hypot(b.x - a.x, b.y - a.y) <= DRAWING_CONSTRAINT_RANK_TOLERANCE.absolute) return null;
+    return { geometricConstraint, pointKeys: [pointId, line.startPointId, line.endPointId], coordinateAxis: 'x' };
+  }
   if (geometricConstraint.kind === 'COINCIDENT') {
     if (geometricConstraint.variant === 'point-linear-support') {
       const pointId = geometricConstraint.references[0].pointId, line = sketch.entities[geometricConstraint.references[1].entityId];
@@ -63,7 +70,7 @@ export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricCo
 /** Point/point contributes two axes; point/support contributes one collinearity equation. */
 export const geometricConstraintEquations = (sketch: DrawingSketchV2, constraint: DrawingGeometricConstraint): DrawingConstraintEquation[] => {
   const first = geometricConstraintEquation(sketch, constraint);
-  return !first ? [] : constraint.kind === 'COINCIDENT' && constraint.variant !== 'point-linear-support' ? [first, { ...first, coordinateAxis: 'y' }] : [first];
+  return !first ? [] : constraint.kind === 'MIDPOINT' || constraint.kind === 'COINCIDENT' && constraint.variant !== 'point-linear-support' ? [first, { ...first, coordinateAxis: 'y' }] : [first];
 };
 
 /** Signed normal distance to AB's infinite support; no segment parameter or clamp exists. */
@@ -178,6 +185,10 @@ export type DrawingPointMobilityAnalysis = Readonly<{
 const coordinate = (sketch: DrawingSketchV2, key: string): DrawingPoint => key === DRAWING_ORIGIN_CONSTRAINT_KEY ? { x: 0, y: 0 } : sketch.points[key];
 export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: DrawingConstraintEquation, pointOrder: readonly string[]): number[] | null => {
   const row = Array(pointOrder.length * 2).fill(0), set = (key: string, gx: number, gy: number) => { const i = pointOrder.indexOf(key); if (i >= 0) { row[i * 2] += gx; row[i * 2 + 1] += gy; } };
+  if (equation.geometricConstraint?.kind === 'MIDPOINT') {
+    const [p, a, b] = equation.pointKeys, x = equation.coordinateAxis === 'x';
+    set(p, x ? 1 : 0, x ? 0 : 1); set(a, x ? -.5 : 0, x ? 0 : -.5); set(b, x ? -.5 : 0, x ? 0 : -.5); return row;
+  }
   if (equation.geometricConstraint?.kind === 'COINCIDENT') {
     if (equation.geometricConstraint.variant === 'point-linear-support') {
       const [p, a, b] = equation.pointKeys, result = pointOnLinearSupportAndGradient(coordinate(sketch, p), coordinate(sketch, a), coordinate(sketch, b));

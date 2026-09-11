@@ -25,7 +25,9 @@ export const removeLineAndOrphans = (sketch: DrawingSketchV2, lineId: string): D
   const removedPointIds = new Set(Object.keys(sketch.points).filter((id) => !points[id]));
   const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, dimension]) => dimension.references.every((reference) =>
     reference.kind === 'datum' || reference.kind === 'sketchPoint' ? reference.kind === 'datum' || !removedPointIds.has(reference.pointId) : reference.entityId !== lineId)));
-  const geometricConstraints = Object.fromEntries(Object.entries(sketch.geometricConstraints ?? {}).filter(([, constraint]) => constraint.kind === 'COINCIDENT'
+  const geometricConstraints = Object.fromEntries(Object.entries(sketch.geometricConstraints ?? {}).filter(([, constraint]) => constraint.kind === 'MIDPOINT'
+    ? !removedPointIds.has(constraint.references[0].pointId) && constraint.references[1].entityId !== lineId
+    : constraint.kind === 'COINCIDENT'
     ? constraint.variant === 'point-linear-support'
       ? !removedPointIds.has(constraint.references[0].pointId) && constraint.references[1].entityId !== lineId
       : constraint.references.every(({ pointId }) => !removedPointIds.has(pointId))
@@ -53,6 +55,12 @@ export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTop
       const line = sketch.entities[reference.entityId]; if (!line || (reference.kind === 'point' && !sketch.points[pointIdForLineEndpoint(line, reference.point)])) errors.push(`Dimension reference cannot resolve: ${dimension.id}`);
     }
     for (const constraint of Object.values(sketch.geometricConstraints ?? {})) {
+      if (constraint.kind === 'MIDPOINT') {
+        const [point, edge] = constraint.references, line = sketch.entities[edge.entityId];
+        const a = line && sketch.points[line.startPointId], b = line && sketch.points[line.endPointId];
+        if (!sketch.points[point.pointId] || !line || !a || !b || point.pointId === line.startPointId || point.pointId === line.endPointId || Math.hypot(b.x - a.x, b.y - a.y) <= 1e-9) errors.push(`Geometric constraint reference cannot resolve: ${constraint.id}`);
+        continue;
+      }
       if (constraint.kind === 'COINCIDENT') {
         if (constraint.variant === 'point-linear-support') {
           const [point, edge] = constraint.references;

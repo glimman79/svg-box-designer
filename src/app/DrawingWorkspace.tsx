@@ -862,14 +862,19 @@ export function DrawingWorkspace({
                 const selected = marker.constraintId === selectedGeometricConstraintId;
                 const hovered = marker.constraintId === hoveredGeometricConstraintId;
                 const isParallel = marker.label === '∥';
+                const isMidpoint = marker.label === 'MIDPOINT';
                 const parallelStrokeHalfLength = GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX / 2 / pixelsPerMm;
                 const parallelStrokeHalfGap = 2 / pixelsPerMm;
-                return <g key={marker.id} className={`drawing-geometric-constraint-marker${isParallel ? ' drawing-parallel-marker' : ''}${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}`} data-constraint-id={marker.constraintId} data-line-id={marker.lineId}
+                const midpointHalfLength = 5.5 / pixelsPerMm, midpointSquareSize = 3 / pixelsPerMm;
+                return <g key={marker.id} className={`drawing-geometric-constraint-marker${isParallel ? ' drawing-parallel-marker' : ''}${isMidpoint ? ' drawing-midpoint-marker' : ''}${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}`} data-constraint-id={marker.constraintId} data-line-id={marker.lineId}
                   onPointerEnter={() => setHoveredGeometricConstraintId(marker.constraintId)}
                   onPointerLeave={() => setHoveredGeometricConstraintId((current) => current === marker.constraintId ? null : current)}
                   onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry([]); }}>
                   <circle className="drawing-geometric-constraint-marker-hit drawing-interactive-hit" cx={marker.x} cy={marker.y} r={9 / pixelsPerMm} />
-                  {isParallel ? <>
+                  {isMidpoint ? <>
+                    <line className="drawing-midpoint-marker-shape" x1={marker.x - marker.ux! * midpointHalfLength} y1={marker.y - marker.uy! * midpointHalfLength} x2={marker.x + marker.ux! * midpointHalfLength} y2={marker.y + marker.uy! * midpointHalfLength} stroke="currentColor" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                    <rect className="drawing-midpoint-marker-shape" x={marker.x - midpointSquareSize / 2} y={marker.y - midpointSquareSize / 2} width={midpointSquareSize} height={midpointSquareSize} fill="white" stroke="currentColor" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                  </> : isParallel ? <>
                     <line className="drawing-parallel-marker-stroke" x1={marker.x - parallelStrokeHalfGap} y1={marker.y - parallelStrokeHalfLength} x2={marker.x - parallelStrokeHalfGap} y2={marker.y + parallelStrokeHalfLength} fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
                     <line className="drawing-parallel-marker-stroke" x1={marker.x + parallelStrokeHalfGap} y1={marker.y - parallelStrokeHalfLength} x2={marker.x + parallelStrokeHalfGap} y2={marker.y + parallelStrokeHalfLength} fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
                   </> : <text x={marker.x} y={marker.y} textAnchor="middle" dominantBaseline="central" fill="currentColor" style={{ fontSize: GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX / pixelsPerMm }}>{marker.label}</text>}
