@@ -53,8 +53,32 @@ export type CadCursorPresentation = Readonly<{
   yGuideReference: CoordinatePoint | null;
   sameAxisReference: CoordinatePoint | null;
   lineReference: Readonly<{ relation: 'parallel' | 'perpendicular'; targetLineId: string }> | null;
+  perpendicularPreview: readonly [CoordinatePoint, CoordinatePoint, CoordinatePoint] | null;
   pointReferenceGuide: Readonly<{ start: CoordinatePoint; end: CoordinatePoint }> | null;
 }> | null;
+
+/** Derives a screen-stable right-angle corner from two infinite supports without creating document geometry. */
+export const derivePerpendicularPreview = (
+  authoredStart: CoordinatePoint,
+  authoredEnd: CoordinatePoint,
+  targetStart: CoordinatePoint,
+  targetEnd: CoordinatePoint,
+  size = 9,
+): readonly [CoordinatePoint, CoordinatePoint, CoordinatePoint] | null => {
+  const ax = authoredEnd.x - authoredStart.x, ay = authoredEnd.y - authoredStart.y;
+  const bx = targetEnd.x - targetStart.x, by = targetEnd.y - targetStart.y;
+  const denominator = ax * by - ay * bx;
+  const aLength = Math.hypot(ax, ay), bLength = Math.hypot(bx, by);
+  if (Math.abs(denominator) < 1e-9 || aLength < 1e-9 || bLength < 1e-9) return null;
+  const t = ((targetStart.x - authoredStart.x) * by - (targetStart.y - authoredStart.y) * bx) / denominator;
+  const meeting = { x: authoredStart.x + t * ax, y: authoredStart.y + t * ay };
+  const au = { x: ax / aLength, y: ay / aLength }, bu = { x: bx / bLength, y: by / bLength };
+  const towardAuthored = (authoredEnd.x - meeting.x) * au.x + (authoredEnd.y - meeting.y) * au.y < 0 ? -1 : 1;
+  const towardTarget = (targetEnd.x - meeting.x) * bu.x + (targetEnd.y - meeting.y) * bu.y < 0 ? -1 : 1;
+  const first = { x: meeting.x + au.x * size * towardAuthored, y: meeting.y + au.y * size * towardAuthored };
+  const third = { x: meeting.x + bu.x * size * towardTarget, y: meeting.y + bu.y * size * towardTarget };
+  return [first, { x: first.x + third.x - meeting.x, y: first.y + third.y - meeting.y }, third];
+};
 type GeometryDragSession = Readonly<{
   pointerId: number; target: DrawingGeometryTarget; startClient: CoordinatePoint; startModel: DrawingPoint;
   startDocument: DrawingDocumentV2; candidate: DrawingDocumentV2; exceeded: boolean;
@@ -292,12 +316,23 @@ export function DrawingWorkspace({
       : nextInteraction.perpendicularLineId
         ? { relation: 'perpendicular' as const, targetLineId: nextInteraction.perpendicularLineId }
         : null;
+    const perpendicularTarget = lineReference?.relation === 'perpendicular'
+      ? resolvedLines.find(({ id }) => id === lineReference.targetLineId) : null;
+    const perpendicularPreview = perpendicularTarget && nextInteraction.start && nextInteraction.effectivePreviewPoint
+      ? (() => {
+        const authoredStart = modelToOverlayPoint(nextInteraction.start!, drawingTransform, overlayTransform);
+        const authoredEnd = modelToOverlayPoint(nextInteraction.effectivePreviewPoint!, drawingTransform, overlayTransform);
+        const targetStart = modelToOverlayPoint(perpendicularTarget.start, drawingTransform, overlayTransform);
+        const targetEnd = modelToOverlayPoint(perpendicularTarget.end, drawingTransform, overlayTransform);
+        return authoredStart && authoredEnd && targetStart && targetEnd
+          ? derivePerpendicularPreview(authoredStart, authoredEnd, targetStart, targetEnd) : null;
+      })() : null;
     const pointReferenceGuide = snap.type === 'point-reference' && anchor
       ? (() => {
         const source = modelToOverlayPoint(snap.supportOrigin, drawingTransform, overlayTransform);
         return source ? derivePointReferenceGuide(source, anchor) : null;
       })() : null;
-    setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference, sameAxisReference, lineReference, pointReferenceGuide } : null);
+    setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference, sameAxisReference, lineReference, perpendicularPreview, pointReferenceGuide } : null);
     const endpointPointId = snap.type === 'endpoint' && activeSketch
       ? pointIdForLineEndpoint(activeSketch.entities[snap.entityId], snap.endpoint) : null;
     const position: DrawingPlacementResolution['position'] = ctrlHeld
@@ -312,14 +347,14 @@ export function DrawingWorkspace({
   activeToolRef.current = activeTool;
   resolvePlacementRef.current = resolvePlacement;
 
-  const commitLinePoint = (point: DrawingPoint, reusedPointId: string | null, acceptedInteraction: LineToolInteraction) => {
+  const commitLinePoint = (point: DrawingPoint, reusedPointId: string | null, acceptedInteraction: LineToolInteraction, acceptedLineBodyId: string | null) => {
     const pointId = reusedPointId ?? `point-${Date.now().toString(36)}-${++pointSequence.current}`;
     // The delayed click transaction must consume the inference accepted at the
     // click, not mutable hover state observed during the delay.
     const acceptedConstraintKind = automaticAxisConstraintKind(acceptedInteraction);
     const acceptedPerpendicularLineId = acceptedConstraintKind ? null : acceptedInteraction.perpendicularLineId;
     const acceptedParallelLineId = acceptedConstraintKind ? null : acceptedInteraction.parallelLineId;
-    const result = applyResolvedLineClick(acceptedInteraction, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`, pointId);
+    const result = applyResolvedLineClick(acceptedInteraction, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`, pointId, acceptedLineBodyId);
     setLineInteraction(result.interaction);
     lineInteractionRef.current = result.interaction;
     if (result.entity) {
@@ -328,7 +363,9 @@ export function DrawingWorkspace({
       setDrawingSnap(null);
       drawingSnapRef.current = null;
       transactDocument((current) => appendEntityToActiveSketch(current, result.entity!, undefined, acceptedConstraintKind,
-        acceptedPerpendicularLineId, null, acceptedParallelLineId));
+        acceptedPerpendicularLineId, null, acceptedParallelLineId,
+        acceptedInteraction.startLineId || acceptedLineBodyId
+          ? { startLineId: acceptedInteraction.startLineId ?? undefined, endLineId: acceptedLineBodyId ?? undefined } : null));
     }
   };
 
@@ -517,10 +554,11 @@ export function DrawingWorkspace({
       if (!placement) return;
       const effectivePoint = placement.position.point;
       const endpointPointId = placement.position.kind === 'endpoint' ? placement.position.pointId : null;
+      const lineBodyId = placement.position.kind === 'line-body' ? placement.position.entityId : null;
       if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current);
       pendingLineClickRef.current = window.setTimeout(() => {
         pendingLineClickRef.current = null;
-        commitLinePoint(effectivePoint, endpointPointId, placement.interaction);
+        commitLinePoint(effectivePoint, endpointPointId, placement.interaction, lineBodyId);
       }, 220);
       return;
     }
@@ -995,6 +1033,8 @@ export function DrawingWorkspace({
                 {lineCursor.xGuideReference && <line className="drawing-alignment-guide" data-axis="x" x1={lineCursor.xGuideReference.x} y1={lineCursor.xGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
                 {lineCursor.yGuideReference && <line className="drawing-alignment-guide" data-axis="y" x1={lineCursor.yGuideReference.x} y1={lineCursor.yGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
                 {lineCursor.sameAxisReference && <circle className="drawing-same-axis-reference-highlight" cx={lineCursor.sameAxisReference.x} cy={lineCursor.sameAxisReference.y} r="7" />}
+                {lineCursor.perpendicularPreview && <polyline className="drawing-line-relation-preview" data-relation="perpendicular"
+                  points={lineCursor.perpendicularPreview.map(({ x, y }) => `${x},${y}`).join(' ')} />}
               <g className="drawing-line-cursor drawing-cad-cursor" data-inference={lineCursor.snap.type} transform={`translate(${lineCursor.anchor.x} ${lineCursor.anchor.y})`} aria-hidden="true">
                 <line className="drawing-line-cursor-arm" data-arm="left" x1="-22" y1="0" x2="-7" y2="0" />
                 <line className="drawing-line-cursor-arm" data-arm="right" x1="7" y1="0" x2="22" y2="0" />
@@ -1004,8 +1044,6 @@ export function DrawingWorkspace({
                 {lineCursor.snap.type === 'endpoint' && <rect className="drawing-line-cursor-endpoint" x={-DRAWING_POINT_HOVER_MARKER_SIZE_PX / 2} y={-DRAWING_POINT_HOVER_MARKER_SIZE_PX / 2} width={DRAWING_POINT_HOVER_MARKER_SIZE_PX} height={DRAWING_POINT_HOVER_MARKER_SIZE_PX} />}
                 {lineCursor.snap.type === 'line' && <rect className="drawing-line-cursor-line" x={-DRAWING_LINE_HOVER_MARKER_SIZE_PX / 2} y={-DRAWING_LINE_HOVER_MARKER_SIZE_PX / 2} width={DRAWING_LINE_HOVER_MARKER_SIZE_PX} height={DRAWING_LINE_HOVER_MARKER_SIZE_PX} />}
                 {lineCursor.snap.type === 'alignment' && <rect className="drawing-line-cursor-alignment" x="-5" y="-5" width="10" height="10" />}
-                {lineCursor.snap.type === 'perpendicular' && <path className="drawing-line-cursor-perpendicular" d="M -5 5 L -5 -5 L 5 -5" />}
-                {lineCursor.lineReference?.relation === 'perpendicular' && lineCursor.snap.type !== 'perpendicular' && <path className="drawing-line-cursor-perpendicular" d="M -5 5 L -5 -5 L 5 -5" />}
                 {lineCursor.lineReference?.relation === 'parallel' && <path className="drawing-line-cursor-parallel" d="M -6 -3 L 6 -3 M -6 3 L 6 3" />}
               </g>
               </g>
