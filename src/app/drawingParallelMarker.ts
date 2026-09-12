@@ -28,6 +28,22 @@ export type DrawingRightAngleMarker = Readonly<{
   p1: Readonly<{ x: number; y: number }>;
   p2: Readonly<{ x: number; y: number }>;
   p3: Readonly<{ x: number; y: number }>;
+  supportExtensionA?: DrawingPerpendicularSupportExtension;
+  supportExtensionB?: DrawingPerpendicularSupportExtension;
+}>;
+
+export type DrawingPerpendicularSupportExtension = Readonly<{
+  start: Readonly<{ x: number; y: number }>;
+  end: Readonly<{ x: number; y: number }>;
+}>;
+
+export type DrawingPerpendicularPresentation = Readonly<{
+  intersection: Readonly<{ x: number; y: number }>;
+  markerDirectionA: Readonly<{ x: number; y: number }>;
+  markerDirectionB: Readonly<{ x: number; y: number }>;
+  markerPoints: readonly [Readonly<{ x: number; y: number }>, Readonly<{ x: number; y: number }>, Readonly<{ x: number; y: number }>];
+  supportExtensionA?: DrawingPerpendicularSupportExtension;
+  supportExtensionB?: DrawingPerpendicularSupportExtension;
 }>;
 
 export type LineMarkerCandidate = Readonly<{
@@ -93,6 +109,56 @@ const unitFrom = (from: { x: number; y: number }, to: { x: number; y: number }) 
   return length > 0 ? { x: dx / length, y: dy / length } : null;
 };
 
+const PRESENTATION_TOLERANCE = 1e-9;
+const comparePoints = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+  a.x === b.x ? a.y - b.y : a.x - b.x;
+
+const segmentPresentation = (
+  intersection: { x: number; y: number },
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+) => {
+  const dx = end.x - start.x, dy = end.y - start.y, lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared <= PRESENTATION_TOLERANCE * PRESENTATION_TOLERANCE) return null;
+  const parameter = ((intersection.x - start.x) * dx + (intersection.y - start.y) * dy) / lengthSquared;
+  const startDistance = Math.hypot(start.x - intersection.x, start.y - intersection.y);
+  const endDistance = Math.hypot(end.x - intersection.x, end.y - intersection.y);
+  // An exact extent tie uses the lexicographically smaller physical endpoint.
+  // This is deterministic and independent of endpoint storage and entity order.
+  const preferredEndpoint = Math.abs(startDistance - endDistance) <= PRESENTATION_TOLERANCE
+    ? (comparePoints(start, end) <= 0 ? start : end)
+    : (startDistance > endDistance ? start : end);
+  const direction = unitFrom(intersection, preferredEndpoint);
+  if (!direction) return null;
+  if (parameter >= -PRESENTATION_TOLERANCE && parameter <= 1 + PRESENTATION_TOLERANCE) return { direction };
+  const nearestEndpoint = parameter < 0 ? start : end;
+  return { direction, supportExtension: { start: nearestEndpoint, end: intersection } };
+};
+
+/** Pure presentation geometry shared by transient and persistent Perpendicular rendering. */
+export const derivePerpendicularPresentation = (
+  lineA: Readonly<{ start: { x: number; y: number }; end: { x: number; y: number } }>,
+  lineB: Readonly<{ start: { x: number; y: number }; end: { x: number; y: number } }>,
+  markerSize: number,
+  authoritativeIntersection?: Readonly<{ x: number; y: number }>,
+): DrawingPerpendicularPresentation | null => {
+  const ad = { x: lineA.end.x - lineA.start.x, y: lineA.end.y - lineA.start.y };
+  const bd = { x: lineB.end.x - lineB.start.x, y: lineB.end.y - lineB.start.y };
+  const cross = ad.x * bd.y - ad.y * bd.x;
+  if (Math.abs(cross) <= PRESENTATION_TOLERANCE) return null;
+  const delta = { x: lineB.start.x - lineA.start.x, y: lineB.start.y - lineA.start.y };
+  const t = (delta.x * bd.y - delta.y * bd.x) / cross;
+  const intersection = authoritativeIntersection ?? { x: lineA.start.x + t * ad.x, y: lineA.start.y + t * ad.y };
+  const a = segmentPresentation(intersection, lineA.start, lineA.end);
+  const b = segmentPresentation(intersection, lineB.start, lineB.end);
+  if (!a || !b) return null;
+  const p1 = { x: intersection.x + a.direction.x * markerSize, y: intersection.y + a.direction.y * markerSize };
+  const p3 = { x: intersection.x + b.direction.x * markerSize, y: intersection.y + b.direction.y * markerSize };
+  const p2 = { x: p1.x + b.direction.x * markerSize, y: p1.y + b.direction.y * markerSize };
+  return { intersection, markerDirectionA: a.direction, markerDirectionB: b.direction,
+    markerPoints: [p1, p2, p3], supportExtensionA: a.supportExtension, supportExtensionB: b.supportExtension };
+};
+
 /** Derives exactly one screen-stable geometric corner for each perpendicular relation. */
 export const deriveRightAngleMarkers = (sketch: DrawingSketchV2, pixelsPerModelUnit = 1): DrawingRightAngleMarker[] =>
   Object.values(sketch.geometricConstraints ?? {}).flatMap((constraint) => {
@@ -104,28 +170,17 @@ export const deriveRightAngleMarkers = (sketch: DrawingSketchV2, pixelsPerModelU
     if (!a || !b) return [];
 
     const sharedPointId = [entityA.startPointId, entityA.endPointId].find((id) => id === entityB.startPointId || id === entityB.endPointId);
-    let corner: { x: number; y: number }, u, v;
+    let corner: { x: number; y: number } | undefined;
     if (sharedPointId) {
       corner = sketch.points[sharedPointId];
-      const aOther = sketch.points[entityA.startPointId === sharedPointId ? entityA.endPointId : entityA.startPointId];
-      const bOther = sketch.points[entityB.startPointId === sharedPointId ? entityB.endPointId : entityB.startPointId];
-      u = unitFrom(corner, aOther); v = unitFrom(corner, bOther);
-    } else {
-      const ad = { x: a.end.x - a.start.x, y: a.end.y - a.start.y };
-      const bd = { x: b.end.x - b.start.x, y: b.end.y - b.start.y };
-      const cross = ad.x * bd.y - ad.y * bd.x;
-      if (Math.abs(cross) <= 1e-12) return [];
-      const delta = { x: b.start.x - a.start.x, y: b.start.y - a.start.y };
-      const t = (delta.x * bd.y - delta.y * bd.x) / cross;
-      corner = { x: a.start.x + t * ad.x, y: a.start.y + t * ad.y };
-      u = unitFrom({ x: 0, y: 0 }, ad); v = unitFrom({ x: 0, y: 0 }, bd);
     }
-    if (!u || !v) return [];
     const d = RIGHT_ANGLE_MARKER_SIZE_PX / pixelsPerModelUnit;
-    const p1 = { x: corner.x + u.x * d, y: corner.y + u.y * d };
-    const p3 = { x: corner.x + v.x * d, y: corner.y + v.y * d };
-    const p2 = { x: p1.x + v.x * d, y: p1.y + v.y * d };
-    return [{ id: constraint.id, constraintId: constraint.id, lineAId, lineBId, corner, p1, p2, p3 }];
+    const presentation = derivePerpendicularPresentation(a, b, d, corner);
+    if (!presentation) return [];
+    const [p1, p2, p3] = presentation.markerPoints;
+    return [{ id: constraint.id, constraintId: constraint.id, lineAId, lineBId,
+      corner: presentation.intersection, p1, p2, p3,
+      supportExtensionA: presentation.supportExtensionA, supportExtensionB: presentation.supportExtensionB }];
   });
 
 /** Compatibility name retained for existing marker consumers and tests. */

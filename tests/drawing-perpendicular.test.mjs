@@ -5,7 +5,7 @@ import { createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/
 import { appendEntityToActiveSketch, applyResolvedLineClick, automaticAxisConstraintKind, cancelLineInteraction, EMPTY_LINE_INTERACTION, resolveLineEffectivePoint } from '../.test-build/drawing-perpendicular/drawingLineTool.js';
 import { perpendicularAndGradient } from '../.test-build/drawing-perpendicular/drawingConstraintAnalysis.js';
 import { solveDrawingComponentDrag, verifyDrawingConstraints } from '../.test-build/drawing-perpendicular/drawingConstraintSolver.js';
-import { deriveGeometricConstraintMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_OFFSET_PX, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, GEOMETRIC_CONSTRAINT_MARKER_SPACING_PX, RIGHT_ANGLE_MARKER_SIZE_PX } from '../.test-build/drawing-perpendicular/drawingParallelMarker.js';
+import { deriveGeometricConstraintMarkers, derivePerpendicularPresentation, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_OFFSET_PX, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, GEOMETRIC_CONSTRAINT_MARKER_SPACING_PX, RIGHT_ANGLE_MARKER_SIZE_PX } from '../.test-build/drawing-perpendicular/drawingParallelMarker.js';
 import { collectDrawingInferenceCandidates } from '../.test-build/drawing-perpendicular/drawingInference.js';
 import { resolveDrawingSnap } from '../.test-build/drawing-perpendicular/drawingSnapEngine.js';
 
@@ -225,6 +225,59 @@ test('right-angle marker follows shared endpoint for reversed arbitrary rotated 
   let separate = add(createDrawingDocumentV2(), line('x', { x: 0, y: 0 }, { x: 10, y: 0 }));
   separate = add(separate, line('y', { x: 5, y: 5 }, { x: 5, y: 15 }), 'x');
   assert.deepEqual(deriveRightAngleMarkers(separate.sketches['sketch-1'])[0].corner, { x: 5, y: 0 });
+});
+
+test('Perpendicular presentation chooses longer finite sides and dynamically flips both ways from current geometry', () => {
+  const horizontal = { start: { x: -2, y: 0 }, end: { x: 10, y: 0 } };
+  const atLeft = derivePerpendicularPresentation(horizontal,
+    { start: { x: 1, y: -1 }, end: { x: 1, y: 8 } }, 1);
+  assert.ok(atLeft.markerDirectionA.x > 0 && atLeft.markerDirectionB.y > 0, 'longer sides define the upper-right quadrant');
+
+  const atRight = derivePerpendicularPresentation(horizontal,
+    { start: { x: 8, y: -1 }, end: { x: 8, y: 8 } }, 1);
+  assert.ok(atRight.markerDirectionA.x < 0 && atRight.markerDirectionB.y > 0, 'current geometry flips to the upper-left quadrant');
+
+  const backAtLeft = derivePerpendicularPresentation(horizontal,
+    { start: { x: 1, y: -1 }, end: { x: 1, y: 8 } }, 1);
+  assert.deepEqual(backAtLeft.markerDirectionA, atLeft.markerDirectionA);
+  assert.deepEqual(backAtLeft.markerDirectionB, atLeft.markerDirectionB);
+  assert.deepEqual(backAtLeft.markerPoints, atLeft.markerPoints, 'moving back derives the original side without stored orientation');
+});
+
+test('Perpendicular side and gap presentation are independent of endpoint and Line order', () => {
+  const a = { start: { x: -2, y: 0 }, end: { x: 10, y: 0 } };
+  const b = { start: { x: 3, y: 4 }, end: { x: 3, y: 9 } };
+  const original = derivePerpendicularPresentation(a, b, 1);
+  const reversedEndpoints = derivePerpendicularPresentation(
+    { start: a.end, end: a.start }, { start: b.end, end: b.start }, 1);
+  const reversedLines = derivePerpendicularPresentation(b, a, 1);
+  assert.deepEqual(reversedEndpoints.markerPoints, original.markerPoints);
+  assert.deepEqual(reversedEndpoints.supportExtensionA, original.supportExtensionA);
+  assert.deepEqual(reversedEndpoints.supportExtensionB, original.supportExtensionB);
+  assert.deepEqual(reversedLines.markerPoints[1], original.markerPoints[1], 'the occupied physical quadrant is creation-order independent');
+  assert.deepEqual(reversedLines.supportExtensionA, original.supportExtensionB);
+  assert.equal(original.supportExtensionA, undefined);
+  assert.deepEqual(original.supportExtensionB, { start: { x: 3, y: 4 }, end: { x: 3, y: 0 } }, 'only the missing finite gap is returned');
+});
+
+test('Perpendicular supports appear and disappear from current finite-segment containment', () => {
+  const crossing = derivePerpendicularPresentation(
+    { start: { x: -5, y: 0 }, end: { x: 5, y: 0 } },
+    { start: { x: 0, y: -5 }, end: { x: 0, y: 5 } }, 1);
+  assert.equal(crossing.supportExtensionA, undefined);
+  assert.equal(crossing.supportExtensionB, undefined);
+
+  const twoGaps = derivePerpendicularPresentation(
+    { start: { x: 2, y: 0 }, end: { x: 5, y: 0 } },
+    { start: { x: 0, y: 3 }, end: { x: 0, y: 7 } }, 1);
+  assert.deepEqual(twoGaps.supportExtensionA, { start: { x: 2, y: 0 }, end: { x: 0, y: 0 } });
+  assert.deepEqual(twoGaps.supportExtensionB, { start: { x: 0, y: 3 }, end: { x: 0, y: 0 } });
+
+  const movedOntoSupport = derivePerpendicularPresentation(
+    { start: { x: -2, y: 0 }, end: { x: 5, y: 0 } },
+    { start: { x: 0, y: -1 }, end: { x: 0, y: 7 } }, 1);
+  assert.equal(movedOntoSupport.supportExtensionA, undefined);
+  assert.equal(movedOntoSupport.supportExtensionB, undefined);
 });
 
 test('workspace renders geometric paths with blue styling and contains no perpendicular text glyph', () => {
