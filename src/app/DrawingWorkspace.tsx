@@ -17,7 +17,7 @@ import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, un
 import { pointIdForLineEndpoint, resolveLine } from './drawingTopology.js';
 import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
-import { deleteGeometricConstraint, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
+import { deleteGeometricConstraint, deriveParallelMarkers, derivePerpendicularPresentation, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, type DrawingPerpendicularPresentation } from './drawingParallelMarker.js';
 import { deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
 import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, initialConstraintsPanelPosition, toggleDrawingGeometrySelection, type DrawingSelectionRef } from './drawingConstraintsTool.js';
 
@@ -53,32 +53,20 @@ export type CadCursorPresentation = Readonly<{
   yGuideReference: CoordinatePoint | null;
   sameAxisReference: CoordinatePoint | null;
   lineReference: Readonly<{ relation: 'parallel' | 'perpendicular'; targetLineId: string }> | null;
-  perpendicularPreview: readonly [CoordinatePoint, CoordinatePoint, CoordinatePoint] | null;
+  perpendicularPreview: DrawingPerpendicularPresentation | null;
   pointReferenceGuide: Readonly<{ start: CoordinatePoint; end: CoordinatePoint }> | null;
 }> | null;
 
-/** Derives a screen-stable right-angle corner from two infinite supports without creating document geometry. */
+/** Derives screen-space Perpendicular presentation without creating document geometry. */
 export const derivePerpendicularPreview = (
   authoredStart: CoordinatePoint,
   authoredEnd: CoordinatePoint,
   targetStart: CoordinatePoint,
   targetEnd: CoordinatePoint,
   size = 9,
-): readonly [CoordinatePoint, CoordinatePoint, CoordinatePoint] | null => {
-  const ax = authoredEnd.x - authoredStart.x, ay = authoredEnd.y - authoredStart.y;
-  const bx = targetEnd.x - targetStart.x, by = targetEnd.y - targetStart.y;
-  const denominator = ax * by - ay * bx;
-  const aLength = Math.hypot(ax, ay), bLength = Math.hypot(bx, by);
-  if (Math.abs(denominator) < 1e-9 || aLength < 1e-9 || bLength < 1e-9) return null;
-  const t = ((targetStart.x - authoredStart.x) * by - (targetStart.y - authoredStart.y) * bx) / denominator;
-  const meeting = { x: authoredStart.x + t * ax, y: authoredStart.y + t * ay };
-  const au = { x: ax / aLength, y: ay / aLength }, bu = { x: bx / bLength, y: by / bLength };
-  const towardAuthored = (authoredEnd.x - meeting.x) * au.x + (authoredEnd.y - meeting.y) * au.y < 0 ? -1 : 1;
-  const towardTarget = (targetEnd.x - meeting.x) * bu.x + (targetEnd.y - meeting.y) * bu.y < 0 ? -1 : 1;
-  const first = { x: meeting.x + au.x * size * towardAuthored, y: meeting.y + au.y * size * towardAuthored };
-  const third = { x: meeting.x + bu.x * size * towardTarget, y: meeting.y + bu.y * size * towardTarget };
-  return [first, { x: first.x + third.x - meeting.x, y: first.y + third.y - meeting.y }, third];
-};
+): DrawingPerpendicularPresentation | null => derivePerpendicularPresentation(
+  { start: authoredStart, end: authoredEnd }, { start: targetStart, end: targetEnd }, size,
+);
 type GeometryDragSession = Readonly<{
   pointerId: number; target: DrawingGeometryTarget; startClient: CoordinatePoint; startModel: DrawingPoint;
   startDocument: DrawingDocumentV2; candidate: DrawingDocumentV2; exceeded: boolean;
@@ -926,6 +914,8 @@ export function DrawingWorkspace({
                   onPointerEnter={() => setHoveredGeometricConstraintId(marker.constraintId)}
                   onPointerLeave={() => setHoveredGeometricConstraintId((current) => current === marker.constraintId ? null : current)}
                   onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry([]); }}>
+                  {[marker.supportExtensionA, marker.supportExtensionB].filter((extension) => extension !== undefined).map((extension, index) =>
+                    <line key={index} className="drawing-perpendicular-support" x1={extension.start.x} y1={extension.start.y} x2={extension.end.x} y2={extension.end.y} />)}
                   <path className="drawing-right-angle-marker-hit drawing-interactive-hit" d={path} />
                   <path className="drawing-right-angle-marker-shape" d={path} fill="none" stroke="currentColor" />
                 </g>;
@@ -1033,8 +1023,13 @@ export function DrawingWorkspace({
                 {lineCursor.xGuideReference && <line className="drawing-alignment-guide" data-axis="x" x1={lineCursor.xGuideReference.x} y1={lineCursor.xGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
                 {lineCursor.yGuideReference && <line className="drawing-alignment-guide" data-axis="y" x1={lineCursor.yGuideReference.x} y1={lineCursor.yGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
                 {lineCursor.sameAxisReference && <circle className="drawing-same-axis-reference-highlight" cx={lineCursor.sameAxisReference.x} cy={lineCursor.sameAxisReference.y} r="7" />}
-                {lineCursor.perpendicularPreview && <polyline className="drawing-line-relation-preview" data-relation="perpendicular"
-                  points={lineCursor.perpendicularPreview.map(({ x, y }) => `${x},${y}`).join(' ')} />}
+                {lineCursor.perpendicularPreview && <>
+                  {[lineCursor.perpendicularPreview.supportExtensionA, lineCursor.perpendicularPreview.supportExtensionB]
+                    .filter((extension) => extension !== undefined).map((extension, index) =>
+                      <line key={index} className="drawing-perpendicular-support-preview" x1={extension.start.x} y1={extension.start.y} x2={extension.end.x} y2={extension.end.y} />)}
+                  <polyline className="drawing-line-relation-preview" data-relation="perpendicular"
+                    points={lineCursor.perpendicularPreview.markerPoints.map(({ x, y }) => `${x},${y}`).join(' ')} />
+                </>}
               <g className="drawing-line-cursor drawing-cad-cursor" data-inference={lineCursor.snap.type} transform={`translate(${lineCursor.anchor.x} ${lineCursor.anchor.y})`} aria-hidden="true">
                 <line className="drawing-line-cursor-arm" data-arm="left" x1="-22" y1="0" x2="-7" y2="0" />
                 <line className="drawing-line-cursor-arm" data-arm="right" x1="7" y1="0" x2="22" y2="0" />
