@@ -56,11 +56,14 @@ export type LineToolInteraction = Readonly<{
   start: DrawingPoint | null;
   startPointId: string | null;
   startLineId: string | null;
+  startMidpointLineId: string | null;
   rawPointerPoint: DrawingPoint | null;
   effectivePreviewPoint: DrawingPoint | null;
   snappedAngleDegrees: number | null;
   perpendicularLineId: string | null;
   parallelLineId: string | null;
+  midpointLineId: string | null;
+  lineBodyId: string | null;
   previousChainedLineId: string | null;
 }>;
 
@@ -68,11 +71,14 @@ export const EMPTY_LINE_INTERACTION: LineToolInteraction = {
   start: null,
   startPointId: null,
   startLineId: null,
+  startMidpointLineId: null,
   rawPointerPoint: null,
   effectivePreviewPoint: null,
   snappedAngleDegrees: null,
   perpendicularLineId: null,
   parallelLineId: null,
+  midpointLineId: null,
+  lineBodyId: null,
   previousChainedLineId: null,
 };
 
@@ -80,7 +86,7 @@ export const updateLinePreview = (interaction: LineToolInteraction, pointer: Dra
   interaction.start ? (() => {
     const preview = resolveLinePreviewPoint(interaction.start!, pointer);
     return { ...interaction, rawPointerPoint: preview.rawPointerPoint, effectivePreviewPoint: preview.effectivePreviewPoint,
-      snappedAngleDegrees: preview.snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null };
+      snappedAngleDegrees: preview.snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null, midpointLineId: null, lineBodyId: null };
   })() : interaction
 );
 
@@ -89,7 +95,7 @@ type LineAlignmentYReference = Extract<DrawingInference, { type: 'alignment-y' }
 
 type LineSpatialSnap = Readonly<{
   active: boolean;
-  type: 'none' | 'endpoint' | 'line' | 'alignment' | 'point-reference' | 'perpendicular' | 'parallel';
+  type: 'none' | 'endpoint' | 'midpoint' | 'line' | 'alignment' | 'point-reference' | 'perpendicular' | 'parallel';
   entityId?: string;
   effectivePoint: DrawingPoint;
   xReference?: LineAlignmentXReference | null;
@@ -190,6 +196,16 @@ const isPerpendicularAt = (start: DrawingPoint, end: DrawingPoint, lineStart?: D
       <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, authoredLength * targetLength);
 };
 
+const isParallelAt = (start: DrawingPoint, end: DrawingPoint, candidatePoint?: DrawingPoint) => {
+  if (!candidatePoint) return false;
+  const authoredX = end.x - start.x, authoredY = end.y - start.y;
+  const candidateX = candidatePoint.x - start.x, candidateY = candidatePoint.y - start.y;
+  const authoredLength = Math.hypot(authoredX, authoredY), candidateLength = Math.hypot(candidateX, candidateY);
+  return authoredLength > LINE_ZERO_LENGTH_TOLERANCE_MM && candidateLength > LINE_ZERO_LENGTH_TOLERANCE_MM
+    && Math.abs(authoredX * candidateY - authoredY * candidateX)
+      <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, authoredLength * candidateLength);
+};
+
 const intersectRayWithFiniteSegment = (origin: DrawingPoint, direction: DrawingPoint, a?: DrawingPoint, b?: DrawingPoint): DrawingPoint | null => {
   if (!a || !b) return null;
   const sx = b.x - a.x, sy = b.y - a.y;
@@ -242,7 +258,7 @@ export const resolveLineEffectivePoint = (
   // channels cannot accidentally reintroduce Line authoring inference under Ctrl.
   if (ctrlOverride) return {
     effectivePoint: rawPointerPoint,
-    interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: rawPointerPoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: null },
+    interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: rawPointerPoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: null, midpointLineId: null, lineBodyId: null },
     resolvedReferences: { x: null, y: null },
   };
 
@@ -260,7 +276,7 @@ export const resolveLineEffectivePoint = (
       y: interaction.start.y + radialDistance * direction.y,
     };
     return lineResolution(effectivePoint, { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint,
-      snappedAngleDegrees: angular.snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null }, spatialSnap);
+      snappedAngleDegrees: angular.snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null, midpointLineId: null, lineBodyId: null }, spatialSnap);
   }
 
   // A perpendicular accepted against the directly previous authored segment
@@ -274,16 +290,16 @@ export const resolveLineEffectivePoint = (
       ? { x: interaction.start.x, y: spatialSnap.effectivePoint.y }
       : { x: spatialSnap.effectivePoint.x, y: interaction.start.y };
     return lineResolution(effectivePoint,
-      { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null }, spatialSnap);
+      { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null, midpointLineId: null, lineBodyId: null }, spatialSnap);
   }
 
   if (spatialSnap.type === 'perpendicular') return lineResolution(spatialSnap.effectivePoint,
-    { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snappedAngleDegrees: null, perpendicularLineId: spatialSnap.entityId ?? null, parallelLineId: null }, spatialSnap);
+    { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snappedAngleDegrees: null, perpendicularLineId: spatialSnap.entityId ?? null, parallelLineId: null, midpointLineId: null, lineBodyId: null }, spatialSnap);
 
   if (spatialSnap.type === 'parallel') return lineResolution(spatialSnap.effectivePoint,
-    { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: spatialSnap.entityId ?? null }, spatialSnap);
+    { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: spatialSnap.entityId ?? null, midpointLineId: null, lineBodyId: null }, spatialSnap);
 
-  if (spatialSnap.type === 'endpoint' || spatialSnap.type === 'line') {
+  if (spatialSnap.type === 'endpoint' || spatialSnap.type === 'midpoint' || spatialSnap.type === 'line') {
     // An endpoint owns its exact position; a finite Line owns its positional support.
     // Compatible direction authority may select the point where its ray meets that support.
     const direction = angular.snappedAngleDegrees === null ? null : directionAt(angular.snappedAngleDegrees);
@@ -311,13 +327,17 @@ export const resolveLineEffectivePoint = (
     ) || (!perpendicular.lineStart && !perpendicular.lineEnd
       && Math.hypot(perpendicular.candidatePoint.x - acceptedPoint.x, perpendicular.candidatePoint.y - acceptedPoint.y)
         <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, Math.hypot(acceptedPoint.x - interaction.start.x, acceptedPoint.y - interaction.start.y))));
+    const parallel = spatialSnap.type === 'midpoint' && !acceptedAxis ? spatialSnap.channels?.parallel ?? null : null;
+    const parallelExact = parallel !== null && isParallelAt(interaction.start, acceptedPoint, parallel.candidatePoint);
     const nextInteraction = {
       ...interaction,
       rawPointerPoint,
       effectivePreviewPoint: acceptedPoint,
       snappedAngleDegrees: angularExact ? angular.snappedAngleDegrees : null,
       perpendicularLineId: perpendicularExact ? perpendicular.entityId : null,
-      parallelLineId: null,
+      parallelLineId: parallelExact ? parallel.entityId : null,
+      midpointLineId: spatialSnap.type === 'midpoint' ? spatialSnap.entityId ?? null : null,
+      lineBodyId: spatialSnap.type === 'line' ? spatialSnap.entityId ?? null : null,
     };
     return lineResolution(acceptedPoint, nextInteraction, spatialSnap);
   }
@@ -325,7 +345,7 @@ export const resolveLineEffectivePoint = (
   if (!angular.snapActive || angular.snappedAngleDegrees === null) {
     const effectivePoint = spatialSnap.active ? spatialSnap.effectivePoint : rawPointerPoint;
     return lineResolution(effectivePoint,
-      { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: null }, spatialSnap);
+      { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: null, midpointLineId: null, lineBodyId: null }, spatialSnap);
   }
   const direction = directionAt(angular.snappedAngleDegrees);
   const radialDistance = Math.hypot(rawPointerPoint.x - interaction.start.x, rawPointerPoint.y - interaction.start.y);
@@ -340,7 +360,7 @@ export const resolveLineEffectivePoint = (
     ? reconcileAlignmentOnRay(interaction.start, angularPoint, angular.snappedAngleDegrees, alignmentSnap)
     : angularPoint;
   return lineResolution(effectivePoint,
-    { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees: angular.snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null }, spatialSnap);
+    { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees: angular.snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null, midpointLineId: null, lineBodyId: null }, spatialSnap);
 };
 
 /**
@@ -401,8 +421,8 @@ export const applyLineClick = (
 };
 
 /** Commits a point already resolved by global/tool arbitration without reapplying angular inference. */
-export const applyResolvedLineClick = (interaction: LineToolInteraction, point: DrawingPoint, createId: () => string, pointId: string | null = null, lineId: string | null = null): LineClickResult => {
-  if (!interaction.start) return { interaction: { ...EMPTY_LINE_INTERACTION, start: point, startPointId: pointId, startLineId: lineId, rawPointerPoint: point, effectivePreviewPoint: point }, entity: null };
+export const applyResolvedLineClick = (interaction: LineToolInteraction, point: DrawingPoint, createId: () => string, pointId: string | null = null, lineId: string | null = null, midpointLineId: string | null = null): LineClickResult => {
+  if (!interaction.start) return { interaction: { ...EMPTY_LINE_INTERACTION, start: point, startPointId: pointId, startLineId: lineId, startMidpointLineId: midpointLineId, rawPointerPoint: point, effectivePreviewPoint: point }, entity: null };
   if (Math.hypot(point.x - interaction.start.x, point.y - interaction.start.y) <= LINE_ZERO_LENGTH_TOLERANCE_MM) return { interaction, entity: null };
   const id = createId();
   return {
@@ -421,6 +441,7 @@ export const appendEntityToActiveSketch = (
   acceptedEndpointSnaps: Readonly<{ startPointId?: string; endPointId?: string }> | null = null,
   parallelLineId: string | null = null,
   acceptedLineBodySnaps: Readonly<{ startLineId?: string; endLineId?: string }> | null = null,
+  acceptedMidpointSnaps: Readonly<{ startLineId?: string; endLineId?: string }> | null = null,
 ): DrawingDocumentV2 => {
   const activeSketch = document.sketches[document.activeSketchId];
   if (!activeSketch || activeSketch.entities[entity.id]) return document;
@@ -469,7 +490,21 @@ export const appendEntityToActiveSketch = (
     return duplicate ? [] : [{ id: `coincident:${pointId}:support:${targetLineId}`, kind: 'COINCIDENT' as const,
       variant: 'point-linear-support' as const, references: [{ kind: 'sketchPoint' as const, pointId }, { kind: 'entity' as const, entityId: targetLineId }] as const }];
   });
-  const addedConstraints = [automaticConstraint, perpendicularConstraint, parallelConstraint, ...coincidentConstraints, ...pointOnLineConstraints].filter(Boolean) as DrawingGeometricConstraint[];
+  const midpointConstraints = ([['startLineId', startPointId], ['endLineId', endPointId]] as const).flatMap(([endpoint, pointId]) => {
+    const targetLineId = acceptedMidpointSnaps?.[endpoint];
+    const targetLine = targetLineId ? activeSketch.entities[targetLineId] : null;
+    if (!targetLine || targetLine.type !== 'line' || targetLine.startPointId === pointId || targetLine.endPointId === pointId) return [];
+    return [{ id: `midpoint:${pointId}:${targetLineId}`, kind: 'MIDPOINT' as const,
+      references: [{ kind: 'sketchPoint' as const, pointId }, { kind: 'entity' as const, entityId: targetLineId }] as const }];
+  });
+  const midpointKeys = new Set(midpointConstraints.map((constraint) => `${constraint.references[0].pointId}\0${constraint.references[1].entityId}`));
+  const normalizedPointOnLineConstraints = pointOnLineConstraints.filter((constraint) =>
+    !midpointKeys.has(`${constraint.references[0].pointId}\0${constraint.references[1].entityId}`));
+  const redundantCoincidenceIds = new Set(Object.values(activeSketch.geometricConstraints ?? {}).filter((constraint) =>
+    constraint.kind === 'COINCIDENT' && constraint.variant === 'point-linear-support'
+    && midpointKeys.has(`${constraint.references[0].pointId}\0${constraint.references[1].entityId}`)).map(({ id }) => id));
+  const retainedConstraints = Object.fromEntries(Object.entries(activeSketch.geometricConstraints ?? {}).filter(([id]) => !redundantCoincidenceIds.has(id)));
+  const addedConstraints = [automaticConstraint, perpendicularConstraint, parallelConstraint, ...coincidentConstraints, ...normalizedPointOnLineConstraints, ...midpointConstraints].filter(Boolean) as DrawingGeometricConstraint[];
   return {
     ...document,
     sketches: {
@@ -483,8 +518,8 @@ export const appendEntityToActiveSketch = (
         },
         entities: { ...activeSketch.entities, [entity.id]: line },
         entityOrder: [...activeSketch.entityOrder, entity.id],
-        geometricConstraints: addedConstraints.length ? { ...(activeSketch.geometricConstraints ?? {}), ...Object.fromEntries(addedConstraints.map((constraint) => [constraint.id, constraint])) } : activeSketch.geometricConstraints,
-        geometricConstraintOrder: addedConstraints.length ? [...(activeSketch.geometricConstraintOrder ?? []), ...addedConstraints.map(({ id }) => id)] : activeSketch.geometricConstraintOrder,
+        geometricConstraints: addedConstraints.length ? { ...retainedConstraints, ...Object.fromEntries(addedConstraints.map((constraint) => [constraint.id, constraint])) } : activeSketch.geometricConstraints,
+        geometricConstraintOrder: addedConstraints.length ? [...(activeSketch.geometricConstraintOrder ?? []).filter((id) => !redundantCoincidenceIds.has(id)), ...addedConstraints.map(({ id }) => id)] : activeSketch.geometricConstraintOrder,
       },
     },
   };
