@@ -3,6 +3,7 @@ import type { AffineTransform, CoordinatePoint } from './drawingTransform';
 
 export const DRAWING_ENDPOINT_INFERENCE_TOLERANCE_PX = 9;
 export const DRAWING_LINE_INFERENCE_TOLERANCE_PX = 8;
+export const DRAWING_MIDPOINT_INFERENCE_TOLERANCE_PX = 8;
 export const DRAWING_ALIGNMENT_INFERENCE_TOLERANCE_PX = 8;
 export const DRAWING_PERPENDICULAR_INFERENCE_TOLERANCE_PX = 8;
 export const DRAWING_PARALLEL_INFERENCE_TOLERANCE_PX = 8;
@@ -26,6 +27,12 @@ export type PointReferenceConstruction = Readonly<{
 export type DrawingInference = Readonly<{
   type: 'none';
   screenDistance: null;
+}> | Readonly<{
+  type: 'midpoint';
+  entityId: string;
+  candidatePoint: DrawingPoint;
+  screenDistance: number;
+  stableKey: string;
 }> | Readonly<{
   type: 'parallel';
   entityId: string;
@@ -75,6 +82,7 @@ export type DrawingInference = Readonly<{
 export const NO_DRAWING_INFERENCE: DrawingInference = { type: 'none', screenDistance: null };
 export type DrawingInferenceCandidates = Readonly<{
   endpoints: ReadonlyArray<Extract<DrawingInference, { type: 'endpoint' }>>;
+  midpoints: ReadonlyArray<Extract<DrawingInference, { type: 'midpoint' }>>;
   lines: ReadonlyArray<Extract<DrawingInference, { type: 'line' }>>;
   alignmentsX: ReadonlyArray<Extract<DrawingInference, { type: 'alignment-x' }>>;
   alignmentsY: ReadonlyArray<Extract<DrawingInference, { type: 'alignment-y' }>>;
@@ -180,6 +188,15 @@ export const collectDrawingInferenceCandidates = (
       const screenDistance = Math.hypot(pointerClientPoint.x - screenPoint.x, pointerClientPoint.y - screenPoint.y);
       endpoints.push({ type: 'endpoint', entityId: line.id, endpoint, candidatePoint, screenDistance });
     }
+  }
+  const midpoints: Array<Extract<DrawingInference, { type: 'midpoint' }>> = [];
+  for (const line of lines) {
+    if (Math.hypot(line.end.x - line.start.x, line.end.y - line.start.y) <= DRAWING_MODEL_SPACE_TOLERANCE) continue;
+    const candidatePoint = { x: (line.start.x + line.end.x) / 2, y: (line.start.y + line.end.y) / 2 };
+    if (!Number.isFinite(candidatePoint.x) || !Number.isFinite(candidatePoint.y)) continue;
+    const screenPoint = toScreenPoint(candidatePoint, drawingToClientTransform);
+    midpoints.push({ type: 'midpoint', entityId: line.id, candidatePoint,
+      screenDistance: Math.hypot(pointerClientPoint.x - screenPoint.x, pointerClientPoint.y - screenPoint.y), stableKey: `midpoint:${line.id}` });
   }
   const lineCandidates: Array<Extract<DrawingInference, { type: 'line' }>> = [];
   for (const line of lines) {
@@ -305,6 +322,7 @@ export const collectDrawingInferenceCandidates = (
   const stableSort = <T extends { screenDistance: number; referenceId?: string }>(a: T, b: T) => a.screenDistance - b.screenDistance || (a.referenceId ?? '').localeCompare(b.referenceId ?? '');
   return {
     endpoints: endpoints.sort((a, b) => a.screenDistance - b.screenDistance || `${a.entityId}:${a.endpoint}`.localeCompare(`${b.entityId}:${b.endpoint}`)),
+    midpoints: midpoints.sort((a, b) => a.screenDistance - b.screenDistance || a.stableKey.localeCompare(b.stableKey)),
     lines: lineCandidates.sort((a, b) => a.screenDistance - b.screenDistance || a.entityId.localeCompare(b.entityId)),
     alignmentsX: alignmentsX.sort(stableSort),
     alignmentsY: alignmentsY.sort(stableSort),
@@ -327,6 +345,7 @@ const clientToModelPointForInference = (point: CoordinatePoint, transform: Affin
 export const resolveDrawingInference = (pointerClientPoint: CoordinatePoint, lines: ReadonlyArray<ResolvedDrawingLine>, drawingToClientTransform: AffineTransform): DrawingInference => {
   const candidates = collectDrawingInferenceCandidates(pointerClientPoint, lines, drawingToClientTransform);
   if (candidates.endpoints[0] && candidates.endpoints[0].screenDistance <= DRAWING_ENDPOINT_INFERENCE_TOLERANCE_PX) return candidates.endpoints[0];
+  if (candidates.midpoints[0] && candidates.midpoints[0].screenDistance <= DRAWING_MIDPOINT_INFERENCE_TOLERANCE_PX) return candidates.midpoints[0];
   if (candidates.lines[0] && candidates.lines[0].screenDistance <= DRAWING_LINE_INFERENCE_TOLERANCE_PX) return candidates.lines[0];
   return NO_DRAWING_INFERENCE;
 };

@@ -5,6 +5,8 @@ export const DRAWING_ENDPOINT_SNAP_ACQUIRE_PX = 9;
 export const DRAWING_ENDPOINT_SNAP_RELEASE_PX = 12;
 export const DRAWING_LINE_SNAP_ACQUIRE_PX = 8;
 export const DRAWING_LINE_SNAP_RELEASE_PX = 11;
+export const DRAWING_MIDPOINT_SNAP_ACQUIRE_PX = 8;
+export const DRAWING_MIDPOINT_SNAP_RELEASE_PX = 11;
 export const DRAWING_ALIGNMENT_SNAP_ACQUIRE_PX = 8;
 export const DRAWING_ALIGNMENT_SNAP_RELEASE_PX = 11;
 export const DRAWING_PERPENDICULAR_SNAP_ACQUIRE_PX = 8;
@@ -16,6 +18,7 @@ export const DRAWING_POINT_REFERENCE_SNAP_RELEASE_PX = 11;
 
 type EndpointInference = Extract<DrawingInference, { type: 'endpoint' }>;
 type LineInference = Extract<DrawingInference, { type: 'line' }>;
+type MidpointInference = Extract<DrawingInference, { type: 'midpoint' }>;
 type PerpendicularInference = Extract<DrawingInference, { type: 'perpendicular' }>;
 type ParallelInference = Extract<DrawingInference, { type: 'parallel' }>;
 type AlignmentXInference = Extract<DrawingInference, { type: 'alignment-x' }>;
@@ -43,6 +46,9 @@ export type DrawingSnap = (Readonly<{
 }> | Readonly<{
   type: 'parallel'; active: true; effectivePoint: DrawingPoint; entityId: string; screenDistance: number;
 }> | Readonly<{
+  type: 'midpoint'; active: true; effectivePoint: DrawingPoint; entityId: string;
+  stableKey: string; screenDistance: number;
+}> | Readonly<{
   type: 'endpoint'; active: true; effectivePoint: DrawingPoint; entityId: string;
   endpoint: 'start' | 'end'; screenDistance: number;
 }> | Readonly<{
@@ -56,6 +62,7 @@ export type DrawingSnap = (Readonly<{
 
 export type DrawingInferenceCandidates = Readonly<{
   endpoints: ReadonlyArray<EndpointInference>;
+  midpoints: ReadonlyArray<MidpointInference>;
   lines: ReadonlyArray<LineInference>;
   alignmentsX: ReadonlyArray<AlignmentXInference>;
   alignmentsY: ReadonlyArray<AlignmentYInference>;
@@ -145,6 +152,13 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
   const endpoint = chooseEndpoint(candidates.endpoints, previousSnap);
   if (endpoint) return { active: true, type: 'endpoint', effectivePoint: endpoint.candidatePoint, entityId: endpoint.entityId,
     endpoint: endpoint.endpoint, screenDistance: endpoint.screenDistance, channels };
+
+  const retainedMidpoint = previousSnap?.type === 'midpoint'
+    ? (candidates.midpoints ?? []).find(({ stableKey }) => stableKey === previousSnap.stableKey) : null;
+  const midpoint = retainedMidpoint && retainedMidpoint.screenDistance <= DRAWING_MIDPOINT_SNAP_RELEASE_PX
+    ? retainedMidpoint : (candidates.midpoints ?? []).find(({ screenDistance }) => screenDistance <= DRAWING_MIDPOINT_SNAP_ACQUIRE_PX);
+  if (midpoint) return { active: true, type: 'midpoint', effectivePoint: midpoint.candidatePoint, entityId: midpoint.entityId,
+    stableKey: midpoint.stableKey, screenDistance: midpoint.screenDistance, channels };
 
   const retainedLine = previousSnap?.type === 'line'
     ? candidates.lines.find(({ entityId }) => entityId === previousSnap.entityId) : null;

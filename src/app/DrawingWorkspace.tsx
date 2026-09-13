@@ -52,7 +52,7 @@ export type CadCursorPresentation = Readonly<{
   xGuideReference: CoordinatePoint | null;
   yGuideReference: CoordinatePoint | null;
   sameAxisReference: CoordinatePoint | null;
-  lineReference: Readonly<{ relation: 'parallel' | 'perpendicular'; targetLineId: string }> | null;
+  lineReference: Readonly<{ relation: 'parallel' | 'perpendicular' | 'midpoint'; targetLineId: string }> | null;
   perpendicularPreview: DrawingPerpendicularPresentation | null;
   pointReferenceGuide: Readonly<{ start: CoordinatePoint; end: CoordinatePoint }> | null;
 }> | null;
@@ -81,6 +81,7 @@ type DrawingPlacementResolution = Readonly<{
   spatialSnap: DrawingSnap;
   interaction: LineToolInteraction;
   position: Readonly<{ kind: 'endpoint'; point: DrawingPoint; pointId: string; entityId: string; endpoint: 'start' | 'end' }>
+    | Readonly<{ kind: 'midpoint'; point: DrawingPoint; entityId: string }>
     | Readonly<{ kind: 'line-body'; point: DrawingPoint; entityId: string; segmentParameter: number }>
     | Readonly<{ kind: 'construction'; point: DrawingPoint }>
     | Readonly<{ kind: 'raw'; point: DrawingPoint }>;
@@ -303,7 +304,7 @@ export function DrawingWorkspace({
       ? { relation: 'parallel' as const, targetLineId: nextInteraction.parallelLineId }
       : nextInteraction.perpendicularLineId
         ? { relation: 'perpendicular' as const, targetLineId: nextInteraction.perpendicularLineId }
-        : null;
+        : snap.type === 'midpoint' ? { relation: 'midpoint' as const, targetLineId: snap.entityId } : null;
     const perpendicularTarget = lineReference?.relation === 'perpendicular'
       ? resolvedLines.find(({ id }) => id === lineReference.targetLineId) : null;
     const perpendicularPreview = perpendicularTarget && nextInteraction.start && nextInteraction.effectivePreviewPoint
@@ -327,6 +328,8 @@ export function DrawingWorkspace({
       ? { kind: 'raw', point: rawPoint }
       : snap.type === 'endpoint' && endpointPointId
         ? { kind: 'endpoint', point: snap.effectivePoint, pointId: endpointPointId, entityId: snap.entityId, endpoint: snap.endpoint }
+        : snap.type === 'midpoint'
+          ? { kind: 'midpoint', point: placementPoint, entityId: snap.entityId }
         : snap.type === 'line'
           ? { kind: 'line-body', point: placementPoint, entityId: snap.entityId, segmentParameter: snap.segmentParameter }
           : snap.active || nextInteraction.snappedAngleDegrees !== null ? { kind: 'construction', point: placementPoint } : { kind: 'raw', point: rawPoint };
@@ -335,14 +338,15 @@ export function DrawingWorkspace({
   activeToolRef.current = activeTool;
   resolvePlacementRef.current = resolvePlacement;
 
-  const commitLinePoint = (point: DrawingPoint, reusedPointId: string | null, acceptedInteraction: LineToolInteraction, acceptedLineBodyId: string | null) => {
+  const commitLinePoint = (point: DrawingPoint, reusedPointId: string | null, acceptedInteraction: LineToolInteraction, acceptedLineBodyId = acceptedInteraction.lineBodyId) => {
+    const acceptedMidpointLineId = acceptedInteraction.midpointLineId;
     const pointId = reusedPointId ?? `point-${Date.now().toString(36)}-${++pointSequence.current}`;
     // The delayed click transaction must consume the inference accepted at the
     // click, not mutable hover state observed during the delay.
     const acceptedConstraintKind = automaticAxisConstraintKind(acceptedInteraction);
     const acceptedPerpendicularLineId = acceptedConstraintKind ? null : acceptedInteraction.perpendicularLineId;
     const acceptedParallelLineId = acceptedConstraintKind ? null : acceptedInteraction.parallelLineId;
-    const result = applyResolvedLineClick(acceptedInteraction, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`, pointId, acceptedLineBodyId);
+    const result = applyResolvedLineClick(acceptedInteraction, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`, pointId, acceptedLineBodyId, acceptedMidpointLineId);
     setLineInteraction(result.interaction);
     lineInteractionRef.current = result.interaction;
     if (result.entity) {
@@ -353,7 +357,9 @@ export function DrawingWorkspace({
       transactDocument((current) => appendEntityToActiveSketch(current, result.entity!, undefined, acceptedConstraintKind,
         acceptedPerpendicularLineId, null, acceptedParallelLineId,
         acceptedInteraction.startLineId || acceptedLineBodyId
-          ? { startLineId: acceptedInteraction.startLineId ?? undefined, endLineId: acceptedLineBodyId ?? undefined } : null));
+          ? { startLineId: acceptedInteraction.startLineId ?? undefined, endLineId: acceptedLineBodyId ?? undefined } : null,
+        acceptedInteraction.startMidpointLineId || acceptedMidpointLineId
+          ? { startLineId: acceptedInteraction.startMidpointLineId ?? undefined, endLineId: acceptedMidpointLineId ?? undefined } : null));
     }
   };
 
@@ -546,7 +552,8 @@ export function DrawingWorkspace({
       if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current);
       pendingLineClickRef.current = window.setTimeout(() => {
         pendingLineClickRef.current = null;
-        commitLinePoint(effectivePoint, endpointPointId, placement.interaction, lineBodyId);
+        if (placement.position.kind === 'midpoint') commitLinePoint(effectivePoint, endpointPointId, placement.interaction);
+        else commitLinePoint(effectivePoint, endpointPointId, placement.interaction, lineBodyId);
       }, 220);
       return;
     }
@@ -1038,6 +1045,7 @@ export function DrawingWorkspace({
                 {lineCursor.snap.type === 'none' && <circle className="drawing-line-cursor-dot" cx="0" cy="0" r="2.5" />}
                 {lineCursor.snap.type === 'endpoint' && <rect className="drawing-line-cursor-endpoint" x={-DRAWING_POINT_HOVER_MARKER_SIZE_PX / 2} y={-DRAWING_POINT_HOVER_MARKER_SIZE_PX / 2} width={DRAWING_POINT_HOVER_MARKER_SIZE_PX} height={DRAWING_POINT_HOVER_MARKER_SIZE_PX} />}
                 {lineCursor.snap.type === 'line' && <rect className="drawing-line-cursor-line" x={-DRAWING_LINE_HOVER_MARKER_SIZE_PX / 2} y={-DRAWING_LINE_HOVER_MARKER_SIZE_PX / 2} width={DRAWING_LINE_HOVER_MARKER_SIZE_PX} height={DRAWING_LINE_HOVER_MARKER_SIZE_PX} />}
+                {lineCursor.snap.type === 'midpoint' && <g className="drawing-line-cursor-midpoint"><line x1="-7" y1="0" x2="7" y2="0" /><rect x="-2" y="-2" width="4" height="4" /></g>}
                 {lineCursor.snap.type === 'alignment' && <rect className="drawing-line-cursor-alignment" x="-5" y="-5" width="10" height="10" />}
                 {lineCursor.lineReference?.relation === 'parallel' && <path className="drawing-line-cursor-parallel" d="M -6 -3 L 6 -3 M -6 3 L 6 3" />}
               </g>

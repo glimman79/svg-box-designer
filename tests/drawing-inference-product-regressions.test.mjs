@@ -44,6 +44,52 @@ const author = ({ pointer, scene, transform = identity, previousSnap = null, ctr
 
 const toClient = (point, scale) => ({ x: point.x * scale, y: point.y * scale });
 
+test('Midpoint is an exact, stable, screen-space position authority between endpoint and Line body', () => {
+  const target = { id: 'target', type: 'line', start: { x: 10, y: 20 }, end: { x: 110, y: 60 }, startPointId: 'a', endPointId: 'b' };
+  const pointer = { x: 61, y: 41 };
+  const result = author({ pointer, scene: [target] });
+  assert.equal(result.candidates.midpoints[0].stableKey, 'midpoint:target');
+  assert.equal(result.snap.type, 'midpoint');
+  assert.equal(result.snap.entityId, 'target');
+  assert.deepEqual(result.placement.effectivePoint, { x: 60, y: 40 });
+  assert.notEqual(result.candidates.lines[0], undefined, 'the competing finite Line-body candidate exists');
+
+  const endpointScene = [{ ...target, start: { x: 60, y: 40 }, end: { x: 160, y: 40 } }];
+  assert.equal(author({ pointer: { x: 60, y: 40 }, scene: endpointScene }).snap.type, 'endpoint');
+});
+
+test('Midpoint rejects degenerate Lines, is deterministic, hysteretic, and fully bypassed by Ctrl', () => {
+  const linesAtMidpoint = [
+    referenceLine('z-line', { x: 40, y: 40 }, { x: 80, y: 40 }),
+    referenceLine('a-line', { x: 60, y: 20 }, { x: 60, y: 60 }),
+    referenceLine('degenerate', { x: 200, y: 200 }, { x: 200, y: 200 }),
+  ];
+  const acquired = author({ pointer: { x: 60, y: 40 }, scene: linesAtMidpoint });
+  assert.equal(acquired.snap.entityId, 'a-line', 'stable semantic key breaks equal-distance ties');
+  assert.equal(acquired.candidates.midpoints.some(({ entityId }) => entityId === 'degenerate'), false);
+  const held = author({ pointer: { x: 70, y: 40 }, scene: linesAtMidpoint, previousSnap: acquired.snap });
+  assert.equal(held.snap.type, 'midpoint', 'release threshold retains the stable candidate beyond acquire distance');
+  const overridden = author({ pointer: { x: 60, y: 40 }, scene: linesAtMidpoint, previousSnap: acquired.snap, ctrl: true });
+  assert.equal(overridden.snap.type, 'none');
+  assert.deepEqual(overridden.placement.effectivePoint, { x: 60, y: 40 });
+  assert.equal(overridden.placement.interaction.midpointLineId, null);
+});
+
+test('automatic Midpoint commit creates only the first-class relation and leaves target topology intact', () => {
+  let document = drawingTypes.createDrawingDocumentV2();
+  const target = { id: 'target', type: 'line', start: { x: 0, y: 0 }, end: { x: 100, y: 0 }, startPointId: 'a', endPointId: 'b' };
+  document = lines.appendEntityToActiveSketch(document, target);
+  const authored = { id: 'authored', type: 'line', start: { x: 50, y: -50 }, end: { x: 50, y: 0 }, startPointId: 'p0', endPointId: 'p1' };
+  document = lines.appendEntityToActiveSketch(document, authored, undefined, 'VERTICAL', null, null, null, null, { endLineId: 'target' });
+  const sketch = document.sketches[document.activeSketchId];
+  assert.deepEqual(sketch.entities.target, { id: 'target', type: 'line', startPointId: 'a', endPointId: 'b' });
+  assert.equal(sketch.geometricConstraints['midpoint:p1:target'].kind, 'MIDPOINT');
+  assert.equal(Object.values(sketch.geometricConstraints).some((constraint) => constraint.kind === 'COINCIDENT'
+    && constraint.variant === 'point-linear-support' && constraint.references[0].pointId === 'p1'
+    && constraint.references[1].entityId === 'target'), false);
+  assert.equal(sketch.geometricConstraints['vertical:authored'].kind, 'VERTICAL', 'compatible direction semantic shares the transaction');
+});
+
 for (const degrees of [8, 18, 20]) test(`Perpendicular at ${degrees} degrees does not activate angular presentation`, () => {
   const end = pointAt(degrees);
   const direction = pointAt(degrees - 90, 30);
