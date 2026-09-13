@@ -6,7 +6,7 @@ import { createDrawingDocumentV2 } from '../.test-build/drawing-parallel-marker/
 import { appendEntityToActiveSketch, applyResolvedLineClick, EMPTY_LINE_INTERACTION, resolveLineEffectivePoint } from '../.test-build/drawing-parallel-marker/drawingLineTool.js';
 import { collectDrawingInferenceCandidates } from '../.test-build/drawing-parallel-marker/drawingInference.js';
 import { resolveDrawingSnap } from '../.test-build/drawing-parallel-marker/drawingSnapEngine.js';
-import { DrawingWorkspace, initialDrawingViewBox } from '../.test-build/drawing-parallel-marker/DrawingWorkspace.js';
+import { deriveMidpointPreview, DrawingWorkspace, initialDrawingViewBox } from '../.test-build/drawing-parallel-marker/DrawingWorkspace.js';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
 import { readFileSync } from 'node:fs';
@@ -20,6 +20,23 @@ const sketch = {
   geometricConstraints: { [constraint.id]: constraint }, geometricConstraintOrder: [constraint.id],
 };
 const document = { schemaVersion: 2, unit: 'mm', sketches: { s: sketch }, sketchOrder: ['s'], activeSketchId: 's' };
+
+const midpointCenter = { x: 100, y: 80 };
+assert.deepEqual(deriveMidpointPreview(midpointCenter, { x: 0, y: 0 }, { x: 20, y: 0 }), {
+  center: midpointCenter, start: { x: 93, y: 80 }, end: { x: 107, y: 80 },
+}, 'transient Midpoint geometry is centered and fixed-size in overlay pixels');
+const verticalMidpoint = deriveMidpointPreview(midpointCenter, { x: 5, y: 0 }, { x: 5, y: 20 });
+assert.deepEqual(verticalMidpoint, { center: midpointCenter, start: { x: 100, y: 73 }, end: { x: 100, y: 87 } },
+  'transient Midpoint geometry follows target Line orientation');
+assert.equal(deriveMidpointPreview(midpointCenter, midpointCenter, midpointCenter), null, 'degenerate targets do not produce a glyph');
+const workspaceSource = readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
+const stylesSource = readFileSync('src/styles.css', 'utf8');
+assert.match(workspaceSource, /snap\.type === 'midpoint' && nextInteraction\.midpointLineId === snap\.entityId/,
+  'preview guard follows the accepted semantic Midpoint state');
+assert.match(workspaceSource, /modelToOverlayPoint\(snap\.effectivePoint, drawingTransform, overlayTransform\)/,
+  'the exact accepted midpoint is converted once into the interaction overlay');
+assert.match(stylesSource, /\.drawing-midpoint-inference-preview\s*\{[^}]*stroke:\s*var\(--drawing-inference\);[^}]*pointer-events:\s*none;/s,
+  'transient Midpoint presentation uses the inference token and cannot intercept input');
 
 // Follow the production pointer-candidate -> snap -> Line resolution -> click -> append transaction.
 const transform = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };

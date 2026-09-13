@@ -1015,8 +1015,16 @@ button:disabled {
 }
 .drawing-line-cursor-line { fill: var(--drawing-inference); stroke: none; }
 .drawing-line-cursor-endpoint { fill: #0e7490; stroke: none; }
-.drawing-line-cursor-midpoint { fill: none; stroke: var(--drawing-inference); stroke-width: 1.4; pointer-events: none; }
-.drawing-line-cursor-midpoint rect { fill: #fff; }
+.drawing-midpoint-inference-preview {
+  fill: none;
+  stroke: var(--drawing-inference);
+  stroke-width: 1.4;
+  pointer-events: none;
+}
+
+.drawing-midpoint-inference-preview rect {
+  fill: #fff;
+}
 
 .drawing-line-cursor-perpendicular,
 .drawing-line-cursor-parallel,
