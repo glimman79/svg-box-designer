@@ -53,6 +53,7 @@ export type CadCursorPresentation = Readonly<{
   yGuideReference: CoordinatePoint | null;
   sameAxisReference: CoordinatePoint | null;
   lineReference: Readonly<{ relation: 'parallel' | 'perpendicular' | 'midpoint'; targetLineId: string }> | null;
+  midpointPreview: Readonly<{ center: CoordinatePoint; start: CoordinatePoint; end: CoordinatePoint }> | null;
   perpendicularPreview: DrawingPerpendicularPresentation | null;
   pointReferenceGuide: Readonly<{ start: CoordinatePoint; end: CoordinatePoint }> | null;
 }> | null;
@@ -67,6 +68,26 @@ export const derivePerpendicularPreview = (
 ): DrawingPerpendicularPresentation | null => derivePerpendicularPresentation(
   { start: authoredStart, end: authoredEnd }, { start: targetStart, end: targetEnd }, size,
 );
+
+/** Builds the fixed-pixel Midpoint glyph along the accepted target Line in overlay space. */
+export const deriveMidpointPreview = (
+  center: CoordinatePoint,
+  targetStart: CoordinatePoint,
+  targetEnd: CoordinatePoint,
+  halfLength = 7,
+) => {
+  const dx = targetEnd.x - targetStart.x;
+  const dy = targetEnd.y - targetStart.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) return null;
+  const ux = dx / length;
+  const uy = dy / length;
+  return {
+    center,
+    start: { x: center.x - ux * halfLength, y: center.y - uy * halfLength },
+    end: { x: center.x + ux * halfLength, y: center.y + uy * halfLength },
+  } as const;
+};
 type GeometryDragSession = Readonly<{
   pointerId: number; target: DrawingGeometryTarget; startClient: CoordinatePoint; startModel: DrawingPoint;
   startDocument: DrawingDocumentV2; candidate: DrawingDocumentV2; exceeded: boolean;
@@ -316,12 +337,21 @@ export function DrawingWorkspace({
         return authoredStart && authoredEnd && targetStart && targetEnd
           ? derivePerpendicularPreview(authoredStart, authoredEnd, targetStart, targetEnd) : null;
       })() : null;
+    const midpointTarget = snap.type === 'midpoint' && nextInteraction.midpointLineId === snap.entityId
+      ? resolvedLines.find(({ id }) => id === snap.entityId) : null;
+    const midpointPreview = midpointTarget
+      ? (() => {
+        const center = modelToOverlayPoint(snap.effectivePoint, drawingTransform, overlayTransform);
+        const targetStart = modelToOverlayPoint(midpointTarget.start, drawingTransform, overlayTransform);
+        const targetEnd = modelToOverlayPoint(midpointTarget.end, drawingTransform, overlayTransform);
+        return center && targetStart && targetEnd ? deriveMidpointPreview(center, targetStart, targetEnd) : null;
+      })() : null;
     const pointReferenceGuide = snap.type === 'point-reference' && anchor
       ? (() => {
         const source = modelToOverlayPoint(snap.supportOrigin, drawingTransform, overlayTransform);
         return source ? derivePointReferenceGuide(source, anchor) : null;
       })() : null;
-    setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference, sameAxisReference, lineReference, perpendicularPreview, pointReferenceGuide } : null);
+    setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference, sameAxisReference, lineReference, midpointPreview, perpendicularPreview, pointReferenceGuide } : null);
     const endpointPointId = snap.type === 'endpoint' && activeSketch
       ? pointIdForLineEndpoint(activeSketch.entities[snap.entityId], snap.endpoint) : null;
     const position: DrawingPlacementResolution['position'] = ctrlHeld
@@ -1037,6 +1067,10 @@ export function DrawingWorkspace({
                   <polyline className="drawing-line-relation-preview" data-relation="perpendicular"
                     points={lineCursor.perpendicularPreview.markerPoints.map(({ x, y }) => `${x},${y}`).join(' ')} />
                 </>}
+                {lineCursor.midpointPreview && <g className="drawing-midpoint-inference-preview" data-target-line-id={lineCursor.lineReference?.targetLineId}>
+                  <line x1={lineCursor.midpointPreview.start.x} y1={lineCursor.midpointPreview.start.y} x2={lineCursor.midpointPreview.end.x} y2={lineCursor.midpointPreview.end.y} />
+                  <rect x={lineCursor.midpointPreview.center.x - 2} y={lineCursor.midpointPreview.center.y - 2} width="4" height="4" />
+                </g>}
               <g className="drawing-line-cursor drawing-cad-cursor" data-inference={lineCursor.snap.type} transform={`translate(${lineCursor.anchor.x} ${lineCursor.anchor.y})`} aria-hidden="true">
                 <line className="drawing-line-cursor-arm" data-arm="left" x1="-22" y1="0" x2="-7" y2="0" />
                 <line className="drawing-line-cursor-arm" data-arm="right" x1="7" y1="0" x2="22" y2="0" />
@@ -1045,7 +1079,6 @@ export function DrawingWorkspace({
                 {lineCursor.snap.type === 'none' && <circle className="drawing-line-cursor-dot" cx="0" cy="0" r="2.5" />}
                 {lineCursor.snap.type === 'endpoint' && <rect className="drawing-line-cursor-endpoint" x={-DRAWING_POINT_HOVER_MARKER_SIZE_PX / 2} y={-DRAWING_POINT_HOVER_MARKER_SIZE_PX / 2} width={DRAWING_POINT_HOVER_MARKER_SIZE_PX} height={DRAWING_POINT_HOVER_MARKER_SIZE_PX} />}
                 {lineCursor.snap.type === 'line' && <rect className="drawing-line-cursor-line" x={-DRAWING_LINE_HOVER_MARKER_SIZE_PX / 2} y={-DRAWING_LINE_HOVER_MARKER_SIZE_PX / 2} width={DRAWING_LINE_HOVER_MARKER_SIZE_PX} height={DRAWING_LINE_HOVER_MARKER_SIZE_PX} />}
-                {lineCursor.snap.type === 'midpoint' && <g className="drawing-line-cursor-midpoint"><line x1="-7" y1="0" x2="7" y2="0" /><rect x="-2" y="-2" width="4" height="4" /></g>}
                 {lineCursor.snap.type === 'alignment' && <rect className="drawing-line-cursor-alignment" x="-5" y="-5" width="10" height="10" />}
                 {lineCursor.lineReference?.relation === 'parallel' && <path className="drawing-line-cursor-parallel" d="M -6 -3 L 6 -3 M -6 3 L 6 3" />}
               </g>
