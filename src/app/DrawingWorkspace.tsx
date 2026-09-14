@@ -188,7 +188,6 @@ export function DrawingWorkspace({
   }, [constraintsPanelOpen, constraintsPanelPosition]);
   const [lineInteraction, setLineInteraction] = useState<LineToolInteraction>(EMPTY_LINE_INTERACTION);
   const [cadCursor, setCadCursor] = useState<CadCursorPresentation>(null);
-  const [inferencePresentations, setInferencePresentations] = useState<readonly DrawingInferencePresentation[]>([]);
   const lineCursor = cadCursor; // Line is currently the sole consumer of the shared CAD cursor.
   const [drawingSnap, setDrawingSnap] = useState<DrawingSnap | null>(null);
   const lastPointerClientRef = useRef<CoordinatePoint | null>(null);
@@ -332,7 +331,6 @@ export function DrawingWorkspace({
         return authoredStart && authoredEnd && targetStart && targetEnd
           ? derivePerpendicularPreview(authoredStart, authoredEnd, targetStart, targetEnd) : null;
       })() : null;
-    setInferencePresentations(deriveDrawingInferencePresentations(snap, resolvedLines, drawingTransform, overlayTransform));
     const pointReferenceGuide = snap.type === 'point-reference' && anchor
       ? (() => {
         const source = modelToOverlayPoint(snap.supportOrigin, drawingTransform, overlayTransform);
@@ -356,7 +354,6 @@ export function DrawingWorkspace({
   resolvePlacementRef.current = resolvePlacement;
 
   const commitLinePoint = (point: DrawingPoint, reusedPointId: string | null, acceptedInteraction: LineToolInteraction, acceptedLineBodyId = acceptedInteraction.lineBodyId) => {
-    setInferencePresentations([]);
     const acceptedMidpointLineId = acceptedInteraction.midpointLineId;
     const pointId = reusedPointId ?? `point-${Date.now().toString(36)}-${++pointSequence.current}`;
     // The delayed click transaction must consume the inference accepted at the
@@ -400,7 +397,7 @@ export function DrawingWorkspace({
   });
   const { isPanning, panHandlers } = useCadPanGesture({
     viewportRef: svgRef,
-    onPanStart: () => { setCadCursor(null); setInferencePresentations([]); setDrawingSnap(null); drawingSnapRef.current = null; },
+    onPanStart: () => { setCadCursor(null); setDrawingSnap(null); drawingSnapRef.current = null; },
     onPan: ({ dx, dy }) => {
       const matrix = svgRef.current?.getScreenCTM();
       if (!matrix) return;
@@ -429,7 +426,6 @@ export function DrawingWorkspace({
     setDrawingSnap(null);
     drawingSnapRef.current = null;
     setCadCursor(null);
-    setInferencePresentations([]);
     setToolLifecycle(activateDrawingTool('select'));
     setDimensionTool({ phase: 'inactive' });
   };
@@ -659,7 +655,6 @@ export function DrawingWorkspace({
     setDrawingSnap(null);
     drawingSnapRef.current = null;
     setCadCursor(null);
-    setInferencePresentations([]);
     setToolLifecycle(activateDrawingTool(tool, activationMode));
     setDimensionTool(tool === 'dimension' ? { phase: 'waitingForFirstTarget' } : { phase: 'inactive' });
   };
@@ -682,7 +677,7 @@ export function DrawingWorkspace({
     selectTool(tool);
   };
 
-  const clearCadCursor = () => { lastPointerClientRef.current = null; setCadCursor(null); setInferencePresentations([]); setDrawingSnap(null); drawingSnapRef.current = null; setDimensionPreselection(null); if (!geometryDrag) setGeometryPreselection(null); };
+  const clearCadCursor = () => { lastPointerClientRef.current = null; setCadCursor(null); setDrawingSnap(null); drawingSnapRef.current = null; setDimensionPreselection(null); if (!geometryDrag) setGeometryPreselection(null); };
   const clearLineCursor = clearCadCursor;
 
   const finishLine = () => {
@@ -692,7 +687,6 @@ export function DrawingWorkspace({
     setDrawingSnap(null);
     drawingSnapRef.current = null;
     setCadCursor(null);
-    setInferencePresentations([]);
     lineInteractionRef.current = cancelLineInteraction();
     setToolLifecycle((current) => finishDrawingConstruction(current));
   };
@@ -838,6 +832,13 @@ export function DrawingWorkspace({
     const yLabels = yLabelValues.map((value) => ({ value, anchor: toOverlay({ x: DRAWING_ORIGIN.x, y: value }) })).filter((label): label is { value: number; anchor: CoordinatePoint } => label.anchor !== null);
     setOverlayGeometry(origin && xIndicatorAnchor && yIndicatorAnchor ? { origin, xLabels, yLabels, xIndicatorAnchor, yIndicatorAnchor } : null);
   }, [viewBox, viewport.width, viewport.height, labelInterval]);
+  // The accepted snap is the transient inference authority. Derive the overlay
+  // in this render instead of racing a second, independently cleared state value.
+  const drawingTransform = svgRef.current?.getScreenCTM();
+  const overlayTransform = overlaySvgRef.current?.getScreenCTM();
+  const inferencePresentations = activeTool === 'line' && drawingSnap && drawingTransform && overlayTransform
+    ? deriveDrawingInferencePresentations(drawingSnap, resolvedLines, drawingTransform, overlayTransform)
+    : [];
   return (
     <section className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace">
       <aside ref={toolSidebarRef} className="drawing-tool-sidebar" aria-label="Drawing tools" onPointerDownCapture={preventToolChromePointerSelection} onMouseDownCapture={preventToolChromeMouseSelection}>
