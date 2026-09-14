@@ -16,7 +16,7 @@ Status labels have the meanings defined in `PROJECT_MASTER.md`. Detailed B3.x re
 - **Official release tag:** `v1.2.0`
 - **Local checkout tag verification:** unavailable in the PM.1 checkout.
 - **Acceptance result:** B3.23 concluded that Wall was stable enough to leave stabilization.
-- **Current development position:** governance documentation follows v1.2; the next architectural subject after review is the shared ProjectDocument/document-identity foundation.
+- **Current development position:** substantial solver-backed 2D Drawing development followed v1.2. The active blocker is real browser Parallel + Perpendicular coexistence; shared ProjectDocument remains later cross-module work.
 
 ## 3. Timeline Summary
 
@@ -30,6 +30,7 @@ Status labels have the meanings defined in `PROJECT_MASTER.md`. Detailed B3.x re
 | Reconciliation | Composition could change final segments while generator metadata still described pre-composition projections. | Add explicit projection lineage and generic post-composition reconciliation before packaging. | Preserved semantic authority across supported mixed topologies. |
 | Tab regression | Shared W/TB UI work accidentally shared setting behavior. | Restore each connection's independent width and test coexistence/isolation. | Locked the lesson that shared UI does not imply shared setting ownership. |
 | v1.2 / B3.23 | Wall required product-level stabilization and acceptance. | Validate authoring, geometry, composition, reconciliation, manufacturing, history, and per-connection controls. | v1.2 became the locked TB + Wall baseline. |
+| Post-v1.2 Drawing | Drawing needed durable topology and semantic, editable geometry rather than display-only SVG. | Add SketchPoints, solver-backed dimensions/constraints, inference, Direct Manipulation, Drawing History, and shared marker derivation. | Drawing is now implemented and active; current browser work stops at the Parallel + Perpendicular coexistence blocker. |
 
 ## 4. Foundation and v1.0 Core
 
@@ -301,19 +302,82 @@ S-B `REFERENCES` was deliberately fixed to the original imported/source edge. Sa
 - J/P remained future-facing rather than implemented tool libraries.
 - No parametric Drawing, Puzzle generator, assembly-angle model, ProjectDocument, or static 3D assembly preview existed.
 
-## 11. Superseded or Temporary Material
+## 11. Post-v1.2 2D Drawing Development Era
 
-### 11.1 Historical reports and diagnostics
+This era is post-release development; it does not rename the v1.2 Box baseline or assert a later release.
+
+### 11.1 Topology, dimensions, and solver authority
+
+**Problem:** Early Lines with embedded endpoint coordinates could not express shared connectivity or durable semantic references. Dimensions and dragging risked becoming destructive coordinate edits.
+
+**Decision/change:** Drawing introduced `DrawingSketchPoint` identity and Lines referencing point IDs, stable ordering, schema migration, typed dimensions, equation/Jacobian component solving, rank/degree-of-freedom analysis, and solver verification. Driving and Reference roles separated intent from derived measurement; Point-to-Point/Origin, Point-to-Line, Line-to-Line distance, and Line-to-Line angle support grew incrementally.
+
+**Result:** Direct Manipulation was routed through the component solver, allowing connected and constrained geometry to propagate rather than bypassing constraints. Solver null-space projection also enabled semantic Line states (`FREE`, `CONSTRAINED`, `FULLY_LOCKED`) instead of inferring state from superficial constraint counts.
+
+**Why it matters:** SketchPoint topology and solver results, not endpoint mutation or paint state, are Drawing authority.
+
+### 11.2 Inference became semantic architecture
+
+**Problem:** A snap winner had initially served too many roles: cursor position, connectivity, semantic relation, and guide rendering. Improving one inference could erase another or leave stale display state.
+
+**Decision/change:** Line authoring evolved toward separate position, topology, semantics, and presentation channels, with Ctrl as a raw-override layer. Endpoint, finite-Line, X/Y, H/V, angular, Parallel, Perpendicular, Midpoint, and point-derived 90-degree references were added/refined. Accepted automatic relations commit with Line creation in one Drawing History transaction.
+
+**Result:** H/V became first-class, exclusive axis intent. Parallel gained a normalized direction equation and paired markers. Perpendicular gained a normalized dot-product equation and presentation at shared points or infinite-support intersections, including separated support gaps and dynamically flipping marker sides. Coincidence gained Point→Point and Point→support-Line variants, the latter preserving slide freedom.
+
+**Why it matters:** One effective position is compatible with more than one semantic truth. Priority is for incompatible positional alternatives; compatible semantics must survive together.
+
+### 11.3 Floating Constraints workflow
+
+**Problem:** Manual constraint creation needed predictable target selection without turning selection or panel UI state into geometry edits.
+
+**Decision/change:** A movable, non-modal Constraints panel was added with a centralized applicability authority. The catalog deliberately exposes future entries as disabled while enabling only implemented/applicable Midpoint, Coincidence, Parallelism, Perpendicular, Horizontal, and Vertical choices. Panel-open selection accumulates without Direct Manipulation; apply clears targets but keeps the panel open; Esc closes and restores Select behavior.
+
+**Result:** Visible catalog scope is no longer confused with implemented constraint scope, and UI-only OK/Esc behavior does not pollute History.
+
+### 11.4 Midpoint and the shared-presentation lesson
+
+**Problem:** Several Midpoint preview attempts passed render/state tests yet failed the visible browser interaction. Preview was too closely coupled to cursor-local state, accepted snap and preview state became desynchronized, and the existence of SVG nodes did not prove visible placement.
+
+**Decision/change:** Automatic Midpoint was retained as a first-class Point+Line semantic constraint, while its transient preview was changed to reuse the already-working persistent Midpoint marker placement/layout authority.
+
+**Result:** Browser testing accepted automatic Midpoint snap, visible transient `—□—`, and stable placement across the click: the same layout is transient before commit and persistent afterward, with styling rather than geometry changing.
+
+**Lasting lesson:** Where practical, the same semantic relation must derive the same marker/support geometry for transient and persistent states. Preview and persistent markers must not be unrelated visual implementations. Browser acceptance is authoritative; render output alone does not prove user-visible behavior.
+
+### 11.5 Parallel preview success and coexistence failure
+
+**Partial success:** Parallel transient `II` was derived using the persistent Parallel marker layout principle. Browser testing confirms that automatic Parallel and its preview work while Parallel remains active alone.
+
+**Failed/partial coexistence fix:** Investigation found branches in `resolveLineEffectivePoint` that populated one of `parallelLineId` and `perpendicularLineId` while clearing the other. Changes allowed both IDs to coexist and revalidated both semantics against final effective geometry. Automated tests reported coexistence, and the Parallel preview work succeeded.
+
+**Browser result:** When a live authored Line has active Parallel and is moved until compatible Perpendicular becomes valid, Perpendicular activates but Parallel itself stops functioning; the Parallel preview disappears because its semantic relation was lost. This is not a preview-only defect.
+
+**Architectural lesson:** **metadata coexistence != live geometric coexistence.** Synthetic states carrying both IDs cannot prove that the pointer-move resolver computed one geometry satisfying both. The next investigation must trace whether a positional Perpendicular winner first changes effective geometry and only then causes a legitimate Parallel truth-check to reject the old relation. That is a hypothesis, not yet proven. Compatibility may need to participate before or during effective-point resolution, while genuinely incompatible reference directions still require arbitration.
+
+### 11.6 Browser acceptance boundary and current stop
+
+Unit, solver, state, and render-level tests remain necessary. They are not sufficient for inference acquire/release sequences, transient visibility, Direct Manipulation, selection arbitration, or cursor behavior. A contrary browser result keeps the behavior unresolved.
+
+At the current stop:
+
+- browser-accepted: Midpoint automatic snap and stable transient/persistent placement; Parallel inference and preview while alone; existing Perpendicular functionality/presentation;
+- active blocker: compatible Parallel + Perpendicular do not coexist in the real browser interaction;
+- next visual debt after that blocker: Horizontal, Vertical, Coincidence Point-to-Point, and Coincidence Point-to-Line transient symbols;
+- later direction: broader inference/persistent constraint presentation unification.
+
+## 12. Superseded or Temporary Material
+
+### 12.1 Historical reports and diagnostics
 
 **[HISTORICAL]** B3.x architecture reports, browser/test differential analyses, reduction fixtures, runtime captures, and shadow/oracle paths explain investigations and provide evidence. They do not override `PROJECT_MASTER.md` or prove that every proposed design was implemented.
 
 Retired examples—such as early independent Wall corner restrictions—must not be revived as current truth after later analysis superseded them.
 
-### 11.2 Legacy and debug paths
+### 12.2 Legacy and debug paths
 
 Legacy/single-tool authority modes, raw generator carriers, shadow composition, and runtime diagnostic schemas served rollback, equivalence, migration, and debugging purposes. Their historical existence does not make them preferred new architecture. Remove or change compatibility paths only through explicit migration work with restore and regression evidence.
 
-### 11.3 Documentation debt
+### 12.3 Documentation debt
 
 - **[KNOWN DEBT]** `README.md` contains stale capability statements that predate implemented TB/W/S geometry.
 - **[KNOWN DEBT]** `Architecture.md` uses version terminology that does not align cleanly with semantic product version `1.2.0`.
@@ -321,15 +385,15 @@ Legacy/single-tool authority modes, raw generator carriers, shadow composition, 
 
 These files were not changed during PM.2.
 
-## 12. Current Development Position
+## 13. Current Development Position
 
-v1.2 is the locked Box / Construction baseline. TB and rectangular W are accepted; current S is implemented but incomplete; J/P, Drawing, Puzzle, assembly angles, angle-aware variants, and static 3D Preview remain planned or conceptual exactly as classified in `PROJECT_MASTER.md`.
+v1.2 remains the locked Box / Construction baseline. TB and rectangular W are accepted; current S is implemented but incomplete. Drawing is now substantially implemented post-v1.2. Puzzle, J/P, assembly angles, angle-aware variants, static 3D Preview, and a shared ProjectDocument remain planned or conceptual exactly as classified in `PROJECT_MASTER.md`.
 
 PM.1 analyzed the source and designed the governance structure. PM.2 created `PROJECT_MASTER.md` and this history so future sessions can distinguish implemented, locked, planned, conceptual, debt, and historical material.
 
-After documentation review, the next architectural subject is the shared versioned ProjectDocument/document-identity foundation. That work must wrap and preserve useful v1.2 models rather than rewrite stable TB/W behavior.
+Immediate work is the real runtime Parallel + compatible Perpendicular coexistence path, followed by missing H/V and Coincidence transient symbols and broader presentation unification. Shared versioned ProjectDocument/document identity remains future cross-module architecture; it must eventually wrap useful Drawing and v1.2 models rather than rewrite either.
 
-## 13. Release History Index
+## 14. Release History Index
 
 | Release | Locked commit | Official tag | Summary | Current relevance |
 |---|---|---|---|---|
