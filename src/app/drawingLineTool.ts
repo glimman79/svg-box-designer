@@ -316,11 +316,14 @@ export const resolveLineEffectivePoint = (
       { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null, midpointLineId: null, lineBodyId: null }, spatialSnap);
   }
 
-  if (spatialSnap.type === 'perpendicular') return lineResolution(spatialSnap.effectivePoint,
-    { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snappedAngleDegrees: null, perpendicularLineId: spatialSnap.entityId ?? null, parallelLineId: null, midpointLineId: null, lineBodyId: null }, spatialSnap);
-
-  if (spatialSnap.type === 'parallel') return lineResolution(spatialSnap.effectivePoint,
-    { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: spatialSnap.entityId ?? null, midpointLineId: null, lineBodyId: null }, spatialSnap);
+  // The snap winner owns only the endpoint. Do not make this branch a second,
+  // winner-only semantic authority: lineResolution independently validates both
+  // acquired channels against that endpoint and writes both accepted relation
+  // IDs. In particular, acquiring Perpendicular must not clear an already
+  // compatible Parallel relation (or vice versa) before reconciliation.
+  if (spatialSnap.type === 'perpendicular' || spatialSnap.type === 'parallel') return lineResolution(spatialSnap.effectivePoint,
+    { ...interaction, rawPointerPoint, effectivePreviewPoint: spatialSnap.effectivePoint, snappedAngleDegrees: null,
+      midpointLineId: null, lineBodyId: null }, spatialSnap);
 
   if (spatialSnap.type === 'endpoint' || spatialSnap.type === 'midpoint' || spatialSnap.type === 'line') {
     // An endpoint owns its exact position; a finite Line owns its positional support.
