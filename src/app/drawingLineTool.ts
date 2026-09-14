@@ -107,7 +107,8 @@ type LineSpatialSnap = Readonly<{
     yAlignment: LineAlignmentYReference | null;
     perpendicular: Readonly<{ entityId: string; candidatePoint: DrawingPoint; screenDistance: number;
       lineStart?: DrawingPoint; lineEnd?: DrawingPoint }> | null;
-    parallel: Readonly<{ entityId: string; candidatePoint: DrawingPoint; screenDistance: number }> | null;
+    parallel: Readonly<{ entityId: string; candidatePoint: DrawingPoint; screenDistance: number;
+      lineStart?: DrawingPoint; lineEnd?: DrawingPoint }> | null;
     pointReference?: Readonly<{ candidatePoint: DrawingPoint; screenDistance: number }> | null;
   }>;
 }>;
@@ -207,6 +208,26 @@ const isParallelAt = (start: DrawingPoint, end: DrawingPoint, candidatePoint?: D
       <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, authoredLength * candidateLength);
 };
 
+/** Returns the common unoriented direction requested by live Parallel and
+ * Perpendicular channels. Reference geometry, not candidate IDs or the
+ * positional winner, owns compatibility. */
+const compatibleDirectionalChannel = (spatialSnap: LineSpatialSnap): DrawingPoint | null => {
+  const parallel = spatialSnap.channels?.parallel;
+  const perpendicular = spatialSnap.channels?.perpendicular;
+  if (!parallel?.lineStart || !parallel.lineEnd || !perpendicular?.lineStart || !perpendicular.lineEnd) return null;
+  const px = parallel.lineEnd.x - parallel.lineStart.x, py = parallel.lineEnd.y - parallel.lineStart.y;
+  const qx = perpendicular.lineEnd.x - perpendicular.lineStart.x, qy = perpendicular.lineEnd.y - perpendicular.lineStart.y;
+  const pl = Math.hypot(px, py), ql = Math.hypot(qx, qy);
+  if (pl <= LINE_ZERO_LENGTH_TOLERANCE_MM || ql <= LINE_ZERO_LENGTH_TOLERANCE_MM) return null;
+  if (Math.abs(px * qx + py * qy) > ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, pl * ql)) return null;
+  return { x: px / pl, y: py / pl };
+};
+
+const projectPointerToDirection = (start: DrawingPoint, pointer: DrawingPoint, direction: DrawingPoint): DrawingPoint => {
+  const radial = (pointer.x - start.x) * direction.x + (pointer.y - start.y) * direction.y;
+  return { x: start.x + radial * direction.x, y: start.y + radial * direction.y };
+};
+
 /** Semantic Line relations are validated independently at the final position. */
 const acceptedDirectionalRelationsAt = (
   start: DrawingPoint | null,
@@ -284,6 +305,18 @@ export const resolveLineEffectivePoint = (
     interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: rawPointerPoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: null, midpointLineId: null, lineBodyId: null },
     resolvedReferences: { x: null, y: null },
   };
+
+  // Compatibility is resolved before positional priority. Soft construction
+  // winners (including point-reference/alignment) may position the cursor, but
+  // may not bend a direction shared by two actual reference Lines. Exact
+  // endpoint/midpoint/finite-Line position remains authoritative and is merely
+  // truth-checked by lineResolution.
+  const commonDirection = compatibleDirectionalChannel(spatialSnap);
+  if (commonDirection && spatialSnap.type !== 'endpoint' && spatialSnap.type !== 'midpoint' && spatialSnap.type !== 'line') {
+    const effectivePoint = projectPointerToDirection(interaction.start, rawPointerPoint, commonDirection);
+    return lineResolution(effectivePoint, { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint,
+      snappedAngleDegrees: null, midpointLineId: null, lineBodyId: null }, spatialSnap);
+  }
 
   // Raw-pointer axis intent has priority over a simultaneously available
   // Line-to-Line candidate. The centralized final-geometry guard below also

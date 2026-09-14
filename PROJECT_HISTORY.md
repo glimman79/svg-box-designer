@@ -354,6 +354,8 @@ This era is post-release development; it does not rename the v1.2 Box baseline o
 
 **Architectural lesson:** **metadata coexistence != live geometric coexistence.** Synthetic states carrying both IDs cannot prove that the pointer-move resolver computed one geometry satisfying both. The next investigation must trace whether a positional Perpendicular winner first changes effective geometry and only then causes a legitimate Parallel truth-check to reject the old relation. That is a hypothesis, not yet proven. Compatibility may need to participate before or during effective-point resolution, while genuinely incompatible reference directions still require arbitration.
 
+**Compatibility-before-priority completion (pending browser acceptance):** A production-path regression subsequently reproduced the missing case: a point-reference construction could win the singular position before compatible Parallel and Perpendicular channels were resolved, bending the authored endpoint away from their shared direction and causing final truth validation to discard both Line relations. Parallel candidates now carry their actual reference endpoints, and Line effective-point resolution compares nondegenerate reference directions before soft positional priority. Compatible requests project the pointer once onto their common unoriented direction; incompatible requests, exact point/finite-Line authorities, H/V, and Ctrl retain their existing arbitration. This is implemented and regression-covered, but is not browser-accepted or locked.
+
 ### 11.6 Browser acceptance boundary and current stop
 
 Unit, solver, state, and render-level tests remain necessary. They are not sufficient for inference acquire/release sequences, transient visibility, Direct Manipulation, selection arbitration, or cursor behavior. A contrary browser result keeps the behavior unresolved.
@@ -361,7 +363,7 @@ Unit, solver, state, and render-level tests remain necessary. They are not suffi
 At the current stop:
 
 - browser-accepted: Midpoint automatic snap and stable transient/persistent placement; Parallel inference and preview while alone; existing Perpendicular functionality/presentation;
-- active blocker: compatible Parallel + Perpendicular do not coexist in the real browser interaction;
+- pending browser verification: compatible Parallel + Perpendicular pre-resolution composition is implemented and production-path regression-covered;
 - next visual debt after that blocker: Horizontal, Vertical, Coincidence Point-to-Point, and Coincidence Point-to-Line transient symbols;
 - later direction: broader inference/persistent constraint presentation unification.
 

@@ -7,6 +7,7 @@ const built = (name) => pathToFileURL(path.resolve(`.test-build/drawing-live-dir
 const inference = await import(built('drawingInference'));
 const snaps = await import(built('drawingSnapEngine'));
 const lineTool = await import(built('drawingLineTool'));
+const presentation = await import(built('drawingInferencePresentation'));
 
 const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 const bounds = { x: -1000, y: -1000, width: 2000, height: 2000 };
@@ -37,6 +38,73 @@ const move = (frame, pointer, scene) => {
 const emptyFrame = () => ({ snap: null, interaction: { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId: 'start' } });
 const parallelTruth = (point) => Math.abs(point.x - point.y) < 1e-9;
 const perpendicularTruth = parallelTruth;
+
+const workspaceSketch = {
+  id: 'sketch', points: {
+    a1: { id: 'a1', x: 300, y: 300 }, a2: { id: 'a2', x: 400, y: 400 },
+    b1: { id: 'b1', x: 300, y: -300 }, b2: { id: 'b2', x: 400, y: -400 },
+    c1: { id: 'c1', x: 200, y: 180 }, c2: { id: 'c2', x: 290, y: 80 },
+  }, entities: {
+    'line-a': { id: 'line-a', type: 'line', startPointId: 'a1', endPointId: 'a2' },
+    'line-b': { id: 'line-b', type: 'line', startPointId: 'b1', endPointId: 'b2' },
+    'line-c': { id: 'line-c', type: 'line', startPointId: 'c1', endPointId: 'c2' },
+  }, entityOrder: ['line-a', 'line-b', 'line-c'], dimensions: {}, dimensionOrder: [], geometricConstraints: {}, geometricConstraintOrder: [],
+};
+
+test('workspace production path composes compatible directions before a point-reference positional winner', () => {
+  const blocker = { id: 'line-c', type: 'line', start: { x: 200, y: 180 }, end: { x: 290, y: 80 }, startPointId: 'c1', endPointId: 'c2' };
+  let frame = move(emptyFrame(), { x: 100, y: 103 }, [parallel]);
+  assert.equal(frame.snap.channels.parallel.entityId, parallel.id);
+  assert.equal(frame.snap.type, 'parallel');
+  assert.equal(frame.interaction.parallelLineId, parallel.id);
+  assert.ok(parallelTruth(frame.point));
+
+  frame = move(frame, { x: 110, y: 106 }, [parallel, perpendicular, blocker]);
+  assert.equal(frame.snap.type, 'point-reference', 'real positional priority chooses the competing point construction');
+  assert.equal(frame.snap.channels.parallel.entityId, parallel.id);
+  assert.equal(frame.snap.channels.perpendicular.entityId, perpendicular.id);
+  assert.ok(Math.abs(frame.point.x - 108) < 1e-9 && Math.abs(frame.point.y - 108) < 1e-9);
+  assert.equal(frame.interaction.parallelLineId, parallel.id);
+  assert.equal(frame.interaction.perpendicularLineId, perpendicular.id);
+  assert.ok(parallelTruth(frame.point) && perpendicularTruth(frame.point));
+
+  const shown = presentation.deriveDrawingInferencePresentations(frame.snap, workspaceSketch, 1, identity, identity, frame.interaction);
+  assert.deepEqual(shown.map(({ kind }) => kind).sort(), ['parallel', 'perpendicular']);
+
+  frame = move(frame, { x: 111, y: 107 }, [parallel, perpendicular, blocker]);
+  assert.equal(frame.interaction.parallelLineId, parallel.id);
+  assert.equal(frame.interaction.perpendicularLineId, perpendicular.id);
+
+  const click = lineTool.applyResolvedLineClick(frame.interaction, frame.point, () => 'authored');
+  const document = { version: 2, activeSketchId: 'sketch', sketches: { sketch: workspaceSketch }, sketchOrder: ['sketch'] };
+  const committed = lineTool.appendEntityToActiveSketch(document, click.entity, (() => { let n = 0; return () => `new-${++n}`; })(),
+    null, frame.interaction.perpendicularLineId, null, frame.interaction.parallelLineId);
+  assert.deepEqual(Object.values(committed.sketches.sketch.geometricConstraints).map(({ kind }) => kind).sort(), ['PARALLEL', 'PERPENDICULAR']);
+});
+
+test('direction compatibility fails closed and preserves H/V and Ctrl policies', () => {
+  const incompatible = { ...perpendicular, id: 'bad', start: { x: 300, y: -300 }, end: { x: 420, y: -360 } };
+  let frame = move(emptyFrame(), { x: 7, y: 7 }, [parallel, incompatible]);
+  assert.equal(frame.snap.channels.parallel.entityId, parallel.id);
+  assert.equal(frame.snap.channels.perpendicular.entityId, incompatible.id);
+  assert.notEqual(frame.interaction.parallelLineId !== null && frame.interaction.perpendicularLineId !== null, true);
+
+  const reversedParallel = { ...parallel, start: parallel.end, end: parallel.start };
+  const reversedPerpendicular = { ...perpendicular, start: perpendicular.end, end: perpendicular.start };
+  frame = move(emptyFrame(), { x: 110, y: 106 }, [reversedParallel, reversedPerpendicular]);
+  assert.equal(frame.interaction.parallelLineId, parallel.id);
+  assert.equal(frame.interaction.perpendicularLineId, perpendicular.id);
+
+  const degenerate = { id: 'zero', type: 'line', start: { x: 5, y: 5 }, end: { x: 5, y: 5 } };
+  const candidates = inference.collectDrawingInferenceCandidates({ x: 5, y: 5 }, [degenerate], identity, bounds, start, null);
+  assert.equal(candidates.parallels.length + candidates.perpendiculars.length, 0);
+
+  const axisCandidates = inference.collectDrawingInferenceCandidates({ x: 100, y: 1 }, [parallel, perpendicular], identity, bounds, start, 0);
+  const axis = snaps.resolveDrawingSnap({ rawPoint: { x: 100, y: 1 }, candidates: axisCandidates, previousSnap: null, ctrlOverride: false, axisDirectionActive: true });
+  assert.equal(axis.channels.parallel, null); assert.equal(axis.channels.perpendicular, null);
+  const ctrl = snaps.resolveDrawingSnap({ rawPoint: { x: 110, y: 106 }, candidates: axisCandidates, previousSnap: frame.snap, ctrlOverride: true });
+  assert.equal(ctrl.type, 'none'); assert.equal(ctrl.channels.parallel, null); assert.equal(ctrl.channels.perpendicular, null);
+});
 
 test('live pointer frames retain, release, and reacquire Parallel and Perpendicular independently', () => {
   let frame = move(emptyFrame(), { x: 100, y: 70 }, []); // frame 1: raw

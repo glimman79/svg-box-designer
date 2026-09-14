@@ -174,19 +174,11 @@ This is Drawing-local History. It is not the future global `ProjectDocument` His
 
 ## 12. Current Drawing known debt and active work
 
-### 12.1 Current blocker: Parallel + Perpendicular
+### 12.1 Parallel + Perpendicular browser verification
 
-**[IN PROGRESS][KNOWN DEBT]** Real browser interaction still drops Parallel completely when Perpendicular becomes valid:
+**[IMPLEMENTED][IN PROGRESS]** Live Line authoring now groups acquired Parallel and Perpendicular channels by their actual nondegenerate reference geometry before soft positional arbitration. When the Parallel tangent is compatible with the Perpendicular normal, one common direction projects the raw pointer to the authoritative effective endpoint; both relations are then truth-checked against that same geometry, presented together, and committed in the Line transaction. Endpoint, Midpoint, and finite-Line position authorities remain exact, H/V remains exclusive, Ctrl remains raw, and incompatible or degenerate references fail closed.
 
-1. Parallel acquisition works alone and its transient `II` is visible.
-2. Moving the authored endpoint into a compatible Perpendicular condition activates Perpendicular.
-3. The live Parallel relationship itself is then lost, so its preview also disappears.
-
-This is **not a preview-only bug**. Parallel and Perpendicular do **not** yet coexist correctly in the browser. Automated/state tests that can carry both `parallelLineId` and `perpendicularLineId` have not proven the real pointer interaction.
-
-The required behavior applies only where reference directions are geometrically compatible with one common authored direction. Compatible relations must both remain active, constrain the one final Line, preview together, and commit on one click. Genuinely incompatible direction requests may be arbitrated; stale incompatible IDs must not be forced to survive.
-
-**Investigation hypothesis, not confirmed truth:** earlier changes allowed both metadata IDs and revalidated both after effective-point selection, yet browser behavior still fails. The remaining seam may be before or during `effectivePoint` resolution: Perpendicular may first win position/direction, create geometry that no longer satisfies Parallel, and cause a correct post-resolution truth check to drop Parallel. Trace the real pointer-move and `resolveLineEffectivePoint` path to learn whether one geometry is computed to satisfy both. Do not repeat a synthetic state-only coexistence fix.
+The production-path regression includes the previously missing competition in which a point-reference construction is the singular positional winner while compatible first-class Parallel and Perpendicular channels are live. The implementation and automated regression are complete, but this behavior is **not [ACCEPTED / LOCKED]** and remains pending user browser verification.
 
 ### 12.2 Transient visual debt
 
