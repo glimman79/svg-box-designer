@@ -1593,6 +1593,12 @@ button:disabled {
 .drawing-parallel-marker-stroke { pointer-events: none; }
 .drawing-parallel-marker.is-hovered { color: var(--drawing-hover); }
 .drawing-parallel-marker.is-selected { color: var(--drawing-dimension-active); }
+.drawing-parallel-inference-preview {
+  color: var(--drawing-inference, #38BDF8);
+  stroke: currentColor;
+  fill: none;
+  pointer-events: none;
+}
 .drawing-midpoint-marker-shape { pointer-events: none; }
 .drawing-midpoint-marker.is-hovered { color: var(--drawing-hover); }
 .drawing-midpoint-marker.is-selected { color: var(--drawing-dimension-active); }

@@ -17,7 +17,7 @@ import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, un
 import { pointIdForLineEndpoint, resolveLine } from './drawingTopology.js';
 import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
-import { deleteGeometricConstraint, deriveMidpointMarkerPresentation, deriveParallelMarkers, derivePerpendicularPresentation, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, type DrawingPerpendicularPresentation } from './drawingParallelMarker.js';
+import { deleteGeometricConstraint, deriveMidpointMarkerPresentation, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
 import { deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
 import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, initialConstraintsPanelPosition, toggleDrawingGeometrySelection, type DrawingSelectionRef } from './drawingConstraintsTool.js';
 import { deriveDrawingInferencePresentations, type DrawingInferencePresentation } from './drawingInferencePresentation.js';
@@ -54,24 +54,27 @@ export type CadCursorPresentation = Readonly<{
   yGuideReference: CoordinatePoint | null;
   sameAxisReference: CoordinatePoint | null;
   lineReference: Readonly<{ relation: 'parallel' | 'perpendicular' | 'midpoint'; targetLineId: string }> | null;
-  perpendicularPreview: DrawingPerpendicularPresentation | null;
   pointReferenceGuide: Readonly<{ start: CoordinatePoint; end: CoordinatePoint }> | null;
 }> | null;
-
-/** Derives screen-space Perpendicular presentation without creating document geometry. */
-export const derivePerpendicularPreview = (
-  authoredStart: CoordinatePoint,
-  authoredEnd: CoordinatePoint,
-  targetStart: CoordinatePoint,
-  targetEnd: CoordinatePoint,
-  size = 9,
-): DrawingPerpendicularPresentation | null => derivePerpendicularPresentation(
-  { start: authoredStart, end: authoredEnd }, { start: targetStart, end: targetEnd }, size,
-);
 
 export const DrawingInferenceOverlay = ({ presentations }: { presentations: readonly DrawingInferencePresentation[] }) => (
   <g className="drawing-inference-presentation" aria-hidden="true">
     {presentations.map((presentation) => {
+      if (presentation.kind === 'parallel') return <g key={`${presentation.kind}:${presentation.targetLineId}`}
+        className="drawing-parallel-inference-preview" data-inference-kind={presentation.kind} data-target-line-id={presentation.targetLineId}>
+        {presentation.markers.flatMap((marker) => [-1, 1].map((side) => <line key={`${marker.lineId}:${side}`}
+          className="drawing-parallel-marker-stroke" x1={marker.center.x + side * presentation.strokeHalfGap}
+          y1={marker.center.y - presentation.strokeHalfLength} x2={marker.center.x + side * presentation.strokeHalfGap}
+          y2={marker.center.y + presentation.strokeHalfLength} />))}
+      </g>;
+      if (presentation.kind === 'perpendicular') return <g key={`${presentation.kind}:${presentation.targetLineId}`}
+        className="drawing-perpendicular-inference-preview" data-inference-kind={presentation.kind} data-target-line-id={presentation.targetLineId}>
+        {[presentation.geometry.supportExtensionA, presentation.geometry.supportExtensionB]
+          .filter((extension) => extension !== undefined).map((extension, index) =>
+            <line key={index} className="drawing-perpendicular-support-preview" x1={extension.start.x} y1={extension.start.y} x2={extension.end.x} y2={extension.end.y} />)}
+        <polyline className="drawing-line-relation-preview" data-relation="perpendicular"
+          points={presentation.geometry.markerPoints.map(({ x, y }) => `${x},${y}`).join(' ')} />
+      </g>;
       const halfSquare = presentation.squareSize / 2;
       return <g key={`${presentation.kind}:${presentation.targetLineId}`} className="drawing-midpoint-inference-preview"
         data-inference-kind={presentation.kind} data-target-line-id={presentation.targetLineId}>
@@ -320,23 +323,12 @@ export function DrawingWorkspace({
       : nextInteraction.perpendicularLineId
         ? { relation: 'perpendicular' as const, targetLineId: nextInteraction.perpendicularLineId }
         : snap.type === 'midpoint' ? { relation: 'midpoint' as const, targetLineId: snap.entityId } : null;
-    const perpendicularTarget = lineReference?.relation === 'perpendicular'
-      ? resolvedLines.find(({ id }) => id === lineReference.targetLineId) : null;
-    const perpendicularPreview = perpendicularTarget && nextInteraction.start && nextInteraction.effectivePreviewPoint
-      ? (() => {
-        const authoredStart = modelToOverlayPoint(nextInteraction.start!, drawingTransform, overlayTransform);
-        const authoredEnd = modelToOverlayPoint(nextInteraction.effectivePreviewPoint!, drawingTransform, overlayTransform);
-        const targetStart = modelToOverlayPoint(perpendicularTarget.start, drawingTransform, overlayTransform);
-        const targetEnd = modelToOverlayPoint(perpendicularTarget.end, drawingTransform, overlayTransform);
-        return authoredStart && authoredEnd && targetStart && targetEnd
-          ? derivePerpendicularPreview(authoredStart, authoredEnd, targetStart, targetEnd) : null;
-      })() : null;
     const pointReferenceGuide = snap.type === 'point-reference' && anchor
       ? (() => {
         const source = modelToOverlayPoint(snap.supportOrigin, drawingTransform, overlayTransform);
         return source ? derivePointReferenceGuide(source, anchor) : null;
       })() : null;
-    setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference, sameAxisReference, lineReference, perpendicularPreview, pointReferenceGuide } : null);
+    setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference, sameAxisReference, lineReference, pointReferenceGuide } : null);
     const endpointPointId = snap.type === 'endpoint' && activeSketch
       ? pointIdForLineEndpoint(activeSketch.entities[snap.entityId], snap.endpoint) : null;
     const position: DrawingPlacementResolution['position'] = ctrlHeld
@@ -837,7 +829,7 @@ export function DrawingWorkspace({
   const drawingTransform = svgRef.current?.getScreenCTM();
   const overlayTransform = overlaySvgRef.current?.getScreenCTM();
   const inferencePresentations = activeTool === 'line' && drawingSnap && drawingTransform && overlayTransform
-    ? deriveDrawingInferencePresentations(drawingSnap, activeSketch, pixelsPerMm, drawingTransform, overlayTransform)
+    ? deriveDrawingInferencePresentations(drawingSnap, activeSketch, pixelsPerMm, drawingTransform, overlayTransform, lineInteraction)
     : [];
   return (
     <section className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace">
@@ -1053,13 +1045,6 @@ export function DrawingWorkspace({
                 {lineCursor.xGuideReference && <line className="drawing-alignment-guide" data-axis="x" x1={lineCursor.xGuideReference.x} y1={lineCursor.xGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
                 {lineCursor.yGuideReference && <line className="drawing-alignment-guide" data-axis="y" x1={lineCursor.yGuideReference.x} y1={lineCursor.yGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
                 {lineCursor.sameAxisReference && <circle className="drawing-same-axis-reference-highlight" cx={lineCursor.sameAxisReference.x} cy={lineCursor.sameAxisReference.y} r="7" />}
-                {lineCursor.perpendicularPreview && <>
-                  {[lineCursor.perpendicularPreview.supportExtensionA, lineCursor.perpendicularPreview.supportExtensionB]
-                    .filter((extension) => extension !== undefined).map((extension, index) =>
-                      <line key={index} className="drawing-perpendicular-support-preview" x1={extension.start.x} y1={extension.start.y} x2={extension.end.x} y2={extension.end.y} />)}
-                  <polyline className="drawing-line-relation-preview" data-relation="perpendicular"
-                    points={lineCursor.perpendicularPreview.markerPoints.map(({ x, y }) => `${x},${y}`).join(' ')} />
-                </>}
               <g className="drawing-line-cursor drawing-cad-cursor" data-inference={lineCursor.snap.type} transform={`translate(${lineCursor.anchor.x} ${lineCursor.anchor.y})`} aria-hidden="true">
                 <line className="drawing-line-cursor-arm" data-arm="left" x1="-22" y1="0" x2="-7" y2="0" />
                 <line className="drawing-line-cursor-arm" data-arm="right" x1="7" y1="0" x2="22" y2="0" />

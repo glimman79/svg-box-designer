@@ -154,6 +154,7 @@ const finalAxisAngle = (start: DrawingPoint | null, end: DrawingPoint): 0 | 90 |
 /** Final geometry, rather than candidate acquisition order, owns automatic axis semantics. */
 const lineResolution = (effectivePoint: DrawingPoint, interaction: LineToolInteraction, spatialSnap: LineSpatialSnap): LineEffectivePointResolution => {
   const axisAngle = finalAxisAngle(interaction.start, effectivePoint);
+  const acceptedRelations = acceptedDirectionalRelationsAt(interaction.start, effectivePoint, spatialSnap);
   const acceptedInteraction = axisAngle === null ? interaction : {
     ...interaction,
     snappedAngleDegrees: axisAngle,
@@ -162,7 +163,7 @@ const lineResolution = (effectivePoint: DrawingPoint, interaction: LineToolInter
   };
   return {
     effectivePoint,
-    interaction: acceptedInteraction,
+    interaction: axisAngle === null ? { ...acceptedInteraction, ...acceptedRelations } : acceptedInteraction,
     resolvedReferences: resolvedReferencesAt(effectivePoint, spatialSnap),
   };
 };
@@ -204,6 +205,28 @@ const isParallelAt = (start: DrawingPoint, end: DrawingPoint, candidatePoint?: D
   return authoredLength > LINE_ZERO_LENGTH_TOLERANCE_MM && candidateLength > LINE_ZERO_LENGTH_TOLERANCE_MM
     && Math.abs(authoredX * candidateY - authoredY * candidateX)
       <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, authoredLength * candidateLength);
+};
+
+/** Semantic Line relations are validated independently at the final position. */
+const acceptedDirectionalRelationsAt = (
+  start: DrawingPoint | null,
+  end: DrawingPoint,
+  spatialSnap: LineSpatialSnap,
+) => {
+  if (!start || finalAxisAngle(start, end) !== null) return { perpendicularLineId: null, parallelLineId: null };
+  const perpendicular = spatialSnap.channels?.perpendicular ?? (spatialSnap.type === 'perpendicular' && spatialSnap.entityId
+    ? { entityId: spatialSnap.entityId, candidatePoint: spatialSnap.effectivePoint, screenDistance: 0,
+      lineStart: spatialSnap.lineStart, lineEnd: spatialSnap.lineEnd } : null);
+  const parallel = spatialSnap.channels?.parallel ?? (spatialSnap.type === 'parallel' && spatialSnap.entityId
+    ? { entityId: spatialSnap.entityId, candidatePoint: spatialSnap.effectivePoint, screenDistance: 0 } : null);
+  return {
+    perpendicularLineId: perpendicular && (isPerpendicularAt(start, end, perpendicular.lineStart, perpendicular.lineEnd)
+      || (!perpendicular.lineStart && !perpendicular.lineEnd
+        && Math.hypot(perpendicular.candidatePoint.x - end.x, perpendicular.candidatePoint.y - end.y)
+          <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, Math.hypot(end.x - start.x, end.y - start.y))))
+      ? perpendicular.entityId : null,
+    parallelLineId: parallel && isParallelAt(start, end, parallel.candidatePoint) ? parallel.entityId : null,
+  };
 };
 
 const intersectRayWithFiniteSegment = (origin: DrawingPoint, direction: DrawingPoint, a?: DrawingPoint, b?: DrawingPoint): DrawingPoint | null => {

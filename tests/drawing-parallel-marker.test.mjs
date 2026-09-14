@@ -7,7 +7,7 @@ import { appendEntityToActiveSketch, applyResolvedLineClick, EMPTY_LINE_INTERACT
 import { collectDrawingInferenceCandidates } from '../.test-build/drawing-parallel-marker/drawingInference.js';
 import { resolveDrawingSnap } from '../.test-build/drawing-parallel-marker/drawingSnapEngine.js';
 import { DrawingInferenceOverlay, DrawingWorkspace, initialDrawingViewBox } from '../.test-build/drawing-parallel-marker/DrawingWorkspace.js';
-import { deriveDrawingInferencePresentations, deriveMidpointInferencePresentation } from '../.test-build/drawing-parallel-marker/drawingInferencePresentation.js';
+import { deriveDrawingInferencePresentations, deriveMidpointInferencePresentation, deriveParallelInferencePresentation } from '../.test-build/drawing-parallel-marker/drawingInferencePresentation.js';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
 import { readFileSync } from 'node:fs';
@@ -141,7 +141,7 @@ for (const point of [horizontalMidpoint.start, horizontalMidpoint.center, horizo
 }
 const workspaceSource = readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const stylesSource = readFileSync('src/styles.css', 'utf8');
-assert.match(workspaceSource, /deriveDrawingInferencePresentations\(drawingSnap, activeSketch, pixelsPerMm, drawingTransform, overlayTransform\)/,
+assert.match(workspaceSource, /deriveDrawingInferencePresentations\(drawingSnap, activeSketch, pixelsPerMm, drawingTransform, overlayTransform, lineInteraction\)/,
   'workspace derives shared presentation during render directly from the accepted snap and current transforms');
 assert.doesNotMatch(workspaceSource, /setInferencePresentations|useState<readonly DrawingInferencePresentation/,
   'workspace has no independently synchronized transient inference presentation state');
@@ -150,6 +150,25 @@ assert.match(workspaceSource, /<DrawingInferenceOverlay presentations=\{inferenc
   'shared inference overlay is mounted before, and independently from, the cursor-only branch');
 assert.match(stylesSource, /\.drawing-midpoint-inference-preview\s*\{[^}]*stroke:\s*var\(--drawing-inference\);[^}]*pointer-events:\s*none;/s,
   'transient Midpoint presentation uses the inference token and cannot intercept input');
+
+const parallelPreview = deriveParallelInferencePresentation({ targetLineId: 'accepted-target', sketch: previewSketch,
+  authoredStart: { x: 60, y: 60 }, authoredEnd: { x: 100, y: 100 }, pixelsPerModelUnit: 1,
+  drawingToClientTransform: identity, overlayToClientTransform: identity });
+assert.equal(parallelPreview?.markers.length, 2, 'accepted Parallel predicts both persistent II marker locations');
+const coexistenceSketch = { ...previewSketch,
+  points: { ...previewSketch.points, perpendicularStart: { id: 'perpendicularStart', x: 60, y: 100 }, perpendicularEnd: { id: 'perpendicularEnd', x: 100, y: 60 } },
+  entities: { ...previewSketch.entities, 'perpendicular-target': { id: 'perpendicular-target', type: 'line', startPointId: 'perpendicularStart', endPointId: 'perpendicularEnd' } },
+  entityOrder: [...previewSketch.entityOrder, 'perpendicular-target'] };
+const virtualParallelSnap = { type: 'perpendicular', active: true, effectivePoint: { x: 100, y: 100 }, entityId: 'perpendicular-target', screenDistance: 0, channels: {} };
+const coexistencePresentations = deriveDrawingInferencePresentations(virtualParallelSnap, coexistenceSketch, 1, identity, identity,
+  { ...EMPTY_LINE_INTERACTION, start: { x: 60, y: 60 }, effectivePreviewPoint: { x: 100, y: 100 }, parallelLineId: 'accepted-target', perpendicularLineId: 'perpendicular-target' });
+assert.deepEqual(coexistencePresentations.map(({ kind }) => kind), ['parallel', 'perpendicular'],
+  'shared presentation retains both accepted relations even while Perpendicular owns the snap type');
+const parallelMarkup = renderToStaticMarkup(createElement(DrawingInferenceOverlay, { presentations: coexistencePresentations }));
+assert.equal((parallelMarkup.match(/drawing-parallel-marker-stroke/g) ?? []).length, 4,
+  'transient Parallel paints the persistent two-stroke glyph beside both participating Lines');
+assert.match(stylesSource, /\.drawing-parallel-inference-preview\s*\{[^}]*color:\s*var\(--drawing-inference, #38BDF8\);[^}]*pointer-events:\s*none;/s,
+  'transient Parallel uses the inference color and cannot intercept input');
 
 // Follow the production pointer-candidate -> snap -> Line resolution -> click -> append transaction.
 const transform = identity;
