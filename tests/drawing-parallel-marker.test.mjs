@@ -52,6 +52,37 @@ assert.equal(sharedItems.length, 1, 'accepted Midpoint produces exactly one shar
 assert.equal(sharedItems[0].targetLineId, 'accepted-target');
 assert.deepEqual(sharedItems[0].center, midpointCenter);
 assert.ok(Math.hypot(sharedItems[0].direction.x, sharedItems[0].direction.y) > 0);
+
+// Exercise both production Line-authoring phases and consecutive pointer moves.
+const previewTarget = { id: 'preview-target', start: { x: 80, y: 80 }, end: { x: 120, y: 80 } };
+const snapAt = (rawPoint, start, previousSnap = null, ctrlOverride = false) => resolveDrawingSnap({
+  rawPoint,
+  candidates: collectDrawingInferenceCandidates(rawPoint, [previewTarget], identity, { x: 0, y: 0, width: 800, height: 600 }, start, null),
+  previousSnap,
+  ctrlOverride,
+});
+const firstPointSnap = snapAt({ x: 100, y: 81 }, undefined);
+assert.equal(firstPointSnap.type, 'midpoint', 'first-point Line placement accepts Midpoint before click');
+assert.equal(deriveDrawingInferencePresentations(firstPointSnap, [previewTarget], identity, identity).length, 1,
+  'first-point accepted snap directly authorizes one live preview');
+const secondPointSnap = snapAt({ x: 100, y: 81 }, { x: 25, y: 25 });
+assert.equal(secondPointSnap.type, 'midpoint', 'second-point Line placement accepts Midpoint before click');
+assert.equal(deriveDrawingInferencePresentations(secondPointSnap, [previewTarget], identity, identity).length, 1,
+  'second-point accepted snap directly authorizes one live preview');
+let retainedSnap = firstPointSnap;
+for (const point of [{ x: 100, y: 82 }, { x: 100, y: 83 }, { x: 100, y: 84 }]) {
+  retainedSnap = snapAt(point, undefined, retainedSnap);
+  assert.equal(retainedSnap.type, 'midpoint');
+  assert.equal(deriveDrawingInferencePresentations(retainedSnap, [previewTarget], identity, identity).length, 1,
+    'the preview survives each pointer move inside Midpoint hysteresis');
+}
+const releasedSnap = snapAt({ x: 100, y: 100 }, undefined, retainedSnap);
+assert.notEqual(releasedSnap.type, 'midpoint');
+assert.deepEqual(deriveDrawingInferencePresentations(releasedSnap, [previewTarget], identity, identity), [],
+  'leaving Midpoint hysteresis removes the preview');
+const ctrlSnap = snapAt({ x: 100, y: 80 }, undefined, retainedSnap, true);
+assert.deepEqual(deriveDrawingInferencePresentations(ctrlSnap, [previewTarget], identity, identity), [],
+  'Ctrl suppression removes the preview with the accepted Midpoint snap');
 for (const losingSnap of [
   { type: 'endpoint', active: true, effectivePoint: midpointCenter, entityId: 'accepted-target', endpoint: 'start', screenDistance: 0, channels: {} },
   { type: 'line', active: true, effectivePoint: midpointCenter, entityId: 'accepted-target', segmentParameter: 0.3, screenDistance: 0, channels: {} },
@@ -67,10 +98,20 @@ for (const attribute of ['x1="93"', 'y1="80"', 'x2="107"', 'y2="80"', 'width="4"
   assert.match(inferenceMarkup, new RegExp(attribute), `rendered shared overlay has visible ${attribute} geometry`);
 }
 assert.doesNotMatch(inferenceMarkup, /display="none"|visibility="hidden"|opacity="0"|drawing-cad-cursor/);
+const mountedOverlayMarkup = renderToStaticMarkup(createElement('svg', {
+  className: 'drawing-label-overlay', width: 800, height: 600, viewBox: '0 0 800 600',
+}, createElement(DrawingInferenceOverlay, { presentations: [horizontalMidpoint] })));
+assert.match(mountedOverlayMarkup, /width="800" height="600" viewBox="0 0 800 600"/);
+for (const point of [horizontalMidpoint.start, horizontalMidpoint.center, horizontalMidpoint.end]) {
+  assert.ok(point.x >= 0 && point.x <= 800 && point.y >= 0 && point.y <= 600,
+    'actual emitted marker coordinates are inside the mounted overlay bounds');
+}
 const workspaceSource = readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const stylesSource = readFileSync('src/styles.css', 'utf8');
-assert.match(workspaceSource, /deriveDrawingInferencePresentations\(snap, resolvedLines, drawingTransform, overlayTransform\)/,
-  'workspace derives shared presentation directly from the accepted snap and current transforms');
+assert.match(workspaceSource, /deriveDrawingInferencePresentations\(drawingSnap, resolvedLines, drawingTransform, overlayTransform\)/,
+  'workspace derives shared presentation during render directly from the accepted snap and current transforms');
+assert.doesNotMatch(workspaceSource, /setInferencePresentations|useState<readonly DrawingInferencePresentation/,
+  'workspace has no independently synchronized transient inference presentation state');
 assert.doesNotMatch(workspaceSource, /midpointPreview/, 'CadCursorPresentation and JSX have no Midpoint-specific storage path');
 assert.match(workspaceSource, /<DrawingInferenceOverlay presentations=\{inferencePresentations\} \/>[\s\S]*activeTool === 'line' && lineCursor/,
   'shared inference overlay is mounted before, and independently from, the cursor-only branch');
