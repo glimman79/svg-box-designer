@@ -1,5 +1,5 @@
-import type { CoordinatePoint, AffineTransform } from './drawingTransform';
-import { modelToOverlayPoint } from './drawingTransform';
+import type { CoordinatePoint, AffineTransform } from './drawingTransform.js';
+import { modelToOverlayPoint } from './drawingTransform.js';
 import type { DrawingSnap } from './drawingSnapEngine';
 import type { DrawingSketchV2 } from './drawingTypes';
 import type { LineToolInteraction } from './drawingLineTool';

@@ -38,6 +38,8 @@ export type DrawingInference = Readonly<{
   entityId: string;
   candidatePoint: DrawingPoint;
   screenDistance: number;
+  lineStart?: DrawingPoint;
+  lineEnd?: DrawingPoint;
 }> | Readonly<{
   type: 'perpendicular';
   entityId: string;
@@ -241,7 +243,8 @@ export const collectDrawingInferenceCandidates = (
       const parallelPoint = { x: activeLineStart.x + parallelRadial * ux, y: activeLineStart.y + parallelRadial * uy };
       const parallelScreen = toScreenPoint(parallelPoint, drawingToClientTransform);
       parallels.push({ type: 'parallel', entityId: line.id, candidatePoint: parallelPoint,
-        screenDistance: Math.hypot(pointerClientPoint.x - parallelScreen.x, pointerClientPoint.y - parallelScreen.y) });
+        screenDistance: Math.hypot(pointerClientPoint.x - parallelScreen.x, pointerClientPoint.y - parallelScreen.y),
+        lineStart: line.start, lineEnd: line.end });
     }
   }
   if (visibleBounds) {
