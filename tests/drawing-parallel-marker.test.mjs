@@ -6,7 +6,8 @@ import { createDrawingDocumentV2 } from '../.test-build/drawing-parallel-marker/
 import { appendEntityToActiveSketch, applyResolvedLineClick, EMPTY_LINE_INTERACTION, resolveLineEffectivePoint } from '../.test-build/drawing-parallel-marker/drawingLineTool.js';
 import { collectDrawingInferenceCandidates } from '../.test-build/drawing-parallel-marker/drawingInference.js';
 import { resolveDrawingSnap } from '../.test-build/drawing-parallel-marker/drawingSnapEngine.js';
-import { deriveMidpointPreview, DrawingWorkspace, initialDrawingViewBox } from '../.test-build/drawing-parallel-marker/DrawingWorkspace.js';
+import { DrawingInferenceOverlay, DrawingWorkspace, initialDrawingViewBox } from '../.test-build/drawing-parallel-marker/DrawingWorkspace.js';
+import { deriveDrawingInferencePresentations, deriveMidpointInferencePresentation } from '../.test-build/drawing-parallel-marker/drawingInferencePresentation.js';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createElement } from 'react';
 import { readFileSync } from 'node:fs';
@@ -22,24 +23,62 @@ const sketch = {
 const document = { schemaVersion: 2, unit: 'mm', sketches: { s: sketch }, sketchOrder: ['s'], activeSketchId: 's' };
 
 const midpointCenter = { x: 100, y: 80 };
-assert.deepEqual(deriveMidpointPreview(midpointCenter, { x: 0, y: 0 }, { x: 20, y: 0 }), {
-  center: midpointCenter, start: { x: 93, y: 80 }, end: { x: 107, y: 80 },
-}, 'transient Midpoint geometry is centered and fixed-size in overlay pixels');
-const verticalMidpoint = deriveMidpointPreview(midpointCenter, { x: 5, y: 0 }, { x: 5, y: 20 });
-assert.deepEqual(verticalMidpoint, { center: midpointCenter, start: { x: 100, y: 73 }, end: { x: 100, y: 87 } },
-  'transient Midpoint geometry follows target Line orientation');
-assert.equal(deriveMidpointPreview(midpointCenter, midpointCenter, midpointCenter), null, 'degenerate targets do not produce a glyph');
+const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+const midpointInput = (targetStart, targetEnd, transforms = {}) => ({
+  targetLineId: 'accepted-target', acceptedPoint: midpointCenter, targetStart, targetEnd,
+  drawingToClientTransform: transforms.drawing ?? identity, overlayToClientTransform: transforms.overlay ?? identity,
+});
+const horizontalMidpoint = deriveMidpointInferencePresentation(midpointInput({ x: 0, y: 0 }, { x: 20, y: 0 }));
+assert.deepEqual(horizontalMidpoint, {
+  kind: 'midpoint', targetLineId: 'accepted-target', center: midpointCenter, direction: { x: 1, y: 0 },
+  start: { x: 93, y: 80 }, end: { x: 107, y: 80 }, squareSize: 4,
+}, 'shared transient Midpoint geometry retains accepted identity and fixed overlay-pixel size');
+const verticalMidpoint = deriveMidpointInferencePresentation(midpointInput({ x: 5, y: 0 }, { x: 5, y: 20 }));
+assert.deepEqual(verticalMidpoint?.start, { x: 100, y: 73 });
+assert.deepEqual(verticalMidpoint?.end, { x: 100, y: 87 }, 'vertical target orientation is retained');
+const diagonalMidpoint = deriveMidpointInferencePresentation(midpointInput({ x: 0, y: 0 }, { x: 20, y: 20 }));
+assert.ok(diagonalMidpoint && Math.hypot(diagonalMidpoint.end.x - diagonalMidpoint.start.x, diagonalMidpoint.end.y - diagonalMidpoint.start.y) > 0);
+assert.ok(diagonalMidpoint.direction.x > 0 && diagonalMidpoint.direction.y > 0, 'diagonal marker follows its target');
+assert.equal(deriveMidpointInferencePresentation(midpointInput(midpointCenter, midpointCenter)), null, 'degenerate targets do not produce a glyph');
+const panned = deriveMidpointInferencePresentation(midpointInput({ x: 90, y: 80 }, { x: 110, y: 80 }, {
+  drawing: { ...identity, e: 40, f: -10 }, overlay: identity,
+}));
+assert.deepEqual(panned?.center, { x: 140, y: 70 }, 'center and target geometry share the same model-to-overlay transform');
+assert.equal(Math.hypot(panned.end.x - panned.start.x, panned.end.y - panned.start.y), 14, 'pan/zoom transforms do not scale the glyph');
+const acceptedMidpointSnap = { type: 'midpoint', active: true, effectivePoint: midpointCenter, entityId: 'accepted-target', screenDistance: 0, channels: {} };
+const resolvedTarget = [{ id: 'accepted-target', start: { x: 90, y: 80 }, end: { x: 110, y: 80 } }];
+const sharedItems = deriveDrawingInferencePresentations(acceptedMidpointSnap, resolvedTarget, identity, identity);
+assert.equal(sharedItems.length, 1, 'accepted Midpoint produces exactly one shared presentation item');
+assert.equal(sharedItems[0].targetLineId, 'accepted-target');
+assert.deepEqual(sharedItems[0].center, midpointCenter);
+assert.ok(Math.hypot(sharedItems[0].direction.x, sharedItems[0].direction.y) > 0);
+for (const losingSnap of [
+  { type: 'endpoint', active: true, effectivePoint: midpointCenter, entityId: 'accepted-target', endpoint: 'start', screenDistance: 0, channels: {} },
+  { type: 'line', active: true, effectivePoint: midpointCenter, entityId: 'accepted-target', segmentParameter: 0.3, screenDistance: 0, channels: {} },
+  { type: 'none', active: false, effectivePoint: midpointCenter, channels: {} },
+]) assert.deepEqual(deriveDrawingInferencePresentations(losingSnap, resolvedTarget, identity, identity), [],
+  `${losingSnap.type} position authority does not manufacture Midpoint presentation`);
+
+const inferenceMarkup = renderToStaticMarkup(createElement(DrawingInferenceOverlay, { presentations: [horizontalMidpoint] }));
+assert.match(inferenceMarkup, /^<g class="drawing-inference-presentation" aria-hidden="true">/,
+  'shared Drawing inference overlay mounts independently of the CAD cursor glyph');
+assert.match(inferenceMarkup, /class="drawing-midpoint-inference-preview" data-inference-kind="midpoint" data-target-line-id="accepted-target"/);
+for (const attribute of ['x1="93"', 'y1="80"', 'x2="107"', 'y2="80"', 'width="4"', 'height="4"']) {
+  assert.match(inferenceMarkup, new RegExp(attribute), `rendered shared overlay has visible ${attribute} geometry`);
+}
+assert.doesNotMatch(inferenceMarkup, /display="none"|visibility="hidden"|opacity="0"|drawing-cad-cursor/);
 const workspaceSource = readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const stylesSource = readFileSync('src/styles.css', 'utf8');
-assert.match(workspaceSource, /snap\.type === 'midpoint' && nextInteraction\.midpointLineId === snap\.entityId/,
-  'preview guard follows the accepted semantic Midpoint state');
-assert.match(workspaceSource, /modelToOverlayPoint\(snap\.effectivePoint, drawingTransform, overlayTransform\)/,
-  'the exact accepted midpoint is converted once into the interaction overlay');
+assert.match(workspaceSource, /deriveDrawingInferencePresentations\(snap, resolvedLines, drawingTransform, overlayTransform\)/,
+  'workspace derives shared presentation directly from the accepted snap and current transforms');
+assert.doesNotMatch(workspaceSource, /midpointPreview/, 'CadCursorPresentation and JSX have no Midpoint-specific storage path');
+assert.match(workspaceSource, /<DrawingInferenceOverlay presentations=\{inferencePresentations\} \/>[\s\S]*activeTool === 'line' && lineCursor/,
+  'shared inference overlay is mounted before, and independently from, the cursor-only branch');
 assert.match(stylesSource, /\.drawing-midpoint-inference-preview\s*\{[^}]*stroke:\s*var\(--drawing-inference\);[^}]*pointer-events:\s*none;/s,
   'transient Midpoint presentation uses the inference token and cannot intercept input');
 
 // Follow the production pointer-candidate -> snap -> Line resolution -> click -> append transaction.
-const transform = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+const transform = identity;
 let authoredDocument = appendEntityToActiveSketch(createDrawingDocumentV2(),
   { id: 'reference', type: 'line', start: { x: 0, y: 0 }, end: { x: 30, y: 15 } }, (() => { let n = 0; return () => `reference-p${++n}`; })());
 const reference = { id: 'reference', start: { x: 0, y: 0 }, end: { x: 30, y: 15 } };

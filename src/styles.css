@@ -1019,6 +1019,7 @@ button:disabled {
   fill: none;
   stroke: var(--drawing-inference);
   stroke-width: 1.4;
+  vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
 
