@@ -17,7 +17,7 @@ import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, un
 import { pointIdForLineEndpoint, resolveLine } from './drawingTopology.js';
 import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
-import { deleteGeometricConstraint, deriveParallelMarkers, derivePerpendicularPresentation, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, type DrawingPerpendicularPresentation } from './drawingParallelMarker.js';
+import { deleteGeometricConstraint, deriveMidpointMarkerPresentation, deriveParallelMarkers, derivePerpendicularPresentation, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, type DrawingPerpendicularPresentation } from './drawingParallelMarker.js';
 import { deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
 import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, initialConstraintsPanelPosition, toggleDrawingGeometrySelection, type DrawingSelectionRef } from './drawingConstraintsTool.js';
 import { deriveDrawingInferencePresentations, type DrawingInferencePresentation } from './drawingInferencePresentation.js';
@@ -837,7 +837,7 @@ export function DrawingWorkspace({
   const drawingTransform = svgRef.current?.getScreenCTM();
   const overlayTransform = overlaySvgRef.current?.getScreenCTM();
   const inferencePresentations = activeTool === 'line' && drawingSnap && drawingTransform && overlayTransform
-    ? deriveDrawingInferencePresentations(drawingSnap, resolvedLines, drawingTransform, overlayTransform)
+    ? deriveDrawingInferencePresentations(drawingSnap, activeSketch, pixelsPerMm, drawingTransform, overlayTransform)
     : [];
   return (
     <section className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace">
@@ -920,15 +920,15 @@ export function DrawingWorkspace({
                 const isMidpoint = marker.label === 'MIDPOINT';
                 const parallelStrokeHalfLength = GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX / 2 / pixelsPerMm;
                 const parallelStrokeHalfGap = 2 / pixelsPerMm;
-                const midpointHalfLength = 5.5 / pixelsPerMm, midpointSquareSize = 3 / pixelsPerMm;
+                const midpoint = isMidpoint ? deriveMidpointMarkerPresentation(marker, pixelsPerMm) : null;
                 return <g key={marker.id} className={`drawing-geometric-constraint-marker${isParallel ? ' drawing-parallel-marker' : ''}${isMidpoint ? ' drawing-midpoint-marker' : ''}${selected ? ' is-selected' : ''}${hovered ? ' is-hovered' : ''}`} data-constraint-id={marker.constraintId} data-line-id={marker.lineId}
                   onPointerEnter={() => setHoveredGeometricConstraintId(marker.constraintId)}
                   onPointerLeave={() => setHoveredGeometricConstraintId((current) => current === marker.constraintId ? null : current)}
                   onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || activeTool !== 'select') return; setSelectedGeometricConstraintId(marker.constraintId); setSelectedDimensionId(null); setSelectedGeometry([]); }}>
                   <circle className="drawing-geometric-constraint-marker-hit drawing-interactive-hit" cx={marker.x} cy={marker.y} r={9 / pixelsPerMm} />
-                  {isMidpoint ? <>
-                    <line className="drawing-midpoint-marker-shape" x1={marker.x - marker.ux! * midpointHalfLength} y1={marker.y - marker.uy! * midpointHalfLength} x2={marker.x + marker.ux! * midpointHalfLength} y2={marker.y + marker.uy! * midpointHalfLength} stroke="currentColor" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-                    <rect className="drawing-midpoint-marker-shape" x={marker.x - midpointSquareSize / 2} y={marker.y - midpointSquareSize / 2} width={midpointSquareSize} height={midpointSquareSize} fill="white" stroke="currentColor" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                  {midpoint ? <>
+                    <line className="drawing-midpoint-marker-shape" x1={midpoint.start.x} y1={midpoint.start.y} x2={midpoint.end.x} y2={midpoint.end.y} stroke="currentColor" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                    <rect className="drawing-midpoint-marker-shape" x={midpoint.squareCenter.x - midpoint.squareSize / 2} y={midpoint.squareCenter.y - midpoint.squareSize / 2} width={midpoint.squareSize} height={midpoint.squareSize} fill="white" stroke="currentColor" strokeWidth="1" vectorEffect="non-scaling-stroke" />
                   </> : isParallel ? <>
                     <line className="drawing-parallel-marker-stroke" x1={marker.x - parallelStrokeHalfGap} y1={marker.y - parallelStrokeHalfLength} x2={marker.x - parallelStrokeHalfGap} y2={marker.y + parallelStrokeHalfLength} fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
                     <line className="drawing-parallel-marker-stroke" x1={marker.x + parallelStrokeHalfGap} y1={marker.y - parallelStrokeHalfLength} x2={marker.x + parallelStrokeHalfGap} y2={marker.y + parallelStrokeHalfLength} fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
