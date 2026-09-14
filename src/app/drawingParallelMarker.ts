@@ -18,6 +18,14 @@ export type DrawingGeometricConstraintMarker = Readonly<{
 
 /** Compatibility type retained for existing marker consumers. */
 export type DrawingParallelMarker = DrawingGeometricConstraintMarker;
+export type DrawingMidpointMarkerPresentation = Readonly<{
+  center: Readonly<{ x: number; y: number }>;
+  squareCenter: Readonly<{ x: number; y: number }>;
+  start: Readonly<{ x: number; y: number }>;
+  end: Readonly<{ x: number; y: number }>;
+  direction: Readonly<{ x: number; y: number }>;
+  squareSize: number;
+}>;
 
 export type DrawingRightAngleMarker = Readonly<{
   id: string;
@@ -102,6 +110,19 @@ export const deriveLineConstraintMarkerCandidates = (sketch: DrawingSketchV2): L
 /** Derive presentation-only markers beside their finite Lines. */
 export const deriveGeometricConstraintMarkers = (sketch: DrawingSketchV2, pixelsPerModelUnit = 1): DrawingGeometricConstraintMarker[] => {
   return layoutLineConstraintMarkers(sketch, deriveLineConstraintMarkerCandidates(sketch), pixelsPerModelUnit);
+};
+
+/** The accepted —□— geometry used by persistent and transient Midpoint paint. */
+export const deriveMidpointMarkerPresentation = (
+  marker: DrawingGeometricConstraintMarker,
+  pixelsPerModelUnit = 1,
+): DrawingMidpointMarkerPresentation | null => {
+  if (marker.label !== 'MIDPOINT' || marker.ux === undefined || marker.uy === undefined || pixelsPerModelUnit <= 0) return null;
+  const halfLength = 5.5 / pixelsPerModelUnit, squareSize = 3 / pixelsPerModelUnit;
+  const center = { x: marker.x, y: marker.y };
+  return { center, squareCenter: center, direction: { x: marker.ux, y: marker.uy },
+    start: { x: marker.x - marker.ux * halfLength, y: marker.y - marker.uy * halfLength },
+    end: { x: marker.x + marker.ux * halfLength, y: marker.y + marker.uy * halfLength }, squareSize };
 };
 
 const unitFrom = (from: { x: number; y: number }, to: { x: number; y: number }) => {

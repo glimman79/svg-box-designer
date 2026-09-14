@@ -1,6 +1,8 @@
 import type { CoordinatePoint, AffineTransform } from './drawingTransform';
 import { modelToOverlayPoint } from './drawingTransform';
 import type { DrawingSnap } from './drawingSnapEngine';
+import type { DrawingSketchV2 } from './drawingTypes';
+import { deriveLineConstraintMarkerCandidates, deriveMidpointMarkerPresentation, layoutLineConstraintMarkers } from './drawingParallelMarker.js';
 
 export type DrawingMidpointInferencePresentation = Readonly<{
   kind: 'midpoint';
@@ -16,55 +18,59 @@ export type DrawingInferencePresentation = DrawingMidpointInferencePresentation;
 
 type MidpointPresentationInput = Readonly<{
   targetLineId: string;
-  acceptedPoint: CoordinatePoint;
-  targetStart: CoordinatePoint;
-  targetEnd: CoordinatePoint;
+  sketch: DrawingSketchV2;
+  pixelsPerModelUnit: number;
   drawingToClientTransform: AffineTransform;
   overlayToClientTransform: AffineTransform;
 }>;
 
-/** Derives a fixed-pixel Midpoint glyph from an already accepted semantic target. */
-export const deriveMidpointInferencePresentation = (
-  input: MidpointPresentationInput,
-  halfLength = 7,
-  squareSize = 4,
-): DrawingMidpointInferencePresentation | null => {
-  const center = modelToOverlayPoint(input.acceptedPoint, input.drawingToClientTransform, input.overlayToClientTransform);
-  const targetStart = modelToOverlayPoint(input.targetStart, input.drawingToClientTransform, input.overlayToClientTransform);
-  const targetEnd = modelToOverlayPoint(input.targetEnd, input.drawingToClientTransform, input.overlayToClientTransform);
-  if (!center || !targetStart || !targetEnd) return null;
-
-  const dx = targetEnd.x - targetStart.x;
-  const dy = targetEnd.y - targetStart.y;
-  const length = Math.hypot(dx, dy);
+/** Predicts the appended, post-commit Midpoint marker without changing the sketch. */
+export const deriveMidpointInferencePresentation = (input: MidpointPresentationInput): DrawingMidpointInferencePresentation | null => {
+  let virtualId = '__midpoint-inference__';
+  while (input.sketch.geometricConstraints?.[virtualId]) virtualId += '_';
+  // Use a virtual semantic relation so the normal ordering authority places it
+  // exactly where an appended commit will appear. Coincidence markers remain
+  // excluded by that same candidate derivation, matching post-normalization.
+  const virtualConstraint = { id: virtualId, kind: 'MIDPOINT' as const, references: [
+    { kind: 'sketchPoint' as const, pointId: '__midpoint-inference-point__' },
+    { kind: 'entity' as const, entityId: input.targetLineId },
+  ] as const };
+  const virtualSketch = { ...input.sketch,
+    geometricConstraints: { ...input.sketch.geometricConstraints, [virtualId]: virtualConstraint },
+    geometricConstraintOrder: [...(input.sketch.geometricConstraintOrder ?? []), virtualId] };
+  const marker = layoutLineConstraintMarkers(virtualSketch, deriveLineConstraintMarkerCandidates(virtualSketch), input.pixelsPerModelUnit)
+    .find(({ constraintId }) => constraintId === virtualId);
+  const geometry = marker && deriveMidpointMarkerPresentation(marker, input.pixelsPerModelUnit);
+  if (!geometry) return null;
+  const center = modelToOverlayPoint(geometry.center, input.drawingToClientTransform, input.overlayToClientTransform);
+  const start = modelToOverlayPoint(geometry.start, input.drawingToClientTransform, input.overlayToClientTransform);
+  const end = modelToOverlayPoint(geometry.end, input.drawingToClientTransform, input.overlayToClientTransform);
+  if (!center || !start || !end) return null;
+  const dx = end.x - start.x, dy = end.y - start.y, length = Math.hypot(dx, dy);
   if (length === 0) return null;
-  const direction = { x: dx / length, y: dy / length };
   return {
     kind: 'midpoint',
     targetLineId: input.targetLineId,
     center,
-    direction,
-    start: { x: center.x - direction.x * halfLength, y: center.y - direction.y * halfLength },
-    end: { x: center.x + direction.x * halfLength, y: center.y + direction.y * halfLength },
-    squareSize,
+    direction: { x: dx / length, y: dy / length }, start, end,
+    squareSize: geometry.squareSize * input.pixelsPerModelUnit,
   };
 };
 
 /** Maps accepted inference authority to presentation-only overlay items. */
 export const deriveDrawingInferencePresentations = (
   snap: DrawingSnap,
-  resolvedLines: readonly Readonly<{ id: string; start: CoordinatePoint; end: CoordinatePoint }>[],
+  sketch: DrawingSketchV2 | null,
+  pixelsPerModelUnit: number,
   drawingToClientTransform: AffineTransform,
   overlayToClientTransform: AffineTransform,
 ): readonly DrawingInferencePresentation[] => {
   if (snap.type !== 'midpoint') return [];
-  const target = resolvedLines.find(({ id }) => id === snap.entityId);
-  if (!target) return [];
+  if (!sketch) return [];
   const presentation = deriveMidpointInferencePresentation({
     targetLineId: snap.entityId,
-    acceptedPoint: snap.effectivePoint,
-    targetStart: target.start,
-    targetEnd: target.end,
+    sketch,
+    pixelsPerModelUnit,
     drawingToClientTransform,
     overlayToClientTransform,
   });
