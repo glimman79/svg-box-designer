@@ -121,6 +121,67 @@ test('a lone acquired semantic direction composes with a different positional su
   assert.equal(committed.sketches.sketch.geometricConstraints['parallel:authored:line-a'].kind, 'PARALLEL');
 });
 
+const endpointSnap = ({ end, parallelTarget = null, perpendicularTarget = null }) => snaps.resolveDrawingSnap({
+  rawPoint: end,
+  previousSnap: null,
+  ctrlOverride: false,
+  axisDirectionActive: false,
+  candidates: {
+    endpoints: [{ type: 'endpoint', entityId: 'endpoint-owner', endpoint: 'end', candidatePoint: end, screenDistance: 0 }],
+    midpoints: [], lines: [], alignmentsX: [], alignmentsY: [], pointReferences: [],
+    parallels: parallelTarget ? [{ type: 'parallel', entityId: parallelTarget.id, candidatePoint: end, screenDistance: 0,
+      lineStart: parallelTarget.start, lineEnd: parallelTarget.end }] : [],
+    perpendiculars: perpendicularTarget ? [{ type: 'perpendicular', entityId: perpendicularTarget.id, candidatePoint: end, screenDistance: 0,
+      lineStart: perpendicularTarget.start, lineEnd: perpendicularTarget.end }] : [],
+  },
+});
+
+test('hard Endpoint position retains every acquired direction that is true at its frozen geometry', () => {
+  const end = { x: 100, y: 100 };
+  for (const [parallelTarget, perpendicularTarget, expected] of [
+    [parallel, null, ['line-a']],
+    [null, perpendicular, ['line-b']],
+    [parallel, perpendicular, ['line-a', 'line-b']],
+  ]) {
+    const snap = endpointSnap({ end, parallelTarget, perpendicularTarget });
+    assert.equal(snap.type, 'endpoint');
+    const accepted = lineTool.resolveLineEffectivePoint(emptyFrame().interaction, end, snap);
+    assert.deepEqual(accepted.effectivePoint, end, 'Endpoint remains immutable position authority');
+    assert.deepEqual([accepted.interaction.parallelLineId, accepted.interaction.perpendicularLineId].filter(Boolean), expected);
+  }
+});
+
+test('hard Endpoint position rejects acquired directions that are false at its frozen geometry', () => {
+  const end = { x: 100, y: 80 };
+  const snap = endpointSnap({ end, parallelTarget: parallel, perpendicularTarget: perpendicular });
+  const accepted = lineTool.resolveLineEffectivePoint(emptyFrame().interaction, end, snap);
+  assert.deepEqual(accepted.effectivePoint, end);
+  assert.equal(accepted.interaction.parallelLineId, null);
+  assert.equal(accepted.interaction.perpendicularLineId, null);
+});
+
+test('continuous 90-degree chain retains incident Perpendicular and derived Parallel semantics', () => {
+  const a = { id: 'A', type: 'line', start: { x: 0, y: 0 }, end: { x: 100, y: 50 }, startPointId: 'a0', endPointId: 'shared-a' };
+  const bStart = a.end, bEnd = { x: 50, y: 150 };
+  const bCandidates = inference.collectDrawingInferenceCandidates(bEnd, [a], identity, bounds, bStart, null);
+  const bSnap = snaps.resolveDrawingSnap({ rawPoint: bEnd, candidates: bCandidates, previousSnap: null, ctrlOverride: false, axisDirectionActive: false });
+  const bInteraction = { ...lineTool.EMPTY_LINE_INTERACTION, start: bStart, startPointId: 'shared-a', previousChainedLineId: 'A' };
+  const bAccepted = lineTool.resolveLineEffectivePoint(bInteraction, bEnd, bSnap);
+  assert.equal(bAccepted.interaction.perpendicularLineId, 'A');
+  const bClick = lineTool.applyResolvedLineClick(bAccepted.interaction, bAccepted.effectivePoint, () => 'B', 'shared-b');
+  assert.equal(bClick.interaction.previousChainedLineId, 'B');
+  assert.deepEqual(bClick.interaction.start, bAccepted.effectivePoint);
+
+  const b = { ...bClick.entity, startPointId: 'shared-a', endPointId: 'shared-b' };
+  const cEnd = { x: 150, y: 200 };
+  const cCandidates = inference.collectDrawingInferenceCandidates(cEnd, [a, b], identity, bounds, bClick.interaction.start, null);
+  const cSnap = snaps.resolveDrawingSnap({ rawPoint: cEnd, candidates: cCandidates, previousSnap: null, ctrlOverride: false, axisDirectionActive: false });
+  const cAccepted = lineTool.resolveLineEffectivePoint(bClick.interaction, cEnd, cSnap);
+  assert.deepEqual(cAccepted.effectivePoint, cEnd);
+  assert.equal(cAccepted.interaction.parallelLineId, 'A');
+  assert.equal(cAccepted.interaction.perpendicularLineId, 'B');
+});
+
 test('direction compatibility fails closed and preserves H/V and Ctrl policies', () => {
   const incompatible = { ...perpendicular, id: 'bad', start: { x: 300, y: -300 }, end: { x: 420, y: -360 } };
   let frame = move(emptyFrame(), { x: 7, y: 7 }, [parallel, incompatible]);
