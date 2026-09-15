@@ -128,10 +128,43 @@ const choosePointReference = (items: ReadonlyArray<PointReferenceInference>, pre
   return first && first.screenDistance <= DRAWING_POINT_REFERENCE_SNAP_ACQUIRE_PX ? first : null;
 };
 
+type GeometricRequirement = Readonly<
+  | { kind: 'direction'; direction: DrawingPoint }
+  | { kind: 'coordinate'; axis: 'x' | 'y'; value: number }
+>;
+
+/** Tests requirements as geometry rather than as named inference-family pairs. */
+const composeSoftRequirements = (origin: DrawingPoint, requirements: readonly GeometricRequirement[]) => {
+  const direction = requirements.find((requirement): requirement is Extract<GeometricRequirement, { kind: 'direction' }> => requirement.kind === 'direction');
+  if (!direction) return null;
+  const length = Math.hypot(direction.direction.x, direction.direction.y);
+  if (length <= Number.EPSILON) return null;
+  const unit = { x: direction.direction.x / length, y: direction.direction.y / length };
+  const parameters = requirements.flatMap((requirement) => {
+    if (requirement.kind !== 'coordinate') return [];
+    const component = requirement.axis === 'x' ? unit.x : unit.y;
+    const start = requirement.axis === 'x' ? origin.x : origin.y;
+    return Math.abs(component) <= 1e-12
+      ? (Math.abs(start - requirement.value) <= 1e-9 ? [] : [Number.NaN])
+      : [(requirement.value - start) / component];
+  });
+  if (parameters.some((parameter) => !Number.isFinite(parameter) || parameter < 0)) return null;
+  if (parameters.length > 1 && parameters.some((parameter) => Math.abs(parameter - parameters[0]) > 1e-9 * Math.max(1, Math.abs(parameter), Math.abs(parameters[0])))) return null;
+  const parameter = parameters[0] ?? 0;
+  return { x: origin.x + parameter * unit.x, y: origin.y + parameter * unit.y };
+};
+
+const directionRequirement = (candidate: ParallelInference | PerpendicularInference): GeometricRequirement | null => {
+  if (!candidate.lineStart || !candidate.lineEnd) return null;
+  const x = candidate.lineEnd.x - candidate.lineStart.x, y = candidate.lineEnd.y - candidate.lineStart.y;
+  return candidate.type === 'parallel' ? { kind: 'direction', direction: { x, y } }
+    : { kind: 'direction', direction: { x: -y, y: x } };
+};
+
 /** Pure Drawing-wide channel acquisition followed by positional authority arbitration. */
-export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOverride, axisDirectionActive = false }: {
+export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOverride, axisDirectionActive = false, activeLineStart = null }: {
   rawPoint: DrawingPoint; candidates: DrawingInferenceCandidates; previousSnap: DrawingSnap | null; ctrlOverride: boolean;
-  axisDirectionActive?: boolean;
+  axisDirectionActive?: boolean; activeLineStart?: DrawingPoint | null;
 }): DrawingSnap => {
   const emptyChannels: DrawingSnapChannels = { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null, pointReference: null };
   const none = (channels = emptyChannels): DrawingSnap => ({ active: false, type: 'none', effectivePoint: rawPoint, screenDistance: null, channels });
@@ -143,8 +176,24 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
   const yReference = chooseAxis(candidates.alignmentsY, oldChannels.yAlignment);
   // H/V is the exclusive direction authority. Retention is evaluated only in
   // the non-axis direction domain, while point-reference channels stay global.
-  const perpendicular = axisDirectionActive ? null : choosePerpendicular(candidates.perpendiculars, previousSnap);
-  const parallel = axisDirectionActive ? null : chooseParallel(candidates.parallels ?? [], previousSnap);
+  const coordinateRequirements: GeometricRequirement[] = [
+    ...(xReference?.positionOwnership === 'defines-position' ? [{ kind: 'coordinate', axis: 'x', value: xReference.candidatePoint.x } as const] : []),
+    ...(yReference?.positionOwnership === 'defines-position' ? [{ kind: 'coordinate', axis: 'y', value: yReference.candidatePoint.y } as const] : []),
+  ];
+  const retainCompatibleDirection = <T extends ParallelInference | PerpendicularInference>(selected: T | null, old: T | null, items: readonly T[]) => {
+    if (selected || !activeLineStart || coordinateRequirements.length === 0 || !old) return selected;
+    const current = items.find(({ entityId }) => entityId === old.entityId);
+    const requirement = current && directionRequirement(current);
+    return current && requirement && composeSoftRequirements(activeLineStart, [requirement, ...coordinateRequirements]) ? current : null;
+  };
+  const oldPerpendicular = previousSnap?.channels?.perpendicular ?? null;
+  const oldParallel = previousSnap?.channels?.parallel ?? null;
+  const perpendicularPositionCandidate = axisDirectionActive ? null : choosePerpendicular(candidates.perpendiculars, previousSnap);
+  const parallelPositionCandidate = axisDirectionActive ? null : chooseParallel(candidates.parallels ?? [], previousSnap);
+  const perpendicular = axisDirectionActive ? null : retainCompatibleDirection(
+    perpendicularPositionCandidate, oldPerpendicular, candidates.perpendiculars);
+  const parallel = axisDirectionActive ? null : retainCompatibleDirection(
+    parallelPositionCandidate, oldParallel, candidates.parallels ?? []);
   const pointReference = choosePointReference(candidates.pointReferences ?? [], previousSnap);
   const channels: DrawingSnapChannels = { xAlignment: xReference, yAlignment: yReference, perpendicular, parallel, pointReference };
 
@@ -170,10 +219,10 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
     screenDistance: pointReference.screenDistance, sourcePointId: pointReference.sourcePointId,
     incidentLineId: pointReference.incidentLineId, supportOrigin: pointReference.supportOrigin,
     supportDirection: pointReference.supportDirection, constructionKey: pointReference.constructionKey, channels };
-  if (parallel) return { active: true, type: 'parallel', effectivePoint: parallel.candidatePoint,
-    entityId: parallel.entityId, screenDistance: parallel.screenDistance, channels };
-  if (perpendicular) return { active: true, type: 'perpendicular', effectivePoint: perpendicular.candidatePoint,
-    entityId: perpendicular.entityId, screenDistance: perpendicular.screenDistance, channels };
+  if (parallelPositionCandidate) return { active: true, type: 'parallel', effectivePoint: parallelPositionCandidate.candidatePoint,
+    entityId: parallelPositionCandidate.entityId, screenDistance: parallelPositionCandidate.screenDistance, channels };
+  if (perpendicularPositionCandidate) return { active: true, type: 'perpendicular', effectivePoint: perpendicularPositionCandidate.candidatePoint,
+    entityId: perpendicularPositionCandidate.entityId, screenDistance: perpendicularPositionCandidate.screenDistance, channels };
   if (xReference || yReference) return { active: true, type: 'alignment',
     effectivePoint: {
       x: xReference?.positionOwnership !== 'reference-only' ? xReference?.candidatePoint.x ?? rawPoint.x : rawPoint.x,

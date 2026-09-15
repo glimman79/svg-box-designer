@@ -33,6 +33,22 @@ export type DrawingPerpendicularInferencePresentation = Readonly<{
 
 export type DrawingInferencePresentation = DrawingMidpointInferencePresentation | DrawingParallelInferencePresentation | DrawingPerpendicularInferencePresentation;
 
+type AcceptedRepresentation = Readonly<{ kind: 'parallel' | 'perpendicular'; demandGroup: 'direction'; preference: number }>;
+
+/** Chooses a transient description only after semantic truth is accepted. */
+export const selectPreferredLineInferenceRepresentations = (interaction?: LineToolInteraction) => {
+  const accepted: AcceptedRepresentation[] = [
+    ...(interaction?.parallelLineId ? [{ kind: 'parallel', demandGroup: 'direction', preference: 2 } as const] : []),
+    ...(interaction?.perpendicularLineId ? [{ kind: 'perpendicular', demandGroup: 'direction', preference: 1 } as const] : []),
+  ];
+  const preferred = new Map<AcceptedRepresentation['demandGroup'], AcceptedRepresentation>();
+  for (const representation of accepted) {
+    const current = preferred.get(representation.demandGroup);
+    if (!current || representation.preference > current.preference) preferred.set(representation.demandGroup, representation);
+  }
+  return new Set([...preferred.values()].map(({ kind }) => kind));
+};
+
 type MidpointPresentationInput = Readonly<{
   targetLineId: string;
   sketch: DrawingSketchV2;
@@ -115,6 +131,7 @@ export const deriveDrawingInferencePresentations = (
 ): readonly DrawingInferencePresentation[] => {
   if (!sketch) return [];
   const presentations: DrawingInferencePresentation[] = [];
+  const preferredRepresentations = selectPreferredLineInferenceRepresentations(interaction);
   if (snap.type === 'midpoint') {
     const presentation = deriveMidpointInferencePresentation({
     targetLineId: snap.entityId,
@@ -125,13 +142,13 @@ export const deriveDrawingInferencePresentations = (
     });
     if (presentation) presentations.push(presentation);
   }
-  if (interaction?.parallelLineId && interaction.start && interaction.effectivePreviewPoint) {
+  if (preferredRepresentations.has('parallel') && interaction?.parallelLineId && interaction.start && interaction.effectivePreviewPoint) {
     const presentation = deriveParallelInferencePresentation({ targetLineId: interaction.parallelLineId, sketch,
       authoredStart: interaction.start, authoredEnd: interaction.effectivePreviewPoint, pixelsPerModelUnit,
       drawingToClientTransform, overlayToClientTransform });
     if (presentation) presentations.push(presentation);
   }
-  if (interaction?.perpendicularLineId && interaction.start && interaction.effectivePreviewPoint) {
+  if (preferredRepresentations.has('perpendicular') && interaction?.perpendicularLineId && interaction.start && interaction.effectivePreviewPoint) {
     const target = sketch.entities[interaction.perpendicularLineId];
     const targetLine = target?.type === 'line' ? resolveLine(sketch, target) : null;
     const authoredStart = modelToOverlayPoint(interaction.start, drawingToClientTransform, overlayToClientTransform);
