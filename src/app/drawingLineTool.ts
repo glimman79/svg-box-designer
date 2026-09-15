@@ -109,7 +109,8 @@ type LineSpatialSnap = Readonly<{
       lineStart?: DrawingPoint; lineEnd?: DrawingPoint }> | null;
     parallel: Readonly<{ entityId: string; candidatePoint: DrawingPoint; screenDistance: number;
       lineStart?: DrawingPoint; lineEnd?: DrawingPoint }> | null;
-    pointReference?: Readonly<{ candidatePoint: DrawingPoint; screenDistance: number }> | null;
+    pointReference?: Readonly<{ candidatePoint: DrawingPoint; screenDistance: number;
+      supportOrigin: DrawingPoint; supportDirection: DrawingPoint }> | null;
   }>;
 }>;
 
@@ -203,29 +204,46 @@ const isPerpendicularAt = (start: DrawingPoint, end: DrawingPoint, lineStart?: D
       <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, authoredLength * targetLength);
 };
 
-const isParallelAt = (start: DrawingPoint, end: DrawingPoint, candidatePoint?: DrawingPoint) => {
-  if (!candidatePoint) return false;
+const isParallelAt = (start: DrawingPoint, end: DrawingPoint, lineStart?: DrawingPoint, lineEnd?: DrawingPoint, candidatePoint?: DrawingPoint) => {
   const authoredX = end.x - start.x, authoredY = end.y - start.y;
-  const candidateX = candidatePoint.x - start.x, candidateY = candidatePoint.y - start.y;
+  const candidateX = lineStart && lineEnd ? lineEnd.x - lineStart.x : candidatePoint ? candidatePoint.x - start.x : 0;
+  const candidateY = lineStart && lineEnd ? lineEnd.y - lineStart.y : candidatePoint ? candidatePoint.y - start.y : 0;
   const authoredLength = Math.hypot(authoredX, authoredY), candidateLength = Math.hypot(candidateX, candidateY);
   return authoredLength > LINE_ZERO_LENGTH_TOLERANCE_MM && candidateLength > LINE_ZERO_LENGTH_TOLERANCE_MM
     && Math.abs(authoredX * candidateY - authoredY * candidateX)
       <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, authoredLength * candidateLength);
 };
 
-/** Returns the common unoriented direction requested by live Parallel and
- * Perpendicular channels. Reference geometry, not candidate IDs or the
- * positional winner, owns compatibility. */
-const compatibleDirectionalChannel = (spatialSnap: LineSpatialSnap): DrawingPoint | null => {
+type LineDirectionDemand = Readonly<{
+  direction: DrawingPoint;
+  screenDistance: number;
+}>;
+
+/** Converts acquired semantic channels to their geometry contract. Composition
+ * below consequently knows directions, not inference-family combinations. */
+const acquiredDirectionDemands = (spatialSnap: LineSpatialSnap): ReadonlyArray<LineDirectionDemand> => {
   const parallel = spatialSnap.channels?.parallel;
   const perpendicular = spatialSnap.channels?.perpendicular;
-  if (!parallel?.lineStart || !parallel.lineEnd || !perpendicular?.lineStart || !perpendicular.lineEnd) return null;
-  const px = parallel.lineEnd.x - parallel.lineStart.x, py = parallel.lineEnd.y - parallel.lineStart.y;
-  const qx = perpendicular.lineEnd.x - perpendicular.lineStart.x, qy = perpendicular.lineEnd.y - perpendicular.lineStart.y;
-  const pl = Math.hypot(px, py), ql = Math.hypot(qx, qy);
-  if (pl <= LINE_ZERO_LENGTH_TOLERANCE_MM || ql <= LINE_ZERO_LENGTH_TOLERANCE_MM) return null;
-  if (Math.abs(px * qx + py * qy) > ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, pl * ql)) return null;
-  return { x: px / pl, y: py / pl };
+  return [
+    parallel?.lineStart && parallel.lineEnd ? { x: parallel.lineEnd.x - parallel.lineStart.x, y: parallel.lineEnd.y - parallel.lineStart.y,
+      screenDistance: parallel.screenDistance } : null,
+    perpendicular?.lineStart && perpendicular.lineEnd ? { x: -(perpendicular.lineEnd.y - perpendicular.lineStart.y),
+      y: perpendicular.lineEnd.x - perpendicular.lineStart.x, screenDistance: perpendicular.screenDistance } : null,
+  ].filter((value): value is { x: number; y: number; screenDistance: number } => value !== null)
+    .map(({ x, y, screenDistance }) => {
+      const length = Math.hypot(x, y);
+      return length > LINE_ZERO_LENGTH_TOLERANCE_MM ? { direction: { x: x / length, y: y / length }, screenDistance } : null;
+    }).filter((value): value is LineDirectionDemand => value !== null)
+    .sort((a, b) => a.screenDistance - b.screenDistance);
+};
+
+const sameUnorientedDirection = (a: DrawingPoint, b: DrawingPoint) => Math.abs(a.x * b.y - a.y * b.x)
+  <= ANGULAR_COMPATIBILITY_EPSILON;
+
+const commonAcquiredDirection = (spatialSnap: LineSpatialSnap): DrawingPoint | null => {
+  const demands = acquiredDirectionDemands(spatialSnap);
+  return demands.length > 0 && demands.every(({ direction }) => sameUnorientedDirection(direction, demands[0].direction))
+    ? demands[0].direction : null;
 };
 
 /** Diagnostic observation of the exact common-direction gate used below. */
@@ -235,7 +253,8 @@ export const diagnoseLineCommonDirection = (spatialSnap: LineSpatialSnap) => {
   const bothChannels = Boolean(parallel && perpendicular);
   const bothReferenceGeometries = Boolean(parallel?.lineStart && parallel.lineEnd
     && perpendicular?.lineStart && perpendicular.lineEnd);
-  const compatibleDirection = compatibleDirectionalChannel(spatialSnap);
+  const demands = acquiredDirectionDemands(spatialSnap);
+  const compatibleDirection = demands.length >= 2 ? commonAcquiredDirection(spatialSnap) : null;
   const hardPosition = spatialSnap.type === 'endpoint' || spatialSnap.type === 'midpoint' || spatialSnap.type === 'line';
   return {
     bothChannels,
@@ -273,8 +292,16 @@ const acceptedDirectionalRelationsAt = (
         && Math.hypot(perpendicular.candidatePoint.x - end.x, perpendicular.candidatePoint.y - end.y)
           <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, Math.hypot(end.x - start.x, end.y - start.y))))
       ? perpendicular.entityId : null,
-    parallelLineId: parallel && isParallelAt(start, end, parallel.candidatePoint) ? parallel.entityId : null,
+    parallelLineId: parallel && isParallelAt(start, end, parallel.lineStart, parallel.lineEnd, parallel.candidatePoint) ? parallel.entityId : null,
   };
+};
+
+const intersectInfiniteSupports = (origin: DrawingPoint, direction: DrawingPoint, supportOrigin: DrawingPoint, supportDirection: DrawingPoint) => {
+  const denominator = direction.x * supportDirection.y - direction.y * supportDirection.x;
+  if (Math.abs(denominator) <= ANGULAR_DIRECTION_EPSILON) return null;
+  const dx = supportOrigin.x - origin.x, dy = supportOrigin.y - origin.y;
+  const t = (dx * supportDirection.y - dy * supportDirection.x) / denominator;
+  return t >= 0 ? { x: origin.x + t * direction.x, y: origin.y + t * direction.y } : null;
 };
 
 const intersectRayWithFiniteSegment = (origin: DrawingPoint, direction: DrawingPoint, a?: DrawingPoint, b?: DrawingPoint): DrawingPoint | null => {
@@ -339,9 +366,15 @@ export const resolveLineEffectivePoint = (
   // may not bend a direction shared by two actual reference Lines. Exact
   // endpoint/midpoint/finite-Line position remains authoritative and is merely
   // truth-checked by lineResolution.
-  const commonDirection = compatibleDirectionalChannel(spatialSnap);
+  const acquiredDirections = acquiredDirectionDemands(spatialSnap);
+  const commonDirection = commonAcquiredDirection(spatialSnap);
   if (commonDirection && spatialSnap.type !== 'endpoint' && spatialSnap.type !== 'midpoint' && spatialSnap.type !== 'line') {
-    const effectivePoint = projectPointerToDirection(interaction.start, rawPointerPoint, commonDirection);
+    const pointReference = spatialSnap.channels?.pointReference;
+    const effectivePoint = acquiredDirections.length === 1 && spatialSnap.type === 'point-reference'
+      && pointReference && 'supportOrigin' in pointReference && 'supportDirection' in pointReference
+      ? intersectInfiniteSupports(interaction.start, commonDirection, pointReference.supportOrigin, pointReference.supportDirection)
+        ?? projectPointerToDirection(interaction.start, rawPointerPoint, commonDirection)
+      : projectPointerToDirection(interaction.start, rawPointerPoint, commonDirection);
     return lineResolution(effectivePoint, { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint,
       snappedAngleDegrees: null, midpointLineId: null, lineBodyId: null }, spatialSnap);
   }

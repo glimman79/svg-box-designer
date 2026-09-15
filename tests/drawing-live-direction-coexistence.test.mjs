@@ -82,6 +82,45 @@ test('workspace production path composes compatible directions before a point-re
   assert.deepEqual(Object.values(committed.sketches.sketch.geometricConstraints).map(({ kind }) => kind).sort(), ['PARALLEL', 'PERPENDICULAR']);
 });
 
+test('a lone acquired semantic direction composes with a different positional support and owns hover/click truth', () => {
+  const pointer = { x: 100, y: 53 };
+  const target = { id: 'line-a', type: 'line', start: { x: 300, y: 300 }, end: { x: 400, y: 350 } };
+  const collected = inference.collectDrawingInferenceCandidates(pointer, [target], identity, bounds, start, null);
+  const pointReference = {
+    type: 'point-reference', kind: 'normal-to-incident-line', incidentLineId: 'support-line', sourcePointId: 'support-point',
+    supportOrigin: { x: 100, y: 0 }, supportDirection: { x: 0, y: 1 }, constructionKey: 'support',
+    candidatePoint: { x: 100, y: 53 }, screenDistance: 0,
+  };
+  const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, previousSnap: null, ctrlOverride: false, axisDirectionActive: false,
+    candidates: { ...collected, endpoints: [], midpoints: [], lines: [], alignmentsX: [], alignmentsY: [],
+      perpendiculars: [], pointReferences: [pointReference] } });
+  assert.equal(snap.type, 'point-reference');
+  assert.equal(snap.channels.parallel.entityId, target.id);
+  assert.equal(snap.channels.perpendicular, null);
+
+  const accepted = lineTool.resolveLineEffectivePoint(emptyFrame().interaction, pointer, snap);
+  assert.deepEqual(accepted.effectivePoint, { x: 100, y: 50 }, 'position support and direction meet at one endpoint');
+  assert.equal(accepted.interaction.parallelLineId, target.id, 'the positional winner does not erase compatible semantics');
+  assert.equal(accepted.interaction.perpendicularLineId, null);
+  assert.deepEqual(accepted.interaction.effectivePreviewPoint, accepted.effectivePoint, 'semantic evaluation cannot move final geometry');
+
+  const sketch = { ...workspaceSketch, points: { ...workspaceSketch.points,
+    a1: { id: 'a1', x: 300, y: 300 }, a2: { id: 'a2', x: 400, y: 350 } } };
+  const shown = presentation.deriveDrawingInferencePresentations(snap, sketch, 1, identity, identity, accepted.interaction);
+  assert.deepEqual(shown.map(({ kind }) => kind), ['parallel'], 'presentation is a pure projection of accepted semantics');
+  assert.equal(accepted.interaction.parallelLineId, target.id, 'presentation does not mutate acceptance');
+
+  const click = lineTool.applyResolvedLineClick(accepted.interaction, accepted.effectivePoint, () => 'authored');
+  assert.deepEqual(click.entity.end, accepted.effectivePoint, 'click consumes the frozen hover endpoint');
+  const document = { version: 2, activeSketchId: 'sketch', sketches: { sketch }, sketchOrder: ['sketch'] };
+  const committed = lineTool.appendEntityToActiveSketch(document, click.entity, (() => { let n = 0; return () => `solo-${++n}`; })(),
+    null, null, null, accepted.interaction.parallelLineId);
+  const committedLine = committed.sketches.sketch.entities.authored;
+  const committedEnd = committed.sketches.sketch.points[committedLine.endPointId];
+  assert.deepEqual({ x: committedEnd.x, y: committedEnd.y }, accepted.effectivePoint, 'commit retains the accepted click geometry');
+  assert.equal(committed.sketches.sketch.geometricConstraints['parallel:authored:line-a'].kind, 'PARALLEL');
+});
+
 test('direction compatibility fails closed and preserves H/V and Ctrl policies', () => {
   const incompatible = { ...perpendicular, id: 'bad', start: { x: 300, y: -300 }, end: { x: 420, y: -360 } };
   let frame = move(emptyFrame(), { x: 7, y: 7 }, [parallel, incompatible]);
