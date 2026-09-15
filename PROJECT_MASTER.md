@@ -174,11 +174,11 @@ This is Drawing-local History. It is not the future global `ProjectDocument` His
 
 ## 12. Current Drawing known debt and active work
 
-### 12.1 Parallel + Perpendicular browser verification
+### 12.1 Global Line inference acceptance browser verification
 
-**[IMPLEMENTED][IN PROGRESS]** Live Line authoring now groups acquired Parallel and Perpendicular channels by their actual nondegenerate reference geometry before soft positional arbitration. When the Parallel tangent is compatible with the Perpendicular normal, one common direction projects the raw pointer to the authoritative effective endpoint; both relations are then truth-checked against that same geometry, presented together, and committed in the Line transaction. Endpoint, Midpoint, and finite-Line position authorities remain exact, H/V remains exclusive, Ctrl remains raw, and incompatible or degenerate references fail closed.
+**[IMPLEMENTED][IN PROGRESS]** Line authoring now converts acquired Parallel and Perpendicular channels into Line-direction demands before soft positional arbitration. Compatible demands compose with the existing Line positional contract (including point-reference construction support), producing one authoritative endpoint. Parallel and Perpendicular are then independently truth-checked against that frozen endpoint and their actual reference-Line geometry. The singular `snap.type` remains position/topology authority rather than a semantic allow-list.
 
-The production-path regression includes the previously missing competition in which a point-reference construction is the singular positional winner while compatible first-class Parallel and Perpendicular channels are live. The implementation and automated regression are complete, but this behavior is **not [ACCEPTED / LOCKED]** and remains pending user browser verification.
+Endpoint and Midpoint positions remain exact, finite-Line support remains bounded, H/V remains exclusive, Ctrl remains raw, and incompatible or degenerate semantic demands fail closed. Production-path regressions cover both compatible multi-direction coexistence and the browser-reported case where Point Reference owns position while Parallel alone is acquired; presentation, click, and one-transaction commit consume the accepted result. Automated verification is complete, but this behavior is **not [ACCEPTED / LOCKED]** and remains pending user browser verification.
 
 ### 12.2 Transient visual debt
 
