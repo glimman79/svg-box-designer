@@ -387,7 +387,15 @@ export function DrawingWorkspace({
             ...(nextInteraction.parallelLineId ? [{ relation: 'parallel', lineId: nextInteraction.parallelLineId }] : []),
             ...(nextInteraction.perpendicularLineId ? [{ relation: 'perpendicular', lineId: nextInteraction.perpendicularLineId }] : []),
           ],
+          activeDirectionAuthorities: [
+            ...(snapBeforeHvSuppression.channels.parallel ? [{ relation: 'parallel', lineId: snapBeforeHvSuppression.channels.parallel.entityId }] : []),
+            ...(snapBeforeHvSuppression.channels.perpendicular ? [{ relation: 'perpendicular', lineId: snapBeforeHvSuppression.channels.perpendicular.entityId }] : []),
+          ],
+          acceptedSemanticTruth: { parallelLineId: nextInteraction.parallelLineId,
+            perpendicularLineId: nextInteraction.perpendicularLineId },
+          transientPresentationSelection: diagnosticPresentations.map(({ kind }) => kind),
           persistentSemanticSelection: semanticSelection,
+          rejectedPersistentSemantics: semanticSelection.rejected,
         },
         hv: {
           automaticAxisKind, suppressionRan: suppressedDirectionRelations,

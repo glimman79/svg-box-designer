@@ -48,8 +48,9 @@ const REPRESENTATION_PREFERENCE: Readonly<Record<DirectionDemandSource, number>>
   angular: 10,
 };
 
-/** Selects one deterministic representative per equivalent demand group. This
- * is shared by transient presentation and automatic persistence policy. */
+/** Selects one deterministic representative per equivalent demand group for
+ * transaction-scoped persistence minimization. Live presentation must instead
+ * retain every accepted semantic relation. */
 export const selectPreferredDirectionDemandRepresentatives = (groups: readonly EquivalentDirectionDemandGroup[]) =>
   groups.map((group) => group.demands.slice().sort((a, b) =>
     REPRESENTATION_PREFERENCE[b.source] - REPRESENTATION_PREFERENCE[a.source]
