@@ -217,6 +217,8 @@ const isParallelAt = (start: DrawingPoint, end: DrawingPoint, lineStart?: Drawin
 type LineDirectionDemand = Readonly<{
   direction: DrawingPoint;
   screenDistance: number;
+  relation: 'parallel' | 'perpendicular';
+  entityId: string;
 }>;
 
 /** Converts acquired semantic channels to their geometry contract. Composition
@@ -226,19 +228,27 @@ const acquiredDirectionDemands = (spatialSnap: LineSpatialSnap): ReadonlyArray<L
   const perpendicular = spatialSnap.channels?.perpendicular;
   return [
     parallel?.lineStart && parallel.lineEnd ? { x: parallel.lineEnd.x - parallel.lineStart.x, y: parallel.lineEnd.y - parallel.lineStart.y,
-      screenDistance: parallel.screenDistance } : null,
+      screenDistance: parallel.screenDistance, relation: 'parallel' as const, entityId: parallel.entityId } : null,
     perpendicular?.lineStart && perpendicular.lineEnd ? { x: -(perpendicular.lineEnd.y - perpendicular.lineStart.y),
-      y: perpendicular.lineEnd.x - perpendicular.lineStart.x, screenDistance: perpendicular.screenDistance } : null,
-  ].filter((value): value is { x: number; y: number; screenDistance: number } => value !== null)
-    .map(({ x, y, screenDistance }) => {
+      y: perpendicular.lineEnd.x - perpendicular.lineStart.x, screenDistance: perpendicular.screenDistance,
+      relation: 'perpendicular' as const, entityId: perpendicular.entityId } : null,
+  ].filter((value): value is { x: number; y: number; screenDistance: number; relation: 'parallel' | 'perpendicular'; entityId: string } => value !== null)
+    .map(({ x, y, screenDistance, relation, entityId }) => {
       const length = Math.hypot(x, y);
-      return length > LINE_ZERO_LENGTH_TOLERANCE_MM ? { direction: { x: x / length, y: y / length }, screenDistance } : null;
+      return length > LINE_ZERO_LENGTH_TOLERANCE_MM
+        ? { direction: { x: x / length, y: y / length }, screenDistance, relation, entityId } : null;
     }).filter((value): value is LineDirectionDemand => value !== null)
     .sort((a, b) => a.screenDistance - b.screenDistance);
 };
 
 const sameUnorientedDirection = (a: DrawingPoint, b: DrawingPoint) => Math.abs(a.x * b.y - a.y * b.x)
   <= ANGULAR_COMPATIBILITY_EPSILON;
+
+const authoredDirectionAt = (start: DrawingPoint | null, end: DrawingPoint): DrawingPoint | null => {
+  if (!start) return null;
+  const x = end.x - start.x, y = end.y - start.y, length = Math.hypot(x, y);
+  return length > LINE_ZERO_LENGTH_TOLERANCE_MM ? { x: x / length, y: y / length } : null;
+};
 
 const commonAcquiredDirection = (spatialSnap: LineSpatialSnap): DrawingPoint | null => {
   const demands = acquiredDirectionDemands(spatialSnap);
@@ -281,18 +291,23 @@ const acceptedDirectionalRelationsAt = (
   spatialSnap: LineSpatialSnap,
 ) => {
   if (!start || finalAxisAngle(start, end) !== null) return { perpendicularLineId: null, parallelLineId: null };
+  const authoredDirection = authoredDirectionAt(start, end);
+  const demands = acquiredDirectionDemands(spatialSnap);
+  const accepted = authoredDirection ? demands.filter(({ direction }) => sameUnorientedDirection(authoredDirection, direction)) : [];
   const perpendicular = spatialSnap.channels?.perpendicular ?? (spatialSnap.type === 'perpendicular' && spatialSnap.entityId
     ? { entityId: spatialSnap.entityId, candidatePoint: spatialSnap.effectivePoint, screenDistance: 0,
       lineStart: spatialSnap.lineStart, lineEnd: spatialSnap.lineEnd } : null);
   const parallel = spatialSnap.channels?.parallel ?? (spatialSnap.type === 'parallel' && spatialSnap.entityId
     ? { entityId: spatialSnap.entityId, candidatePoint: spatialSnap.effectivePoint, screenDistance: 0 } : null);
   return {
-    perpendicularLineId: perpendicular && (isPerpendicularAt(start, end, perpendicular.lineStart, perpendicular.lineEnd)
+    perpendicularLineId: accepted.find(({ relation }) => relation === 'perpendicular')?.entityId
+      ?? (perpendicular && (isPerpendicularAt(start, end, perpendicular.lineStart, perpendicular.lineEnd)
       || (!perpendicular.lineStart && !perpendicular.lineEnd
         && Math.hypot(perpendicular.candidatePoint.x - end.x, perpendicular.candidatePoint.y - end.y)
           <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, Math.hypot(end.x - start.x, end.y - start.y))))
-      ? perpendicular.entityId : null,
-    parallelLineId: parallel && isParallelAt(start, end, parallel.lineStart, parallel.lineEnd, parallel.candidatePoint) ? parallel.entityId : null,
+        ? perpendicular.entityId : null),
+    parallelLineId: accepted.find(({ relation }) => relation === 'parallel')?.entityId
+      ?? (parallel && isParallelAt(start, end, parallel.lineStart, parallel.lineEnd, parallel.candidatePoint) ? parallel.entityId : null),
   };
 };
 
@@ -442,20 +457,13 @@ export const resolveLineEffectivePoint = (
     const angularExact = direction !== null && isPointOnDirection(interaction.start, acceptedPoint, direction);
     // A compatible endpoint/finite-Line position may preserve H/V, but no
     // lower-priority Line relation may coexist with that axis authority.
-    const perpendicularExact = perpendicular !== null && (isPerpendicularAt(
-      interaction.start, acceptedPoint, perpendicular.lineStart, perpendicular.lineEnd,
-    ) || (!perpendicular.lineStart && !perpendicular.lineEnd
-      && Math.hypot(perpendicular.candidatePoint.x - acceptedPoint.x, perpendicular.candidatePoint.y - acceptedPoint.y)
-        <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, Math.hypot(acceptedPoint.x - interaction.start.x, acceptedPoint.y - interaction.start.y))));
-    const parallel = spatialSnap.type === 'midpoint' && !acceptedAxis ? spatialSnap.channels?.parallel ?? null : null;
-    const parallelExact = parallel !== null && isParallelAt(interaction.start, acceptedPoint, parallel.candidatePoint);
     const nextInteraction = {
       ...interaction,
       rawPointerPoint,
       effectivePreviewPoint: acceptedPoint,
       snappedAngleDegrees: angularExact ? angular.snappedAngleDegrees : null,
-      perpendicularLineId: perpendicularExact ? perpendicular.entityId : null,
-      parallelLineId: parallelExact ? parallel.entityId : null,
+      perpendicularLineId: null,
+      parallelLineId: null,
       midpointLineId: spatialSnap.type === 'midpoint' ? spatialSnap.entityId ?? null : null,
       lineBodyId: spatialSnap.type === 'line' ? spatialSnap.entityId ?? null : null,
     };
