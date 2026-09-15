@@ -162,8 +162,8 @@ const coexistenceSketch = { ...previewSketch,
 const virtualParallelSnap = { type: 'perpendicular', active: true, effectivePoint: { x: 100, y: 100 }, entityId: 'perpendicular-target', screenDistance: 0, channels: {} };
 const coexistencePresentations = deriveDrawingInferencePresentations(virtualParallelSnap, coexistenceSketch, 1, identity, identity,
   { ...EMPTY_LINE_INTERACTION, start: { x: 60, y: 60 }, effectivePreviewPoint: { x: 100, y: 100 }, parallelLineId: 'accepted-target', perpendicularLineId: 'perpendicular-target' });
-assert.deepEqual(coexistencePresentations.map(({ kind }) => kind), ['parallel'],
-  'shared presentation prefers Parallel when both accepted relations describe the same authored direction');
+assert.deepEqual(coexistencePresentations.map(({ kind }) => kind), ['parallel', 'perpendicular'],
+  'shared presentation preserves both accepted semantic relations despite equivalent direction geometry');
 const parallelMarkup = renderToStaticMarkup(createElement(DrawingInferenceOverlay, { presentations: coexistencePresentations }));
 assert.equal((parallelMarkup.match(/drawing-parallel-marker-stroke/g) ?? []).length, 4,
   'transient Parallel paints the persistent two-stroke glyph beside both participating Lines');

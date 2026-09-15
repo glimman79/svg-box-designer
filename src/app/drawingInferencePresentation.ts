@@ -6,7 +6,6 @@ import type { LineToolInteraction } from './drawingLineTool';
 import { deriveLineConstraintMarkerCandidates, deriveMidpointMarkerPresentation, layoutLineConstraintMarkers } from './drawingParallelMarker.js';
 import { derivePerpendicularPresentation, type DrawingPerpendicularPresentation } from './drawingParallelMarker.js';
 import { resolveLine } from './drawingTopology.js';
-import { selectMinimalLineSemanticConstraints } from './drawingLineTool.js';
 
 export type DrawingMidpointInferencePresentation = Readonly<{
   kind: 'midpoint';
@@ -34,13 +33,14 @@ export type DrawingPerpendicularInferencePresentation = Readonly<{
 
 export type DrawingInferencePresentation = DrawingMidpointInferencePresentation | DrawingParallelInferencePresentation | DrawingPerpendicularInferencePresentation;
 
-/** Chooses a transient description only after semantic truth is accepted. */
-export const selectPreferredLineInferenceRepresentations = (interaction?: LineToolInteraction) => {
+/** Projects plural accepted semantic truth into live feedback. Geometric-demand
+ * equivalence is intentionally not a presentation filter: persistence has a
+ * separate transaction-scoped minimizer. */
+export const selectAcceptedLineInferenceRepresentations = (interaction?: LineToolInteraction) => {
   if (!interaction) return new Set<'parallel' | 'perpendicular'>();
-  const selected = selectMinimalLineSemanticConstraints(interaction);
   return new Set<'parallel' | 'perpendicular'>([
-    ...(selected.parallelLineId ? ['parallel' as const] : []),
-    ...(selected.perpendicularLineId ? ['perpendicular' as const] : []),
+    ...(interaction.parallelLineId ? ['parallel' as const] : []),
+    ...(interaction.perpendicularLineId ? ['perpendicular' as const] : []),
   ]);
 };
 
@@ -126,7 +126,7 @@ export const deriveDrawingInferencePresentations = (
 ): readonly DrawingInferencePresentation[] => {
   if (!sketch) return [];
   const presentations: DrawingInferencePresentation[] = [];
-  const preferredRepresentations = selectPreferredLineInferenceRepresentations(interaction);
+  const acceptedRepresentations = selectAcceptedLineInferenceRepresentations(interaction);
   if (snap.type === 'midpoint') {
     const presentation = deriveMidpointInferencePresentation({
     targetLineId: snap.entityId,
@@ -137,13 +137,13 @@ export const deriveDrawingInferencePresentations = (
     });
     if (presentation) presentations.push(presentation);
   }
-  if (preferredRepresentations.has('parallel') && interaction?.parallelLineId && interaction.start && interaction.effectivePreviewPoint) {
+  if (acceptedRepresentations.has('parallel') && interaction?.parallelLineId && interaction.start && interaction.effectivePreviewPoint) {
     const presentation = deriveParallelInferencePresentation({ targetLineId: interaction.parallelLineId, sketch,
       authoredStart: interaction.start, authoredEnd: interaction.effectivePreviewPoint, pixelsPerModelUnit,
       drawingToClientTransform, overlayToClientTransform });
     if (presentation) presentations.push(presentation);
   }
-  if (preferredRepresentations.has('perpendicular') && interaction?.perpendicularLineId && interaction.start && interaction.effectivePreviewPoint) {
+  if (acceptedRepresentations.has('perpendicular') && interaction?.perpendicularLineId && interaction.start && interaction.effectivePreviewPoint) {
     const target = sketch.entities[interaction.perpendicularLineId];
     const targetLine = target?.type === 'line' ? resolveLine(sketch, target) : null;
     const authoredStart = modelToOverlayPoint(interaction.start, drawingToClientTransform, overlayToClientTransform);

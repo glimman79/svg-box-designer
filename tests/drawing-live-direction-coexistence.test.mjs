@@ -70,7 +70,8 @@ test('workspace production path composes compatible directions before a point-re
   assert.ok(parallelTruth(frame.point) && perpendicularTruth(frame.point));
 
   const shown = presentation.deriveDrawingInferencePresentations(frame.snap, workspaceSketch, 1, identity, identity, frame.interaction);
-  assert.deepEqual(shown.map(({ kind }) => kind), ['parallel'], 'equivalent accepted directions use the preferred transient description');
+  assert.deepEqual(shown.map(({ kind }) => kind), ['parallel', 'perpendicular'],
+    'equivalent geometry retains both distinct accepted semantic relations in transient feedback');
 
   frame = move(frame, { x: 111, y: 107 }, [parallel, perpendicular, blocker]);
   assert.equal(frame.interaction.parallelLineId, parallel.id);
@@ -111,9 +112,21 @@ test('fresh next-chain frame groups equivalent direction evidence before composi
 test('Perpendicular alone remains the preview and persistent semantic representative', () => {
   const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, effectivePreviewPoint: { x: 100, y: 100 },
     perpendicularLineId: perpendicular.id };
-  assert.deepEqual([...presentation.selectPreferredLineInferenceRepresentations(interaction)], ['perpendicular']);
+  assert.deepEqual([...presentation.selectAcceptedLineInferenceRepresentations(interaction)], ['perpendicular']);
   assert.deepEqual(lineTool.selectMinimalLineSemanticConstraints(interaction), {
     parallelLineId: null, perpendicularLineId: perpendicular.id, rejected: [],
+  });
+});
+
+test('transient semantic presentation is independent from minimal persistence', () => {
+  const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, effectivePreviewPoint: { x: 160, y: 160 },
+    parallelLineId: parallel.id, perpendicularLineId: perpendicular.id };
+  assert.deepEqual([...presentation.selectAcceptedLineInferenceRepresentations(interaction)], ['parallel', 'perpendicular']);
+  assert.deepEqual(lineTool.selectMinimalLineSemanticConstraints(interaction), {
+    parallelLineId: parallel.id,
+    perpendicularLineId: null,
+    rejected: [{ relation: 'perpendicular', lineId: perpendicular.id,
+      reason: 'redundant equivalent demand; preferred representative selected' }],
   });
 });
 
