@@ -1,5 +1,6 @@
 import type { DrawingPoint } from './drawingTypes';
 import type { DrawingInference } from './drawingInference';
+import { groupEquivalentDirectionDemands, normalizeUnorientedDirection, type NormalizedDirectionDemand } from './drawingGeometricDemand.js';
 
 export const DRAWING_ENDPOINT_SNAP_ACQUIRE_PX = 9;
 export const DRAWING_ENDPOINT_SNAP_RELEASE_PX = 12;
@@ -161,6 +162,25 @@ const directionRequirement = (candidate: ParallelInference | PerpendicularInfere
     : { kind: 'direction', direction: { x: -y, y: x } };
 };
 
+const normalizedSemanticDemands = (candidates: DrawingInferenceCandidates): readonly NormalizedDirectionDemand[] => {
+  const demands: NormalizedDirectionDemand[] = [];
+  candidates.parallels.forEach((candidate) => {
+    const direction = candidate.lineStart && candidate.lineEnd && normalizeUnorientedDirection({
+      x: candidate.lineEnd.x - candidate.lineStart.x, y: candidate.lineEnd.y - candidate.lineStart.y,
+    });
+    if (direction) demands.push({ id: `parallel:${candidate.entityId}`, direction, source: 'parallel',
+      semanticRelation: 'parallel', referenceIdentity: candidate.entityId, screenDistance: candidate.screenDistance });
+  });
+  candidates.perpendiculars.forEach((candidate) => {
+    const direction = candidate.lineStart && candidate.lineEnd && normalizeUnorientedDirection({
+      x: -(candidate.lineEnd.y - candidate.lineStart.y), y: candidate.lineEnd.x - candidate.lineStart.x,
+    });
+    if (direction) demands.push({ id: `perpendicular:${candidate.entityId}`, direction, source: 'perpendicular',
+      semanticRelation: 'perpendicular', referenceIdentity: candidate.entityId, screenDistance: candidate.screenDistance });
+  });
+  return demands;
+};
+
 /** Pure Drawing-wide channel acquisition followed by positional authority arbitration. */
 export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOverride, axisDirectionActive = false, activeLineStart = null }: {
   rawPoint: DrawingPoint; candidates: DrawingInferenceCandidates; previousSnap: DrawingSnap | null; ctrlOverride: boolean;
@@ -180,6 +200,20 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
     ...(xReference?.positionOwnership === 'defines-position' ? [{ kind: 'coordinate', axis: 'x', value: xReference.candidatePoint.x } as const] : []),
     ...(yReference?.positionOwnership === 'defines-position' ? [{ kind: 'coordinate', axis: 'y', value: yReference.candidatePoint.y } as const] : []),
   ];
+  // Candidate families first become geometric demand groups. An acquired
+  // coordinate may admit a compatible group through the normal release band;
+  // this makes a fresh post-click frame compositional without family priority.
+  const composableDemandGroups = activeLineStart && coordinateRequirements.length
+    ? groupEquivalentDirectionDemands(normalizedSemanticDemands(candidates)).filter((group) =>
+      group.demands.some(({ screenDistance }) => screenDistance <= Math.max(DRAWING_PARALLEL_SNAP_RELEASE_PX, DRAWING_PERPENDICULAR_SNAP_RELEASE_PX))
+      && composeSoftRequirements(activeLineStart, [{ kind: 'direction', direction: group.direction }, ...coordinateRequirements]))
+    : [];
+  const composableReference = <T extends ParallelInference | PerpendicularInference>(items: readonly T[], source: T['type']) => {
+    const identities = new Set(composableDemandGroups.flatMap(({ demands }) => demands
+      .filter((demand) => demand.source === source).map(({ referenceIdentity }) => referenceIdentity)));
+    return items.filter(({ entityId }) => identities.has(entityId)).sort((a, b) =>
+      a.screenDistance - b.screenDistance || a.entityId.localeCompare(b.entityId))[0] ?? null;
+  };
   const retainCompatibleDirection = <T extends ParallelInference | PerpendicularInference>(selected: T | null, old: T | null, items: readonly T[]) => {
     if (selected || !activeLineStart || coordinateRequirements.length === 0 || !old) return selected;
     const current = items.find(({ entityId }) => entityId === old.entityId);
@@ -188,8 +222,10 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
   };
   const oldPerpendicular = previousSnap?.channels?.perpendicular ?? null;
   const oldParallel = previousSnap?.channels?.parallel ?? null;
-  const perpendicularPositionCandidate = axisDirectionActive ? null : choosePerpendicular(candidates.perpendiculars, previousSnap);
-  const parallelPositionCandidate = axisDirectionActive ? null : chooseParallel(candidates.parallels ?? [], previousSnap);
+  const perpendicularPositionCandidate = axisDirectionActive ? null : choosePerpendicular(candidates.perpendiculars, previousSnap)
+    ?? composableReference(candidates.perpendiculars, 'perpendicular');
+  const parallelPositionCandidate = axisDirectionActive ? null : chooseParallel(candidates.parallels ?? [], previousSnap)
+    ?? composableReference(candidates.parallels ?? [], 'parallel');
   const perpendicular = axisDirectionActive ? null : retainCompatibleDirection(
     perpendicularPositionCandidate, oldPerpendicular, candidates.perpendiculars);
   const parallel = axisDirectionActive ? null : retainCompatibleDirection(

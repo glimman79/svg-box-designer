@@ -249,7 +249,7 @@ test('same-target Line-body acquisition composes retained Perpendicular directio
     'preview and frozen click consume the same accepted point');
 });
 
-test('compatible Parallel and Perpendicular channels coexist independent of positional winner and commit together', () => {
+test('compatible Parallel and Perpendicular channels coexist while commit selects one equivalent representative', () => {
   const start = { x: 0, y: 0 }, end = { x: 40, y: 40 };
   const parallel = { entityId: 'parallel-reference', candidatePoint: end, screenDistance: 0 };
   const perpendicular = { entityId: 'perpendicular-reference', candidatePoint: end, screenDistance: 0,
@@ -270,10 +270,11 @@ test('compatible Parallel and Perpendicular channels coexist independent of posi
     document = lines.appendEntityToActiveSketch(document,
       { id: perpendicular.entityId, type: 'line', start: perpendicular.lineStart, end: perpendicular.lineEnd }, () => `perpendicular-point-${++pointSequence}`);
     const click = lines.applyResolvedLineClick(accepted.interaction, accepted.effectivePoint, () => 'authored');
+    const selected = lines.selectMinimalLineSemanticConstraints(accepted.interaction);
     document = lines.appendEntityToActiveSketch(document, click.entity, () => `authored-point-${++pointSequence}`, null,
-      accepted.interaction.perpendicularLineId, null, accepted.interaction.parallelLineId);
-    assert.deepEqual(Object.values(document.sketches['sketch-1'].geometricConstraints).map(({ kind }) => kind).sort(), ['PARALLEL', 'PERPENDICULAR'],
-      'one append transaction stores both compatible semantic constraints');
+      selected.perpendicularLineId, null, selected.parallelLineId);
+    assert.deepEqual(Object.values(document.sketches['sketch-1'].geometricConstraints).map(({ kind }) => kind), ['PARALLEL'],
+      'one append transaction stores the preferred non-redundant semantic constraint');
   }
 });
 

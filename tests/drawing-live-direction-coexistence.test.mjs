@@ -78,9 +78,43 @@ test('workspace production path composes compatible directions before a point-re
 
   const click = lineTool.applyResolvedLineClick(frame.interaction, frame.point, () => 'authored');
   const document = { version: 2, activeSketchId: 'sketch', sketches: { sketch: workspaceSketch }, sketchOrder: ['sketch'] };
+  const selected = lineTool.selectMinimalLineSemanticConstraints(frame.interaction);
+  assert.equal(selected.parallelLineId, parallel.id);
+  assert.equal(selected.perpendicularLineId, null);
+  assert.deepEqual(selected.rejected, [{ relation: 'perpendicular', lineId: perpendicular.id,
+    reason: 'redundant equivalent demand; preferred representative selected' }]);
   const committed = lineTool.appendEntityToActiveSketch(document, click.entity, (() => { let n = 0; return () => `new-${++n}`; })(),
-    null, frame.interaction.perpendicularLineId, null, frame.interaction.parallelLineId);
-  assert.deepEqual(Object.values(committed.sketches.sketch.geometricConstraints).map(({ kind }) => kind).sort(), ['PARALLEL', 'PERPENDICULAR']);
+    null, selected.perpendicularLineId, null, selected.parallelLineId);
+  assert.deepEqual(Object.values(committed.sketches.sketch.geometricConstraints).map(({ kind }) => kind), ['PARALLEL']);
+});
+
+test('fresh next-chain frame groups equivalent direction evidence before composing Y alignment', () => {
+  const duplicateParallel = { ...parallel, id: 'line-a-duplicate', start: { x: 500, y: 500 }, end: { x: 600, y: 600 } };
+  const candidatePoint = { x: 105.952, y: 105.952 };
+  const atEdge = (candidate) => ({ ...candidate, candidatePoint, screenDistance: 8.4169 });
+  const yAlignment = { type: 'alignment-y', referenceId: 'aligned', entityId: 'alignment-owner',
+    candidatePoint: { x: 0, y: 100 }, positionOwnership: 'defines-position', screenDistance: 4.6948 };
+  const snap = snaps.resolveDrawingSnap({ rawPoint: { x: 106, y: 100 }, previousSnap: null, ctrlOverride: false,
+    activeLineStart: start, candidates: { endpoints: [], midpoints: [], lines: [], alignmentsX: [], alignmentsY: [yAlignment], pointReferences: [],
+      parallels: [atEdge({ type: 'parallel', entityId: parallel.id, lineStart: parallel.start, lineEnd: parallel.end }),
+        atEdge({ type: 'parallel', entityId: duplicateParallel.id, lineStart: duplicateParallel.start, lineEnd: duplicateParallel.end })],
+      perpendiculars: [atEdge({ type: 'perpendicular', entityId: perpendicular.id, lineStart: perpendicular.start, lineEnd: perpendicular.end })] } });
+  assert.equal(snap.type, 'parallel', 'equivalent group remains acquirable through compatible positional composition');
+  assert.equal(snap.channels.parallel.entityId, parallel.id, 'equal references use stable identity');
+  assert.equal(snap.channels.perpendicular.entityId, perpendicular.id);
+  const accepted = lineTool.resolveLineEffectivePoint(emptyFrame().interaction, { x: 106, y: 100 }, snap);
+  assert.deepEqual(accepted.effectivePoint, { x: 100, y: 100 });
+  assert.equal(accepted.interaction.parallelLineId, parallel.id);
+  assert.equal(accepted.interaction.perpendicularLineId, perpendicular.id);
+});
+
+test('Perpendicular alone remains the preview and persistent semantic representative', () => {
+  const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, effectivePreviewPoint: { x: 100, y: 100 },
+    perpendicularLineId: perpendicular.id };
+  assert.deepEqual([...presentation.selectPreferredLineInferenceRepresentations(interaction)], ['perpendicular']);
+  assert.deepEqual(lineTool.selectMinimalLineSemanticConstraints(interaction), {
+    parallelLineId: null, perpendicularLineId: perpendicular.id, rejected: [],
+  });
 });
 
 test('a lone acquired semantic direction composes with a different positional support and owns hover/click truth', () => {
