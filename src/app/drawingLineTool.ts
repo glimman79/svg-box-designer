@@ -120,6 +120,10 @@ export type LineEffectivePointResolution = Readonly<{
     x: LineAlignmentXReference | null;
     y: LineAlignmentYReference | null;
   }>;
+  diagnostic?: Readonly<{
+    finalAxisAngle: 0 | 90 | 180 | 270 | null;
+    directionalSemanticsBeforeAxisFinalization: Readonly<{ perpendicularLineId: string | null; parallelLineId: string | null }>;
+  }>;
 }>;
 
 const ANGULAR_DIRECTION_EPSILON = 1e-12;
@@ -166,6 +170,7 @@ const lineResolution = (effectivePoint: DrawingPoint, interaction: LineToolInter
     effectivePoint,
     interaction: axisAngle === null ? { ...acceptedInteraction, ...acceptedRelations } : acceptedInteraction,
     resolvedReferences: resolvedReferencesAt(effectivePoint, spatialSnap),
+    diagnostic: { finalAxisAngle: axisAngle, directionalSemanticsBeforeAxisFinalization: acceptedRelations },
   };
 };
 
@@ -221,6 +226,28 @@ const compatibleDirectionalChannel = (spatialSnap: LineSpatialSnap): DrawingPoin
   if (pl <= LINE_ZERO_LENGTH_TOLERANCE_MM || ql <= LINE_ZERO_LENGTH_TOLERANCE_MM) return null;
   if (Math.abs(px * qx + py * qy) > ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, pl * ql)) return null;
   return { x: px / pl, y: py / pl };
+};
+
+/** Diagnostic observation of the exact common-direction gate used below. */
+export const diagnoseLineCommonDirection = (spatialSnap: LineSpatialSnap) => {
+  const parallel = spatialSnap.channels?.parallel;
+  const perpendicular = spatialSnap.channels?.perpendicular;
+  const bothChannels = Boolean(parallel && perpendicular);
+  const bothReferenceGeometries = Boolean(parallel?.lineStart && parallel.lineEnd
+    && perpendicular?.lineStart && perpendicular.lineEnd);
+  const compatibleDirection = compatibleDirectionalChannel(spatialSnap);
+  const hardPosition = spatialSnap.type === 'endpoint' || spatialSnap.type === 'midpoint' || spatialSnap.type === 'line';
+  return {
+    bothChannels,
+    bothReferenceGeometries,
+    compatible: compatibleDirection !== null,
+    used: compatibleDirection !== null && !hardPosition,
+    reason: compatibleDirection === null
+      ? !bothChannels ? 'bypassed: both directional channels are not acquired'
+        : !bothReferenceGeometries ? 'bypassed: directional reference geometry is incomplete'
+          : 'bypassed: reference directions are incompatible or degenerate'
+      : hardPosition ? `bypassed: snap.type=${spatialSnap.type} owns hard position` : 'used',
+  } as const;
 };
 
 const projectPointerToDirection = (start: DrawingPoint, pointer: DrawingPoint, direction: DrawingPoint): DrawingPoint => {
@@ -304,6 +331,7 @@ export const resolveLineEffectivePoint = (
     effectivePoint: rawPointerPoint,
     interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: rawPointerPoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: null, midpointLineId: null, lineBodyId: null },
     resolvedReferences: { x: null, y: null },
+    diagnostic: { finalAxisAngle: null, directionalSemanticsBeforeAxisFinalization: { perpendicularLineId: null, parallelLineId: null } },
   };
 
   // Compatibility is resolved before positional priority. Soft construction
