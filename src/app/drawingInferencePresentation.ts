@@ -6,6 +6,7 @@ import type { LineToolInteraction } from './drawingLineTool';
 import { deriveLineConstraintMarkerCandidates, deriveMidpointMarkerPresentation, layoutLineConstraintMarkers } from './drawingParallelMarker.js';
 import { derivePerpendicularPresentation, type DrawingPerpendicularPresentation } from './drawingParallelMarker.js';
 import { resolveLine } from './drawingTopology.js';
+import { selectMinimalLineSemanticConstraints } from './drawingLineTool.js';
 
 export type DrawingMidpointInferencePresentation = Readonly<{
   kind: 'midpoint';
@@ -33,20 +34,14 @@ export type DrawingPerpendicularInferencePresentation = Readonly<{
 
 export type DrawingInferencePresentation = DrawingMidpointInferencePresentation | DrawingParallelInferencePresentation | DrawingPerpendicularInferencePresentation;
 
-type AcceptedRepresentation = Readonly<{ kind: 'parallel' | 'perpendicular'; demandGroup: 'direction'; preference: number }>;
-
 /** Chooses a transient description only after semantic truth is accepted. */
 export const selectPreferredLineInferenceRepresentations = (interaction?: LineToolInteraction) => {
-  const accepted: AcceptedRepresentation[] = [
-    ...(interaction?.parallelLineId ? [{ kind: 'parallel', demandGroup: 'direction', preference: 2 } as const] : []),
-    ...(interaction?.perpendicularLineId ? [{ kind: 'perpendicular', demandGroup: 'direction', preference: 1 } as const] : []),
-  ];
-  const preferred = new Map<AcceptedRepresentation['demandGroup'], AcceptedRepresentation>();
-  for (const representation of accepted) {
-    const current = preferred.get(representation.demandGroup);
-    if (!current || representation.preference > current.preference) preferred.set(representation.demandGroup, representation);
-  }
-  return new Set([...preferred.values()].map(({ kind }) => kind));
+  if (!interaction) return new Set<'parallel' | 'perpendicular'>();
+  const selected = selectMinimalLineSemanticConstraints(interaction);
+  return new Set<'parallel' | 'perpendicular'>([
+    ...(selected.parallelLineId ? ['parallel' as const] : []),
+    ...(selected.perpendicularLineId ? ['perpendicular' as const] : []),
+  ]);
 };
 
 type MidpointPresentationInput = Readonly<{

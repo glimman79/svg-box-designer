@@ -1,6 +1,7 @@
 import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingDocumentV2, type DrawingGeometricConstraint, type DrawingLineEntity, type DrawingPoint } from './drawingTypes.js';
 import type { DrawingInference } from './drawingInference';
 import { canonicalCoincidentPointPair } from './drawingCoincidentConstraint.js';
+import { groupEquivalentDirectionDemands, normalizeUnorientedDirection, selectPreferredDirectionDemandRepresentatives, type NormalizedDirectionDemand } from './drawingGeometricDemand.js';
 
 export type DrawingLineDraft = Readonly<{ id: string; type: 'line'; start: DrawingPoint; end: DrawingPoint; startPointId?: string; endPointId?: string }>;
 
@@ -66,6 +67,35 @@ export type LineToolInteraction = Readonly<{
   lineBodyId: string | null;
   previousChainedLineId: string | null;
 }>;
+
+export type SelectedLineSemanticConstraints = Readonly<{
+  parallelLineId: string | null;
+  perpendicularLineId: string | null;
+  rejected: readonly Readonly<{ relation: 'parallel' | 'perpendicular'; lineId: string; reason: string }>[];
+}>;
+
+/** Automatic authoring persists one semantic representative for each accepted
+ * equivalent geometric demand. Detection remains intact on the interaction. */
+export const selectMinimalLineSemanticConstraints = (interaction: LineToolInteraction): SelectedLineSemanticConstraints => {
+  if (!interaction.start || !interaction.effectivePreviewPoint) return { parallelLineId: null, perpendicularLineId: null, rejected: [] };
+  const direction = normalizeUnorientedDirection({ x: interaction.effectivePreviewPoint.x - interaction.start.x,
+    y: interaction.effectivePreviewPoint.y - interaction.start.y });
+  if (!direction) return { parallelLineId: null, perpendicularLineId: null, rejected: [] };
+  const demands: NormalizedDirectionDemand[] = [];
+  if (interaction.parallelLineId) demands.push({ id: `parallel:${interaction.parallelLineId}`, direction, source: 'parallel', semanticRelation: 'parallel',
+    referenceIdentity: interaction.parallelLineId, screenDistance: 0 });
+  if (interaction.perpendicularLineId) demands.push({ id: `perpendicular:${interaction.perpendicularLineId}`, direction, source: 'perpendicular', semanticRelation: 'perpendicular',
+    referenceIdentity: interaction.perpendicularLineId, screenDistance: 0 });
+  const selected = selectPreferredDirectionDemandRepresentatives(groupEquivalentDirectionDemands(demands));
+  const selectedIds = new Set(selected.map(({ id }) => id));
+  return {
+    parallelLineId: selected.find(({ semanticRelation }) => semanticRelation === 'parallel')?.referenceIdentity ?? null,
+    perpendicularLineId: selected.find(({ semanticRelation }) => semanticRelation === 'perpendicular')?.referenceIdentity ?? null,
+    rejected: demands.filter(({ id }) => !selectedIds.has(id)).map(({ semanticRelation, referenceIdentity }) => ({
+      relation: semanticRelation!, lineId: referenceIdentity!, reason: 'redundant equivalent demand; preferred representative selected',
+    })),
+  };
+};
 
 export const EMPTY_LINE_INTERACTION: LineToolInteraction = {
   start: null,

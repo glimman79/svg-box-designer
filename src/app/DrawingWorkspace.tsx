@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes';
-import { appendEntityToActiveSketch, applyResolvedLineClick, automaticAxisConstraintKind, cancelLineInteraction, diagnoseLineCommonDirection, EMPTY_LINE_INTERACTION, hasAngularPresentationTruth, resolveLineEffectivePoint, resolveLinePreviewPoint, type LineToolInteraction } from './drawingLineTool';
+import { appendEntityToActiveSketch, applyResolvedLineClick, automaticAxisConstraintKind, cancelLineInteraction, diagnoseLineCommonDirection, EMPTY_LINE_INTERACTION, hasAngularPresentationTruth, resolveLineEffectivePoint, resolveLinePreviewPoint, selectMinimalLineSemanticConstraints, type LineToolInteraction } from './drawingLineTool';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
 import { collectDrawingInferenceCandidates, derivePointReferenceGuide } from './drawingInference';
@@ -310,6 +310,7 @@ export function DrawingWorkspace({
     const lineResolution = resolveLineEffectivePoint(interaction, rawPoint, snap, previousChainedAxisKind, ctrlHeld);
     const placementPoint = lineResolution.effectivePoint;
     const nextInteraction = lineResolution.interaction;
+    const semanticSelection = selectMinimalLineSemanticConstraints(nextInteraction);
     const automaticAxisKind = automaticAxisConstraintKind(nextInteraction);
     const suppressedDirectionRelations = automaticAxisKind !== null;
     if (suppressedDirectionRelations) snap = suppressDirectionRelations(snap);
@@ -382,6 +383,11 @@ export function DrawingWorkspace({
           after: { effectivePoint: lineResolution.effectivePoint, parallelLineId: nextInteraction.parallelLineId,
             perpendicularLineId: nextInteraction.perpendicularLineId, snappedAngleDegrees: nextInteraction.snappedAngleDegrees,
             midpointLineId: nextInteraction.midpointLineId, lineBodyId: nextInteraction.lineBodyId },
+          detectedSemanticInferences: [
+            ...(nextInteraction.parallelLineId ? [{ relation: 'parallel', lineId: nextInteraction.parallelLineId }] : []),
+            ...(nextInteraction.perpendicularLineId ? [{ relation: 'perpendicular', lineId: nextInteraction.perpendicularLineId }] : []),
+          ],
+          persistentSemanticSelection: semanticSelection,
         },
         hv: {
           automaticAxisKind, suppressionRan: suppressedDirectionRelations,
@@ -417,8 +423,9 @@ export function DrawingWorkspace({
     // The delayed click transaction must consume the inference accepted at the
     // click, not mutable hover state observed during the delay.
     const acceptedConstraintKind = automaticAxisConstraintKind(acceptedInteraction);
-    const acceptedPerpendicularLineId = acceptedConstraintKind ? null : acceptedInteraction.perpendicularLineId;
-    const acceptedParallelLineId = acceptedConstraintKind ? null : acceptedInteraction.parallelLineId;
+    const selectedSemantics = selectMinimalLineSemanticConstraints(acceptedInteraction);
+    const acceptedPerpendicularLineId = acceptedConstraintKind ? null : selectedSemantics.perpendicularLineId;
+    const acceptedParallelLineId = acceptedConstraintKind ? null : selectedSemantics.parallelLineId;
     const result = applyResolvedLineClick(acceptedInteraction, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`, pointId, acceptedLineBodyId, acceptedMidpointLineId);
     setLineInteraction(result.interaction);
     lineInteractionRef.current = result.interaction;

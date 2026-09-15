@@ -18,6 +18,12 @@ Status labels have the meanings defined in `PROJECT_MASTER.md`. Detailed B3.x re
 - **Acceptance result:** B3.23 concluded that Wall was stable enough to leave stabilization.
 - **Current development position:** substantial solver-backed 2D Drawing development followed v1.2. The active blocker is real browser Parallel + Perpendicular coexistence; shared ProjectDocument remains later cross-module work.
 
+### September 2026 equivalent-demand browser failure and policy correction
+
+The browser trace after #518–#520 showed frame 345 correctly detecting and accepting compatible Parallel, Perpendicular, and Point Reference channels and presenting Parallel alone. The click then began a fresh chained segment at frame 346. Multiple Parallel references, a Perpendicular reference, and Point Reference produced essentially the same candidate point at about 8.4169 px, while Y alignment was about 4.6948 px and generic angular intent reported 45°. Because each semantic family was independently outside its 8 px acquisition threshold and the new segment intentionally had no hysteresis, alignment won with all direction channels null. Thus the first incorrect stage was candidate acquisition, before Line resolution or presentation: equivalent geometric evidence was still arbitrated as unrelated family candidates.
+
+The same investigation found a distinct persistence cause. #518–#520 deliberately forwarded every accepted Parallel and Perpendicular ID to `appendEntityToActiveSketch`, which created both constraints in one transaction. Repeated authoring therefore produced multiple real persistent Perpendicular constraints and markers; rendering was accurately showing stored semantics. The policy was superseded: detection remains plural, but normalized unoriented direction demands are grouped before composition, presentation, and automatic persistence. A compatible alignment can admit a fresh equivalent direction group through the existing release band, avoiding a family-specific radius or winner rule. Deterministic representation selection prefers Parallel within an equivalent group, so the click persists Parallel only; a lone Perpendicular is unchanged. Existing documents are not rewritten.
+
 ## 3. Timeline Summary
 
 | Era | Problem | Decision/change | Result and current relevance |
