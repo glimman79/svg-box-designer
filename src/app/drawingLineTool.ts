@@ -284,6 +284,17 @@ const projectPointerToDirection = (start: DrawingPoint, pointer: DrawingPoint, d
   return { x: start.x + radial * direction.x, y: start.y + radial * direction.y };
 };
 
+const composeDirectionWithAlignments = (start: DrawingPoint, direction: DrawingPoint, spatialSnap: LineSpatialSnap) => {
+  const intersections = [
+    spatialSnap.channels?.xAlignment?.positionOwnership === 'defines-position' && Math.abs(direction.x) > ANGULAR_DIRECTION_EPSILON
+      ? (spatialSnap.channels.xAlignment.candidatePoint.x - start.x) / direction.x : null,
+    spatialSnap.channels?.yAlignment?.positionOwnership === 'defines-position' && Math.abs(direction.y) > ANGULAR_DIRECTION_EPSILON
+      ? (spatialSnap.channels.yAlignment.candidatePoint.y - start.y) / direction.y : null,
+  ].filter((value): value is number => value !== null && Number.isFinite(value) && value >= 0);
+  if (!intersections.length || intersections.some((value) => Math.abs(value - intersections[0]) > ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, value, intersections[0]))) return null;
+  return { x: start.x + intersections[0] * direction.x, y: start.y + intersections[0] * direction.y };
+};
+
 /** Semantic Line relations are validated independently at the final position. */
 const acceptedDirectionalRelationsAt = (
   start: DrawingPoint | null,
@@ -385,11 +396,12 @@ export const resolveLineEffectivePoint = (
   const commonDirection = commonAcquiredDirection(spatialSnap);
   if (commonDirection && spatialSnap.type !== 'endpoint' && spatialSnap.type !== 'midpoint' && spatialSnap.type !== 'line') {
     const pointReference = spatialSnap.channels?.pointReference;
-    const effectivePoint = acquiredDirections.length === 1 && spatialSnap.type === 'point-reference'
+    const alignedPoint = composeDirectionWithAlignments(interaction.start, commonDirection, spatialSnap);
+    const effectivePoint = alignedPoint ?? (acquiredDirections.length === 1 && spatialSnap.type === 'point-reference'
       && pointReference && 'supportOrigin' in pointReference && 'supportDirection' in pointReference
       ? intersectInfiniteSupports(interaction.start, commonDirection, pointReference.supportOrigin, pointReference.supportDirection)
         ?? projectPointerToDirection(interaction.start, rawPointerPoint, commonDirection)
-      : projectPointerToDirection(interaction.start, rawPointerPoint, commonDirection);
+      : projectPointerToDirection(interaction.start, rawPointerPoint, commonDirection));
     return lineResolution(effectivePoint, { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint,
       snappedAngleDegrees: null, midpointLineId: null, lineBodyId: null }, spatialSnap);
   }

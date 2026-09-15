@@ -30,6 +30,7 @@ const move = (frame, pointer, scene) => {
     previousSnap: frame.snap,
     ctrlOverride: false,
     axisDirectionActive,
+    activeLineStart: start,
   });
   const placement = lineTool.resolveLineEffectivePoint(frame.interaction, pointer, snap);
   return { snap, interaction: placement.interaction, point: placement.effectivePoint };
@@ -69,7 +70,7 @@ test('workspace production path composes compatible directions before a point-re
   assert.ok(parallelTruth(frame.point) && perpendicularTruth(frame.point));
 
   const shown = presentation.deriveDrawingInferencePresentations(frame.snap, workspaceSketch, 1, identity, identity, frame.interaction);
-  assert.deepEqual(shown.map(({ kind }) => kind).sort(), ['parallel', 'perpendicular']);
+  assert.deepEqual(shown.map(({ kind }) => kind), ['parallel'], 'equivalent accepted directions use the preferred transient description');
 
   frame = move(frame, { x: 111, y: 107 }, [parallel, perpendicular, blocker]);
   assert.equal(frame.interaction.parallelLineId, parallel.id);
@@ -119,6 +120,54 @@ test('a lone acquired semantic direction composes with a different positional su
   const committedEnd = committed.sketches.sketch.points[committedLine.endPointId];
   assert.deepEqual({ x: committedEnd.x, y: committedEnd.y }, accepted.effectivePoint, 'commit retains the accepted click geometry');
   assert.equal(committed.sketches.sketch.geometricConstraints['parallel:authored:line-a'].kind, 'PARALLEL');
+});
+
+test('closer alignment authority retains compatible acquired direction channels beyond their independent release radius', () => {
+  const previousCandidates = inference.collectDrawingInferenceCandidates({ x: 100, y: 103 }, [parallel, perpendicular], identity, bounds, start, null);
+  const previous = snaps.resolveDrawingSnap({ rawPoint: { x: 100, y: 103 }, candidates: previousCandidates,
+    previousSnap: null, ctrlOverride: false, activeLineStart: start });
+  assert.ok(previous.channels.parallel && previous.channels.perpendicular);
+
+  const yAlignment = { type: 'alignment-y', referenceId: 'aligned-point', entityId: 'alignment-owner',
+    candidatePoint: { x: 0, y: 120 }, positionOwnership: 'defines-position', screenDistance: 4.8 };
+  const outsideRelease = inference.collectDrawingInferenceCandidates({ x: 130, y: 112.13 }, [parallel, perpendicular], identity, bounds, start, null);
+  const aligned = snaps.resolveDrawingSnap({ rawPoint: { x: 130, y: 112.13 }, previousSnap: previous,
+    ctrlOverride: false, activeLineStart: start, candidates: { ...outsideRelease, endpoints: [], midpoints: [], lines: [],
+      alignmentsX: [], alignmentsY: [yAlignment], pointReferences: [] } });
+  assert.equal(aligned.type, 'alignment');
+  assert.equal(aligned.channels.parallel?.entityId, parallel.id);
+  assert.equal(aligned.channels.perpendicular?.entityId, perpendicular.id);
+  const accepted = lineTool.resolveLineEffectivePoint(emptyFrame().interaction, { x: 130, y: 112.13 }, aligned);
+  assert.deepEqual(accepted.effectivePoint, { x: 120, y: 120 });
+  assert.equal(accepted.interaction.parallelLineId, parallel.id);
+  assert.equal(accepted.interaction.perpendicularLineId, perpendicular.id);
+});
+
+test('alignment retention composes either direction family and rejects an incompatible coordinate demand', () => {
+  for (const family of ['parallel', 'perpendicular']) {
+    const scene = family === 'parallel' ? [parallel] : [perpendicular];
+    const initialCandidates = inference.collectDrawingInferenceCandidates({ x: 100, y: 103 }, scene, identity, bounds, start, null);
+    const initial = snaps.resolveDrawingSnap({ rawPoint: { x: 100, y: 103 }, candidates: initialCandidates,
+      previousSnap: null, ctrlOverride: false, activeLineStart: start });
+    const movedCandidates = inference.collectDrawingInferenceCandidates({ x: 130, y: 112.13 }, scene, identity, bounds, start, null);
+    const aligned = snaps.resolveDrawingSnap({ rawPoint: { x: 130, y: 112.13 }, previousSnap: initial,
+      ctrlOverride: false, activeLineStart: start, candidates: { ...movedCandidates, endpoints: [], midpoints: [], lines: [],
+        alignmentsX: [], alignmentsY: [{ type: 'alignment-y', referenceId: 'ref', entityId: 'owner', candidatePoint: { x: 0, y: 120 },
+          positionOwnership: 'defines-position', screenDistance: 4 }], pointReferences: [] } });
+    assert.equal(aligned.type, 'alignment');
+    assert.equal(aligned.channels[family]?.entityId, scene[0].id);
+  }
+
+  const horizontal = { id: 'horizontal', type: 'line', start: { x: 0, y: 0 }, end: { x: 100, y: 0 } };
+  const near = inference.collectDrawingInferenceCandidates({ x: 100, y: 3 }, [horizontal], identity, bounds, start, null);
+  const held = snaps.resolveDrawingSnap({ rawPoint: { x: 100, y: 3 }, candidates: near, previousSnap: null,
+    ctrlOverride: false, activeLineStart: start });
+  const far = inference.collectDrawingInferenceCandidates({ x: 100, y: 20 }, [horizontal], identity, bounds, start, null);
+  const incompatible = snaps.resolveDrawingSnap({ rawPoint: { x: 100, y: 20 }, previousSnap: held,
+    ctrlOverride: false, activeLineStart: start, candidates: { ...far, endpoints: [], midpoints: [], lines: [],
+      alignmentsX: [], alignmentsY: [{ type: 'alignment-y', referenceId: 'ref', entityId: 'owner', candidatePoint: { x: 0, y: 20 },
+        positionOwnership: 'defines-position', screenDistance: 1 }], pointReferences: [] } });
+  assert.equal(incompatible.channels.parallel, null, 'a coordinate with no directional intersection cannot retain semantic truth');
 });
 
 const endpointSnap = ({ end, parallelTarget = null, perpendicularTarget = null }) => snaps.resolveDrawingSnap({

@@ -296,7 +296,8 @@ export function DrawingWorkspace({
     const axisDirectionActive = angularIntent?.snapActive === true && angularIntent.snappedAngleDegrees !== null
       && [0, 90, 180, 270].includes(angularIntent.snappedAngleDegrees);
     const previousSnap = drawingSnapRef.current;
-    let snap = resolveDrawingSnap({ rawPoint, candidates, previousSnap, ctrlOverride: ctrlHeld, axisDirectionActive });
+    let snap = resolveDrawingSnap({ rawPoint, candidates, previousSnap, ctrlOverride: ctrlHeld, axisDirectionActive,
+      activeLineStart: interaction.start });
     const snapBeforeHvSuppression = snap;
     const previousChainedAxisConstraint = interaction.previousChainedLineId
       ? Object.values(documentRef.current.sketches[documentRef.current.activeSketchId]?.geometricConstraints ?? {}).find((constraint) =>
