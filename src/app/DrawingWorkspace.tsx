@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes';
-import { appendEntityToActiveSketch, applyResolvedLineClick, automaticAxisConstraintKind, cancelLineInteraction, EMPTY_LINE_INTERACTION, hasAngularPresentationTruth, resolveLineEffectivePoint, resolveLinePreviewPoint, type LineToolInteraction } from './drawingLineTool';
+import { appendEntityToActiveSketch, applyResolvedLineClick, automaticAxisConstraintKind, cancelLineInteraction, diagnoseLineCommonDirection, EMPTY_LINE_INTERACTION, hasAngularPresentationTruth, resolveLineEffectivePoint, resolveLinePreviewPoint, type LineToolInteraction } from './drawingLineTool';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
 import { collectDrawingInferenceCandidates, derivePointReferenceGuide } from './drawingInference';
@@ -21,6 +21,7 @@ import { deleteGeometricConstraint, deriveMidpointMarkerPresentation, derivePara
 import { deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
 import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, initialConstraintsPanelPosition, toggleDrawingGeometrySelection, type DrawingSelectionRef } from './drawingConstraintsTool.js';
 import { deriveDrawingInferencePresentations, type DrawingInferencePresentation } from './drawingInferencePresentation.js';
+import { createDrawingDirectionDiagnosticRecorder } from './drawingDirectionDiagnostic.js';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -199,6 +200,8 @@ export function DrawingWorkspace({
   const previousToolActivationRef = useRef<CadToolActivationRecord<DrawingActiveTool> | null>(null);
   const lineInteractionRef = useRef(lineInteraction);
   const drawingSnapRef = useRef<DrawingSnap | null>(drawingSnap);
+  const directionDiagnosticRef = useRef(createDrawingDirectionDiagnosticRecorder());
+  const directionDiagnosticSequenceRef = useRef(0);
   const resolvePlacementRef = useRef<(clientPoint: CoordinatePoint, ctrlHeld: boolean) => void>(() => undefined);
   const entitySequence = useRef(0);
   const pointSequence = useRef(0);
@@ -280,7 +283,7 @@ export function DrawingWorkspace({
     y: current.y + current.height / 2,
   }));
 
-  const resolvePlacement = (clientPoint: CoordinatePoint, ctrlHeld: boolean): DrawingPlacementResolution | null => {
+  const resolvePlacement = (clientPoint: CoordinatePoint, ctrlHeld: boolean, phase: 'hover' | 'click' = 'hover'): DrawingPlacementResolution | null => {
     const drawingTransform = svgRef.current?.getScreenCTM();
     const overlayTransform = overlaySvgRef.current?.getScreenCTM();
     if (!drawingTransform || !overlayTransform) return null;
@@ -292,7 +295,9 @@ export function DrawingWorkspace({
       angularIntent?.snapActive ? angularIntent.snappedAngleDegrees : null);
     const axisDirectionActive = angularIntent?.snapActive === true && angularIntent.snappedAngleDegrees !== null
       && [0, 90, 180, 270].includes(angularIntent.snappedAngleDegrees);
-    let snap = resolveDrawingSnap({ rawPoint, candidates, previousSnap: drawingSnapRef.current, ctrlOverride: ctrlHeld, axisDirectionActive });
+    const previousSnap = drawingSnapRef.current;
+    let snap = resolveDrawingSnap({ rawPoint, candidates, previousSnap, ctrlOverride: ctrlHeld, axisDirectionActive });
+    const snapBeforeHvSuppression = snap;
     const previousChainedAxisConstraint = interaction.previousChainedLineId
       ? Object.values(documentRef.current.sketches[documentRef.current.activeSketchId]?.geometricConstraints ?? {}).find((constraint) =>
         (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL')
@@ -300,10 +305,13 @@ export function DrawingWorkspace({
       : null;
     const previousChainedAxisKind = previousChainedAxisConstraint?.kind === 'HORIZONTAL' || previousChainedAxisConstraint?.kind === 'VERTICAL'
       ? previousChainedAxisConstraint.kind : null;
+    const commonDirection = diagnoseLineCommonDirection(snap);
     const lineResolution = resolveLineEffectivePoint(interaction, rawPoint, snap, previousChainedAxisKind, ctrlHeld);
     const placementPoint = lineResolution.effectivePoint;
     const nextInteraction = lineResolution.interaction;
-    if (automaticAxisConstraintKind(nextInteraction)) snap = suppressDirectionRelations(snap);
+    const automaticAxisKind = automaticAxisConstraintKind(nextInteraction);
+    const suppressedDirectionRelations = automaticAxisKind !== null;
+    if (suppressedDirectionRelations) snap = suppressDirectionRelations(snap);
     const anchor = modelToOverlayPoint(placementPoint, drawingTransform, overlayTransform);
     setDrawingSnap(snap);
     drawingSnapRef.current = snap;
@@ -328,6 +336,63 @@ export function DrawingWorkspace({
         const source = modelToOverlayPoint(snap.supportOrigin, drawingTransform, overlayTransform);
         return source ? derivePointReferenceGuide(source, anchor) : null;
       })() : null;
+    if (interaction.start) {
+      const diagnosticPresentations = deriveDrawingInferencePresentations(
+        snap, activeSketch, viewport.width / viewBox.width, drawingTransform, overlayTransform, nextInteraction,
+      );
+      const nearest = <T extends { screenDistance: number }>(items: readonly T[]) => items[0] ?? null;
+      const summarizeDirection = ({ entityId, candidatePoint, screenDistance, lineStart, lineEnd }: {
+        entityId: string; candidatePoint: DrawingPoint; screenDistance: number; lineStart?: DrawingPoint; lineEnd?: DrawingPoint;
+      }) =>
+        ({ entityId, candidatePoint, screenDistance, lineStart, lineEnd });
+      const summarizeAlignment = (candidate: { referenceId: string; entityId: string; candidatePoint: DrawingPoint;
+        referencePoint?: DrawingPoint; screenDistance: number; positionOwnership: 'defines-position' | 'reference-only' } | null) => candidate && ({
+        referenceId: candidate.referenceId, entityId: candidate.entityId, candidatePoint: candidate.candidatePoint,
+        referencePoint: candidate.referencePoint, screenDistance: candidate.screenDistance, positionOwnership: candidate.positionOwnership,
+      });
+      directionDiagnosticRef.current.record({
+        sequence: ++directionDiagnosticSequenceRef.current,
+        phase,
+        pointer: { client: clientPoint, rawModel: rawPoint, lineStart: interaction.start },
+        context: {
+          viewBox, pixelsPerModelUnit: viewport.width / viewBox.width, ctrlActive: ctrlHeld,
+          ctm: { a: drawingTransform.a, b: drawingTransform.b, c: drawingTransform.c, d: drawingTransform.d, e: drawingTransform.e, f: drawingTransform.f },
+          angularIntent: angularIntent && { snapActive: angularIntent.snapActive, snappedAngleDegrees: angularIntent.snappedAngleDegrees },
+          axisDirectionActive, previousChainedAxisKind,
+        },
+        candidates: {
+          parallel: candidates.parallels.map(summarizeDirection), perpendicular: candidates.perpendiculars.map(summarizeDirection),
+          endpointNearest: nearest(candidates.endpoints), midpointNearest: nearest(candidates.midpoints),
+          finiteLineNearest: nearest(candidates.lines), pointReferenceNearest: nearest(candidates.pointReferences),
+          xAlignmentNearest: summarizeAlignment(nearest(candidates.alignmentsX)), yAlignmentNearest: summarizeAlignment(nearest(candidates.alignmentsY)),
+        },
+        previousSnap: previousSnap && { type: previousSnap.type, effectivePoint: previousSnap.effectivePoint,
+          parallelEntityId: previousSnap.channels.parallel?.entityId ?? null,
+          perpendicularEntityId: previousSnap.channels.perpendicular?.entityId ?? null,
+          pointReferenceIdentity: previousSnap.channels.pointReference?.constructionKey ?? null },
+        snapResult: {
+          type: snapBeforeHvSuppression.type, effectivePoint: snapBeforeHvSuppression.effectivePoint,
+          channels: snapBeforeHvSuppression.channels,
+        },
+        lineResolution: {
+          before: { incomingParallelLineId: interaction.parallelLineId, incomingPerpendicularLineId: interaction.perpendicularLineId,
+            snapType: snapBeforeHvSuppression.type, rawPointer: rawPoint },
+          commonDirection,
+          after: { effectivePoint: lineResolution.effectivePoint, parallelLineId: nextInteraction.parallelLineId,
+            perpendicularLineId: nextInteraction.perpendicularLineId, snappedAngleDegrees: nextInteraction.snappedAngleDegrees,
+            midpointLineId: nextInteraction.midpointLineId, lineBodyId: nextInteraction.lineBodyId },
+        },
+        hv: {
+          automaticAxisKind, suppressionRan: suppressedDirectionRelations,
+          channelsBeforeSuppression: snapBeforeHvSuppression.channels, channelsAfterSuppression: snap.channels,
+          semanticIdsBeforeAxisFinalization: lineResolution.diagnostic?.directionalSemanticsBeforeAxisFinalization ?? null,
+          finalAxisAngle: lineResolution.diagnostic?.finalAxisAngle ?? null,
+          semanticIdsAfterFinalization: { parallelLineId: nextInteraction.parallelLineId, perpendicularLineId: nextInteraction.perpendicularLineId },
+        },
+        presentation: { parallel: diagnosticPresentations.some(({ kind }) => kind === 'parallel'),
+          perpendicular: diagnosticPresentations.some(({ kind }) => kind === 'perpendicular'), kinds: diagnosticPresentations.map(({ kind }) => kind) },
+      });
+    }
     setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference, sameAxisReference, lineReference, pointReferenceGuide } : null);
     const endpointPointId = snap.type === 'endpoint' && activeSketch
       ? pointIdForLineEndpoint(activeSketch.entities[snap.entityId], snap.endpoint) : null;
@@ -551,7 +616,7 @@ export function DrawingWorkspace({
     if (activeTool === 'line') {
       if (event.detail > 1) return;
       // Resolve synchronously at acceptance time. The delayed commit owns this immutable point.
-      const placement = resolvePlacement({ x: event.clientX, y: event.clientY }, event.ctrlKey || ctrlSnapOverride);
+      const placement = resolvePlacement({ x: event.clientX, y: event.clientY }, event.ctrlKey || ctrlSnapOverride, 'click');
       if (!placement) return;
       const effectivePoint = placement.position.point;
       const endpointPointId = placement.position.kind === 'endpoint' ? placement.position.pointId : null;
