@@ -430,3 +430,11 @@ Immediate work is the real runtime Parallel + compatible Perpendicular coexisten
 | v1.0 core | Not recorded here | Not recorded here | Import/topology and generated/final/manufacturing pipeline foundation. | Historical architecture foundation; consult release documents for exact release identity. |
 | v1.1 | `5392cbe` (release commit visible in repository history) | Not recorded here | PM/import containment, UI/workflow, TB/S, Finish, and fixture stabilization. | Stable predecessor to authority and Wall work. |
 | v1.2 | `e787eb5b1f3ff530fbae9292d56ec4a1da0e2ba2` | `v1.2.0` | TB + Wall Stabilization; reconciliation, projection lineage, per-connection widths, and B3.23 acceptance. | Current accepted and locked baseline. Local PM.1 tag verification was unavailable. |
+
+### 11.7 Candidate lifetime replaced by established construction authority (post-#526)
+
+Real-browser frames 269–270 isolated the first incorrect transition: Parallel was valid at about 0.685 px, then `chooseParallel` discarded it at about 12.886 px because the old 11 px release band governed both discovery and authority lifetime. That erased `directionAuthority`, accepted semantics, and presentation before position search could complete.
+
+The old lifecycle combined `chooseParallel`/`choosePerpendicular`, `previousSnap` channel hysteresis, alignment-only `composableDemandGroups`/`composableReference`, `retainCompatibleDirection`, and a later Line-tool common-direction pass. These were overlapping attempts to retain or rediscover direction. They were replaced with one snap-engine lifecycle: acquire a candidate inside tolerance, establish a stable construction ray, track it independently of candidate distance, explicitly supersede/release it, and let the existing generic position arbitration continue. Final resolution now consumes that single authority only for projection and truth validation. Presentation and persistence do not arbitrate again.
+
+The active authority's direction is fed back into ordinary committed-point alignment construction, so reference-Line endpoints participate through the existing transient reference mechanism. No synthetic SketchPoint or presentation geometry is persisted. Automated production-path coverage reproduces travel beyond the legacy release band and then reaches an exact compatible Endpoint; real browser acceptance remains pending.

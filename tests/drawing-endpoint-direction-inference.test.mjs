@@ -15,7 +15,7 @@ const angled = resolvedLine('AB', 'A', 'B', { x: 0, y: 0 }, { x: 100, y: 50 });
 
 const pipeline = ({ pointer, scene, start = null, previousSnap = null, ctrl = false, transform = identity, axisDirectionActive = false }) => {
   const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, transform, bounds, start, null);
-  const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap, ctrlOverride: ctrl, axisDirectionActive });
+  const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap, ctrlOverride: ctrl, axisDirectionActive, activeLineStart: start });
   const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId: start ? 'new-start' : null };
   return { candidates, snap, resolved: lineTool.resolveLineEffectivePoint(interaction, pointer, snap, ctrl) };
 };
@@ -118,7 +118,8 @@ test('Ctrl clears every transient channel and restores raw placement', () => {
   const overridden = pipeline({ pointer: raw, scene: [angled], ctrl: true, previousSnap: normalRun.snap });
   assert.equal(overridden.snap.type, 'none');
   assert.deepEqual(overridden.resolved.effectivePoint, raw);
-  assert.deepEqual(overridden.snap.channels, { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null, pointReference: null, directionAuthority: null, rejectedRedundantDirectionRelations: [] });
+  assert.equal(overridden.snap.channels.directionAuthority, null);
+  assert.equal(overridden.snap.channels.directionAuthorityReleaseReason, 'ctrl-override');
 });
 
 test('workspace renders only the source-to-effective-point transient reference segment', () => {

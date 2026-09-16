@@ -291,13 +291,16 @@ export function DrawingWorkspace({
     if (!rawPoint) return null;
     const interaction = lineInteractionRef.current;
     const angularIntent = !ctrlHeld && interaction.start ? resolveLinePreviewPoint(interaction.start, rawPoint) : null;
+    const priorAuthority = !ctrlHeld ? drawingSnapRef.current?.channels.directionAuthority ?? null : null;
+    const establishedDegrees = priorAuthority
+      ? Math.atan2(priorAuthority.constructionDirection.y, priorAuthority.constructionDirection.x) * 180 / Math.PI : null;
     const candidates = collectDrawingInferenceCandidates(clientPoint, resolvedLines, drawingTransform, viewBox, interaction.start,
-      angularIntent?.snapActive ? angularIntent.snappedAngleDegrees : null, interaction.startPointId);
+      establishedDegrees ?? (angularIntent?.snapActive ? angularIntent.snappedAngleDegrees : null), interaction.startPointId);
     const axisDirectionActive = angularIntent?.snapActive === true && angularIntent.snappedAngleDegrees !== null
       && [0, 90, 180, 270].includes(angularIntent.snappedAngleDegrees);
     const previousSnap = drawingSnapRef.current;
     let snap = resolveDrawingSnap({ rawPoint, candidates, previousSnap, ctrlOverride: ctrlHeld, axisDirectionActive,
-      activeLineStart: interaction.start });
+      activeLineStart: interaction.start, activeLineStartPointId: interaction.startPointId });
     const snapBeforeHvSuppression = snap;
     const commonDirection = diagnoseLineCommonDirection(snap);
     const lineResolution = resolveLineEffectivePoint(interaction, rawPoint, snap, ctrlHeld);
@@ -417,6 +420,21 @@ export function DrawingWorkspace({
         },
         presentation: { parallel: diagnosticPresentations.some(({ kind }) => kind === 'parallel'),
           perpendicular: diagnosticPresentations.some(({ kind }) => kind === 'perpendicular'), kinds: diagnosticPresentations.map(({ kind }) => kind) },
+        rawDirectionCandidates: { parallel: candidates.parallels.map(summarizeDirection), perpendicular: candidates.perpendiculars.map(summarizeDirection) },
+        acquiredDirectionCandidate: snapBeforeHvSuppression.channels.acquiredDirectionCandidate,
+        establishedDirectionAuthority: snapBeforeHvSuppression.channels.directionAuthority,
+        establishedReferenceLineId: snapBeforeHvSuppression.channels.directionAuthority?.referenceLineId ?? null,
+        establishedConstructionOrigin: snapBeforeHvSuppression.channels.directionAuthority?.constructionOrigin ?? null,
+        establishedConstructionDirection: snapBeforeHvSuppression.channels.directionAuthority?.constructionDirection ?? null,
+        establishedDirectionState: snapBeforeHvSuppression.channels.directionAuthority?.state ?? null,
+        directionAuthorityReleaseReason: snapBeforeHvSuppression.channels.directionAuthorityReleaseReason,
+        positionCandidates: { endpoint: nearest(candidates.endpoints), midpoint: nearest(candidates.midpoints), finiteLine: nearest(candidates.lines),
+          pointReference: nearest(candidates.pointReferences), xAlignment: nearest(candidates.alignmentsX), yAlignment: nearest(candidates.alignmentsY) },
+        selectedPositionAuthority: { type: snapBeforeHvSuppression.type, effectivePoint: snapBeforeHvSuppression.effectivePoint },
+        finalGeometryCompatibleWithDirectionAuthority: lineResolution.diagnostic?.finalGeometryCompatibleWithDirectionAuthority ?? null,
+        acceptedSemanticTruth: { parallelLineId: nextInteraction.parallelLineId, perpendicularLineId: nextInteraction.perpendicularLineId },
+        transientPresentationSelection: diagnosticPresentations.map(({ kind }) => kind),
+        persistentSemanticSelection: semanticSelection,
       });
     }
     setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference, sameAxisReference, lineReference, pointReferenceGuide } : null);
