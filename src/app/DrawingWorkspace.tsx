@@ -383,6 +383,11 @@ export function DrawingWorkspace({
           rejectedRedundantDirectionRelations: snapBeforeHvSuppression.channels.rejectedRedundantDirectionRelations,
         },
         lineResolution: {
+          selectedDirectionAuthority: lineResolution.diagnostic?.selectedDirectionAuthority ?? null,
+          selectedPositionAuthority: { type: snapBeforeHvSuppression.type, reason: snapBeforeHvSuppression.active
+            ? 'highest acquired positional role after direction selection' : 'raw pointer fallback' },
+          finalGeometryCompatibleWithDirectionAuthority: lineResolution.diagnostic?.finalGeometryCompatibleWithDirectionAuthority ?? null,
+          directionAuthorityRejectionReason: lineResolution.diagnostic?.directionAuthorityRejectionReason ?? null,
           before: { incomingParallelLineId: interaction.parallelLineId, incomingPerpendicularLineId: interaction.perpendicularLineId,
             snapType: snapBeforeHvSuppression.type, rawPointer: rawPoint },
           commonDirection,

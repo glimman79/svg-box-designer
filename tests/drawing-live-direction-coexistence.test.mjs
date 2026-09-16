@@ -40,7 +40,8 @@ const shownKinds = (result, scene) => presentation.deriveDrawingInferencePresent
 test('B perpendicular to A is the sole direction authority, preview, and persistent relation', () => {
   const result = evaluate({ scene: [A], start: points.p1, startPointId: 'p1', pointer: points.p2 });
   assert.deepEqual(result.snap.channels.directionAuthority, {
-    relation: 'perpendicular', referenceLineId: 'A', reason: 'nearest acquired non-axis direction',
+    relation: 'perpendicular', referenceLineId: 'A', referenceLineStart: points.p0,
+    referenceLineEnd: points.p1, reason: 'nearest acquired non-axis direction',
   });
   assert.equal(result.resolution.interaction.perpendicularLineId, 'A');
   assert.deepEqual(shownKinds(result, [A]), ['perpendicular']);
@@ -76,6 +77,39 @@ test('Parallel ray composes with a hard free-end Endpoint without replacing dire
   assert.equal(result.snap.channels.directionAuthority.referenceLineId, 'A');
   assert.deepEqual(result.resolution.effectivePoint, points.p3);
   assert.equal(result.resolution.interaction.parallelLineId, 'A');
+});
+
+test('production handoff preserves acquired Parallel through Endpoint resolution and commit', () => {
+  const target = { id: 'target', type: 'line', start: points.p3, end: { x: 80, y: 70 }, startPointId: 'p3', endPointId: 't1' };
+  const start = points.p2;
+  const acquirePointer = { x: 40, y: 100 };
+  const angular = lineTool.resolveLinePreviewPoint(start, acquirePointer);
+  const acquiredCandidates = inference.collectDrawingInferenceCandidates(acquirePointer, [A, B, target], identity, bounds, start,
+    angular.snapActive ? angular.snappedAngleDegrees : null, 'p2');
+  const acquiredSnap = snaps.resolveDrawingSnap({ rawPoint: acquirePointer, candidates: acquiredCandidates, previousSnap: null,
+    ctrlOverride: false, axisDirectionActive: false, activeLineStart: start });
+  assert.notEqual(acquiredSnap.type, 'endpoint', 'Parallel is acquired before the hard Endpoint owns position');
+  assert.equal(acquiredSnap.channels.directionAuthority.referenceLineId, 'A');
+
+  const endpointCandidates = inference.collectDrawingInferenceCandidates(points.p3, [A, B, target], identity, bounds, start, null, 'p2');
+  const endpointSnap = snaps.resolveDrawingSnap({ rawPoint: points.p3, candidates: endpointCandidates, previousSnap: acquiredSnap,
+    ctrlOverride: false, axisDirectionActive: false, activeLineStart: start });
+  const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId: 'p2', previousChainedLineId: 'B' };
+  const resolution = lineTool.resolveLineEffectivePoint(interaction, points.p3, endpointSnap);
+  assert.equal(endpointSnap.type, 'endpoint');
+  assert.equal(endpointSnap.channels.directionAuthority.referenceLineId, 'A');
+  assert.equal(resolution.diagnostic.finalGeometryCompatibleWithDirectionAuthority, true);
+  assert.deepEqual(resolution.diagnostic.directionalSemanticsBeforeAxisFinalization,
+    { parallelLineId: 'A', perpendicularLineId: null });
+  assert.equal(resolution.interaction.parallelLineId, 'A');
+
+  const click = lineTool.applyResolvedLineClick(resolution.interaction, resolution.effectivePoint, () => 'C', 'p3');
+  assert.equal(click.entity.endPointId, 'p3', 'Endpoint topology is reused exactly');
+  const sketch = sketchFor([A, B, target]);
+  const document = { schemaVersion: 2, unit: 'mm', activeSketchId: sketch.id, sketchOrder: [sketch.id], sketches: { [sketch.id]: sketch } };
+  const committed = lineTool.appendEntityToActiveSketch(document, click.entity, undefined, null, null, null,
+    lineTool.selectMinimalLineSemanticConstraints(resolution.interaction).parallelLineId);
+  assert.equal(committed.sketches.sketch.geometricConstraints['parallel:A:C'].kind, 'PARALLEL');
 });
 
 test('D parallel to B uses the same one-authority rule', () => {
@@ -119,6 +153,8 @@ test('Endpoint owns final position while compatible direction authority remains 
   const incompatible = evaluate({ scene: [A, badEndpoint], start: points.p2, startPointId: 'p2', pointer: incompatiblePoint });
   assert.equal(incompatible.snap.type, 'endpoint');
   assert.equal(incompatible.resolution.interaction.parallelLineId, null);
+  assert.equal(incompatible.resolution.diagnostic.finalGeometryCompatibleWithDirectionAuthority, false);
+  assert.match(incompatible.resolution.diagnostic.directionAuthorityRejectionReason, /final geometry is not parallel/);
 });
 
 test('Ctrl bypasses all automatic authority and presentation', () => {

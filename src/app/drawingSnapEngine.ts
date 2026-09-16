@@ -34,7 +34,8 @@ export type DrawingSnapChannels = Readonly<{
   perpendicular: PerpendicularInference | null;
   parallel: ParallelInference | null;
   pointReference: PointReferenceInference | null;
-  directionAuthority: Readonly<{ relation: 'parallel' | 'perpendicular'; referenceLineId: string; reason: string }> | null;
+  directionAuthority: Readonly<{ relation: 'parallel' | 'perpendicular'; referenceLineId: string;
+    referenceLineStart: DrawingPoint; referenceLineEnd: DrawingPoint; reason: string }> | null;
   rejectedRedundantDirectionRelations: ReadonlyArray<Readonly<{
     relation: 'parallel' | 'perpendicular';
     referenceLineId: string;
@@ -263,8 +264,10 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
     ? [{ relation: 'perpendicular', referenceLineId: acquiredPerpendicular.entityId,
       reason: 'equivalent direction already governed by preferred authority' }]
     : [];
-  const directionAuthority: DrawingSnapChannels['directionAuthority'] = selectedRelation
-    ? { relation: selectedRelation, referenceLineId: (selectedRelation === 'parallel' ? parallel : perpendicular)!.entityId,
+  const selectedDirectionCandidate = selectedRelation === 'parallel' ? parallel : selectedRelation === 'perpendicular' ? perpendicular : null;
+  const directionAuthority: DrawingSnapChannels['directionAuthority'] = selectedDirectionCandidate?.lineStart && selectedDirectionCandidate.lineEnd
+    ? { relation: selectedRelation!, referenceLineId: selectedDirectionCandidate.entityId,
+      referenceLineStart: selectedDirectionCandidate.lineStart, referenceLineEnd: selectedDirectionCandidate.lineEnd,
       reason: directionsEquivalent && selectedRelation === 'parallel'
         ? 'preferred representative of equivalent direction observations'
         : 'nearest acquired non-axis direction' }
@@ -312,7 +315,7 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
 
 /** Removes Line-to-Line direction presentation after final H/V authority is known. */
 export const suppressDirectionRelations = (snap: DrawingSnap): DrawingSnap => {
-  const channels = { ...snap.channels, perpendicular: null, parallel: null };
+  const channels = { ...snap.channels, perpendicular: null, parallel: null, directionAuthority: null };
   if (snap.type !== 'parallel' && snap.type !== 'perpendicular') return { ...snap, channels };
   const xReference = channels.xAlignment;
   const yReference = channels.yAlignment;

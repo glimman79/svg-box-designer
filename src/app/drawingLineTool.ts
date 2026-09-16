@@ -126,6 +126,8 @@ type LineSpatialSnap = Readonly<{
       lineStart?: DrawingPoint; lineEnd?: DrawingPoint }> | null;
     pointReference?: Readonly<{ candidatePoint: DrawingPoint; screenDistance: number;
       supportOrigin: DrawingPoint; supportDirection: DrawingPoint }> | null;
+    directionAuthority?: Readonly<{ relation: 'parallel' | 'perpendicular'; referenceLineId: string;
+      referenceLineStart: DrawingPoint; referenceLineEnd: DrawingPoint; reason: string }> | null;
   }>;
 }>;
 
@@ -139,6 +141,10 @@ export type LineEffectivePointResolution = Readonly<{
   diagnostic?: Readonly<{
     finalAxisAngle: 0 | 90 | 180 | 270 | null;
     directionalSemanticsBeforeAxisFinalization: Readonly<{ perpendicularLineId: string | null; parallelLineId: string | null }>;
+    selectedDirectionAuthority: Readonly<{ relation: 'parallel' | 'perpendicular'; referenceLineId: string;
+      referenceLineStart: DrawingPoint; referenceLineEnd: DrawingPoint; reason: string }> | null;
+    finalGeometryCompatibleWithDirectionAuthority: boolean | null;
+    directionAuthorityRejectionReason: string | null;
   }>;
 }>;
 
@@ -175,7 +181,8 @@ const finalAxisAngle = (start: DrawingPoint | null, end: DrawingPoint): 0 | 90 |
 /** Final geometry, rather than candidate acquisition order, owns automatic axis semantics. */
 const lineResolution = (effectivePoint: DrawingPoint, interaction: LineToolInteraction, spatialSnap: LineSpatialSnap): LineEffectivePointResolution => {
   const axisAngle = finalAxisAngle(interaction.start, effectivePoint);
-  const acceptedRelations = acceptedDirectionalRelationsAt(interaction.start, effectivePoint, spatialSnap);
+  const directionValidation = acceptedDirectionalRelationsAt(interaction.start, effectivePoint, spatialSnap);
+  const acceptedRelations = directionValidation.acceptedRelations;
   const acceptedInteraction = axisAngle === null ? interaction : {
     ...interaction,
     snappedAngleDegrees: axisAngle,
@@ -186,7 +193,10 @@ const lineResolution = (effectivePoint: DrawingPoint, interaction: LineToolInter
     effectivePoint,
     interaction: axisAngle === null ? { ...acceptedInteraction, ...acceptedRelations } : acceptedInteraction,
     resolvedReferences: resolvedReferencesAt(effectivePoint, spatialSnap),
-    diagnostic: { finalAxisAngle: axisAngle, directionalSemanticsBeforeAxisFinalization: acceptedRelations },
+    diagnostic: { finalAxisAngle: axisAngle, directionalSemanticsBeforeAxisFinalization: acceptedRelations,
+      selectedDirectionAuthority: spatialSnap.channels?.directionAuthority ?? null,
+      finalGeometryCompatibleWithDirectionAuthority: directionValidation.compatible,
+      directionAuthorityRejectionReason: directionValidation.rejectionReason },
   };
 };
 
@@ -259,12 +269,6 @@ const acquiredDirectionDemands = (spatialSnap: LineSpatialSnap): ReadonlyArray<L
 const sameUnorientedDirection = (a: DrawingPoint, b: DrawingPoint) => Math.abs(a.x * b.y - a.y * b.x)
   <= ANGULAR_COMPATIBILITY_EPSILON;
 
-const authoredDirectionAt = (start: DrawingPoint | null, end: DrawingPoint): DrawingPoint | null => {
-  if (!start) return null;
-  const x = end.x - start.x, y = end.y - start.y, length = Math.hypot(x, y);
-  return length > LINE_ZERO_LENGTH_TOLERANCE_MM ? { x: x / length, y: y / length } : null;
-};
-
 const commonAcquiredDirection = (spatialSnap: LineSpatialSnap): DrawingPoint | null => {
   const demands = acquiredDirectionDemands(spatialSnap);
   return demands.length > 0 && demands.every(({ direction }) => sameUnorientedDirection(direction, demands[0].direction))
@@ -310,31 +314,29 @@ const composeDirectionWithAlignments = (start: DrawingPoint, direction: DrawingP
   return { x: start.x + intersections[0] * direction.x, y: start.y + intersections[0] * direction.y };
 };
 
-/** Semantic Line relations are validated independently at the final position. */
+/** Validates the snap resolver's selected direction authority at the final
+ * position. This is deliberately not a second contest over acquired channels. */
 const acceptedDirectionalRelationsAt = (
   start: DrawingPoint | null,
   end: DrawingPoint,
   spatialSnap: LineSpatialSnap,
 ) => {
-  if (!start || finalAxisAngle(start, end) !== null) return { perpendicularLineId: null, parallelLineId: null };
-  const authoredDirection = authoredDirectionAt(start, end);
-  const demands = acquiredDirectionDemands(spatialSnap);
-  const accepted = authoredDirection ? demands.filter(({ direction }) => sameUnorientedDirection(authoredDirection, direction)) : [];
-  const perpendicular = spatialSnap.channels?.perpendicular ?? (spatialSnap.type === 'perpendicular' && spatialSnap.entityId
-    ? { entityId: spatialSnap.entityId, candidatePoint: spatialSnap.effectivePoint, screenDistance: 0,
-      lineStart: spatialSnap.lineStart, lineEnd: spatialSnap.lineEnd } : null);
-  const parallel = spatialSnap.channels?.parallel ?? (spatialSnap.type === 'parallel' && spatialSnap.entityId
-    ? { entityId: spatialSnap.entityId, candidatePoint: spatialSnap.effectivePoint, screenDistance: 0 } : null);
-  return {
-    perpendicularLineId: accepted.find(({ relation }) => relation === 'perpendicular')?.entityId
-      ?? (perpendicular && (isPerpendicularAt(start, end, perpendicular.lineStart, perpendicular.lineEnd)
-      || (!perpendicular.lineStart && !perpendicular.lineEnd
-        && Math.hypot(perpendicular.candidatePoint.x - end.x, perpendicular.candidatePoint.y - end.y)
-          <= ANGULAR_COMPATIBILITY_EPSILON * Math.max(1, Math.hypot(end.x - start.x, end.y - start.y))))
-        ? perpendicular.entityId : null),
-    parallelLineId: accepted.find(({ relation }) => relation === 'parallel')?.entityId
-      ?? (parallel && isParallelAt(start, end, parallel.lineStart, parallel.lineEnd, parallel.candidatePoint) ? parallel.entityId : null),
-  };
+  const authority = spatialSnap.channels?.directionAuthority ?? null;
+  const none = (compatible: boolean | null, rejectionReason: string | null) => ({
+    acceptedRelations: { perpendicularLineId: null, parallelLineId: null }, compatible, rejectionReason,
+  });
+  if (!authority) return none(null, null);
+  if (!start) return none(false, 'Line start is unavailable for final-geometry validation');
+  if (finalAxisAngle(start, end) !== null) return none(false, 'axis authority owns the final direction');
+  const compatible = authority.relation === 'parallel'
+    ? isParallelAt(start, end, authority.referenceLineStart, authority.referenceLineEnd)
+    : isPerpendicularAt(start, end, authority.referenceLineStart, authority.referenceLineEnd);
+  return compatible ? {
+    acceptedRelations: authority.relation === 'parallel'
+      ? { perpendicularLineId: null, parallelLineId: authority.referenceLineId }
+      : { perpendicularLineId: authority.referenceLineId, parallelLineId: null },
+    compatible: true, rejectionReason: null,
+  } : none(false, `final geometry is not ${authority.relation} to selected reference ${authority.referenceLineId}`);
 };
 
 const intersectInfiniteSupports = (origin: DrawingPoint, direction: DrawingPoint, supportOrigin: DrawingPoint, supportDirection: DrawingPoint) => {
@@ -398,7 +400,8 @@ export const resolveLineEffectivePoint = (
     effectivePoint: rawPointerPoint,
     interaction: { ...interaction, rawPointerPoint, effectivePreviewPoint: rawPointerPoint, snappedAngleDegrees: null, perpendicularLineId: null, parallelLineId: null, midpointLineId: null, lineBodyId: null },
     resolvedReferences: { x: null, y: null },
-    diagnostic: { finalAxisAngle: null, directionalSemanticsBeforeAxisFinalization: { perpendicularLineId: null, parallelLineId: null } },
+    diagnostic: { finalAxisAngle: null, directionalSemanticsBeforeAxisFinalization: { perpendicularLineId: null, parallelLineId: null },
+      selectedDirectionAuthority: null, finalGeometryCompatibleWithDirectionAuthority: null, directionAuthorityRejectionReason: null },
   };
 
   // Compatibility is resolved before positional priority. Soft construction

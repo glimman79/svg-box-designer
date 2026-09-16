@@ -3,6 +3,7 @@
 - Separate plural Line relation detection from singular direction authority, endpoint/position authority, transient presentation, and persistence.
 - Remove viewport-bound reference-point culling from Drawing inference candidate generation so panning cannot change semantic participation.
 - Replace start-incident-only Perpendicular suppression with geometry-based equivalent-direction authority selection.
+- Preserve the selected Line direction authority through hard Endpoint/Midpoint/finite-Line position resolution, validating final geometry once instead of rediscovering semantic authority from acquired channels.
 
 # Changelog
 
