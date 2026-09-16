@@ -103,7 +103,7 @@ assert.equal(floatingTruth.resolvedReferences.y, null);
 const ctrlResolved = line.resolveLineEffectivePoint(interaction, pointAt(44), none(pointAt(44)));
 exactAngle(ctrlResolved.effectivePoint, 45, 'Ctrl-bypassed spatial snap retains Line-specific angular inference');
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
-assert.match(workspace, /resolveLineEffectivePoint\(interaction, rawPoint, snap, previousChainedAxisKind, ctrlHeld\)/, 'workspace consumes the authoritative Line resolution with the final Ctrl guard');
+assert.match(workspace, /resolveLineEffectivePoint\(interaction, rawPoint, snap, ctrlHeld\)/, 'workspace consumes the authoritative Line resolution with the final Ctrl guard');
 assert.match(workspace, /commitLinePoint\(effectivePoint, endpointPointId, placement\.interaction\)/, 'commit receives the inference state accepted with its effective point');
 assert.match(workspace, /lineResolution\.resolvedReferences\.x/, 'workspace renders the authoritative resolved X truth');
 assert.match(workspace, /sameAxisReferenceCandidate = lineResolution\.resolvedReferences\.x\?\.positionOwnership === 'reference-only'/,
