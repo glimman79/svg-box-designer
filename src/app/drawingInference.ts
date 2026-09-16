@@ -40,6 +40,7 @@ export type DrawingInference = Readonly<{
   screenDistance: number;
   lineStart?: DrawingPoint;
   lineEnd?: DrawingPoint;
+  referenceIncidentToActiveLineStart?: boolean;
 }> | Readonly<{
   type: 'perpendicular';
   entityId: string;
@@ -47,6 +48,7 @@ export type DrawingInference = Readonly<{
   screenDistance: number;
   lineStart?: DrawingPoint;
   lineEnd?: DrawingPoint;
+  referenceIncidentToActiveLineStart?: boolean;
 }> | PointReferenceConstruction | Readonly<{
   type: 'endpoint';
   entityId: string;
@@ -181,6 +183,7 @@ export const collectDrawingInferenceCandidates = (
   visibleBounds?: DrawingModelBounds,
   activeLineStart?: DrawingPoint | null,
   activeAngularDegrees?: number | null,
+  activeLineStartPointId?: string | null,
 ): DrawingInferenceCandidates => {
   const endpoints: Array<Extract<DrawingInference, { type: 'endpoint' }>> = [];
   for (const line of lines) {
@@ -235,7 +238,9 @@ export const collectDrawingInferenceCandidates = (
       const screen = toScreenPoint(candidatePoint, drawingToClientTransform);
       perpendiculars.push({ type: 'perpendicular', entityId: line.id, candidatePoint,
         screenDistance: Math.hypot(pointerClientPoint.x - screen.x, pointerClientPoint.y - screen.y),
-        lineStart: line.start, lineEnd: line.end });
+        lineStart: line.start, lineEnd: line.end,
+        referenceIncidentToActiveLineStart: Boolean(activeLineStartPointId
+          && (line.startPointId === activeLineStartPointId || line.endPointId === activeLineStartPointId)) });
     }
     const ux = dx / length, uy = dy / length;
     const parallelRadial = (pointerModel.x - activeLineStart.x) * ux + (pointerModel.y - activeLineStart.y) * uy;
@@ -244,7 +249,9 @@ export const collectDrawingInferenceCandidates = (
       const parallelScreen = toScreenPoint(parallelPoint, drawingToClientTransform);
       parallels.push({ type: 'parallel', entityId: line.id, candidatePoint: parallelPoint,
         screenDistance: Math.hypot(pointerClientPoint.x - parallelScreen.x, pointerClientPoint.y - parallelScreen.y),
-        lineStart: line.start, lineEnd: line.end });
+        lineStart: line.start, lineEnd: line.end,
+        referenceIncidentToActiveLineStart: Boolean(activeLineStartPointId
+          && (line.startPointId === activeLineStartPointId || line.endPointId === activeLineStartPointId)) });
     }
   }
   if (visibleBounds) {
