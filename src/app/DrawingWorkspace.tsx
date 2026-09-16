@@ -362,9 +362,12 @@ export function DrawingWorkspace({
             && (line.startPointId === interaction.startPointId || line.endPointId === interaction.startPointId)).map(({ id }) => id),
         },
         candidates: {
-          parallel: candidates.parallels.map(summarizeDirection), perpendicular: candidates.perpendiculars.map(summarizeDirection),
-          endpointNearest: nearest(candidates.endpoints), midpointNearest: nearest(candidates.midpoints),
-          finiteLineNearest: nearest(candidates.lines), pointReferenceNearest: nearest(candidates.pointReferences),
+          parallel: candidates.parallels.map((candidate) => ({ ...summarizeDirection(candidate), role: 'direction-candidate' })),
+          perpendicular: candidates.perpendiculars.map((candidate) => ({ ...summarizeDirection(candidate), role: 'direction-candidate' })),
+          endpointNearest: nearest(candidates.endpoints) && { ...nearest(candidates.endpoints), role: 'endpoint-target-candidate' },
+          midpointNearest: nearest(candidates.midpoints) && { ...nearest(candidates.midpoints), role: 'endpoint-target-candidate' },
+          finiteLineNearest: nearest(candidates.lines) && { ...nearest(candidates.lines), role: 'endpoint-target-candidate' },
+          pointReferenceNearest: nearest(candidates.pointReferences) && { ...nearest(candidates.pointReferences), role: 'other' },
           xAlignmentNearest: summarizeAlignment(nearest(candidates.alignmentsX)), yAlignmentNearest: summarizeAlignment(nearest(candidates.alignmentsY)),
         },
         previousSnap: previousSnap && { type: previousSnap.type, effectivePoint: previousSnap.effectivePoint,
@@ -374,7 +377,10 @@ export function DrawingWorkspace({
         snapResult: {
           type: snapBeforeHvSuppression.type, effectivePoint: snapBeforeHvSuppression.effectivePoint,
           channels: snapBeforeHvSuppression.channels,
-          rejectedStartIncidentPerpendiculars: snapBeforeHvSuppression.channels.rejectedStartIncidentPerpendiculars,
+          directionAuthority: snapBeforeHvSuppression.channels.directionAuthority,
+          positionAuthority: { type: snapBeforeHvSuppression.type, reason: snapBeforeHvSuppression.active
+            ? 'highest acquired positional role after direction selection' : 'raw pointer fallback' },
+          rejectedRedundantDirectionRelations: snapBeforeHvSuppression.channels.rejectedRedundantDirectionRelations,
         },
         lineResolution: {
           before: { incomingParallelLineId: interaction.parallelLineId, incomingPerpendicularLineId: interaction.perpendicularLineId,

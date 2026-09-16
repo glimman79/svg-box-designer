@@ -11,424 +11,131 @@ const presentation = await import(built('drawingInferencePresentation'));
 
 const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 const bounds = { x: -1000, y: -1000, width: 2000, height: 2000 };
-const start = { x: 0, y: 0 };
-const parallel = { id: 'line-a', type: 'line', start: { x: 300, y: 300 }, end: { x: 400, y: 400 } };
-const perpendicular = { id: 'line-b', type: 'line', start: { x: 300, y: -300 }, end: { x: 400, y: -400 } };
+const points = {
+  p0: { id: 'p0', x: 0, y: 0 }, p1: { id: 'p1', x: 40, y: 40 },
+  p2: { id: 'p2', x: 10, y: 70 }, p3: { id: 'p3', x: 50, y: 110 }, p4: { id: 'p4', x: 20, y: 140 },
+};
+const line = (id, startPointId, endPointId) => ({ id, type: 'line', startPointId, endPointId,
+  start: points[startPointId], end: points[endPointId] });
+const A = line('A', 'p0', 'p1'), B = line('B', 'p1', 'p2'), C = line('C', 'p2', 'p3');
+const sketchFor = (lines) => ({ id: 'sketch', points, entities: Object.fromEntries(lines.map(({ id, startPointId, endPointId }) =>
+  [id, { id, type: 'line', startPointId, endPointId }])), entityOrder: lines.map(({ id }) => id), dimensions: {}, dimensionOrder: [],
+  geometricConstraints: {}, geometricConstraintOrder: [] });
 
-// This is the production pointer-move chain in DrawingWorkspace: collect all
-// candidates, resolve snap channels/position with the prior frame, then resolve
-// the Line endpoint and feed both outputs into the next frame.
-const move = (frame, pointer, scene) => {
+const evaluate = ({ scene, start, startPointId, pointer, previousChainedLineId = null, visibleBounds = bounds, ctrlOverride = false }) => {
+  const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId, previousChainedLineId };
   const angular = lineTool.resolveLinePreviewPoint(start, pointer);
-  const candidates = inference.collectDrawingInferenceCandidates(
-    pointer, scene, identity, bounds, start, angular.snappedAngleDegrees,
-  );
+  const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, identity, visibleBounds, start,
+    angular.snapActive ? angular.snappedAngleDegrees : null, startPointId);
   const axisDirectionActive = angular.snapActive && [0, 90, 180, 270].includes(angular.snappedAngleDegrees);
-  const snap = snaps.resolveDrawingSnap({
-    rawPoint: pointer,
-    candidates,
-    previousSnap: frame.snap,
-    ctrlOverride: false,
-    axisDirectionActive,
-    activeLineStart: start,
-  });
-  const placement = lineTool.resolveLineEffectivePoint(frame.interaction, pointer, snap);
-  return { snap, interaction: placement.interaction, point: placement.effectivePoint };
+  const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap: null, ctrlOverride,
+    axisDirectionActive, activeLineStart: start });
+  const resolution = lineTool.resolveLineEffectivePoint(interaction, pointer, snap, ctrlOverride);
+  return { candidates, snap, resolution, interaction };
 };
 
-const emptyFrame = () => ({ snap: null, interaction: { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId: 'start' } });
-const parallelTruth = (point) => Math.abs(point.x - point.y) < 1e-9;
-const perpendicularTruth = parallelTruth;
+const shownKinds = (result, scene) => presentation.deriveDrawingInferencePresentations(
+  result.snap, sketchFor(scene), 1, identity, identity, result.resolution.interaction).map(({ kind }) => kind);
 
-const compareRestartFrame = ({ scene, sketch, lineStart, startPointId, pointer, previousChainedLineId }) => {
-  const evaluate = (chained) => {
-    const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start: lineStart, startPointId,
-      previousChainedLineId: chained ? previousChainedLineId : null };
-    const angular = lineTool.resolveLinePreviewPoint(lineStart, pointer);
-    const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, identity, bounds, lineStart,
-      angular.snapActive ? angular.snappedAngleDegrees : null, startPointId);
-    const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap: null, ctrlOverride: false,
-      axisDirectionActive: angular.snapActive && [0, 90, 180, 270].includes(angular.snappedAngleDegrees), activeLineStart: lineStart });
-    const resolution = lineTool.resolveLineEffectivePoint(interaction, pointer, snap);
-    const presentations = presentation.deriveDrawingInferencePresentations(snap, sketch, 1, identity, identity, resolution.interaction)
-      .map(({ kind, targetLineId }) => ({ kind, targetLineId }));
-    return {
-      topology: { lineStart, startPointId,
-        incidentLineIds: scene.filter((line) => line.startPointId === startPointId || line.endPointId === startPointId).map(({ id }) => id) },
-      candidates, channels: snap.channels, snapType: snap.type, effectivePoint: resolution.effectivePoint,
-      positionAuthority: snap.type, semanticTruth: { parallelLineId: resolution.interaction.parallelLineId,
-        perpendicularLineId: resolution.interaction.perpendicularLineId }, presentations,
-      persistence: lineTool.selectMinimalLineSemanticConstraints(resolution.interaction),
-    };
-  };
-  return { manual: evaluate(false), chained: evaluate(true) };
-};
-
-const workspaceSketch = {
-  id: 'sketch', points: {
-    a1: { id: 'a1', x: 300, y: 300 }, a2: { id: 'a2', x: 400, y: 400 },
-    b1: { id: 'b1', x: 300, y: -300 }, b2: { id: 'b2', x: 400, y: -400 },
-    c1: { id: 'c1', x: 200, y: 180 }, c2: { id: 'c2', x: 290, y: 80 },
-  }, entities: {
-    'line-a': { id: 'line-a', type: 'line', startPointId: 'a1', endPointId: 'a2' },
-    'line-b': { id: 'line-b', type: 'line', startPointId: 'b1', endPointId: 'b2' },
-    'line-c': { id: 'line-c', type: 'line', startPointId: 'c1', endPointId: 'c2' },
-  }, entityOrder: ['line-a', 'line-b', 'line-c'], dimensions: {}, dimensionOrder: [], geometricConstraints: {}, geometricConstraintOrder: [],
-};
-
-test('manual restart and automatic continuation have identical production inference for C and D', () => {
-  const points = {
-    p0: { id: 'p0', x: 0, y: 0 }, p1: { id: 'p1', x: 40, y: 40 },
-    p2: { id: 'p2', x: 10, y: 70 }, p3: { id: 'p3', x: 50, y: 110 },
-  };
-  const line = (id, startPointId, endPointId) => ({ id, type: 'line', startPointId, endPointId,
-    start: points[startPointId], end: points[endPointId] });
-  const A = line('A', 'p0', 'p1'), B = line('B', 'p1', 'p2'), C = line('C', 'p2', 'p3');
-  const sketchFor = (entities) => ({ id: 'sketch', points, entities: Object.fromEntries(entities.map(({ id, startPointId, endPointId }) =>
-    [id, { id, type: 'line', startPointId, endPointId }])), entityOrder: entities.map(({ id }) => id),
-    dimensions: {}, dimensionOrder: [], geometricConstraints: {}, geometricConstraintOrder: [] });
-
-  const c = compareRestartFrame({ scene: [A, B], sketch: sketchFor([A, B]), lineStart: points.p2,
-    startPointId: 'p2', pointer: { x: 51, y: 109 }, previousChainedLineId: 'B' });
-  assert.deepEqual(c.chained, c.manual, 'C inference is independent of how its shared start SketchPoint was supplied');
-  assert.equal(c.chained.semanticTruth.parallelLineId, 'A');
-  assert.equal(c.chained.semanticTruth.perpendicularLineId, null);
-  assert.deepEqual(c.chained.presentations.map(({ kind }) => kind), ['parallel']);
-  assert.equal(c.chained.persistence.parallelLineId, 'A');
-  assert.equal(c.chained.persistence.perpendicularLineId, null);
-
-  const d = compareRestartFrame({ scene: [A, B, C], sketch: sketchFor([A, B, C]), lineStart: points.p3,
-    startPointId: 'p3', pointer: { x: 21, y: 141 }, previousChainedLineId: 'C' });
-  assert.deepEqual(d.chained, d.manual, 'D inference is independent of how its shared start SketchPoint was supplied');
-  assert.equal(d.chained.semanticTruth.parallelLineId, 'B');
-  assert.notEqual(d.chained.semanticTruth.perpendicularLineId, 'C', 'the start-incident C relation cannot compete');
-  assert.equal(d.chained.semanticTruth.perpendicularLineId, 'A', 'a distinct non-start target remains available');
-  assert.deepEqual(d.chained.presentations.map(({ kind }) => kind), ['parallel', 'perpendicular']);
-  assert.equal(d.chained.persistence.parallelLineId, 'B');
-  assert.equal(d.chained.persistence.perpendicularLineId, null);
-});
-
-test('workspace production path composes compatible directions before a point-reference positional winner', () => {
-  const blocker = { id: 'line-c', type: 'line', start: { x: 200, y: 180 }, end: { x: 290, y: 80 }, startPointId: 'c1', endPointId: 'c2' };
-  let frame = move(emptyFrame(), { x: 100, y: 103 }, [parallel]);
-  assert.equal(frame.snap.channels.parallel.entityId, parallel.id);
-  assert.equal(frame.snap.type, 'parallel');
-  assert.equal(frame.interaction.parallelLineId, parallel.id);
-  assert.ok(parallelTruth(frame.point));
-
-  frame = move(frame, { x: 110, y: 106 }, [parallel, perpendicular, blocker]);
-  assert.equal(frame.snap.type, 'point-reference', 'real positional priority chooses the competing point construction');
-  assert.equal(frame.snap.channels.parallel.entityId, parallel.id);
-  assert.equal(frame.snap.channels.perpendicular.entityId, perpendicular.id);
-  assert.ok(Math.abs(frame.point.x - 108) < 1e-9 && Math.abs(frame.point.y - 108) < 1e-9);
-  assert.equal(frame.interaction.parallelLineId, parallel.id);
-  assert.equal(frame.interaction.perpendicularLineId, perpendicular.id);
-  assert.ok(parallelTruth(frame.point) && perpendicularTruth(frame.point));
-
-  const shown = presentation.deriveDrawingInferencePresentations(frame.snap, workspaceSketch, 1, identity, identity, frame.interaction);
-  assert.deepEqual(shown.map(({ kind }) => kind), ['parallel', 'perpendicular'],
-    'equivalent geometry retains both distinct accepted semantic relations in transient feedback');
-
-  frame = move(frame, { x: 111, y: 107 }, [parallel, perpendicular, blocker]);
-  assert.equal(frame.interaction.parallelLineId, parallel.id);
-  assert.equal(frame.interaction.perpendicularLineId, perpendicular.id);
-
-  const click = lineTool.applyResolvedLineClick(frame.interaction, frame.point, () => 'authored');
-  const document = { version: 2, activeSketchId: 'sketch', sketches: { sketch: workspaceSketch }, sketchOrder: ['sketch'] };
-  const selected = lineTool.selectMinimalLineSemanticConstraints(frame.interaction);
-  assert.equal(selected.parallelLineId, parallel.id);
-  assert.equal(selected.perpendicularLineId, null);
-  assert.deepEqual(selected.rejected, [{ relation: 'perpendicular', lineId: perpendicular.id,
-    reason: 'redundant equivalent demand; preferred representative selected' }]);
-  const committed = lineTool.appendEntityToActiveSketch(document, click.entity, (() => { let n = 0; return () => `new-${++n}`; })(),
-    null, selected.perpendicularLineId, null, selected.parallelLineId);
-  assert.deepEqual(Object.values(committed.sketches.sketch.geometricConstraints).map(({ kind }) => kind), ['PARALLEL']);
-});
-
-test('fresh next-chain frame groups equivalent direction evidence before composing Y alignment', () => {
-  const duplicateParallel = { ...parallel, id: 'line-a-duplicate', start: { x: 500, y: 500 }, end: { x: 600, y: 600 } };
-  const candidatePoint = { x: 105.952, y: 105.952 };
-  const atEdge = (candidate) => ({ ...candidate, candidatePoint, screenDistance: 8.4169 });
-  const yAlignment = { type: 'alignment-y', referenceId: 'aligned', entityId: 'alignment-owner',
-    candidatePoint: { x: 0, y: 100 }, positionOwnership: 'defines-position', screenDistance: 4.6948 };
-  const snap = snaps.resolveDrawingSnap({ rawPoint: { x: 106, y: 100 }, previousSnap: null, ctrlOverride: false,
-    activeLineStart: start, candidates: { endpoints: [], midpoints: [], lines: [], alignmentsX: [], alignmentsY: [yAlignment], pointReferences: [],
-      parallels: [atEdge({ type: 'parallel', entityId: parallel.id, lineStart: parallel.start, lineEnd: parallel.end }),
-        atEdge({ type: 'parallel', entityId: duplicateParallel.id, lineStart: duplicateParallel.start, lineEnd: duplicateParallel.end })],
-      perpendiculars: [atEdge({ type: 'perpendicular', entityId: perpendicular.id, lineStart: perpendicular.start, lineEnd: perpendicular.end })] } });
-  assert.equal(snap.type, 'parallel', 'equivalent group remains acquirable through compatible positional composition');
-  assert.equal(snap.channels.parallel.entityId, parallel.id, 'equal references use stable identity');
-  assert.equal(snap.channels.perpendicular.entityId, perpendicular.id);
-  const accepted = lineTool.resolveLineEffectivePoint(emptyFrame().interaction, { x: 106, y: 100 }, snap);
-  assert.deepEqual(accepted.effectivePoint, { x: 100, y: 100 });
-  assert.equal(accepted.interaction.parallelLineId, parallel.id);
-  assert.equal(accepted.interaction.perpendicularLineId, perpendicular.id);
-});
-
-test('Perpendicular alone remains the preview and persistent semantic representative', () => {
-  const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, effectivePreviewPoint: { x: 100, y: 100 },
-    perpendicularLineId: perpendicular.id };
-  assert.deepEqual([...presentation.selectAcceptedLineInferenceRepresentations(interaction)], ['perpendicular']);
-  assert.deepEqual(lineTool.selectMinimalLineSemanticConstraints(interaction), {
-    parallelLineId: null, perpendicularLineId: perpendicular.id, rejected: [],
+test('B perpendicular to A is the sole direction authority, preview, and persistent relation', () => {
+  const result = evaluate({ scene: [A], start: points.p1, startPointId: 'p1', pointer: points.p2 });
+  assert.deepEqual(result.snap.channels.directionAuthority, {
+    relation: 'perpendicular', referenceLineId: 'A', reason: 'nearest acquired non-axis direction',
   });
+  assert.equal(result.resolution.interaction.perpendicularLineId, 'A');
+  assert.deepEqual(shownKinds(result, [A]), ['perpendicular']);
+  assert.equal(lineTool.selectMinimalLineSemanticConstraints(result.resolution.interaction).perpendicularLineId, 'A');
 });
 
-test('transient semantic presentation is independent from minimal persistence', () => {
-  const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, effectivePreviewPoint: { x: 160, y: 160 },
-    parallelLineId: parallel.id, perpendicularLineId: perpendicular.id };
-  assert.deepEqual([...presentation.selectAcceptedLineInferenceRepresentations(interaction)], ['parallel', 'perpendicular']);
-  assert.deepEqual(lineTool.selectMinimalLineSemanticConstraints(interaction), {
-    parallelLineId: parallel.id,
-    perpendicularLineId: null,
-    rejected: [{ relation: 'perpendicular', lineId: perpendicular.id,
-      reason: 'redundant equivalent demand; preferred representative selected' }],
-  });
+test('C parallel to A rejects equivalent start-incident Perpendicular as authoring authority', () => {
+  const result = evaluate({ scene: [A, B], start: points.p2, startPointId: 'p2', pointer: points.p3 });
+  assert.equal(result.snap.channels.directionAuthority.relation, 'parallel');
+  assert.equal(result.snap.channels.directionAuthority.referenceLineId, 'A');
+  assert.equal(result.snap.channels.parallel.entityId, 'A');
+  assert.equal(result.snap.channels.perpendicular, null);
+  assert.deepEqual(result.snap.channels.rejectedRedundantDirectionRelations, [{ relation: 'perpendicular', referenceLineId: 'B',
+    reason: 'equivalent direction already governed by preferred authority' }]);
+  assert.equal(result.resolution.interaction.parallelLineId, 'A');
+  assert.equal(result.resolution.interaction.perpendicularLineId, null);
+  assert.deepEqual(shownKinds(result, [A, B]), ['parallel']);
 });
 
-test('a lone acquired semantic direction composes with a different positional support and owns hover/click truth', () => {
-  const pointer = { x: 100, y: 53 };
-  const target = { id: 'line-a', type: 'line', start: { x: 300, y: 300 }, end: { x: 400, y: 350 } };
-  const collected = inference.collectDrawingInferenceCandidates(pointer, [target], identity, bounds, start, null);
-  const pointReference = {
-    type: 'point-reference', kind: 'normal-to-incident-line', incidentLineId: 'support-line', sourcePointId: 'support-point',
-    supportOrigin: { x: 100, y: 0 }, supportDirection: { x: 0, y: 1 }, constructionKey: 'support',
-    candidatePoint: { x: 100, y: 53 }, screenDistance: 0,
-  };
-  const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, previousSnap: null, ctrlOverride: false, axisDirectionActive: false,
-    candidates: { ...collected, endpoints: [], midpoints: [], lines: [], alignmentsX: [], alignmentsY: [],
-      perpendiculars: [], pointReferences: [pointReference] } });
-  assert.equal(snap.type, 'point-reference');
-  assert.equal(snap.channels.parallel.entityId, target.id);
-  assert.equal(snap.channels.perpendicular, null);
-
-  const accepted = lineTool.resolveLineEffectivePoint(emptyFrame().interaction, pointer, snap);
-  assert.deepEqual(accepted.effectivePoint, { x: 100, y: 50 }, 'position support and direction meet at one endpoint');
-  assert.equal(accepted.interaction.parallelLineId, target.id, 'the positional winner does not erase compatible semantics');
-  assert.equal(accepted.interaction.perpendicularLineId, null);
-  assert.deepEqual(accepted.interaction.effectivePreviewPoint, accepted.effectivePoint, 'semantic evaluation cannot move final geometry');
-
-  const sketch = { ...workspaceSketch, points: { ...workspaceSketch.points,
-    a1: { id: 'a1', x: 300, y: 300 }, a2: { id: 'a2', x: 400, y: 350 } } };
-  const shown = presentation.deriveDrawingInferencePresentations(snap, sketch, 1, identity, identity, accepted.interaction);
-  assert.deepEqual(shown.map(({ kind }) => kind), ['parallel'], 'presentation is a pure projection of accepted semantics');
-  assert.equal(accepted.interaction.parallelLineId, target.id, 'presentation does not mutate acceptance');
-
-  const click = lineTool.applyResolvedLineClick(accepted.interaction, accepted.effectivePoint, () => 'authored');
-  assert.deepEqual(click.entity.end, accepted.effectivePoint, 'click consumes the frozen hover endpoint');
-  const document = { version: 2, activeSketchId: 'sketch', sketches: { sketch }, sketchOrder: ['sketch'] };
-  const committed = lineTool.appendEntityToActiveSketch(document, click.entity, (() => { let n = 0; return () => `solo-${++n}`; })(),
-    null, null, null, accepted.interaction.parallelLineId);
-  const committedLine = committed.sketches.sketch.entities.authored;
-  const committedEnd = committed.sketches.sketch.points[committedLine.endPointId];
-  assert.deepEqual({ x: committedEnd.x, y: committedEnd.y }, accepted.effectivePoint, 'commit retains the accepted click geometry');
-  assert.equal(committed.sketches.sketch.geometricConstraints['parallel:authored:line-a'].kind, 'PARALLEL');
+test('a non-start Line supplying the same Perpendicular direction is observation, not a second authority or preview', () => {
+  const other = { id: 'other', type: 'line', start: { x: 300, y: 0 }, end: { x: 270, y: 30 }, startPointId: 'o0', endPointId: 'o1' };
+  const result = evaluate({ scene: [A, other], start: points.p2, startPointId: 'p2', pointer: points.p3 });
+  assert.equal(result.snap.channels.directionAuthority.referenceLineId, 'A');
+  assert.equal(result.snap.channels.perpendicular, null);
+  assert.equal(result.snap.channels.rejectedRedundantDirectionRelations[0].referenceLineId, 'other');
+  assert.deepEqual(shownKinds(result, [A, other]), ['parallel']);
 });
 
-test('closer alignment authority retains compatible acquired direction channels beyond their independent release radius', () => {
-  const previousCandidates = inference.collectDrawingInferenceCandidates({ x: 100, y: 103 }, [parallel, perpendicular], identity, bounds, start, null);
-  const previous = snaps.resolveDrawingSnap({ rawPoint: { x: 100, y: 103 }, candidates: previousCandidates,
-    previousSnap: null, ctrlOverride: false, activeLineStart: start });
-  assert.ok(previous.channels.parallel && previous.channels.perpendicular);
-
-  const yAlignment = { type: 'alignment-y', referenceId: 'aligned-point', entityId: 'alignment-owner',
-    candidatePoint: { x: 0, y: 120 }, positionOwnership: 'defines-position', screenDistance: 4.8 };
-  const outsideRelease = inference.collectDrawingInferenceCandidates({ x: 130, y: 112.13 }, [parallel, perpendicular], identity, bounds, start, null);
-  const aligned = snaps.resolveDrawingSnap({ rawPoint: { x: 130, y: 112.13 }, previousSnap: previous,
-    ctrlOverride: false, activeLineStart: start, candidates: { ...outsideRelease, endpoints: [], midpoints: [], lines: [],
-      alignmentsX: [], alignmentsY: [yAlignment], pointReferences: [] } });
-  assert.equal(aligned.type, 'alignment');
-  assert.equal(aligned.channels.parallel?.entityId, parallel.id);
-  assert.equal(aligned.channels.perpendicular?.entityId, perpendicular.id);
-  const accepted = lineTool.resolveLineEffectivePoint(emptyFrame().interaction, { x: 130, y: 112.13 }, aligned);
-  assert.deepEqual(accepted.effectivePoint, { x: 120, y: 120 });
-  assert.equal(accepted.interaction.parallelLineId, parallel.id);
-  assert.equal(accepted.interaction.perpendicularLineId, perpendicular.id);
+test('Parallel ray composes with a hard free-end Endpoint without replacing direction authority', () => {
+  const target = { id: 'target', type: 'line', start: points.p3, end: { x: 80, y: 70 }, startPointId: 'p3', endPointId: 't1' };
+  const result = evaluate({ scene: [A, target], start: points.p2, startPointId: 'p2', pointer: points.p3 });
+  assert.equal(result.snap.type, 'endpoint');
+  assert.equal(result.snap.channels.directionAuthority.referenceLineId, 'A');
+  assert.deepEqual(result.resolution.effectivePoint, points.p3);
+  assert.equal(result.resolution.interaction.parallelLineId, 'A');
 });
 
-test('alignment retention composes either direction family and rejects an incompatible coordinate demand', () => {
-  for (const family of ['parallel', 'perpendicular']) {
-    const scene = family === 'parallel' ? [parallel] : [perpendicular];
-    const initialCandidates = inference.collectDrawingInferenceCandidates({ x: 100, y: 103 }, scene, identity, bounds, start, null);
-    const initial = snaps.resolveDrawingSnap({ rawPoint: { x: 100, y: 103 }, candidates: initialCandidates,
-      previousSnap: null, ctrlOverride: false, activeLineStart: start });
-    const movedCandidates = inference.collectDrawingInferenceCandidates({ x: 130, y: 112.13 }, scene, identity, bounds, start, null);
-    const aligned = snaps.resolveDrawingSnap({ rawPoint: { x: 130, y: 112.13 }, previousSnap: initial,
-      ctrlOverride: false, activeLineStart: start, candidates: { ...movedCandidates, endpoints: [], midpoints: [], lines: [],
-        alignmentsX: [], alignmentsY: [{ type: 'alignment-y', referenceId: 'ref', entityId: 'owner', candidatePoint: { x: 0, y: 120 },
-          positionOwnership: 'defines-position', screenDistance: 4 }], pointReferences: [] } });
-    assert.equal(aligned.type, 'alignment');
-    assert.equal(aligned.channels[family]?.entityId, scene[0].id);
-  }
-
-  const horizontal = { id: 'horizontal', type: 'line', start: { x: 0, y: 0 }, end: { x: 100, y: 0 } };
-  const near = inference.collectDrawingInferenceCandidates({ x: 100, y: 3 }, [horizontal], identity, bounds, start, null);
-  const held = snaps.resolveDrawingSnap({ rawPoint: { x: 100, y: 3 }, candidates: near, previousSnap: null,
-    ctrlOverride: false, activeLineStart: start });
-  const far = inference.collectDrawingInferenceCandidates({ x: 100, y: 20 }, [horizontal], identity, bounds, start, null);
-  const incompatible = snaps.resolveDrawingSnap({ rawPoint: { x: 100, y: 20 }, previousSnap: held,
-    ctrlOverride: false, activeLineStart: start, candidates: { ...far, endpoints: [], midpoints: [], lines: [],
-      alignmentsX: [], alignmentsY: [{ type: 'alignment-y', referenceId: 'ref', entityId: 'owner', candidatePoint: { x: 0, y: 20 },
-        positionOwnership: 'defines-position', screenDistance: 1 }], pointReferences: [] } });
-  assert.equal(incompatible.channels.parallel, null, 'a coordinate with no directional intersection cannot retain semantic truth');
+test('D parallel to B uses the same one-authority rule', () => {
+  const result = evaluate({ scene: [A, B, C], start: points.p3, startPointId: 'p3', pointer: points.p4 });
+  assert.equal(result.snap.channels.directionAuthority.relation, 'parallel');
+  assert.equal(result.snap.channels.directionAuthority.referenceLineId, 'B');
+  assert.equal(result.snap.channels.perpendicular, null);
+  assert.deepEqual(shownKinds(result, [A, B, C]), ['parallel']);
 });
 
-const endpointSnap = ({ end, parallelTarget = null, perpendicularTarget = null }) => snaps.resolveDrawingSnap({
-  rawPoint: end,
-  previousSnap: null,
-  ctrlOverride: false,
-  axisDirectionActive: false,
-  candidates: {
-    endpoints: [{ type: 'endpoint', entityId: 'endpoint-owner', endpoint: 'end', candidatePoint: end, screenDistance: 0 }],
-    midpoints: [], lines: [], alignmentsX: [], alignmentsY: [], pointReferences: [],
-    parallels: parallelTarget ? [{ type: 'parallel', entityId: parallelTarget.id, candidatePoint: end, screenDistance: 0,
-      lineStart: parallelTarget.start, lineEnd: parallelTarget.end }] : [],
-    perpendiculars: perpendicularTarget ? [{ type: 'perpendicular', entityId: perpendicularTarget.id, candidatePoint: end, screenDistance: 0,
-      lineStart: perpendicularTarget.start, lineEnd: perpendicularTarget.end }] : [],
-  },
-});
-
-test('hard Endpoint position retains every acquired direction that is true at its frozen geometry', () => {
-  const end = { x: 100, y: 100 };
-  for (const [parallelTarget, perpendicularTarget, expected] of [
-    [parallel, null, ['line-a']],
-    [null, perpendicular, ['line-b']],
-    [parallel, perpendicular, ['line-a', 'line-b']],
+test('manual restart and continuous continuation have identical inference', () => {
+  for (const args of [
+    { scene: [A, B], start: points.p2, startPointId: 'p2', pointer: points.p3, previousChainedLineId: 'B' },
+    { scene: [A, B, C], start: points.p3, startPointId: 'p3', pointer: points.p4, previousChainedLineId: 'C' },
   ]) {
-    const snap = endpointSnap({ end, parallelTarget, perpendicularTarget });
-    assert.equal(snap.type, 'endpoint');
-    const accepted = lineTool.resolveLineEffectivePoint(emptyFrame().interaction, end, snap);
-    assert.deepEqual(accepted.effectivePoint, end, 'Endpoint remains immutable position authority');
-    assert.deepEqual([accepted.interaction.parallelLineId, accepted.interaction.perpendicularLineId].filter(Boolean), expected);
+    const chained = evaluate(args);
+    const manual = evaluate({ ...args, previousChainedLineId: null });
+    assert.deepEqual(chained.candidates, manual.candidates);
+    assert.deepEqual(chained.snap, manual.snap);
+    assert.deepEqual({ ...chained.resolution, interaction: { ...chained.resolution.interaction, previousChainedLineId: null } }, manual.resolution);
   }
 });
 
-test('hard Endpoint position rejects acquired directions that are false at its frozen geometry', () => {
-  const end = { x: 100, y: 80 };
-  const snap = endpointSnap({ end, parallelTarget: parallel, perpendicularTarget: perpendicular });
-  const accepted = lineTool.resolveLineEffectivePoint(emptyFrame().interaction, end, snap);
-  assert.deepEqual(accepted.effectivePoint, end);
-  assert.equal(accepted.interaction.parallelLineId, null);
-  assert.equal(accepted.interaction.perpendicularLineId, null);
+test('candidate discovery and semantic direction are invariant when an interfering Line leaves viewport bounds', () => {
+  const visible = evaluate({ scene: [A, B], start: points.p2, startPointId: 'p2', pointer: points.p3,
+    visibleBounds: { x: -10, y: -10, width: 100, height: 130 } });
+  const outside = evaluate({ scene: [A, B], start: points.p2, startPointId: 'p2', pointer: points.p3,
+    visibleBounds: { x: 45, y: 75, width: 100, height: 130 } });
+  assert.deepEqual(outside.candidates, visible.candidates, 'viewport culling cannot alter semantic candidates');
+  assert.deepEqual(outside.snap.channels.directionAuthority, visible.snap.channels.directionAuthority);
+  assert.deepEqual(outside.resolution.effectivePoint, visible.resolution.effectivePoint);
 });
 
-test('continuous chain rejects redundant start-incident Perpendicular after non-start Parallel acquisition', () => {
-  const a = { id: 'A', type: 'line', start: { x: 0, y: 0 }, end: { x: 100, y: 50 }, startPointId: 'a0', endPointId: 'shared-a' };
-  const bStart = a.end, bEnd = { x: 50, y: 150 };
-  const bCandidates = inference.collectDrawingInferenceCandidates(bEnd, [a], identity, bounds, bStart, null, 'shared-a');
-  const bSnap = snaps.resolveDrawingSnap({ rawPoint: bEnd, candidates: bCandidates, previousSnap: null, ctrlOverride: false, axisDirectionActive: false });
-  const bInteraction = { ...lineTool.EMPTY_LINE_INTERACTION, start: bStart, startPointId: 'shared-a', previousChainedLineId: 'A' };
-  const bAccepted = lineTool.resolveLineEffectivePoint(bInteraction, bEnd, bSnap);
-  assert.equal(bSnap.channels.perpendicular.entityId, 'A', 'the first corner still acquires its start-incident Perpendicular');
-  assert.equal(bAccepted.interaction.perpendicularLineId, 'A');
-  const bSketch = { id: 'sketch', points: { a0: { id: 'a0', ...a.start }, 'shared-a': { id: 'shared-a', ...a.end } },
-    entities: { A: { id: 'A', type: 'line', startPointId: 'a0', endPointId: 'shared-a' } }, entityOrder: ['A'],
-    dimensions: {}, dimensionOrder: [], geometricConstraints: {}, geometricConstraintOrder: [] };
-  assert.deepEqual(presentation.deriveDrawingInferencePresentations(bSnap, bSketch, 1, identity, identity, bAccepted.interaction)
-    .map(({ kind }) => kind), ['perpendicular']);
-  assert.equal(lineTool.selectMinimalLineSemanticConstraints(bAccepted.interaction).perpendicularLineId, 'A');
-  const bClick = lineTool.applyResolvedLineClick(bAccepted.interaction, bAccepted.effectivePoint, () => 'B', 'shared-b');
-  assert.equal(bClick.interaction.previousChainedLineId, 'B');
-  assert.deepEqual(bClick.interaction.start, bAccepted.effectivePoint);
-
-  const b = { ...bClick.entity, startPointId: 'shared-a', endPointId: 'shared-b' };
-  const cEnd = { x: 150, y: 200 };
-  const cCandidates = inference.collectDrawingInferenceCandidates(cEnd, [a, b], identity, bounds, bClick.interaction.start, null, 'shared-b');
-  const cSnap = snaps.resolveDrawingSnap({ rawPoint: cEnd, candidates: cCandidates, previousSnap: null, ctrlOverride: false, axisDirectionActive: false });
-  const cAccepted = lineTool.resolveLineEffectivePoint(bClick.interaction, cEnd, cSnap);
-  assert.deepEqual(cAccepted.effectivePoint, cEnd);
-  assert.equal(cAccepted.interaction.parallelLineId, 'A');
-  assert.equal(cSnap.channels.perpendicular, null);
-  assert.equal(cAccepted.interaction.perpendicularLineId, null);
-  assert.deepEqual(cSnap.channels.rejectedStartIncidentPerpendiculars, [{ referenceLineId: 'B',
-    reason: 'redundant with acquired non-start Parallel direction' }]);
-  assert.deepEqual(lineTool.selectMinimalLineSemanticConstraints(cAccepted.interaction), {
-    parallelLineId: 'A', perpendicularLineId: null, rejected: [],
-  });
+test('Endpoint owns final position while compatible direction authority remains truth-checked', () => {
+  const endpoint = { id: 'endpoint-owner', type: 'line', start: points.p3, end: { x: 90, y: 60 }, startPointId: 'p3', endPointId: 'e1' };
+  const compatible = evaluate({ scene: [A, endpoint], start: points.p2, startPointId: 'p2', pointer: points.p3 });
+  assert.equal(compatible.snap.type, 'endpoint');
+  assert.equal(compatible.resolution.interaction.parallelLineId, 'A');
+  const incompatiblePoint = { x: 50, y: 100 };
+  const badEndpoint = { ...endpoint, start: incompatiblePoint };
+  const incompatible = evaluate({ scene: [A, badEndpoint], start: points.p2, startPointId: 'p2', pointer: incompatiblePoint });
+  assert.equal(incompatible.snap.type, 'endpoint');
+  assert.equal(incompatible.resolution.interaction.parallelLineId, null);
 });
 
-test('non-start target Perpendicular remains live with Parallel direction authority', () => {
-  const a = { id: 'A', type: 'line', start: { x: 200, y: 200 }, end: { x: 300, y: 250 }, startPointId: 'a0', endPointId: 'a1' };
-  const target = { id: 'target', type: 'line', start: { x: 400, y: 0 }, end: { x: 350, y: 100 },
-    startPointId: 'target0', endPointId: 'target1' };
-  const authoredStart = { x: 0, y: 0 };
-  const pointer = { x: 100, y: 50 };
-  const candidates = inference.collectDrawingInferenceCandidates(pointer, [a, target], identity, bounds,
-    authoredStart, null, 'authored-start');
-  const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap: null, ctrlOverride: false,
-    axisDirectionActive: false, activeLineStart: authoredStart });
-  const accepted = lineTool.resolveLineEffectivePoint({ ...lineTool.EMPTY_LINE_INTERACTION, start: authoredStart,
-    startPointId: 'authored-start' }, pointer, snap);
-  assert.equal(snap.channels.parallel.entityId, 'A');
-  assert.equal(snap.channels.perpendicular.entityId, 'target');
-  assert.deepEqual(snap.channels.rejectedStartIncidentPerpendiculars, []);
-  assert.equal(accepted.interaction.parallelLineId, 'A');
-  assert.equal(accepted.interaction.perpendicularLineId, 'target');
-  assert.deepEqual(accepted.effectivePoint, pointer, 'compatible target feedback does not jump the endpoint');
+test('Ctrl bypasses all automatic authority and presentation', () => {
+  const result = evaluate({ scene: [A, B], start: points.p2, startPointId: 'p2', pointer: points.p3, ctrlOverride: true });
+  assert.equal(result.snap.type, 'none');
+  assert.equal(result.snap.channels.directionAuthority, null);
+  assert.equal(result.resolution.interaction.parallelLineId, null);
+  assert.equal(result.resolution.interaction.perpendicularLineId, null);
 });
 
-test('direction compatibility fails closed and preserves H/V and Ctrl policies', () => {
-  const incompatible = { ...perpendicular, id: 'bad', start: { x: 300, y: -300 }, end: { x: 420, y: -360 } };
-  let frame = move(emptyFrame(), { x: 7, y: 7 }, [parallel, incompatible]);
-  assert.equal(frame.snap.channels.parallel.entityId, parallel.id);
-  assert.equal(frame.snap.channels.perpendicular.entityId, incompatible.id);
-  assert.notEqual(frame.interaction.parallelLineId !== null && frame.interaction.perpendicularLineId !== null, true);
-
-  const reversedParallel = { ...parallel, start: parallel.end, end: parallel.start };
-  const reversedPerpendicular = { ...perpendicular, start: perpendicular.end, end: perpendicular.start };
-  frame = move(emptyFrame(), { x: 110, y: 106 }, [reversedParallel, reversedPerpendicular]);
-  assert.equal(frame.interaction.parallelLineId, parallel.id);
-  assert.equal(frame.interaction.perpendicularLineId, perpendicular.id);
-
-  const degenerate = { id: 'zero', type: 'line', start: { x: 5, y: 5 }, end: { x: 5, y: 5 } };
-  const candidates = inference.collectDrawingInferenceCandidates({ x: 5, y: 5 }, [degenerate], identity, bounds, start, null);
-  assert.equal(candidates.parallels.length + candidates.perpendiculars.length, 0);
-
-  const axisCandidates = inference.collectDrawingInferenceCandidates({ x: 100, y: 1 }, [parallel, perpendicular], identity, bounds, start, 0);
-  const axis = snaps.resolveDrawingSnap({ rawPoint: { x: 100, y: 1 }, candidates: axisCandidates, previousSnap: null, ctrlOverride: false, axisDirectionActive: true });
-  assert.equal(axis.channels.parallel, null); assert.equal(axis.channels.perpendicular, null);
-  const ctrl = snaps.resolveDrawingSnap({ rawPoint: { x: 110, y: 106 }, candidates: axisCandidates, previousSnap: frame.snap, ctrlOverride: true });
-  assert.equal(ctrl.type, 'none'); assert.equal(ctrl.channels.parallel, null); assert.equal(ctrl.channels.perpendicular, null);
-});
-
-test('live pointer frames retain, release, and reacquire Parallel and Perpendicular independently', () => {
-  let frame = move(emptyFrame(), { x: 100, y: 70 }, []); // frame 1: raw
-  assert.equal(frame.interaction.parallelLineId, null);
-  assert.equal(frame.interaction.perpendicularLineId, null);
-
-  frame = move(frame, { x: 100, y: 103 }, [parallel]); // frame 2: Parallel first
-  assert.equal(frame.interaction.parallelLineId, parallel.id);
-  assert.equal(frame.interaction.perpendicularLineId, null);
-  assert.ok(parallelTruth(frame.point), 'Parallel is functional geometry, not metadata');
-
-  frame = move(frame, { x: 110, y: 106 }, [parallel, perpendicular]); // frame 3: Perpendicular joins
-  assert.equal(frame.interaction.parallelLineId, parallel.id, 'the live transition does not erase Parallel');
-  assert.equal(frame.interaction.perpendicularLineId, perpendicular.id);
-  assert.ok(parallelTruth(frame.point) && perpendicularTruth(frame.point));
-
-  for (const pointer of [{ x: 111, y: 107 }, { x: 109, y: 113 }, { x: 112, y: 108 }]) { // frames 4-6
-    frame = move(frame, pointer, [parallel, perpendicular]);
-    assert.equal(frame.interaction.parallelLineId, parallel.id);
-    assert.equal(frame.interaction.perpendicularLineId, perpendicular.id);
-    assert.ok(parallelTruth(frame.point) && perpendicularTruth(frame.point));
-  }
-
-  frame = move(frame, { x: 120, y: 117 }, [parallel]);
-  assert.equal(frame.interaction.parallelLineId, parallel.id);
-  assert.equal(frame.interaction.perpendicularLineId, null, 'a stale Perpendicular target is rejected');
-
-  frame = move(frame, { x: 125, y: 128 }, [perpendicular]);
-  assert.equal(frame.interaction.parallelLineId, null, 'a stale Parallel target is rejected');
-  assert.equal(frame.interaction.perpendicularLineId, perpendicular.id);
-});
-
-test('live acquisition order does not matter', () => {
-  let frame = move(emptyFrame(), { x: 80, y: 77 }, [perpendicular]);
-  assert.equal(frame.interaction.parallelLineId, null);
-  assert.equal(frame.interaction.perpendicularLineId, perpendicular.id);
-
-  frame = move(frame, { x: 90, y: 94 }, [parallel, perpendicular]);
-  assert.equal(frame.interaction.parallelLineId, parallel.id);
-  assert.equal(frame.interaction.perpendicularLineId, perpendicular.id);
-  assert.ok(parallelTruth(frame.point) && perpendicularTruth(frame.point));
+test('Midpoint, H/V, and Point Reference positional families retain their contracts', () => {
+  const midpoint = { x: 20, y: 20 };
+  const midpointResult = evaluate({ scene: [A], start: { x: -10, y: 10 }, startPointId: 's', pointer: midpoint });
+  assert.equal(midpointResult.snap.type, 'midpoint');
+  const axisResult = evaluate({ scene: [A], start: { x: 0, y: 80 }, startPointId: 's', pointer: { x: 50, y: 80 } });
+  assert.equal(axisResult.resolution.interaction.snappedAngleDegrees, 0);
+  assert.equal(axisResult.snap.channels.directionAuthority, null);
+  const pointReferenceResult = evaluate({ scene: [A], start: { x: 80, y: 10 }, startPointId: 's', pointer: { x: 50, y: 30 } });
+  assert.ok(pointReferenceResult.candidates.pointReferences.length > 0);
 });

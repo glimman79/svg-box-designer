@@ -249,33 +249,12 @@ test('same-target Line-body acquisition composes retained Perpendicular directio
     'preview and frozen click consume the same accepted point');
 });
 
-test('compatible Parallel and Perpendicular channels coexist while commit selects one equivalent representative', () => {
-  const start = { x: 0, y: 0 }, end = { x: 40, y: 40 };
-  const parallel = { entityId: 'parallel-reference', candidatePoint: end, screenDistance: 0 };
-  const perpendicular = { entityId: 'perpendicular-reference', candidatePoint: end, screenDistance: 0,
-    lineStart: { x: 0, y: 40 }, lineEnd: { x: 40, y: 0 } };
-  const interaction = { ...lines.EMPTY_LINE_INTERACTION, start };
-  for (const type of ['parallel', 'perpendicular']) {
-    const winner = type === 'parallel' ? parallel : perpendicular;
-    const snap = { type, active: true, effectivePoint: end, entityId: winner.entityId, screenDistance: 0,
-      channels: { xAlignment: null, yAlignment: null, pointReference: null, parallel, perpendicular } };
-    const accepted = lines.resolveLineEffectivePoint(interaction, end, snap);
-    assert.equal(accepted.interaction.parallelLineId, parallel.entityId, `${type} winner retains Parallel truth`);
-    assert.equal(accepted.interaction.perpendicularLineId, perpendicular.entityId, `${type} winner retains Perpendicular truth`);
-
-    let document = drawingTypes.createDrawingDocumentV2();
-    let pointSequence = 0;
-    document = lines.appendEntityToActiveSketch(document,
-      { id: parallel.entityId, type: 'line', start: { x: 10, y: 0 }, end: { x: 50, y: 40 } }, () => `parallel-point-${++pointSequence}`);
-    document = lines.appendEntityToActiveSketch(document,
-      { id: perpendicular.entityId, type: 'line', start: perpendicular.lineStart, end: perpendicular.lineEnd }, () => `perpendicular-point-${++pointSequence}`);
-    const click = lines.applyResolvedLineClick(accepted.interaction, accepted.effectivePoint, () => 'authored');
-    const selected = lines.selectMinimalLineSemanticConstraints(accepted.interaction);
-    document = lines.appendEntityToActiveSketch(document, click.entity, () => `authored-point-${++pointSequence}`, null,
-      selected.perpendicularLineId, null, selected.parallelLineId);
-    assert.deepEqual(Object.values(document.sketches['sketch-1'].geometricConstraints).map(({ kind }) => kind), ['PARALLEL'],
-      'one append transaction stores the preferred non-redundant semantic constraint');
-  }
+test('minimal persistence consumes the single selected direction authority', () => {
+  const interaction = { ...lines.EMPTY_LINE_INTERACTION, start: { x: 0, y: 0 }, effectivePreviewPoint: { x: 40, y: 40 },
+    parallelLineId: 'parallel-reference', perpendicularLineId: null };
+  assert.deepEqual(lines.selectMinimalLineSemanticConstraints(interaction), {
+    parallelLineId: 'parallel-reference', perpendicularLineId: null, rejected: [],
+  });
 });
 
 test('endpoint topology authority coexists with a true non-axis Perpendicular target', () => {
@@ -312,7 +291,7 @@ test('Ctrl clears acquired and hysteretic inference and authors the raw point', 
   assert.deepEqual(overridden.placement.effectivePoint, raw);
   assert.equal(lines.hasAngularPresentationTruth(overridden.placement.interaction), false);
   assert.equal(overridden.placement.interaction.perpendicularLineId, null);
-  assert.deepEqual(overridden.snap.channels, { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null, pointReference: null, rejectedStartIncidentPerpendiculars: [] });
+  assert.deepEqual(overridden.snap.channels, { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null, pointReference: null, directionAuthority: null, rejectedRedundantDirectionRelations: [] });
 });
 
 for (const degrees of [18, 198]) test(`Parallel target identity drives and retains the ${degrees} degree branch`, () => {

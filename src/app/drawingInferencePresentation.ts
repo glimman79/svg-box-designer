@@ -33,15 +33,12 @@ export type DrawingPerpendicularInferencePresentation = Readonly<{
 
 export type DrawingInferencePresentation = DrawingMidpointInferencePresentation | DrawingParallelInferencePresentation | DrawingPerpendicularInferencePresentation;
 
-/** Projects plural accepted semantic truth into live feedback. Geometric-demand
- * equivalence is intentionally not a presentation filter: persistence has a
- * separate transaction-scoped minimizer. */
+/** Projects the selected authoring direction authority into live feedback.
+ * Other geometrically true observations are not automatically authoring UI. */
 export const selectAcceptedLineInferenceRepresentations = (interaction?: LineToolInteraction) => {
   if (!interaction) return new Set<'parallel' | 'perpendicular'>();
-  return new Set<'parallel' | 'perpendicular'>([
-    ...(interaction.parallelLineId ? ['parallel' as const] : []),
-    ...(interaction.perpendicularLineId ? ['perpendicular' as const] : []),
-  ]);
+  return new Set<'parallel' | 'perpendicular'>(interaction.parallelLineId
+    ? ['parallel'] : interaction.perpendicularLineId ? ['perpendicular'] : []);
 };
 
 type MidpointPresentationInput = Readonly<{

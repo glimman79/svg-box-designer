@@ -40,18 +40,3 @@ export const groupEquivalentDirectionDemands = (demands: readonly NormalizedDire
   }
   return groups;
 };
-
-const REPRESENTATION_PREFERENCE: Readonly<Record<DirectionDemandSource, number>> = {
-  parallel: 40,
-  perpendicular: 30,
-  'point-reference': 20,
-  angular: 10,
-};
-
-/** Selects one deterministic representative per equivalent demand group for
- * transaction-scoped persistence minimization. Live presentation must instead
- * retain every accepted semantic relation. */
-export const selectPreferredDirectionDemandRepresentatives = (groups: readonly EquivalentDirectionDemandGroup[]) =>
-  groups.map((group) => group.demands.slice().sort((a, b) =>
-    REPRESENTATION_PREFERENCE[b.source] - REPRESENTATION_PREFERENCE[a.source]
-      || a.screenDistance - b.screenDistance || a.id.localeCompare(b.id))[0]);

@@ -26,17 +26,19 @@ type AlignmentXInference = Extract<DrawingInference, { type: 'alignment-x' }>;
 type AlignmentYInference = Extract<DrawingInference, { type: 'alignment-y' }>;
 type PointReferenceInference = Extract<DrawingInference, { type: 'point-reference' }>;
 
-/** Independent transient channels. Positional arbitration may choose only one point,
- * but it must not erase compatible construction/presentation intent. */
+/** Acquired construction channels plus explicit singular direction authority.
+ * Positional arbitration remains independent and may choose only one endpoint. */
 export type DrawingSnapChannels = Readonly<{
   xAlignment: AlignmentXInference | null;
   yAlignment: AlignmentYInference | null;
   perpendicular: PerpendicularInference | null;
   parallel: ParallelInference | null;
   pointReference: PointReferenceInference | null;
-  rejectedStartIncidentPerpendiculars: ReadonlyArray<Readonly<{
+  directionAuthority: Readonly<{ relation: 'parallel' | 'perpendicular'; referenceLineId: string; reason: string }> | null;
+  rejectedRedundantDirectionRelations: ReadonlyArray<Readonly<{
+    relation: 'parallel' | 'perpendicular';
     referenceLineId: string;
-    reason: 'redundant with acquired non-start Parallel direction';
+    reason: 'equivalent direction already governed by preferred authority';
   }>>;
 }>;
 
@@ -191,7 +193,7 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
   axisDirectionActive?: boolean; activeLineStart?: DrawingPoint | null;
 }): DrawingSnap => {
   const emptyChannels: DrawingSnapChannels = { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null, pointReference: null,
-    rejectedStartIncidentPerpendiculars: [] };
+    directionAuthority: null, rejectedRedundantDirectionRelations: [] };
   const none = (channels = emptyChannels): DrawingSnap => ({ active: false, type: 'none', effectivePoint: rawPoint, screenDistance: null, channels });
   // Layer 0 hard guard: no acquired or retained channel can survive Ctrl.
   if (ctrlOverride) return none();
@@ -227,34 +229,51 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
   };
   const oldPerpendicular = previousSnap?.channels?.perpendicular ?? null;
   const oldParallel = previousSnap?.channels?.parallel ?? null;
-  const parallelPositionCandidate = axisDirectionActive ? null : chooseParallel(candidates.parallels ?? [], previousSnap)
-    ?? composableReference(candidates.parallels ?? [], 'parallel');
-  const parallel = axisDirectionActive ? null : retainCompatibleDirection(
-    parallelPositionCandidate, oldParallel, candidates.parallels ?? []);
-  const equivalentToParallel = (perpendicular: PerpendicularInference) => Boolean(parallel
-    && parallel.referenceIncidentToActiveLineStart !== true
-    && (() => {
-      const demands = [perpendicular, parallel].flatMap((candidate) => {
-        const requirement = directionRequirement(candidate);
-        const direction = requirement?.kind === 'direction' && normalizeUnorientedDirection(requirement.direction);
-        return direction ? [{ id: `${candidate.type}:${candidate.entityId}`, direction, source: candidate.type,
-          semanticRelation: candidate.type, referenceIdentity: candidate.entityId, screenDistance: candidate.screenDistance } as NormalizedDirectionDemand] : [];
-      });
-      return demands.length === 2 && groupEquivalentDirectionDemands(demands).length === 1;
-    })());
-  const rejectedCandidates = candidates.perpendiculars.filter((candidate) =>
-    candidate.referenceIncidentToActiveLineStart === true && equivalentToParallel(candidate));
-  const availablePerpendiculars = candidates.perpendiculars.filter((candidate) => !rejectedCandidates.includes(candidate));
-  const perpendicularPositionCandidate = axisDirectionActive ? null : choosePerpendicular(availablePerpendiculars, previousSnap)
-    ?? composableReference(availablePerpendiculars, 'perpendicular');
-  const perpendicular = axisDirectionActive ? null : retainCompatibleDirection(
-    perpendicularPositionCandidate, oldPerpendicular, availablePerpendiculars);
-  const rejectedStartIncidentPerpendiculars: DrawingSnapChannels['rejectedStartIncidentPerpendiculars'] = rejectedCandidates.map((candidate) => ({
-    referenceLineId: candidate.entityId, reason: 'redundant with acquired non-start Parallel direction',
-  }));
+  const acquiredParallel = axisDirectionActive ? null : retainCompatibleDirection(
+    chooseParallel(candidates.parallels ?? [], previousSnap) ?? composableReference(candidates.parallels ?? [], 'parallel'),
+    oldParallel, candidates.parallels ?? []);
+  const acquiredPerpendicular = axisDirectionActive ? null : retainCompatibleDirection(
+    choosePerpendicular(candidates.perpendiculars ?? [], previousSnap) ?? composableReference(candidates.perpendiculars ?? [], 'perpendicular'),
+    oldPerpendicular, candidates.perpendiculars ?? []);
+
+  // Parallel and Perpendicular observations can describe the same unoriented
+  // ray.  Such observations are plural geometric evidence, but authoring has
+  // exactly one direction authority. Prefer Parallel as the stable semantic
+  // representative of an equivalent group; otherwise retain the closer
+  // independently acquired direction.
+  const directionsEquivalent = acquiredParallel && acquiredPerpendicular && (() => {
+    const parallelRequirement = directionRequirement(acquiredParallel);
+    const perpendicularRequirement = directionRequirement(acquiredPerpendicular);
+    const parallelDirection = parallelRequirement?.kind === 'direction' && normalizeUnorientedDirection(parallelRequirement.direction);
+    const perpendicularDirection = perpendicularRequirement?.kind === 'direction' && normalizeUnorientedDirection(perpendicularRequirement.direction);
+    return Boolean(parallelDirection && perpendicularDirection
+      && groupEquivalentDirectionDemands([
+        { id: `parallel:${acquiredParallel.entityId}`, direction: parallelDirection, source: 'parallel', semanticRelation: 'parallel',
+          referenceIdentity: acquiredParallel.entityId, screenDistance: acquiredParallel.screenDistance },
+        { id: `perpendicular:${acquiredPerpendicular.entityId}`, direction: perpendicularDirection, source: 'perpendicular', semanticRelation: 'perpendicular',
+          referenceIdentity: acquiredPerpendicular.entityId, screenDistance: acquiredPerpendicular.screenDistance },
+      ]).length === 1);
+  })();
+  const selectedRelation = acquiredParallel && acquiredPerpendicular
+    ? (directionsEquivalent || acquiredParallel.screenDistance <= acquiredPerpendicular.screenDistance ? 'parallel' : 'perpendicular')
+    : acquiredParallel ? 'parallel' : acquiredPerpendicular ? 'perpendicular' : null;
+  const parallel = selectedRelation === 'parallel' ? acquiredParallel : null;
+  const perpendicular = selectedRelation === 'perpendicular' ? acquiredPerpendicular : null;
+  const rejectedRedundantDirectionRelations: DrawingSnapChannels['rejectedRedundantDirectionRelations'] = directionsEquivalent && acquiredPerpendicular
+    ? [{ relation: 'perpendicular', referenceLineId: acquiredPerpendicular.entityId,
+      reason: 'equivalent direction already governed by preferred authority' }]
+    : [];
+  const directionAuthority: DrawingSnapChannels['directionAuthority'] = selectedRelation
+    ? { relation: selectedRelation, referenceLineId: (selectedRelation === 'parallel' ? parallel : perpendicular)!.entityId,
+      reason: directionsEquivalent && selectedRelation === 'parallel'
+        ? 'preferred representative of equivalent direction observations'
+        : 'nearest acquired non-axis direction' }
+    : null;
+  const parallelPositionCandidate = parallel;
+  const perpendicularPositionCandidate = perpendicular;
   const pointReference = choosePointReference(candidates.pointReferences ?? [], previousSnap);
   const channels: DrawingSnapChannels = { xAlignment: xReference, yAlignment: yReference, perpendicular, parallel, pointReference,
-    rejectedStartIncidentPerpendiculars };
+    directionAuthority, rejectedRedundantDirectionRelations };
 
   // Hysteresis stabilizes a class; it never changes this authority ordering.
   const endpoint = chooseEndpoint(candidates.endpoints, previousSnap);

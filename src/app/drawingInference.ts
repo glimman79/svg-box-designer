@@ -180,7 +180,7 @@ export const collectDrawingInferenceCandidates = (
   pointerClientPoint: CoordinatePoint,
   lines: ReadonlyArray<ResolvedDrawingLine>,
   drawingToClientTransform: AffineTransform,
-  visibleBounds?: DrawingModelBounds,
+  _visibleBounds?: DrawingModelBounds,
   activeLineStart?: DrawingPoint | null,
   activeAngularDegrees?: number | null,
   activeLineStartPointId?: string | null,
@@ -254,7 +254,7 @@ export const collectDrawingInferenceCandidates = (
           && (line.startPointId === activeLineStartPointId || line.endPointId === activeLineStartPointId)) });
     }
   }
-  if (visibleBounds) {
+  if (_visibleBounds) {
     const radians = activeAngularDegrees === null || activeAngularDegrees === undefined ? null : activeAngularDegrees * Math.PI / 180;
     const angularDirection = radians === null ? null : {
       x: Math.abs(Math.cos(radians)) <= 1e-12 ? 0 : Math.cos(radians),
@@ -262,7 +262,10 @@ export const collectDrawingInferenceCandidates = (
     };
     const constructionKey = angularDirection && activeLineStart
       ? `${activeLineStart.x},${activeLineStart.y}:${activeAngularDegrees}` : undefined;
-    for (const reference of collectDrawingReferencePoints(lines).filter(({ point }) => isPointInDrawingBounds(point, visibleBounds))) {
+    // Candidate availability is document-semantic, not viewport-semantic. Screen
+    // distance still governs acquisition, but panning must not add/remove a
+    // reference before role classification.
+    for (const reference of collectDrawingReferencePoints(lines)) {
       // Point-owned normal constructions are position references, just like X/Y.
       // Their source topology is semantic, never coordinate equality.
       const directionsAtPoint: DrawingPoint[] = [];

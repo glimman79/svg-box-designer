@@ -24,6 +24,14 @@ The browser trace after #518–#520 showed frame 345 correctly detecting and acc
 
 The same investigation found a distinct persistence cause. #518–#520 deliberately forwarded every accepted Parallel and Perpendicular ID to `appendEntityToActiveSketch`, which created both constraints in one transaction. Repeated authoring therefore produced multiple real persistent Perpendicular constraints and markers; rendering was accurately showing stored semantics. The policy was superseded: detection remains plural, but normalized unoriented direction demands are grouped before composition, presentation, and automatic persistence. A compatible alignment can admit a fresh equivalent direction group through the existing release band, avoiding a family-specific radius or winner rule. Deterministic representation selection prefers Parallel within an equivalent group, so the click persists Parallel only; a lone Perpendicular is unchanged. Existing documents are not rewritten.
 
+### 2.10 Direction authority and viewport candidate correction (post-#524; pending browser acceptance)
+
+Browser evidence after #524 proved that start incidence was not the governing distinction. The earliest incorrect direction stage was channel acquisition: `chooseParallel` and `choosePerpendicular` independently promoted equivalent observations, after which Line resolution, transient presentation, and minimal persistence each applied overlapping policy to the same pair. This made two geometrically redundant relations simultaneous authoring authorities even though persistence later discarded one.
+
+The authority model now keeps raw detection plural but selects exactly one non-axis Line direction authority before endpoint composition. Equivalent Parallel and Perpendicular observations use Parallel as the deterministic authority representative; a lone Perpendicular remains fully functional. Hard Endpoint/Midpoint/finite-Line targets retain independent position ownership. The start-incident rejection and persistence-time equivalent-demand minimizer were superseded and removed rather than expanded.
+
+The visibility investigation found a separate earliest error in candidate generation: Line direction candidates always used the full resolved sketch, but X/Y and point-reference candidates were created only from reference points inside `viewBox`. A visible Line could therefore introduce a competing positional construction that vanished solely because panning excluded its endpoint. Candidate membership now comes from the complete committed sketch; screen-space distance remains the acquisition measure. This gives manual restart and continuous authoring the same model and makes translated viewport states semantically invariant.
+
 ## 3. Timeline Summary
 
 | Era | Problem | Decision/change | Result and current relevance |
