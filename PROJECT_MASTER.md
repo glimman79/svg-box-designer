@@ -273,3 +273,11 @@ Contributors are immutable. `REPLACES` owns a physical source edge; `REFERENCES`
 3. Then continue broader shared constraint/inference presentation unification.
 
 Do not start Symmetry, Fix, Concentricity, Tangency, or other disabled catalog work merely because those entries are visible. Do not begin global ProjectDocument work ahead of this active Drawing checkpoint.
+
+### 12.2 Established Line direction lifecycle
+
+**[IMPLEMENTED][AWAITING BROWSER VERIFICATION]** Direction acquisition tolerance is not established direction-authority lifetime. Parallel or Perpendicular is first acquired from plural screen-space candidates. The selected relation then records one construction ray (active Line start, stable reference-Line identity and geometry, and oriented normalized direction). Pointer travel controls free length by projection onto that ray; crossing the original 11 px candidate release band does not release it.
+
+Endpoint, SketchPoint, Midpoint, bounded Line-body, X/Y alignment, and Point Reference candidate collection continues while that ray is tracked. The active direction is also supplied to coordinate-reference candidate construction, so all committed SketchPoints—including endpoints of the active reference Line—remain legitimate inputs without creating document topology. Exact positional targets never move to satisfy direction; final Line resolution validates the selected authority against the exact endpoint, presentation projects accepted semantics, and persistence consumes that accepted result.
+
+The snap engine is the sole owner of established non-axis direction authority and supersession. Ctrl, H/V, an explicitly acquired incompatible direction, changed Line start, or missing/degenerate reference geometry release it; commit/cancel/restart clear the per-interaction snap state. The former Parallel/Perpendicular release-band retention, alignment composition admission, compatible-direction retention fallback, and Line-tool plural channel contest were removed. Equivalent Perpendicular evidence remains diagnostic/redundant when Parallel governs the same direction; Perpendicular alone remains a full authority.

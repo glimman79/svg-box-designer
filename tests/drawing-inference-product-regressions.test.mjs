@@ -36,7 +36,8 @@ const author = ({ pointer, scene, transform = identity, previousSnap = null, ctr
   const angular = lines.resolveLinePreviewPoint(start, rawModel);
   const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, transform, bounds, start, angular.snappedAngleDegrees);
   const axisDirectionActive = angular.snapActive && [0, 90, 180, 270].includes(angular.snappedAngleDegrees);
-  const candidateSnap = snaps.resolveDrawingSnap({ rawPoint: rawModel, candidates, previousSnap, ctrlOverride: ctrl, axisDirectionActive });
+  const candidateSnap = snaps.resolveDrawingSnap({ rawPoint: rawModel, candidates, previousSnap, ctrlOverride: ctrl, axisDirectionActive,
+    activeLineStart: start, activeLineStartPointId: 'start-point' });
   const placement = lines.resolveLineEffectivePoint(interaction, rawModel, candidateSnap, ctrl);
   const snap = lines.automaticAxisConstraintKind(placement.interaction) ? snaps.suppressDirectionRelations(candidateSnap) : candidateSnap;
   return { rawModel, angular, candidates, snap, placement };
@@ -197,7 +198,8 @@ test('finite Line position preserves only geometrically true arbitrary-angle Per
   const pointer = { x: foot.x + normal.x * 3, y: foot.y + normal.y * 3 };
   const angular = lines.resolveLinePreviewPoint(authoredStart, pointer);
   const candidates = inference.collectDrawingInferenceCandidates(pointer, [target], identity, bounds, authoredStart, angular.snappedAngleDegrees);
-  const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap: null, ctrlOverride: false });
+  const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap: null, ctrlOverride: false,
+    activeLineStart: authoredStart, activeLineStartPointId: 'authored-start' });
   assert.equal(snap.type, 'line', 'finite segment retains positional authority');
   assert.equal(snap.entityId, target.id);
   const accepted = lines.resolveLineEffectivePoint(targetInteraction, pointer, snap);
@@ -213,7 +215,8 @@ test('finite Line position preserves only geometrically true arbitrary-angle Per
 
   const offFoot = { x: foot.x + targetDirection.x / targetLength * 12, y: foot.y + targetDirection.y / targetLength * 12 };
   const offCandidates = inference.collectDrawingInferenceCandidates(offFoot, [target], identity, bounds, authoredStart, null);
-  const offSnap = snaps.resolveDrawingSnap({ rawPoint: offFoot, candidates: offCandidates, previousSnap: null, ctrlOverride: false });
+  const offSnap = snaps.resolveDrawingSnap({ rawPoint: offFoot, candidates: offCandidates, previousSnap: null, ctrlOverride: false,
+    activeLineStart: authoredStart, activeLineStartPointId: 'authored-start' });
   assert.equal(offSnap.type, 'line');
   const rejected = lines.resolveLineEffectivePoint(targetInteraction, offFoot, offSnap);
   assert.equal(rejected.interaction.perpendicularLineId, null, 'Line-body proximity cannot fake perpendicular final geometry');
@@ -233,7 +236,8 @@ test('same-target Line-body acquisition composes retained Perpendicular directio
   };
   const interaction = { ...lines.EMPTY_LINE_INTERACTION, start: authoredStart, startPointId: 'authored-start' };
   const candidates = inference.collectDrawingInferenceCandidates(pointer, [target], identity, bounds, authoredStart, null);
-  const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap: null, ctrlOverride: false });
+  const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap: null, ctrlOverride: false,
+    activeLineStart: authoredStart, activeLineStartPointId: 'authored-start' });
 
   assert.equal(snap.type, 'line', 'existing finite Line acquisition owns position');
   assert.equal(snap.entityId, target.id);
@@ -262,7 +266,8 @@ test('endpoint topology authority coexists with a true non-axis Perpendicular ta
   const authoredStart = { x: 100 / Math.sqrt(3), y: -100 };
   const targetInteraction = { ...lines.EMPTY_LINE_INTERACTION, start: authoredStart, startPointId: 'authored-start' };
   const candidates = inference.collectDrawingInferenceCandidates(target.start, [target], identity, bounds, authoredStart, null);
-  const snap = snaps.resolveDrawingSnap({ rawPoint: target.start, candidates, previousSnap: null, ctrlOverride: false });
+  const snap = snaps.resolveDrawingSnap({ rawPoint: target.start, candidates, previousSnap: null, ctrlOverride: false,
+    activeLineStart: authoredStart, activeLineStartPointId: 'authored-start' });
   assert.equal(snap.type, 'endpoint');
   const accepted = lines.resolveLineEffectivePoint(targetInteraction, target.start, snap);
   assert.equal(accepted.interaction.perpendicularLineId, target.id);
@@ -291,7 +296,8 @@ test('Ctrl clears acquired and hysteretic inference and authors the raw point', 
   assert.deepEqual(overridden.placement.effectivePoint, raw);
   assert.equal(lines.hasAngularPresentationTruth(overridden.placement.interaction), false);
   assert.equal(overridden.placement.interaction.perpendicularLineId, null);
-  assert.deepEqual(overridden.snap.channels, { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null, pointReference: null, directionAuthority: null, rejectedRedundantDirectionRelations: [] });
+  assert.equal(overridden.snap.channels.directionAuthority, null);
+  assert.equal(overridden.snap.channels.directionAuthorityReleaseReason, 'ctrl-override');
 });
 
 for (const degrees of [18, 198]) test(`Parallel target identity drives and retains the ${degrees} degree branch`, () => {

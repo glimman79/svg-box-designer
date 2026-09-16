@@ -29,7 +29,7 @@ const evaluate = ({ scene, start, startPointId, pointer, previousChainedLineId =
     angular.snapActive ? angular.snappedAngleDegrees : null, startPointId);
   const axisDirectionActive = angular.snapActive && [0, 90, 180, 270].includes(angular.snappedAngleDegrees);
   const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap: null, ctrlOverride,
-    axisDirectionActive, activeLineStart: start });
+    axisDirectionActive, activeLineStart: start, activeLineStartPointId: startPointId });
   const resolution = lineTool.resolveLineEffectivePoint(interaction, pointer, snap, ctrlOverride);
   return { candidates, snap, resolution, interaction };
 };
@@ -39,10 +39,10 @@ const shownKinds = (result, scene) => presentation.deriveDrawingInferencePresent
 
 test('B perpendicular to A is the sole direction authority, preview, and persistent relation', () => {
   const result = evaluate({ scene: [A], start: points.p1, startPointId: 'p1', pointer: points.p2 });
-  assert.deepEqual(result.snap.channels.directionAuthority, {
-    relation: 'perpendicular', referenceLineId: 'A', referenceLineStart: points.p0,
-    referenceLineEnd: points.p1, reason: 'nearest acquired non-axis direction',
-  });
+  assert.equal(result.snap.channels.directionAuthority.relation, 'perpendicular');
+  assert.equal(result.snap.channels.directionAuthority.referenceLineId, 'A');
+  assert.deepEqual(result.snap.channels.directionAuthority.constructionOrigin, points.p1);
+  assert.equal(result.snap.channels.directionAuthority.state, 'acquired');
   assert.equal(result.resolution.interaction.perpendicularLineId, 'A');
   assert.deepEqual(shownKinds(result, [A]), ['perpendicular']);
   assert.equal(lineTool.selectMinimalLineSemanticConstraints(result.resolution.interaction).perpendicularLineId, 'A');
@@ -110,6 +110,36 @@ test('production handoff preserves acquired Parallel through Endpoint resolution
   const committed = lineTool.appendEntityToActiveSketch(document, click.entity, undefined, null, null, null,
     lineTool.selectMinimalLineSemanticConstraints(resolution.interaction).parallelLineId);
   assert.equal(committed.sketches.sketch.geometricConstraints['parallel:A:C'].kind, 'PARALLEL');
+});
+
+test('established Parallel survives release distance and reaches a compatible Endpoint', () => {
+  const target = { id: 'target', type: 'line', start: points.p3, end: { x: 80, y: 70 }, startPointId: 'p3', endPointId: 't1' };
+  const start = points.p2;
+  const acquirePointer = { x: 40, y: 100 };
+  const acquiredCandidates = inference.collectDrawingInferenceCandidates(acquirePointer, [A, B, target], identity, bounds, start, null, 'p2');
+  const acquired = snaps.resolveDrawingSnap({ rawPoint: acquirePointer, candidates: acquiredCandidates, previousSnap: null,
+    ctrlOverride: false, activeLineStart: start, activeLineStartPointId: 'p2' });
+  assert.equal(acquired.channels.acquiredDirectionCandidate.referenceLineId, 'A');
+  assert.equal(acquired.channels.directionAuthority.state, 'acquired');
+
+  const beyond = { x: 65, y: 92 }; // 16.3 px from A's Parallel projection: beyond the 11 px legacy release band.
+  const beyondCandidates = inference.collectDrawingInferenceCandidates(beyond, [A, B, target], identity, bounds, start, null, 'p2');
+  const tracking = snaps.resolveDrawingSnap({ rawPoint: beyond, candidates: beyondCandidates, previousSnap: acquired,
+    ctrlOverride: false, activeLineStart: start, activeLineStartPointId: 'p2' });
+  assert.ok(beyondCandidates.parallels.find(({ entityId }) => entityId === 'A').screenDistance > snaps.DRAWING_PARALLEL_SNAP_RELEASE_PX);
+  assert.equal(tracking.channels.acquiredDirectionCandidate, null);
+  assert.equal(tracking.channels.directionAuthority.referenceLineId, 'A');
+  assert.equal(tracking.channels.directionAuthority.state, 'tracking');
+
+  const endpointCandidates = inference.collectDrawingInferenceCandidates(points.p3, [A, B, target], identity, bounds, start, 45, 'p2');
+  const endpoint = snaps.resolveDrawingSnap({ rawPoint: points.p3, candidates: endpointCandidates, previousSnap: tracking,
+    ctrlOverride: false, activeLineStart: start, activeLineStartPointId: 'p2' });
+  const resolution = lineTool.resolveLineEffectivePoint({ ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId: 'p2' }, points.p3, endpoint);
+  assert.equal(endpoint.type, 'endpoint');
+  assert.equal(endpoint.channels.directionAuthority.referenceLineId, 'A');
+  assert.deepEqual(resolution.effectivePoint, points.p3);
+  assert.equal(resolution.diagnostic.finalGeometryCompatibleWithDirectionAuthority, true);
+  assert.equal(resolution.interaction.parallelLineId, 'A');
 });
 
 test('D parallel to B uses the same one-authority rule', () => {

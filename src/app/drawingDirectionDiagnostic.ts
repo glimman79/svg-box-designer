@@ -11,6 +11,20 @@ export type DrawingDirectionDiagnosticFrame = Readonly<{
   lineResolution: Readonly<{ after: Readonly<{ parallelLineId: string | null; perpendicularLineId: string | null; [key: string]: unknown }>; [key: string]: unknown }>;
   hv: unknown;
   presentation: Readonly<{ parallel: boolean; perpendicular: boolean; kinds: readonly string[] }>;
+  rawDirectionCandidates: unknown;
+  acquiredDirectionCandidate: unknown;
+  establishedDirectionAuthority: unknown;
+  establishedReferenceLineId: string | null;
+  establishedConstructionOrigin: unknown;
+  establishedConstructionDirection: unknown;
+  establishedDirectionState: string | null;
+  directionAuthorityReleaseReason: string | null;
+  positionCandidates: unknown;
+  selectedPositionAuthority: unknown;
+  finalGeometryCompatibleWithDirectionAuthority: boolean | null;
+  acceptedSemanticTruth: unknown;
+  transientPresentationSelection: unknown;
+  persistentSemanticSelection: unknown;
 }>;
 
 const present = (value: unknown) => value !== null && value !== undefined && value !== false;

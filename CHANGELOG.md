@@ -7,6 +7,10 @@
 
 # Changelog
 
+- Separate screen-space direction acquisition from established Line construction lifetime; Parallel now tracks a stable ray while generic free-end inference continues.
+- Remove obsolete Parallel/Perpendicular release-band retention, alignment composition fallback, and downstream plural-direction arbitration.
+- Add explicit direction lifecycle diagnostics and regression coverage for the frame 269→270 release-distance failure.
+
 ## V1.2 — TB + Wall Stabilization
 
 - Retains the stable TB workflow and stabilizes the Wall/W finger-joint workflow, including Wall A/B role normalization and mouse-hole prevention/orientation behavior.

@@ -127,7 +127,8 @@ type LineSpatialSnap = Readonly<{
     pointReference?: Readonly<{ candidatePoint: DrawingPoint; screenDistance: number;
       supportOrigin: DrawingPoint; supportDirection: DrawingPoint }> | null;
     directionAuthority?: Readonly<{ relation: 'parallel' | 'perpendicular'; referenceLineId: string;
-      referenceLineStart: DrawingPoint; referenceLineEnd: DrawingPoint; reason: string }> | null;
+      referenceLineStart: DrawingPoint; referenceLineEnd: DrawingPoint; constructionOrigin: DrawingPoint;
+      constructionDirection: DrawingPoint; startPointId: string | null; state: 'acquired' | 'tracking'; reason: string }> | null;
   }>;
 }>;
 
@@ -141,8 +142,7 @@ export type LineEffectivePointResolution = Readonly<{
   diagnostic?: Readonly<{
     finalAxisAngle: 0 | 90 | 180 | 270 | null;
     directionalSemanticsBeforeAxisFinalization: Readonly<{ perpendicularLineId: string | null; parallelLineId: string | null }>;
-    selectedDirectionAuthority: Readonly<{ relation: 'parallel' | 'perpendicular'; referenceLineId: string;
-      referenceLineStart: DrawingPoint; referenceLineEnd: DrawingPoint; reason: string }> | null;
+    selectedDirectionAuthority: NonNullable<NonNullable<LineSpatialSnap['channels']>['directionAuthority']> | null;
     finalGeometryCompatibleWithDirectionAuthority: boolean | null;
     directionAuthorityRejectionReason: string | null;
   }>;
@@ -246,60 +246,29 @@ type LineDirectionDemand = Readonly<{
   entityId: string;
 }>;
 
-/** Converts acquired semantic channels to their geometry contract. Composition
- * below consequently knows directions, not inference-family combinations. */
+/** The snap engine is the sole direction-authority owner. Endpoint resolution
+ * consumes its stable construction direction and never reruns acquisition. */
 const acquiredDirectionDemands = (spatialSnap: LineSpatialSnap): ReadonlyArray<LineDirectionDemand> => {
-  const parallel = spatialSnap.channels?.parallel;
-  const perpendicular = spatialSnap.channels?.perpendicular;
-  return [
-    parallel?.lineStart && parallel.lineEnd ? { x: parallel.lineEnd.x - parallel.lineStart.x, y: parallel.lineEnd.y - parallel.lineStart.y,
-      screenDistance: parallel.screenDistance, relation: 'parallel' as const, entityId: parallel.entityId } : null,
-    perpendicular?.lineStart && perpendicular.lineEnd ? { x: -(perpendicular.lineEnd.y - perpendicular.lineStart.y),
-      y: perpendicular.lineEnd.x - perpendicular.lineStart.x, screenDistance: perpendicular.screenDistance,
-      relation: 'perpendicular' as const, entityId: perpendicular.entityId } : null,
-  ].filter((value): value is { x: number; y: number; screenDistance: number; relation: 'parallel' | 'perpendicular'; entityId: string } => value !== null)
-    .map(({ x, y, screenDistance, relation, entityId }) => {
-      const length = Math.hypot(x, y);
-      return length > LINE_ZERO_LENGTH_TOLERANCE_MM
-        ? { direction: { x: x / length, y: y / length }, screenDistance, relation, entityId } : null;
-    }).filter((value): value is LineDirectionDemand => value !== null)
-    .sort((a, b) => a.screenDistance - b.screenDistance);
+  const authority = spatialSnap.channels?.directionAuthority;
+  return authority ? [{ direction: authority.constructionDirection, screenDistance: 0,
+    relation: authority.relation, entityId: authority.referenceLineId }] : [];
 };
 
-const sameUnorientedDirection = (a: DrawingPoint, b: DrawingPoint) => Math.abs(a.x * b.y - a.y * b.x)
-  <= ANGULAR_COMPATIBILITY_EPSILON;
+const commonAcquiredDirection = (spatialSnap: LineSpatialSnap): DrawingPoint | null =>
+  spatialSnap.channels?.directionAuthority?.constructionDirection ?? null;
 
-const commonAcquiredDirection = (spatialSnap: LineSpatialSnap): DrawingPoint | null => {
-  const demands = acquiredDirectionDemands(spatialSnap);
-  return demands.length > 0 && demands.every(({ direction }) => sameUnorientedDirection(direction, demands[0].direction))
-    ? demands[0].direction : null;
-};
-
-/** Diagnostic observation of the exact common-direction gate used below. */
+/** Diagnostic observation: an established authority directly supplies the construction. */
 export const diagnoseLineCommonDirection = (spatialSnap: LineSpatialSnap) => {
-  const parallel = spatialSnap.channels?.parallel;
-  const perpendicular = spatialSnap.channels?.perpendicular;
-  const bothChannels = Boolean(parallel && perpendicular);
-  const bothReferenceGeometries = Boolean(parallel?.lineStart && parallel.lineEnd
-    && perpendicular?.lineStart && perpendicular.lineEnd);
-  const demands = acquiredDirectionDemands(spatialSnap);
-  const compatibleDirection = demands.length >= 2 ? commonAcquiredDirection(spatialSnap) : null;
+  const authority = spatialSnap.channels?.directionAuthority ?? null;
   const hardPosition = spatialSnap.type === 'endpoint' || spatialSnap.type === 'midpoint' || spatialSnap.type === 'line';
-  return {
-    bothChannels,
-    bothReferenceGeometries,
-    compatible: compatibleDirection !== null,
-    used: compatibleDirection !== null && !hardPosition,
-    reason: compatibleDirection === null
-      ? !bothChannels ? 'bypassed: both directional channels are not acquired'
-        : !bothReferenceGeometries ? 'bypassed: directional reference geometry is incomplete'
-          : 'bypassed: reference directions are incompatible or degenerate'
-      : hardPosition ? `bypassed: snap.type=${spatialSnap.type} owns hard position` : 'used',
-  } as const;
+  return { bothChannels: false, bothReferenceGeometries: Boolean(authority), compatible: Boolean(authority),
+    used: Boolean(authority) && !hardPosition,
+    reason: !authority ? 'bypassed: no established direction authority'
+      : hardPosition ? `bypassed: snap.type=${spatialSnap.type} owns hard position` : 'used' } as const;
 };
 
 const projectPointerToDirection = (start: DrawingPoint, pointer: DrawingPoint, direction: DrawingPoint): DrawingPoint => {
-  const radial = (pointer.x - start.x) * direction.x + (pointer.y - start.y) * direction.y;
+  const radial = Math.max(0, (pointer.x - start.x) * direction.x + (pointer.y - start.y) * direction.y);
   return { x: start.x + radial * direction.x, y: start.y + radial * direction.y };
 };
 
