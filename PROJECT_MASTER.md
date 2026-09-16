@@ -117,6 +117,12 @@ The point-based 90-degree reference is a transient construction direction from a
 
 Parallel and Perpendicular are direction relations, not unique candidate points. Their projected candidate points compute an endpoint at the current pointer radius while Line length remains free along the accepted ray. Compatible relations to different reference Lines survive as plural accepted semantic truth and each is eligible for transient feedback, even when they normalize to the same direction. Automatic persistence independently selects one deterministic representative per equivalent demand group; therefore Parallel and Perpendicular may both preview while only Parallel is stored for that click transaction. Perpendicular alone remains a normal transient and automatically persistent constraint. This is transaction-scoped automatic authoring selection, not migration or global simplification of existing sketches.
 
+### 7.5 Continuous Line authoring invariant
+
+**[IMPLEMENTED][IN PROGRESS]** Every segment created during continuous Line authoring is a new Line. Continuation supplies the committed Line's end SketchPoint as the next Line's start SketchPoint, and retains the previous Line ID only as authoring-workflow metadata. It does not create a separate inference mode. Candidate discovery, acquisition, arbitration, geometry resolution, semantic truth, presentation, and persistence are determined by current document geometry and SketchPoint topology just as they are after manually restarting the Line tool at that same point.
+
+Point-reference discovery already derives incident Lines from stable SketchPoint identity rather than drawing history. Production-path A/B regressions compare manual restart with continuation for the next two Lines and find candidates, channels, resolved geometry, semantic truth, presentation, and persistence equivalent. The audit did find and remove a dormant legacy resolver input and branch that inspected `previousChainedLineId` plus the previous Line's axis constraint. Normal production snaps reached shared direction resolution before that branch, so it was not the first observed production difference and is not claimed as the root cause of the reported browser behavior. Its removal makes the invariant structural and prevents non-production/legacy snap shapes from creating a chain-only mode. Browser verification remains outstanding.
+
 ## 8. Drawing constraints
 
 ### 8.1 Floating Constraints tool
@@ -252,6 +258,7 @@ Contributors are immutable. `REPLACES` owns a physical source edge; `REFERENCES`
 6. One authored Drawing action creates one logical Drawing History transaction.
 7. Tests do not confer browser acceptance on interactive behavior.
 8. Puzzle and global ProjectDocument architecture remain future scope until implemented.
+9. Each chained segment is a new Line: continuation supplies start topology only and cannot alter inference behavior.
 
 ## 17. Immediate next work
 

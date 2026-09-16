@@ -19,7 +19,7 @@ const pipeline = ({ raw, lines, transform = identity, previous = null, ctrl = fa
   const candidates = collectDrawingInferenceCandidates(client, lines, transform, bounds, start,
     !ctrl && angular.snapActive ? angular.snappedAngleDegrees : null);
   const snap = resolveDrawingSnap({ rawPoint: raw, candidates, previousSnap: previous, ctrlOverride: ctrl });
-  return { angular, candidates, snap, resolved: resolveLineEffectivePoint(interaction, raw, snap, null, ctrl) };
+  return { angular, candidates, snap, resolved: resolveLineEffectivePoint(interaction, raw, snap, ctrl) };
 };
 
 let run = pipeline({ raw: { x: 102, y: 98 }, lines: [referenceLine('point-45-x', { x: 100, y: 70 })] });
@@ -113,7 +113,7 @@ const sameAxis = ({ raw, lines, transform = identity, previous = null, ctrl = fa
   const candidates = collectDrawingInferenceCandidates(client, lines, transform, bounds, start,
     !ctrl && angular.snapActive ? angular.snappedAngleDegrees : null);
   const snap = resolveDrawingSnap({ rawPoint: raw, candidates: { ...candidates, endpoints: [], lines: [], perpendiculars: [] }, previousSnap: previous, ctrlOverride: ctrl });
-  return { candidates, snap, resolved: resolveLineEffectivePoint(interaction, raw, snap, null, ctrl) };
+  return { candidates, snap, resolved: resolveLineEffectivePoint(interaction, raw, snap, ctrl) };
 };
 
 for (const spec of [

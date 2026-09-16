@@ -299,15 +299,8 @@ export function DrawingWorkspace({
     let snap = resolveDrawingSnap({ rawPoint, candidates, previousSnap, ctrlOverride: ctrlHeld, axisDirectionActive,
       activeLineStart: interaction.start });
     const snapBeforeHvSuppression = snap;
-    const previousChainedAxisConstraint = interaction.previousChainedLineId
-      ? Object.values(documentRef.current.sketches[documentRef.current.activeSketchId]?.geometricConstraints ?? {}).find((constraint) =>
-        (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL')
-        && constraint.references[0]?.entityId === interaction.previousChainedLineId)
-      : null;
-    const previousChainedAxisKind = previousChainedAxisConstraint?.kind === 'HORIZONTAL' || previousChainedAxisConstraint?.kind === 'VERTICAL'
-      ? previousChainedAxisConstraint.kind : null;
     const commonDirection = diagnoseLineCommonDirection(snap);
-    const lineResolution = resolveLineEffectivePoint(interaction, rawPoint, snap, previousChainedAxisKind, ctrlHeld);
+    const lineResolution = resolveLineEffectivePoint(interaction, rawPoint, snap, ctrlHeld);
     const placementPoint = lineResolution.effectivePoint;
     const nextInteraction = lineResolution.interaction;
     const semanticSelection = selectMinimalLineSemanticConstraints(nextInteraction);
@@ -360,7 +353,12 @@ export function DrawingWorkspace({
           viewBox, pixelsPerModelUnit: viewport.width / viewBox.width, ctrlActive: ctrlHeld,
           ctm: { a: drawingTransform.a, b: drawingTransform.b, c: drawingTransform.c, d: drawingTransform.d, e: drawingTransform.e, f: drawingTransform.f },
           angularIntent: angularIntent && { snapActive: angularIntent.snapActive, snappedAngleDegrees: angularIntent.snappedAngleDegrees },
-          axisDirectionActive, previousChainedAxisKind,
+          axisDirectionActive,
+          lineStart: interaction.start, startPointId: interaction.startPointId,
+          startLineId: interaction.startLineId, startMidpointLineId: interaction.startMidpointLineId,
+          previousChainedLineId: interaction.previousChainedLineId,
+          incidentLineIds: resolvedLines.filter((line) => interaction.startPointId
+            && (line.startPointId === interaction.startPointId || line.endPointId === interaction.startPointId)).map(({ id }) => id),
         },
         candidates: {
           parallel: candidates.parallels.map(summarizeDirection), perpendicular: candidates.perpendiculars.map(summarizeDirection),

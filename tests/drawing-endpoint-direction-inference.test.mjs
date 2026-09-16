@@ -17,7 +17,7 @@ const pipeline = ({ pointer, scene, start = null, previousSnap = null, ctrl = fa
   const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, transform, bounds, start, null);
   const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap, ctrlOverride: ctrl, axisDirectionActive });
   const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId: start ? 'new-start' : null };
-  return { candidates, snap, resolved: lineTool.resolveLineEffectivePoint(interaction, pointer, snap, null, ctrl) };
+  return { candidates, snap, resolved: lineTool.resolveLineEffectivePoint(interaction, pointer, snap, ctrl) };
 };
 const normal = (candidates, point = 'B', line = 'AB') => candidates.pointReferences.find(
   ({ constructionKey }) => constructionKey === `point-normal:${point}:${line}`,

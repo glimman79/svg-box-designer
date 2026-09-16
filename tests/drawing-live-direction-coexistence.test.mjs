@@ -40,6 +40,30 @@ const emptyFrame = () => ({ snap: null, interaction: { ...lineTool.EMPTY_LINE_IN
 const parallelTruth = (point) => Math.abs(point.x - point.y) < 1e-9;
 const perpendicularTruth = parallelTruth;
 
+const compareRestartFrame = ({ scene, sketch, lineStart, startPointId, pointer, previousChainedLineId }) => {
+  const evaluate = (chained) => {
+    const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start: lineStart, startPointId,
+      previousChainedLineId: chained ? previousChainedLineId : null };
+    const angular = lineTool.resolveLinePreviewPoint(lineStart, pointer);
+    const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, identity, bounds, lineStart,
+      angular.snapActive ? angular.snappedAngleDegrees : null);
+    const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap: null, ctrlOverride: false,
+      axisDirectionActive: angular.snapActive && [0, 90, 180, 270].includes(angular.snappedAngleDegrees), activeLineStart: lineStart });
+    const resolution = lineTool.resolveLineEffectivePoint(interaction, pointer, snap);
+    const presentations = presentation.deriveDrawingInferencePresentations(snap, sketch, 1, identity, identity, resolution.interaction)
+      .map(({ kind, targetLineId }) => ({ kind, targetLineId }));
+    return {
+      topology: { lineStart, startPointId,
+        incidentLineIds: scene.filter((line) => line.startPointId === startPointId || line.endPointId === startPointId).map(({ id }) => id) },
+      candidates, channels: snap.channels, snapType: snap.type, effectivePoint: resolution.effectivePoint,
+      positionAuthority: snap.type, semanticTruth: { parallelLineId: resolution.interaction.parallelLineId,
+        perpendicularLineId: resolution.interaction.perpendicularLineId }, presentations,
+      persistence: lineTool.selectMinimalLineSemanticConstraints(resolution.interaction),
+    };
+  };
+  return { manual: evaluate(false), chained: evaluate(true) };
+};
+
 const workspaceSketch = {
   id: 'sketch', points: {
     a1: { id: 'a1', x: 300, y: 300 }, a2: { id: 'a2', x: 400, y: 400 },
@@ -51,6 +75,33 @@ const workspaceSketch = {
     'line-c': { id: 'line-c', type: 'line', startPointId: 'c1', endPointId: 'c2' },
   }, entityOrder: ['line-a', 'line-b', 'line-c'], dimensions: {}, dimensionOrder: [], geometricConstraints: {}, geometricConstraintOrder: [],
 };
+
+test('manual restart and automatic continuation have identical production inference for C and D', () => {
+  const points = {
+    p0: { id: 'p0', x: 0, y: 0 }, p1: { id: 'p1', x: 40, y: 40 },
+    p2: { id: 'p2', x: 10, y: 70 }, p3: { id: 'p3', x: 50, y: 110 },
+  };
+  const line = (id, startPointId, endPointId) => ({ id, type: 'line', startPointId, endPointId,
+    start: points[startPointId], end: points[endPointId] });
+  const A = line('A', 'p0', 'p1'), B = line('B', 'p1', 'p2'), C = line('C', 'p2', 'p3');
+  const sketchFor = (entities) => ({ id: 'sketch', points, entities: Object.fromEntries(entities.map(({ id, startPointId, endPointId }) =>
+    [id, { id, type: 'line', startPointId, endPointId }])), entityOrder: entities.map(({ id }) => id),
+    dimensions: {}, dimensionOrder: [], geometricConstraints: {}, geometricConstraintOrder: [] });
+
+  const c = compareRestartFrame({ scene: [A, B], sketch: sketchFor([A, B]), lineStart: points.p2,
+    startPointId: 'p2', pointer: { x: 51, y: 109 }, previousChainedLineId: 'B' });
+  assert.deepEqual(c.chained, c.manual, 'C inference is independent of how its shared start SketchPoint was supplied');
+  assert.equal(c.chained.semanticTruth.parallelLineId, 'A');
+  assert.equal(c.chained.semanticTruth.perpendicularLineId, 'B');
+  assert.deepEqual(c.chained.presentations.map(({ kind }) => kind), ['parallel', 'perpendicular']);
+  assert.equal(c.chained.persistence.parallelLineId, 'A');
+  assert.equal(c.chained.persistence.perpendicularLineId, null);
+
+  const d = compareRestartFrame({ scene: [A, B, C], sketch: sketchFor([A, B, C]), lineStart: points.p3,
+    startPointId: 'p3', pointer: { x: 21, y: 141 }, previousChainedLineId: 'C' });
+  assert.deepEqual(d.chained, d.manual, 'D inference is independent of how its shared start SketchPoint was supplied');
+  assert.equal(d.chained.semanticTruth.parallelLineId, 'B');
+});
 
 test('workspace production path composes compatible directions before a point-reference positional winner', () => {
   const blocker = { id: 'line-c', type: 'line', start: { x: 200, y: 180 }, end: { x: 290, y: 80 }, startPointId: 'c1', endPointId: 'c2' };

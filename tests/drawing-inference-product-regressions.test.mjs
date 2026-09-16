@@ -37,7 +37,7 @@ const author = ({ pointer, scene, transform = identity, previousSnap = null, ctr
   const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, transform, bounds, start, angular.snappedAngleDegrees);
   const axisDirectionActive = angular.snapActive && [0, 90, 180, 270].includes(angular.snappedAngleDegrees);
   const candidateSnap = snaps.resolveDrawingSnap({ rawPoint: rawModel, candidates, previousSnap, ctrlOverride: ctrl, axisDirectionActive });
-  const placement = lines.resolveLineEffectivePoint(interaction, rawModel, candidateSnap, null, ctrl);
+  const placement = lines.resolveLineEffectivePoint(interaction, rawModel, candidateSnap, ctrl);
   const snap = lines.automaticAxisConstraintKind(placement.interaction) ? snaps.suppressDirectionRelations(candidateSnap) : candidateSnap;
   return { rawModel, angular, candidates, snap, placement };
 };

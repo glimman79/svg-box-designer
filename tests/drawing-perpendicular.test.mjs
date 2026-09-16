@@ -61,72 +61,19 @@ test('H/V intent is exclusive and has priority over a simultaneous perpendicular
   }
 });
 
-test('a chained perpendicular to the previous axis Line maps to exact opposite-axis intent outside the angular window', () => {
-  const cases = [
-    { previousAxis: 'HORIZONTAL', raw: { x: 2, y: 30 }, perpendicularPoint: { x: 0, y: 30 }, expected: 'VERTICAL', coordinate: ['x', 0] },
-    { previousAxis: 'VERTICAL', raw: { x: -30, y: 2 }, perpendicularPoint: { x: -30, y: 0 }, expected: 'HORIZONTAL', coordinate: ['y', 0] },
-  ];
-  for (const { previousAxis, raw, perpendicularPoint, expected, coordinate } of cases) {
-    const interaction = { ...EMPTY_LINE_INTERACTION, start: { x: 0, y: 0 }, previousChainedLineId: 'previous' };
-    assert.equal(resolveLineEffectivePoint(interaction, raw, { active: false, type: 'none', effectivePoint: raw }).interaction.snappedAngleDegrees, null,
-      'raw pointer is deliberately outside the independent three-degree axis window');
-    const accepted = resolveLineEffectivePoint(interaction, raw,
-      { active: true, type: 'perpendicular', entityId: 'previous', effectivePoint: perpendicularPoint }, previousAxis);
-    assert.equal(automaticAxisConstraintKind(accepted.interaction), expected);
-    assert.equal(accepted.interaction.perpendicularLineId, null);
-    assert.equal(accepted.effectivePoint[coordinate[0]], coordinate[1]);
-    assert.equal(accepted.interaction.effectivePreviewPoint, accepted.effectivePoint, 'preview and accepted point share one authority');
-  }
-});
-
-test('continuous axis chains advance stable Line identity, preserve topology, and create no perpendicular constraints', () => {
-  for (const [firstAxis, firstEnd, directions] of [
-    ['VERTICAL', { x: 0, y: 20 }, [{ x: 30, y: 2 }, { x: 28, y: 32 }, { x: -5, y: 30 }]],
-    ['HORIZONTAL', { x: -20, y: 0 }, [{ x: -18, y: -30 }, { x: -48, y: -28 }, { x: -46, y: 2 }]],
-  ]) {
-    let document = createDrawingDocumentV2();
-    let interaction = { ...EMPTY_LINE_INTERACTION, start: { x: 0, y: 0 }, startPointId: 'origin' };
-    let accepted = resolveLineEffectivePoint(interaction, firstEnd, { active: false, type: 'none', effectivePoint: firstEnd });
-    let click = applyResolvedLineClick(accepted.interaction, accepted.effectivePoint, () => 'line-1', 'joint-1');
-    document = add(document, click.entity, null, firstAxis);
-    interaction = click.interaction;
-    let priorAxis = firstAxis;
-    for (let index = 0; index < directions.length; index += 1) {
-      const id = `line-${index + 2}`;
-      const expectedAxis = priorAxis === 'HORIZONTAL' ? 'VERTICAL' : 'HORIZONTAL';
-      const raw = directions[index];
-      const perpendicularPoint = expectedAxis === 'VERTICAL'
-        ? { x: interaction.start.x, y: raw.y }
-        : { x: raw.x, y: interaction.start.y };
-      accepted = resolveLineEffectivePoint(interaction, raw,
-        { active: true, type: 'perpendicular', entityId: interaction.previousChainedLineId, effectivePoint: perpendicularPoint }, priorAxis);
-      click = applyResolvedLineClick(accepted.interaction, accepted.effectivePoint, () => id, `joint-${index + 2}`);
-      document = add(document, click.entity, accepted.interaction.perpendicularLineId, automaticAxisConstraintKind(accepted.interaction));
-      interaction = click.interaction;
-      assert.equal(interaction.previousChainedLineId, id);
-      priorAxis = expectedAxis;
-    }
-    const sketch = document.sketches['sketch-1'];
-    assert.deepEqual(sketch.geometricConstraintOrder.map((id) => sketch.geometricConstraints[id].kind),
-      firstAxis === 'VERTICAL' ? ['VERTICAL', 'HORIZONTAL', 'VERTICAL', 'HORIZONTAL'] : ['HORIZONTAL', 'VERTICAL', 'HORIZONTAL', 'VERTICAL']);
-    assert.equal(Object.values(sketch.geometricConstraints).filter(({ kind }) => kind === 'PERPENDICULAR').length, 0);
-    assert.equal(Object.values(sketch.geometricConstraints).filter(({ kind }) => kind === 'COINCIDENT').length, 0);
-    for (let index = 1; index < sketch.entityOrder.length; index += 1) {
-      assert.equal(sketch.entities[sketch.entityOrder[index - 1]].endPointId, sketch.entities[sketch.entityOrder[index]].startPointId);
-    }
-  }
-});
-
-test('chain mapping requires exact previous target identity and an axis constraint', () => {
-  const interaction = { ...EMPTY_LINE_INTERACTION, start: { x: 0, y: 0 }, previousChainedLineId: 'previous' };
-  const rotated = resolveLineEffectivePoint(interaction, { x: -13, y: 28 },
-    { active: true, type: 'perpendicular', entityId: 'previous', effectivePoint: { x: -13, y: 28 } }, null);
-  assert.equal(automaticAxisConstraintKind(rotated.interaction), null);
-  assert.equal(rotated.interaction.perpendicularLineId, 'previous');
-  const unrelated = resolveLineEffectivePoint(interaction, { x: -13, y: 28 },
-    { active: true, type: 'perpendicular', entityId: 'unrelated', effectivePoint: { x: -13, y: 28 } }, 'HORIZONTAL');
-  assert.equal(automaticAxisConstraintKind(unrelated.interaction), null);
-  assert.equal(unrelated.interaction.perpendicularLineId, 'unrelated');
+test('chain workflow metadata cannot change ordinary perpendicular resolution', () => {
+  const start = { x: 0, y: 0 }, raw = { x: 2, y: 30 };
+  const perpendicular = { type: 'perpendicular', entityId: 'previous', effectivePoint: { x: 0, y: 30 },
+    candidatePoint: { x: 0, y: 30 }, screenDistance: 2, lineStart: { x: -10, y: 0 }, lineEnd: { x: 10, y: 0 } };
+  const snap = { ...perpendicular, active: true, channels: { xAlignment: null, yAlignment: null,
+    perpendicular, parallel: null, pointReference: null } };
+  const manual = resolveLineEffectivePoint({ ...EMPTY_LINE_INTERACTION, start, startPointId: 'joint' }, raw, snap);
+  const chained = resolveLineEffectivePoint({ ...EMPTY_LINE_INTERACTION, start, startPointId: 'joint', previousChainedLineId: 'previous' }, raw, snap);
+  const inferenceState = ({ interaction, ...resolution }) => ({ ...resolution, interaction: { ...interaction, previousChainedLineId: null } });
+  assert.deepEqual(inferenceState(chained), inferenceState(manual), 'identical topology and pointer produce identical geometry and semantics');
+  assert.equal(chained.interaction.perpendicularLineId, manual.interaction.perpendicularLineId);
+  assert.equal(automaticAxisConstraintKind(chained.interaction), automaticAxisConstraintKind(manual.interaction),
+    'any final H/V classification is ordinary geometry behavior, not chain-history behavior');
 });
 
 test('cancel and new-chain lifecycle clear previous identity while zero-length rejection preserves it', () => {

@@ -404,7 +404,6 @@ export const resolveLineEffectivePoint = (
   interaction: LineToolInteraction,
   rawPointerPoint: DrawingPoint,
   spatialSnap: LineSpatialSnap,
-  previousChainedAxisKind: 'HORIZONTAL' | 'VERTICAL' | null = null,
   ctrlOverride = false,
 ): LineEffectivePointResolution => {
   if (!interaction.start) return lineResolution(ctrlOverride ? rawPointerPoint : spatialSnap.effectivePoint, interaction, spatialSnap);
@@ -451,20 +450,6 @@ export const resolveLineEffectivePoint = (
     };
     return lineResolution(effectivePoint, { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint,
       snappedAngleDegrees: angular.snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null, midpointLineId: null, lineBodyId: null }, spatialSnap);
-  }
-
-  // A perpendicular accepted against the directly previous authored segment
-  // carries enough semantic information to continue an axis-constrained chain,
-  // even when the raw pointer lies outside Line's independent angular window.
-  if (spatialSnap.type === 'perpendicular'
-    && spatialSnap.entityId === interaction.previousChainedLineId
-    && previousChainedAxisKind) {
-    const snappedAngleDegrees = previousChainedAxisKind === 'HORIZONTAL' ? 90 : 0;
-    const effectivePoint = previousChainedAxisKind === 'HORIZONTAL'
-      ? { x: interaction.start.x, y: spatialSnap.effectivePoint.y }
-      : { x: spatialSnap.effectivePoint.x, y: interaction.start.y };
-    return lineResolution(effectivePoint,
-      { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint, snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null, midpointLineId: null, lineBodyId: null }, spatialSnap);
   }
 
   // The snap winner owns only the endpoint. Do not make this branch a second,
