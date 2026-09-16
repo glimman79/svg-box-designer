@@ -312,7 +312,7 @@ test('Ctrl clears acquired and hysteretic inference and authors the raw point', 
   assert.deepEqual(overridden.placement.effectivePoint, raw);
   assert.equal(lines.hasAngularPresentationTruth(overridden.placement.interaction), false);
   assert.equal(overridden.placement.interaction.perpendicularLineId, null);
-  assert.deepEqual(overridden.snap.channels, { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null, pointReference: null });
+  assert.deepEqual(overridden.snap.channels, { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null, pointReference: null, rejectedStartIncidentPerpendiculars: [] });
 });
 
 for (const degrees of [18, 198]) test(`Parallel target identity drives and retains the ${degrees} degree branch`, () => {

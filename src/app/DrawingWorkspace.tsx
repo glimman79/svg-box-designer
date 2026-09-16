@@ -292,7 +292,7 @@ export function DrawingWorkspace({
     const interaction = lineInteractionRef.current;
     const angularIntent = !ctrlHeld && interaction.start ? resolveLinePreviewPoint(interaction.start, rawPoint) : null;
     const candidates = collectDrawingInferenceCandidates(clientPoint, resolvedLines, drawingTransform, viewBox, interaction.start,
-      angularIntent?.snapActive ? angularIntent.snappedAngleDegrees : null);
+      angularIntent?.snapActive ? angularIntent.snappedAngleDegrees : null, interaction.startPointId);
     const axisDirectionActive = angularIntent?.snapActive === true && angularIntent.snappedAngleDegrees !== null
       && [0, 90, 180, 270].includes(angularIntent.snappedAngleDegrees);
     const previousSnap = drawingSnapRef.current;
@@ -336,10 +336,11 @@ export function DrawingWorkspace({
         snap, activeSketch, viewport.width / viewBox.width, drawingTransform, overlayTransform, nextInteraction,
       );
       const nearest = <T extends { screenDistance: number }>(items: readonly T[]) => items[0] ?? null;
-      const summarizeDirection = ({ entityId, candidatePoint, screenDistance, lineStart, lineEnd }: {
+      const summarizeDirection = ({ entityId, candidatePoint, screenDistance, lineStart, lineEnd, referenceIncidentToActiveLineStart }: {
         entityId: string; candidatePoint: DrawingPoint; screenDistance: number; lineStart?: DrawingPoint; lineEnd?: DrawingPoint;
+        referenceIncidentToActiveLineStart?: boolean;
       }) =>
-        ({ entityId, candidatePoint, screenDistance, lineStart, lineEnd });
+        ({ entityId, candidatePoint, screenDistance, lineStart, lineEnd, referenceIncidentToActiveLineStart });
       const summarizeAlignment = (candidate: { referenceId: string; entityId: string; candidatePoint: DrawingPoint;
         referencePoint?: DrawingPoint; screenDistance: number; positionOwnership: 'defines-position' | 'reference-only' } | null) => candidate && ({
         referenceId: candidate.referenceId, entityId: candidate.entityId, candidatePoint: candidate.candidatePoint,
@@ -373,6 +374,7 @@ export function DrawingWorkspace({
         snapResult: {
           type: snapBeforeHvSuppression.type, effectivePoint: snapBeforeHvSuppression.effectivePoint,
           channels: snapBeforeHvSuppression.channels,
+          rejectedStartIncidentPerpendiculars: snapBeforeHvSuppression.channels.rejectedStartIncidentPerpendiculars,
         },
         lineResolution: {
           before: { incomingParallelLineId: interaction.parallelLineId, incomingPerpendicularLineId: interaction.perpendicularLineId,

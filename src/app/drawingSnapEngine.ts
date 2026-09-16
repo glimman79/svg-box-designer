@@ -34,6 +34,10 @@ export type DrawingSnapChannels = Readonly<{
   perpendicular: PerpendicularInference | null;
   parallel: ParallelInference | null;
   pointReference: PointReferenceInference | null;
+  rejectedStartIncidentPerpendiculars: ReadonlyArray<Readonly<{
+    referenceLineId: string;
+    reason: 'redundant with acquired non-start Parallel direction';
+  }>>;
 }>;
 
 type SnapBase = Readonly<{ channels: DrawingSnapChannels }>;
@@ -186,7 +190,8 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
   rawPoint: DrawingPoint; candidates: DrawingInferenceCandidates; previousSnap: DrawingSnap | null; ctrlOverride: boolean;
   axisDirectionActive?: boolean; activeLineStart?: DrawingPoint | null;
 }): DrawingSnap => {
-  const emptyChannels: DrawingSnapChannels = { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null, pointReference: null };
+  const emptyChannels: DrawingSnapChannels = { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null, pointReference: null,
+    rejectedStartIncidentPerpendiculars: [] };
   const none = (channels = emptyChannels): DrawingSnap => ({ active: false, type: 'none', effectivePoint: rawPoint, screenDistance: null, channels });
   // Layer 0 hard guard: no acquired or retained channel can survive Ctrl.
   if (ctrlOverride) return none();
@@ -222,16 +227,34 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
   };
   const oldPerpendicular = previousSnap?.channels?.perpendicular ?? null;
   const oldParallel = previousSnap?.channels?.parallel ?? null;
-  const perpendicularPositionCandidate = axisDirectionActive ? null : choosePerpendicular(candidates.perpendiculars, previousSnap)
-    ?? composableReference(candidates.perpendiculars, 'perpendicular');
   const parallelPositionCandidate = axisDirectionActive ? null : chooseParallel(candidates.parallels ?? [], previousSnap)
     ?? composableReference(candidates.parallels ?? [], 'parallel');
-  const perpendicular = axisDirectionActive ? null : retainCompatibleDirection(
-    perpendicularPositionCandidate, oldPerpendicular, candidates.perpendiculars);
   const parallel = axisDirectionActive ? null : retainCompatibleDirection(
     parallelPositionCandidate, oldParallel, candidates.parallels ?? []);
+  const equivalentToParallel = (perpendicular: PerpendicularInference) => Boolean(parallel
+    && parallel.referenceIncidentToActiveLineStart !== true
+    && (() => {
+      const demands = [perpendicular, parallel].flatMap((candidate) => {
+        const requirement = directionRequirement(candidate);
+        const direction = requirement?.kind === 'direction' && normalizeUnorientedDirection(requirement.direction);
+        return direction ? [{ id: `${candidate.type}:${candidate.entityId}`, direction, source: candidate.type,
+          semanticRelation: candidate.type, referenceIdentity: candidate.entityId, screenDistance: candidate.screenDistance } as NormalizedDirectionDemand] : [];
+      });
+      return demands.length === 2 && groupEquivalentDirectionDemands(demands).length === 1;
+    })());
+  const rejectedCandidates = candidates.perpendiculars.filter((candidate) =>
+    candidate.referenceIncidentToActiveLineStart === true && equivalentToParallel(candidate));
+  const availablePerpendiculars = candidates.perpendiculars.filter((candidate) => !rejectedCandidates.includes(candidate));
+  const perpendicularPositionCandidate = axisDirectionActive ? null : choosePerpendicular(availablePerpendiculars, previousSnap)
+    ?? composableReference(availablePerpendiculars, 'perpendicular');
+  const perpendicular = axisDirectionActive ? null : retainCompatibleDirection(
+    perpendicularPositionCandidate, oldPerpendicular, availablePerpendiculars);
+  const rejectedStartIncidentPerpendiculars: DrawingSnapChannels['rejectedStartIncidentPerpendiculars'] = rejectedCandidates.map((candidate) => ({
+    referenceLineId: candidate.entityId, reason: 'redundant with acquired non-start Parallel direction',
+  }));
   const pointReference = choosePointReference(candidates.pointReferences ?? [], previousSnap);
-  const channels: DrawingSnapChannels = { xAlignment: xReference, yAlignment: yReference, perpendicular, parallel, pointReference };
+  const channels: DrawingSnapChannels = { xAlignment: xReference, yAlignment: yReference, perpendicular, parallel, pointReference,
+    rejectedStartIncidentPerpendiculars };
 
   // Hysteresis stabilizes a class; it never changes this authority ordering.
   const endpoint = chooseEndpoint(candidates.endpoints, previousSnap);

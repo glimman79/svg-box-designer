@@ -123,6 +123,10 @@ Parallel and Perpendicular are direction relations, not unique candidate points.
 
 Point-reference discovery already derives incident Lines from stable SketchPoint identity rather than drawing history. Production-path A/B regressions compare manual restart with continuation for the next two Lines and find candidates, channels, resolved geometry, semantic truth, presentation, and persistence equivalent. The audit did find and remove a dormant legacy resolver input and branch that inspected `previousChainedLineId` plus the previous Line's axis constraint. Normal production snaps reached shared direction resolution before that branch, so it was not the first observed production difference and is not claimed as the root cause of the reported browser behavior. Its removal makes the invariant structural and prevents non-production/legacy snap shapes from creating a chain-only mode. Browser verification remains outstanding.
 
+**[IMPLEMENTED][IN PROGRESS]** Direction acquisition now distinguishes topology at the current new Line's start from free-end/target reference geometry. Once a Parallel relation to a non-start-incident reference has acquired the authored ray, an equivalent Perpendicular candidate against a Line incident to `startPointId` is rejected during channel acquisition. It therefore never becomes live Perpendicular semantic truth, direction authority, transient presentation, or automatic persistence. This is not global Parallel priority: a first-corner Perpendicular remains available when no such Parallel is acquired, and an equivalent Perpendicular against non-start target geometry may coexist with Parallel and provide free-end feedback. Geometric truth alone does not require every redundant relation to become an active authoring inference.
+
+Parallel continues to define direction rather than a unique point: pointer motion controls length along its ray. Presentation remains a projection of accepted live inference and does not hide rejected semantic state. Browser verification remains the final acceptance boundary for this behavior.
+
 ## 8. Drawing constraints
 
 ### 8.1 Floating Constraints tool

@@ -118,7 +118,7 @@ test('Ctrl clears every transient channel and restores raw placement', () => {
   const overridden = pipeline({ pointer: raw, scene: [angled], ctrl: true, previousSnap: normalRun.snap });
   assert.equal(overridden.snap.type, 'none');
   assert.deepEqual(overridden.resolved.effectivePoint, raw);
-  assert.deepEqual(overridden.snap.channels, { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null, pointReference: null });
+  assert.deepEqual(overridden.snap.channels, { xAlignment: null, yAlignment: null, perpendicular: null, parallel: null, pointReference: null, rejectedStartIncidentPerpendiculars: [] });
 });
 
 test('workspace renders only the source-to-effective-point transient reference segment', () => {
