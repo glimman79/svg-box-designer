@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes';
 import { appendEntityToActiveSketch, applyResolvedLineClick, automaticAxisConstraintKind, cancelLineInteraction, diagnoseLineCommonDirection, EMPTY_LINE_INTERACTION, hasAngularPresentationTruth, resolveLineEffectivePoint, resolveLinePreviewPoint, selectMinimalLineSemanticConstraints, type LineToolInteraction } from './drawingLineTool';
+import { scheduleDrawingLineCommit } from './drawingLineCommitBoundary';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
 import { collectDrawingInferenceCandidates, derivePointReferenceGuide } from './drawingInference';
@@ -666,12 +667,10 @@ export function DrawingWorkspace({
       const effectivePoint = placement.position.point;
       const endpointPointId = placement.position.kind === 'endpoint' ? placement.position.pointId : null;
       const lineBodyId = placement.position.kind === 'line-body' ? placement.position.entityId : null;
-      if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current);
-      pendingLineClickRef.current = window.setTimeout(() => {
-        pendingLineClickRef.current = null;
+      scheduleDrawingLineCommit(pendingLineClickRef, window, () => {
         if (placement.position.kind === 'midpoint') commitLinePoint(effectivePoint, endpointPointId, placement.interaction);
         else commitLinePoint(effectivePoint, endpointPointId, placement.interaction, lineBodyId);
-      }, 220);
+      });
       return;
     }
   };
