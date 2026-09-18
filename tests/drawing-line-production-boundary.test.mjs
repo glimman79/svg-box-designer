@@ -8,6 +8,8 @@ const inference = await import(built('drawingInference'));
 const snaps = await import(built('drawingSnapEngine'));
 const lines = await import(built('drawingLineTool'));
 const boundary = await import(built('drawingLineCommitBoundary'));
+const topology = await import(built('drawingTopology'));
+const presentation = await import(built('drawingInferencePresentation'));
 
 const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 const bounds = { x: -500, y: -500, width: 1000, height: 1000 };
@@ -45,6 +47,55 @@ const fakeClock = () => {
 const summarize = ({ candidates, snap, placement }) => ({
   candidates, snap, placement: { effectivePoint: placement.effectivePoint,
     interaction: placement.interaction, diagnostic: placement.diagnostic },
+});
+
+test('same-event continuation reads the committed transaction snapshot and is frame-equivalent to manual start', () => {
+  let document = documentFor(false);
+  const renderClosureLines = topology.resolveActiveSketchLines(document);
+  const accepted = resolve(lines.initializeNewLineAt(p.b0, 'b0'), renderClosureLines, p.s, null).placement;
+  const committed = lines.applyResolvedLineClick(accepted.interaction, accepted.effectivePoint, () => 'B', 'S');
+  document = lines.appendEntityToActiveSketch(document, committed.entity);
+
+  assert.deepEqual(renderClosureLines.map(({ id }) => id), ['A', 'T'], 'the pre-commit render closure is stale in this browser event');
+  const committedLines = topology.resolveActiveSketchLines(document);
+  assert.deepEqual(committedLines.map(({ id }) => id), ['A', 'T', 'B']);
+  assert.equal(committed.interaction.startPointId, 'S');
+
+  const pointers = [
+    { point: { x: 13, y: 66 }, ctrl: false },
+    { point: { x: 25, y: 85 }, ctrl: false },
+    { point: { x: 40, y: 100 }, ctrl: false },
+    { point: { x: 55, y: 115 }, ctrl: false },
+    { point: p.t1, ctrl: false },
+    { point: { x: 10, y: 90 }, ctrl: false },
+    { point: { x: 14, y: 66 }, ctrl: false },
+    { point: { x: 25, y: 85 }, ctrl: false },
+    { point: { x: 25, y: 85 }, ctrl: true },
+  ];
+  const run = (initial) => {
+    let interaction = initial, previousSnap = null;
+    return pointers.map(({ point, ctrl }) => {
+      const angular = lines.resolveLinePreviewPoint(interaction.start, point);
+      const candidates = inference.collectDrawingInferenceCandidates(point, committedLines, identity, bounds, interaction.start,
+        previousSnap?.channels.directionAuthority
+          ? Math.atan2(previousSnap.channels.directionAuthority.constructionDirection.y, previousSnap.channels.directionAuthority.constructionDirection.x) * 180 / Math.PI
+          : angular.snapActive ? angular.snappedAngleDegrees : null, interaction.startPointId);
+      const snap = snaps.resolveDrawingSnap({ rawPoint: point, candidates, previousSnap, ctrlOverride: ctrl,
+        axisDirectionActive: angular.snapActive && [0, 90, 180, 270].includes(angular.snappedAngleDegrees),
+        activeLineStart: interaction.start, activeLineStartPointId: interaction.startPointId });
+      const placement = lines.resolveLineEffectivePoint(interaction, point, snap, ctrl);
+      interaction = placement.interaction;
+      previousSnap = snap;
+      return { ...summarize({ candidates, snap, placement }), presentationKinds: presentation.deriveDrawingInferencePresentations(
+        snap, document.sketches.sketch, 1, identity, identity, interaction).map(({ kind }) => kind) };
+    });
+  };
+  const chainedFrames = run(committed.interaction);
+  const manualFrames = run(lines.initializeNewLineAt(p.s, 'S'));
+  assert.deepEqual(chainedFrames, manualFrames, 'candidates, authorities, effective point, semantics, and transient truth match on every pointer frame');
+  assert.equal(chainedFrames[1].snap.channels.directionAuthority?.relation, 'parallel');
+  assert.equal(chainedFrames[4].snap.type, 'endpoint');
+  assert.equal(chainedFrames.at(-1).snap.type, 'none', 'Ctrl bypass is identical and clears authority');
 });
 
 for (const [name, delayPointers] of [
