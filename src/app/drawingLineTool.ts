@@ -1,5 +1,5 @@
 import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingDocumentV2, type DrawingGeometricConstraint, type DrawingLineEntity, type DrawingPoint } from './drawingTypes.js';
-import type { DrawingInference } from './drawingInference';
+import { intersectDrawingRayWithSupport, type DrawingInference } from './drawingInference.js';
 import { canonicalCoincidentPointPair } from './drawingCoincidentConstraint.js';
 
 export type DrawingLineDraft = Readonly<{ id: string; type: 'line'; start: DrawingPoint; end: DrawingPoint; startPointId?: string; endPointId?: string }>;
@@ -313,14 +313,6 @@ const acceptedDirectionalRelationsAt = (
   } : none(false, `final geometry is not ${authority.relation} to selected reference ${authority.referenceLineId}`);
 };
 
-const intersectInfiniteSupports = (origin: DrawingPoint, direction: DrawingPoint, supportOrigin: DrawingPoint, supportDirection: DrawingPoint) => {
-  const denominator = direction.x * supportDirection.y - direction.y * supportDirection.x;
-  if (Math.abs(denominator) <= ANGULAR_DIRECTION_EPSILON) return null;
-  const dx = supportOrigin.x - origin.x, dy = supportOrigin.y - origin.y;
-  const t = (dx * supportDirection.y - dy * supportDirection.x) / denominator;
-  return t >= 0 ? { x: origin.x + t * direction.x, y: origin.y + t * direction.y } : null;
-};
-
 const intersectRayWithFiniteSegment = (origin: DrawingPoint, direction: DrawingPoint, a?: DrawingPoint, b?: DrawingPoint): DrawingPoint | null => {
   if (!a || !b) return null;
   const sx = b.x - a.x, sy = b.y - a.y;
@@ -390,7 +382,7 @@ export const resolveLineEffectivePoint = (
     const alignedPoint = composeDirectionWithAlignments(interaction.start, commonDirection, spatialSnap);
     const effectivePoint = alignedPoint ?? (acquiredDirections.length === 1 && spatialSnap.type === 'point-reference'
       && pointReference && 'supportOrigin' in pointReference && 'supportDirection' in pointReference
-      ? intersectInfiniteSupports(interaction.start, commonDirection, pointReference.supportOrigin, pointReference.supportDirection)
+      ? intersectDrawingRayWithSupport(interaction.start, commonDirection, pointReference.supportOrigin, pointReference.supportDirection)
         ?? projectPointerToDirection(interaction.start, rawPointerPoint, commonDirection)
       : projectPointerToDirection(interaction.start, rawPointerPoint, commonDirection));
     return lineResolution(effectivePoint, { ...interaction, rawPointerPoint, effectivePreviewPoint: effectivePoint,
