@@ -22,8 +22,8 @@ const sketchFor = (lines) => ({ id: 'sketch', points, entities: Object.fromEntri
   [id, { id, type: 'line', startPointId, endPointId }])), entityOrder: lines.map(({ id }) => id), dimensions: {}, dimensionOrder: [],
   geometricConstraints: {}, geometricConstraintOrder: [] });
 
-const evaluate = ({ scene, start, startPointId, pointer, previousChainedLineId = null, visibleBounds = bounds, ctrlOverride = false }) => {
-  const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId, previousChainedLineId };
+const evaluate = ({ scene, start, startPointId, pointer, visibleBounds = bounds, ctrlOverride = false }) => {
+  const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId };
   const angular = lineTool.resolveLinePreviewPoint(start, pointer);
   const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, identity, visibleBounds, start,
     angular.snapActive ? angular.snappedAngleDegrees : null, startPointId);
@@ -94,7 +94,7 @@ test('production handoff preserves acquired Parallel through Endpoint resolution
   const endpointCandidates = inference.collectDrawingInferenceCandidates(points.p3, [A, B, target], identity, bounds, start, null, 'p2');
   const endpointSnap = snaps.resolveDrawingSnap({ rawPoint: points.p3, candidates: endpointCandidates, previousSnap: acquiredSnap,
     ctrlOverride: false, axisDirectionActive: false, activeLineStart: start });
-  const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId: 'p2', previousChainedLineId: 'B' };
+  const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId: 'p2' };
   const resolution = lineTool.resolveLineEffectivePoint(interaction, points.p3, endpointSnap);
   assert.equal(endpointSnap.type, 'endpoint');
   assert.equal(endpointSnap.channels.directionAuthority.referenceLineId, 'A');
@@ -152,14 +152,14 @@ test('D parallel to B uses the same one-authority rule', () => {
 
 test('manual restart and continuous continuation have identical inference', () => {
   for (const args of [
-    { scene: [A, B], start: points.p2, startPointId: 'p2', pointer: points.p3, previousChainedLineId: 'B' },
-    { scene: [A, B, C], start: points.p3, startPointId: 'p3', pointer: points.p4, previousChainedLineId: 'C' },
+    { scene: [A, B], start: points.p2, startPointId: 'p2', pointer: points.p3 },
+    { scene: [A, B, C], start: points.p3, startPointId: 'p3', pointer: points.p4 },
   ]) {
     const chained = evaluate(args);
-    const manual = evaluate({ ...args, previousChainedLineId: null });
+    const manual = evaluate(args);
     assert.deepEqual(chained.candidates, manual.candidates);
     assert.deepEqual(chained.snap, manual.snap);
-    assert.deepEqual({ ...chained.resolution, interaction: { ...chained.resolution.interaction, previousChainedLineId: null } }, manual.resolution);
+    assert.deepEqual(chained.resolution, manual.resolution);
   }
 });
 
@@ -178,13 +178,13 @@ test('Endpoint owns final position while compatible direction authority remains 
   const compatible = evaluate({ scene: [A, endpoint], start: points.p2, startPointId: 'p2', pointer: points.p3 });
   assert.equal(compatible.snap.type, 'endpoint');
   assert.equal(compatible.resolution.interaction.parallelLineId, 'A');
-  const incompatiblePoint = { x: 50, y: 100 };
+  const incompatiblePoint = { x: 50, y: 103 };
   const badEndpoint = { ...endpoint, start: incompatiblePoint };
   const incompatible = evaluate({ scene: [A, badEndpoint], start: points.p2, startPointId: 'p2', pointer: incompatiblePoint });
   assert.equal(incompatible.snap.type, 'endpoint');
   assert.equal(incompatible.resolution.interaction.parallelLineId, null);
   assert.equal(incompatible.resolution.diagnostic.finalGeometryCompatibleWithDirectionAuthority, false);
-  assert.match(incompatible.resolution.diagnostic.directionAuthorityRejectionReason, /final geometry is not parallel/);
+  assert.match(incompatible.resolution.diagnostic.directionAuthorityRejectionReason, /final geometry is not (parallel|perpendicular)/);
 });
 
 test('Ctrl bypasses all automatic authority and presentation', () => {

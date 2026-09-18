@@ -82,11 +82,11 @@ test('direction remains free after point-reference start; ordinary Parallel rema
 
 test('support distance is stable in client space under anisotropic transforms', () => {
   const transform = { a: 1, b: 0, c: 0, d: 10, e: 10, f: 20 };
-  const screenNormal = { x: -70 / Math.sqrt(100.25), y: -3.5 / Math.sqrt(100.25) };
+  const screenNormal = { x: -55 / Math.sqrt(100.25), y: -2.75 / Math.sqrt(100.25) };
   const pointer = { x: 110 - 200 + screenNormal.x, y: 520 + 4000 + screenNormal.y };
   const result = pipeline({ pointer, scene: [angled], transform });
   assert.equal(result.snap.type, 'point-reference');
-  assert.ok(Math.abs(result.snap.screenDistance - 7) < 1e-9);
+  assert.ok(Math.abs(result.snap.screenDistance - 5.5) < 1e-9);
 });
 
 test('multiple semantic incident Lines emit distinct non-redundant supports and coordinate equality does not imply incidence', () => {

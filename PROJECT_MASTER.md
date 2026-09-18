@@ -266,6 +266,14 @@ Contributors are immutable. `REPLACES` owns a physical source edge; `REFERENCES`
 8. Puzzle and global ProjectDocument architecture remain future scope until implemented.
 9. Each chained segment is a new Line: continuation supplies start topology only and cannot alter inference behavior.
 
+### 16.1 Continuous Line transaction ownership
+
+**[IMPLEMENTED][AWAITING BROWSER VERIFICATION]** The 220 ms Line delay exists solely to let native double-click finish a construction without committing the second segment. During that interval, the frozen accepted placement owns one pending transaction. A later primary Line click synchronously flushes that transaction first, which persists the segment and initializes its continuation at the exact endpoint SketchPoint; only then is the new click resolved. Escape, tool change, double-click finish, and unmount explicitly cancel pending work. Timer callbacks verify transaction identity, so a stale callback cannot mutate a newer segment.
+
+Manual starts and committed continuations both use `initializeNewLineAt`: resolved coordinate/topology enters fresh segment-local interaction and snap state, after which generic inference collects and resolves candidates. The inert `previousChainedLineId` inference field has been removed; continuation does not carry a chain-specific inference policy.
+
+Direction and Point Reference acquisition is intentionally tighter than positional targeting: Parallel/Perpendicular acquire at 5 px and Point Reference at 6 px, while Endpoint remains 9 px and Midpoint/finite Line/X/Y alignment remain 8 px. Their existing release hysteresis remains 11 px (12 px for Endpoint). Once direction authority is established, candidate acquisition distance does not release it; Ctrl, axis authority, incompatible direction supersession, start change, commit/cancel/restart, or an invalid reference remain legitimate release boundaries. `candidateForAuthority` still validates the committed reference through current discovery and is a separate follow-up concern, not part of transaction ownership.
+
 ## 17. Immediate next work
 
 1. **First: browser-verify plural Line inference presentation and minimal persistence.** The first 90° turn must preview and persist Perpendicular. At the second turn, equivalent Parallel + Perpendicular may both be detected, contribute to one final direction, and preview independently, while minimal persistence may store Parallel alone. Confirm final-point acquisition, threshold movement, simultaneous feedback, and hover-to-click geometry identity.

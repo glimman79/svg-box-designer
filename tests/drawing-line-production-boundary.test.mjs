@@ -44,7 +44,7 @@ const fakeClock = () => {
 
 const summarize = ({ candidates, snap, placement }) => ({
   candidates, snap, placement: { effectivePoint: placement.effectivePoint,
-    interaction: { ...placement.interaction, previousChainedLineId: null }, diagnostic: placement.diagnostic },
+    interaction: placement.interaction, diagnostic: placement.diagnostic },
 });
 
 for (const [name, delayPointers] of [
@@ -84,7 +84,6 @@ for (const [name, delayPointers] of [
   assert.equal(document.sketches.sketch.entities.B.endPointId, 'S');
   assert.deepEqual(interaction.start, p.s);
   assert.equal(interaction.startPointId, 'S');
-  assert.equal(interaction.previousChainedLineId, 'B');
   assert.equal(snap, null, 'both state/ref model enter the continued segment without old hysteresis');
 
   const postPointers = [{ x: 25, y: 85 }, { x: 40, y: 100 }, { x: 55, y: 115 }];
@@ -110,22 +109,56 @@ for (const [name, delayPointers] of [
     'pointermove remains executable and resolves the old B interaction while commit is pending');
 });
 
-test('a second accepted chain click inside the 220 ms window cancels B and is resolved as another B endpoint', () => {
+test('a second click inside 220 ms flushes B before it is resolved as C', () => {
   const pending = { current: null };
   const clock = fakeClock();
-  const oldInteraction = { ...lines.EMPTY_LINE_INTERACTION, start: p.b0, startPointId: 'b0' };
-  const acceptedB = resolve(oldInteraction, [A, T], p.s, null);
-  const intendedCPointer = { x: 40, y: 100 };
-  const prematureC = resolve(acceptedB.placement.interaction, [A, T], intendedCPointer, acceptedB.snap);
+  let interaction = lines.initializeNewLineAt(p.b0, 'b0');
+  let scene = [A, T];
   const committed = [];
-  boundary.scheduleDrawingLineCommit(pending, clock.scheduler, () => committed.push({ name: 'B', placement: acceptedB.placement }));
-  boundary.scheduleDrawingLineCommit(pending, clock.scheduler, () => committed.push({ name: 'premature-C', placement: prematureC.placement }));
+  const acceptedB = resolve(interaction, scene, p.s, null);
+  boundary.scheduleDrawingLineCommit(pending, clock.scheduler, () => {
+    const click = lines.applyResolvedLineClick(acceptedB.placement.interaction, acceptedB.placement.effectivePoint, () => 'B', 'S');
+    interaction = click.interaction; scene = [...scene, { ...B }]; committed.push(click.entity);
+  });
+  const intendedCPointer = { x: 40, y: 100 };
+  assert.equal(boundary.flushDrawingLineCommit(pending, clock.scheduler), true);
+  const acceptedC = resolve(interaction, scene, intendedCPointer, null);
+  boundary.scheduleDrawingLineCommit(pending, clock.scheduler, () => {
+    const click = lines.applyResolvedLineClick(acceptedC.placement.interaction, acceptedC.placement.effectivePoint, () => 'C', 'C-end');
+    interaction = click.interaction; committed.push(click.entity);
+  });
   clock.run();
-  assert.equal(committed.length, 1);
-  assert.equal(committed[0].name, 'premature-C');
-  assert.deepEqual(committed[0].placement.interaction.start, p.b0,
-    'the replacement click is resolved against old B, because continuation C does not exist yet');
-  assert.deepEqual(committed[0].placement.effectivePoint, intendedCPointer);
-  assert.notDeepEqual(committed[0].placement.effectivePoint, p.s,
-    'the accepted B endpoint/topology is lost before persistence');
+  assert.deepEqual(committed.map(({ id }) => id), ['B', 'C']);
+  assert.equal(committed[0].endPointId, 'S');
+  assert.equal(committed[1].startPointId, 'S', 'C resolves only after B establishes continuation topology');
+  assert.deepEqual(committed[1].start, p.s);
+});
+
+test('multiple rapid clicks commit every accepted segment exactly once with connected topology', () => {
+  const pending = { current: null }, clock = fakeClock();
+  let interaction = lines.initializeNewLineAt({ x: 0, y: 0 }, 'P0');
+  const committed = [];
+  for (const [index, point] of [{ x: 10, y: 10 }, { x: 20, y: 20 }, { x: 30, y: 30 }].entries()) {
+    boundary.flushDrawingLineCommit(pending, clock.scheduler);
+    const accepted = resolve(interaction, [], point, null).placement;
+    boundary.scheduleDrawingLineCommit(pending, clock.scheduler, () => {
+      const click = lines.applyResolvedLineClick(accepted.interaction, accepted.effectivePoint, () => `L${index + 1}`, `P${index + 1}`);
+      interaction = click.interaction; committed.push(click.entity);
+    });
+  }
+  clock.run();
+  assert.deepEqual(committed.map(({ id, startPointId, endPointId }) => ({ id, startPointId, endPointId })), [
+    { id: 'L1', startPointId: 'P0', endPointId: 'P1' },
+    { id: 'L2', startPointId: 'P1', endPointId: 'P2' },
+    { id: 'L3', startPointId: 'P2', endPointId: 'P3' },
+  ]);
+});
+
+test('explicit cancellation discards the pending accepted click', () => {
+  const pending = { current: null }, clock = fakeClock();
+  let commits = 0;
+  boundary.scheduleDrawingLineCommit(pending, clock.scheduler, () => commits++);
+  assert.equal(boundary.cancelDrawingLineCommit(pending, clock.scheduler), true);
+  clock.run();
+  assert.equal(commits, 0);
 });

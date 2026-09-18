@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes';
 import { appendEntityToActiveSketch, applyResolvedLineClick, automaticAxisConstraintKind, cancelLineInteraction, diagnoseLineCommonDirection, EMPTY_LINE_INTERACTION, hasAngularPresentationTruth, resolveLineEffectivePoint, resolveLinePreviewPoint, selectMinimalLineSemanticConstraints, type LineToolInteraction } from './drawingLineTool';
-import { scheduleDrawingLineCommit } from './drawingLineCommitBoundary';
+import { cancelDrawingLineCommit, flushDrawingLineCommit, scheduleDrawingLineCommit, type PendingDrawingLineCommit } from './drawingLineCommitBoundary';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
 import { collectDrawingInferenceCandidates, derivePointReferenceGuide } from './drawingInference';
@@ -196,7 +196,7 @@ export function DrawingWorkspace({
   const lineCursor = cadCursor; // Line is currently the sole consumer of the shared CAD cursor.
   const [drawingSnap, setDrawingSnap] = useState<DrawingSnap | null>(null);
   const lastPointerClientRef = useRef<CoordinatePoint | null>(null);
-  const pendingLineClickRef = useRef<number | null>(null);
+  const pendingLineClickRef = useRef<PendingDrawingLineCommit | null>(null);
   const activeToolRef = useRef<DrawingActiveTool>(activeTool);
   const previousToolActivationRef = useRef<CadToolActivationRecord<DrawingActiveTool> | null>(null);
   const lineInteractionRef = useRef(lineInteraction);
@@ -361,7 +361,6 @@ export function DrawingWorkspace({
           axisDirectionActive,
           lineStart: interaction.start, startPointId: interaction.startPointId,
           startLineId: interaction.startLineId, startMidpointLineId: interaction.startMidpointLineId,
-          previousChainedLineId: interaction.previousChainedLineId,
           incidentLineIds: resolvedLines.filter((line) => interaction.startPointId
             && (line.startPointId === interaction.startPointId || line.endPointId === interaction.startPointId)).map(({ id }) => id),
         },
@@ -521,8 +520,7 @@ export function DrawingWorkspace({
       return;
     }
     if (activeToolRef.current === 'select') return;
-    if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current);
-    pendingLineClickRef.current = null;
+    cancelDrawingLineCommit(pendingLineClickRef, window);
     const empty = cancelLineInteraction();
     lineInteractionRef.current = empty;
     setLineInteraction(empty);
@@ -661,6 +659,9 @@ export function DrawingWorkspace({
     }
     if (activeTool === 'line') {
       if (event.detail > 1) return;
+      // A subsequent primary click belongs to the continuation. Establish it
+      // synchronously before resolving that click against Line state.
+      flushDrawingLineCommit(pendingLineClickRef, window);
       // Resolve synchronously at acceptance time. The delayed commit owns this immutable point.
       const placement = resolvePlacement({ x: event.clientX, y: event.clientY }, event.ctrlKey || ctrlSnapOverride, 'click');
       if (!placement) return;
@@ -746,11 +747,10 @@ export function DrawingWorkspace({
     if (activeTool === 'select') setGeometryPreselection(resolveDimensionCandidate({ x: event.clientX, y: event.clientY }));
   };
 
-  useEffect(() => () => { if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current); }, []);
+  useEffect(() => () => { cancelDrawingLineCommit(pendingLineClickRef, window); }, []);
 
   const selectTool = (tool: DrawingActiveTool, activationMode: 'normal' | 'persistent' = 'normal') => {
-    if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current);
-    pendingLineClickRef.current = null;
+    cancelDrawingLineCommit(pendingLineClickRef, window);
     setLineInteraction(cancelLineInteraction());
     lineInteractionRef.current = cancelLineInteraction();
     setDrawingSnap(null);
@@ -782,8 +782,7 @@ export function DrawingWorkspace({
   const clearLineCursor = clearCadCursor;
 
   const finishLine = () => {
-    if (pendingLineClickRef.current !== null) window.clearTimeout(pendingLineClickRef.current);
-    pendingLineClickRef.current = null;
+    cancelDrawingLineCommit(pendingLineClickRef, window);
     setLineInteraction(cancelLineInteraction());
     setDrawingSnap(null);
     drawingSnapRef.current = null;
