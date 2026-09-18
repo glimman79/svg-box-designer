@@ -1,291 +1,140 @@
 # SVG Box Designer — Project Master
 
-## 1. Document authority and status language
+## 1. Purpose and authority
 
-This is the durable authority for **current** product scope, architecture, accepted behavior, known debt, and next work. `PROJECT_HISTORY.md` records why the architecture evolved; `CHANGELOG.md` records releases. Historical reports and passing tests are evidence, not authority over this document or a contrary browser result.
+This document describes the **current** product and architectural truth. Code on the accepted `main` branch wins if this document drifts. Browser verification is the acceptance authority for pointer sequences and visible interaction; tests are supporting regression evidence. `PROJECT_HISTORY.md` preserves evolution, `CHANGELOG.md` is a concise completed-change record, and `Architecture.md` is a construction-pipeline orientation map.
 
-- **[IMPLEMENTED]** — present in the current repository.
-- **[ACCEPTED / LOCKED]** — browser-accepted or release-accepted behavior that must not regress without an approved change.
-- **[IN PROGRESS]** — present work whose direction is understood but whose required behavior has not passed final browser acceptance.
-- **[KNOWN DEBT]** — an observed limitation, inconsistency, or cleanup obligation.
-- **[PLANNED]** — approved direction not yet implemented.
-- **[CONCEPT / NOT YET DECIDED]** — a hypothesis or unresolved design question.
-- **[HISTORICAL]** — context only, not current authority.
+Status terms used here are **Implemented**, **Browser-verified / regression-sensitive**, **Planned**, and **Known limitation**. Historical proposals and diagnostics under `docs/` are not current authority.
 
-For interactive Drawing behavior, unit, solver, state, and render-level SVG tests are necessary but not sufficient. Browser acceptance is authoritative for pointer sequences, inference acquisition/release, transient previews, Direct Manipulation, selection arbitration, and cursors. A user-observed browser failure remains unresolved even when automated tests pass.
+## 2. Product organization
 
-## 2. Project identity and organization
+SVG Box Designer is a React/TypeScript/Vite application with SVG-based presentation. It has three named application areas:
 
-SVG Box Designer is a React/TypeScript/Vite application using SVG presentation. Its top-level product organization remains:
+1. **2D Drawing — Implemented and actively developed.**
+2. **Puzzle — Planned; the disabled selector is not an implementation.**
+3. **Box / Construction — Implemented.** Manufacturing is part of this area rather than a fourth workspace.
 
-1. **2D Drawing — [IMPLEMENTED, actively developing]**
-2. **Puzzle — [PLANNED]**
-3. **Box / Construction — [IMPLEMENTED]**
+The accepted Box / Construction compatibility baseline is v1.2 (`package.json` version `1.2.0`). Later Drawing work does not rename that release.
 
-Manufacturing belongs to Box / Construction; it is not a fourth module. Drawing is substantial post-v1.2 development, not a claim that the whole product has a new formal release.
+## 3. Document models and shared boundary
 
-## 3. Locked Box release baseline
+Construction uses `SvgDocumentModel`, which preserves SVG root information, source edges, panels, contours, containment, dimensions, and diagnostics. Panel Manager adds panel identity/thickness authority needed by construction.
 
-- **Release:** v1.2 — TB + Wall Stabilization
-- **Semantic version:** `1.2.0`
-- **Locked release commit:** `e787eb5b1f3ff530fbae9292d56ec4a1da0e2ba2`
-- **Official tag recorded by project governance:** `v1.2.0`
+Drawing owns a separate versioned `DrawingDocumentV2`. It contains ordered sketches, stable points and entities, dimensions, and geometric constraints. Drawing state is not currently embedded in a global project document.
 
-**[IMPLEMENTED][ACCEPTED / LOCKED]** v1.2 is the accepted Box / Construction compatibility boundary. Its rectangular TB/W ownership, composition, reconciliation, FinalGeometry, manufacturing, and restore semantics remain locked. Drawing work occurred afterward and does not rename or reopen that release.
+A shared, versioned cross-workspace `ProjectDocument`, cross-workspace references, and global History remain planned. Existing Drawing and construction models should be wrapped or migrated deliberately rather than implicitly conflated.
 
-## 4. Shared project architecture: current boundary
+## 4. 2D Drawing architecture
 
-**[IMPLEMENTED]** `SvgDocumentModel` remains the imported/resolved geometry model used by construction. It preserves SVG root information, detected edges, panels, contours, containment, dimensions, and diagnostics; Panel Manager supplies construction panel thickness.
+### 4.1 Scope and topology
 
-**[IMPLEMENTED]** Drawing currently owns a separate versioned `DrawingDocumentV2`, sketch state, stable identities, constraints, dimensions, solver, and bounded Drawing History. This is real application architecture, but it is not yet a global multi-workspace document.
+The current workspace implements Select, Line, Dimension, a floating Constraints tool, Direct Manipulation, snapping/inference, solver-backed constraints, and bounded Drawing Undo/Redo. Menu visibility does not prove implementation of other prospective geometry tools.
 
-**[PLANNED]** A shared versioned `ProjectDocument` must eventually aggregate or reference Drawing, imported SVG, Puzzle, construction, manufacturing settings, stable cross-module references, dependency/revision metadata, and workspace state. Global cross-workspace History and invalidation are also future work. Existing useful models must be wrapped and migrated, not rewritten merely to obtain a common root.
+`DrawingSketchV2` stores `DrawingSketchPoint` (`SketchPoint`) records separately from `DrawingLineEntity` records. Each Line references `startPointId` and `endPointId`; connected Lines share a SketchPoint identity. Resolved coordinates are derived from those references. Equal coordinates alone do not create topology, and migration of old coordinate-embedded Lines does not invent connectivity.
 
-## 5. 2D Drawing — current implementation
+Every committed segment is its own Line. A continuation begins a **fresh Line interaction** at the committed end SketchPoint. No candidate, acquired snap, direction authority, or other transient inference state is inherited. For equivalent document geometry, topology, pointer input, and viewport, a manual fresh Line and a chained continuation use the same inference architecture.
 
-### 5.1 Scope
+### 4.2 Dimensions, constraints, and solver
 
-**[IMPLEMENTED]** Drawing has a workspace, Line and Dimension authoring, explicit sketch topology, snapping/inference, solver-backed dimensions and geometric constraints, Direct Manipulation, constraint presentation, a floating Constraints tool, and its own Undo/Redo transactions. Other prospective profile, curve, trim, mirror, rectangle, circle, and construction tools are **[PLANNED]** unless present in code; visibility in a menu is not implementation.
+The model supports driving and reference dimensions over stable point/Line references: aligned, horizontal, and vertical point distances; point-to-Line distance; Line-to-Line distance; and Line-to-Line angle. Reference dimensions annotate but add no equation.
 
-### 5.2 Sketch topology
+First-class geometric constraints are Horizontal, Vertical, Parallel, Perpendicular, Coincidence (point/point and point/linear-support), and Midpoint. The floating Constraints tool exposes a broader catalog, but only choices backed by the current applicability and solver architecture are enabled.
 
-**[IMPLEMENTED]** `DrawingSketchV2` stores `DrawingSketchPoint` records and `DrawingLineEntity` records. A Line references `startPointId` and `endPointId`; it does not own unrelated endpoint coordinates. Connected Lines can share a SketchPoint identity. Points, entities, dimensions, and geometric constraints have stable IDs and explicit order arrays. Resolved Line coordinates are derived from referenced points. Legacy coordinate-embedded documents migrate without inventing connectivity from equal coordinates.
+SketchPoint coordinates are solver variables. Typed driving dimensions and geometric constraints produce equations, connected-component solving produces resolved geometry, and rank/null-space analysis classifies degrees of freedom. Invalid, degenerate, duplicate, or unsatisfied requests fail closed. Direct Manipulation requests movement through this semantic authority; it does not permanently bypass constraints.
 
-### 5.3 Solver and semantic authority
+### 4.3 Snap and inference channels
 
-**[IMPLEMENTED]** Drawing is solver-backed:
+Line placement deliberately separates:
 
-```text
-SketchPoint coordinate variables
-+ typed driving dimensions and geometric constraints
-+ residual equations and Jacobian rows
-+ connected-component solving
-+ rank / null-space / degree-of-freedom analysis
-→ resolved sketch geometry
-```
+- **position authority** — the one effective accepted endpoint;
+- **direction authority** — an established construction direction such as H/V, angular, Parallel, or Perpendicular;
+- **topology authority** — reuse of an existing SketchPoint versus creation of a new one;
+- **semantic evidence** — compatible geometric relations true at the accepted placement;
+- **presentation** — transient guides/markers derived from accepted inference;
+- **persistence** — the minimal durable semantic constraints created with the Line.
 
-Reference dimensions contribute annotation truth but no driving equation. Solver verification fails closed for invalid, degenerate, or unsatisfied systems. Coordinates are resolved results; destructive endpoint mutation is not constraint authority.
+**Compatibility comes before priority.** Priority selects among incompatible positional alternatives; it must not discard compatible direction or semantic truth. A hard Endpoint, Midpoint, or finite-Line target can own position while an independently acquired direction remains authoritative, provided final geometry satisfies it.
 
-**[IMPLEMENTED][ACCEPTED / LOCKED]** Direct Manipulation moves selected points or Lines by solving the affected constraint component and propagates motion through shared topology and constraints. It must never permanently bypass semantic constraint authority.
+Endpoint is authoritative for shared topology and exact endpoint position. Endpoint authority does not become a semantic allow-list: a selected direction is truth-checked against that fixed position and may remain accepted. Midpoint and finite-Line acquisition similarly own their appropriate positional result without silently acquiring unrelated authority.
 
-### 5.4 Line solver state
+Candidate discovery includes existing endpoints/shared points, Midpoint, finite Line body, X/Y alignment, H/V, angular construction, Parallel, Perpendicular, and normal-to-incident-Line Point References. Screen-space tolerances govern acquisition while candidate membership comes from committed sketch geometry, not only the visible viewport.
 
-**[IMPLEMENTED]** Projected Line mobility from solver null-space behavior classifies Lines as `FREE`, `CONSTRAINED`, or `FULLY_LOCKED`. Current browser-used colors are `#39FF5A`, `#00A83E`, and `#111827`, respectively. `#00A83E` is temporarily accepted, **not** permanently product-locked. Hover/selection color is a separate interaction state.
+During Line authoring, Ctrl is a raw bypass: it suppresses automatic acquisition, associated guides, and automatic semantics for that live placement. It does not remove committed topology or constraints. In Select, Ctrl instead toggles selection.
 
-## 6. Drawing interaction
+### 4.4 Established direction and Point Reference invariant
 
-**[IMPLEMENTED][ACCEPTED / LOCKED]** Left mouse performs current authoring/selection, right-drag pans, the wheel zooms, and Esc leaves the appropriate tool or interaction state. Empty canvas uses a crosshair; selectable/clickable/draggable geometry uses the normal/default arrow; active tools use tool-specific cursors; only an actual right-drag pan uses grabbing. Normal CAD geometry does not use a hand/pointer cursor.
+A Line may establish a direction authority (for example Parallel) and independently acquire a compatible positional Point Reference. Once direction is established, Point Reference support is evaluated against that construction:
 
-Ctrl is deliberately contextual:
+- a support with a unique valid forward intersection may define position;
+- a parallel/coincident or behind support that cannot uniquely locate a point remains **reference-only evidence** and cannot steal position authority.
 
-- while authoring a Line, Ctrl is a temporary raw override of automatic inference/snap;
-- in ordinary Select, Ctrl adds/removes selection and remains selection-only rather than starting Direct Manipulation.
+This distinction is geometric and general, not a chained-Line exception. It prevents a normal associated with a start-incident Line, coincident with the established construction direction, from masking a later useful support.
 
-### Selection and point presentation
+**Browser-verified / regression-sensitive invariant:** with Parallel active, natural pointer movement along the construction can acquire the compatible Perpendicular-derived Point Reference at its useful intersection. Sideways or off-Line pointer movement is not required.
 
-**[IMPLEMENTED]** Line hover has a small square marker, point hover a slightly larger square marker, and a selected point a dark-blue circular marker. Point hit areas are larger than their visible marks. A persistent Coincidence marker is an offset square. These are behavioral descriptions, not frozen pixel specifications.
+An established direction has a lifecycle independent of the short discovery band: after acquisition it remains the construction authority until explicitly superseded, released, bypassed, or the interaction ends. Presentation and persistence consume the accepted placement; they do not rerun competing authority selection.
 
-## 7. Snap and inference authority
+### 4.5 Transient and persistent semantics
 
-### 7.1 Separate channels
+Detection, presentation, and persistence are different stages. A transient inference is evidence during authoring; a persistent geometric constraint is durable document meaning. Geometrically equivalent direction demands may be normalized for construction and minimal persistence without erasing their semantic identity prematurely.
 
-The architecture distinguishes:
+Transient inference and persistent constraint presentation use shared semantic layout authorities where available. Midpoint is the regression-sensitive example: its transient and persistent `—□—` use the same placement geometry and differ by state styling. Parallel markers likewise derive from shared layout rules. UI-specific or solver-specific duplicate marker geometry should not be introduced.
 
-1. **Position** — the one effective endpoint used to author geometry;
-2. **Topology** — reuse of an existing SketchPoint or creation of a new identity;
-3. **Semantics** — all compatible relations true at accepted geometry;
-4. **Presentation** — transient guides and markers derived from those relations;
-5. **Ctrl raw override** — temporary suppression of automatic acquisition and its guides/semantics.
+### 4.6 Accepted placement and commit ownership
 
-**[ACCEPTED / LOCKED] COMPATIBILITY BEFORE PRIORITY.** One position/effective-point authority does **not** imply only one geometric semantic relation. Compatible relations simultaneously true at final geometry must coexist. Priority arbitrates incompatible positional alternatives; it must not erase compatible semantic truth.
+A click first accepts a resolved placement; the transaction that owns that accepted result must also own its commit. Native double-click disambiguation may delay the callback, but a later same-tool primary click flushes the pending owner before resolving the next placement. Timer identity prevents stale callbacks from committing into a later interaction.
 
-### 7.2 Implemented acquisition and arbitration
+The committed document snapshot is made visible to candidate collection in the same event. This preserves rapid Line segments, exposes newly committed topology immediately, and keeps manual and chained starts equivalent. Cancellation may clear a pending transaction; a new click must not silently replace and lose it.
 
-**[IMPLEMENTED]** The resolver has explicit point/Line candidates and retention thresholds. Current effective authority follows these code-level classes rather than one universal flat list: existing shared-point/Endpoint topology and Midpoint special-point acquisition are strongest point authorities; H/V and compatible Parallel/Perpendicular or generic angular direction resolve authored direction; finite Line-body Point-to-Line acquisition and X/Y point-reference alignment supply positional/reference alternatives; raw cursor is fallback. H/V has explicit axis authority and suppresses redundant perpendicular semantics at axis-aligned chained corners.
+### 4.7 Interaction and History
 
-Implemented inference families include Endpoint/shared point, finite Line body, X/Y point alignment, H/V, generic angular construction, Parallel, Perpendicular, Midpoint, and point-based 90-degree reference direction. Inference acquisition, a transient symbol, and a committed semantic constraint are separate capabilities and must be reported separately.
+Left mouse authors/selects, right-drag pans, the wheel zooms, and Esc exits the applicable interaction. Drawing transactions group semantic user actions for Undo/Redo. UI-only panel state does not create document History. Deleting geometry cleans dependent dimensions/constraints through model operations.
 
-The point-based 90-degree reference is a transient construction direction from a visible endpoint incident to a Line. It uses presentation-only guide geometry, is not automatically a persistent `PERPENDICULAR` constraint, may deduplicate axis normals with H/V, and is suppressed by Ctrl.
+## 5. Box / Construction architecture
 
-### 7.3 Ctrl raw override
+### 5.1 Import and authoring
 
-**[IMPLEMENTED][ACCEPTED / LOCKED]** During Line authoring, held Ctrl bypasses automatic Endpoint, finite Line body, X/Y, H/V, generic angular, Parallel, Perpendicular, point-reference 90-degree, and associated automatic semantics/guides in the live authoring path. It does not delete committed constraints or break already committed topology.
+The application can begin with an empty Box document or parse an imported SVG into source geometry. Straight edges are detected from supported SVG line/rect/polyline/polygon and straight path forms. Panel Manager identifies panels and supplies thickness before construction tools are applied.
 
-### 7.4 Geometric-demand equivalence, live presentation, and automatic persistence
+Implemented workflows are:
 
-**[IMPLEMENTED][IN PROGRESS] DETECTION IS NOT PRESENTATION. PRESENTATION IS NOT PERSISTENCE. COMPATIBILITY BEFORE PRIORITY. GEOMETRIC EQUIVALENCE DOES NOT ERASE SEMANTIC IDENTITY.** Line direction detections normalize to tolerance-compared, unoriented geometric demands while retaining their separate semantic family and reference identity. Equivalent demands may be grouped to compose compatible direction/coordinate requirements into one accepted final endpoint. Exact Endpoint/Midpoint topology and finite-Line support remain hard positional authorities; `snap.type` describes position ownership rather than a semantic allow-list. Generic angular and point-reference construction can support the same geometry without thereby becoming persistent Line-to-Line constraints.
+- **TB (Top/Bottom):** paired edge roles and generated finger-joint profiles;
+- **W (Wall):** W-A/W-B authoring with per-panel TB role guidance and TB-equivalent physical generation;
+- **S (Slot):** paired roles, slot/tab geometry, offsets, and panel-thickness-derived depth/length behavior.
 
-Parallel and Perpendicular are direction relations, not unique candidate points. Their projected candidate points establish a ray while Line length remains pointer-controlled. Raw detections remain plural, but equivalent Parallel and Perpendicular observations are normalized before authoring authority is selected. Exactly one relation governs a non-axis authored ray; Parallel is the deterministic representative when an acquired Parallel and Perpendicular describe the same ray. The redundant observation is neither a second direction authority nor a second transient marker. Perpendicular alone remains a normal direction authority, preview, and automatically persistent constraint.
+J/P, angle-aware assembly variants, and a static 3D preview are not current implemented product capabilities.
 
-Compatible semantic truth may coexist at accepted geometry, but semantic truth does not automatically grant authoring authority, transient relevance, or persistence. The selected non-axis direction authority carries its reference-Line geometry through final resolution. Endpoint, Midpoint, and finite-Line targets independently own position; one shared final-geometry check validates the already-selected direction against their frozen endpoint rather than rediscovering a winner from acquired channels. Automatic persistence consumes that accepted authority result rather than minimizing a second plural authority list.
+### 5.2 Generated geometry, composition, and panel authority
 
-### 7.5 Continuous Line authoring invariant
+Connection/workflow state is semantic authoring authority. Generators emit typed `GeneratedGeometryItem` output and metadata; they do not directly own the final panel contour.
 
-**[IMPLEMENTED][IN PROGRESS]** Every segment created during continuous Line authoring is a new Line. Continuation supplies the committed Line's end SketchPoint as the next Line's start SketchPoint, and retains the previous Line ID only as authoring-workflow metadata. It does not create a separate inference mode. Candidate discovery, acquisition, arbitration, geometry resolution, semantic truth, presentation, and persistence are determined by current document geometry and SketchPoint topology just as they are after manually restarting the Line tool at that same point.
+`panelComposer` is the panel-composition authority. Production uses **mixed** authority: contributors from multiple tools may compose one panel, while same-edge replacement conflicts fail closed. Source-edge relationships remain stable—particularly S-B references to original/imported edges—rather than being silently rebound to a generated boundary.
 
-Point-reference discovery already derives incident Lines from stable SketchPoint identity rather than drawing history. Production-path A/B regressions compare manual restart with continuation for the next two Lines and find candidates, channels, resolved geometry, semantic truth, presentation, and persistence equivalent. The audit did find and remove a dormant legacy resolver input and branch that inspected `previousChainedLineId` plus the previous Line's axis constraint. Normal production snaps reached shared direction resolution before that branch, so it was not the first observed production difference and is not claimed as the root cause of the reported browser behavior. Its removal makes the invariant structural and prevents non-production/legacy snap shapes from creating a chain-only mode. Browser verification remains outstanding.
+Post-composition reconciliation maps generated-profile semantics to composed boundaries and preserves physical/nonphysical projection lineage. `FinalGeometry` is the downstream contract consumed by preview, manufacturing, and export; downstream code must not reconstruct generator intent from UI labels.
 
-**[IMPLEMENTED][IN PROGRESS]** Direction acquisition is now topology-independent: equivalent Parallel and Perpendicular observations are classified as direction candidates and reduced to one authoring authority regardless of whether the redundant reference is start-incident or elsewhere. The former start-incident-only rejection policy was removed. A first-corner Perpendicular remains available when no governing Parallel is acquired. Endpoint, Midpoint, and finite-Line acquisition remain separate position authorities and can freeze or validate the free end without becoming a second direction authority.
+`VITE_PANEL_COMPOSITION_AUTHORITY_MODE` can select `mixed`, `single-tool`, or `legacy`. `mixed` is normal production policy. The others are rollback/diagnostic compatibility paths, not preferred architecture. Applied snapshots restore their stored resolved authority and are not silently recomposed.
 
-Semantic candidate discovery uses every committed Line and SketchPoint rather than filtering reference points through the current viewport. Screen-space distance still controls acquisition, so zoom affects tolerances as designed; panning no longer changes candidate membership. Presentation projects the selected authoring authority, and persistence consumes that same authority. Browser verification remains the final acceptance boundary.
+### 5.3 Manufacturing and export
 
-## 8. Drawing constraints
+Manufacturing transforms operate after Final Geometry. Slot/tap clearance is applied to the appropriate generated physical roles before kerf compensation; contour classification controls inside/outside offset direction. Preview and clean SVG export consume the compensated final contours. Export before Apply remains a source/label reference export rather than pretending unresolved authoring state is manufacturing output.
 
-### 8.1 Floating Constraints tool
+## 6. Puzzle
 
-**[IMPLEMENTED]** The compact, movable, non-modal panel contains 14 visible choices: Distance, Length, Angle, Radius / Diameter, Symmetry, Midpoint, Fix, Coincidence, Concentricity, Tangency, Parallelism, Perpendicular, Horizontal, and Vertical. A centralized applicability function is the sole selection-to-constraint policy authority. Only Midpoint, Coincidence, Parallelism, Perpendicular, Horizontal, and Vertical are currently implemented there; implemented choices are enabled only for applicable, nonduplicate selections. The rest remain disabled/grey and must not be treated as implemented.
+Puzzle has a reserved, disabled workspace selector only. It has no current document, tools, solver, or export pipeline and must be described as planned.
 
-**[IMPLEMENTED][ACCEPTED / LOCKED]** The panel floats above Drawing, can be dragged, retains its position during the session, has a close control, remains open after apply, and is non-modal. While closed, ordinary click replaces selection and may begin Direct Manipulation; Ctrl-click toggles without manipulation. While open, ordinary geometry click accumulates/toggles without a modifier and does not begin Direct Manipulation. Empty-canvas click clears geometry selection but leaves the panel open. OK applies, clears selection, and leaves it open. Esc closes it, clears relevant selection, and restores normal Select behavior. Panel-only OK/Esc state creates no History transaction.
+## 7. Cross-cutting invariants
 
-### 8.2 Implemented first-class constraints
+- Stable IDs and explicit semantic references outrank coordinate coincidence or UI labels.
+- Exactly one layer owns each decision: resolver for accepted Drawing placement, solver for constrained coordinates, panel composer for panel composition, and FinalGeometry for downstream physical geometry.
+- Compatibility is evaluated before positional priority discards information.
+- Transient evidence is not persistent intent; persistence occurs only at an accepted transaction boundary.
+- Restores and migrations fail closed rather than silently reinterpret stored geometry.
+- Browser-observed interactive behavior overrides a contradictory synthetic test claim until reconciled.
 
-- **Horizontal / Vertical — [IMPLEMENTED].** One-Line axis constraints use solver equations. Accepted automatic H/V can commit them. A Line may not silently replace or duplicate an existing opposite/same axis constraint; centralized applicability disables either axis choice once hard axis intent exists.
-- **Parallel — [IMPLEMENTED].** An unordered stable Line pair uses a normalized directional/cross-product residual. It owns direction only, not position, distance, or length. Persistent presentation uses paired `II` marks. **[ACCEPTED / LOCKED]** automatic Parallel and its transient mark work in the browser while Parallel is active alone.
-- **Perpendicular — [IMPLEMENTED].** An unordered Line pair uses a normalized dot-product relation. Automatic Perpendicular is used for appropriate non-axis-aligned cases; axis-aligned chained corners retain H/V rather than redundant Perpendicular. **[ACCEPTED / LOCKED]** persistent/reference presentation supports a shared point for connected Lines, infinite-support intersection for separated Lines, a support gap, dynamic marker-side choice, and side flipping as geometry changes. Support geometry is presentation only.
-- **Coincidence — [IMPLEMENTED].** `point-point` constrains two stable SketchPoints together. `point-linear-support` constrains a point to an infinite Line support while retaining slide freedom. Persistent marker behavior exists. Transient symbol parity is **[KNOWN DEBT]**.
-- **Midpoint — [IMPLEMENTED].** A SketchPoint plus target Line produces two midpoint equality equations. Manual Midpoint can replace redundant Coincidence for the same Point→Line support. Persistent presentation is `—□—`; automatic Midpoint acquisition and semantic commit exist.
+## 8. Current limitations and documentation boundaries
 
-### 8.3 Current browser-verified checkpoint
-
-**[ACCEPTED / LOCKED]**
-
-- Midpoint automatic snap works.
-- Midpoint transient symbol works.
-- Midpoint transient placement uses the persistent Midpoint marker layout authority: before click it has transient styling, after click persistent styling, without a spatial jump.
-- Parallel automatic inference works while active alone.
-- Parallel transient `II` works while Parallel remains active alone and follows the persistent marker layout principle.
-- Perpendicular functionality and presentation exist as described above.
-
-These acceptances do **not** accept Parallel + Perpendicular coexistence.
-
-## 9. Dimensions
-
-**[IMPLEMENTED]** The exact persistent `DrawingDimensionKind` values are:
-
-- `ALIGNED_DISTANCE`, `HORIZONTAL_DISTANCE`, `VERTICAL_DISTANCE` for Line or Point-to-Point references;
-- `POINT_TO_LINE_DISTANCE`;
-- `LINE_TO_LINE_DISTANCE`;
-- `LINE_TO_LINE_ANGLE`.
-
-Dimensions have stable semantic references (including Origin where supported), `driving` or `reference` roles, values, and persistent linear/angular placement. Driving edits are solver-backed; reference dimensions are derived annotations. The UI supports placement and double-click editing. A reference angle is parenthesized, for example `(35°)`; a Driving angle is unparenthesized, for example `35°`.
-
-## 10. Constraint and inference presentation
-
-The implemented direction is:
-
-```text
-semantic constraint or accepted inference
-→ shared presentation derivation
-→ screen-space marker/support layout
-→ transient or persistent overlay
-```
-
-**[IMPLEMENTED in part]** Midpoint and Parallel transient presentation reuse persistent marker layout authority; Perpendicular uses shared presentation derivation. This unification is ongoing and is not complete for every family. Transient inference uses `#38BDF8`; persistent constraint presentation uses `#2563EB`.
-
-Presentation-only guides, support intersections, gaps, and marker geometry must never become SketchPoints, entities, solver authority, exported manufacturing geometry, or geometry History transactions.
-
-## 11. Drawing History and transactions
-
-**[IMPLEMENTED]** Drawing has bounded in-memory Undo/Redo over Drawing documents. One user-authored action is one logical transaction: for example, Line creation and the compatible automatic semantic constraints produced by that click are committed together. Direct Manipulation and accepted dimension/constraint changes transact their resolved document result; hover, panel movement, panel OK/Esc without geometry change, and transient previews do not create geometry transactions.
-
-This is Drawing-local History. It is not the future global `ProjectDocument` History.
-
-## 12. Current Drawing known debt and active work
-
-### 12.1 Global Line inference acceptance browser verification
-
-**[IMPLEMENTED][IN PROGRESS]** Line authoring converts acquired Parallel and Perpendicular channels into normalized, unoriented Line-direction demands before soft positional arbitration. Compatible demands compose with the existing Line positional contract (including point-reference construction support), producing one authoritative endpoint. After every positional path—including Endpoint, Midpoint, and finite-Line hard authorities—the same normalized demand model is evaluated against the frozen authored vector; every acquired demand true at that geometry supplies its semantic Line ID. The singular `snap.type` remains position/topology authority rather than a semantic allow-list, and hard-position branches no longer preselect or erase direction-family semantics.
-
-Soft X/Y alignment is normalized as a coordinate requirement. When a Line-direction group in the existing release band has a valid forward intersection with an acquired alignment, the direction remains in the acquired channel set without taking positional ownership; the alignment may therefore remain `snap.type` while the final endpoint satisfies both requirements, including on a fresh chained segment. Incompatible requirements fail closed. Accepted directional semantics remain plural for transient presentation: equivalent Parallel and Perpendicular relations may both be shown. Only the independent persistent selector chooses a minimal representative for automatic constraint creation.
-
-Endpoint and Midpoint positions remain exact, finite-Line support remains bounded, H/V remains exclusive, Ctrl remains raw, and incompatible or degenerate semantic demands fail closed. Production-path regressions cover compatible and incompatible hard Endpoint semantics, continuous incident-Line continuation, a 90°/90° chain, compatible multi-direction coexistence, and the case where Point Reference owns position while Parallel alone is acquired; presentation, click, and one-transaction commit consume the accepted result. Equivalent semantic demands now share acquisition/composition geometry and automatic commit selects their minimal representative rather than persisting every true relation. Automated tests are not browser acceptance: this behavior is **not [ACCEPTED / LOCKED]** and remains pending user browser verification.
-
-### 12.2 Transient visual debt
-
-**[KNOWN DEBT]** After the blocker, the missing/incomplete symbols are:
-
-- Horizontal preview;
-- Vertical preview;
-- Coincidence Point-to-Point preview;
-- Coincidence Point-to-Line preview.
-
-Simultaneous Parallel + Perpendicular preview cannot be accepted while the live Parallel semantic relation is dropped.
-
-## 13. Puzzle
-
-**[PLANNED]** Puzzle remains a separate future module. A validated closed Drawing boundary should become a Puzzle boundary without manual export/import, using stable shared project identity. Standard/custom boundaries, optional frame, piece generation, and complementary mating geometry are future scope.
-
-Every internal adjacency must eventually have physically complementary, sufficiently unique mating geometry under allowed traversal reversal and piece rotation. **[CONCEPT / NOT YET DECIDED]** subdivision, feasibility, frame-offset, signature construction, and uniqueness algorithms are not locked.
-
-## 14. Box / Construction
-
-Box / Construction remains the mature v1.2 module. TB and W are tool families, not duplicated permanent engines.
-
-### 14.1 TB and W locked behavior
-
-**[IMPLEMENTED][ACCEPTED / LOCKED]** TB uses paired A/B edge roles, per-connection finger width and auto/manual state, completed-group isolation, removal of the unused trailing connection on Finish, and the generic contributor/composition/reconciliation authority pipeline. A/B is a connection role, not an unconditional panel class.
-
-**[IMPLEMENTED][ACCEPTED / LOCKED]** W has native identity and shared TB-equivalent finger-joint generation; exactly one W-A and W-B assignment on distinct panels; fail-closed normalization from unambiguous completed TB role evidence; preservation of valid authored orientation otherwise; per-connection width; group isolation; and the accepted rectangular terminal/mouse-hole behavior. Shared generation never means shared value ownership.
-
-### 14.2 S, J/P, and future assembly
-
-**[IMPLEMENTED, incomplete]** S currently provides planar paired roles, offset and slot/tab length, an S-A replacement boundary, repeated inward S-B slots, and original-source-edge `REFERENCES` semantics. Complementary half-slot assembly and partial-height/elevated walls are **[PLANNED]**; exact frames and schemas are unresolved.
-
-**[PLANNED][CONCEPT / NOT YET DECIDED]** J is a future Joint family and P a future Pattern family (including possible living-hinge patterns). Their variants are not accepted. Non-rectangular/angle-aware TB/W and assembly relationships are future work; assembly angle must belong to a shared authoritative relationship, not a generator or 3D view. The historical main-B/surrounding-A topology remains only a hypothesis requiring proof and exact rectangular-v1 compatibility.
-
-### 14.3 Locked geometry pipeline
-
-**[IMPLEMENTED][ACCEPTED / LOCKED]**
-
-```text
-SVG import → SvgDocumentModel → Panel Manager
-→ authored connections/assignments → TB/W/S generators
-→ GeneratedGeometryItem[] → relationship audit → contributor adapters
-→ panelComposer → reconciliation → fail-closed authority selection
-→ GeneratedGeometrySnapshot → FinalGeometry
-→ derived ManufacturingGeometry → preview/export
-```
-
-Contributors are immutable. `REPLACES` owns a physical source edge; `REFERENCES` does not. Conflicting replacements and missing/ambiguous/unsupported reconciliation fail closed—there is no tool-priority or last-writer winner. Restore reinstates stored generated authority verbatim rather than silently recomposing it.
-
-## 15. Manufacturing and 3D preview
-
-**[IMPLEMENTED][ACCEPTED / LOCKED]** Manufacturing remains inside Box / Construction and consumes a derived copy of immutable FinalGeometry. Its order is Profile Offset, Tap Clearance, Slot Clearance, then terminal Kerf. Preview and manufacturing export consume compensated geometry; design export may serialize FinalGeometry.
-
-**[PLANNED]** Static 3D Preview is derived-only and must never own geometry, placement, or angle truth. Assembly entities, local frames, dihedral angles, handedness/alignment, deterministic transforms, and graph validation remain missing prerequisites.
-
-## 16. Cross-cutting invariants
-
-1. Preserve the v1.2 rectangular TB/W compatibility boundary and restore-verbatim snapshot semantics.
-2. Drawing Lines reference stable SketchPoints; shared topology is identity, not coordinate coincidence.
-3. Driving dimensions, constraints, Direct Manipulation, and resolved coordinates remain solver-backed.
-4. Compatible semantics may coexist even though only one effective position is authored.
-5. Presentation-only geometry never becomes model, solver, History, or manufacturing authority.
-6. One authored Drawing action creates one logical Drawing History transaction.
-7. Tests do not confer browser acceptance on interactive behavior.
-8. Puzzle and global ProjectDocument architecture remain future scope until implemented.
-9. Each chained segment is a new Line: continuation supplies only the committed endpoint geometry and real SketchPoint topology; no inference, authority, hysteresis, semantic, or presentation state crosses the segment boundary.
-
-### 16.1 Continuous Line transaction ownership
-
-**[IMPLEMENTED][AWAITING BROWSER VERIFICATION]** The 220 ms Line delay exists solely to let native double-click finish a construction without committing the second segment. During that interval, the frozen accepted placement owns one pending transaction. A later primary Line click synchronously flushes that transaction first, which persists the segment and initializes its continuation at the exact endpoint SketchPoint; only then is the new click resolved. Escape, tool change, double-click finish, and unmount explicitly cancel pending work. Timer callbacks verify transaction identity, so a stale callback cannot mutate a newer segment.
-
-Manual starts and committed continuations both use `initializeNewLineAt`: resolved coordinate/topology enters fresh segment-local interaction and snap state, after which generic inference collects and resolves candidates. A same-event continuation reads Lines from the synchronously committed document transaction snapshot rather than the preceding React render, so the just-committed segment is ordinary document geometry on the first continuation frame exactly as it is after a manual restart. The inert `previousChainedLineId` inference field has been removed; continuation carries no previous snap, direction/position authority, acquired candidate, semantic authority, presentation, retention, or chain-specific inference policy.
-
-Direction and Point Reference acquisition is intentionally tighter than positional targeting: Parallel/Perpendicular acquire at 5 px and Point Reference at 6 px, while Endpoint remains 9 px and Midpoint/finite Line/X/Y alignment remain 8 px. Their existing release hysteresis remains 11 px (12 px for Endpoint). Once direction authority is established, candidate acquisition distance does not release it; Ctrl, axis authority, incompatible direction supersession, start change, commit/cancel/restart, or an invalid reference remain legitimate release boundaries. `candidateForAuthority` still validates the committed reference through current discovery and is a separate follow-up concern, not part of transaction ownership.
-
-## 17. Immediate next work
-
-1. **First: browser-verify plural Line inference presentation and minimal persistence.** The first 90° turn must preview and persist Perpendicular. At the second turn, equivalent Parallel + Perpendicular may both be detected, contribute to one final direction, and preview independently, while minimal persistence may store Parallel alone. Confirm final-point acquisition, threshold movement, simultaneous feedback, and hover-to-click geometry identity.
-2. Then add/fix Horizontal, Vertical, Coincidence Point-to-Point, and Coincidence Point-to-Line transient previews and browser-confirm them.
-3. Then continue broader shared constraint/inference presentation unification.
-
-Do not start Symmetry, Fix, Concentricity, Tangency, or other disabled catalog work merely because those entries are visible. Do not begin global ProjectDocument work ahead of this active Drawing checkpoint.
-
-### 12.2 Established Line direction lifecycle
-
-**[IMPLEMENTED][AWAITING BROWSER VERIFICATION]** Direction acquisition tolerance is not established direction-authority lifetime. Parallel or Perpendicular is first acquired from plural screen-space candidates. The selected relation then records one construction ray (active Line start, stable reference-Line identity and geometry, and oriented normalized direction). Pointer travel controls free length by projection onto that ray; crossing the original 11 px candidate release band does not release it.
-
-Endpoint, SketchPoint, Midpoint, bounded Line-body, X/Y alignment, and Point Reference candidate collection continues while that ray is tracked. The active direction is also supplied to coordinate-reference candidate construction, so all committed SketchPoints—including endpoints of the active reference Line—remain legitimate inputs without creating document topology. Exact positional targets never move to satisfy direction; final Line resolution validates the selected authority against the exact endpoint, presentation projects accepted semantics, and persistence consumes that accepted result.
-
-The snap engine is the sole owner of established non-axis direction authority and supersession. Ctrl, H/V, an explicitly acquired incompatible direction, changed Line start, or missing/degenerate reference geometry release it; commit/cancel/restart clear the per-interaction snap state. The former Parallel/Perpendicular release-band retention, alignment composition admission, compatible-direction retention fallback, and Line-tool plural channel contest were removed. Equivalent Perpendicular evidence remains diagnostic/redundant when Parallel governs the same direction; Perpendicular alone remains a full authority.
+- Puzzle and a shared global project document are planned.
+- Drawing currently supports Line geometry, not the full prospective CAD tool catalog.
+- The Constraints panel intentionally displays disabled future choices alongside implemented ones.
+- Box v1.2 remains the locked release baseline; post-v1.2 Drawing features are implemented without a new declared product release.
+- Detailed reports under `docs/` include historical hypotheses and diagnostic evidence. Consult `docs/README.md` before treating one as a current specification.

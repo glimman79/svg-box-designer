@@ -1,86 +1,80 @@
 # SVG Box Designer
 
-SVG Box Designer is a React + TypeScript + Vite application for importing your own custom SVG drawings, selecting straight edges, assigning reusable connection labels, editing connection parameters, and exporting the labeled SVG.
+SVG Box Designer is a browser-based React application for drawing 2D line geometry and turning imported SVG panels into fabrication-ready box geometry. It combines a constraint-aware Drawing workspace with SVG panel, connection, composition, compensation, preview, and export workflows.
 
-The app is not intended to generate a standard parametric box like boxes.py. Instead, it helps add finger joints, slots, corner connections, and bend patterns to a design the user already created in SVG. This version intentionally updates the connection parameter UI and state model only; finger joint geometry is not generated yet.
+## Application areas
 
-## Version 1 features
+- **2D Drawing** provides an SVG CAD-style canvas with Line and Dimension tools, shared `SketchPoint` topology, snapping and geometric inference, driving/reference dimensions, geometric constraints, Direct Manipulation, and Drawing Undo/Redo. Line authoring can infer endpoints, midpoints, axes, alignments, angular directions, Parallel, Perpendicular, and Point References; Ctrl temporarily bypasses automatic inference.
+- **Box / Construction** imports or starts an SVG document, identifies panels and selectable straight edges, and applies Panel Manager, TB (Top/Bottom finger-joint), W (Wall), and S (Slot) workflows. Generated geometry is composed, reconciled, manufacturing-compensated for clearances and kerf, previewed, and exported as SVG.
+- **Puzzle** is reserved in the workspace selector but is **not implemented**.
 
-- Import SVG files from your computer.
-- Display the imported SVG on screen.
-- Detect and manually select straight edges from common SVG primitives:
-  - `line`
-  - `rect`
-  - `polyline`
-  - `polygon`
-  - straight `path` commands (`M`, `L`, `H`, `V`, `Z`)
-- Assign labels directly to selected straight edges:
-  - `E1`, `E2`, `E3`...
-  - `S1`, `S2`, `S3`...
-  - `W1`, `W2`, `W3`...
-  - `C1`, `C2`, `C3`...
-  - `P1`, `P2`, `P3`...
-- Show labels directly on the drawing, including `E` and `S` side roles such as `E1-T`, `E1-S`, `S1-T`, and `S1-S`.
-- Save labels and connection parameters in React application state.
-- Configure `E` edge connection parameters with E-T / E-S edge roles, Basic values for material thickness and tab size (the segment length along the original edge), plus Advanced values for kerf, play, start offset, end offset, and extra length.
-- Automatically default `E` tab size to material thickness × 3 until the user manually edits tab size.
-- Export a labeled SVG file.
+The Drawing and imported/construction document models are currently separate. See [PROJECT_MASTER.md](PROJECT_MASTER.md) for current product scope, architectural authority, invariants, and known boundaries.
 
-## Not included in v1
+## Technology
 
-- Finger joint geometry is not implemented yet.
-- Slots are not implemented yet.
-- Patterns are not implemented yet.
-
-The `W`, `C`, and `P` labels are available as future-facing placeholders only.
+- React and React DOM
+- TypeScript
+- Vite
+- Native SVG for the drawing and construction canvases
+- Node's test runner with focused TypeScript build fixtures
 
 ## Getting started
 
-Install dependencies:
+Requirements: a current Node.js release and npm.
 
 ```bash
 npm install
-```
-
-Run the development server:
-
-```bash
 npm run dev
 ```
 
-Build for production:
+Vite prints the local development URL. The application starts in **Box / Construction**; use the workspace selector for **2D Drawing**.
+
+## Development commands
 
 ```bash
-npm run build
+npm run dev       # development server
+npm run build     # TypeScript production check and Vite build
+npm run preview   # serve the production build locally
 ```
 
-### Panel-composition authority
+The repository also has focused `test:*` and `diagnose:*` scripts. Run the relevant script from `package.json` when changing a subsystem; there is intentionally no single aggregate `npm test` command.
 
-The optional build-time environment variable `VITE_PANEL_COMPOSITION_AUTHORITY_MODE` accepts `legacy`, `single-tool`, or `mixed`. Missing, empty, and whitespace-only values use the production default, `mixed`. Mixed authority is the normal application policy; same-edge replacement conflicts remain invalid, and S-B `REFERENCES` continues to address the original imported/source edge rather than a composed replacement boundary. Set `single-tool` explicitly for restricted rollback/debug operation, or `legacy` for the historical rollback/oracle path. Invalid nonempty values fall back to `legacy` and produce a developer-console diagnostic identifying the variable and supplied value. Stored snapshots are never recomposed on restore, so old projects retain their stored authority and migrate lazily only on a fresh Apply; raw legacy oracle carriers remain supported.
+## Construction workflow at a glance
 
-## Usage
+1. Start with the empty box document or import a supported SVG.
+2. Apply Panel Manager so detected panels have construction thickness authority.
+3. Author TB, W, or S relationships by assigning source edges and roles.
+4. Apply the project to produce composed Final Geometry.
+5. Inspect the final/manufacturing preview and export the resulting SVG.
 
-1. Start the app with `npm run dev`.
-2. Click **Import SVG** and choose an SVG file.
-3. Click a highlighted straight edge in the drawing.
-4. Choose a label button such as `E1`, `S1`, `C1`, or `P1`.
-5. For `E` and `S` labels, choose whether each assigned edge is the **Tab side** (`-T`) or **Slot side** (`-S`) in the Assigned edges controls.
-6. Repeat for other edges.
-7. Click **Export SVG** to download an SVG with the labels embedded as text elements.
+Imported SVG parsing supports common straight-edged SVG primitives and straight path commands. The construction pipeline, rather than connection labels alone, owns generated finger-joint/Wall/Slot output.
 
-## Project structure
+## Repository map
 
 ```text
 svg-box-designer/
-├── index.html
-├── package.json
 ├── src/
-│   ├── App.tsx
-│   ├── main.tsx
-│   ├── styles.css
-│   └── svgUtils.ts
-├── tsconfig.app.json
-├── tsconfig.json
-├── tsconfig.node.json
-└── vite.config.ts
+│   ├── App.tsx                    # workspace shell and Box / Construction orchestration
+│   ├── main.tsx                   # browser entry point
+│   ├── svgUtils.ts                # SVG parsing/model utilities
+│   └── app/
+│       ├── DrawingWorkspace.tsx   # Drawing interaction and presentation boundary
+│       ├── drawing*.ts            # topology, tools, inference, solver, constraints, history
+│       ├── *Workflow.ts           # TB, Wall, and Slot authoring workflows
+│       ├── *Geometry*.ts          # generated/final/manufacturing geometry stages
+│       └── panel*.ts              # panel model, contributors, and composition
+├── tests/                         # focused behavior and diagnostic regressions
+├── docs/                          # specifications, analyses, diagnostics, and release snapshots
+├── PROJECT_MASTER.md              # current product and architecture authority
+├── PROJECT_HISTORY.md             # architectural evolution
+├── Architecture.md                # concise construction-pipeline map
+└── CHANGELOG.md                   # concise completed-change record
 ```
+
+## Documentation
+
+- [PROJECT_MASTER.md](PROJECT_MASTER.md): how the application is designed now.
+- [PROJECT_HISTORY.md](PROJECT_HISTORY.md): why significant architectural changes occurred.
+- [Architecture.md](Architecture.md): quick map of the Box / Construction geometry pipeline.
+- [docs/README.md](docs/README.md): status and classification of detailed documents.
+- [CHANGELOG.md](CHANGELOG.md): release and unreleased change summary.
