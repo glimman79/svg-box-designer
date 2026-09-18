@@ -1,4 +1,4 @@
-/** Temporary browser-only trace for the unresolved live Parallel/Perpendicular loss.
+/** Temporary browser-only trace for the unresolved manual/continuation divergence.
  * This module observes already-computed production values and never participates in inference. */
 export type DrawingDirectionDiagnosticFrame = Readonly<{
   sequence: number;
@@ -56,10 +56,13 @@ export const createDrawingDirectionDiagnosticRecorder = () => {
     record(frame: DrawingDirectionDiagnosticFrame) {
       const previous = history.at(-1);
       const transitions = previous ? transitionLabels(previous, frame) : [];
-      history = [...history, frame].slice(-6);
+      // Keep the complete practical acquire/forward/beyond/return trajectory. Six
+      // frames hid the initialization frame in the user-reported chained case.
+      history = [...history, frame].slice(-64);
       if (transitions.length) console.info('DRAWING_DIRECTION_DIAGNOSTIC transition', { transitions, frame });
       if (frame.phase === 'click') {
-        const comparison = { marker: 'DRAWING_DIRECTION_DIAGNOSTIC_CLICK', lastHoverFrame: previous, clickResolvePlacementFrame: frame };
+        const comparison = { marker: 'DRAWING_DIRECTION_DIAGNOSTIC_CLICK', history,
+          lastHoverFrame: previous, clickResolvePlacementFrame: frame };
         console.info('DRAWING_DIRECTION_DIAGNOSTIC click comparison', comparison);
         console.info('DRAWING_DIRECTION_DIAGNOSTIC_CLICK_COPY', JSON.stringify(comparison));
       }
