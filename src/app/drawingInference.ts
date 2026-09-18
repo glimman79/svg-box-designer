@@ -100,6 +100,22 @@ const toScreenPoint = (point: CoordinatePoint, transform: AffineTransform): Coor
   y: transform.b * point.x + transform.d * point.y + transform.f,
 });
 
+/** Unique forward intersection of a construction ray and an infinite support. */
+export const intersectDrawingRayWithSupport = (
+  origin: DrawingPoint,
+  direction: DrawingPoint,
+  supportOrigin: DrawingPoint,
+  supportDirection: DrawingPoint,
+): DrawingPoint | null => {
+  const denominator = direction.x * supportDirection.y - direction.y * supportDirection.x;
+  if (Math.abs(denominator) <= 1e-12) return null;
+  const dx = supportOrigin.x - origin.x, dy = supportOrigin.y - origin.y;
+  const parameter = (dx * supportDirection.y - dy * supportDirection.x) / denominator;
+  return Number.isFinite(parameter) && parameter >= 0
+    ? { x: origin.x + parameter * direction.x, y: origin.y + parameter * direction.y }
+    : null;
+};
+
 /** Nearest point on an infinite model-space support, measured in client space. */
 const projectClientPointToInfiniteSupport = (
   pointerClientPoint: CoordinatePoint,
@@ -283,9 +299,22 @@ export const collectDrawingInferenceCandidates = (
         directionsAtPoint.push(supportDirection);
         const projection = projectClientPointToInfiniteSupport(pointerClientPoint, reference.point, supportDirection, drawingToClientTransform);
         if (!projection) continue;
+        const directionIntersection = angularDirection && activeLineStart
+          ? intersectDrawingRayWithSupport(activeLineStart, angularDirection, reference.point, supportDirection) : null;
+        // Once Line direction is established, position is evaluated along that
+        // construction rather than by requiring the raw pointer to approach the
+        // infinite support first. The support remains the semantic construction.
+        const directionalPointer = directionIntersection && angularDirection && activeLineStart
+          ? projectClientPointToInfiniteSupport(pointerClientPoint, activeLineStart, angularDirection, drawingToClientTransform) : null;
+        const candidatePoint = directionIntersection ?? projection.candidatePoint;
+        const candidateScreen = toScreenPoint(candidatePoint, drawingToClientTransform);
+        const distancePoint = directionalPointer
+          ? toScreenPoint(directionalPointer.candidatePoint, drawingToClientTransform) : pointerClientPoint;
         pointReferences.push({ type: 'point-reference', kind: 'normal-to-incident-line', incidentLineId: line.id, sourcePointId: reference.id,
           supportOrigin: reference.point, supportDirection, constructionKey: `point-normal:${reference.id}:${line.id}`,
-          candidatePoint: projection.candidatePoint, screenDistance: projection.screenDistance });
+          candidatePoint, screenDistance: directionIntersection
+            ? Math.hypot(distancePoint.x - candidateScreen.x, distancePoint.y - candidateScreen.y)
+            : projection.screenDistance });
       }
       if (angularDirection && activeLineStart) {
         if (Math.abs(angularDirection.x) > 1e-12) {

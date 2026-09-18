@@ -13,10 +13,10 @@ const bounds = { x: -500, y: -500, width: 1000, height: 1000 };
 const resolvedLine = (id, startPointId, endPointId, start, end) => ({ id, type: 'line', startPointId, endPointId, start, end });
 const angled = resolvedLine('AB', 'A', 'B', { x: 0, y: 0 }, { x: 100, y: 50 });
 
-const pipeline = ({ pointer, scene, start = null, previousSnap = null, ctrl = false, transform = identity, axisDirectionActive = false }) => {
-  const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, transform, bounds, start, null);
+const pipeline = ({ pointer, scene, start = null, previousSnap = null, ctrl = false, transform = identity, axisDirectionActive = false, directionDegrees = null, startPointId = 'new-start' }) => {
+  const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, transform, bounds, start, directionDegrees, start ? startPointId : null);
   const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap, ctrlOverride: ctrl, axisDirectionActive, activeLineStart: start });
-  const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId: start ? 'new-start' : null };
+  const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId: start ? startPointId : null };
   return { candidates, snap, resolved: lineTool.resolveLineEffectivePoint(interaction, pointer, snap, ctrl) };
 };
 const normal = (candidates, point = 'B', line = 'AB') => candidates.pointReferences.find(
@@ -87,6 +87,77 @@ test('support distance is stable in client space under anisotropic transforms', 
   const result = pipeline({ pointer, scene: [angled], transform });
   assert.equal(result.snap.type, 'point-reference');
   assert.ok(Math.abs(result.snap.screenDistance - 5.5) < 1e-9);
+});
+
+test('established direction makes X/Y and normal supports produce forward positional intersections', () => {
+  const start = { x: 0, y: 0 };
+  const pointer = { x: 67, y: 67 };
+  const result = pipeline({ pointer, scene: [angled], start, directionDegrees: 45 });
+  const pointNormal = normal(result.candidates);
+  assert.ok(pointNormal);
+  assert.ok(Math.abs(pointNormal.candidatePoint.x - 250 / 3) < 1e-9);
+  assert.ok(Math.abs(pointNormal.candidatePoint.y - 250 / 3) < 1e-9);
+  const xAlignment = result.candidates.alignmentsX.find(({ referenceId }) => referenceId === 'B');
+  assert.ok(Math.hypot(xAlignment.candidatePoint.x - 100, xAlignment.candidatePoint.y - 100) < 1e-9);
+});
+
+test('normal position acquires along established direction outside the old support-proximity band', () => {
+  const radians = 80 * Math.PI / 180;
+  const incident = resolvedLine('steep', 'P', 'Q', { x: 0, y: 0 }, { x: 100 * Math.cos(radians), y: 100 * Math.sin(radians) });
+  const start = { x: 0, y: 50 };
+  const atIntersection = inference.intersectDrawingRayWithSupport(start, { x: 1, y: 0 }, incident.end,
+    { x: -Math.sin(radians), y: Math.cos(radians) });
+  assert.ok(atIntersection);
+  const pointer = { x: atIntersection.x, y: atIntersection.y + 7 };
+  const fallback = pipeline({ pointer, scene: [incident], start });
+  assert.ok(normal(fallback.candidates, 'Q', 'steep').screenDistance > snaps.DRAWING_POINT_REFERENCE_SNAP_ACQUIRE_PX);
+
+  const directional = pipeline({ pointer, scene: [incident], start, directionDegrees: 0 });
+  const candidate = normal(directional.candidates, 'Q', 'steep');
+  assert.ok(Math.hypot(candidate.candidatePoint.x - atIntersection.x, candidate.candidatePoint.y - atIntersection.y) < .1);
+  assert.ok(candidate.screenDistance < .1, 'distance is measured from the pointer projected onto the established construction');
+  assert.equal(directional.snap.type, 'point-reference');
+  assert.ok(Math.hypot(directional.resolved.effectivePoint.x - atIntersection.x, directional.resolved.effectivePoint.y - atIntersection.y) < .1);
+});
+
+test('normal support falls back without direction and rejects backward or non-unique direction intersections', () => {
+  const start = { x: 200, y: 200 };
+  const pointer = { x: 102, y: 46 };
+  const free = normal(pipeline({ pointer, scene: [angled], start }).candidates);
+  assert.ok(free);
+  assert.notDeepEqual(free.candidatePoint, inference.intersectDrawingRayWithSupport(start, { x: 1, y: 0 }, angled.end, free.supportDirection));
+
+  const backward = normal(pipeline({ pointer, scene: [angled], start, directionDegrees: 0 }).candidates);
+  assert.deepEqual(backward.candidatePoint, free.candidatePoint, 'behind-start intersection retains support projection behavior');
+  const parallelDegrees = Math.atan2(free.supportDirection.y, free.supportDirection.x) * 180 / Math.PI;
+  const parallel = normal(pipeline({ pointer, scene: [angled], start, directionDegrees: parallelDegrees }).candidates);
+  assert.deepEqual(parallel.candidatePoint, free.candidatePoint, 'parallel supports have no direction-aware candidate');
+});
+
+test('direction-aware candidate preserves Point Reference identity and compatible direction authority', () => {
+  const start = { x: 0, y: 0 };
+  const pointer = angled.end;
+  const first = pipeline({ pointer: { x: 40, y: 20 }, scene: [angled], start, startPointId: 'S' });
+  assert.equal(first.snap.channels.directionAuthority?.relation, 'parallel');
+  const tracked = pipeline({ pointer, scene: [angled], start, startPointId: 'S', previousSnap: first.snap, directionDegrees: 26.56505117707799 });
+  const candidate = normal(tracked.candidates);
+  assert.deepEqual({ sourcePointId: candidate.sourcePointId, incidentLineId: candidate.incidentLineId,
+    constructionKey: candidate.constructionKey, supportOrigin: candidate.supportOrigin, supportDirection: candidate.supportDirection, kind: candidate.kind }, {
+    sourcePointId: 'B', incidentLineId: 'AB', constructionKey: 'point-normal:B:AB', supportOrigin: angled.end,
+    supportDirection: { x: -1 / Math.sqrt(5), y: 2 / Math.sqrt(5) }, kind: 'normal-to-incident-line',
+  });
+  assert.equal(tracked.snap.channels.directionAuthority?.relation, 'parallel');
+  assert.equal(tracked.snap.channels.pointReference?.constructionKey, 'point-normal:B:AB');
+  assert.ok(Math.abs(100 * (tracked.resolved.effectivePoint.y - start.y) - 50 * (tracked.resolved.effectivePoint.x - start.x)) < 1e-9);
+  assert.ok(Math.abs((tracked.resolved.effectivePoint.x - 100) * 100 + (tracked.resolved.effectivePoint.y - 50) * 50) < 1e-9);
+});
+
+test('fresh chained and manual starts produce the same direction-aware normal candidate without prior snap state', () => {
+  const start = { x: 0, y: 0 }, pointer = { x: 67, y: 67 };
+  const chained = pipeline({ pointer, scene: [angled], start, directionDegrees: 45, previousSnap: null, startPointId: 'S' });
+  const manual = pipeline({ pointer, scene: [angled], start, directionDegrees: 45, previousSnap: null, startPointId: 'S' });
+  assert.deepEqual(normal(chained.candidates), normal(manual.candidates));
+  assert.deepEqual(chained.resolved.effectivePoint, manual.resolved.effectivePoint);
 });
 
 test('multiple semantic incident Lines emit distinct non-redundant supports and coordinate equality does not imply incidence', () => {
