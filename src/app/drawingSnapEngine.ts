@@ -112,10 +112,14 @@ const chooseAxis = <T extends AlignmentXInference | AlignmentYInference>(items: 
 };
 
 const choosePointReference = (items: ReadonlyArray<PointReferenceInference>, previous: DrawingSnap | null) => {
-  const held = previous?.channels?.pointReference && items.find(({ constructionKey }) =>
+  // A support parallel/coincident with (or behind) an established construction
+  // remains available as semantic reference evidence, but cannot locate a
+  // unique point on that construction and therefore cannot own position.
+  const positional = items.filter(({ positionOwnership }) => positionOwnership !== 'reference-only');
+  const held = previous?.channels?.pointReference && positional.find(({ constructionKey }) =>
     constructionKey === previous.channels.pointReference?.constructionKey);
   if (held && held.screenDistance <= DRAWING_POINT_REFERENCE_SNAP_RELEASE_PX) return held;
-  const first = items[0];
+  const first = positional[0];
   return first && first.screenDistance <= DRAWING_POINT_REFERENCE_SNAP_ACQUIRE_PX ? first : null;
 };
 
