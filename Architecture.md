@@ -1,55 +1,33 @@
-# Architecture
+# Box / Construction Pipeline Map
 
-This document describes the Version 2.3 manufacturing geometry pipeline. The migration is internal only: UI behavior, TB, W, S, manufacturing compensation, preview rendering, and export output remain unchanged.
+> **Status: current orientation document.** This file is a concise map of the Box / Construction geometry pipeline. [PROJECT_MASTER.md](PROJECT_MASTER.md) is the authority for current product architecture, including Drawing and Puzzle. Historical pipeline snapshots and investigations are indexed in [docs/README.md](docs/README.md).
 
-## Final pipeline
+## Pipeline
 
 ```text
-Import
-↓
-Original Geometry
-↓
-Workflow Engine → GeneratedGeometryItem[]
-(TB / W / S / future tools)
-↓
-Final Geometry
-↓
-Manufacturing Geometry (temporary working copy)
-↓
-Profile Offset → Slot Clearance → Kerf
-↓
-Preview
-↓
-Export
+SVG import or empty BoxDocument
+  -> SvgDocumentModel (source geometry, edges, panels, contours)
+  -> Panel Manager (panel identity and thickness)
+  -> connection authoring (TB, W, S relationships and roles)
+  -> generated geometry (tool-owned semantic output)
+  -> panel composition and metadata reconciliation
+  -> FinalGeometry (downstream physical contract)
+  -> manufacturing compensation (slot/tap clearance, then kerf)
+  -> preview and SVG export
 ```
 
-## Pipeline ownership
+## Ownership boundaries
 
-- Import parses the SVG into the original document model and preserves root attributes used later by export.
-- The workflow engine applies TB, W, S, and related operations to produce native `GeneratedGeometryItem` values.
-- `buildFinalGeometry(...)` assembles imported geometry with generated items (or their snapshot) without tool-specific or legacy applied-geometry knowledge.
-- Manufacturing creates a deep, order-preserving `ManufacturingGeometry` copy of Final Geometry on every run. Profile Offset walks classification policy without moving geometry; slot clearance and terminal kerf operate only on that workspace.
-- Preview renders the manufacturing-compensated contours derived from Final Geometry.
-- Design export can serialize immutable Final Geometry via `exportFinalGeometrySvg(...)`; current manufacturing export serializes the exact Manufacturing Geometry used by preview.
+- **Source geometry** remains the reference for authoring relationships. Generated replacements do not silently redefine the imported edge identity.
+- **Workflow generators** own connection semantics and produce generated geometry; UI labels are not manufacturing geometry.
+- **Panel composition** is the sole authority for combining contributors into panel contours. Production uses mixed authority, with same-edge replacement conflicts rejected.
+- **Post-composition reconciliation** repairs generated-profile metadata against composed boundaries before downstream consumption.
+- **FinalGeometry** is the stable boundary consumed by manufacturing, preview, and export. Downstream stages must not reconstruct tool intent from UI state.
+- **Manufacturing compensation** operates after final geometry. Clearance and kerf are manufacturing transforms, not authoring topology.
+- **Stored applied snapshots** restore their stored resolved output; they are not silently recomposed under a newer authority policy.
 
-## Final Geometry contract
+## Authority modes
 
-`FinalGeometry` is the single geometry model passed beyond the workflow stage. It contains final contours and diagnostics. Each contour records geometry provenance such as `original-panel`, `applied-panel`, or `s-slot`, but manufacturing code consumes contours as geometry and does not need to know TB, W, S, A/B roles, or workflow history.
+`mixed` is the production panel-composition policy. `single-tool` and `legacy` remain explicit rollback/diagnostic compatibility modes; they are not preferred architecture for new work. The build-time selector is `VITE_PANEL_COMPOSITION_AUTHORITY_MODE`.
 
-Final Geometry owns permanent design intent and is read-only. Manufacturing Geometry owns working contours, copied diagnostics, compensation, and temporary state; it is derived rather than stored in history and never mutates Final Geometry.
-
-## Version 2.2 migration result
-
-`GeneratedGeometryItem` is the sole generated runtime model. Preview and export share the Final Geometry handoff, and history reconstructs it from `GeneratedGeometrySnapshot.generatedGeometry`.
-
-Native `GeneratedGeometryItem[]` is the canonical generated-state representation. History stores `GeneratedGeometrySnapshot` records and Final Geometry consumes those native snapshots directly.
-
-## Panel-composition authority selection
-
-`VITE_PANEL_COMPOSITION_AUTHORITY_MODE` requests one of `legacy`, `single-tool`, or `mixed`. A missing, empty, or whitespace-only value requests `mixed`, the production application policy. `single-tool` remains an explicit restricted rollback/debug mode, and `legacy` remains the historical rollback/oracle mode. An invalid nonempty value conservatively requests `legacy` and emits a developer diagnostic.
-
-The requested runtime mode is distinct from the snapshot's `panelCompositionModel`. That project-level field is a selected result/strategy marker (`legacy`, `relationship-composed-single-tool-v1`, or `relationship-composed-mixed-v1`), not an exhaustive per-panel authority map. A missing marker in an old snapshot means `legacy`. Restore honors that stored meaning without authority reselection; eligible legacy projects migrate lazily only after a fresh Apply. Likewise, a composed snapshot restored under a legacy runtime remains composed until the next Apply.
-
-Eligible composition is fail-closed: an invalid or incomplete composed candidate does not fall back to legacy and cannot replace the previous applied state. In particular, TB and S-A replacements of the same source edge remain a conflict, without tool priority or a selected winner. S-B `REFERENCES(panelId, sourceEdgeId)` retains original imported/source-edge semantics and does not follow a composed replacement boundary. Ordinary Apply admits valid mixed TB/S replacement authoring under the default `mixed` policy, while explicit `single-tool` continues to reject that cohort. Separately, the lower-level selector can report `MIXED_NOT_ENABLED` with legacy retention when directly asked to select a mixed cohort in `single-tool` mode.
-
-Raw TB/S `PANEL_PATH` items remain in generator output as legacy-equivalence oracles, diagnostics and metadata carriers, support for explicit legacy mode, and migration safety. Authority promotion changes selection only; it does not remove those inputs or change Final Geometry or manufacturing.
+For the complete current contracts—including TB/W/S status, Drawing architecture, and cross-cutting transaction rules—use [PROJECT_MASTER.md](PROJECT_MASTER.md).

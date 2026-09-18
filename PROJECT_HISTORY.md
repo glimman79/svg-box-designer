@@ -14,9 +14,8 @@ Status labels have the meanings defined in `PROJECT_MASTER.md`. Detailed B3.x re
 - **Semantic version:** `1.2.0`
 - **Locked commit:** `e787eb5b1f3ff530fbae9292d56ec4a1da0e2ba2`
 - **Official release tag:** `v1.2.0`
-- **Local checkout tag verification:** unavailable in the PM.1 checkout.
 - **Acceptance result:** B3.23 concluded that Wall was stable enough to leave stabilization.
-- **Current development position:** substantial solver-backed 2D Drawing development followed v1.2. The active blocker is real browser Parallel + Perpendicular coexistence; shared ProjectDocument remains later cross-module work.
+- **Current development position:** substantial solver-backed 2D Drawing development followed v1.2. Direction/position authority and natural Point Reference acquisition under Parallel are now browser-verified; a shared ProjectDocument remains later cross-module work.
 
 ### September 2026 equivalent-demand browser failure and policy correction
 
@@ -44,7 +43,7 @@ The visibility investigation found a separate earliest error in candidate genera
 | Reconciliation | Composition could change final segments while generator metadata still described pre-composition projections. | Add explicit projection lineage and generic post-composition reconciliation before packaging. | Preserved semantic authority across supported mixed topologies. |
 | Tab regression | Shared W/TB UI work accidentally shared setting behavior. | Restore each connection's independent width and test coexistence/isolation. | Locked the lesson that shared UI does not imply shared setting ownership. |
 | v1.2 / B3.23 | Wall required product-level stabilization and acceptance. | Validate authoring, geometry, composition, reconciliation, manufacturing, history, and per-connection controls. | v1.2 became the locked TB + Wall baseline. |
-| Post-v1.2 Drawing | Drawing needed durable topology and semantic, editable geometry rather than display-only SVG. | Add SketchPoints, solver-backed dimensions/constraints, inference, Direct Manipulation, Drawing History, and shared marker derivation. | Drawing is now implemented and active; current browser work stops at the Parallel + Perpendicular coexistence blocker. |
+| Post-v1.2 Drawing | Drawing needed durable topology and semantic, editable geometry rather than display-only SVG. | Add SketchPoints, solver-backed dimensions/constraints, inference, Direct Manipulation, Drawing History, and shared marker derivation. | Drawing is implemented and active; later Line work separated direction, position, evidence, and commit ownership. |
 
 ## 4. Foundation and v1.0 Core
 
@@ -384,52 +383,11 @@ This era is post-release development; it does not rename the v1.2 Box baseline o
 
 **Selected-authority handoff correction (pending browser acceptance):** Frames 344–348 established that acquisition had already selected Parallel as the sole non-axis direction authority while Endpoint correctly owned position, but `lineResolution` then reconstructed semantic truth from acquired channel shapes. That was a second, overlapping authority-selection mechanism: the selected authority metadata itself was not the validation input, so losing the channel representation also lost Parallel before presentation and persistence. Direction authority now carries stable reference-Line geometry into resolution. The single final-geometry check tests the exact Endpoint/Midpoint/finite-Line result against that selected authority, accepts only the selected relation when compatible, and reports an explicit incompatibility reason otherwise. The hard position is never projected or moved. The obsolete plural-channel semantic rediscovery in `acceptedDirectionalRelationsAt` was removed; presentation and persistence consume the resulting accepted interaction. Automated coverage includes the acquire→Endpoint→topology reuse→Parallel commit production path and is not browser acceptance.
 
-### 11.6 Browser acceptance boundary and current stop
+### 11.6 Browser acceptance boundary during the investigation
 
 Unit, solver, state, and render-level tests remain necessary. They are not sufficient for inference acquire/release sequences, transient visibility, Direct Manipulation, selection arbitration, or cursor behavior. A contrary browser result keeps the behavior unresolved.
 
-At the current stop:
-
-- browser-accepted: Midpoint automatic snap and stable transient/persistent placement; Parallel inference and preview while alone; existing Perpendicular functionality/presentation;
-- pending browser verification: compatible Parallel + Perpendicular pre-resolution composition is implemented and production-path regression-covered;
-- next visual debt after that blocker: Horizontal, Vertical, Coincidence Point-to-Point, and Coincidence Point-to-Line transient symbols;
-- later direction: broader inference/persistent constraint presentation unification.
-
-## 12. Superseded or Temporary Material
-
-### 12.1 Historical reports and diagnostics
-
-**[HISTORICAL]** B3.x architecture reports, browser/test differential analyses, reduction fixtures, runtime captures, and shadow/oracle paths explain investigations and provide evidence. They do not override `PROJECT_MASTER.md` or prove that every proposed design was implemented.
-
-Retired examples—such as early independent Wall corner restrictions—must not be revived as current truth after later analysis superseded them.
-
-### 12.2 Legacy and debug paths
-
-Legacy/single-tool authority modes, raw generator carriers, shadow composition, and runtime diagnostic schemas served rollback, equivalence, migration, and debugging purposes. Their historical existence does not make them preferred new architecture. Remove or change compatibility paths only through explicit migration work with restore and regression evidence.
-
-### 12.3 Documentation debt
-
-- **[KNOWN DEBT]** `README.md` contains stale capability statements that predate implemented TB/W/S geometry.
-- **[KNOWN DEBT]** `Architecture.md` uses version terminology that does not align cleanly with semantic product version `1.2.0`.
-- **[KNOWN DEBT]** Detailed B3 reports contain superseded hypotheses alongside lasting evidence and need status-aware reading.
-
-These files were not changed during PM.2.
-
-## 13. Current Development Position
-
-v1.2 remains the locked Box / Construction baseline. TB and rectangular W are accepted; current S is implemented but incomplete. Drawing is now substantially implemented post-v1.2. Puzzle, J/P, assembly angles, angle-aware variants, static 3D Preview, and a shared ProjectDocument remain planned or conceptual exactly as classified in `PROJECT_MASTER.md`.
-
-PM.1 analyzed the source and designed the governance structure. PM.2 created `PROJECT_MASTER.md` and this history so future sessions can distinguish implemented, locked, planned, conceptual, debt, and historical material.
-
-Immediate work is the real runtime Parallel + compatible Perpendicular coexistence path, followed by missing H/V and Coincidence transient symbols and broader presentation unification. Shared versioned ProjectDocument/document identity remains future cross-module architecture; it must eventually wrap useful Drawing and v1.2 models rather than rewrite either.
-
-## 14. Release History Index
-
-| Release | Locked commit | Official tag | Summary | Current relevance |
-|---|---|---|---|---|
-| v1.0 core | Not recorded here | Not recorded here | Import/topology and generated/final/manufacturing pipeline foundation. | Historical architecture foundation; consult release documents for exact release identity. |
-| v1.1 | `5392cbe` (release commit visible in repository history) | Not recorded here | PM/import containment, UI/workflow, TB/S, Finish, and fixture stabilization. | Stable predecessor to authority and Wall work. |
-| v1.2 | `e787eb5b1f3ff530fbae9292d56ec4a1da0e2ba2` | `v1.2.0` | TB + Wall Stabilization; reconciliation, projection lineage, per-connection widths, and B3.23 acceptance. | Current accepted and locked baseline. Local PM.1 tag verification was unavailable. |
+This section records the acceptance boundary at that stage. It was later superseded by the direction-authority, transaction-ownership, same-event visibility, and Point Reference work in sections 11.7–11.10. Midpoint's shared transient/persistent placement remained browser-accepted throughout; automated evidence continued to be treated as insufficient when a browser trace disagreed.
 
 ### 11.7 Candidate lifetime replaced by established construction authority (post-#526)
 
@@ -452,3 +410,43 @@ As a separate refinement after the transaction regressions passed, direction acq
 The transaction-ownership fix exposed the first concrete manual/continuation divergence. Flushing a pending segment updated `documentRef` synchronously, but `resolvePlacement` still collected candidates from `resolvedLines` captured by the preceding React render. A rapid continuation click therefore started with the correct fresh interaction and SketchPoint ID but could not see the segment just committed in that same browser event; a later render made it appear, explaining why movement could seem required. Manual restart naturally ran after that render and saw the complete geometry.
 
 Candidate collection now resolves active-sketch Lines from the current committed transaction snapshot on every placement. The continuation still clears spatial snap state and uses the generic initializer; no chain identity or inference state is introduced. A production-boundary A/B regression freezes one pointer sequence and compares candidates, authorities, effective points, accepted semantics, and transient presentation frame by frame against a manual start, while preserving delayed-commit ownership. No acquisition or release tolerance changed in this correction. Automated verification is not browser acceptance.
+
+### 11.10 Direction-aware Point References and final browser acceptance (post-#533)
+
+After commit ownership and same-event visibility made manual and rapid chained interactions structurally equivalent, the remaining investigation focused on the geometry of Point Reference supports under an established direction. Candidate construction was changed to intersect a normal-to-incident-Line support with the active construction ray. That allowed pointer travel along the intended construction to expose the useful intersection rather than requiring proximity to the raw infinite support.
+
+The final distinction was positional authority. A support parallel/coincident with the established construction, or otherwise unable to supply a unique valid forward intersection, could still be legitimate reference evidence but could not locate the endpoint. Such candidates were classified as reference-only and excluded from positional ownership. A later support with a valid intersection was therefore free to own position. This was a general geometric rule, not a special case for continuation or the preceding Line.
+
+Browser verification accepted the required result: with Parallel active, natural movement along the construction acquired the compatible Perpendicular-derived Point Reference at the useful intersection without sideways movement. This closed the manual-versus-chain investigation while preserving the invariant that every continuation is a fresh Line interaction carrying only committed geometry and shared SketchPoint topology.
+
+## 12. Superseded or Temporary Material
+
+### 12.1 Historical reports and diagnostics
+
+**[HISTORICAL]** B3.x architecture reports, browser/test differential analyses, reduction fixtures, runtime captures, and shadow/oracle paths explain investigations and provide evidence. They do not override `PROJECT_MASTER.md` or prove that every proposed design was implemented.
+
+Retired examples—such as early independent Wall corner restrictions—must not be revived as current truth after later analysis superseded them.
+
+### 12.2 Legacy and debug paths
+
+Legacy/single-tool authority modes, raw generator carriers, shadow composition, and runtime diagnostic schemas served rollback, equivalence, migration, and debugging purposes. Their historical existence does not make them preferred new architecture. Remove or change compatibility paths only through explicit migration work with restore and regression evidence.
+
+### 12.3 Documentation audit outcome
+
+The stale early-product README and overlapping root Architecture document were corrected in the September 2026 documentation audit. Detailed B3 and Drawing investigation reports remain intentionally historical or diagnostic; `docs/README.md` classifies them so their evidence is preserved without presenting old hypotheses as current authority.
+
+## 13. Current Development Position
+
+v1.2 remains the locked Box / Construction baseline. TB and rectangular W are accepted; current S is implemented but incomplete. Drawing is now substantially implemented post-v1.2. Puzzle, J/P, assembly angles, angle-aware variants, static 3D Preview, and a shared ProjectDocument remain planned or conceptual exactly as classified in `PROJECT_MASTER.md`.
+
+PM.1 analyzed the source and designed the governance structure. PM.2 created `PROJECT_MASTER.md` and this history so future sessions can distinguish implemented, locked, planned, conceptual, debt, and historical material.
+
+The later Line sequence resolved the reported natural-acquisition path: established direction remains independent of positional search, and non-positional Point Reference supports cannot mask a useful intersection. Shared versioned ProjectDocument/document identity remains future cross-module architecture; it must eventually wrap useful Drawing and v1.2 models rather than rewrite either.
+
+## 14. Release History Index
+
+| Release | Locked commit | Official tag | Summary | Current relevance |
+|---|---|---|---|---|
+| v1.0 core | Not recorded here | Not recorded here | Import/topology and generated/final/manufacturing pipeline foundation. | Historical architecture foundation; consult release documents for exact release identity. |
+| v1.1 | `5392cbe` (release commit visible in repository history) | Not recorded here | PM/import containment, UI/workflow, TB/S, Finish, and fixture stabilization. | Stable predecessor to authority and Wall work. |
+| v1.2 | `e787eb5b1f3ff530fbae9292d56ec4a1da0e2ba2` | `v1.2.0` | TB + Wall Stabilization; reconciliation, projection lineage, per-connection widths, and B3.23 acceptance. | Current accepted and locked baseline. Local PM.1 tag verification was unavailable. |
