@@ -20,6 +20,8 @@ export type PointReferenceConstruction = Readonly<{
   supportOrigin: DrawingPoint;
   supportDirection: DrawingPoint;
   constructionKey: string;
+  /** Whether this support supplies a unique point on the active construction. */
+  positionOwnership: 'defines-position' | 'reference-only';
   candidatePoint: DrawingPoint;
   screenDistance: number;
 }>;
@@ -301,6 +303,8 @@ export const collectDrawingInferenceCandidates = (
         if (!projection) continue;
         const directionIntersection = angularDirection && activeLineStart
           ? intersectDrawingRayWithSupport(activeLineStart, angularDirection, reference.point, supportDirection) : null;
+        const positionOwnership = angularDirection && activeLineStart && !directionIntersection
+          ? 'reference-only' : 'defines-position';
         // Once Line direction is established, position is evaluated along that
         // construction rather than by requiring the raw pointer to approach the
         // infinite support first. The support remains the semantic construction.
@@ -312,6 +316,7 @@ export const collectDrawingInferenceCandidates = (
           ? toScreenPoint(directionalPointer.candidatePoint, drawingToClientTransform) : pointerClientPoint;
         pointReferences.push({ type: 'point-reference', kind: 'normal-to-incident-line', incidentLineId: line.id, sourcePointId: reference.id,
           supportOrigin: reference.point, supportDirection, constructionKey: `point-normal:${reference.id}:${line.id}`,
+          positionOwnership,
           candidatePoint, screenDistance: directionIntersection
             ? Math.hypot(distancePoint.x - candidateScreen.x, distancePoint.y - candidateScreen.y)
             : projection.screenDistance });

@@ -132,6 +132,54 @@ test('normal support falls back without direction and rejects backward or non-un
   const parallelDegrees = Math.atan2(free.supportDirection.y, free.supportDirection.x) * 180 / Math.PI;
   const parallel = normal(pipeline({ pointer, scene: [angled], start, directionDegrees: parallelDegrees }).candidates);
   assert.deepEqual(parallel.candidatePoint, free.candidatePoint, 'parallel supports have no direction-aware candidate');
+  assert.equal(parallel.positionOwnership, 'reference-only', 'non-unique support remains detectable but cannot own position');
+});
+
+test('a coincident chain normal cannot steal position from a uniquely crossing normal', () => {
+  const start = { x: 10, y: 70 };
+  const authority = resolvedLine('authority', 'a0', 'a1', { x: 0, y: 0 }, { x: 40, y: 40 });
+  // This is the immediately preceding chain segment. Its normal through the
+  // active start is coincident with the established 45-degree construction.
+  const preceding = resolvedLine('preceding', 'b0', 'S', { x: -20, y: 100 }, start);
+  // The normal at U crosses the construction once, at (40, 100).
+  const target = resolvedLine('target', 'U', 'V', { x: 50, y: 90 }, { x: 80, y: 120 });
+  const pointer = { x: 37, y: 97 };
+
+  const separateControl = pipeline({ pointer, scene: [authority, target], start, startPointId: 'S',
+    directionDegrees: 45, previousSnap: null });
+  const chained = pipeline({ pointer, scene: [authority, target, preceding], start, startPointId: 'S',
+    directionDegrees: 45, previousSnap: null });
+  const redundant = normal(chained.candidates, 'S', 'preceding');
+  const desired = normal(chained.candidates, 'U', 'target');
+
+  assert.equal(redundant.positionOwnership, 'reference-only');
+  assert.ok(redundant.screenDistance < desired.screenDistance,
+    'fixture reproduces raw acquisition ordering: the redundant chain normal is closer');
+  assert.deepEqual(desired.candidatePoint, { x: 40, y: 100 });
+  assert.equal(desired.positionOwnership, 'defines-position');
+  assert.equal(separateControl.snap.channels.directionAuthority?.relation, 'parallel');
+  assert.equal(chained.snap.channels.directionAuthority?.relation, 'parallel');
+  assert.equal(separateControl.snap.channels.pointReference?.constructionKey, 'point-normal:U:target');
+  assert.equal(chained.snap.channels.pointReference?.constructionKey, 'point-normal:U:target');
+  assert.deepEqual(chained.resolved.effectivePoint, separateControl.resolved.effectivePoint);
+  assert.deepEqual(chained.resolved.effectivePoint, { x: 40, y: 100 });
+});
+
+test('equivalent fresh manual and chained continuations arbitrate multiple valid normals deterministically', () => {
+  const start = { x: 10, y: 70 }, pointer = { x: 40, y: 100 };
+  const authority = resolvedLine('authority', 'a0', 'a1', { x: 0, y: 0 }, { x: 40, y: 40 });
+  const preceding = resolvedLine('preceding', 'b0', 'S', { x: -20, y: 100 }, start);
+  const targetA = resolvedLine('target-a', 'U', 'V', { x: 50, y: 90 }, { x: 80, y: 120 });
+  const targetB = resolvedLine('target-b', 'W', 'X', { x: 45, y: 95 }, { x: 75, y: 125 });
+  const scene = [authority, targetB, preceding, targetA];
+  const run = () => pipeline({ pointer, scene, start, startPointId: 'S', directionDegrees: 45, previousSnap: null });
+  const manual = run(), chained = run();
+
+  assert.equal(chained.candidates.pointReferences.filter(({ positionOwnership }) => positionOwnership === 'defines-position').length > 1, true);
+  assert.equal(chained.snap.channels.pointReference?.constructionKey, 'point-normal:U:target-a');
+  assert.deepEqual(chained.candidates, manual.candidates);
+  assert.deepEqual(chained.snap, manual.snap);
+  assert.deepEqual(chained.resolved.effectivePoint, manual.resolved.effectivePoint);
 });
 
 test('direction-aware candidate preserves Point Reference identity and compatible direction authority', () => {
