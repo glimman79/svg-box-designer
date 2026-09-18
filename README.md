@@ -67,6 +67,7 @@ svg-box-designer/
 ├── docs/                          # specifications, analyses, diagnostics, and release snapshots
 ├── PROJECT_MASTER.md              # current product and architecture authority
 ├── PROJECT_HISTORY.md             # architectural evolution
+├── ROADMAP.md                     # planned product development and open design work
 ├── Architecture.md                # concise construction-pipeline map
 └── CHANGELOG.md                   # concise completed-change record
 ```
@@ -75,6 +76,7 @@ svg-box-designer/
 
 - [PROJECT_MASTER.md](PROJECT_MASTER.md): how the application is designed now.
 - [PROJECT_HISTORY.md](PROJECT_HISTORY.md): why significant architectural changes occurred.
+- [ROADMAP.md](ROADMAP.md): what is planned next and which decisions remain open.
 - [Architecture.md](Architecture.md): quick map of the Box / Construction geometry pipeline.
 - [docs/README.md](docs/README.md): status and classification of detailed documents.
 - [CHANGELOG.md](CHANGELOG.md): release and unreleased change summary.
