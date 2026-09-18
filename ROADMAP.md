@@ -54,8 +54,15 @@ redesign the current Midpoint behavior.
 
 Dimensions and Constraints are separate Drawing tools and systems. A Dimension measures,
 displays, and, when driving, controls a value through the dimension solver path. It is
-not a geometric Constraint merely because the Constraints panel contains a choice with
-the same label.
+not the same user-facing operation as a Constraint merely because the Constraints panel
+contains a choice with the same label. The current primary Dimensions authoring flow is
+tool-first:
+
+```text
+activate Dimensions
+  -> select the required geometry on the canvas
+  -> choose / apply the relevant dimensional operation
+```
 
 | Dimension | Status | Presentation |
 | --- | --- | --- |
@@ -63,29 +70,96 @@ the same label.
 | Length | **IMPLEMENTED** | Selecting a Line supports an aligned Line-length dimension with live placement preview, dimension graphics, and a displayed measured value. |
 | Angle | **IMPLEMENTED** | Line-to-Line angle uses live placement preview, an angle arc with arrows, applicable support extensions, and a displayed measured value. |
 
-Distance, Length, and Angle in this table describe implemented **Dimension**
-functionality. The identically named choices in the Constraints panel are not yet
-developed as geometric Constraints.
+Distance, Length, and Angle in this table describe currently implemented **Dimension**
+functionality. Their integration into the Constraints selection, applicability, and
+authoring workflow is not yet developed. That future integration must reuse their common
+geometric and semantic basis rather than recreate three independent Constraint-only
+implementations.
+
+### Shared dimensional capability across the two tools
+
+Distance, Length, and Angle are one set of reusable geometric/semantic capabilities
+consumed from two distinct tool contexts. They must **not** be independently implemented
+once for Dimensions and again for Constraints. Their common representation and
+evaluation functionality should be reusable by both tools where appropriate, while each
+tool retains its own authoring workflow and presentation requirements.
+
+This sharing does not merge the tools or their presentation systems. Dimensions may
+continue to present these relationships primarily as dimensional annotations through
+the Dimension presentation system. Constraints may expose the same underlying
+relationships among the applicable choices for selected geometry and use the Constraint
+presentation architecture. Shared geometric/semantic capability does not require
+identical UI or presentation. Concrete types, APIs, solver equations, and ownership
+boundaries remain later architecture and implementation decisions.
+
+Where appropriate, future work should also reuse geometry-selection and applicability
+infrastructure between Dimensions and Constraints instead of building unrelated ways to
+understand the same selected Drawing geometry. Constraints still has the broader
+applicability problem because one selection can support many different relationships.
+
+### Planned preselection workflow
+
+Canvas preselection before opening Dimensions is **PLANNED / NOT YET IMPLEMENTED** as a
+supported authoring workflow:
+
+```text
+select geometry directly on the canvas
+  -> activate / open Dimensions
+  -> Dimensions evaluates the existing selection
+  -> use an applicable dimensional operation
+```
+
+The current primary workflow remains tool-first; this planned path is an additional
+authoring convenience, not a replacement for the separate Dimensions tool.
 
 ## C. Constraints
 
-Constraints is a separate, selection-driven Drawing tool. Its high-level interaction is:
+Constraints is a separate, selection-driven Drawing tool with a broader catalog of
+relationships than Dimensions. Its current primary interaction is also tool-first:
 
 ```text
-selected geometry
+activate / open Constraints
+  -> select the required geometry on the canvas
   -> determine applicable constraints
-  -> enable applicable choices and keep the others disabled
-  -> user chooses a Constraint
-  -> apply that Constraint to the selected geometry
+  -> expose all valid choices and keep non-applicable choices disabled
+  -> user chooses the desired Constraint or Constraints
+  -> apply the chosen relationships to the selected geometry
 ```
 
 Depending on the Constraint, selection can involve a Line, two Lines, a point, two
 points, or a point and a Line. The production applicability policy remains the authority
-for exact selection contracts. A disabled panel choice does **not** by itself mean that
-the Constraint is unimplemented: an implemented choice is also disabled when it is not
-applicable to the current selection, is already present, or conflicts with an existing
+for exact selection contracts; this roadmap does not define an applicability matrix.
+One selection can make multiple choices valid, and the panel must not assume that there
+is only one correct operation. For example, two Lines may, depending on their geometry
+and the operation's semantics, offer choices such as Length, Angle, Parallelism, and
+Perpendicular. The same multiple-possibility principle applies to other supported
+selection combinations:
+
+```text
+selected geometry
+  -> evaluate applicability
+  -> expose all valid choices
+  -> user chooses the desired relationship or relationships
+```
+
+A disabled panel choice does **not** by itself mean that the Constraint is
+unimplemented: an implemented choice is also disabled when it is not applicable to the
+current selection, is already present, or conflicts with an existing
 Horizontal/Vertical choice. Separately, the panel deliberately shows choices whose
 Constraint behavior has not yet been developed.
+
+Canvas preselection before opening Constraints is **PLANNED / NOT YET IMPLEMENTED** as
+a supported authoring workflow:
+
+```text
+select geometry directly on the canvas
+  -> activate / open Constraints
+  -> Constraints evaluates the existing selection
+  -> enable all applicable Constraints and keep non-applicable choices disabled
+  -> user chooses the desired relationship or relationships
+```
+
+This future path complements, rather than changes, the current tool-first workflow.
 
 ### Constraint semantics and presentation status
 
@@ -103,9 +177,9 @@ still has work remaining.
 | Perpendicular | **IMPLEMENTED** (`PERPENDICULAR`) | Transient and persistent right-angle presentation share geometry derivation, including support extensions when needed. |
 | Coincidence | **IMPLEMENTED** (`COINCIDENT`) | Persistent square marker and selected-relation reference presentation exist; transient presentation still needs to converge on the shared model. |
 | Midpoint | **IMPLEMENTED** (`MIDPOINT`) | Browser-verified reference path: transient and persistent `—□—` presentation uses the shared Line-marker layout. |
-| Distance | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
-| Length | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
-| Angle | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
+| Distance | **DESIGN REQUIRED** | Present in the panel, but Constraints integration, applicability, authoring, and presentation are not yet developed. Reuse the implemented Dimension capability's common geometric/semantic basis rather than creating an independent Distance implementation. |
+| Length | **DESIGN REQUIRED** | Present in the panel, but Constraints integration, applicability, authoring, and presentation are not yet developed. Reuse the implemented Dimension capability's common geometric/semantic basis rather than creating an independent Length implementation. |
+| Angle | **DESIGN REQUIRED** | Present in the panel, but Constraints integration, applicability, authoring, and presentation are not yet developed. Reuse the implemented Dimension capability's common geometric/semantic basis rather than creating an independent Angle implementation. |
 | Radius / Diameter | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
 | Symmetry | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
 | Fix | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
