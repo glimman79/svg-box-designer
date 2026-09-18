@@ -1,5 +1,7 @@
 # Unreleased
 
+- Make committed Line continuations inference-equivalent to manual starts by deriving first-frame candidates from the current committed document snapshot; only endpoint geometry and SketchPoint topology cross the segment boundary, while all segment-local inference state starts fresh.
+- Add production-boundary frame-by-frame coverage for candidates, direction/position authority, effective geometry, accepted semantics, transient presentation, endpoint acquisition, reacquisition, Ctrl bypass, and rapid delayed commits.
 - Preserve every accepted Line segment during rapid continuous drawing by committing a pending segment before resolving the next same-tool click; explicit cancel, tool change, double-click finish, and unmount can still discard pending work.
 - Tighten Parallel and Perpendicular acquisition from 8 px to 5 px and Point Reference acquisition from 8 px to 6 px without shortening established direction-authority lifetime or positional/alignment target tolerances.
 - Separate plural Line relation detection from singular direction authority, endpoint/position authority, transient presentation, and persistence.

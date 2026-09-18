@@ -9,6 +9,17 @@ export const resolveLine = (sketch: DrawingSketchV2, line: DrawingLineEntity): R
   return start && end ? { ...line, start: { x: start.x, y: start.y }, end: { x: end.x, y: end.y } } : null;
 };
 
+/** Resolves the active sketch's committed Lines from the supplied document snapshot. */
+export const resolveActiveSketchLines = (document: DrawingDocumentV2): readonly ResolvedDrawingLine[] => {
+  const sketch = document.sketches[document.activeSketchId];
+  if (!sketch) return [];
+  return sketch.entityOrder.flatMap((id) => {
+    const entity = sketch.entities[id];
+    const line = entity?.type === 'line' ? resolveLine(sketch, entity) : null;
+    return line ? [line] : [];
+  });
+};
+
 export const pointIdForLineEndpoint = (line: DrawingLineEntity, endpoint: 'start' | 'end'): string => endpoint === 'start' ? line.startPointId : line.endPointId;
 
 export const updateSketchPoint = (sketch: DrawingSketchV2, id: string, point: DrawingPoint): DrawingSketchV2 => {

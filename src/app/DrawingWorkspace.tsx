@@ -15,7 +15,7 @@ import { candidateForSector, createLineAngleBasis, deriveLineAngleAnnotation } f
 import { solveDrawingDimensionEdit } from './drawingConstraintSolver';
 import type { HistoryControlsProps } from './HistoryControls';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from './drawingHistory';
-import { pointIdForLineEndpoint, resolveLine } from './drawingTopology.js';
+import { pointIdForLineEndpoint, resolveActiveSketchLines, resolveLine } from './drawingTopology.js';
 import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
 import { deleteGeometricConstraint, deriveMidpointMarkerPresentation, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
@@ -290,12 +290,18 @@ export function DrawingWorkspace({
     if (!drawingTransform || !overlayTransform) return null;
     const rawPoint = clientToModelPoint(clientPoint, drawingTransform);
     if (!rawPoint) return null;
+    // A pending Line commit can be flushed earlier in this same browser event.
+    // React has not rendered that document yet, so inference must read the
+    // synchronously updated transaction snapshot rather than render closure data.
+    const inferenceDocument = documentRef.current;
+    const inferenceSketch = inferenceDocument.sketches[inferenceDocument.activeSketchId];
+    const inferenceLines = resolveActiveSketchLines(inferenceDocument);
     const interaction = lineInteractionRef.current;
     const angularIntent = !ctrlHeld && interaction.start ? resolveLinePreviewPoint(interaction.start, rawPoint) : null;
     const priorAuthority = !ctrlHeld ? drawingSnapRef.current?.channels.directionAuthority ?? null : null;
     const establishedDegrees = priorAuthority
       ? Math.atan2(priorAuthority.constructionDirection.y, priorAuthority.constructionDirection.x) * 180 / Math.PI : null;
-    const candidates = collectDrawingInferenceCandidates(clientPoint, resolvedLines, drawingTransform, viewBox, interaction.start,
+    const candidates = collectDrawingInferenceCandidates(clientPoint, inferenceLines, drawingTransform, viewBox, interaction.start,
       establishedDegrees ?? (angularIntent?.snapActive ? angularIntent.snappedAngleDegrees : null), interaction.startPointId);
     const axisDirectionActive = angularIntent?.snapActive === true && angularIntent.snappedAngleDegrees !== null
       && [0, 90, 180, 270].includes(angularIntent.snappedAngleDegrees);
@@ -337,7 +343,7 @@ export function DrawingWorkspace({
       })() : null;
     if (interaction.start) {
       const diagnosticPresentations = deriveDrawingInferencePresentations(
-        snap, activeSketch, viewport.width / viewBox.width, drawingTransform, overlayTransform, nextInteraction,
+        snap, inferenceSketch, viewport.width / viewBox.width, drawingTransform, overlayTransform, nextInteraction,
       );
       const nearest = <T extends { screenDistance: number }>(items: readonly T[]) => items[0] ?? null;
       const summarizeDirection = ({ entityId, candidatePoint, screenDistance, lineStart, lineEnd, referenceIncidentToActiveLineStart }: {
@@ -361,7 +367,7 @@ export function DrawingWorkspace({
           axisDirectionActive,
           lineStart: interaction.start, startPointId: interaction.startPointId,
           startLineId: interaction.startLineId, startMidpointLineId: interaction.startMidpointLineId,
-          incidentLineIds: resolvedLines.filter((line) => interaction.startPointId
+          incidentLineIds: inferenceLines.filter((line) => interaction.startPointId
             && (line.startPointId === interaction.startPointId || line.endPointId === interaction.startPointId)).map(({ id }) => id),
         },
         candidates: {
@@ -438,8 +444,8 @@ export function DrawingWorkspace({
       });
     }
     setCadCursor(anchor ? { anchor, snap, xGuideReference, yGuideReference, sameAxisReference, lineReference, pointReferenceGuide } : null);
-    const endpointPointId = snap.type === 'endpoint' && activeSketch
-      ? pointIdForLineEndpoint(activeSketch.entities[snap.entityId], snap.endpoint) : null;
+    const endpointPointId = snap.type === 'endpoint' && inferenceSketch
+      ? pointIdForLineEndpoint(inferenceSketch.entities[snap.entityId], snap.endpoint) : null;
     const position: DrawingPlacementResolution['position'] = ctrlHeld
       ? { kind: 'raw', point: rawPoint }
       : snap.type === 'endpoint' && endpointPointId
@@ -467,8 +473,8 @@ export function DrawingWorkspace({
     setLineInteraction(result.interaction);
     lineInteractionRef.current = result.interaction;
     if (result.entity) {
-      // Spatial hysteresis belongs to one segment; the continuation starts with
-      // fresh inference while retaining its endpoint and previous Line identity.
+      // Spatial hysteresis belongs to one segment; only the committed endpoint
+      // geometry and its real SketchPoint topology enter the fresh continuation.
       setDrawingSnap(null);
       drawingSnapRef.current = null;
       transactDocument((current) => appendEntityToActiveSketch(current, result.entity!, undefined, acceptedConstraintKind,
