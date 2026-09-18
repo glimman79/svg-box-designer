@@ -331,15 +331,15 @@ for (const spec of [
 });
 
 for (const spec of [
-  { name: 'target H + new H', axis: 'HORIZONTAL', targetDegrees: 0, pointer: { x: 100, y: 6 }, relation: 'parallel' },
-  { name: 'target V + new V', axis: 'VERTICAL', targetDegrees: 90, pointer: { x: 6, y: 100 }, relation: 'parallel' },
-  { name: 'target H + new V', axis: 'VERTICAL', targetDegrees: 0, pointer: { x: 6, y: 100 }, relation: 'perpendicular' },
-  { name: 'target V + new H', axis: 'HORIZONTAL', targetDegrees: 90, pointer: { x: 100, y: 6 }, relation: 'perpendicular' },
+  { name: 'target H + new H', axis: 'HORIZONTAL', targetDegrees: 0, pointer: { x: 100, y: 4.9 }, relation: 'parallel' },
+  { name: 'target V + new V', axis: 'VERTICAL', targetDegrees: 90, pointer: { x: 4.9, y: 100 }, relation: 'parallel' },
+  { name: 'target H + new V', axis: 'VERTICAL', targetDegrees: 0, pointer: { x: 4.9, y: 100 }, relation: 'perpendicular' },
+  { name: 'target V + new H', axis: 'HORIZONTAL', targetDegrees: 90, pointer: { x: 100, y: 4.9 }, relation: 'perpendicular' },
 ]) test(`${spec.name} derives exclusive axis semantics from final geometry`, () => {
   const targetDirection = pointAt(spec.targetDegrees, 40);
   const target = referenceLine('axis-target', { x: 400, y: 400 }, { x: 400 + targetDirection.x, y: 400 + targetDirection.y });
   const acquired = author({ pointer: spec.pointer, scene: [target] });
-  assert.equal(acquired.angular.snapActive, false, 'raw pointer begins outside the H/V angular window');
+  assert.equal(acquired.angular.snapActive, true, 'tighter direction acquisition leaves H/V as the direct axis authority');
   assert.equal(lines.automaticAxisConstraintKind(acquired.placement.interaction), spec.axis);
   assert.equal(acquired.placement.interaction.parallelLineId, null);
   assert.equal(acquired.placement.interaction.perpendicularLineId, null);
@@ -363,7 +363,7 @@ for (const spec of [
 test('final H/V authority retains a compatible point reference while removing the Line relation', () => {
   const target = referenceLine('horizontal-target', { x: 400, y: 400 }, { x: 440, y: 400 });
   const pointReference = referenceLine('point-reference', { x: 100, y: 40 }, { x: 130, y: 57 });
-  const result = author({ pointer: { x: 100, y: 6 }, scene: [target, pointReference] });
+  const result = author({ pointer: { x: 100, y: 4.9 }, scene: [target, pointReference] });
   assert.equal(lines.automaticAxisConstraintKind(result.placement.interaction), 'HORIZONTAL');
   assert.ok(result.snap.channels.xAlignment, 'visible point reference remains acquired');
   assert.equal(result.placement.resolvedReferences.x, result.snap.channels.xAlignment);

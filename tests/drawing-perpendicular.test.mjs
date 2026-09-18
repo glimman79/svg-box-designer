@@ -16,8 +16,9 @@ const add = (document, entity, perpendicular = null, axis = null) => appendEntit
 test('accepted perpendicular inference creates one canonical first-class constraint in the Line append transaction', () => {
   let document = add(createDrawingDocumentV2(), line('b', { x: 20, y: 20 }, { x: 60, y: 40 }));
   const existing = { ...document.sketches['sketch-1'].entities.b, start: { x: 20, y: 20 }, end: { x: 60, y: 40 } };
-  const candidates = collectDrawingInferenceCandidates({ x: 39, y: 62 }, [existing], transform, undefined, { x: 50, y: 40 });
-  const snap = resolveDrawingSnap({ rawPoint: { x: 39, y: 62 }, candidates, previousSnap: null, ctrlOverride: false });
+  const candidates = collectDrawingInferenceCandidates({ x: 40, y: 60 }, [existing], transform, undefined, { x: 50, y: 40 });
+  const snap = resolveDrawingSnap({ rawPoint: { x: 40, y: 60 }, candidates, previousSnap: null, ctrlOverride: false,
+    activeLineStart: { x: 50, y: 40 }, activeLineStartPointId: null });
   assert.equal(snap.type, 'perpendicular');
   document = add(document, line('a', { x: 50, y: 40 }, snap.effectivePoint), snap.entityId);
   const [constraint] = Object.values(document.sketches['sketch-1'].geometricConstraints);
@@ -68,8 +69,8 @@ test('chain workflow metadata cannot change ordinary perpendicular resolution', 
   const snap = { ...perpendicular, active: true, channels: { xAlignment: null, yAlignment: null,
     perpendicular, parallel: null, pointReference: null } };
   const manual = resolveLineEffectivePoint({ ...EMPTY_LINE_INTERACTION, start, startPointId: 'joint' }, raw, snap);
-  const chained = resolveLineEffectivePoint({ ...EMPTY_LINE_INTERACTION, start, startPointId: 'joint', previousChainedLineId: 'previous' }, raw, snap);
-  const inferenceState = ({ interaction, ...resolution }) => ({ ...resolution, interaction: { ...interaction, previousChainedLineId: null } });
+  const chained = resolveLineEffectivePoint({ ...EMPTY_LINE_INTERACTION, start, startPointId: 'joint' }, raw, snap);
+  const inferenceState = (resolution) => resolution;
   assert.deepEqual(inferenceState(chained), inferenceState(manual), 'identical topology and pointer produce identical geometry and semantics');
   assert.equal(chained.interaction.perpendicularLineId, manual.interaction.perpendicularLineId);
   assert.equal(automaticAxisConstraintKind(chained.interaction), automaticAxisConstraintKind(manual.interaction),
@@ -77,9 +78,9 @@ test('chain workflow metadata cannot change ordinary perpendicular resolution', 
 });
 
 test('cancel and new-chain lifecycle clear previous identity while zero-length rejection preserves it', () => {
-  const chained = { ...EMPTY_LINE_INTERACTION, start: { x: 1, y: 1 }, previousChainedLineId: 'line-1' };
-  assert.equal(applyResolvedLineClick(chained, { x: 1, y: 1 }, () => 'must-not-run').interaction.previousChainedLineId, 'line-1');
-  assert.equal(cancelLineInteraction().previousChainedLineId, null);
+  const chained = { ...EMPTY_LINE_INTERACTION, start: { x: 1, y: 1 } };
+  assert.deepEqual(applyResolvedLineClick(chained, { x: 1, y: 1 }, () => 'must-not-run').interaction, chained);
+  assert.deepEqual(cancelLineInteraction(), EMPTY_LINE_INTERACTION);
 });
 
 test('generic storage remains capable of explicit axis plus perpendicular constraints', () => {
@@ -122,7 +123,8 @@ test('restarted Line inference keeps H/V intent, exact geometry, and shared endp
     const angularError = Math.hypot(rawEnd.x - angularPoint.x, rawEnd.y - angularPoint.y);
     assert.ok(perpendicular.screenDistance < angularError, 'perpendicular candidate has the smaller numerical pixel error');
 
-    const snap = resolveDrawingSnap({ rawPoint: rawEnd, candidates, previousSnap: null, ctrlOverride: false });
+    const snap = resolveDrawingSnap({ rawPoint: rawEnd, candidates, previousSnap: null, ctrlOverride: false,
+      activeLineStart: joint, activeLineStartPointId: 'joint' });
     assert.equal(snap.type, 'perpendicular', 'spatial inference exposes the competing perpendicular candidate');
     const accepted = resolveLineEffectivePoint({ ...EMPTY_LINE_INTERACTION, start: joint, startPointId: 'joint' }, rawEnd, snap);
     assert.equal(automaticAxisConstraintKind(accepted.interaction), secondAxis);

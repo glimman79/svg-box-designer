@@ -1,5 +1,7 @@
 # Unreleased
 
+- Preserve every accepted Line segment during rapid continuous drawing by committing a pending segment before resolving the next same-tool click; explicit cancel, tool change, double-click finish, and unmount can still discard pending work.
+- Tighten Parallel and Perpendicular acquisition from 8 px to 5 px and Point Reference acquisition from 8 px to 6 px without shortening established direction-authority lifetime or positional/alignment target tolerances.
 - Separate plural Line relation detection from singular direction authority, endpoint/position authority, transient presentation, and persistence.
 - Remove viewport-bound reference-point culling from Drawing inference candidate generation so panning cannot change semantic participation.
 - Replace start-incident-only Perpendicular suppression with geometry-based equivalent-direction authority selection.

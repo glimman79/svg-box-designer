@@ -6,7 +6,7 @@ import { EMPTY_LINE_INTERACTION, resolveLineEffectivePoint, resolveLinePreviewPo
 const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 const bounds = { x: -500, y: -500, width: 1000, height: 1000 };
 const start = { x: 0, y: 0 };
-const interaction = { ...EMPTY_LINE_INTERACTION, start, startPointId: 'origin', previousChainedLineId: 'chain' };
+const interaction = { ...EMPTY_LINE_INTERACTION, start, startPointId: 'origin' };
 const referenceLine = (id, point) => ({ id, type: 'line', start: point, end: { x: point.x - 31, y: point.y - 47 } });
 const assertPointClose = (actual, expected) => {
   assert.ok(Math.abs(actual.x - expected.x) < 1e-10, `${actual.x} != ${expected.x}`);

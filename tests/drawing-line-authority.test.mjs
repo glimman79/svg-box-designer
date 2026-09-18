@@ -25,7 +25,7 @@ assert.equal(resolve({ rawPoint: raw, candidates: { ...empty, endpoints }, previ
 const tied = [endpoint('z', { x: 8, y: 0 }, 2), endpoint('a', { x: 10, y: 0 }, 2)];
 assert.equal(resolve({ rawPoint: raw, candidates: { ...empty, endpoints: tied }, previousSnap: null, ctrlOverride: false }).entityId, 'a');
 
-const interaction = { ...EMPTY_LINE_INTERACTION, start: { x: 0, y: 0 }, startPointId: 'start', previousChainedLineId: 'previous' };
+const interaction = { ...EMPTY_LINE_INTERACTION, start: { x: 0, y: 0 }, startPointId: 'start' };
 const exact = resolveLineEffectivePoint(interaction, raw, acquiredEndpoint);
 assert.deepEqual(exact.effectivePoint, { x: 10, y: 0 }, 'endpoint coordinate cannot be projected');
 assert.equal(automaticAxisConstraintKind(exact.interaction), 'HORIZONTAL');
@@ -58,6 +58,5 @@ assert.deepEqual(ctrl.effectivePoint, raw);
 assert.equal(hasAngularPresentationTruth(ctrl.interaction), false);
 assert.equal(ctrl.interaction.perpendicularLineId, null);
 assert.equal(ctrl.interaction.startPointId, 'start');
-assert.equal(ctrl.interaction.previousChainedLineId, 'previous');
 
 console.log('drawing Line authority tests passed');

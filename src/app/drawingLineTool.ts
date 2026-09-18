@@ -64,7 +64,6 @@ export type LineToolInteraction = Readonly<{
   parallelLineId: string | null;
   midpointLineId: string | null;
   lineBodyId: string | null;
-  previousChainedLineId: string | null;
 }>;
 
 export type SelectedLineSemanticConstraints = Readonly<{
@@ -94,8 +93,14 @@ export const EMPTY_LINE_INTERACTION: LineToolInteraction = {
   parallelLineId: null,
   midpointLineId: null,
   lineBodyId: null,
-  previousChainedLineId: null,
 };
+
+/** Manual starts and committed continuations share one fresh segment state. */
+export const initializeNewLineAt = (point: DrawingPoint, pointId: string | null = null,
+  lineId: string | null = null, midpointLineId: string | null = null): LineToolInteraction => ({
+  ...EMPTY_LINE_INTERACTION, start: point, startPointId: pointId, startLineId: lineId,
+  startMidpointLineId: midpointLineId, rawPointerPoint: point, effectivePreviewPoint: point,
+});
 
 export const updateLinePreview = (interaction: LineToolInteraction, pointer: DrawingPoint): LineToolInteraction => (
   interaction.start ? (() => {
@@ -509,7 +514,7 @@ export const applyLineClick = (
   createId: () => string,
 ): LineClickResult => {
   if (!interaction.start) return {
-    interaction: { ...EMPTY_LINE_INTERACTION, start: point, rawPointerPoint: point, effectivePreviewPoint: point },
+    interaction: initializeNewLineAt(point),
     entity: null,
   };
   const preview = resolveLinePreviewPoint(interaction.start, point);
@@ -521,24 +526,18 @@ export const applyLineClick = (
   }
   const id = createId();
   return {
-    interaction: {
-      ...EMPTY_LINE_INTERACTION,
-      start: effectivePoint,
-      rawPointerPoint: effectivePoint,
-      effectivePreviewPoint: effectivePoint,
-      previousChainedLineId: id,
-    },
+    interaction: initializeNewLineAt(effectivePoint),
     entity: { id, type: 'line', start: interaction.start, end: effectivePoint },
   };
 };
 
 /** Commits a point already resolved by global/tool arbitration without reapplying angular inference. */
 export const applyResolvedLineClick = (interaction: LineToolInteraction, point: DrawingPoint, createId: () => string, pointId: string | null = null, lineId: string | null = null, midpointLineId: string | null = null): LineClickResult => {
-  if (!interaction.start) return { interaction: { ...EMPTY_LINE_INTERACTION, start: point, startPointId: pointId, startLineId: lineId, startMidpointLineId: midpointLineId, rawPointerPoint: point, effectivePreviewPoint: point }, entity: null };
+  if (!interaction.start) return { interaction: initializeNewLineAt(point, pointId, lineId, midpointLineId), entity: null };
   if (Math.hypot(point.x - interaction.start.x, point.y - interaction.start.y) <= LINE_ZERO_LENGTH_TOLERANCE_MM) return { interaction, entity: null };
   const id = createId();
   return {
-    interaction: { ...EMPTY_LINE_INTERACTION, start: point, startPointId: pointId, rawPointerPoint: point, effectivePreviewPoint: point, previousChainedLineId: id },
+    interaction: initializeNewLineAt(point, pointId),
     entity: { id, type: 'line', start: interaction.start, end: point, startPointId: interaction.startPointId ?? undefined, endPointId: pointId ?? undefined },
   };
 };
