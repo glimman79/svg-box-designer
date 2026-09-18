@@ -31,7 +31,7 @@ future task:
 | Geometric constraints and solver | **IMPLEMENTED** | Horizontal, Vertical, Parallel, Perpendicular, Coincidence (point-to-point and point-to-Line support), and Midpoint are first-class semantic constraints. |
 | Dimensions | **IMPLEMENTED** | Driving and reference distance, length, and Line-to-Line angle forms have solver and annotation paths. |
 | Authority model | **IMPLEMENTED** | Position, direction, and topology authority are distinct; compatible directional and positional truths can coexist. |
-| Presentation | **IMPLEMENTED** | Transient inference and persistent constraint layers exist. Midpoint and Parallel already share semantic layout geometry between live and persistent presentation; other relations still need convergence. |
+| Presentation | **IMPLEMENTED** | Transient inference and persistent constraint layers exist. Midpoint and Parallel share Line-marker layout between live and persistent presentation; Perpendicular shares presentation geometry derivation. Other relations still need convergence. |
 
 Midpoint is the reference implementation for the intended presentation direction. Its
 browser-verified flow is:
@@ -50,46 +50,108 @@ Where the same geometric relation is shown transiently and persistently, both st
 should reuse the same fundamental marker layout when appropriate. This roadmap does not
 redesign the current Midpoint behavior.
 
-## B. Constraint, inference, and presentation architecture
+## B. Dimensions
 
-The long-term direction is one shared presentation architecture rather than unrelated
-JSX/SVG implementations for every tool or relation:
+Dimensions and Constraints are separate Drawing tools and systems. A Dimension measures,
+displays, and, when driving, controls a value through the dimension solver path. It is
+not a geometric Constraint merely because the Constraints panel contains a choice with
+the same label.
+
+| Dimension | Status | Presentation |
+| --- | --- | --- |
+| Distance | **IMPLEMENTED** | Point-to-point, point-to-Line, and Line-to-Line distance forms use live placement preview, dimension lines and arrows, applicable extension/witness geometry, and displayed measured values. |
+| Length | **IMPLEMENTED** | Selecting a Line supports an aligned Line-length dimension with live placement preview, dimension graphics, and a displayed measured value. |
+| Angle | **IMPLEMENTED** | Line-to-Line angle uses live placement preview, an angle arc with arrows, applicable support extensions, and a displayed measured value. |
+
+Distance, Length, and Angle in this table describe implemented **Dimension**
+functionality. The identically named choices in the Constraints panel are not yet
+developed as geometric Constraints.
+
+## C. Constraints
+
+Constraints is a separate, selection-driven Drawing tool. Its high-level interaction is:
 
 ```text
-semantics / solver
-  -> presentation derivation
-  -> shared overlay
-  -> glyph + support geometry + highlight
+selected geometry
+  -> determine applicable constraints
+  -> enable applicable choices and keep the others disabled
+  -> user chooses a Constraint
+  -> apply that Constraint to the selected geometry
+```
+
+Depending on the Constraint, selection can involve a Line, two Lines, a point, two
+points, or a point and a Line. The production applicability policy remains the authority
+for exact selection contracts. A disabled panel choice does **not** by itself mean that
+the Constraint is unimplemented: an implemented choice is also disabled when it is not
+applicable to the current selection, is already present, or conflicts with an existing
+Horizontal/Vertical choice. Separately, the panel deliberately shows choices whose
+Constraint behavior has not yet been developed.
+
+### Constraint semantics and presentation status
+
+Constraint semantic implementation and presentation-architecture completion are
+independent statuses. An implemented Constraint can have geometric semantics, solver
+behavior, and a persistent representation while its transient inference, persistent
+glyph, relation/support visualization, or migration to shared presentation derivation
+still has work remaining.
+
+| Constraint | Constraint status | Presentation / roadmap status |
+| --- | --- | --- |
+| Horizontal | **IMPLEMENTED** (`HORIZONTAL`) | Persistent H glyph exists; transient presentation still needs to converge on the shared inference model. |
+| Vertical | **IMPLEMENTED** (`VERTICAL`) | Persistent V glyph exists; transient presentation still needs to converge on the shared inference model. |
+| Parallelism | **IMPLEMENTED** (`PARALLEL`) | Transient and persistent markers derive through shared Line-marker layout; relation/support presentation can be extended where useful. |
+| Perpendicular | **IMPLEMENTED** (`PERPENDICULAR`) | Transient and persistent right-angle presentation share geometry derivation, including support extensions when needed. |
+| Coincidence | **IMPLEMENTED** (`COINCIDENT`) | Persistent square marker and selected-relation reference presentation exist; transient presentation still needs to converge on the shared model. |
+| Midpoint | **IMPLEMENTED** (`MIDPOINT`) | Browser-verified reference path: transient and persistent `—□—` presentation uses the shared Line-marker layout. |
+| Distance | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
+| Length | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
+| Angle | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
+| Radius / Diameter | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
+| Symmetry | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
+| Fix | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
+| Concentricity | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
+| Tangency | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
+
+Coincidence is one Constraint choice/family in the UI. Selection determines whether its
+applicable relationship is point-to-point or point-to-Line; those relationships are not
+separate top-level tools.
+
+The long-term direction is one shared presentation architecture rather than unrelated
+JSX/SVG implementations for every Constraint or relation:
+
+```text
+accepted inference
+  -> shared presentation derivation
+  -> transient inference overlay
+
+persistent semantic constraint
+  -> shared presentation derivation / layout
+  -> persistent constraint overlay
 ```
 
 `DrawingInferencePresentation` is an existing, partial shared transient-presentation
 model. Names such as `DrawingConstraintPresentation`, `DrawingConstraintGlyph`, and
 presentation-only `supportGeometry` describe possible future concepts, not current
-production types or locked API names.
-
-| Relation | Semantic status | Transient direction | Persistent direction | Relation/support presentation |
-| --- | --- | --- | --- | --- |
-| Horizontal | **IMPLEMENTED** (`HORIZONTAL`) | Converge on shared inference overlay | H glyph exists | Add only where useful |
-| Vertical | **IMPLEMENTED** (`VERTICAL`) | Converge on shared inference overlay | V glyph exists | Add only where useful |
-| Parallel | **IMPLEMENTED** (`PARALLEL`) | Shared inference presentation exists | `II`-style marker exists through shared layout | Reference/support between Lines |
-| Perpendicular | **IMPLEMENTED** (`PERPENDICULAR`) | Shared inference presentation exists | 90-degree corner exists | Extend support Lines to their theoretical intersection when needed |
-| Coincidence, point-to-point | **IMPLEMENTED** (`COINCIDENT`) | Converge on shared inference overlay | Square marker exists | Related point |
-| Coincidence, point-to-Line | **IMPLEMENTED** (`COINCIDENT`) | Converge on shared inference overlay | Square marker exists | Target Line/reference |
-| Midpoint | **IMPLEMENTED** (`MIDPOINT`) | Shared/current reference path | `-square-` marker through shared layout | Target Line |
-| Distance | **IMPLEMENTED** (dimension) | Dimension preview | Dimension graphics | Extension Lines |
-| Length | **IMPLEMENTED** (dimension) | Dimension preview | Dimension graphics | Current Line |
-| Angle | **IMPLEMENTED** (dimension) | Angle preview | Arc and arrows | Support/reference Lines |
-| Radius / Diameter | **DESIGN REQUIRED** | Follow shared principle | Dedicated annotation | Target curve |
-| Symmetry | **DESIGN REQUIRED** | Follow shared principle | Symmetry glyph | Both objects and symmetry axis |
-| Fix | **DESIGN REQUIRED** | Follow shared principle | Lock glyph | Target geometry |
-| Concentricity | **DESIGN REQUIRED** | Follow shared principle | Concentric-circle glyph | Both targets |
-| Tangency | **DESIGN REQUIRED** | Follow shared principle | Tangent glyph | Both targets |
+production types or locked API names. Midpoint remains the browser-verified reference
+implementation for this direction; this roadmap does not redesign its behavior.
 
 Any support geometry introduced solely to explain a relation must remain presentation
 only. It must not become a Drawing entity, solver authority, exported geometry, or
 History state.
 
-## C. Planned drawing tools
+The not-yet-developed Constraints should eventually follow the common sequence:
+
+```text
+geometric semantics
+  -> solver / topology where applicable
+  -> presentation derivation
+  -> transient and persistent presentation
+```
+
+Their equations, degrees of freedom, failure behavior, exact selection contracts,
+semantic identifiers, and glyph details remain **DESIGN REQUIRED**.
+
+## D. Planned drawing tools
 
 | Tool or family | Status | Roadmap scope | Design boundary |
 | --- | --- | --- | --- |
@@ -103,28 +165,6 @@ History state.
 | Quick Trim | **DESIGN REQUIRED** | Quickly trim geometry at relevant intersections or boundaries. | Exact interaction remains open. |
 | Rectangle | **DESIGN REQUIRED** | Add a Rectangle family with **four variants**. | The four variants have not been specified and will be defined later. |
 | Circle | **DESIGN REQUIRED** | Add exactly two currently planned variants: (1) standard Circle and (2) three-point-defined Circle. | UI sequence and parameterization remain open. |
-
-## D. Future geometric constraints
-
-| Constraint | Status | Intended scope without locking the solver contract |
-| --- | --- | --- |
-| Radius / Diameter | **DESIGN REQUIRED** | Constrain and annotate applicable curve size. |
-| Symmetry | **DESIGN REQUIRED** | Relate two objects about a symmetry axis. |
-| Fix | **DESIGN REQUIRED** | Fix applicable geometry through explicit semantic authority. |
-| Concentricity | **DESIGN REQUIRED** | Relate applicable curve centers. |
-| Tangency | **DESIGN REQUIRED** | Express tangent continuity between applicable geometry. |
-
-Each future constraint should pass through the common sequence:
-
-```text
-geometric semantics
-  -> solver / topology where applicable
-  -> presentation derivation
-  -> transient and persistent presentation
-```
-
-The exact equations, degrees of freedom, failure behavior, and interaction contracts
-require design before implementation.
 
 ## E. Rules for all future Drawing tools
 
