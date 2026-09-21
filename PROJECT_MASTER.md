@@ -28,7 +28,7 @@ A shared, versioned cross-workspace `ProjectDocument`, cross-workspace reference
 
 ### 4.1 Scope and topology
 
-The current workspace implements Select, Profile, Dimension, a floating Constraints tool, Direct Manipulation, snapping/inference, solver-backed constraints, and bounded Drawing Undo/Redo. Profile authors continuing/chained straight Line segments and is the straight-segment foundation of the partially implemented Profile product. A true standalone tool that creates one straight Line and then finishes does not currently exist. Menu visibility does not prove implementation of other prospective geometry tools.
+The current workspace implements Select, Profile, Dimension, a floating Constraints tool, Direct Manipulation, snapping/inference, solver-backed constraints, and bounded Drawing Undo/Redo. Profile authors continuing/chained straight Line segments and is the browser-verified, accepted straight-segment foundation of the partially implemented Profile product. Every committed segment remains a `DrawingLineEntity` with persistent `type: 'line'`; Profile is the authoring workflow, not a new geometry type. A true standalone tool that creates one straight Line and then finishes does not currently exist. Menu visibility does not prove implementation of other prospective geometry tools.
 
 `DrawingSketchV2` stores `DrawingSketchPoint` (`SketchPoint`) records separately from `DrawingLineEntity` records. Each Line references `startPointId` and `endPointId`; connected Lines share a SketchPoint identity. Resolved coordinates are derived from those references. Equal coordinates alone do not create topology, and migration of old coordinate-embedded Lines does not invent connectivity.
 
