@@ -4,7 +4,7 @@ SVG Box Designer is a browser-based React application for drawing 2D line geomet
 
 ## Application areas
 
-- **2D Drawing** provides an SVG CAD-style canvas with Line and Dimension tools, shared `SketchPoint` topology, snapping and geometric inference, driving/reference dimensions, geometric constraints, Direct Manipulation, and Drawing Undo/Redo. Line authoring can infer endpoints, midpoints, axes, alignments, angular directions, Parallel, Perpendicular, and Point References; Ctrl temporarily bypasses automatic inference.
+- **2D Drawing** provides an SVG CAD-style canvas with Dimension and constraint workflows, shared `SketchPoint` topology, snapping and geometric inference, Direct Manipulation, and Drawing Undo/Redo. The current UI tool named `Line` authors continuing/chained straight segments, each stored as its own Line entity; this is the implemented straight-segment foundation of Profile, not the planned standalone one-segment Line product. Authoring can infer endpoints, midpoints, axes, alignments, angular directions, Parallel, Perpendicular, and Point References; Ctrl temporarily bypasses automatic inference.
 - **Box / Construction** imports or starts an SVG document, identifies panels and selectable straight edges, and applies Panel Manager, TB (Top/Bottom finger-joint), W (Wall), and S (Slot) workflows. Generated geometry is composed, reconciled, manufacturing-compensated for clearances and kerf, previewed, and exported as SVG.
 - **Puzzle** is reserved in the workspace selector but is **not implemented**.
 
@@ -68,6 +68,7 @@ svg-box-designer/
 ├── PROJECT_MASTER.md              # current product and architecture authority
 ├── PROJECT_HISTORY.md             # architectural evolution
 ├── ROADMAP.md                     # planned product development and open design work
+├── REGLER_FOR_CHATT_MED_CHATGPT.md # collaboration and development workflow rules
 ├── Architecture.md                # concise construction-pipeline map
 └── CHANGELOG.md                   # concise completed-change record
 ```
@@ -80,3 +81,4 @@ svg-box-designer/
 - [Architecture.md](Architecture.md): quick map of the Box / Construction geometry pipeline.
 - [docs/README.md](docs/README.md): status and classification of detailed documents.
 - [CHANGELOG.md](CHANGELOG.md): release and unreleased change summary.
+- [REGLER_FOR_CHATT_MED_CHATGPT.md](REGLER_FOR_CHATT_MED_CHATGPT.md): collaboration and development workflow rules.

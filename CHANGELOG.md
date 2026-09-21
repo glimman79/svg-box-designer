@@ -1,5 +1,12 @@
 # Unreleased
 
+## Documentation and product-definition synchronization
+
+- Established the expanded Roadmap as future-direction and feature-status authority, added collaboration working-rules navigation, and synchronized the central documentation workflow.
+- Clarified the current chained `Line` authoring as the Profile foundation versus the planned standalone Line product, and recorded J as Joint and P as Pattern without presenting those future tools as implemented.
+- Synchronized the separate Dimensions/Constraints architecture and the browser-verified Constraints selection workflows and implemented set, including Concentricity and Tangency; retained Fix, Symmetry, Radius / Diameter, Angle, Length, and Distance as not implemented Constraints.
+- Aligned current TB/W/S status and documentation authority without changing application behavior or promoting planned Construction, Puzzle, or 3D capabilities.
+
 ## Drawing — Line inference and transaction authority
 
 - Made every chained segment a fresh Line interaction while preserving shared `SketchPoint` topology; manual restarts and continuations now use the same inference path.

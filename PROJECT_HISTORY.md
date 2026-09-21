@@ -4,9 +4,9 @@
 
 This document answers: what happened, why important architectural decisions were made, which regressions changed understanding, and how SVG Box Designer reached its current baseline.
 
-It is selective history, not a commit diary or the current architecture specification. `PROJECT_MASTER.md` is authoritative for current product truth, locked behavior, plans, and unresolved decisions. `CHANGELOG.md` remains authoritative for release notes. If this history conflicts with the Master, the Master wins.
+It is selective history, not a commit diary or the current architecture specification. `PROJECT_MASTER.md` records current product and architecture truth, while `ROADMAP.md` owns agreed future direction, feature status, and open future design. `CHANGELOG.md` remains the completed-change record. Current implementation conflicts are resolved against the Master and code; future-direction conflicts are resolved against the Roadmap.
 
-Status labels have the meanings defined in `PROJECT_MASTER.md`. Detailed B3.x reports and diagnostics are **[HISTORICAL]** evidence; their proposals do not automatically remain current.
+Status labels have the meanings defined in `ROADMAP.md`. Detailed B3.x reports and diagnostics are **[HISTORICAL]** evidence; their proposals do not automatically remain current.
 
 ## 2. Current Position at a Glance
 
@@ -312,7 +312,7 @@ S-B `REFERENCES` was deliberately fixed to the original imported/source edge. Sa
 
 - S remained incomplete beyond its current planar behavior.
 - Reconciliation did not claim every theoretical split/coalesced topology.
-- J/P remained future-facing rather than implemented tool libraries.
+- J (Joint) and P (Pattern) remained future-facing rather than implemented tool libraries.
 - No parametric Drawing, Puzzle generator, assembly-angle model, ProjectDocument, or static 3D assembly preview existed.
 
 ## 11. Post-v1.2 2D Drawing Development Era
@@ -435,9 +435,13 @@ Legacy/single-tool authority modes, raw generator carriers, shadow composition, 
 
 The stale early-product README and overlapping root Architecture document were corrected in the September 2026 documentation audit. Detailed B3 and Drawing investigation reports remain intentionally historical or diagnostic; `docs/README.md` classifies them so their evidence is preserved without presenting old hypotheses as current authority.
 
+### 12.4 Documentation governance consolidation
+
+Central documentation was consolidated around `ROADMAP.md` as future-direction and feature-status authority, `PROJECT_MASTER.md` as current-state authority, and the new `REGLER_FOR_CHATT_MED_CHATGPT.md` collaboration rules with a systematic post-acceptance synchronization cycle. Product terminology was clarified at milestone level: the chained tool historically named Line is the Profile foundation, J means Joint, P means Pattern, and historical P1 was not carried forward as a product identity.
+
 ## 13. Current Development Position
 
-v1.2 remains the locked Box / Construction baseline. TB and rectangular W are accepted; current S is implemented but incomplete. Drawing is now substantially implemented post-v1.2. Puzzle, J/P, assembly angles, angle-aware variants, static 3D Preview, and a shared ProjectDocument remain planned or conceptual exactly as classified in `PROJECT_MASTER.md`.
+v1.2 remains the locked Box / Construction baseline. TB and rectangular W are accepted; current S is implemented but incomplete. Drawing is now substantially implemented post-v1.2. Current implementation truth is summarized in `PROJECT_MASTER.md` and code; future status and direction for Puzzle, Joint, Pattern, assembly angles, angle-aware variants, static 3D Preview, and a shared ProjectDocument are classified in `ROADMAP.md`.
 
 PM.1 analyzed the source and designed the governance structure. PM.2 created `PROJECT_MASTER.md` and this history so future sessions can distinguish implemented, locked, planned, conceptual, debt, and historical material.
 
