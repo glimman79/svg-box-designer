@@ -49,11 +49,11 @@ assert.match(workspace, /className=\{`cad-tool-button\$\{activeTool === 'profile
 assert.match(workspace, /className=\{`cad-tool-button\$\{activeTool === 'select' \? ' is-active' : ''\}`\} aria-pressed=\{activeTool === 'select'\}/, 'Select has mutually exclusive tool-state presentation');
 assert.match(workspace, /activeTool === 'profile' && profileCursor/, 'custom cursor only renders for active Profile');
 assert.match(workspace, /data-arm="left"[\s\S]*data-arm="right"[\s\S]*data-arm="top"[\s\S]*data-arm="bottom"/, 'four separate arms structurally preserve the centre gap');
-assert.match(workspace, /drawing-profile-cursor-dot[\s\S]*drawing-profile-cursor-endpoint[\s\S]*drawing-profile-cursor-line/, 'normal dot, Point square, and smaller Line square are distinct marker states');
+assert.match(workspace, /drawing-segment-cursor-dot[\s\S]*drawing-segment-cursor-endpoint[\s\S]*drawing-segment-cursor-line/, 'normal dot, Point square, and smaller Line square are distinct marker states');
 assert.match(workspace, /const lineResolution = resolveLineEffectivePoint\(interaction, rawPoint, snap, previousChainedAxisKind, ctrlHeld\);[\s\S]*const placementPoint = lineResolution\.effectivePoint;/, 'placement marker follows the authoritative resolved endpoint and final Ctrl guard');
 assert.match(workspace, /onPointerLeave=\{clearProfileCursor\}/, 'pointer leave clears cursor presentation without cancelling chain state');
 assert.match(workspace, /activeSketch\?\.entityOrder/, 'inference reads committed entities from the active sketch');
-assert.match(css, /\.drawing-svg\.has-profile-cursor,[\s\S]*cursor:\s*none;/, 'system cursor hides only in active Drawing SVG scope');
+assert.match(css, /\.drawing-svg\.has-segment-cursor,[\s\S]*cursor:\s*none;/, 'system cursor hides only in active Drawing SVG scope');
 assert.doesNotMatch(css, /body[^}]*cursor:\s*none/s, 'system cursor is not hidden globally');
 assert.match(css, /\.drawing-label-overlay[^}]*position:\s*absolute;[^}]*pointer-events:\s*none;/s, 'cursor uses the accepted screen-space overlay');
 

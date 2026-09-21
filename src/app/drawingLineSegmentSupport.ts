@@ -65,6 +65,26 @@ export type LineSegmentInteractionState = Readonly<{
   lineBodyId: string | null;
 }>;
 
+export const EMPTY_LINE_SEGMENT_INTERACTION: LineSegmentInteractionState = {
+  start: null, startPointId: null, startLineId: null, startMidpointLineId: null,
+  rawPointerPoint: null, effectivePreviewPoint: null, snappedAngleDegrees: null,
+  perpendicularLineId: null, parallelLineId: null, midpointLineId: null, lineBodyId: null,
+};
+
+export const initializeLineSegmentAt = (point: DrawingPoint, pointId: string | null = null,
+  lineId: string | null = null, midpointLineId: string | null = null): LineSegmentInteractionState => ({
+  ...EMPTY_LINE_SEGMENT_INTERACTION, start: point, startPointId: pointId, startLineId: lineId,
+  startMidpointLineId: midpointLineId, rawPointerPoint: point, effectivePreviewPoint: point,
+});
+
+/** Builds one segment from an already resolved accepted endpoint. */
+export const createResolvedLineDraft = (interaction: LineSegmentInteractionState, point: DrawingPoint,
+  createId: () => string, pointId: string | null = null): DrawingLineDraft | null => {
+  if (!interaction.start || Math.hypot(point.x - interaction.start.x, point.y - interaction.start.y) <= LINE_ZERO_LENGTH_TOLERANCE_MM) return null;
+  return { id: createId(), type: 'line', start: interaction.start, end: point,
+    startPointId: interaction.startPointId ?? undefined, endPointId: pointId ?? undefined };
+};
+
 export type SelectedLineSemanticConstraints = Readonly<{
   parallelLineId: string | null;
   perpendicularLineId: string | null;

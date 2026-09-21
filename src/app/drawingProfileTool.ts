@@ -1,6 +1,9 @@
 import type { DrawingPoint } from './drawingTypes.js';
 import {
   LINE_ZERO_LENGTH_TOLERANCE_MM,
+  EMPTY_LINE_SEGMENT_INTERACTION,
+  createResolvedLineDraft,
+  initializeLineSegmentAt,
   resolveLinePreviewPoint,
   updateLinePreviewAtSpatialPoint as updateLineSegmentPreviewAtSpatialPoint,
   type DrawingLineDraft,
@@ -9,26 +12,10 @@ import {
 
 export type ProfileToolInteraction = LineSegmentInteractionState;
 
-export const EMPTY_PROFILE_INTERACTION: ProfileToolInteraction = {
-  start: null,
-  startPointId: null,
-  startLineId: null,
-  startMidpointLineId: null,
-  rawPointerPoint: null,
-  effectivePreviewPoint: null,
-  snappedAngleDegrees: null,
-  perpendicularLineId: null,
-  parallelLineId: null,
-  midpointLineId: null,
-  lineBodyId: null,
-};
+export const EMPTY_PROFILE_INTERACTION: ProfileToolInteraction = EMPTY_LINE_SEGMENT_INTERACTION;
 
 /** Manual starts and committed continuations share one fresh Profile segment state. */
-export const initializeProfileSegmentAt = (point: DrawingPoint, pointId: string | null = null,
-  lineId: string | null = null, midpointLineId: string | null = null): ProfileToolInteraction => ({
-  ...EMPTY_PROFILE_INTERACTION, start: point, startPointId: pointId, startLineId: lineId,
-  startMidpointLineId: midpointLineId, rawPointerPoint: point, effectivePreviewPoint: point,
-});
+export const initializeProfileSegmentAt = initializeLineSegmentAt;
 
 export const updateProfilePreview = (interaction: ProfileToolInteraction, pointer: DrawingPoint): ProfileToolInteraction => (
   interaction.start ? (() => {
@@ -60,12 +47,11 @@ export const applyProfileClick = (interaction: ProfileToolInteraction, point: Dr
 export const applyResolvedProfileClick = (interaction: ProfileToolInteraction, point: DrawingPoint, createId: () => string,
   pointId: string | null = null, lineId: string | null = null, midpointLineId: string | null = null): ProfileClickResult => {
   if (!interaction.start) return { interaction: initializeProfileSegmentAt(point, pointId, lineId, midpointLineId), entity: null };
-  if (Math.hypot(point.x - interaction.start.x, point.y - interaction.start.y) <= LINE_ZERO_LENGTH_TOLERANCE_MM) return { interaction, entity: null };
-  return { interaction: initializeProfileSegmentAt(point, pointId), entity: { id: createId(), type: 'line', start: interaction.start, end: point,
-    startPointId: interaction.startPointId ?? undefined, endPointId: pointId ?? undefined } };
+  const entity = createResolvedLineDraft(interaction, point, createId, pointId);
+  return entity ? { interaction: initializeProfileSegmentAt(point, pointId), entity } : { interaction, entity: null };
 };
 
-// Shared straight-segment resolution remains independently reusable by Profile and a future Line tool.
+// Preserve existing Profile imports while neutral straight-segment code lives in shared support.
 export {
   automaticAxisConstraintKind,
   diagnoseLineCommonDirection,
