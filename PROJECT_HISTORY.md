@@ -19,7 +19,7 @@ Status labels have the meanings defined in `ROADMAP.md`. Detailed B3.x reports a
 
 ### September 2026 Profile tool identity migration
 
-The continuing straight-segment authoring workflow was renamed from its legacy Line tool identity to Profile without changing behavior. Profile workflow state and delayed commit ownership were separated from reusable Line-segment geometry and generic document mutation. Persistent geometry remained Line-based, freeing the Line tool name for the future standalone one-segment workflow.
+The continuing straight-segment authoring workflow was renamed from its legacy Line tool identity to Profile without changing behavior. Profile workflow state and delayed commit ownership were separated from reusable Line-segment geometry and generic document mutation. Persistent geometry remained Line-based, and the tool ID changed from `'line'` to `'profile'`, freeing the Line tool name for the future standalone one-segment workflow. The migration was merged in #544 and subsequently verified successfully and accepted by the user in the real browser.
 
 ### September 2026 equivalent-demand browser failure and policy correction
 

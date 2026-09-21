@@ -2,14 +2,14 @@
 
 ## Drawing — Profile tool identity
 
-- Renamed the current chained authoring tool from its legacy Line identity to Profile while preserving its interaction and commit behavior.
+- Renamed the current chained authoring tool from its legacy Line identity to Profile, changed its tool ID from `'line'` to `'profile'`, and preserved its interaction and commit behavior; the merged migration was subsequently browser-verified and accepted.
 - Separated Profile workflow ownership from reusable straight-Line resolution and generic Drawing document mutation; committed geometry and serialization remain `type: 'line'`.
 - Reserved Line for the planned standalone one-segment tool; that future tool is not implemented by this migration.
 
 ## Documentation and product-definition synchronization
 
 - Established the expanded Roadmap as future-direction and feature-status authority, added collaboration working-rules navigation, and synchronized the central documentation workflow.
-- Clarified the current chained `Line` authoring as the Profile foundation versus the planned standalone Line product, and recorded J as Joint and P as Pattern without presenting those future tools as implemented.
+- Clarified the legacy chained `Line` authoring as the Profile foundation versus the planned standalone Line product, and recorded J as Joint and P as Pattern without presenting those future tools as implemented.
 - Synchronized the separate Dimensions/Constraints architecture and the browser-verified Constraints selection workflows and implemented set, including Concentricity and Tangency; retained Fix, Symmetry, Radius / Diameter, Angle, Length, and Distance as not implemented Constraints.
 - Aligned current TB/W/S status and documentation authority without changing application behavior or promoting planned Construction, Puzzle, or 3D capabilities.
 
