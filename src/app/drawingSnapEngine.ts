@@ -11,9 +11,9 @@ export const DRAWING_MIDPOINT_SNAP_RELEASE_PX = 9;
 export const DRAWING_ALIGNMENT_SNAP_ACQUIRE_PX = 5;
 export const DRAWING_ALIGNMENT_SNAP_RELEASE_PX = 7;
 export const DRAWING_PERPENDICULAR_SNAP_ACQUIRE_PX = 5;
-export const DRAWING_PERPENDICULAR_SNAP_RELEASE_PX = 11;
+export const DRAWING_PERPENDICULAR_SNAP_RELEASE_PX = 7;
 export const DRAWING_PARALLEL_SNAP_ACQUIRE_PX = 5;
-export const DRAWING_PARALLEL_SNAP_RELEASE_PX = 11;
+export const DRAWING_PARALLEL_SNAP_RELEASE_PX = 7;
 export const DRAWING_POINT_REFERENCE_SNAP_ACQUIRE_PX = 5;
 export const DRAWING_POINT_REFERENCE_SNAP_RELEASE_PX = 7;
 
@@ -182,11 +182,14 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
   const pointReference = choosePointReference(candidates.pointReferences ?? [], previousSnap);
   const freshCandidate = axisDirectionActive ? null : acquireDirectionCandidate(candidates);
   const previousAuthority = oldChannels.directionAuthority;
-  const retainedCandidate = previousAuthority && activeLineStart && samePoint(previousAuthority.constructionOrigin, activeLineStart)
+  const matchingCandidate = previousAuthority && activeLineStart && samePoint(previousAuthority.constructionOrigin, activeLineStart)
     && previousAuthority.startPointId === activeLineStartPointId ? candidateForAuthority(previousAuthority, candidates) : null;
+  const retainedCandidate = matchingCandidate && matchingCandidate.screenDistance <= (matchingCandidate.type === 'parallel'
+    ? DRAWING_PARALLEL_SNAP_RELEASE_PX : DRAWING_PERPENDICULAR_SNAP_RELEASE_PX) ? matchingCandidate : null;
   let releaseReason: string | null = axisDirectionActive && previousAuthority ? 'superseded-by-axis' : null;
-  if (previousAuthority && !axisDirectionActive && !retainedCandidate) releaseReason = activeLineStart && !samePoint(previousAuthority.constructionOrigin, activeLineStart)
-    || previousAuthority.startPointId !== activeLineStartPointId ? 'start-changed' : 'reference-invalid';
+  if (previousAuthority && !axisDirectionActive && !retainedCandidate) releaseReason = matchingCandidate
+    ? 'outside-release-distance' : activeLineStart && !samePoint(previousAuthority.constructionOrigin, activeLineStart)
+      || previousAuthority.startPointId !== activeLineStartPointId ? 'start-changed' : 'reference-invalid';
   let authority = !axisDirectionActive && retainedCandidate && activeLineStart
     ? establishAuthority(retainedCandidate, activeLineStart, activeLineStartPointId, 'tracking') : null;
   if (authority && freshCandidate) {

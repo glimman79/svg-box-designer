@@ -14,15 +14,41 @@ const resolve = (candidates, previousSnap = null, rawPoint = { x: 20, y: 0 }) =>
 });
 
 for (const [relation, key] of [['parallel', 'parallels'], ['perpendicular', 'perpendiculars']]) {
-  test(`${relation} acquires inside 5 px, rejects outside, and tracks beyond acquisition`, () => {
-    const inside = resolve({ [key]: [direction(relation, 4.999)] });
-    assert.equal(inside.channels.directionAuthority?.relation, relation);
+  test(`${relation} observes inclusive 5 px capture and 7 px release boundaries with immediate reacquisition`, () => {
+    const acquired = resolve({ [key]: [direction(relation, 5)] });
+    assert.equal(acquired.channels.directionAuthority?.relation, relation);
     assert.equal(resolve({ [key]: [direction(relation, 5.001)] }).channels.directionAuthority, null);
-    const tracked = resolve({ [key]: [direction(relation, 20)] }, inside, { x: 80, y: 20 });
-    assert.equal(tracked.channels.directionAuthority?.relation, relation);
-    assert.equal(tracked.channels.directionAuthority?.state, 'tracking');
+    for (const screenDistance of [6.999, 7]) {
+      const tracked = resolve({ [key]: [direction(relation, screenDistance)] }, acquired, { x: 500, y: 0 });
+      assert.equal(tracked.channels.directionAuthority?.relation, relation);
+      assert.equal(tracked.channels.directionAuthority?.state, 'tracking');
+    }
+    const released = resolve({ [key]: [direction(relation, 7.001)] }, acquired);
+    assert.equal(released.type, 'none');
+    assert.equal(released.channels.directionAuthority, null);
+    assert.equal(released.channels.directionAuthorityReleaseReason, 'outside-release-distance');
+    const reacquired = resolve({ [key]: [direction(relation, 4.999)] }, released);
+    assert.equal(reacquired.channels.directionAuthority?.relation, relation);
+    assert.equal(reacquired.channels.directionAuthority?.state, 'acquired');
   });
 }
+
+test('released direction authority can switch relation and reference in the same frame', () => {
+  const parallel = resolve({ parallels: [direction('parallel', 5)] });
+  const switchedToPerpendicular = resolve({
+    parallels: [direction('parallel', 7.001)],
+    perpendiculars: [{ ...direction('perpendicular', 5), entityId: 'other-perpendicular-reference' }],
+  }, parallel);
+  assert.equal(switchedToPerpendicular.channels.directionAuthority?.relation, 'perpendicular');
+  assert.equal(switchedToPerpendicular.channels.directionAuthority?.referenceLineId, 'other-perpendicular-reference');
+
+  const switchedToParallel = resolve({
+    perpendiculars: [{ ...direction('perpendicular', 7.001), entityId: 'other-perpendicular-reference' }],
+    parallels: [{ ...direction('parallel', 5), entityId: 'new-parallel-reference' }],
+  }, switchedToPerpendicular);
+  assert.equal(switchedToParallel.channels.directionAuthority?.relation, 'parallel');
+  assert.equal(switchedToParallel.channels.directionAuthority?.referenceLineId, 'new-parallel-reference');
+});
 
 test('production position target tolerances use the Stage 1 values', () => {
   assert.deepEqual({ endpoint: [snaps.DRAWING_ENDPOINT_SNAP_ACQUIRE_PX, snaps.DRAWING_ENDPOINT_SNAP_RELEASE_PX],

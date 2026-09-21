@@ -112,7 +112,7 @@ test('production handoff preserves acquired Parallel through Endpoint resolution
   assert.equal(committed.sketches.sketch.geometricConstraints['parallel:A:C'].kind, 'PARALLEL');
 });
 
-test('established Parallel survives release distance and reaches a compatible Endpoint', () => {
+test('established Parallel releases beyond 7 px and cannot supply stale commit semantics', () => {
   const target = { id: 'target', type: 'line', start: points.p3, end: { x: 80, y: 70 }, startPointId: 'p3', endPointId: 't1' };
   const start = points.p2;
   const acquirePointer = { x: 40, y: 100 };
@@ -122,24 +122,24 @@ test('established Parallel survives release distance and reaches a compatible En
   assert.equal(acquired.channels.acquiredDirectionCandidate.referenceLineId, 'A');
   assert.equal(acquired.channels.directionAuthority.state, 'acquired');
 
-  const beyond = { x: 65, y: 92 }; // 16.3 px from A's Parallel projection: beyond the 11 px legacy release band.
+  const beyond = { x: 65, y: 92 };
   const beyondCandidates = inference.collectDrawingInferenceCandidates(beyond, [A, B, target], identity, bounds, start, null, 'p2');
-  const tracking = snaps.resolveDrawingSnap({ rawPoint: beyond, candidates: beyondCandidates, previousSnap: acquired,
+  const released = snaps.resolveDrawingSnap({ rawPoint: beyond, candidates: beyondCandidates, previousSnap: acquired,
     ctrlOverride: false, activeLineStart: start, activeLineStartPointId: 'p2' });
   assert.ok(beyondCandidates.parallels.find(({ entityId }) => entityId === 'A').screenDistance > snaps.DRAWING_PARALLEL_SNAP_RELEASE_PX);
-  assert.equal(tracking.channels.acquiredDirectionCandidate, null);
-  assert.equal(tracking.channels.directionAuthority.referenceLineId, 'A');
-  assert.equal(tracking.channels.directionAuthority.state, 'tracking');
+  assert.equal(released.channels.directionAuthority, null);
+  assert.equal(released.channels.directionAuthorityReleaseReason, 'outside-release-distance');
+  const resolution = lineTool.resolveLineEffectivePoint({ ...lineTool.EMPTY_PROFILE_INTERACTION, start, startPointId: 'p2' }, beyond, released);
+  assert.equal(resolution.interaction.parallelLineId, null);
+  assert.equal(lineTool.selectMinimalLineSemanticConstraints(resolution.interaction).parallelLineId, null);
 
-  const endpointCandidates = inference.collectDrawingInferenceCandidates(points.p3, [A, B, target], identity, bounds, start, 45, 'p2');
-  const endpoint = snaps.resolveDrawingSnap({ rawPoint: points.p3, candidates: endpointCandidates, previousSnap: tracking,
+  const reacquired = snaps.resolveDrawingSnap({ rawPoint: acquirePointer, candidates: acquiredCandidates, previousSnap: released,
     ctrlOverride: false, activeLineStart: start, activeLineStartPointId: 'p2' });
-  const resolution = lineTool.resolveLineEffectivePoint({ ...lineTool.EMPTY_PROFILE_INTERACTION, start, startPointId: 'p2' }, points.p3, endpoint);
-  assert.equal(endpoint.type, 'endpoint');
-  assert.equal(endpoint.channels.directionAuthority.referenceLineId, 'A');
-  assert.deepEqual(resolution.effectivePoint, points.p3);
-  assert.equal(resolution.diagnostic.finalGeometryCompatibleWithDirectionAuthority, true);
-  assert.equal(resolution.interaction.parallelLineId, 'A');
+  const reacquiredResolution = lineTool.resolveLineEffectivePoint(
+    { ...lineTool.EMPTY_PROFILE_INTERACTION, start, startPointId: 'p2' }, acquirePointer, reacquired);
+  assert.equal(reacquired.channels.directionAuthority.referenceLineId, 'A');
+  assert.equal(reacquired.channels.directionAuthority.state, 'acquired');
+  assert.equal(lineTool.selectMinimalLineSemanticConstraints(reacquiredResolution.interaction).parallelLineId, 'A');
 });
 
 test('D parallel to B uses the same one-authority rule', () => {
