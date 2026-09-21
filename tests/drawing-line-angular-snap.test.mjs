@@ -4,7 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const root = path.resolve('.test-build/drawing-line-snap');
-const lineTool = await import(pathToFileURL(path.join(root, 'drawingLineTool.js')));
+const lineTool = await import(pathToFileURL(path.join(root, 'drawingProfileTool.js')));
 const types = await import(pathToFileURL(path.join(root, 'drawingTypes.js')));
 const transform = await import(pathToFileURL(path.join(root, 'drawingTransform.js')));
 const epsilon = 1e-10;
@@ -54,25 +54,25 @@ assert.ok(Number.isFinite(zero.effectivePreviewPoint.x) && Number.isFinite(zero.
 
 let id = 0;
 const createId = () => `snap-${++id}`;
-let interaction = lineTool.applyLineClick(lineTool.EMPTY_LINE_INTERACTION, start, createId).interaction;
+let interaction = lineTool.applyProfileClick(lineTool.EMPTY_PROFILE_INTERACTION, start, createId).interaction;
 const rawB = pointAt(44, 10.125);
-interaction = lineTool.updateLinePreview(interaction, rawB);
+interaction = lineTool.updateProfilePreview(interaction, rawB);
 assert.equal(lineTool.hasAngularPresentationTruth(interaction), true, 'preview exposes angular presentation truth');
-let result = lineTool.applyLineClick(interaction, rawB, createId);
+let result = lineTool.applyProfileClick(interaction, rawB, createId);
 assert.notDeepEqual(result.entity.end, rawB, 'commit uses effective endpoint rather than raw pointer');
 close(Math.abs(result.entity.end.x - start.x), Math.abs(result.entity.end.y - start.y), 'committed AB is exactly 45 degrees');
 assert.deepEqual(result.interaction.start, result.entity.end, 'snapped B becomes next chain start');
 assert.equal(lineTool.hasAngularPresentationTruth(result.interaction), false, 'commit clears stale snap feedback');
 
 const rawC = { x: result.entity.end.x + 8.375, y: result.entity.end.y + 0.2 };
-const second = lineTool.applyLineClick(lineTool.updateLinePreview(result.interaction, rawC), rawC, createId);
+const second = lineTool.applyProfileClick(lineTool.updateProfilePreview(result.interaction, rawC), rawC, createId);
 close(second.entity.end.y, result.entity.end.y, 'chained BC commits exactly horizontal');
 let document = types.createDrawingDocumentV1();
 document = lineTool.appendEntityToActiveSketch(document, result.entity);
 document = lineTool.appendEntityToActiveSketch(document, second.entity);
 assert.deepEqual(document.sketches[document.activeSketchId].entityOrder, ['snap-1', 'snap-2']);
 const committed = document;
-assert.deepEqual(lineTool.cancelLineInteraction(), lineTool.EMPTY_LINE_INTERACTION, 'Escape/tool switch clears all preview and snap state');
+assert.deepEqual(lineTool.cancelProfileInteraction(), lineTool.EMPTY_PROFILE_INTERACTION, 'Escape/tool switch clears all preview and snap state');
 assert.equal(document, committed, 'cancellation preserves committed geometry');
 
 const fractionalStart = { x: 1.2345, y: 6.7891 };
@@ -91,7 +91,7 @@ assert.match(css, /\.drawing-axis\s*{[^}]*stroke:\s*#64748b;[^}]*stroke-width:\s
 assert.match(css, /--drawing-inference:\s*#38bdf8;[\s\S]*\.drawing-line-preview\s*{[^}]*stroke:\s*var\(--drawing-inference\);[^}]*stroke-width:\s*1\.25;[^}]*stroke-dasharray:\s*5 4;/s, 'normal preview uses the shared CAD-blue inference token and is dashed');
 assert.match(css, /\.drawing-line-preview\.is-angular-snapped\s*{[^}]*stroke-width:\s*1\.7;[^}]*stroke-dasharray:\s*none;/s, 'snapped preview remains in the inherited dark-blue family and becomes solid');
 assert.match(workspace, /getScreenCTM\(\)/, 'accepted CTM pointer path remains present');
-assert.match(workspace, /drawing-line-preview\$\{hasAngularPresentationTruth\(lineInteraction\) \? ' is-angular-snapped' : ''\}/,
+assert.match(workspace, /drawing-line-preview\$\{hasAngularPresentationTruth\(profileInteraction\) \? ' is-angular-snapped' : ''\}/,
   'validated angular relation truth selects its distinct line style');
 
 console.log('D2.2a line visibility and full-circle angular snap tests passed');

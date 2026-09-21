@@ -1,5 +1,11 @@
 # Unreleased
 
+## Drawing — Profile tool identity
+
+- Renamed the current chained authoring tool from its legacy Line identity to Profile while preserving its interaction and commit behavior.
+- Separated Profile workflow ownership from reusable straight-Line resolution and generic Drawing document mutation; committed geometry and serialization remain `type: 'line'`.
+- Reserved Line for the planned standalone one-segment tool; that future tool is not implemented by this migration.
+
 ## Documentation and product-definition synchronization
 
 - Established the expanded Roadmap as future-direction and feature-status authority, added collaboration working-rules navigation, and synchronized the central documentation workflow.

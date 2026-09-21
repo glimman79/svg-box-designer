@@ -3,7 +3,7 @@ import { deleteGeometricConstraint, deriveLineConstraintMarkerCandidates, derive
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-parallel-marker/drawingHistory.js';
 import { removeLineAndOrphans } from '../.test-build/drawing-parallel-marker/drawingTopology.js';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-parallel-marker/drawingTypes.js';
-import { appendEntityToActiveSketch, applyResolvedLineClick, EMPTY_LINE_INTERACTION, resolveLineEffectivePoint } from '../.test-build/drawing-parallel-marker/drawingLineTool.js';
+import { appendEntityToActiveSketch, applyResolvedProfileClick, EMPTY_PROFILE_INTERACTION, resolveLineEffectivePoint } from '../.test-build/drawing-parallel-marker/drawingProfileTool.js';
 import { collectDrawingInferenceCandidates } from '../.test-build/drawing-parallel-marker/drawingInference.js';
 import { resolveDrawingSnap } from '../.test-build/drawing-parallel-marker/drawingSnapEngine.js';
 import { DrawingInferenceOverlay, DrawingWorkspace, initialDrawingViewBox } from '../.test-build/drawing-parallel-marker/DrawingWorkspace.js';
@@ -141,12 +141,12 @@ for (const point of [horizontalMidpoint.start, horizontalMidpoint.center, horizo
 }
 const workspaceSource = readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const stylesSource = readFileSync('src/styles.css', 'utf8');
-assert.match(workspaceSource, /deriveDrawingInferencePresentations\(drawingSnap, activeSketch, pixelsPerMm, drawingTransform, overlayTransform, lineInteraction\)/,
+assert.match(workspaceSource, /deriveDrawingInferencePresentations\(drawingSnap, activeSketch, pixelsPerMm, drawingTransform, overlayTransform, profileInteraction\)/,
   'workspace derives shared presentation during render directly from the accepted snap and current transforms');
 assert.doesNotMatch(workspaceSource, /setInferencePresentations|useState<readonly DrawingInferencePresentation/,
   'workspace has no independently synchronized transient inference presentation state');
 assert.doesNotMatch(workspaceSource, /midpointPreview/, 'CadCursorPresentation and JSX have no Midpoint-specific storage path');
-assert.match(workspaceSource, /<DrawingInferenceOverlay presentations=\{inferencePresentations\} \/>[\s\S]*activeTool === 'line' && lineCursor/,
+assert.match(workspaceSource, /<DrawingInferenceOverlay presentations=\{inferencePresentations\} \/>[\s\S]*activeTool === 'profile' && profileCursor/,
   'shared inference overlay is mounted before, and independently from, the cursor-only branch');
 assert.match(stylesSource, /\.drawing-midpoint-inference-preview\s*\{[^}]*stroke:\s*var\(--drawing-inference\);[^}]*pointer-events:\s*none;/s,
   'transient Midpoint presentation uses the inference token and cannot intercept input');
@@ -161,7 +161,7 @@ const coexistenceSketch = { ...previewSketch,
   entityOrder: [...previewSketch.entityOrder, 'perpendicular-target'] };
 const virtualParallelSnap = { type: 'perpendicular', active: true, effectivePoint: { x: 100, y: 100 }, entityId: 'perpendicular-target', screenDistance: 0, channels: {} };
 const coexistencePresentations = deriveDrawingInferencePresentations(virtualParallelSnap, coexistenceSketch, 1, identity, identity,
-  { ...EMPTY_LINE_INTERACTION, start: { x: 60, y: 60 }, effectivePreviewPoint: { x: 100, y: 100 }, parallelLineId: 'accepted-target', perpendicularLineId: 'perpendicular-target' });
+  { ...EMPTY_PROFILE_INTERACTION, start: { x: 60, y: 60 }, effectivePreviewPoint: { x: 100, y: 100 }, parallelLineId: 'accepted-target', perpendicularLineId: 'perpendicular-target' });
 assert.deepEqual(coexistencePresentations.map(({ kind }) => kind), ['parallel'],
   'presentation defensively projects only the preferred direction authority');
 const parallelMarkup = renderToStaticMarkup(createElement(DrawingInferenceOverlay, { presentations: coexistencePresentations }));
@@ -180,9 +180,9 @@ const rawPointer = { x: 25, y: 31 };
 const candidates = collectDrawingInferenceCandidates(rawPointer, [reference], transform, undefined, authoringStart, null);
 const snap = resolveDrawingSnap({ rawPoint: rawPointer, candidates, previousSnap: null, ctrlOverride: false });
 assert.equal(snap.type, 'parallel', 'production candidate acquisition accepts Parallel');
-const resolved = resolveLineEffectivePoint({ ...EMPTY_LINE_INTERACTION, start: authoringStart }, rawPointer, snap);
+const resolved = resolveLineEffectivePoint({ ...EMPTY_PROFILE_INTERACTION, start: authoringStart }, rawPointer, snap);
 assert.equal(resolved.interaction.parallelLineId, 'reference', 'production preview retains the inferred reference Line');
-const click = applyResolvedLineClick(resolved.interaction, resolved.effectivePoint, () => 'authored');
+const click = applyResolvedProfileClick(resolved.interaction, resolved.effectivePoint, () => 'authored');
 authoredDocument = appendEntityToActiveSketch(authoredDocument, click.entity,
   (() => { let n = 0; return () => `authored-p${++n}`; })(), null, null, null, resolved.interaction.parallelLineId);
 const authoredSketch = authoredDocument.sketches['sketch-1'];

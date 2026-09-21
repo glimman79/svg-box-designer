@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { appendEntityToActiveSketch, automaticAxisConstraintKind } from '../.test-build/drawing-horizontal-vertical/drawingLineTool.js';
+import { appendEntityToActiveSketch, automaticAxisConstraintKind } from '../.test-build/drawing-horizontal-vertical/drawingProfileTool.js';
 import { analyzeDrawingConstraints } from '../.test-build/drawing-horizontal-vertical/drawingConstraintAnalysis.js';
 import { solveDrawingComponentDrag, verifyDrawingConstraints } from '../.test-build/drawing-horizontal-vertical/drawingConstraintSolver.js';
 import { deriveGeometricConstraintMarkers, deleteGeometricConstraint } from '../.test-build/drawing-horizontal-vertical/drawingParallelMarker.js';

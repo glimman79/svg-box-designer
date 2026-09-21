@@ -6,13 +6,13 @@ import path from 'node:path';
 const built = (name) => pathToFileURL(path.resolve(`.test-build/drawing-inference-product-regressions/${name}.js`));
 const inference = await import(built('drawingInference'));
 const snaps = await import(built('drawingSnapEngine'));
-const lines = await import(built('drawingLineTool'));
+const lines = await import(built('drawingProfileTool'));
 const drawingTypes = await import(built('drawingTypes'));
 
 const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 const bounds = { x: -1000, y: -1000, width: 2000, height: 2000 };
 const start = { x: 0, y: 0 };
-const interaction = { ...lines.EMPTY_LINE_INTERACTION, start, startPointId: 'start-point' };
+const interaction = { ...lines.EMPTY_PROFILE_INTERACTION, start, startPointId: 'start-point' };
 const pointAt = (degrees, radius = 100) => ({
   x: radius * Math.cos(degrees * Math.PI / 180),
   y: radius * Math.sin(degrees * Math.PI / 180),
@@ -153,7 +153,7 @@ test('Endpoint position authority preserves a compatible angular relation and fr
   assert.deepEqual(result.placement.effectivePoint, endpoint);
   assert.equal(result.placement.interaction.snappedAngleDegrees, 45);
   const acceptedPointId = 'existing-endpoint-point';
-  const committed = lines.applyResolvedLineClick(result.placement.interaction, result.placement.effectivePoint, () => 'committed-line', acceptedPointId);
+  const committed = lines.applyResolvedProfileClick(result.placement.interaction, result.placement.effectivePoint, () => 'committed-line', acceptedPointId);
   assert.deepEqual(committed.entity.end, endpoint);
   assert.equal(committed.entity.endPointId, acceptedPointId);
 });
@@ -194,7 +194,7 @@ test('finite Line position preserves only geometrically true arbitrary-angle Per
   const targetLength = Math.hypot(targetDirection.x, targetDirection.y);
   const normal = { x: -targetDirection.y / targetLength, y: targetDirection.x / targetLength };
   const authoredStart = { x: foot.x - normal.x * 80, y: foot.y - normal.y * 80 };
-  const targetInteraction = { ...lines.EMPTY_LINE_INTERACTION, start: authoredStart, startPointId: 'authored-start' };
+  const targetInteraction = { ...lines.EMPTY_PROFILE_INTERACTION, start: authoredStart, startPointId: 'authored-start' };
   const pointer = { x: foot.x + normal.x * 3, y: foot.y + normal.y * 3 };
   const angular = lines.resolveLinePreviewPoint(authoredStart, pointer);
   const candidates = inference.collectDrawingInferenceCandidates(pointer, [target], identity, bounds, authoredStart, angular.snappedAngleDegrees);
@@ -207,7 +207,7 @@ test('finite Line position preserves only geometrically true arbitrary-angle Per
   assert.equal(accepted.interaction.perpendicularLineId, target.id, 'final geometry preserves the acquired target identity');
   assert.equal(lines.automaticAxisConstraintKind(accepted.interaction), null, 'rotated authored Line is not H/V');
 
-  const click = lines.applyResolvedLineClick(accepted.interaction, accepted.effectivePoint, () => 'authored-line', 'foot-point');
+  const click = lines.applyResolvedProfileClick(accepted.interaction, accepted.effectivePoint, () => 'authored-line', 'foot-point');
   assert.equal(click.entity.endPointId, 'foot-point');
   let document = lines.appendEntityToActiveSketch(drawingTypes.createDrawingDocumentV2(), target, () => 'target-point');
   document = lines.appendEntityToActiveSketch(document, click.entity, () => 'authored-point', null, accepted.interaction.perpendicularLineId);
@@ -234,7 +234,7 @@ test('same-target Line-body acquisition composes retained Perpendicular directio
     x: foot.x + tangent.x * 4 + normal.x * 3,
     y: foot.y + tangent.y * 4 + normal.y * 3,
   };
-  const interaction = { ...lines.EMPTY_LINE_INTERACTION, start: authoredStart, startPointId: 'authored-start' };
+  const interaction = { ...lines.EMPTY_PROFILE_INTERACTION, start: authoredStart, startPointId: 'authored-start' };
   const candidates = inference.collectDrawingInferenceCandidates(pointer, [target], identity, bounds, authoredStart, null);
   const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap: null, ctrlOverride: false,
     activeLineStart: authoredStart, activeLineStartPointId: 'authored-start' });
@@ -254,7 +254,7 @@ test('same-target Line-body acquisition composes retained Perpendicular directio
 });
 
 test('minimal persistence consumes the single selected direction authority', () => {
-  const interaction = { ...lines.EMPTY_LINE_INTERACTION, start: { x: 0, y: 0 }, effectivePreviewPoint: { x: 40, y: 40 },
+  const interaction = { ...lines.EMPTY_PROFILE_INTERACTION, start: { x: 0, y: 0 }, effectivePreviewPoint: { x: 40, y: 40 },
     parallelLineId: 'parallel-reference', perpendicularLineId: null };
   assert.deepEqual(lines.selectMinimalLineSemanticConstraints(interaction), {
     parallelLineId: 'parallel-reference', perpendicularLineId: null, rejected: [],
@@ -264,14 +264,14 @@ test('minimal persistence consumes the single selected direction authority', () 
 test('endpoint topology authority coexists with a true non-axis Perpendicular target', () => {
   const target = referenceLine('endpoint-perpendicular-target', { x: 0, y: 0 }, { x: 100, y: 100 / Math.sqrt(3) });
   const authoredStart = { x: 100 / Math.sqrt(3), y: -100 };
-  const targetInteraction = { ...lines.EMPTY_LINE_INTERACTION, start: authoredStart, startPointId: 'authored-start' };
+  const targetInteraction = { ...lines.EMPTY_PROFILE_INTERACTION, start: authoredStart, startPointId: 'authored-start' };
   const candidates = inference.collectDrawingInferenceCandidates(target.start, [target], identity, bounds, authoredStart, null);
   const snap = snaps.resolveDrawingSnap({ rawPoint: target.start, candidates, previousSnap: null, ctrlOverride: false,
     activeLineStart: authoredStart, activeLineStartPointId: 'authored-start' });
   assert.equal(snap.type, 'endpoint');
   const accepted = lines.resolveLineEffectivePoint(targetInteraction, target.start, snap);
   assert.equal(accepted.interaction.perpendicularLineId, target.id);
-  const click = lines.applyResolvedLineClick(accepted.interaction, accepted.effectivePoint, () => 'endpoint-authored', 'existing-target-point');
+  const click = lines.applyResolvedProfileClick(accepted.interaction, accepted.effectivePoint, () => 'endpoint-authored', 'existing-target-point');
   assert.equal(click.entity.endPointId, 'existing-target-point', 'click reuses authoritative endpoint topology');
 });
 

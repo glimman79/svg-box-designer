@@ -1,6 +1,5 @@
-import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingDocumentV2, type DrawingGeometricConstraint, type DrawingLineEntity, type DrawingPoint } from './drawingTypes.js';
+import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingPoint } from './drawingTypes.js';
 import { intersectDrawingRayWithSupport, type DrawingInference } from './drawingInference.js';
-import { canonicalCoincidentPointPair } from './drawingCoincidentConstraint.js';
 
 export type DrawingLineDraft = Readonly<{ id: string; type: 'line'; start: DrawingPoint; end: DrawingPoint; startPointId?: string; endPointId?: string }>;
 
@@ -52,7 +51,7 @@ export const resolveLinePreviewPoint = (
   };
 };
 
-export type LineToolInteraction = Readonly<{
+export type LineSegmentInteractionState = Readonly<{
   start: DrawingPoint | null;
   startPointId: string | null;
   startLineId: string | null;
@@ -75,40 +74,11 @@ export type SelectedLineSemanticConstraints = Readonly<{
 /** Persistence consumes authoring authority, not every relation that happens
  * to be true at the accepted geometry. The snap resolver has already selected
  * at most one Line-to-Line direction authority. */
-export const selectMinimalLineSemanticConstraints = (interaction: LineToolInteraction): SelectedLineSemanticConstraints => ({
+export const selectMinimalLineSemanticConstraints = (interaction: LineSegmentInteractionState): SelectedLineSemanticConstraints => ({
   parallelLineId: interaction.parallelLineId,
   perpendicularLineId: interaction.parallelLineId ? null : interaction.perpendicularLineId,
   rejected: [],
 });
-
-export const EMPTY_LINE_INTERACTION: LineToolInteraction = {
-  start: null,
-  startPointId: null,
-  startLineId: null,
-  startMidpointLineId: null,
-  rawPointerPoint: null,
-  effectivePreviewPoint: null,
-  snappedAngleDegrees: null,
-  perpendicularLineId: null,
-  parallelLineId: null,
-  midpointLineId: null,
-  lineBodyId: null,
-};
-
-/** Manual starts and committed continuations share one fresh segment state. */
-export const initializeNewLineAt = (point: DrawingPoint, pointId: string | null = null,
-  lineId: string | null = null, midpointLineId: string | null = null): LineToolInteraction => ({
-  ...EMPTY_LINE_INTERACTION, start: point, startPointId: pointId, startLineId: lineId,
-  startMidpointLineId: midpointLineId, rawPointerPoint: point, effectivePreviewPoint: point,
-});
-
-export const updateLinePreview = (interaction: LineToolInteraction, pointer: DrawingPoint): LineToolInteraction => (
-  interaction.start ? (() => {
-    const preview = resolveLinePreviewPoint(interaction.start!, pointer);
-    return { ...interaction, rawPointerPoint: preview.rawPointerPoint, effectivePreviewPoint: preview.effectivePreviewPoint,
-      snappedAngleDegrees: preview.snappedAngleDegrees, perpendicularLineId: null, parallelLineId: null, midpointLineId: null, lineBodyId: null };
-  })() : interaction
-);
 
 type LineAlignmentXReference = Extract<DrawingInference, { type: 'alignment-x' }>;
 type LineAlignmentYReference = Extract<DrawingInference, { type: 'alignment-y' }>;
@@ -139,7 +109,7 @@ type LineSpatialSnap = Readonly<{
 
 export type LineEffectivePointResolution = Readonly<{
   effectivePoint: DrawingPoint;
-  interaction: LineToolInteraction;
+  interaction: LineSegmentInteractionState;
   resolvedReferences: Readonly<{
     x: LineAlignmentXReference | null;
     y: LineAlignmentYReference | null;
@@ -184,7 +154,7 @@ const finalAxisAngle = (start: DrawingPoint | null, end: DrawingPoint): 0 | 90 |
 };
 
 /** Final geometry, rather than candidate acquisition order, owns automatic axis semantics. */
-const lineResolution = (effectivePoint: DrawingPoint, interaction: LineToolInteraction, spatialSnap: LineSpatialSnap): LineEffectivePointResolution => {
+const lineResolution = (effectivePoint: DrawingPoint, interaction: LineSegmentInteractionState, spatialSnap: LineSpatialSnap): LineEffectivePointResolution => {
   const axisAngle = finalAxisAngle(interaction.start, effectivePoint);
   const directionValidation = acceptedDirectionalRelationsAt(interaction.start, effectivePoint, spatialSnap);
   const acceptedRelations = directionValidation.acceptedRelations;
@@ -354,7 +324,7 @@ const reconcileAlignmentOnRay = (
 
 /** Resolves one authoritative Line endpoint and its matching angular presentation state. */
 export const resolveLineEffectivePoint = (
-  interaction: LineToolInteraction,
+  interaction: LineSegmentInteractionState,
   rawPointerPoint: DrawingPoint,
   spatialSnap: LineSpatialSnap,
   ctrlOverride = false,
@@ -477,7 +447,7 @@ export const resolveLineEffectivePoint = (
  * endpoint; angular state is recomputed from that endpoint so compatible inferences coexist and
  * an incompatible/stale angle can never describe different geometry.
  */
-export const updateLinePreviewAtSpatialPoint = (interaction: LineToolInteraction, rawPointerPoint: DrawingPoint, effectivePreviewPoint: DrawingPoint): LineToolInteraction => {
+export const updateLinePreviewAtSpatialPoint = (interaction: LineSegmentInteractionState, rawPointerPoint: DrawingPoint, effectivePreviewPoint: DrawingPoint): LineSegmentInteractionState => {
   if (!interaction.start) return interaction;
   const effectiveInference = resolveLinePreviewPoint(interaction.start, effectivePreviewPoint);
   const nextInteraction = {
@@ -493,150 +463,15 @@ export const updateLinePreviewAtSpatialPoint = (interaction: LineToolInteraction
   };
 };
 
-export const cancelLineInteraction = (): LineToolInteraction => EMPTY_LINE_INTERACTION;
-
-export type LineClickResult = Readonly<{
-  interaction: LineToolInteraction;
-  entity: DrawingLineDraft | null;
-}>;
-
-export const applyLineClick = (
-  interaction: LineToolInteraction,
-  point: DrawingPoint,
-  createId: () => string,
-): LineClickResult => {
-  if (!interaction.start) return {
-    interaction: initializeNewLineAt(point),
-    entity: null,
-  };
-  const preview = resolveLinePreviewPoint(interaction.start, point);
-  const effectivePoint = preview.effectivePreviewPoint;
-  const dx = effectivePoint.x - interaction.start.x;
-  const dy = effectivePoint.y - interaction.start.y;
-  if (Math.hypot(dx, dy) <= LINE_ZERO_LENGTH_TOLERANCE_MM) {
-    return { interaction: { ...interaction, ...preview }, entity: null };
-  }
-  const id = createId();
-  return {
-    interaction: initializeNewLineAt(effectivePoint),
-    entity: { id, type: 'line', start: interaction.start, end: effectivePoint },
-  };
-};
-
-/** Commits a point already resolved by global/tool arbitration without reapplying angular inference. */
-export const applyResolvedLineClick = (interaction: LineToolInteraction, point: DrawingPoint, createId: () => string, pointId: string | null = null, lineId: string | null = null, midpointLineId: string | null = null): LineClickResult => {
-  if (!interaction.start) return { interaction: initializeNewLineAt(point, pointId, lineId, midpointLineId), entity: null };
-  if (Math.hypot(point.x - interaction.start.x, point.y - interaction.start.y) <= LINE_ZERO_LENGTH_TOLERANCE_MM) return { interaction, entity: null };
-  const id = createId();
-  return {
-    interaction: initializeNewLineAt(point, pointId),
-    entity: { id, type: 'line', start: interaction.start, end: point, startPointId: interaction.startPointId ?? undefined, endPointId: pointId ?? undefined },
-  };
-};
-
-/** Immutably appends an entity to the active sketch. Invalid active sketch ids are rejected. */
-export const appendEntityToActiveSketch = (
-  document: DrawingDocumentV2,
-  entity: DrawingLineDraft,
-  createPointId: () => string = () => `point-${crypto.randomUUID()}`,
-  automaticConstraintKind: 'HORIZONTAL' | 'VERTICAL' | null = null,
-  perpendicularLineId: string | null = null,
-  acceptedEndpointSnaps: Readonly<{ startPointId?: string; endPointId?: string }> | null = null,
-  parallelLineId: string | null = null,
-  acceptedLineBodySnaps: Readonly<{ startLineId?: string; endLineId?: string }> | null = null,
-  acceptedMidpointSnaps: Readonly<{ startLineId?: string; endLineId?: string }> | null = null,
-): DrawingDocumentV2 => {
-  const activeSketch = document.sketches[document.activeSketchId];
-  if (!activeSketch || activeSketch.entities[entity.id]) return document;
-  const startPointId = entity.startPointId ?? createPointId();
-  const endPointId = entity.endPointId ?? createPointId();
-  const line: DrawingLineEntity = { id: entity.id, type: 'line', startPointId, endPointId };
-  const constraintId = automaticConstraintKind ? `${automaticConstraintKind.toLowerCase()}:${entity.id}` : null;
-  const duplicate = automaticConstraintKind && Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) =>
-    constraint.kind === automaticConstraintKind && constraint.references[0]?.entityId === entity.id);
-  const automaticConstraint: DrawingGeometricConstraint | null = constraintId && !duplicate
-    ? { id: constraintId, kind: automaticConstraintKind!, references: [{ kind: 'entity', entityId: entity.id }] }
-    : null;
-  // Accepted axis intent already expresses the right-angle chain; preserve the
-  // D2.5e6c policy by avoiding a redundant Perpendicular relation there.
-  const pair = !automaticConstraintKind && perpendicularLineId && activeSketch.entities[perpendicularLineId] ? [entity.id, perpendicularLineId].sort() : null;
-  const perpendicularId = pair ? `perpendicular:${pair[0]}:${pair[1]}` : null;
-  const perpendicularDuplicate = pair && Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'PERPENDICULAR'
-    && constraint.references.map(({ entityId }) => entityId).sort().join(':') === pair.join(':'));
-  const perpendicularConstraint: DrawingGeometricConstraint | null = perpendicularId && pair && !perpendicularDuplicate
-    ? { id: perpendicularId, kind: 'PERPENDICULAR', references: pair.map((entityId) => ({ kind: 'entity' as const, entityId })) as [{ kind: 'entity'; entityId: string }, { kind: 'entity'; entityId: string }] }
-    : null;
-  const parallelPair = !automaticConstraintKind && parallelLineId && activeSketch.entities[parallelLineId] ? [entity.id, parallelLineId].sort() : null;
-  const parallelId = parallelPair ? `parallel:${parallelPair[0]}:${parallelPair[1]}` : null;
-  const parallelDuplicate = parallelPair && Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'PARALLEL'
-    && constraint.references.map(({ entityId }) => entityId).sort().join(':') === parallelPair.join(':'));
-  const parallelConstraint: DrawingGeometricConstraint | null = parallelId && parallelPair && !parallelDuplicate
-    ? { id: parallelId, kind: 'PARALLEL', references: parallelPair.map((entityId) => ({ kind: 'entity' as const, entityId })) as [{ kind: 'entity'; entityId: string }, { kind: 'entity'; entityId: string }] }
-    : null;
-  const coincidentConstraints = ([['startPointId', startPointId], ['endPointId', endPointId]] as const).flatMap(([endpoint, createdPointId]) => {
-    const targetPointId = acceptedEndpointSnaps?.[endpoint];
-    const pointPair = targetPointId && activeSketch.points[targetPointId] ? canonicalCoincidentPointPair(createdPointId, targetPointId) : null;
-    if (!pointPair) return [];
-    const duplicatePair = Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'COINCIDENT' && constraint.variant !== 'point-linear-support'
-      && constraint.references.map(({ pointId }) => pointId).sort().join('\0') === pointPair.join('\0'));
-    if (duplicatePair) return [];
-    return [{ id: `coincident:${pointPair[0]}:${pointPair[1]}`, kind: 'COINCIDENT' as const, variant: 'point-point' as const,
-      references: pointPair.map((pointId) => ({ kind: 'sketchPoint' as const, pointId })) as [{ kind: 'sketchPoint'; pointId: string }, { kind: 'sketchPoint'; pointId: string }] }];
-  });
-  const pointOnLineConstraints = ([['startLineId', startPointId], ['endLineId', endPointId]] as const).flatMap(([endpoint, pointId]) => {
-    const targetLineId = acceptedLineBodySnaps?.[endpoint];
-    const targetLine = targetLineId ? activeSketch.entities[targetLineId] : null;
-    if (!targetLine || targetLine.type !== 'line' || targetLine.startPointId === pointId || targetLine.endPointId === pointId) return [];
-    const duplicate = Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'COINCIDENT'
-      && constraint.variant === 'point-linear-support' && constraint.references[0].pointId === pointId
-      && constraint.references[1].entityId === targetLineId);
-    return duplicate ? [] : [{ id: `coincident:${pointId}:support:${targetLineId}`, kind: 'COINCIDENT' as const,
-      variant: 'point-linear-support' as const, references: [{ kind: 'sketchPoint' as const, pointId }, { kind: 'entity' as const, entityId: targetLineId }] as const }];
-  });
-  const midpointConstraints = ([['startLineId', startPointId], ['endLineId', endPointId]] as const).flatMap(([endpoint, pointId]) => {
-    const targetLineId = acceptedMidpointSnaps?.[endpoint];
-    const targetLine = targetLineId ? activeSketch.entities[targetLineId] : null;
-    if (!targetLine || targetLine.type !== 'line' || targetLine.startPointId === pointId || targetLine.endPointId === pointId) return [];
-    return [{ id: `midpoint:${pointId}:${targetLineId}`, kind: 'MIDPOINT' as const,
-      references: [{ kind: 'sketchPoint' as const, pointId }, { kind: 'entity' as const, entityId: targetLineId }] as const }];
-  });
-  const midpointKeys = new Set(midpointConstraints.map((constraint) => `${constraint.references[0].pointId}\0${constraint.references[1].entityId}`));
-  const normalizedPointOnLineConstraints = pointOnLineConstraints.filter((constraint) =>
-    !midpointKeys.has(`${constraint.references[0].pointId}\0${constraint.references[1].entityId}`));
-  const redundantCoincidenceIds = new Set(Object.values(activeSketch.geometricConstraints ?? {}).filter((constraint) =>
-    constraint.kind === 'COINCIDENT' && constraint.variant === 'point-linear-support'
-    && midpointKeys.has(`${constraint.references[0].pointId}\0${constraint.references[1].entityId}`)).map(({ id }) => id));
-  const retainedConstraints = Object.fromEntries(Object.entries(activeSketch.geometricConstraints ?? {}).filter(([id]) => !redundantCoincidenceIds.has(id)));
-  const addedConstraints = [automaticConstraint, perpendicularConstraint, parallelConstraint, ...coincidentConstraints, ...normalizedPointOnLineConstraints, ...midpointConstraints].filter(Boolean) as DrawingGeometricConstraint[];
-  return {
-    ...document,
-    sketches: {
-      ...document.sketches,
-      [activeSketch.id]: {
-        ...activeSketch,
-        points: {
-          ...activeSketch.points,
-          ...(activeSketch.points[startPointId] ? {} : { [startPointId]: { id: startPointId, ...entity.start } }),
-          ...(activeSketch.points[endPointId] ? {} : { [endPointId]: { id: endPointId, ...entity.end } }),
-        },
-        entities: { ...activeSketch.entities, [entity.id]: line },
-        entityOrder: [...activeSketch.entityOrder, entity.id],
-        geometricConstraints: addedConstraints.length ? { ...retainedConstraints, ...Object.fromEntries(addedConstraints.map((constraint) => [constraint.id, constraint])) } : activeSketch.geometricConstraints,
-        geometricConstraintOrder: addedConstraints.length ? [...(activeSketch.geometricConstraintOrder ?? []).filter((id) => !redundantCoincidenceIds.has(id)), ...addedConstraints.map(({ id }) => id)] : activeSketch.geometricConstraintOrder,
-      },
-    },
-  };
-};
-
 /** Maps only the accepted angular-inference state, never rounded geometry, to design intent. */
-export const automaticAxisConstraintKind = (interaction: LineToolInteraction): 'HORIZONTAL' | 'VERTICAL' | null => {
+export const automaticAxisConstraintKind = (interaction: LineSegmentInteractionState): 'HORIZONTAL' | 'VERTICAL' | null => {
   if (interaction.snappedAngleDegrees === null) return null;
   const angle = normalizeDegrees(interaction.snappedAngleDegrees);
   return angle === 0 || angle === 180 ? 'HORIZONTAL' : angle === 90 || angle === 270 ? 'VERTICAL' : null;
 };
 
 /** Angular presentation is derived from acquired intent and the final displayed geometry. */
-export const hasAngularPresentationTruth = (interaction: LineToolInteraction): boolean => interaction.start !== null
+export const hasAngularPresentationTruth = (interaction: LineSegmentInteractionState): boolean => interaction.start !== null
   && interaction.effectivePreviewPoint !== null
   && interaction.snappedAngleDegrees !== null
   && isPointOnDirection(interaction.start, interaction.effectivePreviewPoint, directionAt(interaction.snappedAngleDegrees));

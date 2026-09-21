@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { resolveDrawingSnap } from '../.test-build/drawing-line-authority/drawingSnapEngine.js';
-import { EMPTY_LINE_INTERACTION, automaticAxisConstraintKind, hasAngularPresentationTruth, resolveLineEffectivePoint } from '../.test-build/drawing-line-authority/drawingLineTool.js';
+import { EMPTY_PROFILE_INTERACTION, automaticAxisConstraintKind, hasAngularPresentationTruth, resolveLineEffectivePoint } from '../.test-build/drawing-line-authority/drawingProfileTool.js';
 
 const raw = { x: 10.2, y: 0.3 };
 const empty = { endpoints: [], midpoints: [], lines: [], alignmentsX: [], alignmentsY: [], perpendiculars: [], parallels: [], pointReferences: [] };
@@ -25,7 +25,7 @@ assert.equal(resolve({ rawPoint: raw, candidates: { ...empty, endpoints }, previ
 const tied = [endpoint('z', { x: 8, y: 0 }, 2), endpoint('a', { x: 10, y: 0 }, 2)];
 assert.equal(resolve({ rawPoint: raw, candidates: { ...empty, endpoints: tied }, previousSnap: null, ctrlOverride: false }).entityId, 'a');
 
-const interaction = { ...EMPTY_LINE_INTERACTION, start: { x: 0, y: 0 }, startPointId: 'start' };
+const interaction = { ...EMPTY_PROFILE_INTERACTION, start: { x: 0, y: 0 }, startPointId: 'start' };
 const exact = resolveLineEffectivePoint(interaction, raw, acquiredEndpoint);
 assert.deepEqual(exact.effectivePoint, { x: 10, y: 0 }, 'endpoint coordinate cannot be projected');
 assert.equal(automaticAxisConstraintKind(exact.interaction), 'HORIZONTAL');

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/drawing-coincident/drawingTypes.js';
-import { appendEntityToActiveSketch, applyResolvedLineClick, EMPTY_LINE_INTERACTION } from '../.test-build/drawing-coincident/drawingLineTool.js';
+import { appendEntityToActiveSketch, applyResolvedProfileClick, EMPTY_PROFILE_INTERACTION } from '../.test-build/drawing-coincident/drawingProfileTool.js';
 import { addCoincidentConstraint, addPointOnLinearSupportConstraint, canonicalCoincidentPointPair, createCoincidentConstraint, createPointOnLinearSupportConstraint, deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_SIZE_PX } from '../.test-build/drawing-coincident/drawingCoincidentConstraint.js';
 import { analyzeDrawingConstraints, constraintJacobianRow, geometricConstraintEquations } from '../.test-build/drawing-coincident/drawingConstraintAnalysis.js';
 import { solveDrawingComponentDrag, verifyDrawingConstraints } from '../.test-build/drawing-coincident/drawingConstraintSolver.js';
@@ -119,9 +119,9 @@ test('accepted finite Line-body acquisition appends solver-backed Coincident wit
 
 test('a Line-body first click retains its semantic target until the Line transaction commits', () => {
   let document = add(createDrawingDocumentV2(), line('target', { x: 0, y: 0 }, { x: 40, y: 0 }));
-  const first = applyResolvedLineClick(EMPTY_LINE_INTERACTION, { x: 10, y: 0 }, () => 'unused', 'authored-start', 'target');
+  const first = applyResolvedProfileClick(EMPTY_PROFILE_INTERACTION, { x: 10, y: 0 }, () => 'unused', 'authored-start', 'target');
   assert.equal(first.interaction.startLineId, 'target');
-  const second = applyResolvedLineClick(first.interaction, { x: 10, y: 20 }, () => 'authored', 'authored-end', null);
+  const second = applyResolvedProfileClick(first.interaction, { x: 10, y: 20 }, () => 'authored', 'authored-end', null);
   document = appendEntityToActiveSketch(document, second.entity, () => 'unused', null, null, null, null,
     { startLineId: first.interaction.startLineId });
   const sketch = document.sketches['sketch-1'];

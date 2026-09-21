@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/drawing-perpendicular/drawingTypes.js';
-import { appendEntityToActiveSketch, applyResolvedLineClick, automaticAxisConstraintKind, cancelLineInteraction, EMPTY_LINE_INTERACTION, resolveLineEffectivePoint } from '../.test-build/drawing-perpendicular/drawingLineTool.js';
+import { appendEntityToActiveSketch, applyResolvedProfileClick, automaticAxisConstraintKind, cancelProfileInteraction, EMPTY_PROFILE_INTERACTION, resolveLineEffectivePoint } from '../.test-build/drawing-perpendicular/drawingProfileTool.js';
 import { perpendicularAndGradient } from '../.test-build/drawing-perpendicular/drawingConstraintAnalysis.js';
 import { solveDrawingComponentDrag, verifyDrawingConstraints } from '../.test-build/drawing-perpendicular/drawingConstraintSolver.js';
 import { deriveGeometricConstraintMarkers, derivePerpendicularPresentation, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_OFFSET_PX, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX, GEOMETRIC_CONSTRAINT_MARKER_SPACING_PX, RIGHT_ANGLE_MARKER_SIZE_PX } from '../.test-build/drawing-perpendicular/drawingParallelMarker.js';
@@ -51,7 +51,7 @@ test('solver preserves direction-only perpendicular relation while translation, 
 
 test('H/V intent is exclusive and has priority over a simultaneous perpendicular candidate in every axis direction', () => {
   for (const end of [{ x: 20, y: 0 }, { x: -20, y: 0 }, { x: 0, y: 20 }, { x: 0, y: -20 }]) {
-    const interaction = { ...EMPTY_LINE_INTERACTION, start: { x: 0, y: 0 } };
+    const interaction = { ...EMPTY_PROFILE_INTERACTION, start: { x: 0, y: 0 } };
     const resolution = resolveLineEffectivePoint(interaction, end, { active: true, type: 'perpendicular', entityId: 'existing', effectivePoint: end });
     const axis = automaticAxisConstraintKind(resolution.interaction);
     assert.ok(axis === 'HORIZONTAL' || axis === 'VERTICAL');
@@ -68,8 +68,8 @@ test('chain workflow metadata cannot change ordinary perpendicular resolution', 
     candidatePoint: { x: 0, y: 30 }, screenDistance: 2, lineStart: { x: -10, y: 0 }, lineEnd: { x: 10, y: 0 } };
   const snap = { ...perpendicular, active: true, channels: { xAlignment: null, yAlignment: null,
     perpendicular, parallel: null, pointReference: null } };
-  const manual = resolveLineEffectivePoint({ ...EMPTY_LINE_INTERACTION, start, startPointId: 'joint' }, raw, snap);
-  const chained = resolveLineEffectivePoint({ ...EMPTY_LINE_INTERACTION, start, startPointId: 'joint' }, raw, snap);
+  const manual = resolveLineEffectivePoint({ ...EMPTY_PROFILE_INTERACTION, start, startPointId: 'joint' }, raw, snap);
+  const chained = resolveLineEffectivePoint({ ...EMPTY_PROFILE_INTERACTION, start, startPointId: 'joint' }, raw, snap);
   const inferenceState = (resolution) => resolution;
   assert.deepEqual(inferenceState(chained), inferenceState(manual), 'identical topology and pointer produce identical geometry and semantics');
   assert.equal(chained.interaction.perpendicularLineId, manual.interaction.perpendicularLineId);
@@ -78,9 +78,9 @@ test('chain workflow metadata cannot change ordinary perpendicular resolution', 
 });
 
 test('cancel and new-chain lifecycle clear previous identity while zero-length rejection preserves it', () => {
-  const chained = { ...EMPTY_LINE_INTERACTION, start: { x: 1, y: 1 } };
-  assert.deepEqual(applyResolvedLineClick(chained, { x: 1, y: 1 }, () => 'must-not-run').interaction, chained);
-  assert.deepEqual(cancelLineInteraction(), EMPTY_LINE_INTERACTION);
+  const chained = { ...EMPTY_PROFILE_INTERACTION, start: { x: 1, y: 1 } };
+  assert.deepEqual(applyResolvedProfileClick(chained, { x: 1, y: 1 }, () => 'must-not-run').interaction, chained);
+  assert.deepEqual(cancelProfileInteraction(), EMPTY_PROFILE_INTERACTION);
 });
 
 test('generic storage remains capable of explicit axis plus perpendicular constraints', () => {
@@ -116,7 +116,7 @@ test('restarted Line inference keeps H/V intent, exact geometry, and shared endp
     const candidates = collectDrawingInferenceCandidates(rawEnd, [existing], transform, undefined, joint);
     const perpendicular = candidates.perpendiculars[0];
     const angularPoint = resolveLineEffectivePoint(
-      { ...EMPTY_LINE_INTERACTION, start: joint, startPointId: 'joint' },
+      { ...EMPTY_PROFILE_INTERACTION, start: joint, startPointId: 'joint' },
       rawEnd,
       { active: false, type: 'none', effectivePoint: rawEnd },
     ).effectivePoint;
@@ -126,7 +126,7 @@ test('restarted Line inference keeps H/V intent, exact geometry, and shared endp
     const snap = resolveDrawingSnap({ rawPoint: rawEnd, candidates, previousSnap: null, ctrlOverride: false,
       activeLineStart: joint, activeLineStartPointId: 'joint' });
     assert.equal(snap.type, 'perpendicular', 'spatial inference exposes the competing perpendicular candidate');
-    const accepted = resolveLineEffectivePoint({ ...EMPTY_LINE_INTERACTION, start: joint, startPointId: 'joint' }, rawEnd, snap);
+    const accepted = resolveLineEffectivePoint({ ...EMPTY_PROFILE_INTERACTION, start: joint, startPointId: 'joint' }, rawEnd, snap);
     assert.equal(automaticAxisConstraintKind(accepted.interaction), secondAxis);
     assert.equal(accepted.interaction.perpendicularLineId, null);
     assert.equal(accepted.effectivePoint[exactCoordinate[0]], exactCoordinate[1], `${secondAxis} effective point is exact`);
@@ -142,9 +142,9 @@ test('restarted Line inference keeps H/V intent, exact geometry, and shared endp
 
 test('delayed workspace commit captures click-time inference instead of later hover state', () => {
   const workspace = readFileSync(new URL('../src/app/DrawingWorkspace.tsx', import.meta.url), 'utf8');
-  assert.match(workspace, /commitLinePoint\(effectivePoint, endpointPointId, placement\.interaction, lineBodyId\)/);
+  assert.match(workspace, /commitProfilePlacement\(effectivePoint, endpointPointId, placement\.interaction, lineBodyId\)/);
   assert.match(workspace, /automaticAxisConstraintKind\(acceptedInteraction\)/);
-  assert.doesNotMatch(workspace, /automaticAxisConstraintKind\(lineInteractionRef\.current\)/);
+  assert.doesNotMatch(workspace, /automaticAxisConstraintKind\(profileInteractionRef\.current\)/);
   assert.match(workspace, /setDrawingSnap\(null\);\s*drawingSnapRef\.current = null;\s*transactDocument/, 'successful segment boundary clears state and ref hysteresis before append');
 });
 

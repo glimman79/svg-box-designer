@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { appendDimension, availableLineDimensionKinds, chooseLineDimensionKind, createLineDimension, deleteDimension, deleteEntityWithDependentDimensions, formatLinearDimension, measureDimension, parseLinearDimension, resolveDrawingPointReference } from '../.test-build/drawing-dimension/drawingDimension.js';
 import { createDrawingDocumentV1, createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/drawing-dimension/drawingTypes.js';
-import { appendEntityToActiveSketch } from '../.test-build/drawing-dimension/drawingLineTool.js';
+import { appendEntityToActiveSketch } from '../.test-build/drawing-dimension/drawingProfileTool.js';
 
 const line = { id: 'line-17', type: 'line', start: { x: 0, y: 0 }, end: { x: 100, y: 50 } };
 assert.equal(measureDimension('ALIGNED_DISTANCE', line.start, line.end), Math.hypot(100, 50));

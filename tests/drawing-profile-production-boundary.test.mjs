@@ -3,11 +3,11 @@ import test from 'node:test';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 
-const built = (name) => pathToFileURL(path.resolve(`.test-build/drawing-line-production-boundary/${name}.js`));
+const built = (name) => pathToFileURL(path.resolve(`.test-build/drawing-profile-production-boundary/${name}.js`));
 const inference = await import(built('drawingInference'));
 const snaps = await import(built('drawingSnapEngine'));
-const lines = await import(built('drawingLineTool'));
-const boundary = await import(built('drawingLineCommitBoundary'));
+const lines = await import(built('drawingProfileTool'));
+const boundary = await import(built('drawingProfileCommitBoundary'));
 const topology = await import(built('drawingTopology'));
 const presentation = await import(built('drawingInferencePresentation'));
 
@@ -52,8 +52,8 @@ const summarize = ({ candidates, snap, placement }) => ({
 test('same-event continuation reads the committed transaction snapshot and is frame-equivalent to manual start', () => {
   let document = documentFor(false);
   const renderClosureLines = topology.resolveActiveSketchLines(document);
-  const accepted = resolve(lines.initializeNewLineAt(p.b0, 'b0'), renderClosureLines, p.s, null).placement;
-  const committed = lines.applyResolvedLineClick(accepted.interaction, accepted.effectivePoint, () => 'B', 'S');
+  const accepted = resolve(lines.initializeProfileSegmentAt(p.b0, 'b0'), renderClosureLines, p.s, null).placement;
+  const committed = lines.applyResolvedProfileClick(accepted.interaction, accepted.effectivePoint, () => 'B', 'S');
   document = lines.appendEntityToActiveSketch(document, committed.entity);
 
   assert.deepEqual(renderClosureLines.map(({ id }) => id), ['A', 'T'], 'the pre-commit render closure is stale in this browser event');
@@ -91,7 +91,7 @@ test('same-event continuation reads the committed transaction snapshot and is fr
     });
   };
   const chainedFrames = run(committed.interaction);
-  const manualFrames = run(lines.initializeNewLineAt(p.s, 'S'));
+  const manualFrames = run(lines.initializeProfileSegmentAt(p.s, 'S'));
   assert.deepEqual(chainedFrames, manualFrames, 'candidates, authorities, effective point, semantics, and transient truth match on every pointer frame');
   assert.equal(chainedFrames[1].snap.channels.directionAuthority?.relation, 'parallel');
   assert.equal(chainedFrames[4].snap.type, 'endpoint');
@@ -106,7 +106,7 @@ for (const [name, delayPointers] of [
   const events = [];
   const pending = { current: null };
   const clock = fakeClock();
-  let interaction = { ...lines.EMPTY_LINE_INTERACTION, start: p.b0, startPointId: 'b0' };
+  let interaction = { ...lines.EMPTY_PROFILE_INTERACTION, start: p.b0, startPointId: 'b0' };
   let snap = null;
   let document = documentFor(false);
 
@@ -114,8 +114,8 @@ for (const [name, delayPointers] of [
   interaction = accepted.placement.interaction;
   snap = accepted.snap;
   events.push({ type: 'click-accepted', interaction, snap });
-  boundary.scheduleDrawingLineCommit(pending, clock.scheduler, () => {
-    const click = lines.applyResolvedLineClick(accepted.placement.interaction, accepted.placement.effectivePoint, () => 'B', 'S');
+  boundary.scheduleDrawingProfileCommit(pending, clock.scheduler, () => {
+    const click = lines.applyResolvedProfileClick(accepted.placement.interaction, accepted.placement.effectivePoint, () => 'B', 'S');
     document = lines.appendEntityToActiveSketch(document, click.entity);
     interaction = click.interaction;
     snap = null;
@@ -145,7 +145,7 @@ for (const [name, delayPointers] of [
     snap = frame.snap;
     continuedFrames.push(frame);
   }
-  let manualInteraction = { ...lines.EMPTY_LINE_INTERACTION, start: p.s, startPointId: 'S' };
+  let manualInteraction = { ...lines.EMPTY_PROFILE_INTERACTION, start: p.s, startPointId: 'S' };
   let manualSnap = null;
   const manualFrames = postPointers.map((pointer) => {
     const frame = resolve(manualInteraction, [A, T, B], pointer, manualSnap);
@@ -163,19 +163,19 @@ for (const [name, delayPointers] of [
 test('a second click inside 220 ms flushes B before it is resolved as C', () => {
   const pending = { current: null };
   const clock = fakeClock();
-  let interaction = lines.initializeNewLineAt(p.b0, 'b0');
+  let interaction = lines.initializeProfileSegmentAt(p.b0, 'b0');
   let scene = [A, T];
   const committed = [];
   const acceptedB = resolve(interaction, scene, p.s, null);
-  boundary.scheduleDrawingLineCommit(pending, clock.scheduler, () => {
-    const click = lines.applyResolvedLineClick(acceptedB.placement.interaction, acceptedB.placement.effectivePoint, () => 'B', 'S');
+  boundary.scheduleDrawingProfileCommit(pending, clock.scheduler, () => {
+    const click = lines.applyResolvedProfileClick(acceptedB.placement.interaction, acceptedB.placement.effectivePoint, () => 'B', 'S');
     interaction = click.interaction; scene = [...scene, { ...B }]; committed.push(click.entity);
   });
   const intendedCPointer = { x: 40, y: 100 };
-  assert.equal(boundary.flushDrawingLineCommit(pending, clock.scheduler), true);
+  assert.equal(boundary.flushDrawingProfileCommit(pending, clock.scheduler), true);
   const acceptedC = resolve(interaction, scene, intendedCPointer, null);
-  boundary.scheduleDrawingLineCommit(pending, clock.scheduler, () => {
-    const click = lines.applyResolvedLineClick(acceptedC.placement.interaction, acceptedC.placement.effectivePoint, () => 'C', 'C-end');
+  boundary.scheduleDrawingProfileCommit(pending, clock.scheduler, () => {
+    const click = lines.applyResolvedProfileClick(acceptedC.placement.interaction, acceptedC.placement.effectivePoint, () => 'C', 'C-end');
     interaction = click.interaction; committed.push(click.entity);
   });
   clock.run();
@@ -187,13 +187,13 @@ test('a second click inside 220 ms flushes B before it is resolved as C', () => 
 
 test('multiple rapid clicks commit every accepted segment exactly once with connected topology', () => {
   const pending = { current: null }, clock = fakeClock();
-  let interaction = lines.initializeNewLineAt({ x: 0, y: 0 }, 'P0');
+  let interaction = lines.initializeProfileSegmentAt({ x: 0, y: 0 }, 'P0');
   const committed = [];
   for (const [index, point] of [{ x: 10, y: 10 }, { x: 20, y: 20 }, { x: 30, y: 30 }].entries()) {
-    boundary.flushDrawingLineCommit(pending, clock.scheduler);
+    boundary.flushDrawingProfileCommit(pending, clock.scheduler);
     const accepted = resolve(interaction, [], point, null).placement;
-    boundary.scheduleDrawingLineCommit(pending, clock.scheduler, () => {
-      const click = lines.applyResolvedLineClick(accepted.interaction, accepted.effectivePoint, () => `L${index + 1}`, `P${index + 1}`);
+    boundary.scheduleDrawingProfileCommit(pending, clock.scheduler, () => {
+      const click = lines.applyResolvedProfileClick(accepted.interaction, accepted.effectivePoint, () => `L${index + 1}`, `P${index + 1}`);
       interaction = click.interaction; committed.push(click.entity);
     });
   }
@@ -208,8 +208,8 @@ test('multiple rapid clicks commit every accepted segment exactly once with conn
 test('explicit cancellation discards the pending accepted click', () => {
   const pending = { current: null }, clock = fakeClock();
   let commits = 0;
-  boundary.scheduleDrawingLineCommit(pending, clock.scheduler, () => commits++);
-  assert.equal(boundary.cancelDrawingLineCommit(pending, clock.scheduler), true);
+  boundary.scheduleDrawingProfileCommit(pending, clock.scheduler, () => commits++);
+  assert.equal(boundary.cancelDrawingProfileCommit(pending, clock.scheduler), true);
   clock.run();
   assert.equal(commits, 0);
 });

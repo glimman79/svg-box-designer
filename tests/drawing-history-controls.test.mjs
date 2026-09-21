@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { solveDrawingDimensionEdit } from '../.test-build/drawing-history-controls/drawingConstraintSolver.js';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-history-controls/drawingTypes.js';
-import { appendEntityToActiveSketch } from '../.test-build/drawing-history-controls/drawingLineTool.js';
+import { appendEntityToActiveSketch } from '../.test-build/drawing-history-controls/drawingProfileTool.js';
 import { resolveDrawingPointReference } from '../.test-build/drawing-history-controls/drawingDimension.js';
 
 const app = fs.readFileSync('src/App.tsx', 'utf8');

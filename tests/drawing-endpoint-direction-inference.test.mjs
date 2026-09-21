@@ -7,7 +7,7 @@ import path from 'node:path';
 const built = (name) => pathToFileURL(path.resolve(`.test-build/drawing-endpoint-direction-inference/${name}.js`));
 const inference = await import(built('drawingInference'));
 const snaps = await import(built('drawingSnapEngine'));
-const lineTool = await import(built('drawingLineTool'));
+const lineTool = await import(built('drawingProfileTool'));
 const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 const bounds = { x: -500, y: -500, width: 1000, height: 1000 };
 const resolvedLine = (id, startPointId, endPointId, start, end) => ({ id, type: 'line', startPointId, endPointId, start, end });
@@ -16,7 +16,7 @@ const angled = resolvedLine('AB', 'A', 'B', { x: 0, y: 0 }, { x: 100, y: 50 });
 const pipeline = ({ pointer, scene, start = null, previousSnap = null, ctrl = false, transform = identity, axisDirectionActive = false, directionDegrees = null, startPointId = 'new-start' }) => {
   const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, transform, bounds, start, directionDegrees, start ? startPointId : null);
   const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap, ctrlOverride: ctrl, axisDirectionActive, activeLineStart: start });
-  const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId: start ? startPointId : null };
+  const interaction = { ...lineTool.EMPTY_PROFILE_INTERACTION, start, startPointId: start ? startPointId : null };
   return { candidates, snap, resolved: lineTool.resolveLineEffectivePoint(interaction, pointer, snap, ctrl) };
 };
 const normal = (candidates, point = 'B', line = 'AB') => candidates.pointReferences.find(
@@ -54,7 +54,7 @@ test('point normal is infinite, acquires remotely on both sides, and releases of
 test('remote first click creates a new start point and no relation or History transaction', () => {
   const acquired = pipeline({ pointer: { x: -300, y: 850 }, scene: [angled] });
   assert.equal(acquired.snap.type, 'point-reference');
-  const first = lineTool.applyResolvedLineClick(acquired.resolved.interaction, acquired.resolved.effectivePoint, () => 'new', 'X');
+  const first = lineTool.applyResolvedProfileClick(acquired.resolved.interaction, acquired.resolved.effectivePoint, () => 'new', 'X');
   assert.equal(first.entity, null);
   assert.ok(Math.hypot(first.interaction.start.x + 300, first.interaction.start.y - 850) < 1e-9);
   assert.equal(first.interaction.startPointId, 'X');
@@ -66,7 +66,7 @@ test('remote first click creates a new start point and no relation or History tr
 
 test('direction remains free after point-reference start; ordinary Parallel remains independently commit-able', () => {
   const acquired = pipeline({ pointer: { x: -300, y: 850 }, scene: [angled] });
-  const first = lineTool.applyResolvedLineClick(acquired.resolved.interaction, acquired.resolved.effectivePoint, () => 'new', 'X');
+  const first = lineTool.applyResolvedProfileClick(acquired.resolved.interaction, acquired.resolved.effectivePoint, () => 'new', 'X');
   const free = pipeline({ pointer: { x: -250, y: 930 }, scene: [angled], start: first.interaction.start });
   assert.equal(free.resolved.interaction.perpendicularLineId, null);
   assert.equal(free.resolved.interaction.parallelLineId, null);
@@ -75,7 +75,7 @@ test('direction remains free after point-reference start; ordinary Parallel rema
   const parallel = pipeline({ pointer: parallelPointer, scene: [angled], start: first.interaction.start });
   assert.equal(parallel.snap.type, 'parallel');
   assert.equal(parallel.resolved.interaction.parallelLineId, 'AB');
-  const click = lineTool.applyResolvedLineClick(parallel.resolved.interaction, parallel.resolved.effectivePoint, () => 'XY', 'Y');
+  const click = lineTool.applyResolvedProfileClick(parallel.resolved.interaction, parallel.resolved.effectivePoint, () => 'XY', 'Y');
   const document = lineTool.appendEntityToActiveSketch(emptyDocument(), click.entity, undefined, null, null, null, 'AB');
   assert.equal(document.sketches.s.geometricConstraints['parallel:AB:XY'].kind, 'PARALLEL');
 });

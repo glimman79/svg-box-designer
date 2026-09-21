@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const line = await import(pathToFileURL(path.resolve('.test-build/drawing-line-inference-arbitration/drawingLineTool.js')));
+const line = await import(pathToFileURL(path.resolve('.test-build/drawing-line-inference-arbitration/drawingProfileTool.js')));
 const start = { x: 10, y: 20 };
-const interaction = line.applyResolvedLineClick(line.EMPTY_LINE_INTERACTION, start, () => 'start').interaction;
+const interaction = line.applyResolvedProfileClick(line.EMPTY_PROFILE_INTERACTION, start, () => 'start').interaction;
 const pointAt = (degrees, distance = 100) => ({ x: start.x + distance * Math.cos(degrees * Math.PI / 180), y: start.y + distance * Math.sin(degrees * Math.PI / 180) });
 const none = (point) => ({ active: false, type: 'none', effectivePoint: point });
 const alignment = (point, { x, y } = {}) => ({
@@ -24,19 +24,19 @@ assert.equal(free90.snapActive, true);
 assert.equal(free90.snappedAngleDegrees, 90);
 for (const degrees of [90, 45, 22.5]) {
   const endpoint = pointAt(degrees);
-  const resolved = line.updateLinePreviewAtSpatialPoint(interaction, pointAt(degrees + 1), endpoint);
+  const resolved = line.updateProfilePreviewAtSpatialPoint(interaction, pointAt(degrees + 1), endpoint);
   assert.equal(resolved.effectivePreviewPoint, endpoint, `${degrees} endpoint remains the exact semantic snap object`);
   assert.equal(line.hasAngularPresentationTruth(resolved), true, `${degrees} endpoint and angular inference coexist`);
   assert.equal(resolved.snappedAngleDegrees, degrees);
-  const committed = line.applyResolvedLineClick(resolved, resolved.effectivePreviewPoint, () => `line-${degrees}`).entity;
+  const committed = line.applyResolvedProfileClick(resolved, resolved.effectivePreviewPoint, () => `line-${degrees}`).entity;
   assert.equal(committed.end, endpoint, `${degrees} preview and commit are identical`);
 }
 const horizontalEndpoint = pointAt(0);
-const replaced = line.updateLinePreviewAtSpatialPoint(interaction, pointAt(90), horizontalEndpoint);
+const replaced = line.updateProfilePreviewAtSpatialPoint(interaction, pointAt(90), horizontalEndpoint);
 assert.equal(line.hasAngularPresentationTruth(replaced), true);
 assert.equal(replaced.snappedAngleDegrees, 0, 'visual follows actual endpoint geometry rather than stale 90 degrees');
 const incompatible = pointAt(13);
-const conflict = line.updateLinePreviewAtSpatialPoint(interaction, pointAt(0), incompatible);
+const conflict = line.updateProfilePreviewAtSpatialPoint(interaction, pointAt(0), incompatible);
 assert.equal(conflict.effectivePreviewPoint, incompatible);
 assert.equal(line.hasAngularPresentationTruth(conflict), false, 'incompatible endpoint cannot retain a false angular visual');
 assert.equal(conflict.snappedAngleDegrees, null);
@@ -51,7 +51,7 @@ for (const degrees of [0, 22.5, 45, 67.5, 90]) {
   assert.equal(line.hasAngularPresentationTruth(resolved.interaction), true, `${degrees} remains angular-snapped during X/Y inference`);
   assert.equal(resolved.interaction.effectivePreviewPoint, resolved.effectivePoint, `${degrees} has one authoritative preview endpoint`);
   exactAngle(resolved.effectivePoint, degrees, `${degrees} geometry is exact`);
-  const committed = line.applyResolvedLineClick(resolved.interaction, resolved.effectivePoint, () => `hard-${degrees}`).entity;
+  const committed = line.applyResolvedProfileClick(resolved.interaction, resolved.effectivePoint, () => `hard-${degrees}`).entity;
   assert.deepEqual(committed.end, resolved.effectivePoint, `${degrees} commit equals preview`);
 }
 
@@ -104,7 +104,7 @@ const ctrlResolved = line.resolveLineEffectivePoint(interaction, pointAt(44), no
 exactAngle(ctrlResolved.effectivePoint, 45, 'Ctrl-bypassed spatial snap retains Line-specific angular inference');
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 assert.match(workspace, /resolveLineEffectivePoint\(interaction, rawPoint, snap, ctrlHeld\)/, 'workspace consumes the authoritative Line resolution with the final Ctrl guard');
-assert.match(workspace, /commitLinePoint\(effectivePoint, endpointPointId, placement\.interaction\)/, 'commit receives the inference state accepted with its effective point');
+assert.match(workspace, /commitProfilePlacement\(effectivePoint, endpointPointId, placement\.interaction\)/, 'commit receives the inference state accepted with its effective point');
 assert.match(workspace, /lineResolution\.resolvedReferences\.x/, 'workspace renders the authoritative resolved X truth');
 assert.match(workspace, /sameAxisReferenceCandidate = lineResolution\.resolvedReferences\.x\?\.positionOwnership === 'reference-only'/,
   'same-axis highlight is derived only from authoritative resolved truth');
@@ -113,8 +113,8 @@ assert.doesNotMatch(workspace, /transactDocument[\s\S]{0,120}sameAxisReference/,
 assert.doesNotMatch(workspace, /placementPoint\.x === xInference\.candidatePoint\.x/, 'workspace does not independently decide X geometric truth');
 assert.doesNotMatch(workspace, /placementPoint\.y === yInference\.candidatePoint\.y/, 'workspace does not independently decide Y geometric truth');
 assert.match(workspace, /setDrawingSnap\(null\); drawingSnapRef\.current = null;/, 'cursor-clear boundaries synchronously clear state and hysteresis ref');
-assert.match(workspace, /drawing-line-cursor-endpoint/);
-assert.match(workspace, /drawing-line-cursor-line/);
-assert.match(workspace, /drawing-line-cursor-alignment/);
+assert.match(workspace, /drawing-profile-cursor-endpoint/);
+assert.match(workspace, /drawing-profile-cursor-line/);
+assert.match(workspace, /drawing-profile-cursor-alignment/);
 assert.match(workspace, /if \(panHandlers\.onPointerMove\(event\)\) return;/);
 console.log('Drawing Line inference arbitration tests passed');

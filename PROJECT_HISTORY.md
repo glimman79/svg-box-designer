@@ -17,6 +17,10 @@ Status labels have the meanings defined in `ROADMAP.md`. Detailed B3.x reports a
 - **Acceptance result:** B3.23 concluded that Wall was stable enough to leave stabilization.
 - **Current development position:** substantial solver-backed 2D Drawing development followed v1.2. Direction/position authority and natural Point Reference acquisition under Parallel are now browser-verified; a shared ProjectDocument remains later cross-module work.
 
+### September 2026 Profile tool identity migration
+
+The continuing straight-segment authoring workflow was renamed from its legacy Line tool identity to Profile without changing behavior. Profile workflow state and delayed commit ownership were separated from reusable Line-segment geometry and generic document mutation. Persistent geometry remained Line-based, freeing the Line tool name for the future standalone one-segment workflow.
+
 ### September 2026 equivalent-demand browser failure and policy correction
 
 The browser trace after #518–#520 showed frame 345 correctly detecting and accepting compatible Parallel, Perpendicular, and Point Reference channels and presenting Parallel alone. The click then began a fresh chained segment at frame 346. Multiple Parallel references, a Perpendicular reference, and Point Reference produced essentially the same candidate point at about 8.4169 px, while Y alignment was about 4.6948 px and generic angular intent reported 45°. Because each semantic family was independently outside its 8 px acquisition threshold and the new segment intentionally had no hysteresis, alignment won with all direction channels null. Thus the first incorrect stage was candidate acquisition, before Line resolution or presentation: equivalent geometric evidence was still arbitrated as unrelated family candidates.

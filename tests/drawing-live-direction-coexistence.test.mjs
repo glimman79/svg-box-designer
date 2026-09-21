@@ -6,7 +6,7 @@ import path from 'node:path';
 const built = (name) => pathToFileURL(path.resolve(`.test-build/drawing-live-direction-coexistence/${name}.js`));
 const inference = await import(built('drawingInference'));
 const snaps = await import(built('drawingSnapEngine'));
-const lineTool = await import(built('drawingLineTool'));
+const lineTool = await import(built('drawingProfileTool'));
 const presentation = await import(built('drawingInferencePresentation'));
 
 const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
@@ -23,7 +23,7 @@ const sketchFor = (lines) => ({ id: 'sketch', points, entities: Object.fromEntri
   geometricConstraints: {}, geometricConstraintOrder: [] });
 
 const evaluate = ({ scene, start, startPointId, pointer, visibleBounds = bounds, ctrlOverride = false }) => {
-  const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId };
+  const interaction = { ...lineTool.EMPTY_PROFILE_INTERACTION, start, startPointId };
   const angular = lineTool.resolveLinePreviewPoint(start, pointer);
   const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, identity, visibleBounds, start,
     angular.snapActive ? angular.snappedAngleDegrees : null, startPointId);
@@ -94,7 +94,7 @@ test('production handoff preserves acquired Parallel through Endpoint resolution
   const endpointCandidates = inference.collectDrawingInferenceCandidates(points.p3, [A, B, target], identity, bounds, start, null, 'p2');
   const endpointSnap = snaps.resolveDrawingSnap({ rawPoint: points.p3, candidates: endpointCandidates, previousSnap: acquiredSnap,
     ctrlOverride: false, axisDirectionActive: false, activeLineStart: start });
-  const interaction = { ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId: 'p2' };
+  const interaction = { ...lineTool.EMPTY_PROFILE_INTERACTION, start, startPointId: 'p2' };
   const resolution = lineTool.resolveLineEffectivePoint(interaction, points.p3, endpointSnap);
   assert.equal(endpointSnap.type, 'endpoint');
   assert.equal(endpointSnap.channels.directionAuthority.referenceLineId, 'A');
@@ -103,7 +103,7 @@ test('production handoff preserves acquired Parallel through Endpoint resolution
     { parallelLineId: 'A', perpendicularLineId: null });
   assert.equal(resolution.interaction.parallelLineId, 'A');
 
-  const click = lineTool.applyResolvedLineClick(resolution.interaction, resolution.effectivePoint, () => 'C', 'p3');
+  const click = lineTool.applyResolvedProfileClick(resolution.interaction, resolution.effectivePoint, () => 'C', 'p3');
   assert.equal(click.entity.endPointId, 'p3', 'Endpoint topology is reused exactly');
   const sketch = sketchFor([A, B, target]);
   const document = { schemaVersion: 2, unit: 'mm', activeSketchId: sketch.id, sketchOrder: [sketch.id], sketches: { [sketch.id]: sketch } };
@@ -134,7 +134,7 @@ test('established Parallel survives release distance and reaches a compatible En
   const endpointCandidates = inference.collectDrawingInferenceCandidates(points.p3, [A, B, target], identity, bounds, start, 45, 'p2');
   const endpoint = snaps.resolveDrawingSnap({ rawPoint: points.p3, candidates: endpointCandidates, previousSnap: tracking,
     ctrlOverride: false, activeLineStart: start, activeLineStartPointId: 'p2' });
-  const resolution = lineTool.resolveLineEffectivePoint({ ...lineTool.EMPTY_LINE_INTERACTION, start, startPointId: 'p2' }, points.p3, endpoint);
+  const resolution = lineTool.resolveLineEffectivePoint({ ...lineTool.EMPTY_PROFILE_INTERACTION, start, startPointId: 'p2' }, points.p3, endpoint);
   assert.equal(endpoint.type, 'endpoint');
   assert.equal(endpoint.channels.directionAuthority.referenceLineId, 'A');
   assert.deepEqual(resolution.effectivePoint, points.p3);

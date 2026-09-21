@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 const root = path.resolve('.test-build/drawing-d2-3');
 const snap = await import(pathToFileURL(path.join(root, 'drawingSnapEngine.js')));
 const inference = await import(pathToFileURL(path.join(root, 'drawingInference.js')));
-const lineTool = await import(pathToFileURL(path.join(root, 'drawingLineTool.js')));
+const lineTool = await import(pathToFileURL(path.join(root, 'drawingProfileTool.js')));
 const lifecycle = await import(pathToFileURL(path.join(root, 'drawingToolLifecycle.js')));
 const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 const target = { id: 'target', type: 'line', start: { x: 10, y: 10 }, end: { x: 110, y: 10 } };
@@ -41,19 +41,19 @@ const ctrlFree = resolve({ x: 19, y: 18 }, candidatesAt({ x: 19, y: 18 }), null,
 const angular = lineTool.resolveLinePreviewPoint({ x: 0, y: 0 }, ctrlFree.effectivePoint);
 assert.equal(angular.snapActive, true, 'Ctrl leaves Line-specific 22.5 degree inference available');
 
-assert.equal(lifecycle.nextDrawingTool('select', 'activate', 'line'), 'line');
-assert.equal(lifecycle.nextDrawingTool('line', 'finish-construction'), 'line');
-assert.equal(lifecycle.nextDrawingTool('line', 'deactivate'), 'select');
-const interaction = lineTool.applyResolvedLineClick(lineTool.EMPTY_LINE_INTERACTION, target.start, () => 'one').interaction;
-const committed = lineTool.applyResolvedLineClick(interaction, { x: 60, y: 10 }, () => 'one');
+assert.equal(lifecycle.nextDrawingTool('select', 'activate', 'profile'), 'profile');
+assert.equal(lifecycle.nextDrawingTool('profile', 'finish-construction'), 'profile');
+assert.equal(lifecycle.nextDrawingTool('profile', 'deactivate'), 'select');
+const interaction = lineTool.applyResolvedProfileClick(lineTool.EMPTY_PROFILE_INTERACTION, target.start, () => 'one').interaction;
+const committed = lineTool.applyResolvedProfileClick(interaction, { x: 60, y: 10 }, () => 'one');
 assert.deepEqual(committed.entity.end, { x: 60, y: 10 }, 'resolved spatial point commits without angular re-resolution');
 
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const css = fs.readFileSync('src/styles.css', 'utf8');
 const engine = fs.readFileSync('src/app/drawingSnapEngine.ts', 'utf8');
-assert.match(workspace, /aria-pressed=\{activeTool === 'line'\}/, 'active styling derives from activeTool');
+assert.match(workspace, /aria-pressed=\{activeTool === 'profile'\}/, 'active styling derives from activeTool');
 assert.match(workspace, /useCadEscapeToolExit\(exitActiveTool\)/, 'one Escape uses the shared exit contract');
-assert.match(workspace, /onDoubleClick=\{\(\) => \{ if \(activeTool === 'line'\) finishLine\(\)/, 'canvas double-click finishes the current construction');
+assert.match(workspace, /onDoubleClick=\{\(\) => \{ if \(activeTool === 'profile'\) finishProfile\(\)/, 'canvas double-click finishes the current construction');
 assert.match(workspace, /resolveCadToolPointerActivation[\s\S]*?selectTool\(tool, resolution\.activationMode\)/, 'application-controlled pointer activation can explicitly request persistent mode');
 assert.doesNotMatch(workspace, /event\.target !== event\.currentTarget/, 'pan can start over child grid and geometry elements');
 const cadInteraction = fs.readFileSync('src/app/cadInteraction.ts', 'utf8');

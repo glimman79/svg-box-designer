@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-constraints-tool/drawingTypes.js';
-import { appendEntityToActiveSketch } from '../.test-build/drawing-constraints-tool/drawingLineTool.js';
+import { appendEntityToActiveSketch } from '../.test-build/drawing-constraints-tool/drawingProfileTool.js';
 import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, getExistingAxisConstraintForLine, initialConstraintsPanelPosition, toggleDrawingGeometrySelection } from '../.test-build/drawing-constraints-tool/drawingConstraintsTool.js';
 import { analyzeDrawingConstraints, constraintJacobianRow, geometricConstraintEquations } from '../.test-build/drawing-constraints-tool/drawingConstraintAnalysis.js';
 import { EMPTY_DRAWING_HISTORY, transactDrawingDocument, undoDrawingDocument, redoDrawingDocument } from '../.test-build/drawing-constraints-tool/drawingHistory.js';

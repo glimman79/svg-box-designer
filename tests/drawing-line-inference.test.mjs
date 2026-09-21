@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 
 const root = path.resolve('.test-build/drawing-inference');
 const inference = await import(pathToFileURL(path.join(root, 'drawingInference.js')));
-const lineTool = await import(pathToFileURL(path.join(root, 'drawingLineTool.js')));
+const lineTool = await import(pathToFileURL(path.join(root, 'drawingProfileTool.js')));
 const types = await import(pathToFileURL(path.join(root, 'drawingTypes.js')));
 const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 const line = { id: 'line-a', type: 'line', start: { x: 10, y: 10 }, end: { x: 110, y: 10 } };
@@ -32,28 +32,28 @@ const activeSketch = document.sketches[document.activeSketchId];
 const activeLines = activeSketch.entityOrder.map((id) => activeSketch.entities[id]);
 assert.equal(inference.resolveDrawingInference({ x: 60, y: 12 }, activeLines, identity).entityId, 'line-a', 'caller can resolve the document active sketch without hardcoding Sketch 1');
 
-let interaction = lineTool.applyLineClick(lineTool.EMPTY_LINE_INTERACTION, { x: 0, y: 0 }, () => 'new-line').interaction;
+let interaction = lineTool.applyProfileClick(lineTool.EMPTY_PROFILE_INTERACTION, { x: 0, y: 0 }, () => 'new-line').interaction;
 const raw = { x: 19, y: 18 };
-interaction = lineTool.updateLinePreview(interaction, raw);
+interaction = lineTool.updateProfilePreview(interaction, raw);
 assert.equal(lineTool.hasAngularPresentationTruth(interaction), true, 'D2.2a remains authoritative near 45 degrees');
 assert.ok(Math.abs(interaction.effectivePreviewPoint.x - interaction.effectivePreviewPoint.y) < 1e-10, 'effective preview retains exact 45 degree geometry');
 const beforeInference = structuredClone(interaction);
 assert.equal(inference.resolveDrawingInference({ x: 10, y: 10 }, [line], identity).type, 'endpoint');
 assert.deepEqual(interaction, beforeInference, 'visual inference does not mutate effective Line geometry');
-const committed = lineTool.applyLineClick(interaction, raw, () => 'new-line');
+const committed = lineTool.applyProfileClick(interaction, raw, () => 'new-line');
 assert.deepEqual(committed.entity.end, interaction.effectivePreviewPoint, 'commit uses angular effective point, never inference candidate');
 
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const css = fs.readFileSync('src/styles.css', 'utf8');
-assert.match(workspace, /className=\{`cad-tool-button\$\{activeTool === 'line' \? ' is-active' : ''\}`\} aria-pressed=\{activeTool === 'line'\}/, 'Line button active presentation derives from sole activeTool state');
+assert.match(workspace, /className=\{`cad-tool-button\$\{activeTool === 'profile' \? ' is-active' : ''\}`\} aria-pressed=\{activeTool === 'profile'\}/, 'Profile button active presentation derives from sole activeTool state');
 assert.match(workspace, /className=\{`cad-tool-button\$\{activeTool === 'select' \? ' is-active' : ''\}`\} aria-pressed=\{activeTool === 'select'\}/, 'Select has mutually exclusive tool-state presentation');
-assert.match(workspace, /activeTool === 'line' && lineCursor/, 'custom cursor only renders for active Line');
+assert.match(workspace, /activeTool === 'profile' && profileCursor/, 'custom cursor only renders for active Profile');
 assert.match(workspace, /data-arm="left"[\s\S]*data-arm="right"[\s\S]*data-arm="top"[\s\S]*data-arm="bottom"/, 'four separate arms structurally preserve the centre gap');
-assert.match(workspace, /drawing-line-cursor-dot[\s\S]*drawing-line-cursor-endpoint[\s\S]*drawing-line-cursor-line/, 'normal dot, Point square, and smaller Line square are distinct marker states');
+assert.match(workspace, /drawing-profile-cursor-dot[\s\S]*drawing-profile-cursor-endpoint[\s\S]*drawing-profile-cursor-line/, 'normal dot, Point square, and smaller Line square are distinct marker states');
 assert.match(workspace, /const lineResolution = resolveLineEffectivePoint\(interaction, rawPoint, snap, previousChainedAxisKind, ctrlHeld\);[\s\S]*const placementPoint = lineResolution\.effectivePoint;/, 'placement marker follows the authoritative resolved endpoint and final Ctrl guard');
-assert.match(workspace, /onPointerLeave=\{clearLineCursor\}/, 'pointer leave clears cursor presentation without cancelling chain state');
+assert.match(workspace, /onPointerLeave=\{clearProfileCursor\}/, 'pointer leave clears cursor presentation without cancelling chain state');
 assert.match(workspace, /activeSketch\?\.entityOrder/, 'inference reads committed entities from the active sketch');
-assert.match(css, /\.drawing-svg\.has-line-cursor,[\s\S]*cursor:\s*none;/, 'system cursor hides only in active Drawing SVG scope');
+assert.match(css, /\.drawing-svg\.has-profile-cursor,[\s\S]*cursor:\s*none;/, 'system cursor hides only in active Drawing SVG scope');
 assert.doesNotMatch(css, /body[^}]*cursor:\s*none/s, 'system cursor is not hidden globally');
 assert.match(css, /\.drawing-label-overlay[^}]*position:\s*absolute;[^}]*pointer-events:\s*none;/s, 'cursor uses the accepted screen-space overlay');
 
