@@ -225,7 +225,109 @@ geometric semantics
 Their equations, degrees of freedom, failure behavior, exact selection contracts,
 semantic identifiers, and glyph details remain **DESIGN REQUIRED**.
 
-## D. Planned drawing tools
+## D. Common authoring controls and selection
+
+### Snap / Constraint / Inference filter
+
+**Status: PLANNED / NOT YET IMPLEMENTED.** Add a configurable Drawing-level
+filter/settings panel that can be opened while authoring in 2D Drawing. It will let the
+user enable or disable individual relevant types of snapping, automatic inference, and
+automatic constraint/inference behavior. The final panel structure and complete set of
+switches remain later interaction-design decisions; this roadmap does not prescribe a
+checkbox catalog.
+
+The current implementation has shared snap/inference candidate and arbitration
+infrastructure, but no user-configurable filter for enabling or disabling relation
+types. That infrastructure is a foundation for this plan, not completion of it.
+
+This is one common Drawing capability, not a separate filter implemented inside
+Profile, Line, Circle, Rectangle, or any other tool. Its intended authoring flow is:
+
+```text
+available Drawing geometry
+  -> candidate snap / inference relations
+  -> filter to types enabled in Drawing settings
+  -> compatibility / authority evaluation
+  -> accepted authoring result
+  -> presentation
+```
+
+The filter must control whether a relation type participates before an accepted
+authoring result is produced. It must not merely hide a marker after that relation has
+already influenced geometry. Exact pipeline placement and APIs remain implementation
+design work.
+
+Filtering does not redefine inference semantics. Compatibility remains more important
+than priority: multiple geometrically compatible relations may coexist, and priority
+resolves only genuinely incompatible alternatives. Position authority remains separate
+from semantic relations. Ctrl also remains the existing temporary bypass for automatic
+snap/inference behavior, while the planned filter represents persistent user-configured
+Drawing behavior. An accepted placement must not be reinterpreted during commit, and
+transient inference presentation remains separate from persistent Constraint
+presentation, with Midpoint as the browser-verified presentation reference case.
+
+#### Snap to Grid
+
+**Status: PLANNED / NOT YET IMPLEMENTED.** Snap to Grid will be one configurable snap
+capability in the Drawing filter/settings system. When enabled, grid positions may be
+offered as candidates while authoring Drawing geometry; when disabled, grid positions
+must not participate as Snap to Grid candidates merely because the grid is visible.
+Grid visibility and Snap to Grid activation are separate concepts.
+
+The current grid is presentation and viewport infrastructure; it does not establish
+Snap to Grid behavior. Grid spacing, adaptive behavior, origin, zoom behavior,
+rendering, tolerance, priority relative to other snaps, and implementation APIs remain
+for later design.
+
+### Directional drag-box selection
+
+**Status: PLANNED / NOT YET IMPLEMENTED.** Add directional drag-box multi-selection to
+the common 2D Drawing selection system. It supplements rather than replaces direct
+click selection. A drag begins with a mouse press in an appropriate empty canvas area;
+that press establishes the selection origin. While the pointer moves, a rectangular
+selection box updates continuously from the origin to the current pointer position.
+Horizontal drag direction determines the active selection mode, and releasing the
+mouse commits all qualifying Drawing objects to the resulting selection.
+
+Both modes are planned:
+
+| Mode | Status | Direction and qualification |
+| --- | --- | --- |
+| Window / containment selection | **PLANNED** | A left-to-right drag qualifies only Drawing objects completely contained by the selection rectangle. A Line that merely crosses or partially enters the rectangle does not qualify. |
+| Crossing / intersection selection | **PLANNED** | A right-to-left drag qualifies Drawing objects that are completely contained **or** touched/intersected by the selection rectangle. A Line may therefore qualify without being completely inside it. |
+
+The rectangle must provide immediate, clearly distinguishable visual feedback for
+Window and Crossing modes as direction changes during the drag. The distinction may
+use color, fill, border, or another treatment, but exact styling and colors are not yet
+defined.
+
+This must operate through shared selection infrastructure over selectable Drawing
+geometry/entities, not through separate drag-selection implementations for Profile,
+Line, Circle, Rectangle, Spline, or other tools. Exact per-entity hit-testing rules
+remain later design work. Modifier behavior, add/remove/toggle semantics, nested
+entities, endpoint-versus-object precedence, support geometry, and locked or hidden
+object behavior are also deliberately undefined here.
+
+The intended common selection direction is:
+
+```text
+direct click selection OR directional drag-box multi-selection
+  -> common Drawing selection
+  -> where supported, a Drawing tool evaluates the existing selection
+```
+
+Accordingly, drag-box results must be compatible with the planned Dimensions and
+Constraints canvas-preselection workflows described above. A future user may select
+several relevant Drawing objects with a box and then open a tool that supports
+preselection. That end-to-end workflow remains planned; the current primary workflow
+for both Dimensions and Constraints remains tool-first.
+
+The current implementation provides direct geometry click selection and unified
+selected-geometry state, but no directional selection rectangle or containment/crossing
+commit behavior. Supporting selection state or hit-testing code must not be mistaken
+for an implemented drag-box feature.
+
+## E. Planned drawing tools
 
 | Tool or family | Status | Roadmap scope | Design boundary |
 | --- | --- | --- | --- |
@@ -246,7 +348,7 @@ partially implemented Profile workflow, so the product roadmap treats it as Prof
 A true standalone Line tool has not yet been developed. The production rename and the
 standalone Line implementation are separate future tasks.
 
-## E. Rules for all future Drawing tools
+## F. Rules for all future Drawing tools
 
 Future tools must integrate with the common Drawing architecture. They must not create
 independent, tool-specific systems for snapping, inference, constraints, transient
