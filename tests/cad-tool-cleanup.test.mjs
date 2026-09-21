@@ -9,7 +9,7 @@ const rail = workspace.match(/<aside[^>]*className="drawing-tool-sidebar"[\s\S]*
 assert.ok(!fs.existsSync('src/app/cadToolEventDiagnostics.ts'), 'production diagnostic recorder is removed');
 assert.doesNotMatch(workspace, /cadToolEventDiagnostics|recordActivation|onPointerUpCapture|onMouseUpCapture/, 'diagnostic and redundant completion wiring is gone');
 assert.doesNotMatch(rail, /onDoubleClick=/, 'native tool dblclick is not an activation authority');
-assert.ok(rail.indexOf('>Select</button>') >= 0 && rail.indexOf('>Select</button>') < rail.indexOf('>Profile</button>'), 'native Select/Line order is preserved');
+assert.ok(rail.indexOf('>Select</button>') >= 0 && rail.indexOf('>Select</button>') < rail.indexOf('>Line</button>') && rail.indexOf('>Line</button>') < rail.indexOf('>Profile</button>'), 'native Select/Line order is preserved');
 assert.match(workspace, /resolveCadToolPointerActivation/, 'persistent activation helper remains authoritative');
 assert.match(workspace, /onDoubleClick=\{\(\) => \{ if \(activeTool === 'profile'\) finishProfile\(\)/, 'canvas double-click finish remains');
 assert.doesNotMatch(css, /(?:^|[},]\s*)(?:html|body|#root|\.app-shell)\b[^{}]*\{[^}]*user-select:\s*none;/ms, 'no global selection suppression exists');
@@ -17,7 +17,7 @@ assert.doesNotMatch(css, /\.cad-tool-button \*/, 'redundant descendant selection
 
 
 assert.match(workspace, /dispatchEvent\(new CustomEvent\('drawing:tool-state',[\s\S]*detail: \{ activeTool, activationMode:/, 'Drawing publishes the Profile-capable active tool contract');
-assert.match(app, /CustomEvent<\{ activeTool: 'select' \| 'profile' \| 'dimension' \}>/, 'App consumes the Profile tool-state identity');
-assert.doesNotMatch(workspace, /activeTool === 'line'|activateToolFrom(?:Pointer|Keyboard)\('line'/, 'the current workflow exposes no legacy Line tool-ID alias');
+assert.match(app, /CustomEvent<\{ activeTool: 'select' \| 'line' \| 'profile' \| 'dimension' \}>/, 'App consumes the Profile tool-state identity');
+assert.match(workspace, /activeTool === 'line'/, 'standalone Line has its own tool identity');
 
 console.log('CAD tool cleanup tests passed');

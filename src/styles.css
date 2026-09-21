@@ -991,30 +991,30 @@ button:disabled {
   cursor: crosshair;
 }
 
-.drawing-svg.has-profile-cursor,
-.drawing-svg.has-profile-cursor * {
+.drawing-svg.has-segment-cursor,
+.drawing-svg.has-segment-cursor * {
   cursor: none;
 }
 
-.drawing-profile-cursor-arm {
+.drawing-segment-cursor-arm {
   stroke: #075985;
   stroke-width: 1.4;
   stroke-linecap: square;
 }
 
-.drawing-profile-cursor-dot {
+.drawing-segment-cursor-dot {
   fill: #075985;
 }
 
-.drawing-profile-cursor-endpoint,
-.drawing-profile-cursor-line,
-.drawing-profile-cursor-alignment {
+.drawing-segment-cursor-endpoint,
+.drawing-segment-cursor-line,
+.drawing-segment-cursor-alignment {
   fill: #fff;
   stroke: var(--drawing-inference);
   stroke-width: 1.8;
 }
-.drawing-profile-cursor-line { fill: var(--drawing-inference); stroke: none; }
-.drawing-profile-cursor-endpoint { fill: #0e7490; stroke: none; }
+.drawing-segment-cursor-line { fill: var(--drawing-inference); stroke: none; }
+.drawing-segment-cursor-endpoint { fill: #0e7490; stroke: none; }
 .drawing-midpoint-inference-preview {
   fill: none;
   stroke: var(--drawing-inference);
@@ -1027,8 +1027,8 @@ button:disabled {
   fill: #fff;
 }
 
-.drawing-profile-cursor-perpendicular,
-.drawing-profile-cursor-parallel,
+.drawing-segment-cursor-perpendicular,
+.drawing-segment-cursor-parallel,
 .drawing-line-relation-preview {
   fill: none;
   stroke: var(--drawing-inference);
@@ -1049,7 +1049,7 @@ button:disabled {
   pointer-events: none;
 }
 
-.drawing-profile-cursor-alignment {
+.drawing-segment-cursor-alignment {
   fill: none;
 }
 

@@ -71,13 +71,13 @@ assert.equal(inference.isPointInDrawingBounds({ x: 0, y: 0 }, bounds), true, 'vi
 
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const styles = fs.readFileSync('src/styles.css', 'utf8');
-assert.match(workspace, /snap\.type === 'alignment'[\s\S]*drawing-profile-cursor-alignment/);
-assert.match(workspace, /<rect className="drawing-profile-cursor-alignment"/, 'alignment marker is a square');
+assert.match(workspace, /snap\.type === 'alignment'[\s\S]*drawing-segment-cursor-alignment/);
+assert.match(workspace, /<rect className="drawing-segment-cursor-alignment"/, 'alignment marker is a square');
 assert.match(workspace, /drawing-alignment-guide[\s\S]*data-axis="x"[\s\S]*drawing-alignment-guide[\s\S]*data-axis="y"/, 'both transient guide axes render');
 assert.match(styles, /--drawing-inference:\s*#38bdf8;[\s\S]*\.drawing-alignment-guide\s*\{[^}]*stroke:\s*var\(--drawing-inference\);[^}]*stroke-dasharray:\s*5 4;[^}]*pointer-events:\s*none;/s, 'H/V guides use the shared CAD-blue inference token and remain dashed and pointer-safe');
 assert.match(styles, /\.drawing-line-preview\s*\{[^}]*stroke:\s*var\(--drawing-inference\);/s, 'line and angular previews share the inference presentation color');
 assert.match(styles, /\.drawing-line-entity\.is-inference-target\s*\{[^}]*stroke:\s*var\(--drawing-inference\);/s, 'Parallel and Perpendicular target previews use CAD blue');
-assert.match(styles, /\.drawing-profile-cursor-perpendicular,[\s\S]*?\.drawing-profile-cursor-parallel\s*\{[^}]*stroke:\s*var\(--drawing-inference\);/s, 'transient relation cursor glyphs use CAD blue');
+assert.match(styles, /\.drawing-segment-cursor-perpendicular,[\s\S]*?\.drawing-segment-cursor-parallel\s*\{[^}]*stroke:\s*var\(--drawing-inference\);/s, 'transient relation cursor glyphs use CAD blue');
 assert.match(styles, /\.drawing-same-axis-reference-highlight\s*\{[^}]*stroke:\s*var\(--drawing-inference\);/s, 'reference-only point halo uses CAD blue');
 assert.doesNotMatch(styles, /--drawing-alignment-guide|#c084fc/, 'the retired purple preview styling is absent');
 assert.match(workspace, /snap\.type === 'endpoint' && <rect/, 'endpoint marker is the larger Point square');

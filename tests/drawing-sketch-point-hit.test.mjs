@@ -58,7 +58,7 @@ assert.equal((source.match(/r=\{DRAWING_INTERACTION_POINT_RADIUS_PX \/ pixelsPer
 assert.match(source, /const size = DRAWING_POINT_HOVER_MARKER_SIZE_PX \/ pixelsPerMm; return p \? <rect className="drawing-geometry-point-preselection"/);
 assert.match(source, /snap\.type === 'line' && <rect[^>]*DRAWING_LINE_HOVER_MARKER_SIZE_PX/);
 assert.match(source, /snap\.type === 'endpoint' && <rect[^>]*DRAWING_POINT_HOVER_MARKER_SIZE_PX/);
-assert.doesNotMatch(source, /drawing-profile-cursor-line" d=/, 'Line hover has no triangle path');
+assert.doesNotMatch(source, /drawing-segment-cursor-line" d=/, 'Line hover has no triangle path');
 assert.match(source, /r=\{DRAWING_SKETCH_POINT_HIT_RADIUS_PX \/ pixelsPerMm\}/, 'the independently rendered hit target retains its larger zoom-independent radius');
 assert.match(css, /--drawing-selected-point:\s*#1d4ed8;/i);
 assert.match(css, /\.drawing-geometry-point-selected \{ fill: var\(--drawing-selected-point\); stroke: none; \}/, 'selected Point uses only the compact dark-blue presentation authority');
