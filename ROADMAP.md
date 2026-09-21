@@ -448,10 +448,200 @@ These are design questions, not implementation claims or decisions:
 
 # 3. Box / Construction
 
-**Status: IMPLEMENTED foundation; forward roadmap LATER.** Box / Construction is already
+**Status: IMPLEMENTED foundation with defined forward work.** Box / Construction is already
 a substantial implemented area. Its current architecture is documented in
 [PROJECT_MASTER.md](PROJECT_MASTER.md) and [Architecture.md](Architecture.md).
 
-Its forward roadmap will be added after a separate review. Historical Wall, TB, W, S,
-C, P, P1, and related analysis or diagnostic documents are evidence of past work; they
-must not automatically become future roadmap commitments.
+Historical Wall, TB, W, S, C, P, P1, and related analysis or diagnostic documents are
+evidence of past work; they must not automatically become future roadmap commitments.
+In particular, historical P1 material is not a current or future roadmap capability:
+the forward product concept is **P = Pattern**, with no P1 subtype.
+
+## A. Current status summary
+
+| Tool or capability | Status | Current baseline and forward scope |
+| --- | --- | --- |
+| TB — Top / Bottom | **IMPLEMENTED** | The existing paired-edge workflow and generated finger-joint behavior are satisfactory for the present roadmap. No specific new TB development is defined here. |
+| W — Wall | **PARTIALLY IMPLEMENTED** | W-A/W-B authoring, TB-related role guidance, and TB-equivalent physical generation exist. Unequal-length positioning remains future work. |
+| S — Slot | **PARTIALLY IMPLEMENTED** | Paired slot/tab relationships, offsets, and panel-thickness-derived depth/length behavior exist. Crossing internal-wall slots and unequal-length positioning remain future work. |
+| J — Joint | **PLANNED / NOT YET IMPLEMENTED** | Join two straight edges that physically meet, using a user-selected joint type. |
+| P — Pattern | **PLANNED / NOT YET IMPLEMENTED** | Create repeated or structured panel geometry. The first defined use is a bending pattern; P means Pattern, not Bending. |
+| Angle-aware assembly variants | **DESIGN REQUIRED / FUTURE** | The product and architecture require later definition; no final behavior is specified here. |
+| Static 3D preview | **PLANNED** | A future static preview only. This roadmap does not imply a 3D solver, parametric assembly engine, animation, or automatic folding. |
+
+## B. Architecture and composition direction
+
+Forward capabilities must extend the existing construction pipeline rather than bypass
+it:
+
+```text
+source geometry / Box document
+  -> Panel Manager
+  -> connection / construction authoring
+  -> generated geometry
+  -> panel composition
+  -> metadata reconciliation
+  -> FinalGeometry
+  -> manufacturing compensation
+  -> preview / export
+```
+
+Source geometry remains the stable authoring reference. Each construction tool owns its
+semantic contribution, panel composition owns the combination of compatible
+contributors, and `FinalGeometry` remains the downstream physical-geometry contract.
+Manufacturing compensation continues to occur only after final geometry.
+
+A panel must be able to receive compatible contributions from multiple construction
+tools. This extends the existing mixed panel-composition direction: Pattern must not
+turn a panel into an isolated special result that prevents W, S, J, or another
+compatible operation from contributing to it. The exact composition and conflict rules
+for future tools remain **DESIGN REQUIRED**.
+
+## C. W — Wall
+
+W is **PARTIALLY IMPLEMENTED**. The existing W-A/W-B workflow, its TB-related role
+guidance, and its TB-equivalent physical generation remain the current foundation.
+
+**Unequal-length positioning is PLANNED.** W must not assume that its participating
+sides have equal lengths or matching start/end positions. The user must eventually be
+able to choose which side or panel is the positional reference, define where the
+connection begins along that reference, and specify an explicit distance/offset from an
+edge or end. This permits placement near either end, in the middle, or at an exact
+measured offset. The interaction mechanism is deliberately not selected here.
+
+## D. S — Slot
+
+S is **PARTIALLY IMPLEMENTED**. Its current paired slot/tab relationships, offsets, and
+panel-thickness-derived depth/length behavior remain the implementation baseline.
+
+### Crossing internal walls
+
+**Status: PLANNED.** When two internal panels cross, S must be able to create
+complementary open-ended slots that approach the crossing from opposite directions:
+
+- Panel A receives an open slot entering from one relevant side/edge toward the
+  crossing.
+- Panel B receives the complementary open slot entering from the opposite relevant
+  side/edge toward the same crossing.
+
+The openings to the panel edges allow the physical pieces to slide together and
+interlock. This is not merely a closed internal rectangular slot. Exact depth formulas,
+assembly-orientation rules, clearance, and interaction design remain later design work.
+
+### Unequal-length positioning
+
+**Status: PLANNED.** S must also support participating sides or panels of different
+lengths. The user must eventually be able to choose the positional reference and define
+an offset/start distance from an edge or end, placing the internal-wall connection near
+either end, in the middle, or at an exact measured offset. Neither centering nor equal
+selected lengths may be assumed.
+
+### Shared W / S positioning principle
+
+W and S should share one conceptual positioning capability rather than independently
+invent incompatible concepts:
+
+```text
+reference geometry
+  -> choose positional reference
+  -> define start / placement offset
+  -> generate the appropriate W or S physical connection
+```
+
+Their generated physical geometry differs, but their need to position a connection
+along unequal-length reference geometry is shared. Concrete APIs, implementation
+classes, and UI remain deliberately undefined.
+
+## E. J — Joint
+
+**Status: PLANNED / NOT YET IMPLEMENTED.** J means **Joint**. It is intended for two
+straight edges that physically meet:
+
+```text
+select two straight meeting edges
+  -> J
+  -> choose the desired joint type
+  -> generate complementary physical joint geometry
+```
+
+Multiple selectable joint types are intended eventually, but the catalog has not been
+defined and historical proposals do not define it. J must act as another semantic
+construction contributor that can coexist with compatible Pattern and connection
+geometry on the same panel and ultimately participate in panel composition and
+`FinalGeometry`. Exact conflict resolution remains later design work.
+
+## F. P — Pattern
+
+**Status: PLANNED / NOT YET IMPLEMENTED.** P means **Pattern**; it does not mean
+Bending. Pattern is the general Box / Construction tool for repeated or structured
+geometry in or on a panel. Bending zones are its first defined product use, not a rename
+of the tool or a separate P1 roadmap concept.
+
+### Bending-pattern use
+
+For the currently defined use, Pattern contributes internal manufacturing/cut geometry
+within a selected panel region. Repeated cuts or slits form a flexible bending zone:
+
+- cuts repeat through the bending zone;
+- cuts alternate from opposite sides rather than all originating from one side;
+- the arrangement is staggered/alternating; and
+- relevant cuts extend to the panel edge where the bending pattern requires it.
+
+Spacing, slot length, slot count, stagger amount, material-specific rules, the
+relationship to bending radius, and parameter UI all remain **DESIGN REQUIRED**.
+
+Pattern bending geometry is not an ordinary whole-edge contour replacement like a
+TB-style profile. The panel retains its usable outer/reference geometry, while Pattern
+adds the cut geometry needed for bending. Pattern must not acquire ownership of the
+whole panel contour merely because that geometry exists. Its exact future
+representation through generated geometry, composition, `FinalGeometry`, and
+manufacturing/export requires later architecture design.
+
+Conceptually, compatible contributions compose rather than erase one another:
+
+```text
+panel geometry
+  + Pattern cut geometry
+  + connection geometry
+  + Joint geometry
+  -> composed physical result
+  -> FinalGeometry
+```
+
+### Long-panel composition example
+
+A long strip panel will eventually be bent into a multi-sided shape. Three Pattern
+bending zones can be placed at three positions along the strip. The straight edge
+sections between those zones remain available for tabs or other connection geometry so
+that other panels can attach; corresponding slots may be generated in those other
+panels, or slots may be generated in the strip when another panel connects into it. The
+two outer ends may use J to connect their straight end edges to other straight edges:
+
+```text
+LEFT END
+  -> J
+  -> straight connection / tab region
+  -> Pattern bending zone
+  -> straight connection / tab region
+  -> Pattern bending zone
+  -> straight connection / tab region
+  -> Pattern bending zone
+  -> straight connection / tab region
+  -> J
+  -> RIGHT END
+```
+
+The same source panel can therefore require multiple Pattern bending zones, several
+straight connection/tab regions, corresponding slot relationships with other panels,
+and Joint relationships at its ends. Pattern-enabled panels remain available to the
+rest of Box / Construction; no one tool may erase or invalidate compatible
+contributions from the others.
+
+## G. Deferred assembly presentation
+
+Angle-aware assembly variants remain **DESIGN REQUIRED / FUTURE**. Their final product
+behavior and architecture are intentionally not invented in this roadmap.
+
+A static 3D preview remains **PLANNED / NOT YET IMPLEMENTED**. This is limited to a
+future static preview and does not commit to a 3D solver, parametric assembly engine,
+animation system, or automatic folding system.
