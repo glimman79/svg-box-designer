@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/drawing-line-topology/drawingTypes.js';
-import { appendEntityToActiveSketch } from '../.test-build/drawing-line-topology/drawingLineTool.js';
+import { appendEntityToActiveSketch } from '../.test-build/drawing-line-topology/drawingProfileTool.js';
 import { appendDimension, deleteEntityWithDependentDimensions } from '../.test-build/drawing-line-topology/drawingDimension.js';
 import { solveDrawingDimensionEdit } from '../.test-build/drawing-line-topology/drawingConstraintSolver.js';
 import { resolveLine, validateDrawingTopology } from '../.test-build/drawing-line-topology/drawingTopology.js';

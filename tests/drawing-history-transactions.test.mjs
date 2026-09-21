@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-history-transactions/drawingTypes.js';
-import { appendEntityToActiveSketch, applyResolvedLineClick, cancelLineInteraction, EMPTY_LINE_INTERACTION, updateLinePreview } from '../.test-build/drawing-history-transactions/drawingLineTool.js';
+import { appendEntityToActiveSketch, applyResolvedProfileClick, cancelProfileInteraction, EMPTY_PROFILE_INTERACTION, updateProfilePreview } from '../.test-build/drawing-history-transactions/drawingProfileTool.js';
 import { DRAWING_HISTORY_LIMIT, EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-history-transactions/drawingHistory.js';
 
 let document = createDrawingDocumentV2();
 let history = EMPTY_DRAWING_HISTORY;
-let interaction = EMPTY_LINE_INTERACTION;
+let interaction = EMPTY_PROFILE_INTERACTION;
 let sequence = 0;
 
 const click = (point) => {
-  const result = applyResolvedLineClick(interaction, point, () => `line-${++sequence}`);
+  const result = applyResolvedProfileClick(interaction, point, () => `line-${++sequence}`);
   interaction = result.interaction;
   if (result.entity) {
     const transaction = transactDrawingDocument(history, document, current => appendEntityToActiveSketch(current, result.entity));
@@ -23,9 +23,9 @@ const lineCount = () => document.sketches[document.activeSketchId].entityOrder.l
 
 click({ x: 0, y: 0 });
 assert.equal(history.undo.length, 0, 'first click creates no history entry');
-interaction = updateLinePreview(interaction, { x: 5, y: 2 });
+interaction = updateProfilePreview(interaction, { x: 5, y: 2 });
 assert.equal(history.undo.length, 0, 'pointer preview creates no history entry');
-interaction = updateLinePreview(interaction, { x: 10, y: 0 });
+interaction = updateProfilePreview(interaction, { x: 10, y: 0 });
 assert.equal(history.undo.length, 0, 'cursor movement creates no history entry');
 click({ x: 10, y: 0 });
 assert.equal(lineCount(), 1); assert.equal(history.undo.length, 1, 'second valid click commits exactly one entry');
@@ -39,11 +39,11 @@ redo(); assert.equal(lineCount(), 3, 'second Redo restores one segment');
 
 const beforeCancel = document;
 const entriesBeforeCancel = history.undo.length;
-interaction = EMPTY_LINE_INTERACTION;
+interaction = EMPTY_PROFILE_INTERACTION;
 click({ x: 50, y: 50 });
-interaction = cancelLineInteraction();
+interaction = cancelProfileInteraction();
 assert.equal(document, beforeCancel); assert.equal(history.undo.length, entriesBeforeCancel, 'first click then Escape/tool cancellation changes neither document nor history');
-interaction = EMPTY_LINE_INTERACTION;
+interaction = EMPTY_PROFILE_INTERACTION;
 click({ x: 60, y: 60 }); click({ x: 60, y: 60 });
 assert.equal(document, beforeCancel); assert.equal(history.undo.length, entriesBeforeCancel, 'degenerate Line changes neither document nor history');
 

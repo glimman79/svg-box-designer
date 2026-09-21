@@ -23,10 +23,10 @@ assert.match(box, /onContextMenu=\{canvasPanHandlers\.onContextMenu\}/);
 assert.match(drawing, /useCadWheelCapture/);
 assert.match(box, /useCadWheelCapture/);
 
-assert.deepEqual(lifecycle.activateDrawingTool('line'), { activeTool: 'line', activationMode: 'normal' });
-const persistent = lifecycle.activateDrawingTool('line', 'persistent');
+assert.deepEqual(lifecycle.activateDrawingTool('profile'), { activeTool: 'profile', activationMode: 'normal' });
+const persistent = lifecycle.activateDrawingTool('profile', 'persistent');
 assert.deepEqual(lifecycle.finishDrawingConstruction(persistent), persistent);
-assert.deepEqual(lifecycle.finishDrawingConstruction(lifecycle.activateDrawingTool('line')), { activeTool: 'select', activationMode: 'normal' });
+assert.deepEqual(lifecycle.finishDrawingConstruction(lifecycle.activateDrawingTool('profile')), { activeTool: 'select', activationMode: 'normal' });
 assert.deepEqual(lifecycle.activateDrawingTool('select', 'persistent'), { activeTool: 'select', activationMode: 'normal' });
 
 console.log('Shared CAD interaction contract tests passed');

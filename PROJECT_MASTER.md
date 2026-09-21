@@ -28,11 +28,11 @@ A shared, versioned cross-workspace `ProjectDocument`, cross-workspace reference
 
 ### 4.1 Scope and topology
 
-The current workspace implements Select, a UI tool currently named `Line`, Dimension, a floating Constraints tool, Direct Manipulation, snapping/inference, solver-backed constraints, and bounded Drawing Undo/Redo. The current `Line` tool authors continuing/chained straight segments and is the straight-segment foundation of the partially implemented Profile product. A true standalone tool that creates one straight Line and then finishes does not currently exist. Menu visibility does not prove implementation of other prospective geometry tools.
+The current workspace implements Select, Profile, Dimension, a floating Constraints tool, Direct Manipulation, snapping/inference, solver-backed constraints, and bounded Drawing Undo/Redo. Profile authors continuing/chained straight Line segments and is the straight-segment foundation of the partially implemented Profile product. A true standalone tool that creates one straight Line and then finishes does not currently exist. Menu visibility does not prove implementation of other prospective geometry tools.
 
 `DrawingSketchV2` stores `DrawingSketchPoint` (`SketchPoint`) records separately from `DrawingLineEntity` records. Each Line references `startPointId` and `endPointId`; connected Lines share a SketchPoint identity. Resolved coordinates are derived from those references. Equal coordinates alone do not create topology, and migration of old coordinate-embedded Lines does not invent connectivity.
 
-Every committed segment is its own Line. A continuation begins a **fresh Line interaction** at the committed end SketchPoint. No candidate, acquired snap, direction authority, or other transient inference state is inherited. For equivalent document geometry, topology, pointer input, and viewport, a manual fresh Line and a chained continuation use the same inference architecture.
+Every committed segment is its own Line. A continuation begins a **fresh Profile segment interaction** at the committed end SketchPoint. No candidate, acquired snap, direction authority, or other transient inference state is inherited. For equivalent document geometry, topology, pointer input, and viewport, a manually started Profile segment and a chained continuation use the same inference architecture.
 
 ### 4.2 Dimensions, constraints, and solver
 
@@ -61,7 +61,7 @@ Endpoint is authoritative for shared topology and exact endpoint position. Endpo
 
 Candidate discovery includes existing endpoints/shared points, Midpoint, finite Line body, X/Y alignment, H/V, angular construction, Parallel, Perpendicular, and normal-to-incident-Line Point References. Screen-space tolerances govern acquisition while candidate membership comes from committed sketch geometry, not only the visible viewport.
 
-During Line authoring, Ctrl is a raw bypass: it suppresses automatic acquisition, associated guides, and automatic semantics for that live placement. It does not remove committed topology or constraints. In Select, Ctrl instead toggles selection.
+During Profile authoring, Ctrl is a raw bypass: it suppresses automatic acquisition, associated guides, and automatic semantics for that live placement. It does not remove committed topology or constraints. In Select, Ctrl instead toggles selection.
 
 ### 4.4 Established direction and Point Reference invariant
 
@@ -136,7 +136,7 @@ Puzzle has a reserved, disabled workspace selector only. It has no current docum
 ## 8. Current limitations and documentation boundaries
 
 - Puzzle and a shared global project document are planned.
-- Drawing currently supports chained straight-segment Profile-foundation geometry under the legacy UI/code name `Line`, not a standalone Line product or the full prospective CAD tool catalog.
+- Drawing currently supports chained straight-segment authoring through Profile, with every committed segment stored as Line geometry; it does not yet provide a standalone Line tool or the full prospective CAD tool catalog.
 - The Constraints panel intentionally displays disabled future choices alongside implemented ones.
 - Box v1.2 remains the locked release baseline; post-v1.2 Drawing features are implemented without a new declared product release.
 - Detailed reports under `docs/` include historical hypotheses and diagnostic evidence. Consult `docs/README.md` before treating one as a current specification.

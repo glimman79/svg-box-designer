@@ -1,38 +1,38 @@
-/** Line commits remain briefly pending so a native double-click can finish the
+/** Profile commits remain briefly pending so a native double-click can finish the
  * construction without creating its second segment. A pending accepted click
  * owns its callback until it commits or an explicit cancellation clears it. */
-export const DRAWING_LINE_COMMIT_DELAY_MS = 220;
+export const DRAWING_PROFILE_COMMIT_DELAY_MS = 220;
 
-export type DrawingLineCommitScheduler = Readonly<{
+export type DrawingProfileCommitScheduler = Readonly<{
   setTimeout(callback: () => void, delayMs: number): number;
   clearTimeout(handle: number): void;
 }>;
 
-export type PendingDrawingLineCommit = Readonly<{
+export type PendingDrawingProfileCommit = Readonly<{
   handle: number;
   commit: () => void;
 }>;
 
-export type PendingDrawingLineCommitRef = { current: PendingDrawingLineCommit | null };
+export type PendingDrawingProfileCommitRef = { current: PendingDrawingProfileCommit | null };
 
-export const scheduleDrawingLineCommit = (
-  pending: PendingDrawingLineCommitRef,
-  scheduler: DrawingLineCommitScheduler,
+export const scheduleDrawingProfileCommit = (
+  pending: PendingDrawingProfileCommitRef,
+  scheduler: DrawingProfileCommitScheduler,
   commitAcceptedClick: () => void,
 ) => {
-  if (pending.current) throw new Error('Accepted Line click already owns the pending commit');
-  let transaction: PendingDrawingLineCommit;
+  if (pending.current) throw new Error('Accepted Profile click already owns the pending commit');
+  let transaction: PendingDrawingProfileCommit;
   const handle = scheduler.setTimeout(() => {
     if (pending.current !== transaction) return;
     pending.current = null;
     commitAcceptedClick();
-  }, DRAWING_LINE_COMMIT_DELAY_MS);
+  }, DRAWING_PROFILE_COMMIT_DELAY_MS);
   transaction = { handle, commit: commitAcceptedClick };
   pending.current = transaction;
 };
 
 /** Commit the accepted prior segment before resolving a new same-tool click. */
-export const flushDrawingLineCommit = (pending: PendingDrawingLineCommitRef, scheduler: DrawingLineCommitScheduler) => {
+export const flushDrawingProfileCommit = (pending: PendingDrawingProfileCommitRef, scheduler: DrawingProfileCommitScheduler) => {
   const transaction = pending.current;
   if (!transaction) return false;
   pending.current = null;
@@ -42,7 +42,7 @@ export const flushDrawingLineCommit = (pending: PendingDrawingLineCommitRef, sch
 };
 
 /** Explicit tool cancellation is the only path that discards accepted work. */
-export const cancelDrawingLineCommit = (pending: PendingDrawingLineCommitRef, scheduler: DrawingLineCommitScheduler) => {
+export const cancelDrawingProfileCommit = (pending: PendingDrawingProfileCommitRef, scheduler: DrawingProfileCommitScheduler) => {
   const transaction = pending.current;
   if (!transaction) return false;
   pending.current = null;

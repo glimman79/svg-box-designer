@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes';
-import { appendEntityToActiveSketch, applyResolvedLineClick, automaticAxisConstraintKind, cancelLineInteraction, diagnoseLineCommonDirection, EMPTY_LINE_INTERACTION, hasAngularPresentationTruth, resolveLineEffectivePoint, resolveLinePreviewPoint, selectMinimalLineSemanticConstraints, type LineToolInteraction } from './drawingLineTool';
-import { cancelDrawingLineCommit, flushDrawingLineCommit, scheduleDrawingLineCommit, type PendingDrawingLineCommit } from './drawingLineCommitBoundary';
+import { applyResolvedProfileClick, automaticAxisConstraintKind, cancelProfileInteraction, diagnoseLineCommonDirection, EMPTY_PROFILE_INTERACTION, hasAngularPresentationTruth, resolveLineEffectivePoint, resolveLinePreviewPoint, selectMinimalLineSemanticConstraints, type ProfileToolInteraction } from './drawingProfileTool';
+import { appendEntityToActiveSketch } from './drawingDocumentMutation';
+import { cancelDrawingProfileCommit, flushDrawingProfileCommit, scheduleDrawingProfileCommit, type PendingDrawingProfileCommit } from './drawingProfileCommitBoundary';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
 import { collectDrawingInferenceCandidates, derivePointReferenceGuide } from './drawingInference';
@@ -99,7 +100,7 @@ type DrawingPlacementResolution = Readonly<{
   rawPoint: DrawingPoint;
   effectivePoint: DrawingPoint;
   spatialSnap: DrawingSnap;
-  interaction: LineToolInteraction;
+  interaction: ProfileToolInteraction;
   position: Readonly<{ kind: 'endpoint'; point: DrawingPoint; pointId: string; entityId: string; endpoint: 'start' | 'end' }>
     | Readonly<{ kind: 'midpoint'; point: DrawingPoint; entityId: string }>
     | Readonly<{ kind: 'line-body'; point: DrawingPoint; entityId: string; segmentParameter: number }>
@@ -191,15 +192,15 @@ export function DrawingWorkspace({
     const panel = constraintsPanelRef.current?.getBoundingClientRect();
     if (frame && panel) setConstraintsPanelPosition(initialConstraintsPanelPosition(frame, panel));
   }, [constraintsPanelOpen, constraintsPanelPosition]);
-  const [lineInteraction, setLineInteraction] = useState<LineToolInteraction>(EMPTY_LINE_INTERACTION);
+  const [profileInteraction, setProfileInteraction] = useState<ProfileToolInteraction>(EMPTY_PROFILE_INTERACTION);
   const [cadCursor, setCadCursor] = useState<CadCursorPresentation>(null);
-  const lineCursor = cadCursor; // Line is currently the sole consumer of the shared CAD cursor.
+  const profileCursor = cadCursor; // Profile is currently the sole consumer of the shared CAD cursor.
   const [drawingSnap, setDrawingSnap] = useState<DrawingSnap | null>(null);
   const lastPointerClientRef = useRef<CoordinatePoint | null>(null);
-  const pendingLineClickRef = useRef<PendingDrawingLineCommit | null>(null);
+  const pendingProfileClickRef = useRef<PendingDrawingProfileCommit | null>(null);
   const activeToolRef = useRef<DrawingActiveTool>(activeTool);
   const previousToolActivationRef = useRef<CadToolActivationRecord<DrawingActiveTool> | null>(null);
-  const lineInteractionRef = useRef(lineInteraction);
+  const profileInteractionRef = useRef(profileInteraction);
   const drawingSnapRef = useRef<DrawingSnap | null>(drawingSnap);
   const directionDiagnosticRef = useRef(createDrawingDirectionDiagnosticRecorder());
   const directionDiagnosticSequenceRef = useRef(0);
@@ -215,7 +216,7 @@ export function DrawingWorkspace({
   }) ?? [];
   const gridSpacing = getDrawingGridSpacing(viewBox.width);
   const gridHierarchy = getDrawingGridHierarchy(gridSpacing);
-  lineInteractionRef.current = lineInteraction;
+  profileInteractionRef.current = profileInteraction;
   drawingSnapRef.current = drawingSnap;
   documentRef.current = document;
 
@@ -290,13 +291,13 @@ export function DrawingWorkspace({
     if (!drawingTransform || !overlayTransform) return null;
     const rawPoint = clientToModelPoint(clientPoint, drawingTransform);
     if (!rawPoint) return null;
-    // A pending Line commit can be flushed earlier in this same browser event.
+    // A pending Profile commit can be flushed earlier in this same browser event.
     // React has not rendered that document yet, so inference must read the
     // synchronously updated transaction snapshot rather than render closure data.
     const inferenceDocument = documentRef.current;
     const inferenceSketch = inferenceDocument.sketches[inferenceDocument.activeSketchId];
     const inferenceLines = resolveActiveSketchLines(inferenceDocument);
-    const interaction = lineInteractionRef.current;
+    const interaction = profileInteractionRef.current;
     const angularIntent = !ctrlHeld && interaction.start ? resolveLinePreviewPoint(interaction.start, rawPoint) : null;
     const priorAuthority = !ctrlHeld ? drawingSnapRef.current?.channels.directionAuthority ?? null : null;
     const establishedDegrees = priorAuthority
@@ -320,8 +321,8 @@ export function DrawingWorkspace({
     const anchor = modelToOverlayPoint(placementPoint, drawingTransform, overlayTransform);
     setDrawingSnap(snap);
     drawingSnapRef.current = snap;
-    setLineInteraction(nextInteraction);
-    lineInteractionRef.current = nextInteraction;
+    setProfileInteraction(nextInteraction);
+    profileInteractionRef.current = nextInteraction;
     const xGuideReference = lineResolution.resolvedReferences.x?.positionOwnership !== 'reference-only' && lineResolution.resolvedReferences.x
       ? modelToOverlayPoint(lineResolution.resolvedReferences.x.referencePoint ?? lineResolution.resolvedReferences.x.candidatePoint, drawingTransform, overlayTransform) : null;
     const yGuideReference = lineResolution.resolvedReferences.y?.positionOwnership !== 'reference-only' && lineResolution.resolvedReferences.y
@@ -466,7 +467,7 @@ export function DrawingWorkspace({
   activeToolRef.current = activeTool;
   resolvePlacementRef.current = resolvePlacement;
 
-  const commitLinePoint = (point: DrawingPoint, reusedPointId: string | null, acceptedInteraction: LineToolInteraction, acceptedLineBodyId = acceptedInteraction.lineBodyId) => {
+  const commitProfilePlacement = (point: DrawingPoint, reusedPointId: string | null, acceptedInteraction: ProfileToolInteraction, acceptedLineBodyId = acceptedInteraction.lineBodyId) => {
     const acceptedMidpointLineId = acceptedInteraction.midpointLineId;
     const pointId = reusedPointId ?? `point-${Date.now().toString(36)}-${++pointSequence.current}`;
     // The delayed click transaction must consume the inference accepted at the
@@ -475,9 +476,9 @@ export function DrawingWorkspace({
     const selectedSemantics = selectMinimalLineSemanticConstraints(acceptedInteraction);
     const acceptedPerpendicularLineId = acceptedConstraintKind ? null : selectedSemantics.perpendicularLineId;
     const acceptedParallelLineId = acceptedConstraintKind ? null : selectedSemantics.parallelLineId;
-    const result = applyResolvedLineClick(acceptedInteraction, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`, pointId, acceptedLineBodyId, acceptedMidpointLineId);
-    setLineInteraction(result.interaction);
-    lineInteractionRef.current = result.interaction;
+    const result = applyResolvedProfileClick(acceptedInteraction, point, () => `line-${Date.now().toString(36)}-${++entitySequence.current}`, pointId, acceptedLineBodyId, acceptedMidpointLineId);
+    setProfileInteraction(result.interaction);
+    profileInteractionRef.current = result.interaction;
     if (result.entity) {
       // Spatial hysteresis belongs to one segment; only the committed endpoint
       // geometry and its real SketchPoint topology enter the fresh continuation.
@@ -507,7 +508,7 @@ export function DrawingWorkspace({
   };
 
   const ctrlSnapOverride = useCadCtrlSnapOverride((held) => {
-    if (lastPointerClientRef.current && activeToolRef.current === 'line') resolvePlacementRef.current(lastPointerClientRef.current, held);
+    if (lastPointerClientRef.current && activeToolRef.current === 'profile') resolvePlacementRef.current(lastPointerClientRef.current, held);
   });
   const { isPanning, panHandlers } = useCadPanGesture({
     viewportRef: svgRef,
@@ -532,10 +533,10 @@ export function DrawingWorkspace({
       return;
     }
     if (activeToolRef.current === 'select') return;
-    cancelDrawingLineCommit(pendingLineClickRef, window);
-    const empty = cancelLineInteraction();
-    lineInteractionRef.current = empty;
-    setLineInteraction(empty);
+    cancelDrawingProfileCommit(pendingProfileClickRef, window);
+    const empty = cancelProfileInteraction();
+    profileInteractionRef.current = empty;
+    setProfileInteraction(empty);
     setDrawingSnap(null);
     drawingSnapRef.current = null;
     setCadCursor(null);
@@ -669,20 +670,20 @@ export function DrawingWorkspace({
       }
       return;
     }
-    if (activeTool === 'line') {
+    if (activeTool === 'profile') {
       if (event.detail > 1) return;
       // A subsequent primary click belongs to the continuation. Establish it
       // synchronously before resolving that click against Line state.
-      flushDrawingLineCommit(pendingLineClickRef, window);
+      flushDrawingProfileCommit(pendingProfileClickRef, window);
       // Resolve synchronously at acceptance time. The delayed commit owns this immutable point.
       const placement = resolvePlacement({ x: event.clientX, y: event.clientY }, event.ctrlKey || ctrlSnapOverride, 'click');
       if (!placement) return;
       const effectivePoint = placement.position.point;
       const endpointPointId = placement.position.kind === 'endpoint' ? placement.position.pointId : null;
       const lineBodyId = placement.position.kind === 'line-body' ? placement.position.entityId : null;
-      scheduleDrawingLineCommit(pendingLineClickRef, window, () => {
-        if (placement.position.kind === 'midpoint') commitLinePoint(effectivePoint, endpointPointId, placement.interaction);
-        else commitLinePoint(effectivePoint, endpointPointId, placement.interaction, lineBodyId);
+      scheduleDrawingProfileCommit(pendingProfileClickRef, window, () => {
+        if (placement.position.kind === 'midpoint') commitProfilePlacement(effectivePoint, endpointPointId, placement.interaction);
+        else commitProfilePlacement(effectivePoint, endpointPointId, placement.interaction, lineBodyId);
       });
       return;
     }
@@ -751,7 +752,7 @@ export function DrawingWorkspace({
       setDimensionPreselection(resolveDimensionCandidate({ x: event.clientX, y: event.clientY }, expectedTarget));
       return;
     }
-    if (activeTool === 'line') {
+    if (activeTool === 'profile') {
       lastPointerClientRef.current = { x: event.clientX, y: event.clientY };
       resolvePlacement(lastPointerClientRef.current, event.ctrlKey || ctrlSnapOverride);
       return;
@@ -759,12 +760,12 @@ export function DrawingWorkspace({
     if (activeTool === 'select') setGeometryPreselection(resolveDimensionCandidate({ x: event.clientX, y: event.clientY }));
   };
 
-  useEffect(() => () => { cancelDrawingLineCommit(pendingLineClickRef, window); }, []);
+  useEffect(() => () => { cancelDrawingProfileCommit(pendingProfileClickRef, window); }, []);
 
   const selectTool = (tool: DrawingActiveTool, activationMode: 'normal' | 'persistent' = 'normal') => {
-    cancelDrawingLineCommit(pendingLineClickRef, window);
-    setLineInteraction(cancelLineInteraction());
-    lineInteractionRef.current = cancelLineInteraction();
+    cancelDrawingProfileCommit(pendingProfileClickRef, window);
+    setProfileInteraction(cancelProfileInteraction());
+    profileInteractionRef.current = cancelProfileInteraction();
     setDrawingSnap(null);
     drawingSnapRef.current = null;
     setCadCursor(null);
@@ -791,15 +792,15 @@ export function DrawingWorkspace({
   };
 
   const clearCadCursor = () => { lastPointerClientRef.current = null; setCadCursor(null); setDrawingSnap(null); drawingSnapRef.current = null; setDimensionPreselection(null); if (!geometryDrag) setGeometryPreselection(null); };
-  const clearLineCursor = clearCadCursor;
+  const clearProfileCursor = clearCadCursor;
 
-  const finishLine = () => {
-    cancelDrawingLineCommit(pendingLineClickRef, window);
-    setLineInteraction(cancelLineInteraction());
+  const finishProfile = () => {
+    cancelDrawingProfileCommit(pendingProfileClickRef, window);
+    setProfileInteraction(cancelProfileInteraction());
     setDrawingSnap(null);
     drawingSnapRef.current = null;
     setCadCursor(null);
-    lineInteractionRef.current = cancelLineInteraction();
+    profileInteractionRef.current = cancelProfileInteraction();
     setToolLifecycle((current) => finishDrawingConstruction(current));
   };
 
@@ -948,19 +949,19 @@ export function DrawingWorkspace({
   // in this render instead of racing a second, independently cleared state value.
   const drawingTransform = svgRef.current?.getScreenCTM();
   const overlayTransform = overlaySvgRef.current?.getScreenCTM();
-  const inferencePresentations = activeTool === 'line' && drawingSnap && drawingTransform && overlayTransform
-    ? deriveDrawingInferencePresentations(drawingSnap, activeSketch, pixelsPerMm, drawingTransform, overlayTransform, lineInteraction)
+  const inferencePresentations = activeTool === 'profile' && drawingSnap && drawingTransform && overlayTransform
+    ? deriveDrawingInferencePresentations(drawingSnap, activeSketch, pixelsPerMm, drawingTransform, overlayTransform, profileInteraction)
     : [];
   return (
     <section className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace">
       <aside ref={toolSidebarRef} className="drawing-tool-sidebar" aria-label="Drawing tools" onPointerDownCapture={preventToolChromePointerSelection} onMouseDownCapture={preventToolChromeMouseSelection}>
         <button type="button" className={`cad-tool-button${activeTool === 'select' ? ' is-active' : ''}`} aria-pressed={activeTool === 'select'} onPointerDown={(event) => activateToolFromPointer('select', event)} onClick={(event) => activateToolFromKeyboard('select', event)}>Select</button>
-        <button type="button" className={`cad-tool-button${activeTool === 'line' ? ' is-active' : ''}`} aria-pressed={activeTool === 'line'} onPointerDown={(event) => activateToolFromPointer('line', event)} onClick={(event) => activateToolFromKeyboard('line', event)}>Line</button>
+        <button type="button" className={`cad-tool-button${activeTool === 'profile' ? ' is-active' : ''}`} aria-pressed={activeTool === 'profile'} onPointerDown={(event) => activateToolFromPointer('profile', event)} onClick={(event) => activateToolFromKeyboard('profile', event)}>Profile</button>
       </aside>
       <section className="canvas-card drawing-canvas-card workspace-canvas">
         <div ref={canvasFrameRef} className="canvas-frame">
           <div className="drawing-status" aria-live="polite">
-            <strong>{activeSketch?.name ?? 'No active sketch'}</strong><span>Unit: {document.unit}</span><span>Grid: {gridSpacing} mm</span><span>Active Tool: {activeTool === 'line' ? 'Line' : activeTool === 'dimension' ? 'Dimension' : 'Select'}</span>
+            <strong>{activeSketch?.name ?? 'No active sketch'}</strong><span>Unit: {document.unit}</span><span>Grid: {gridSpacing} mm</span><span>Active Tool: {activeTool === 'profile' ? 'Profile' : activeTool === 'dimension' ? 'Dimension' : 'Select'}</span>
           </div>
           <div className="canvas-zoom-controls" aria-label="Drawing canvas zoom controls">
             <button type="button" onClick={() => zoom(1.25)} aria-label="Zoom in">+</button>
@@ -979,7 +980,7 @@ export function DrawingWorkspace({
           </div>}
           <svg
             ref={svgRef}
-            className={`design-svg cad-viewport-interaction drawing-svg${isPanning ? ' is-panning' : ''}${activeTool === 'line' ? ' has-line-cursor' : ''}${activeTool === 'dimension' ? ` has-dimension-cursor is-${dimensionPreselection?.kind ?? 'normal'}-target` : ''}${activeTool === 'select' ? ` has-geometry-cursor is-${geometryPreselection?.kind ?? 'normal'}-target${geometryDrag ? ' is-geometry-dragging' : ''}` : ''}`}
+            className={`design-svg cad-viewport-interaction drawing-svg${isPanning ? ' is-panning' : ''}${activeTool === 'profile' ? ' has-profile-cursor' : ''}${activeTool === 'dimension' ? ` has-dimension-cursor is-${dimensionPreselection?.kind ?? 'normal'}-target` : ''}${activeTool === 'select' ? ` has-geometry-cursor is-${geometryPreselection?.kind ?? 'normal'}-target${geometryDrag ? ' is-geometry-dragging' : ''}` : ''}`}
             viewBox={formatViewBox(viewBox)}
             role="img"
             aria-label={`${activeSketch?.name ?? 'Drawing'} coordinate drawing canvas`}
@@ -989,8 +990,8 @@ export function DrawingWorkspace({
             onPointerUp={(event) => { if (geometryDrag) finishGeometryDrag(event); else if (dimensionDrag) finishDimensionDrag(); else panHandlers.onPointerUp(event); }}
             onPointerCancel={(event) => { if (geometryDrag) setGeometryDrag(null); else if (dimensionDrag) setDimensionDrag(null); else panHandlers.onPointerCancel(event); }}
             onContextMenu={panHandlers.onContextMenu}
-            onPointerLeave={clearLineCursor}
-            onDoubleClick={() => { if (activeTool === 'line') finishLine(); }}
+            onPointerLeave={clearProfileCursor}
+            onDoubleClick={() => { if (activeTool === 'profile') finishProfile(); }}
           >
             <defs>
               {(['normal', 'hover', 'active'] as const).map((state) => <marker key={state} id={`dimension-arrow-${state}`} className={`drawing-dimension-arrow is-${state}`} markerWidth="7" markerHeight="7" viewBox="0 0 7 7" refX="7" refY="3.5" orient="auto-start-reverse" markerUnits="strokeWidth"><path d="M 7 3.5 L 0 0 L 0 7 Z" /></marker>)}
@@ -1009,7 +1010,7 @@ export function DrawingWorkspace({
             </g>
             <g className="drawing-sketch-geometry" aria-label="Committed sketch geometry">
               {resolvedLines.map((entity) => (
-                <line key={entity.id} data-sketch-line-id={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} data-inference-target={lineCursor?.lineReference?.targetLineId === entity.id ? lineCursor.lineReference.relation : undefined} className={`drawing-line-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${lineCursor?.lineReference?.targetLineId === entity.id ? ' is-inference-target' : ''}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'line', lineId: entity.id })}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
+                <line key={entity.id} data-sketch-line-id={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} data-inference-target={profileCursor?.lineReference?.targetLineId === entity.id ? profileCursor.lineReference.relation : undefined} className={`drawing-line-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${profileCursor?.lineReference?.targetLineId === entity.id ? ' is-inference-target' : ''}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'line', lineId: entity.id })}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
               ))}
               {activeTool === 'select' && activeSketch && Object.values(activeSketch.points).map((point) => (
                 <circle key={point.id} className="drawing-sketch-point-hit drawing-interactive-hit" data-sketch-point-id={point.id}
@@ -1135,8 +1136,8 @@ export function DrawingWorkspace({
                 </g>;
               })}
             </g>
-            {activeTool === 'line' && lineInteraction.start && lineInteraction.effectivePreviewPoint && (
-              <line className={`drawing-line-preview${hasAngularPresentationTruth(lineInteraction) ? ' is-angular-snapped' : ''}`} x1={lineInteraction.start.x} y1={lineInteraction.start.y} x2={lineInteraction.effectivePreviewPoint.x} y2={lineInteraction.effectivePreviewPoint.y} />
+            {activeTool === 'profile' && profileInteraction.start && profileInteraction.effectivePreviewPoint && (
+              <line className={`drawing-segment-preview${hasAngularPresentationTruth(profileInteraction) ? ' is-angular-snapped' : ''}`} x1={profileInteraction.start.x} y1={profileInteraction.start.y} x2={profileInteraction.effectivePreviewPoint.x} y2={profileInteraction.effectivePreviewPoint.y} />
             )}
           </svg>
           <svg ref={overlaySvgRef} className="drawing-label-overlay" viewBox={`0 0 ${viewport.width} ${viewport.height}`} aria-label="Model coordinate scale">
@@ -1154,27 +1155,27 @@ export function DrawingWorkspace({
             {activeTool === 'dimension' && dimensionPreselection?.kind === 'origin' && overlayGeometry && <text className="drawing-origin-preselection-label" x={overlayGeometry.origin.x + 10} y={overlayGeometry.origin.y - 10}>Origin · X0 Y0</text>}
             {overlayGeometry && overlayGeometry.origin.y >= 0 && overlayGeometry.origin.y <= viewport.height && <text className="drawing-axis-letter drawing-x-indicator" x={overlayGeometry.xIndicatorAnchor.x - 15} y={overlayGeometry.xIndicatorAnchor.y - 7}>X</text>}
             {overlayGeometry && overlayGeometry.origin.x >= 0 && overlayGeometry.origin.x <= viewport.width && <text className="drawing-axis-letter drawing-y-indicator" x={overlayGeometry.yIndicatorAnchor.x + 7} y={overlayGeometry.yIndicatorAnchor.y + 15}>Y</text>}
-            {activeTool === 'line' && <DrawingInferenceOverlay presentations={inferencePresentations} />}
-            {activeTool === 'line' && lineCursor && (
+            {activeTool === 'profile' && <DrawingInferenceOverlay presentations={inferencePresentations} />}
+            {activeTool === 'profile' && profileCursor && (
               <g className="drawing-alignment-presentation" aria-hidden="true">
-                {lineCursor.pointReferenceGuide && <line className="drawing-point-reference-guide"
-                  data-source-point-id={lineCursor.snap.type === 'point-reference' ? lineCursor.snap.sourcePointId : undefined}
-                  data-incident-line-id={lineCursor.snap.type === 'point-reference' ? lineCursor.snap.incidentLineId : undefined}
-                  x1={lineCursor.pointReferenceGuide.start.x} y1={lineCursor.pointReferenceGuide.start.y}
-                  x2={lineCursor.pointReferenceGuide.end.x} y2={lineCursor.pointReferenceGuide.end.y} />}
-                {lineCursor.xGuideReference && <line className="drawing-alignment-guide" data-axis="x" x1={lineCursor.xGuideReference.x} y1={lineCursor.xGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
-                {lineCursor.yGuideReference && <line className="drawing-alignment-guide" data-axis="y" x1={lineCursor.yGuideReference.x} y1={lineCursor.yGuideReference.y} x2={lineCursor.anchor.x} y2={lineCursor.anchor.y} />}
-                {lineCursor.sameAxisReference && <circle className="drawing-same-axis-reference-highlight" cx={lineCursor.sameAxisReference.x} cy={lineCursor.sameAxisReference.y} r="7" />}
-              <g className="drawing-line-cursor drawing-cad-cursor" data-inference={lineCursor.snap.type} transform={`translate(${lineCursor.anchor.x} ${lineCursor.anchor.y})`} aria-hidden="true">
-                <line className="drawing-line-cursor-arm" data-arm="left" x1="-22" y1="0" x2="-7" y2="0" />
-                <line className="drawing-line-cursor-arm" data-arm="right" x1="7" y1="0" x2="22" y2="0" />
-                <line className="drawing-line-cursor-arm" data-arm="top" x1="0" y1="-22" x2="0" y2="-7" />
-                <line className="drawing-line-cursor-arm" data-arm="bottom" x1="0" y1="7" x2="0" y2="22" />
-                {lineCursor.snap.type === 'none' && <circle className="drawing-line-cursor-dot" cx="0" cy="0" r="2.5" />}
-                {lineCursor.snap.type === 'endpoint' && <rect className="drawing-line-cursor-endpoint" x={-DRAWING_POINT_HOVER_MARKER_SIZE_PX / 2} y={-DRAWING_POINT_HOVER_MARKER_SIZE_PX / 2} width={DRAWING_POINT_HOVER_MARKER_SIZE_PX} height={DRAWING_POINT_HOVER_MARKER_SIZE_PX} />}
-                {lineCursor.snap.type === 'line' && <rect className="drawing-line-cursor-line" x={-DRAWING_LINE_HOVER_MARKER_SIZE_PX / 2} y={-DRAWING_LINE_HOVER_MARKER_SIZE_PX / 2} width={DRAWING_LINE_HOVER_MARKER_SIZE_PX} height={DRAWING_LINE_HOVER_MARKER_SIZE_PX} />}
-                {lineCursor.snap.type === 'alignment' && <rect className="drawing-line-cursor-alignment" x="-5" y="-5" width="10" height="10" />}
-                {lineCursor.lineReference?.relation === 'parallel' && <path className="drawing-line-cursor-parallel" d="M -6 -3 L 6 -3 M -6 3 L 6 3" />}
+                {profileCursor.pointReferenceGuide && <line className="drawing-point-reference-guide"
+                  data-source-point-id={profileCursor.snap.type === 'point-reference' ? profileCursor.snap.sourcePointId : undefined}
+                  data-incident-line-id={profileCursor.snap.type === 'point-reference' ? profileCursor.snap.incidentLineId : undefined}
+                  x1={profileCursor.pointReferenceGuide.start.x} y1={profileCursor.pointReferenceGuide.start.y}
+                  x2={profileCursor.pointReferenceGuide.end.x} y2={profileCursor.pointReferenceGuide.end.y} />}
+                {profileCursor.xGuideReference && <line className="drawing-alignment-guide" data-axis="x" x1={profileCursor.xGuideReference.x} y1={profileCursor.xGuideReference.y} x2={profileCursor.anchor.x} y2={profileCursor.anchor.y} />}
+                {profileCursor.yGuideReference && <line className="drawing-alignment-guide" data-axis="y" x1={profileCursor.yGuideReference.x} y1={profileCursor.yGuideReference.y} x2={profileCursor.anchor.x} y2={profileCursor.anchor.y} />}
+                {profileCursor.sameAxisReference && <circle className="drawing-same-axis-reference-highlight" cx={profileCursor.sameAxisReference.x} cy={profileCursor.sameAxisReference.y} r="7" />}
+              <g className="drawing-profile-cursor drawing-cad-cursor" data-inference={profileCursor.snap.type} transform={`translate(${profileCursor.anchor.x} ${profileCursor.anchor.y})`} aria-hidden="true">
+                <line className="drawing-profile-cursor-arm" data-arm="left" x1="-22" y1="0" x2="-7" y2="0" />
+                <line className="drawing-profile-cursor-arm" data-arm="right" x1="7" y1="0" x2="22" y2="0" />
+                <line className="drawing-profile-cursor-arm" data-arm="top" x1="0" y1="-22" x2="0" y2="-7" />
+                <line className="drawing-profile-cursor-arm" data-arm="bottom" x1="0" y1="7" x2="0" y2="22" />
+                {profileCursor.snap.type === 'none' && <circle className="drawing-profile-cursor-dot" cx="0" cy="0" r="2.5" />}
+                {profileCursor.snap.type === 'endpoint' && <rect className="drawing-profile-cursor-endpoint" x={-DRAWING_POINT_HOVER_MARKER_SIZE_PX / 2} y={-DRAWING_POINT_HOVER_MARKER_SIZE_PX / 2} width={DRAWING_POINT_HOVER_MARKER_SIZE_PX} height={DRAWING_POINT_HOVER_MARKER_SIZE_PX} />}
+                {profileCursor.snap.type === 'line' && <rect className="drawing-profile-cursor-line" x={-DRAWING_LINE_HOVER_MARKER_SIZE_PX / 2} y={-DRAWING_LINE_HOVER_MARKER_SIZE_PX / 2} width={DRAWING_LINE_HOVER_MARKER_SIZE_PX} height={DRAWING_LINE_HOVER_MARKER_SIZE_PX} />}
+                {profileCursor.snap.type === 'alignment' && <rect className="drawing-profile-cursor-alignment" x="-5" y="-5" width="10" height="10" />}
+                {profileCursor.lineReference?.relation === 'parallel' && <path className="drawing-profile-cursor-parallel" d="M -6 -3 L 6 -3 M -6 3 L 6 3" />}
               </g>
               </g>
             )}

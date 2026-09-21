@@ -2,7 +2,7 @@ import type { CoordinatePoint, AffineTransform } from './drawingTransform.js';
 import { modelToOverlayPoint } from './drawingTransform.js';
 import type { DrawingSnap } from './drawingSnapEngine';
 import type { DrawingSketchV2 } from './drawingTypes';
-import type { LineToolInteraction } from './drawingLineTool';
+import type { ProfileToolInteraction } from './drawingProfileTool';
 import { deriveLineConstraintMarkerCandidates, deriveMidpointMarkerPresentation, layoutLineConstraintMarkers } from './drawingParallelMarker.js';
 import { derivePerpendicularPresentation, type DrawingPerpendicularPresentation } from './drawingParallelMarker.js';
 import { resolveLine } from './drawingTopology.js';
@@ -35,7 +35,7 @@ export type DrawingInferencePresentation = DrawingMidpointInferencePresentation 
 
 /** Projects the selected authoring direction authority into live feedback.
  * Other geometrically true observations are not automatically authoring UI. */
-export const selectAcceptedLineInferenceRepresentations = (interaction?: LineToolInteraction) => {
+export const selectAcceptedLineInferenceRepresentations = (interaction?: ProfileToolInteraction) => {
   if (!interaction) return new Set<'parallel' | 'perpendicular'>();
   return new Set<'parallel' | 'perpendicular'>(interaction.parallelLineId
     ? ['parallel'] : interaction.perpendicularLineId ? ['perpendicular'] : []);
@@ -119,7 +119,7 @@ export const deriveDrawingInferencePresentations = (
   pixelsPerModelUnit: number,
   drawingToClientTransform: AffineTransform,
   overlayToClientTransform: AffineTransform,
-  interaction?: LineToolInteraction,
+  interaction?: ProfileToolInteraction,
 ): readonly DrawingInferencePresentation[] => {
   if (!sketch) return [];
   const presentations: DrawingInferencePresentation[] = [];

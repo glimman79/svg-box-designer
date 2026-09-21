@@ -626,12 +626,12 @@ function App() {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(DEFAULT_WORKSPACE);
   const [drawingDocument, setDrawingDocument] = useState(createDrawingDocumentV2);
   const [drawingViewBox, setDrawingViewBox] = useState(initialDrawingViewBox);
-  const [drawingActiveTool, setDrawingActiveTool] = useState<'select' | 'line' | 'dimension'>('select');
+  const [drawingActiveTool, setDrawingActiveTool] = useState<'select' | 'profile' | 'dimension'>('select');
   const [drawingConstraintsPanelOpen, setDrawingConstraintsPanelOpen] = useState(false);
   const [drawingHistoryController, setDrawingHistoryController] = useState<HistoryControlsProps | null>(null);
   const updateDrawingHistoryController = useCallback((controller: HistoryControlsProps | null) => setDrawingHistoryController(controller), []);
   useEffect(() => {
-    const updateDrawingTool = (event: Event) => setDrawingActiveTool((event as CustomEvent<{ activeTool: 'select' | 'line' | 'dimension' }>).detail.activeTool);
+    const updateDrawingTool = (event: Event) => setDrawingActiveTool((event as CustomEvent<{ activeTool: 'select' | 'profile' | 'dimension' }>).detail.activeTool);
     window.addEventListener('drawing:tool-state', updateDrawingTool);
     return () => window.removeEventListener('drawing:tool-state', updateDrawingTool);
   }, []);

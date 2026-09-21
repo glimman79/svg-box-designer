@@ -5,7 +5,7 @@ import {
   displayedDimensionMeasurement, formatDimensionValue,
 } from '../.test-build/drawing-dimension-role/drawingDimension.js';
 import { createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/drawing-dimension-role/drawingTypes.js';
-import { appendEntityToActiveSketch } from '../.test-build/drawing-dimension-role/drawingLineTool.js';
+import { appendEntityToActiveSketch } from '../.test-build/drawing-dimension-role/drawingProfileTool.js';
 
 const line = { id: 'line-role', type: 'line', start: { x: 0, y: 0 }, end: { x: 42.602, y: 102.85 } };
 const makeDocument = () => {

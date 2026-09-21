@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 const root = path.resolve('.test-build/drawing-alignment');
 const inference = await import(pathToFileURL(path.join(root, 'drawingInference.js')));
 const snapEngine = await import(pathToFileURL(path.join(root, 'drawingSnapEngine.js')));
-const lineTool = await import(pathToFileURL(path.join(root, 'drawingLineTool.js')));
+const lineTool = await import(pathToFileURL(path.join(root, 'drawingProfileTool.js')));
 const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 const line = { id: 'line-a', type: 'line', start: { x: 100, y: 50 }, end: { x: 180, y: 80 } };
 const bounds = { x: 0, y: 0, width: 500, height: 500 };
@@ -71,19 +71,19 @@ assert.equal(inference.isPointInDrawingBounds({ x: 0, y: 0 }, bounds), true, 'vi
 
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const styles = fs.readFileSync('src/styles.css', 'utf8');
-assert.match(workspace, /snap\.type === 'alignment'[\s\S]*drawing-line-cursor-alignment/);
-assert.match(workspace, /<rect className="drawing-line-cursor-alignment"/, 'alignment marker is a square');
+assert.match(workspace, /snap\.type === 'alignment'[\s\S]*drawing-profile-cursor-alignment/);
+assert.match(workspace, /<rect className="drawing-profile-cursor-alignment"/, 'alignment marker is a square');
 assert.match(workspace, /drawing-alignment-guide[\s\S]*data-axis="x"[\s\S]*drawing-alignment-guide[\s\S]*data-axis="y"/, 'both transient guide axes render');
 assert.match(styles, /--drawing-inference:\s*#38bdf8;[\s\S]*\.drawing-alignment-guide\s*\{[^}]*stroke:\s*var\(--drawing-inference\);[^}]*stroke-dasharray:\s*5 4;[^}]*pointer-events:\s*none;/s, 'H/V guides use the shared CAD-blue inference token and remain dashed and pointer-safe');
 assert.match(styles, /\.drawing-line-preview\s*\{[^}]*stroke:\s*var\(--drawing-inference\);/s, 'line and angular previews share the inference presentation color');
 assert.match(styles, /\.drawing-line-entity\.is-inference-target\s*\{[^}]*stroke:\s*var\(--drawing-inference\);/s, 'Parallel and Perpendicular target previews use CAD blue');
-assert.match(styles, /\.drawing-line-cursor-perpendicular,[\s\S]*?\.drawing-line-cursor-parallel\s*\{[^}]*stroke:\s*var\(--drawing-inference\);/s, 'transient relation cursor glyphs use CAD blue');
+assert.match(styles, /\.drawing-profile-cursor-perpendicular,[\s\S]*?\.drawing-profile-cursor-parallel\s*\{[^}]*stroke:\s*var\(--drawing-inference\);/s, 'transient relation cursor glyphs use CAD blue');
 assert.match(styles, /\.drawing-same-axis-reference-highlight\s*\{[^}]*stroke:\s*var\(--drawing-inference\);/s, 'reference-only point halo uses CAD blue');
 assert.doesNotMatch(styles, /--drawing-alignment-guide|#c084fc/, 'the retired purple preview styling is absent');
 assert.match(workspace, /snap\.type === 'endpoint' && <rect/, 'endpoint marker is the larger Point square');
 assert.match(workspace, /snap\.type === 'line' && <rect/, 'line marker is a square');
 assert.match(workspace, /if \(panHandlers\.onPointerMove\(event\)\) return;[\s\S]*resolvePlacement/, 'right-pan exits before inference');
-assert.match(workspace, /const effectivePoint = placement\.position\.point;[\s\S]*commitLinePoint\(effectivePoint, endpointPointId, placement\.interaction\)/, 'commit closes over the immutable authoritative position and its accepted inference');
+assert.match(workspace, /const effectivePoint = placement\.position\.point;[\s\S]*commitProfilePlacement\(effectivePoint, endpointPointId, placement\.interaction\)/, 'commit closes over the immutable authoritative position and its accepted inference');
 assert.match(workspace, /if \(event\.button === CAD_PRIMARY_BUTTON\) event\.preventDefault\(\);/, 'accepted Drawing-local primary mousedown fix remains');
 assert.doesNotMatch(workspace, /setDocument[\s\S]{0,120}drawing-alignment-guide/, 'guides never enter DrawingDocument');
 

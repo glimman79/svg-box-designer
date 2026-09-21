@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { collectDrawingInferenceCandidates } from '../.test-build/drawing-angular-reference/drawingInference.js';
 import { resolveDrawingSnap } from '../.test-build/drawing-angular-reference/drawingSnapEngine.js';
-import { EMPTY_LINE_INTERACTION, resolveLineEffectivePoint, resolveLinePreviewPoint } from '../.test-build/drawing-angular-reference/drawingLineTool.js';
+import { EMPTY_PROFILE_INTERACTION, resolveLineEffectivePoint, resolveLinePreviewPoint } from '../.test-build/drawing-angular-reference/drawingProfileTool.js';
 
 const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 const bounds = { x: -500, y: -500, width: 1000, height: 1000 };
 const start = { x: 0, y: 0 };
-const interaction = { ...EMPTY_LINE_INTERACTION, start, startPointId: 'origin' };
+const interaction = { ...EMPTY_PROFILE_INTERACTION, start, startPointId: 'origin' };
 const referenceLine = (id, point) => ({ id, type: 'line', start: point, end: { x: point.x - 31, y: point.y - 47 } });
 const assertPointClose = (actual, expected) => {
   assert.ok(Math.abs(actual.x - expected.x) < 1e-10, `${actual.x} != ${expected.x}`);
