@@ -68,7 +68,7 @@ test('Midpoint rejects degenerate Lines, is deterministic, hysteretic, and fully
   const acquired = author({ pointer: { x: 60, y: 40 }, scene: linesAtMidpoint });
   assert.equal(acquired.snap.entityId, 'a-line', 'stable semantic key breaks equal-distance ties');
   assert.equal(acquired.candidates.midpoints.some(({ entityId }) => entityId === 'degenerate'), false);
-  const held = author({ pointer: { x: 70, y: 40 }, scene: linesAtMidpoint, previousSnap: acquired.snap });
+  const held = author({ pointer: { x: 68.9, y: 40 }, scene: linesAtMidpoint, previousSnap: acquired.snap });
   assert.equal(held.snap.type, 'midpoint', 'release threshold retains the stable candidate beyond acquire distance');
   const overridden = author({ pointer: { x: 60, y: 40 }, scene: linesAtMidpoint, previousSnap: acquired.snap, ctrl: true });
   assert.equal(overridden.snap.type, 'none');
@@ -406,8 +406,8 @@ test('automatic axis semantics suppress Perpendicular and Parallel remains trans
 for (const scale of [0.5, 4]) test(`endpoint acquisition remains screen-space stable at ${scale}x`, () => {
   const endpoint = { x: 100, y: 80 };
   const transform = { ...identity, a: scale, d: scale };
-  const pointer = toClient({ x: endpoint.x + 8 / scale, y: endpoint.y }, scale);
+  const pointer = toClient({ x: endpoint.x + 6 / scale, y: endpoint.y }, scale);
   const result = author({ pointer, scene: [referenceLine('scaled-owner', endpoint)], transform });
   assert.equal(result.snap.type, 'endpoint');
-  assert.ok(Math.abs(result.candidates.endpoints[0].screenDistance - 8) < 1e-9);
+  assert.ok(Math.abs(result.candidates.endpoints[0].screenDistance - 6) < 1e-9);
 });

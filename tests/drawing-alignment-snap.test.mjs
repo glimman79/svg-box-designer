@@ -28,7 +28,7 @@ assert.equal(resolve({ x: 400, y: 52 }, candidates({ x: 400, y: 52 }, [line], { 
 assert.equal(resolve({ x: 102, y: 400 }, candidates({ x: 102, y: 400 }, [line], { x: 99, y: 49, width: 2, height: 2 })).type, 'alignment', 'panned viewport makes point eligible again');
 const scaleFour = { a: 4, b: 0, c: 0, d: 4, e: 20, f: -12 };
 assert.equal(resolve({ x: 101.9, y: 300 }, candidates({ x: 20 + 101.9 * 4, y: -12 + 300 * 4 }, [line], bounds, scaleFour)).type, 'alignment', 'screen tolerance is zoom invariant');
-assert.equal(resolve({ x: 102.1, y: 300 }, candidates({ x: 20 + 102.1 * 4, y: -12 + 300 * 4 }, [line], bounds, scaleFour)).type, 'none', 'zoomed correction outside eight pixels does not align');
+assert.equal(resolve({ x: 101.3, y: 300 }, candidates({ x: 20 + 101.3 * 4, y: -12 + 300 * 4 }, [line], bounds, scaleFour)).type, 'none', 'zoomed correction outside five pixels does not align');
 
 const crossing = [line, { id: 'line-b', type: 'line', start: { x: 300, y: 250 }, end: { x: 350, y: 280 } }];
 result = resolve({ x: 102, y: 252 }, candidates({ x: 102, y: 252 }, crossing));
@@ -60,7 +60,7 @@ assert.equal(result.yReference.entityId, 'a-y', 'equal Y correction uses stable 
 result = resolve({ x: 140, y: 65 }, candidates({ x: 140, y: 65 }));
 assert.equal(result.type, 'line', 'finite line-body snap retains priority');
 const aligned = resolve({ x: 102, y: 400 }, candidates({ x: 102, y: 400 }));
-assert.equal(resolve({ x: 110.5, y: 400 }, candidates({ x: 110.5, y: 400 }), aligned).type, 'alignment', 'alignment retains through release tolerance');
+assert.equal(resolve({ x: 106.9, y: 400 }, candidates({ x: 106.9, y: 400 }), aligned).type, 'alignment', 'alignment retains through release tolerance');
 assert.equal(resolve({ x: 102, y: 400 }, candidates({ x: 102, y: 400 }), aligned, true).type, 'none', 'Ctrl releases alignment');
 const angular = lineTool.resolveLinePreviewPoint({ x: 0, y: 0 }, { x: 100, y: 39 });
 assert.equal(angular.snapActive, true, 'Line angular fallback remains available');
