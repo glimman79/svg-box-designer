@@ -4,7 +4,7 @@ SVG Box Designer is a browser-based React application for drawing 2D line geomet
 
 ## Application areas
 
-- **2D Drawing** provides an SVG CAD-style canvas with Dimension and constraint workflows, shared `SketchPoint` topology, snapping and geometric inference, Direct Manipulation, and Drawing Undo/Redo. The current `Profile` tool authors continuing/chained straight segments, each stored as its own Line entity; the standalone one-segment Line tool remains planned and is not implemented. Authoring can infer endpoints, midpoints, axes, alignments, angular directions, Parallel, Perpendicular, and Point References; Ctrl temporarily bypasses automatic inference.
+- **2D Drawing** provides an SVG CAD-style canvas with Dimension and constraint workflows, shared `SketchPoint` topology, snapping and geometric inference, Direct Manipulation, and Drawing Undo/Redo. `Line` authors one independent straight segment from P1 to P2 and completes; `Profile` authors continuing/chained connected straight segments. Both workflows store each segment as the same ordinary Line entity. Authoring can infer endpoints, midpoints, axes, alignments, angular directions, Parallel, Perpendicular, and Point References; Ctrl temporarily bypasses automatic inference.
 - **Box / Construction** imports or starts an SVG document, identifies panels and selectable straight edges, and applies Panel Manager, TB (Top/Bottom finger-joint), W (Wall), and S (Slot) workflows. Generated geometry is composed, reconciled, manufacturing-compensated for clearances and kerf, previewed, and exported as SVG.
 - **Puzzle** is reserved in the workspace selector but is **not implemented**.
 

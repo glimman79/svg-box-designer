@@ -15,11 +15,15 @@ Status labels have the meanings defined in `ROADMAP.md`. Detailed B3.x reports a
 - **Locked commit:** `e787eb5b1f3ff530fbae9292d56ec4a1da0e2ba2`
 - **Official release tag:** `v1.2.0`
 - **Acceptance result:** B3.23 concluded that Wall was stable enough to leave stabilization.
-- **Current development position:** substantial solver-backed 2D Drawing development followed v1.2. Direction/position authority and natural Point Reference acquisition under Parallel are now browser-verified; a shared ProjectDocument remains later cross-module work.
+- **Current development position:** substantial solver-backed 2D Drawing development followed v1.2. Direction/position authority and natural Point Reference acquisition under Parallel are browser-verified, and the standalone one-segment Line tool is merged, browser-verified, and accepted; a shared ProjectDocument remains later cross-module work.
 
 ### September 2026 Profile tool identity migration
 
 The continuing straight-segment authoring workflow was renamed from its legacy Line tool identity to Profile without changing behavior. Profile workflow state and delayed commit ownership were separated from reusable Line-segment geometry and generic document mutation. Persistent geometry remained Line-based, and the tool ID changed from `'line'` to `'profile'`, freeing the Line tool name for the future standalone one-segment workflow. The migration was merged in #544 and subsequently verified successfully and accepted by the user in the real browser.
+
+### September 2026 standalone Line implementation and acceptance
+
+The neutral straight-segment infrastructure prepared by the Profile migration was then reused for the separate standalone Line workflow. The implementation merged in #546: Line accepts P1 and P2, commits exactly one straight segment, and completes rather than continuing from P2; persistent activation starts each subsequent construction from a fresh independent P1. Profile remains the chained workflow. Both authoring paths create ordinary `DrawingLineEntity` / `type: 'line'` geometry without authoring-origin metadata, so downstream topology, Constraints, Dimensions, selection, and Direct Manipulation share the existing geometry systems. The user subsequently tested the implemented Line tool in the real browser, reported that it worked well, and accepted the milestone.
 
 ### September 2026 equivalent-demand browser failure and policy correction
 

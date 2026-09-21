@@ -26,8 +26,9 @@ future task:
 | Foundation | Status | Current baseline |
 | --- | --- | --- |
 | Chained straight-segment authoring | **IMPLEMENTED / BROWSER-VERIFIED AND ACCEPTED** | The `Profile` tool creates connected straight Line segments, continues from each committed endpoint, and shares that endpoint `SketchPoint` with the next segment. Profile is an authoring workflow, not a separate persistent entity. |
+| Standalone straight-segment authoring | **IMPLEMENTED / BROWSER-VERIFIED AND ACCEPTED** | The `Line` tool creates exactly one straight Line from P1 to P2 and then completes. Normal activation returns to Select; persistent activation remains in Line but resets fully so the next click starts a fresh independent P1. |
 | Topology | **IMPLEMENTED** | Stable `SketchPoint` records own point identity and coordinates; connected Lines share point identity. |
-| Inference and snapping | **IMPLEMENTED** | Endpoint, Midpoint, finite-Line, alignment, angular, Parallel, Perpendicular, and Point Reference candidates feed the current Profile workflow. |
+| Inference and snapping | **IMPLEMENTED** | Endpoint, Midpoint, finite-Line, alignment, angular, Parallel, Perpendicular, and Point Reference candidates feed the shared Profile and Line straight-segment foundation. |
 | Geometric constraints and solver | **IMPLEMENTED** | Midpoint, Coincidence, Concentricity, Tangency, Parallelism, Perpendicular, Horizontal, and Vertical are browser-verified Constraint operations. |
 | Dimensions | **IMPLEMENTED** | Driving and reference distance, length, and Line-to-Line angle forms have solver and annotation paths. |
 | Authority model | **IMPLEMENTED** | Position, direction, and topology authority are distinct; compatible directional and positional truths can coexist. |
@@ -333,7 +334,7 @@ for an implemented drag-box feature.
 | Tool or family | Status | Roadmap scope | Design boundary |
 | --- | --- | --- | --- |
 | Profile | **PARTIALLY IMPLEMENTED; STRAIGHT-SEGMENT FOUNDATION BROWSER-VERIFIED AND ACCEPTED** | Continue from the existing chained straight-Line-segment foundation exposed as `Profile`. It creates connected Line entities, continues authoring from the preceding endpoint, and forms a continuous chain through the common Drawing architecture for inference, constraints, authority, topology, presentation, and commit behavior. Extend that foundation with radius/arc segments, transitions between straight and radius/arc segments, and tangent transitions where applicable; a radius/arc should be able to start tangent to the preceding Profile segment. | The existing chained functionality is valuable Profile implementation to extend, not discard. Exact radius/arc interaction, construction method, tangent workflow, solver details, and UI remain future design work; continued development must use the common inference/constraint architecture. |
-| Line | **PLANNED** | Develop the true standalone Line tool: activate Line, define the first point, define the second point, create one straight Line, and finish. It must not continue automatically into another segment. | One straight segment, then finish; unlike Profile, Line does not author a continuing connected chain. |
+| Line | **IMPLEMENTED / BROWSER-VERIFIED AND ACCEPTED** | The standalone Line tool defines P1, defines P2, creates exactly one straight Line, and completes without automatically continuing from P2. Persistent activation repeats independent constructions, resetting fully to a fresh P1 after each completed Line. | Line and Profile share the common straight-segment inference, constraint, topology, presentation, and mutation foundations. Both persist ordinary `DrawingLineEntity` / `type: 'line'` geometry; authoring origin is not persisted. |
 | Spline | **DESIGN REQUIRED** | Create smooth curves through created/control points and support tangent continuity between relevant points or segments. | Mathematics, point model, degree, solver integration, and UI remain open. |
 | Ellipse | **PLANNED** | Add an Ellipse drawing tool. | Variants and interaction are not specified. |
 | Axis | **DESIGN REQUIRED** | Add a construction/reference axis for geometric operations and constraints. | Interaction and persistence semantics remain open. |
@@ -343,9 +344,10 @@ for an implemented drag-box feature.
 | Rectangle | **DESIGN REQUIRED** | Add a Rectangle family with **four variants**. | The four variants have not been specified and will be defined later. |
 | Circle | **DESIGN REQUIRED** | Add exactly two currently planned variants: (1) standard Circle and (2) three-point-defined Circle. | UI sequence and parameterization remain open. |
 
-**Current naming note:** The existing chained Drawing tool is named `Profile` in the
-application and code. It authors persistent Line entities as a continuing chain. A true
-standalone one-segment Line tool has not yet been developed and remains separate planned work.
+**Current naming note:** The chained Drawing tool is named `Profile`; it authors
+persistent Line entities as a continuing chain. The separate standalone `Line` tool
+authors one independent segment per construction. Both workflows use the shared
+straight-segment foundation and produce the same persistent Line geometry.
 
 ## F. Rules for all future Drawing tools
 

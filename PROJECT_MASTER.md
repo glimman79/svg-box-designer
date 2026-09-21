@@ -28,11 +28,15 @@ A shared, versioned cross-workspace `ProjectDocument`, cross-workspace reference
 
 ### 4.1 Scope and topology
 
-The current workspace implements Select, Profile, Dimension, a floating Constraints tool, Direct Manipulation, snapping/inference, solver-backed constraints, and bounded Drawing Undo/Redo. Profile authors continuing/chained straight Line segments and is the browser-verified, accepted straight-segment foundation of the partially implemented Profile product. Every committed segment remains a `DrawingLineEntity` with persistent `type: 'line'`; Profile is the authoring workflow, not a new geometry type. A true standalone tool that creates one straight Line and then finishes does not currently exist. Menu visibility does not prove implementation of other prospective geometry tools.
+The current workspace implements Select, Profile, Line, Dimension, a floating Constraints tool, Direct Manipulation, snapping/inference, solver-backed constraints, and bounded Drawing Undo/Redo. Profile and standalone Line are browser-verified and accepted as separate authoring workflows: Profile authors continuing/chained connected straight segments, while Line accepts P1 and P2, creates exactly one straight segment, and completes without chaining from P2. Normal Line activation returns to Select after completion; persistent Line activation remains active but resets completely so the next click defines a fresh independent P1.
+
+Both workflows reuse the neutral straight-segment foundation rather than duplicating snapping, inference, constraints, topology, presentation, or mutation behavior. Every committed segment remains an ordinary `DrawingLineEntity` with persistent `type: 'line'`; neither Profile nor Line introduces a separate geometry type or authoring-origin metadata. Consequently topology, selection, Direct Manipulation, Constraints, Dimensions, and History operate on the committed geometry without distinguishing which authoring workflow created it. Menu visibility does not prove implementation of other prospective geometry tools.
+
+`drawingLineSegmentSupport.ts` owns neutral straight-segment support, while `drawingProfileTool.ts` owns the chained Profile lifecycle and `drawingLineTool.ts` owns the standalone Line lifecycle. Generic document mutation remains in `drawingDocumentMutation.ts`. The delayed commit/double-click boundary in `drawingProfileCommitBoundary.ts` remains Profile-specific. Shared cursor, preview, and inference presentation consume neutral segment interaction state rather than treating Profile as their owner.
 
 `DrawingSketchV2` stores `DrawingSketchPoint` (`SketchPoint`) records separately from `DrawingLineEntity` records. Each Line references `startPointId` and `endPointId`; connected Lines share a SketchPoint identity. Resolved coordinates are derived from those references. Equal coordinates alone do not create topology, and migration of old coordinate-embedded Lines does not invent connectivity.
 
-Every committed segment is its own Line. A continuation begins a **fresh Profile segment interaction** at the committed end SketchPoint. No candidate, acquired snap, direction authority, or other transient inference state is inherited. For equivalent document geometry, topology, pointer input, and viewport, a manually started Profile segment and a chained continuation use the same inference architecture.
+Every committed segment is its own Line. A Profile continuation begins a **fresh Profile segment interaction** at the committed end SketchPoint. No candidate, acquired snap, direction authority, or other transient inference state is inherited. For equivalent document geometry, topology, pointer input, and viewport, a manually started Profile segment and a chained continuation use the same inference architecture. A persistently activated standalone Line also begins a fresh interaction after every commit, but it does not reuse the preceding endpoint unless the user explicitly snaps the new P1 to existing geometry.
 
 ### 4.2 Dimensions, constraints, and solver
 
@@ -61,7 +65,7 @@ Endpoint is authoritative for shared topology and exact endpoint position. Endpo
 
 Candidate discovery includes existing endpoints/shared points, Midpoint, finite Line body, X/Y alignment, H/V, angular construction, Parallel, Perpendicular, and normal-to-incident-Line Point References. Screen-space tolerances govern acquisition while candidate membership comes from committed sketch geometry, not only the visible viewport.
 
-During Profile authoring, Ctrl is a raw bypass: it suppresses automatic acquisition, associated guides, and automatic semantics for that live placement. It does not remove committed topology or constraints. In Select, Ctrl instead toggles selection.
+During Profile or Line authoring, Ctrl is a raw bypass: it suppresses automatic acquisition, associated guides, and automatic semantics for that live placement. It does not remove committed topology or constraints. In Select, Ctrl instead toggles selection.
 
 ### 4.4 Established direction and Point Reference invariant
 
@@ -84,13 +88,13 @@ Transient inference and persistent constraint presentation use shared semantic l
 
 ### 4.6 Accepted placement and commit ownership
 
-A click first accepts a resolved placement; the transaction that owns that accepted result must also own its commit. Native double-click disambiguation may delay the callback, but a later same-tool primary click flushes the pending owner before resolving the next placement. Timer identity prevents stale callbacks from committing into a later interaction.
+A click first accepts a resolved placement; the transaction that owns that accepted result must also own its commit. Profile retains its delayed, native-double-click-safe commit boundary because it continues a chain: a later same-tool primary click flushes the pending owner before resolving the next placement, and timer identity prevents stale callbacks from committing into a later interaction. Standalone Line commits synchronously when its valid P2 is accepted and needs no separate double-click-finish semantic because that point completes the construction.
 
 The committed document snapshot is made visible to candidate collection in the same event. This preserves rapid Line segments, exposes newly committed topology immediately, and keeps manual and chained starts equivalent. Cancellation may clear a pending transaction; a new click must not silently replace and lose it.
 
 ### 4.7 Interaction and History
 
-Left mouse authors/selects, right-drag pans, the wheel zooms, and Esc exits the applicable interaction. Drawing transactions group semantic user actions for Undo/Redo. UI-only panel state does not create document History. Deleting geometry cleans dependent dimensions/constraints through model operations.
+Left mouse authors/selects, right-drag pans, the wheel zooms, and Esc exits the applicable interaction. Drawing transactions group semantic user actions for Undo/Redo. A completed standalone Line is one transaction containing its accepted geometry, topology, and automatic semantics; persistent Line activation produces one transaction per completed independent Line. UI-only panel state does not create document History. Deleting geometry cleans dependent dimensions/constraints through model operations.
 
 ## 5. Box / Construction architecture
 
@@ -136,7 +140,7 @@ Puzzle has a reserved, disabled workspace selector only. It has no current docum
 ## 8. Current limitations and documentation boundaries
 
 - Puzzle and a shared global project document are planned.
-- Drawing currently supports chained straight-segment authoring through Profile, with every committed segment stored as Line geometry; it does not yet provide a standalone Line tool or the full prospective CAD tool catalog.
+- Drawing supports chained straight-segment authoring through Profile and independent one-segment authoring through Line, with every committed segment stored as the same Line geometry; it does not yet provide the full prospective CAD tool catalog.
 - The Constraints panel intentionally displays disabled future choices alongside implemented ones.
 - Box v1.2 remains the locked release baseline; post-v1.2 Drawing features are implemented without a new declared product release.
 - Detailed reports under `docs/` include historical hypotheses and diagnostic evidence. Consult `docs/README.md` before treating one as a current specification.
