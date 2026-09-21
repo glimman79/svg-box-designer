@@ -427,6 +427,12 @@ The final distinction was positional authority. A support parallel/coincident wi
 
 Browser verification accepted the required result: with Parallel active, natural movement along the construction acquired the compatible Perpendicular-derived Point Reference at the useful intersection without sideways movement. This closed the manual-versus-chain investigation while preserving the invariant that every continuation is a fresh Line interaction carrying only committed geometry and shared SketchPoint topology.
 
+### 11.11 Accepted Drawing snap tuning (#548–#549)
+
+#548 tuned positional Drawing snap hysteresis: Endpoint and Midpoint capture/release became 7/9 CSS px, while finite Line, alignment, and Point Reference became 5/7 CSS px. #549 then replaced unbounded Parallel/Perpendicular retention with finite 5/7 CSS px capture/release based on the existing lateral client-space candidate distance. Leaving the 7 px corridor releases transient direction authority and stale semantic evidence without imposing a cooldown or blocking same-frame fresh acquisition; movement along the valid construction direction does not itself cause release.
+
+Real-browser validation accepted the resulting positional snap feel and the finite Parallel/Perpendicular release. The work refined capture and release within the existing compatibility-before-priority authority model; it did not change snap priority, candidate geometry, topology, persistence, H/V arbitration, Ctrl bypass, or the Profile/Line authoring structure.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics

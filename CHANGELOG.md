@@ -1,5 +1,11 @@
 # Unreleased
 
+## Drawing — accepted snap tuning
+
+- Tuned Drawing snap areas for a less magnetic feel: Endpoint and Midpoint capture/release at 7/9 CSS px, while finite Line, alignment, and Point Reference use 5/7 CSS px.
+- Parallel and Perpendicular now capture at 5 CSS px, release after leaving their 7 CSS px lateral client-space corridor, and can reacquire immediately on returning within capture range.
+- Preserved Ctrl bypass, H/V arbitration, compatible positional composition, and zoom-consistent directional behavior; the resulting snap feel was accepted in real-browser validation.
+
 ## Drawing — Profile tool identity
 
 - Renamed the current chained authoring tool from its legacy Line identity to Profile, changed its tool ID from `'line'` to `'profile'`, and preserved its interaction and commit behavior; the merged migration was subsequently browser-verified and accepted.
@@ -25,7 +31,7 @@
 
 - Made every chained segment a fresh Line interaction while preserving shared `SketchPoint` topology; manual restarts and continuations now use the same inference path.
 - Separated Line direction authority from position authority and applied compatibility-before-priority across Endpoint, Midpoint, finite-Line, alignment, and Point Reference placement.
-- Established direction authority now survives ordinary pointer travel while compatible positional evidence is sought, and committed geometry is visible to inference in the same event.
+- Established direction authority remains stable during longitudinal pointer travel while compatible positional evidence is sought, and committed geometry is visible to inference in the same event.
 - Preserved rapid consecutive Line commits with a transaction-owned, delayed/double-click-safe commit boundary.
 - Added direction-aware Point Reference intersections and distinguished position-defining references from reference-only evidence.
 - Browser verified that an active Parallel construction naturally acquires a compatible Perpendicular-derived Point Reference without sideways pointer movement.

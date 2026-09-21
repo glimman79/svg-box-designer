@@ -78,7 +78,9 @@ This distinction is geometric and general, not a chained-Line exception. It prev
 
 **Browser-verified / regression-sensitive invariant:** with Parallel active, natural pointer movement along the construction can acquire the compatible Perpendicular-derived Point Reference at its useful intersection. Sideways or off-Line pointer movement is not required.
 
-An established direction has a lifecycle independent of the short discovery band: after acquisition it remains the construction authority until explicitly superseded, released, bypassed, or the interaction ends. Presentation and persistence consume the accepted placement; they do not rerun competing authority selection.
+Drawing snap acquisition and retention use browser-accepted, family-specific client-space hysteresis. Endpoint and Midpoint capture at 7 CSS px and release at 9 CSS px. Finite Line, alignment, and Point Reference capture at 5 CSS px and release at 7 CSS px. These thresholds tune acquisition and release only; they do not change candidate geometry, priority, topology, persistence, or automatic constraint validation.
+
+Parallel and Perpendicular direction authority likewise captures at 5 CSS px and remains authoritative only while the matching candidate stays within a 7 CSS px lateral client-space corridor. Longitudinal movement along the valid construction direction does not itself release authority, and the client-space measurement keeps the feel consistent across zoom. Leaving the corridor releases the transient authority and its semantic evidence; ordinary acquisition still runs in that frame, so returning within 5 px can reacquire immediately without a cooldown, neutral frame, timer, or re-arm action. Ctrl remains an immediate bypass, H/V arbitration is unchanged, and compatible positional snaps continue to compose with direction authority. This tuned behavior is browser-verified and accepted. Presentation and persistence consume the accepted placement; they do not rerun competing authority selection.
 
 ### 4.5 Transient and persistent semantics
 
