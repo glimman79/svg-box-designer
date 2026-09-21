@@ -13,30 +13,30 @@ const target = { id: 'target', type: 'line', start: { x: 10, y: 10 }, end: { x: 
 const candidatesAt = (point) => inference.collectDrawingInferenceCandidates(point, [target], identity);
 const resolve = (rawPoint, candidates, previousSnap = null, ctrlOverride = false) => snap.resolveDrawingSnap({ rawPoint, candidates, previousSnap, ctrlOverride });
 
-assert.equal(snap.DRAWING_ENDPOINT_SNAP_ACQUIRE_PX, 9);
-assert.equal(snap.DRAWING_ENDPOINT_SNAP_RELEASE_PX, 12);
-assert.equal(snap.DRAWING_LINE_SNAP_ACQUIRE_PX, 8);
-assert.equal(snap.DRAWING_LINE_SNAP_RELEASE_PX, 11);
-let endpoint = resolve({ x: 18.9, y: 10 }, candidatesAt({ x: 18.9, y: 10 }));
+assert.equal(snap.DRAWING_ENDPOINT_SNAP_ACQUIRE_PX, 7);
+assert.equal(snap.DRAWING_ENDPOINT_SNAP_RELEASE_PX, 9);
+assert.equal(snap.DRAWING_LINE_SNAP_ACQUIRE_PX, 5);
+assert.equal(snap.DRAWING_LINE_SNAP_RELEASE_PX, 7);
+let endpoint = resolve({ x: 16.9, y: 10 }, candidatesAt({ x: 16.9, y: 10 }));
 assert.equal(endpoint.type, 'endpoint');
 assert.equal(endpoint.effectivePoint, target.start, 'endpoint snap uses exact stored model point');
-endpoint = resolve({ x: 21, y: 10 }, candidatesAt({ x: 21, y: 10 }), endpoint);
+endpoint = resolve({ x: 18.9, y: 10 }, candidatesAt({ x: 18.9, y: 10 }), endpoint);
 assert.equal(endpoint.type, 'endpoint', 'endpoint holds inside release tolerance');
-endpoint = resolve({ x: 10, y: 22.1 }, candidatesAt({ x: 10, y: 22.1 }), endpoint);
+endpoint = resolve({ x: 10, y: 19.1 }, candidatesAt({ x: 10, y: 19.1 }), endpoint);
 assert.equal(endpoint.type, 'none', 'endpoint releases beyond release tolerance');
 
-let line = resolve({ x: 60, y: 17.9 }, candidatesAt({ x: 60, y: 17.9 }));
+let line = resolve({ x: 60, y: 14.9 }, candidatesAt({ x: 60, y: 14.9 }));
 assert.equal(line.type, 'line');
 assert.deepEqual(line.effectivePoint, { x: 60, y: 10 }, 'line snap uses exact finite-segment projection');
-line = resolve({ x: 60, y: 20.5 }, candidatesAt({ x: 60, y: 20.5 }), line);
+line = resolve({ x: 60, y: 16.9 }, candidatesAt({ x: 60, y: 16.9 }), line);
 assert.equal(line.type, 'line', 'line holds inside release tolerance');
-line = resolve({ x: 60, y: 21.1 }, candidatesAt({ x: 60, y: 21.1 }), line);
+line = resolve({ x: 60, y: 17.1 }, candidatesAt({ x: 60, y: 17.1 }), line);
 assert.equal(line.type, 'none', 'line releases beyond release tolerance');
 
 assert.equal(resolve({ x: 17, y: 10 }, candidatesAt({ x: 17, y: 10 })).type, 'endpoint', 'endpoint has priority over line');
-const spatial = resolve({ x: 18, y: 10 }, candidatesAt({ x: 18, y: 10 }));
-assert.equal(resolve({ x: 18, y: 10 }, candidatesAt({ x: 18, y: 10 }), spatial, true).type, 'none', 'Ctrl disables global snap');
-assert.equal(resolve({ x: 18, y: 10 }, candidatesAt({ x: 18, y: 10 }), null, false).type, 'endpoint', 'release immediately reacquires without tool activation');
+const spatial = resolve({ x: 16, y: 10 }, candidatesAt({ x: 16, y: 10 }));
+assert.equal(resolve({ x: 16, y: 10 }, candidatesAt({ x: 16, y: 10 }), spatial, true).type, 'none', 'Ctrl disables global snap');
+assert.equal(resolve({ x: 16, y: 10 }, candidatesAt({ x: 16, y: 10 }), null, false).type, 'endpoint', 'release immediately reacquires without tool activation');
 const ctrlFree = resolve({ x: 19, y: 18 }, candidatesAt({ x: 19, y: 18 }), null, true);
 const angular = lineTool.resolveLinePreviewPoint({ x: 0, y: 0 }, ctrlFree.effectivePoint);
 assert.equal(angular.snapActive, true, 'Ctrl leaves Line-specific 22.5 degree inference available');
