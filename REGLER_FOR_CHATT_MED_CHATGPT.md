@@ -92,11 +92,17 @@ Ny utveckling ska normalt börja från senast accepterade och mergade GitHub-`ma
 
 > accepterad main → ny branch/session → implementation → tester → commit → PR → användargranskning → merge → webbläsarverifiering → acceptans
 
+Innan ChatGPT skapar en ny Codex-prompt för implementation eller dokumentation ska ChatGPT kontrollera den faktiskt accepterade `main`-branchen direkt mot GitHub, fastställa dess exakta aktuella commit-SHA och ange denna SHA i prompten som obligatorisk baseline.
+
+Innan Codex ändrar repositoryt ska Codex kontrollera lokal `HEAD` och jämföra den med den verifierade GitHub-`main`-SHA som anges i prompten. Codex får fortsätta endast om de är identiska. Vid avvikelse ska Codex stoppa före implementation, inte arbeta vidare från checkouten och rapportera faktisk `HEAD`, förväntad SHA, aktuell branch, om en remote finns och om den förväntade commiten finns lokalt.
+
+Codex behöver inte själv verifiera hostad GitHub-`main` när ChatGPT har gjort det omedelbart innan prompten skapades. Saknad Git-remote, saknad lokal `main` eller blockerad GitHub-/nätverksåtkomst är därför inte i sig ett baseline-fel: om lokal `HEAD` är identisk med den exakta verifierade SHA som ChatGPT angav är baselinen verifierad och Codex får fortsätta. Processen förhindrar arbete från inaktuella eller okända snapshots utan att skapa falska varningar när den redan verifierade checkouten är korrekt.
+
 Efter att en PR har mergats är utvecklingsbranchen/sessionen avslutad. Nästa arbete ska normalt börja om från senaste accepterade `main`, inte fortsätta obegränsat på en gammal branch.
 
 ChatGPT ska inspektera det faktiska repositoryt när aktuell implementation spelar roll. Antaganden om filstruktur, funktionalitet, arkitektur, implementationsstatus, tester eller minnen från äldre samtal får inte ersätta sådan kontroll.
 
-Om Codex rapporterar att Git-remote saknas, lokal `main` saknas, hostad `main` inte kunde hämtas eller arbetet utgick från ett tillhandahållet accepterat HEAD ska ChatGPT nämna begränsningen. Arbetet blir inte automatiskt ogiltigt, men hostad-main-verifiering var då inte möjlig.
+Om Codex rapporterar en sådan miljöbegränsning ska ChatGPT nämna den utan att felaktigt underkänna en baseline som verifierats genom identiska SHA-värden.
 
 ## 6. Kritisk granskning av Codex-rapporter
 
