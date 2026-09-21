@@ -28,7 +28,7 @@ future task:
 | Chained straight-segment authoring | **IMPLEMENTED** | The tool currently exposed as `Line` creates connected straight segments, continues from each committed endpoint, and shares that endpoint `SketchPoint` with the next segment. This behavior is the existing Profile foundation despite the current tool name; it is not a separate persistent Profile entity. |
 | Topology | **IMPLEMENTED** | Stable `SketchPoint` records own point identity and coordinates; connected Lines share point identity. |
 | Inference and snapping | **IMPLEMENTED** | Endpoint, Midpoint, finite-Line, alignment, angular, Parallel, Perpendicular, and Point Reference candidates feed the current Line workflow. |
-| Geometric constraints and solver | **IMPLEMENTED** | Horizontal, Vertical, Parallel, Perpendicular, Coincidence (point-to-point and point-to-Line support), and Midpoint are first-class semantic constraints. |
+| Geometric constraints and solver | **IMPLEMENTED** | Midpoint, Coincidence, Concentricity, Tangency, Parallelism, Perpendicular, Horizontal, and Vertical are browser-verified Constraint operations. |
 | Dimensions | **IMPLEMENTED** | Driving and reference distance, length, and Line-to-Line angle forms have solver and annotation paths. |
 | Authority model | **IMPLEMENTED** | Position, direction, and topology authority are distinct; compatible directional and positional truths can coexist. |
 | Presentation | **IMPLEMENTED** | Transient inference and persistent constraint layers exist. Midpoint and Parallel share Line-marker layout between live and persistent presentation; Perpendicular shares presentation geometry derivation. Other relations still need convergence. |
@@ -115,7 +115,17 @@ authoring convenience, not a replacement for the separate Dimensions tool.
 ## C. Constraints
 
 Constraints is a separate, selection-driven Drawing tool with a broader catalog of
-relationships than Dimensions. Its current primary interaction is also tool-first:
+relationships than Dimensions. Both supported selection orders are browser-verified for
+points and Lines. Geometry may be selected before the panel opens:
+
+```text
+select geometry on the canvas
+  -> activate / open Constraints
+  -> Constraints immediately evaluates the existing selection
+  -> expose all valid choices and keep non-applicable choices disabled
+```
+
+Geometry may also be selected or changed while the panel remains active:
 
 ```text
 activate / open Constraints
@@ -148,18 +158,8 @@ current selection, is already present, or conflicts with an existing
 Horizontal/Vertical choice. Separately, the panel deliberately shows choices whose
 Constraint behavior has not yet been developed.
 
-Canvas preselection before opening Constraints is **PLANNED / NOT YET IMPLEMENTED** as
-a supported authoring workflow:
-
-```text
-select geometry directly on the canvas
-  -> activate / open Constraints
-  -> Constraints evaluates the existing selection
-  -> enable all applicable Constraints and keep non-applicable choices disabled
-  -> user chooses the desired relationship or relationships
-```
-
-This future path complements, rather than changes, the current tool-first workflow.
+These workflows describe the browser-verified selection behavior for points and Lines;
+they do not establish additional selection combinations beyond current applicability.
 
 ### Constraint semantics and presentation status
 
@@ -177,14 +177,14 @@ still has work remaining.
 | Perpendicular | **IMPLEMENTED** (`PERPENDICULAR`) | Transient and persistent right-angle presentation share geometry derivation, including support extensions when needed. |
 | Coincidence | **IMPLEMENTED** (`COINCIDENT`) | Persistent square marker and selected-relation reference presentation exist; transient presentation still needs to converge on the shared model. |
 | Midpoint | **IMPLEMENTED** (`MIDPOINT`) | Browser-verified reference path: transient and persistent `—□—` presentation uses the shared Line-marker layout. |
+| Concentricity | **IMPLEMENTED** | Constraint operation is browser-verified; further shared-presentation convergence remains separate roadmap work. |
+| Tangency | **IMPLEMENTED** | Constraint operation is browser-verified; further shared-presentation convergence remains separate roadmap work. |
 | Distance | **DESIGN REQUIRED** | Present in the panel, but Constraints integration, applicability, authoring, and presentation are not yet developed. Reuse the implemented Dimension capability's common geometric/semantic basis rather than creating an independent Distance implementation. |
 | Length | **DESIGN REQUIRED** | Present in the panel, but Constraints integration, applicability, authoring, and presentation are not yet developed. Reuse the implemented Dimension capability's common geometric/semantic basis rather than creating an independent Length implementation. |
 | Angle | **DESIGN REQUIRED** | Present in the panel, but Constraints integration, applicability, authoring, and presentation are not yet developed. Reuse the implemented Dimension capability's common geometric/semantic basis rather than creating an independent Angle implementation. |
 | Radius / Diameter | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
 | Symmetry | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
 | Fix | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
-| Concentricity | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
-| Tangency | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
 
 Coincidence is one Constraint choice/family in the UI. Selection determines whether its
 applicable relationship is point-to-point or point-to-Line; those relationships are not
@@ -316,11 +316,12 @@ direct click selection OR directional drag-box multi-selection
   -> where supported, a Drawing tool evaluates the existing selection
 ```
 
-Accordingly, drag-box results must be compatible with the planned Dimensions and
-Constraints canvas-preselection workflows described above. A future user may select
+Accordingly, drag-box results must be compatible with the planned Dimensions and the
+implemented Constraints canvas-preselection workflows described above. A future user may select
 several relevant Drawing objects with a box and then open a tool that supports
-preselection. That end-to-end workflow remains planned; the current primary workflow
-for both Dimensions and Constraints remains tool-first.
+preselection. That drag-box end-to-end workflow remains planned; Dimensions remains
+tool-first, while Constraints already supports direct point/Line selection before or
+while its panel is active.
 
 The current implementation provides direct geometry click selection and unified
 selected-geometry state, but no directional selection rectangle or containment/crossing

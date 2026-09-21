@@ -28,7 +28,7 @@ A shared, versioned cross-workspace `ProjectDocument`, cross-workspace reference
 
 ### 4.1 Scope and topology
 
-The current workspace implements Select, Line, Dimension, a floating Constraints tool, Direct Manipulation, snapping/inference, solver-backed constraints, and bounded Drawing Undo/Redo. Menu visibility does not prove implementation of other prospective geometry tools.
+The current workspace implements Select, a UI tool currently named `Line`, Dimension, a floating Constraints tool, Direct Manipulation, snapping/inference, solver-backed constraints, and bounded Drawing Undo/Redo. The current `Line` tool authors continuing/chained straight segments and is the straight-segment foundation of the partially implemented Profile product. A true standalone tool that creates one straight Line and then finishes does not currently exist. Menu visibility does not prove implementation of other prospective geometry tools.
 
 `DrawingSketchV2` stores `DrawingSketchPoint` (`SketchPoint`) records separately from `DrawingLineEntity` records. Each Line references `startPointId` and `endPointId`; connected Lines share a SketchPoint identity. Resolved coordinates are derived from those references. Equal coordinates alone do not create topology, and migration of old coordinate-embedded Lines does not invent connectivity.
 
@@ -36,9 +36,11 @@ Every committed segment is its own Line. A continuation begins a **fresh Line in
 
 ### 4.2 Dimensions, constraints, and solver
 
-The model supports driving and reference dimensions over stable point/Line references: aligned, horizontal, and vertical point distances; point-to-Line distance; Line-to-Line distance; and Line-to-Line angle. Reference dimensions annotate but add no equation.
+Dimensions is the dedicated dimensional authoring workflow. The model supports driving and reference dimensions over stable point/Line references: aligned, horizontal, and vertical point distances; point-to-Line distance; Line-to-Line distance; and Line-to-Line angle. Reference dimensions annotate but add no equation.
 
-First-class geometric constraints are Horizontal, Vertical, Parallel, Perpendicular, Coincidence (point/point and point/linear-support), and Midpoint. The floating Constraints tool exposes a broader catalog, but only choices backed by the current applicability and solver architecture are enabled.
+Constraints is a separate floating workflow. It browser-verifiably consumes points and Lines selected before the panel opens and updates applicable operations when point/Line selection changes while the panel remains active. Its browser-verified operations are Midpoint, Coincidence, Concentricity, Tangency, Parallelism, Perpendicular, Horizontal, and Vertical.
+
+Fix, Symmetry, Radius / Diameter, Angle, Length, and Distance are not currently implemented as Constraints. Existing Dimension functionality for Distance, Length, and Angle does not make those Constraint operations implemented; future integration must reuse appropriate common geometric and semantic foundations rather than duplicate them.
 
 SketchPoint coordinates are solver variables. Typed driving dimensions and geometric constraints produce equations, connected-component solving produces resolved geometry, and rank/null-space analysis classifies degrees of freedom. Invalid, degenerate, duplicate, or unsatisfied requests fail closed. Direct Manipulation requests movement through this semantic authority; it does not permanently bypass constraints.
 
@@ -98,11 +100,11 @@ The application can begin with an empty Box document or parse an imported SVG in
 
 Implemented workflows are:
 
-- **TB (Top/Bottom):** paired edge roles and generated finger-joint profiles;
-- **W (Wall):** W-A/W-B authoring with per-panel TB role guidance and TB-equivalent physical generation;
-- **S (Slot):** paired roles, slot/tab geometry, offsets, and panel-thickness-derived depth/length behavior.
+- **TB (Top/Bottom):** paired edge roles and generated finger-joint profiles, accepted for current needs;
+- **W (Wall):** W-A/W-B authoring with per-panel TB role guidance and TB-equivalent physical generation; broader capability remains in the Roadmap;
+- **S (Slot):** paired roles, slot/tab geometry, offsets, and panel-thickness-derived depth/length behavior; broader capability remains in the Roadmap.
 
-J/P, angle-aware assembly variants, and a static 3D preview are not current implemented product capabilities.
+**J = Joint** and **P = Pattern** are not implemented. Angle-aware assembly variants and a static 3D preview are also not current implemented product capabilities.
 
 ### 5.2 Generated geometry, composition, and panel authority
 
@@ -134,7 +136,7 @@ Puzzle has a reserved, disabled workspace selector only. It has no current docum
 ## 8. Current limitations and documentation boundaries
 
 - Puzzle and a shared global project document are planned.
-- Drawing currently supports Line geometry, not the full prospective CAD tool catalog.
+- Drawing currently supports chained straight-segment Profile-foundation geometry under the legacy UI/code name `Line`, not a standalone Line product or the full prospective CAD tool catalog.
 - The Constraints panel intentionally displays disabled future choices alongside implemented ones.
 - Box v1.2 remains the locked release baseline; post-v1.2 Drawing features are implemented without a new declared product release.
 - Detailed reports under `docs/` include historical hypotheses and diagnostic evidence. Consult `docs/README.md` before treating one as a current specification.
