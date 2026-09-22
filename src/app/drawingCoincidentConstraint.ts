@@ -7,7 +7,7 @@ export const canonicalCoincidentPointPair = (pointAId: string, pointBId: string)
 export const createCoincidentConstraint = (sketch: DrawingSketchV2, pointAId: string, pointBId: string): DrawingCoincidentConstraint | null => {
   const pair = canonicalCoincidentPointPair(pointAId, pointBId);
   if (!pair || !sketch.points[pair[0]] || !sketch.points[pair[1]]) return null;
-  const duplicate = Object.values(sketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'COINCIDENT' && constraint.variant !== 'point-linear-support'
+  const duplicate = Object.values(sketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'COINCIDENT' && constraint.variant === 'point-point'
     && canonicalCoincidentPointPair(constraint.references[0].pointId, constraint.references[1].pointId)?.join('\0') === pair.join('\0'));
   return duplicate ? null : {
     id: `coincident:${pair[0]}:${pair[1]}`,
@@ -60,7 +60,7 @@ export type DrawingCoincidentReferenceMarker = Readonly<{ constraintId: string; 
 export const deriveCoincidentMarkers = (sketch: DrawingSketchV2, pixelsPerModelUnit = 1): DrawingPointConstraintMarker[] =>
   Object.values(sketch.geometricConstraints ?? {}).flatMap((constraint) => {
     if (constraint.kind !== 'COINCIDENT') return [];
-    const pointIds = constraint.variant === 'point-linear-support'
+    const pointIds = constraint.variant !== 'point-point'
       ? [constraint.references[0].pointId] : constraint.references.map(({ pointId }) => pointId);
     const points = pointIds.map((id) => sketch.points[id]);
     if (points.some((point) => !point)) return [];
@@ -73,7 +73,7 @@ export const deriveSelectedCoincidentReferenceMarker = (sketch: DrawingSketchV2,
   if (!constraintId) return null;
   const constraint = (sketch.geometricConstraints ?? {})[constraintId];
   if (!constraint || constraint.kind !== 'COINCIDENT') return null;
-  if (constraint.variant !== 'point-linear-support') {
+  if (constraint.variant === 'point-point') {
     const point = sketch.points[constraint.references[1].pointId];
     return point ? { constraintId, x: point.x, y: point.y } : null;
   }

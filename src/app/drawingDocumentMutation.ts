@@ -1,6 +1,30 @@
 import { canonicalCoincidentPointPair } from './drawingCoincidentConstraint.js';
 import type { DrawingDocumentV2, DrawingGeometricConstraint, DrawingLineEntity } from './drawingTypes.js';
 import type { DrawingLineDraft } from './drawingLineSegmentSupport.js';
+import type { DrawingCircleDraft } from './drawingCircleTool.js';
+
+export const appendCircleToActiveSketch = (document: DrawingDocumentV2, draft: DrawingCircleDraft,
+  createPointId: () => string = () => `point-${crypto.randomUUID()}`,
+  midpointLineId: string | null = null, circumferencePointId: string | null = null): DrawingDocumentV2 => {
+  const sketch = document.sketches[document.activeSketchId];
+  if (!sketch || (sketch.entities as unknown as Record<string, unknown>)[draft.id] || !Number.isFinite(draft.radius) || draft.radius <= 1e-9) return document;
+  const centerPointId = draft.centerPointId ?? createPointId();
+  const circle = { id: draft.id, type: 'circle' as const, centerPointId, radius: draft.radius };
+  const constraints: DrawingGeometricConstraint[] = [];
+  if (midpointLineId && sketch.entities[midpointLineId]?.type === 'line') constraints.push({ id: `midpoint:${centerPointId}:${midpointLineId}`, kind: 'MIDPOINT',
+    references: [{ kind: 'sketchPoint', pointId: centerPointId }, { kind: 'entity', entityId: midpointLineId }] });
+  if (circumferencePointId && sketch.points[circumferencePointId] && circumferencePointId !== centerPointId) constraints.push({
+    id: `coincident:${circumferencePointId}:curve:${draft.id}`, kind: 'COINCIDENT', variant: 'point-curve',
+    references: [{ kind: 'sketchPoint', pointId: circumferencePointId }, { kind: 'entity', entityId: draft.id }],
+  });
+  const entities = { ...sketch.entities, [draft.id]: circle } as unknown as typeof sketch.entities;
+  return { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch,
+    points: sketch.points[centerPointId] ? sketch.points : { ...sketch.points, [centerPointId]: { id: centerPointId, ...draft.center } },
+    entities, entityOrder: [...sketch.entityOrder, draft.id],
+    geometricConstraints: { ...sketch.geometricConstraints, ...Object.fromEntries(constraints.map((item) => [item.id, item])) },
+    geometricConstraintOrder: [...sketch.geometricConstraintOrder, ...constraints.map(({ id }) => id)],
+  } } };
+};
 
 /** Immutably appends an entity to the active sketch. Invalid active sketch ids are rejected. */
 export const appendEntityToActiveSketch = (
@@ -45,7 +69,7 @@ export const appendEntityToActiveSketch = (
     const targetPointId = acceptedEndpointSnaps?.[endpoint];
     const pointPair = targetPointId && activeSketch.points[targetPointId] ? canonicalCoincidentPointPair(createdPointId, targetPointId) : null;
     if (!pointPair) return [];
-    const duplicatePair = Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'COINCIDENT' && constraint.variant !== 'point-linear-support'
+    const duplicatePair = Object.values(activeSketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'COINCIDENT' && constraint.variant === 'point-point'
       && constraint.references.map(({ pointId }) => pointId).sort().join('\0') === pointPair.join('\0'));
     if (duplicatePair) return [];
     return [{ id: `coincident:${pointPair[0]}:${pointPair[1]}`, kind: 'COINCIDENT' as const, variant: 'point-point' as const,

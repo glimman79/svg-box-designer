@@ -19,12 +19,19 @@ export type DrawingLineEntity = Readonly<{
   startPointId: string;
   endPointId: string;
 }>;
+export type DrawingCircleEntity = Readonly<{
+  id: string;
+  type: 'circle';
+  centerPointId: string;
+  radius: number;
+}>;
 export type DrawingLineEntityV1 = Readonly<{ id: string; type: 'line'; start: DrawingPoint; end: DrawingPoint }>;
 
 /** Non-persistent geometry resolved from a line's point references. */
 export type ResolvedDrawingLine = DrawingLineEntity & Readonly<{ start: DrawingPoint; end: DrawingPoint }>;
+export type ResolvedDrawingCircle = DrawingCircleEntity & Readonly<{ center: DrawingPoint }>;
 
-export type DrawingEntity = DrawingLineEntity;
+export type DrawingEntity = DrawingLineEntity | DrawingCircleEntity;
 
 export type DrawingGeometryReference =
   | Readonly<{ kind: 'entity'; entityId: string }>
@@ -68,13 +75,20 @@ export type DrawingPointOnLinearSupportConstraint = Readonly<{
   /** A point and a stable semantic linear edge; the edge's parent is irrelevant. */
   references: readonly [Readonly<{ kind: 'sketchPoint'; pointId: string }>, DrawingEntityReference];
 }>;
+export type DrawingPointOnCurveConstraint = Readonly<{
+  id: string;
+  kind: 'COINCIDENT';
+  variant: 'point-curve';
+  /** A stable SketchPoint constrained to a semantic curve entity. */
+  references: readonly [Readonly<{ kind: 'sketchPoint'; pointId: string }>, DrawingEntityReference];
+}>;
 export type DrawingMidpointConstraint = Readonly<{
   id: string;
   kind: 'MIDPOINT';
   /** The existing SketchPoint constrained to the midpoint of the semantic Line. */
   references: readonly [Readonly<{ kind: 'sketchPoint'; pointId: string }>, DrawingEntityReference];
 }>;
-export type DrawingCoincidentConstraint = DrawingPointCoincidentConstraint | DrawingPointOnLinearSupportConstraint;
+export type DrawingCoincidentConstraint = DrawingPointCoincidentConstraint | DrawingPointOnLinearSupportConstraint | DrawingPointOnCurveConstraint;
 export type DrawingGeometricConstraint = DrawingParallelConstraint | DrawingPerpendicularConstraint | DrawingAxisConstraint | DrawingCoincidentConstraint | DrawingMidpointConstraint;
 type DrawingDimensionBase = Readonly<{
   id: string;
@@ -131,7 +145,10 @@ export type DrawingDocumentV1 = {
 
 export type DrawingSketchV2 = Omit<DrawingSketchV1, 'entities'> & {
   points: Record<string, DrawingSketchPoint>;
-  entities: Record<string, DrawingEntity>;
+  /** Entity values are a discriminated union; the intersection preserves the
+   * historical Line lookup surface for Line-only algorithms during staged
+   * geometry generalization. Shared entity dispatch must use DrawingEntity. */
+  entities: Record<string, DrawingEntity> & Record<string, DrawingLineEntity>;
   dimensions: Record<string, DrawingDimension>;
   dimensionOrder: string[];
   geometricConstraints: Record<string, DrawingGeometricConstraint>;
@@ -168,14 +185,16 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
     sketches: Object.fromEntries(Object.entries(document.sketches).map(([id, sourceSketch]) => {
       const legacySketch = sourceSketch as unknown as Omit<DrawingSketchV2, 'entities' | 'points'> & { points?: Record<string, DrawingSketchPoint>; entities: Record<string, DrawingEntity | DrawingLineEntityV1> };
       const points: Record<string, DrawingSketchPoint> = { ...(legacySketch.points ?? {}) };
-      const entities = Object.fromEntries(Object.entries(legacySketch.entities).map(([entityId, entity]) => {
-        if ('startPointId' in entity) return [entityId, entity];
+      const entities = Object.fromEntries(Object.entries(legacySketch.entities).flatMap(([entityId, entity]): readonly (readonly [string, DrawingEntity])[] => {
+        if (entity.type === 'circle') return Number.isFinite(entity.radius) && entity.radius > DRAWING_MODEL_SPACE_TOLERANCE
+          && Boolean(points[entity.centerPointId]) ? [[entityId, entity] as const] : [];
+        if ('startPointId' in entity) return [[entityId, entity] as const];
         // Legacy documents contain no authoritative connectivity metadata. Each endpoint
         // therefore receives a deterministic, independent identity; equal coordinates are not merged.
         const startPointId = `legacy:${entity.id}:start`, endPointId = `legacy:${entity.id}:end`;
         points[startPointId] = { id: startPointId, ...entity.start };
         points[endPointId] = { id: endPointId, ...entity.end };
-        return [entityId, { id: entity.id, type: 'line', startPointId, endPointId } satisfies DrawingLineEntity];
+        return [[entityId, { id: entity.id, type: 'line', startPointId, endPointId } satisfies DrawingLineEntity] as const];
       })) as Record<string, DrawingEntity>;
       const sketch = { ...legacySketch, points, entities,
         geometricConstraints: legacySketch.geometricConstraints ?? {},
@@ -193,8 +212,8 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
         if (constraint.kind === 'MIDPOINT') {
           if (constraint.references.length !== 2 || constraint.references[0].kind !== 'sketchPoint' || constraint.references[1].kind !== 'entity') return false;
           const pointId = constraint.references[0].pointId, line = sketch.entities[constraint.references[1].entityId];
-          const a = line && sketch.points[line.startPointId], b = line && sketch.points[line.endPointId];
-          if (!sketch.points[pointId] || !line || !a || !b || pointId === line.startPointId || pointId === line.endPointId || Math.hypot(b.x - a.x, b.y - a.y) <= DRAWING_MODEL_SPACE_TOLERANCE) return false;
+          const a = line?.type === 'line' && sketch.points[line.startPointId], b = line?.type === 'line' && sketch.points[line.endPointId];
+          if (!sketch.points[pointId] || line?.type !== 'line' || !a || !b || pointId === line.startPointId || pointId === line.endPointId || Math.hypot(b.x - a.x, b.y - a.y) <= DRAWING_MODEL_SPACE_TOLERANCE) return false;
           const key = `MIDPOINT:${pointId}:${line.id}`;
           if (acceptedPairs.has(key)) return false;
           acceptedPairs.add(key); return true;
@@ -204,9 +223,11 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
           if (constraint.references.length !== 2 || constraint.references[0].kind !== 'sketchPoint' || !sketch.points[constraint.references[0].pointId]) return false;
           const second = constraint.references[1];
           if (legacyVariant === 'point-linear-support') {
-            if (second.kind !== 'entity' || !sketch.entities[second.entityId]) return false;
-            const edge = sketch.entities[second.entityId], a = sketch.points[edge.startPointId], b = sketch.points[edge.endPointId];
+            if (second.kind !== 'entity' || sketch.entities[second.entityId]?.type !== 'line') return false;
+            const edge = sketch.entities[second.entityId] as DrawingLineEntity, a = sketch.points[edge.startPointId], b = sketch.points[edge.endPointId];
             if (!a || !b || Math.hypot(b.x - a.x, b.y - a.y) <= DRAWING_MODEL_SPACE_TOLERANCE) return false;
+          } else if (legacyVariant === 'point-curve') {
+            if (second.kind !== 'entity' || (sketch.entities as unknown as Record<string, DrawingEntity>)[second.entityId]?.type !== 'circle') return false;
           } else if (second.kind !== 'sketchPoint' || !sketch.points[second.pointId] || constraint.references[0].pointId === second.pointId) return false;
           const key = legacyVariant === 'point-linear-support'
             ? `COINCIDENT:${constraint.references[0].pointId}:support:${(second as DrawingEntityReference).entityId}`
@@ -232,10 +253,10 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
         return true;
       }).map(([constraintId, constraint]) => constraint.kind === 'PERPENDICULAR'
         ? [constraintId, { ...constraint, references: [...constraint.references].sort((a, b) => a.entityId.localeCompare(b.entityId)) }]
-        : constraint.kind === 'COINCIDENT' && constraint.variant !== 'point-linear-support'
+        : constraint.kind === 'COINCIDENT' && constraint.variant !== 'point-linear-support' && constraint.variant !== 'point-curve'
           ? [constraintId, { ...constraint, variant: 'point-point', references: [...constraint.references].sort((a, b) => a.pointId.localeCompare(b.pointId)) }]
         : [constraintId, constraint]));
-      return [id, { ...sketch, dimensions, dimensionOrder: sketch.dimensionOrder.filter((dimensionId) => Boolean(dimensions[dimensionId])), geometricConstraints,
+      return [id, { ...sketch, entityOrder: sketch.entityOrder.filter((entityId) => Boolean(entities[entityId])), dimensions, dimensionOrder: sketch.dimensionOrder.filter((dimensionId) => Boolean(dimensions[dimensionId])), geometricConstraints,
         geometricConstraintOrder: sketch.geometricConstraintOrder.filter((constraintId) => Boolean(geometricConstraints[constraintId])) }];
     })),
   };

@@ -67,7 +67,7 @@ assert.match(source, /explicitPointId\s*\? \{ kind: 'point', pointId: explicitPo
 assert.match(source, /routeDrawingGeometryPointerSelection\(current, target, event\.ctrlKey, constraintsPanelOpen\)\.selection/, 'the rendered target uses the shared production selection route with functional state');
 assert.doesNotMatch(source, /event\.shiftKey/, 'Shift is not a semantic geometry multi-selection modifier');
 assert.match(source, /const beginDrag = !event\.ctrlKey && !constraintsPanelOpen;[\s\S]*if \(beginDrag\) \{[\s\S]*setGeometryDrag/, 'only an ordinary replacing Select click may begin direct manipulation');
-const emptyMissStart = source.indexOf('if (!hit && !explicitPointId && !explicitLineId)');
+const emptyMissStart = source.indexOf('if (!hit && !explicitPointId && !explicitLineId && !explicitCircleId && !circleHit)');
 const emptyMissBranch = source.slice(emptyMissStart, source.indexOf('setDimensionDrag(null)', emptyMissStart));
 assert.match(emptyMissBranch, /setBoxSelection\(session\)/, 'an empty Select miss defers click clearing until the potential box gesture resolves');
 const finishBoxStart = source.indexOf('const finishBoxSelection');
