@@ -1,9 +1,15 @@
 # Unreleased
 
+## Documentation — global Drawing Presentation Standard
+
+- Defined `PROJECT_MASTER.md` as the normative global authority for committed geometry states, interaction overrides, Authoring Preview, Inference, support/reference geometry, Constraints, Dimensions, Points, directional selection overlays, precedence, and explicitly tracked future decisions.
+- Recorded the semantic pipeline from entity-specific freedom/relation derivation through shared presentation classification to geometry-specific SVG primitives, with Line as reference implementation rather than owner.
+- Corrected Circle Stage 1 status: merged implementation with visible working authoring preview, but browser acceptance pending because committed normal presentation is invisible until selected. No production code or visual value changed.
+
 ## Documentation — circular Drawing direction and placeholder status
 
 - Corrected current documentation to match accepted code truth: the implemented Constraint set is Midpoint, Coincidence, Parallelism, Perpendicular, Horizontal, and Vertical; Concentricity, Tangency, and Radius / Diameter remain inactive, not-implemented choices.
-- Recorded Circle — Center + Radius as the next planned Drawing geometry and the standalone three-point Arc order as Start → End → Form Point, including the decided Circle topology, radius-input, and directional-selection semantics.
+- Recorded Circle — Center + Radius as the then-next planned Drawing geometry and the standalone three-point Arc order as Start → End → Form Point, including the decided Circle topology, radius-input, and directional-selection semantics.
 - Recorded the global/shared Drawing architecture direction and the planned sequence for later Radius/Diameter Dimension, Radius/Diameter Constraint, Concentricity, and Tangency work without promoting any placeholder to implemented status.
 
 ## Drawing — directional box selection
@@ -36,7 +42,7 @@
 
 - Established the expanded Roadmap as future-direction and feature-status authority, added collaboration working-rules navigation, and synchronized the central documentation workflow.
 - Clarified the legacy chained `Line` authoring as the Profile foundation versus the then-planned standalone Line product, and recorded J as Joint and P as Pattern without presenting those future tools as implemented.
-- Synchronized the separate Dimensions/Constraints architecture and the browser-verified Constraints selection workflows and implemented set, including Concentricity and Tangency; retained Fix, Symmetry, Radius / Diameter, Angle, Length, and Distance as not implemented Constraints.
+- Synchronized the separate Dimensions/Constraints architecture and the browser-verified Constraints selection workflows and implemented set, including the correction that Concentricity and Tangency are inactive placeholders and have never been implemented; retained Fix, Symmetry, Radius / Diameter, Angle, Length, and Distance as not implemented Constraints.
 - Aligned current TB/W/S status and documentation authority without changing application behavior or promoting planned Construction, Puzzle, or 3D capabilities.
 
 ## Drawing — Line inference and transaction authority

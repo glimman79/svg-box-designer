@@ -444,6 +444,14 @@ Browser verification accepted the required result: with Parallel active, natural
 
 Real-browser validation accepted the resulting positional snap feel and the finite Parallel/Perpendicular release. The work refined capture and release within the existing compatibility-before-priority authority model; it did not change snap priority, candidate geometry, topology, persistence, H/V arbitration, Ctrl bypass, or the Profile/Line authoring structure.
 
+### 11.12 Global Drawing Presentation Standard
+
+**Problem:** Accepted presentation values were implemented chiefly through Line-named CSS and distributed relation-specific rules, inviting future geometry to duplicate or reinterpret colors, widths, previews, and support graphics. Circle Stage 1 also exposed the distinction sharply: its authoring preview is visible and live, while the committed Circle exists and is selectable but lacks a normal semantic constraint-state class and is normally invisible.
+
+**Decision/change:** `PROJECT_MASTER.md` became the normative Drawing Presentation Standard. Shared semantics now flow from entity-specific mobility or relation truth through semantic presentation classification into global roles, then geometry-specific SVG primitives. Committed curve states, temporary overrides, Authoring Preview, Inference, support geometry, Constraints, Dimensions, Points, overlays, precedence, and unresolved future decisions are explicitly separated. Line is the current accepted reference, not the owner. Circle remains merged with browser acceptance pending; no production fix was made in this documentation decision.
+
+**Result:** Future geometry must consume global roles where semantics match, preserve category-specific glyphs where they do not, and explicitly resolve the tracked Arc/reference, construction geometry, Radius/Diameter, and token-coupling questions rather than inventing styles.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics

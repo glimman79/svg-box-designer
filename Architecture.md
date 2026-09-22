@@ -2,6 +2,19 @@
 
 > **Status: current orientation document.** This file is a concise map of the Box / Construction geometry pipeline. [PROJECT_MASTER.md](PROJECT_MASTER.md) is the authority for current product architecture, including Drawing and Puzzle. Historical pipeline snapshots and investigations are indexed in [docs/README.md](docs/README.md).
 
+## Drawing presentation architecture
+
+Drawing presentation follows a semantic pipeline rather than geometry- or tool-owned paint:
+
+```text
+semantic geometry / semantic relation
+  -> semantic presentation classification
+  -> shared Drawing Presentation Standard
+  -> geometry-specific SVG primitive or role-specific glyph
+```
+
+Thus a Line may render as `<line>`, Circle as `<circle>`, future Arc as `<path>`, and Points, Dimensions, and Constraints as their own glyph/primitives while consuming global roles wherever semantics are shared. Entity-specific mobility derives the global geometry constraint visual state; temporary selection or inference paint does not change that underlying state. Transient and persistent forms may share relation/layout derivation while retaining distinct paint. The normative roles, values, precedence, and open decisions are owned by [PROJECT_MASTER.md](PROJECT_MASTER.md#49-normative-drawing-presentation-standard), not duplicated here.
+
 ## Pipeline
 
 ```text
