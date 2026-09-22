@@ -1,9 +1,10 @@
-import type { DrawingPoint, ResolvedDrawingLine } from './drawingTypes.js';
+import type { DrawingPoint, ResolvedDrawingCircle, ResolvedDrawingLine } from './drawingTypes.js';
 import type { DrawingSelectionRef } from './drawingConstraintsTool.js';
 
 export type DrawingSelectionMode = 'window' | 'crossing';
 export type DrawingSelectionRect = Readonly<{ minX: number; maxX: number; minY: number; maxY: number }>;
 type DrawingLineSelectionRef = Extract<DrawingSelectionRef, { kind: 'line' }>;
+type DrawingCircleSelectionRef = Extract<DrawingSelectionRef, { kind: 'circle' }>;
 
 const SELECTION_EPSILON = 1e-9;
 
@@ -43,15 +44,36 @@ export const drawingLineQualifiesForRect = (line: ResolvedDrawingLine, rect: Dra
   return [[topLeft, topRight], [topRight, bottomRight], [bottomRight, bottomLeft], [bottomLeft, topLeft]]
     .some(([a, b]) => segmentsIntersect(line.start, line.end, a, b));
 };
+export const drawingCircleQualifiesForRect = (circle: ResolvedDrawingCircle, rect: DrawingSelectionRect, mode: DrawingSelectionMode) => {
+  const { center, radius } = circle;
+  if (mode === 'window') return center.x - radius > rect.minX + SELECTION_EPSILON && center.x + radius < rect.maxX - SELECTION_EPSILON
+    && center.y - radius > rect.minY + SELECTION_EPSILON && center.y + radius < rect.maxY - SELECTION_EPSILON;
+  const closestX = Math.max(rect.minX, Math.min(center.x, rect.maxX));
+  const closestY = Math.max(rect.minY, Math.min(center.y, rect.maxY));
+  const nearest = Math.hypot(center.x - closestX, center.y - closestY);
+  const farthest = Math.max(...[
+    Math.hypot(center.x - rect.minX, center.y - rect.minY), Math.hypot(center.x - rect.maxX, center.y - rect.minY),
+    Math.hypot(center.x - rect.maxX, center.y - rect.maxY), Math.hypot(center.x - rect.minX, center.y - rect.maxY),
+  ]);
+  return nearest <= radius + SELECTION_EPSILON && farthest >= radius - SELECTION_EPSILON;
+};
 
 /** Input order is retained, so callers can pass active-sketch entityOrder resolution. */
 export const selectDrawingGeometryInRect = (lines: readonly ResolvedDrawingLine[], rect: DrawingSelectionRect, mode: DrawingSelectionMode): readonly DrawingLineSelectionRef[] =>
   lines.filter((line) => drawingLineQualifiesForRect(line, rect, mode)).map((line) => ({ kind: 'line', lineId: line.id }));
 
-export const applyDrawingBoxSelection = (current: readonly DrawingSelectionRef[], qualifying: readonly DrawingLineSelectionRef[], ctrlKey: boolean) => {
+export const selectDrawingEntitiesInRect = (entities: readonly (ResolvedDrawingLine | ResolvedDrawingCircle)[], rect: DrawingSelectionRect, mode: DrawingSelectionMode): readonly (DrawingLineSelectionRef | DrawingCircleSelectionRef)[] =>
+  entities.reduce<(DrawingLineSelectionRef | DrawingCircleSelectionRef)[]>((selected, entity) => {
+    if (entity.type === 'line' && drawingLineQualifiesForRect(entity, rect, mode)) selected.push({ kind: 'line', lineId: entity.id });
+    if (entity.type === 'circle' && drawingCircleQualifiesForRect(entity, rect, mode)) selected.push({ kind: 'circle', circleId: entity.id });
+    return selected;
+  }, []);
+
+export const applyDrawingBoxSelection = (current: readonly DrawingSelectionRef[], qualifying: readonly (DrawingLineSelectionRef | DrawingCircleSelectionRef)[], ctrlKey: boolean) => {
   if (!ctrlKey) return qualifying;
   return qualifying.reduce<readonly DrawingSelectionRef[]>((selection, target) => {
-    const exists = selection.some((ref) => ref.kind === 'line' && ref.lineId === target.lineId);
-    return exists ? selection.filter((ref) => !(ref.kind === 'line' && ref.lineId === target.lineId)) : [...selection, target];
+    const key = target.kind === 'line' ? `line:${target.lineId}` : `circle:${target.circleId}`;
+    const exists = selection.some((ref) => (ref.kind === 'line' ? `line:${ref.lineId}` : ref.kind === 'circle' ? `circle:${ref.circleId}` : '') === key);
+    return exists ? selection.filter((ref) => (ref.kind === 'line' ? `line:${ref.lineId}` : ref.kind === 'circle' ? `circle:${ref.circleId}` : '') !== key) : [...selection, target];
   }, current);
 };

@@ -1,4 +1,4 @@
-export type DrawingActiveTool = 'select' | 'line' | 'profile' | 'dimension';
+export type DrawingActiveTool = 'select' | 'line' | 'circle' | 'profile' | 'dimension';
 export type CadToolActivationMode = 'normal' | 'persistent';
 export type DrawingToolLifecycle = Readonly<{ activeTool: DrawingActiveTool; activationMode: CadToolActivationMode }>;
 export type DrawingToolLifecycleAction = 'activate' | 'cancel-construction' | 'finish-construction' | 'deactivate';

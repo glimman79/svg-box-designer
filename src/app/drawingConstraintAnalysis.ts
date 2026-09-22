@@ -53,6 +53,12 @@ export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricCo
         || !pointOnLinearSupportAndGradient(sketch.points[pointId], sketch.points[line.startPointId], sketch.points[line.endPointId])) return null;
       return { geometricConstraint, pointKeys: [pointId, line.startPointId, line.endPointId] };
     }
+    if (geometricConstraint.variant === 'point-curve') {
+      const pointId = geometricConstraint.references[0].pointId;
+      const circle = (sketch.entities as unknown as Record<string, import('./drawingTypes.js').DrawingEntity>)[geometricConstraint.references[1].entityId];
+      return circle?.type === 'circle' && sketch.points[pointId] && sketch.points[circle.centerPointId]
+        ? { geometricConstraint, pointKeys: [pointId, circle.centerPointId] } : null;
+    }
     const [a, b] = geometricConstraint.references.map(({ pointId }) => pointId);
     return a !== b && sketch.points[a] && sketch.points[b] ? { geometricConstraint, pointKeys: [a, b], coordinateAxis: 'x' } : null;
   }
@@ -70,7 +76,7 @@ export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricCo
 /** Point/point contributes two axes; point/support contributes one collinearity equation. */
 export const geometricConstraintEquations = (sketch: DrawingSketchV2, constraint: DrawingGeometricConstraint): DrawingConstraintEquation[] => {
   const first = geometricConstraintEquation(sketch, constraint);
-  return !first ? [] : constraint.kind === 'MIDPOINT' || constraint.kind === 'COINCIDENT' && constraint.variant !== 'point-linear-support' ? [first, { ...first, coordinateAxis: 'y' }] : [first];
+  return !first ? [] : constraint.kind === 'MIDPOINT' || constraint.kind === 'COINCIDENT' && constraint.variant === 'point-point' ? [first, { ...first, coordinateAxis: 'y' }] : [first];
 };
 
 /** Signed normal distance to AB's infinite support; no segment parameter or clamp exists. */

@@ -49,7 +49,7 @@ const css=fs.readFileSync('src/styles.css','utf8');
 assert.match(workspace,/DRAWING_DRAG_THRESHOLD_PX/); assert.match(workspace,/setPointerCapture/); assert.match(workspace,/candidate: candidate \?\? geometryDrag\.candidate/,'invalid preview retains last valid candidate');
 assert.match(workspace,/if \(geometryDrag\) \{ setGeometryDrag\(null\); return; \}/,'Escape cancels transient drag');
 assert.match(workspace,/activeTool === 'select'[\s\S]*resolveDimensionCandidate[\s\S]*setSelectedGeometry\(\(current\)/,'Select click uses the shared finite-geometry hit resolver and unified multi-selection');
-assert.match(workspace,/selectedGeometry\.length === 1[\s\S]*selectedLineId[\s\S]*deleteEntityWithDependentDimensions\(current, selectedLineId\)/,'single selected Line deletion uses the existing dependency cascade');
+assert.match(workspace,/selectedGeometry\.length === 1[\s\S]*selectedEntityId[\s\S]*selectedGeometry\[0\]\.kind === 'line' \? deleteEntityWithDependentDimensions\(current, selectedEntityId\)/,'single selected Line deletion retains the existing dependency cascade while shared entity deletion supports Circle');
 assert.match(workspace,/onMouseDown=\{handleDrawingMouseDown\}/,'Drawing-local primary preventDefault remains');
 assert.match(css,/\.drawing-svg \{[^}]*cursor: crosshair;/,'empty Drawing canvas overrides the generic viewport hand with a crosshair');
 assert.match(css,/\.drawing-svg\.has-geometry-cursor \.drawing-interactive-hit \{ cursor: default; \}/,'resolved selectable geometry uses the shared normal arrow cursor');

@@ -5,7 +5,8 @@ import { applyResolvedLineClick } from './drawingLineTool';
 import { automaticAxisConstraintKind, diagnoseLineCommonDirection, EMPTY_LINE_SEGMENT_INTERACTION,
   hasAngularPresentationTruth, resolveLineEffectivePoint, resolveLinePreviewPoint,
   selectMinimalLineSemanticConstraints, type LineSegmentInteractionState } from './drawingLineSegmentSupport';
-import { appendEntityToActiveSketch } from './drawingDocumentMutation';
+import { appendCircleToActiveSketch, appendEntityToActiveSketch } from './drawingDocumentMutation';
+import { applyResolvedCircleClick, circlePreviewRadius, EMPTY_CIRCLE_INTERACTION, updateCirclePreview, type CircleToolInteraction } from './drawingCircleTool';
 import { cancelDrawingProfileCommit, flushDrawingProfileCommit, scheduleDrawingProfileCommit, type PendingDrawingProfileCommit } from './drawingProfileCommitBoundary';
 import { DRAWING_ORIGIN, getAxisLabelInterval, getDrawingGridHierarchy, getDrawingGridSpacing, getVisibleAxisValues, zoomViewBoxAtPoint } from './drawingGrid';
 import { clientToModelPoint, modelToOverlayPoint, type CoordinatePoint } from './drawingTransform';
@@ -20,7 +21,7 @@ import { candidateForSector, createLineAngleBasis, deriveLineAngleAnnotation } f
 import { solveDrawingDimensionEdit } from './drawingConstraintSolver';
 import type { HistoryControlsProps } from './HistoryControls';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from './drawingHistory';
-import { pointIdForLineEndpoint, resolveActiveSketchLines, resolveLine } from './drawingTopology.js';
+import { pointIdForLineEndpoint, removeEntityAndOrphans, resolveActiveSketchLines, resolveCircle, resolveLine } from './drawingTopology.js';
 import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
 import { deleteGeometricConstraint, deriveMidpointMarkerPresentation, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
@@ -28,7 +29,7 @@ import { deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT
 import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, initialConstraintsPanelPosition, toggleDrawingGeometrySelection, type DrawingSelectionRef } from './drawingConstraintsTool.js';
 import { deriveDrawingInferencePresentations, type DrawingInferencePresentation } from './drawingInferencePresentation.js';
 import { createDrawingDirectionDiagnosticRecorder } from './drawingDirectionDiagnostic.js';
-import { applyDrawingBoxSelection, drawingSelectionMode, normalizeDrawingSelectionRect, selectDrawingGeometryInRect } from './drawingBoxSelection.js';
+import { applyDrawingBoxSelection, drawingSelectionMode, normalizeDrawingSelectionRect, selectDrawingEntitiesInRect } from './drawingBoxSelection.js';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -126,10 +127,12 @@ export const DRAWING_SKETCH_POINT_HIT_RADIUS_PX = 7;
 export const DRAWING_INTERACTION_POINT_RADIUS_PX = 2.5;
 export const DRAWING_LINE_HOVER_MARKER_SIZE_PX = 3;
 export const DRAWING_POINT_HOVER_MARKER_SIZE_PX = 5;
+export const DRAWING_CURVE_HIT_TOLERANCE_PX = 7;
 
 export const drawingGeometrySelectionClass = (selection: readonly DrawingSelectionRef[], target: DrawingSelectionRef) =>
   selection.some((ref) => ref.kind === target.kind && (ref.kind === 'line'
     ? ref.lineId === (target as Extract<DrawingSelectionRef, { kind: 'line' }>).lineId
+    : ref.kind === 'circle' ? ref.circleId === (target as Extract<DrawingSelectionRef, { kind: 'circle' }>).circleId
     : ref.pointId === (target as Extract<DrawingSelectionRef, { kind: 'point' }>).pointId)) ? ' is-geometry-selected' : '';
 
 /** The selection and drag policy used by the production root pointer route. */
@@ -205,6 +208,7 @@ export function DrawingWorkspace({
     if (frame && panel) setConstraintsPanelPosition(initialConstraintsPanelPosition(frame, panel));
   }, [constraintsPanelOpen, constraintsPanelPosition]);
   const [segmentInteraction, setSegmentInteraction] = useState<LineSegmentInteractionState>(EMPTY_LINE_SEGMENT_INTERACTION);
+  const [circleInteraction, setCircleInteraction] = useState<CircleToolInteraction>(EMPTY_CIRCLE_INTERACTION);
   const [cadCursor, setCadCursor] = useState<CadCursorPresentation>(null);
   const segmentCursor = cadCursor;
   const [drawingSnap, setDrawingSnap] = useState<DrawingSnap | null>(null);
@@ -225,6 +229,11 @@ export function DrawingWorkspace({
     const entity = activeSketch.entities[id];
     const line = entity?.type === 'line' ? resolveLine(activeSketch, entity) : null;
     return line ? [line] : [];
+  }) ?? [];
+  const resolvedCircles = activeSketch?.entityOrder.flatMap((id) => {
+    const entity = (activeSketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[id];
+    const circle = entity?.type === 'circle' ? resolveCircle(activeSketch, entity) : null;
+    return circle ? [circle] : [];
   }) ?? [];
   const gridSpacing = getDrawingGridSpacing(viewBox.width);
   const gridHierarchy = getDrawingGridHierarchy(gridSpacing);
@@ -569,6 +578,7 @@ export function DrawingWorkspace({
     const empty = EMPTY_LINE_SEGMENT_INTERACTION;
     segmentInteractionRef.current = empty;
     setSegmentInteraction(empty);
+    setCircleInteraction(EMPTY_CIRCLE_INTERACTION);
     setDrawingSnap(null);
     drawingSnapRef.current = null;
     setCadCursor(null);
@@ -590,10 +600,16 @@ export function DrawingWorkspace({
     if (activeTool === 'select') {
       const explicitPointId = (event.target as Element).closest<SVGCircleElement>('[data-sketch-point-id]')?.dataset.sketchPointId;
       const explicitLineId = (event.target as Element).closest<SVGLineElement>('[data-sketch-line-id]')?.dataset.sketchLineId;
+      const explicitCircleId = (event.target as Element).closest<SVGCircleElement>('[data-sketch-circle-id]')?.dataset.sketchCircleId;
       const hit = explicitPointId || explicitLineId ? null : resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
       const matrix = svgRef.current?.getScreenCTM();
+      const circleHit = !explicitPointId && !explicitLineId && matrix ? resolvedCircles.map((circle) => {
+        const center = { x: matrix.a * circle.center.x + matrix.c * circle.center.y + matrix.e, y: matrix.b * circle.center.x + matrix.d * circle.center.y + matrix.f };
+        const radiusPx = circle.radius * Math.hypot(matrix.a, matrix.b);
+        return { id: circle.id, distance: Math.abs(Math.hypot(event.clientX - center.x, event.clientY - center.y) - radiusPx) };
+      }).filter(({ distance }) => distance <= DRAWING_CURVE_HIT_TOLERANCE_PX).sort((a, b) => a.distance - b.distance)[0]?.id : undefined;
       const startModel = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
-      if (!hit && !explicitPointId && !explicitLineId) {
+      if (!hit && !explicitPointId && !explicitLineId && !explicitCircleId && !circleHit) {
         if (!startModel) return;
         const session = { pointerId: event.pointerId, originClient: { x: event.clientX, y: event.clientY }, originModel: startModel,
           currentClient: { x: event.clientX, y: event.clientY }, currentModel: startModel, exceeded: false };
@@ -603,6 +619,10 @@ export function DrawingWorkspace({
         return;
       }
       if (!startModel) return;
+      if (explicitCircleId || !hit && circleHit) {
+        setSelectedGeometry((current) => routeDrawingGeometryPointerSelection(current, { kind: 'circle', circleId: (explicitCircleId ?? circleHit)! }, event.ctrlKey, constraintsPanelOpen).selection);
+        setSelectedDimensionId(null); setSelectedGeometricConstraintId(null); return;
+      }
       setDimensionDrag(null);
       const target: DrawingGeometryTarget | null = explicitPointId
         ? { kind: 'point', pointId: explicitPointId }
@@ -731,6 +751,24 @@ export function DrawingWorkspace({
         placement.position.kind === 'midpoint' ? placement.position.entityId : undefined);
       return;
     }
+    if (activeTool === 'circle') {
+      const placement = resolvePlacement({ x: event.clientX, y: event.clientY }, event.ctrlKey || ctrlSnapOverride, 'click');
+      if (!placement) return;
+      const endpointPointId = placement.position.kind === 'endpoint' ? placement.position.pointId : null;
+      const result = applyResolvedCircleClick(circleInteraction, placement.position.point,
+        () => `circle-${Date.now().toString(36)}-${++entitySequence.current}`, endpointPointId,
+        placement.position.kind === 'midpoint' ? placement.position.entityId : null);
+      setCircleInteraction(result.interaction);
+      setSegmentInteraction(EMPTY_LINE_SEGMENT_INTERACTION);
+      segmentInteractionRef.current = EMPTY_LINE_SEGMENT_INTERACTION;
+      if (result.entity) {
+        transactDocument((current) => appendCircleToActiveSketch(current, result.entity!, undefined,
+          circleInteraction.midpointLineId, endpointPointId));
+        setDrawingSnap(null); setCadCursor(null);
+        setToolLifecycle((current) => finishDrawingConstruction(current));
+      }
+      return;
+    }
   };
 
   const handleDrawingMouseDown = (event: MouseEvent<SVGSVGElement>) => {
@@ -804,9 +842,13 @@ export function DrawingWorkspace({
       setDimensionPreselection(resolveDimensionCandidate({ x: event.clientX, y: event.clientY }, expectedTarget));
       return;
     }
-    if (isSegmentTool) {
+    if (isSegmentTool || activeTool === 'circle') {
       lastPointerClientRef.current = { x: event.clientX, y: event.clientY };
-      resolvePlacement(lastPointerClientRef.current, event.ctrlKey || ctrlSnapOverride);
+      const placement = resolvePlacement(lastPointerClientRef.current, event.ctrlKey || ctrlSnapOverride);
+      if (activeTool === 'circle' && placement) {
+        setCircleInteraction((current) => updateCirclePreview(current, placement.position.point));
+        setSegmentInteraction(EMPTY_LINE_SEGMENT_INTERACTION); segmentInteractionRef.current = EMPTY_LINE_SEGMENT_INTERACTION;
+      }
       return;
     }
     if (activeTool === 'select') setGeometryPreselection(resolveDimensionCandidate({ x: event.clientX, y: event.clientY }));
@@ -823,6 +865,7 @@ export function DrawingWorkspace({
     endBoxSelection();
     cancelDrawingProfileCommit(pendingProfileClickRef, window);
     setSegmentInteraction(EMPTY_LINE_SEGMENT_INTERACTION);
+    setCircleInteraction(EMPTY_CIRCLE_INTERACTION);
     segmentInteractionRef.current = EMPTY_LINE_SEGMENT_INTERACTION;
     setDrawingSnap(null);
     drawingSnapRef.current = null;
@@ -916,7 +959,9 @@ export function DrawingWorkspace({
     if (session.exceeded) {
       const rect = normalizeDrawingSelectionRect(session.originModel, session.currentModel);
       const mode = drawingSelectionMode(session.originClient.x, session.currentClient.x);
-      const qualifying = selectDrawingGeometryInRect(resolveActiveSketchLines(documentRef.current), rect, mode);
+      const currentDocument = documentRef.current, sketch = currentDocument.sketches[currentDocument.activeSketchId];
+      const circles = sketch ? sketch.entityOrder.flatMap((id) => { const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[id]; const circle = entity?.type === 'circle' ? resolveCircle(sketch, entity) : null; return circle ? [circle] : []; }) : [];
+      const qualifying = selectDrawingEntitiesInRect([...resolveActiveSketchLines(currentDocument), ...circles], rect, mode);
       setSelectedGeometry((current) => applyDrawingBoxSelection(current, qualifying, event.ctrlKey));
       if (!event.ctrlKey) { setSelectedDimensionId(null); setSelectedGeometricConstraintId(null); }
     } else if (!event.ctrlKey) {
@@ -984,10 +1029,10 @@ export function DrawingWorkspace({
         setSelectedGeometricConstraintId(null);
       }
       else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedDimensionId) { event.preventDefault(); transactDocument((current) => deleteDimension(current, selectedDimensionId)); setSelectedDimensionId(null); }
-      else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedGeometry.length === 1 && selectedGeometry[0].kind === 'line') {
+      else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedGeometry.length === 1 && (selectedGeometry[0].kind === 'line' || selectedGeometry[0].kind === 'circle')) {
         event.preventDefault();
-        const selectedLineId = (selectedGeometry[0] as Extract<DrawingSelectionRef, { kind: 'line' }>).lineId;
-        transactDocument((current) => deleteEntityWithDependentDimensions(current, selectedLineId));
+        const selectedEntityId = selectedGeometry[0].kind === 'line' ? selectedGeometry[0].lineId : selectedGeometry[0].circleId;
+        transactDocument((current) => selectedGeometry[0].kind === 'line' ? deleteEntityWithDependentDimensions(current, selectedEntityId) : ({ ...current, sketches: { ...current.sketches, [current.activeSketchId]: removeEntityAndOrphans(current.sketches[current.activeSketchId], selectedEntityId) } }));
         setSelectedGeometry([]);
       }
     };
@@ -1032,12 +1077,13 @@ export function DrawingWorkspace({
       <aside ref={toolSidebarRef} className="drawing-tool-sidebar" aria-label="Drawing tools" onPointerDownCapture={preventToolChromePointerSelection} onMouseDownCapture={preventToolChromeMouseSelection}>
         <button type="button" className={`cad-tool-button${activeTool === 'select' ? ' is-active' : ''}`} aria-pressed={activeTool === 'select'} onPointerDown={(event) => activateToolFromPointer('select', event)} onClick={(event) => activateToolFromKeyboard('select', event)}>Select</button>
         <button type="button" className={`cad-tool-button${activeTool === 'line' ? ' is-active' : ''}`} aria-pressed={activeTool === 'line'} onPointerDown={(event) => activateToolFromPointer('line', event)} onClick={(event) => activateToolFromKeyboard('line', event)}>Line</button>
+        <button type="button" className={`cad-tool-button${activeTool === 'circle' ? ' is-active' : ''}`} aria-pressed={activeTool === 'circle'} onPointerDown={(event) => activateToolFromPointer('circle', event)} onClick={(event) => activateToolFromKeyboard('circle', event)}>Circle</button>
         <button type="button" className={`cad-tool-button${activeTool === 'profile' ? ' is-active' : ''}`} aria-pressed={activeTool === 'profile'} onPointerDown={(event) => activateToolFromPointer('profile', event)} onClick={(event) => activateToolFromKeyboard('profile', event)}>Profile</button>
       </aside>
       <section className="canvas-card drawing-canvas-card workspace-canvas">
         <div ref={canvasFrameRef} className="canvas-frame">
           <div className="drawing-status" aria-live="polite">
-            <strong>{activeSketch?.name ?? 'No active sketch'}</strong><span>Unit: {document.unit}</span><span>Grid: {gridSpacing} mm</span><span>Active Tool: {activeTool === 'line' ? 'Line' : activeTool === 'profile' ? 'Profile' : activeTool === 'dimension' ? 'Dimension' : 'Select'}</span>
+            <strong>{activeSketch?.name ?? 'No active sketch'}</strong><span>Unit: {document.unit}</span><span>Grid: {gridSpacing} mm</span><span>Active Tool: {activeTool === 'line' ? 'Line' : activeTool === 'circle' ? 'Circle' : activeTool === 'profile' ? 'Profile' : activeTool === 'dimension' ? 'Dimension' : 'Select'}</span>
           </div>
           <div className="canvas-zoom-controls" aria-label="Drawing canvas zoom controls">
             <button type="button" onClick={() => zoom(1.25)} aria-label="Zoom in">+</button>
@@ -1089,6 +1135,9 @@ export function DrawingWorkspace({
               {resolvedLines.map((entity) => (
                 <line key={entity.id} data-sketch-line-id={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} data-inference-target={segmentCursor?.lineReference?.targetLineId === entity.id ? segmentCursor.lineReference.relation : undefined} className={`drawing-line-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${segmentCursor?.lineReference?.targetLineId === entity.id ? ' is-inference-target' : ''}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'line', lineId: entity.id })}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
               ))}
+              {resolvedCircles.map((entity) => <circle key={entity.id} data-sketch-circle-id={entity.id}
+                className={`drawing-line-entity drawing-interactive-hit${drawingGeometrySelectionClass(selectedGeometry, { kind: 'circle', circleId: entity.id })}`}
+                cx={entity.center.x} cy={entity.center.y} r={entity.radius} fill="none" vectorEffect="non-scaling-stroke" />)}
               {activeTool === 'select' && activeSketch && Object.values(activeSketch.points).map((point) => (
                 <circle key={point.id} className="drawing-sketch-point-hit drawing-interactive-hit" data-sketch-point-id={point.id}
                   cx={point.x} cy={point.y} r={DRAWING_SKETCH_POINT_HIT_RADIUS_PX / pixelsPerMm}
@@ -1216,6 +1265,9 @@ export function DrawingWorkspace({
             {isSegmentTool && segmentInteraction.start && segmentInteraction.effectivePreviewPoint && (
               <line className={`drawing-segment-preview${hasAngularPresentationTruth(segmentInteraction) ? ' is-angular-snapped' : ''}`} x1={segmentInteraction.start.x} y1={segmentInteraction.start.y} x2={segmentInteraction.effectivePreviewPoint.x} y2={segmentInteraction.effectivePreviewPoint.y} />
             )}
+            {activeTool === 'circle' && circleInteraction.center && circlePreviewRadius(circleInteraction) !== null && <circle
+              className="drawing-segment-preview" cx={circleInteraction.center.x} cy={circleInteraction.center.y}
+              r={circlePreviewRadius(circleInteraction)!} fill="none" vectorEffect="non-scaling-stroke" />}
             {selectionBoxRect && selectionBoxMode && <rect className={`drawing-selection-box is-${selectionBoxMode}`}
               data-selection-mode={selectionBoxMode} x={selectionBoxRect.minX} y={selectionBoxRect.minY}
               width={selectionBoxRect.maxX - selectionBoxRect.minX} height={selectionBoxRect.maxY - selectionBoxRect.minY} />}

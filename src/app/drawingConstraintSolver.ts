@@ -38,6 +38,17 @@ const evaluateSystem = (sketch: DrawingSketchV2, component: ComponentState, vari
         residuals.push(result.residual); [p, a, b].forEach((key, j) => { const i = index.get(key); if (i !== undefined) { row[i * 2] += result.gradient[j * 2]; row[i * 2 + 1] += result.gradient[j * 2 + 1]; } });
         jacobian.push(row); continue;
       }
+      if (equation.geometricConstraint.variant === 'point-curve') {
+        const [pKey, centerKey] = equation.pointKeys;
+        const circle = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[equation.geometricConstraint.references[1].entityId];
+        if (circle?.type !== 'circle') return null;
+        const p = coordinate(sketch, values, index, pKey), center = coordinate(sketch, values, index, centerKey);
+        const dx = p.x - center.x, dy = p.y - center.y, distance = Math.hypot(dx, dy);
+        if (distance <= DRAWING_CONSTRAINT_TOLERANCE_MM) return null;
+        residuals.push(distance - circle.radius);
+        for (const [key, sign] of [[pKey, 1], [centerKey, -1]] as const) { const i = index.get(key); if (i !== undefined) { row[i * 2] += sign * dx / distance; row[i * 2 + 1] += sign * dy / distance; } }
+        jacobian.push(row); continue;
+      }
       const [aKey, bKey] = equation.pointKeys, axis = equation.coordinateAxis === 'x' ? 0 : 1;
       const a = coordinate(sketch, values, index, aKey), b = coordinate(sketch, values, index, bKey);
       residuals.push(axis === 0 ? a.x - b.x : a.y - b.y);
@@ -123,7 +134,7 @@ export const solveDrawingComponentDrag = (
       const equation = constraintEquation(sketch, dimension);
       if (!equation || equation.pointKeys.length !== 2 || equation.pointKeys.includes(DRAWING_ORIGIN_CONSTRAINT_KEY)) return [];
       const [a, b] = equation.pointKeys;
-      const line = Object.values(sketch.entities).find((entity) =>
+      const line = Object.values(sketch.entities).filter((entity) => entity.type === 'line').find((entity) =>
         (entity.startPointId === a && entity.endPointId === b) || (entity.startPointId === b && entity.endPointId === a));
       return line && !directLineIds.has(line.id) && !directPointIds.has(a) && !directPointIds.has(b) ? [{ line, a, b }] : [];
     });
@@ -154,7 +165,8 @@ export const solveDrawingComponentDrag = (
     // An exact rigid translation (or a target along remaining DOF) wins without
     // numerical adjustment.
     if (verifyDrawingConstraints(working, analyzed!.dimensionIds, analyzed!.geometricConstraintIds)) continue;
-    const hasRelationalOrientation = component.equations.some(({ dimension, geometricConstraint }) => dimension?.kind === 'LINE_TO_LINE_ANGLE' || Boolean(geometricConstraint));
+    const hasRelationalOrientation = component.equations.some(({ dimension, geometricConstraint }) => dimension?.kind === 'LINE_TO_LINE_ANGLE'
+      || Boolean(geometricConstraint && !(geometricConstraint.kind === 'COINCIDENT' && geometricConstraint.variant === 'point-curve')));
     let variableIds: readonly string[] = hasRelationalOrientation ? component.pointIds : draggedIds;
     let solved = solveComponent(working, component, variableIds, hasRelationalOrientation
       ? new Map(variableIds.map((id) => [id, draggedIds.includes(id) ? DIRECT_TARGET_MOVEMENT_WEIGHT : 1]))
@@ -178,7 +190,7 @@ const measurement = (sketch: DrawingSketchV2, dimension: DrawingDimension): numb
 export const verifyDrawingDrivingDimensions = (sketch: DrawingSketchV2, ids: readonly string[]): readonly number[] | null => { const residuals = ids.map((id) => { const d = sketch.dimensions[id], value = d?.role === 'driving' ? measurement(sketch, d) : null; return d && value !== null ? Math.abs(value - d.value) : Infinity; }); return residuals.every((v) => Number.isFinite(v) && v <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? residuals : null; };
 export const verifyDrawingConstraints = (sketch: DrawingSketchV2, dimensionIds: readonly string[], geometricConstraintIds: readonly string[]): readonly number[] | null => {
   const dimensions = verifyDrawingDrivingDimensions(sketch, dimensionIds); if (!dimensions) return null;
-  const geometric = geometricConstraintIds.map((id) => { const constraint = (sketch.geometricConstraints ?? {})[id], equation = constraint && geometricConstraintEquation(sketch, constraint); if (!equation) return Infinity; if (constraint.kind === 'MIDPOINT') { const [p, a, b] = equation.pointKeys; return Math.max(Math.abs(sketch.points[p].x - (sketch.points[a].x + sketch.points[b].x) / 2), Math.abs(sketch.points[p].y - (sketch.points[a].y + sketch.points[b].y) / 2)); } if (constraint.kind === 'COINCIDENT') { const [a, b, c] = equation.pointKeys; return constraint.variant === 'point-linear-support' ? Math.abs(pointOnLinearSupportAndGradient(sketch.points[a], sketch.points[b], sketch.points[c])?.residual ?? Infinity) : Math.max(Math.abs(sketch.points[a].x - sketch.points[b].x), Math.abs(sketch.points[a].y - sketch.points[b].y)); } if (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL') { const [a, b] = equation.pointKeys; return Math.abs(constraint.kind === 'HORIZONTAL' ? sketch.points[b].y - sketch.points[a].y : sketch.points[b].x - sketch.points[a].x); } const [a0, a1, b0, b1] = equation.pointKeys; return Math.abs((constraint.kind === 'PARALLEL' ? parallelAndGradient : perpendicularAndGradient)(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1])?.residual ?? Infinity); });
+  const geometric = geometricConstraintIds.map((id) => { const constraint = (sketch.geometricConstraints ?? {})[id], equation = constraint && geometricConstraintEquation(sketch, constraint); if (!equation) return Infinity; if (constraint.kind === 'MIDPOINT') { const [p, a, b] = equation.pointKeys; return Math.max(Math.abs(sketch.points[p].x - (sketch.points[a].x + sketch.points[b].x) / 2), Math.abs(sketch.points[p].y - (sketch.points[a].y + sketch.points[b].y) / 2)); } if (constraint.kind === 'COINCIDENT') { const [a, b, c] = equation.pointKeys; if (constraint.variant === 'point-linear-support') return Math.abs(pointOnLinearSupportAndGradient(sketch.points[a], sketch.points[b], sketch.points[c])?.residual ?? Infinity); if (constraint.variant === 'point-curve') { const circle = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[constraint.references[1].entityId]; return circle?.type === 'circle' ? Math.abs(Math.hypot(sketch.points[a].x - sketch.points[b].x, sketch.points[a].y - sketch.points[b].y) - circle.radius) : Infinity; } return Math.max(Math.abs(sketch.points[a].x - sketch.points[b].x), Math.abs(sketch.points[a].y - sketch.points[b].y)); } if (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL') { const [a, b] = equation.pointKeys; return Math.abs(constraint.kind === 'HORIZONTAL' ? sketch.points[b].y - sketch.points[a].y : sketch.points[b].x - sketch.points[a].x); } const [a0, a1, b0, b1] = equation.pointKeys; return Math.abs((constraint.kind === 'PARALLEL' ? parallelAndGradient : perpendicularAndGradient)(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1])?.residual ?? Infinity); });
   return geometric.every((value) => Number.isFinite(value) && value <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? [...dimensions, ...geometric] : null;
 };
 
@@ -211,7 +223,7 @@ export const resolvePointToLineMovementIntent = (sketch: DrawingSketchV2, dimens
   if (!measuredLine) return null;
   const pointKey = constraintPointKey(sketch, dimension.references[0]);
   if (!pointKey) return null;
-  const lines = sketch.entityOrder.map((id) => sketch.entities[id]).filter((line): line is NonNullable<typeof line> => Boolean(line));
+  const lines = sketch.entityOrder.map((id) => sketch.entities[id]).filter((line): line is Extract<NonNullable<typeof line>, { type: 'line' }> => line?.type === 'line');
   const incident = (pointId: string) => lines.filter((line) => line.startPointId === pointId || line.endPointId === pointId);
   const componentForLine = (seedId: string) => {
     const lineIds = new Set([seedId]), pointIds = new Set<string>();
@@ -263,7 +275,7 @@ export const resolveLineToLineMovementIntent = (sketch: DrawingSketchV2, dimensi
   if (dimension.kind !== 'LINE_TO_LINE_DISTANCE') return null;
   const measured = dimension.references.map((reference) => sketch.entities[reference.entityId]);
   if (!measured[0] || !measured[1]) return null;
-  const lines = sketch.entityOrder.map((id) => sketch.entities[id]).filter((line): line is NonNullable<typeof line> => Boolean(line));
+  const lines = sketch.entityOrder.map((id) => sketch.entities[id]).filter((line): line is Extract<NonNullable<typeof line>, { type: 'line' }> => line?.type === 'line');
   const analysis = analyzeDrawingConstraints(sketch);
   const component = (seed: string) => {
     const lineIds = new Set([seed]), pointIds = new Set<string>();
