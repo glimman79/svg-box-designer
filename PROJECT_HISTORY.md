@@ -25,6 +25,17 @@ The continuing straight-segment authoring workflow was renamed from its legacy L
 
 The neutral straight-segment infrastructure prepared by the Profile migration was then reused for the separate standalone Line workflow. The implementation merged in #546: Line accepts P1 and P2, commits exactly one straight segment, and completes rather than continuing from P2; persistent activation starts each subsequent construction from a fresh independent P1. Profile remains the chained workflow. Both authoring paths create ordinary `DrawingLineEntity` / `type: 'line'` geometry without authoring-origin metadata, so downstream topology, Constraints, Dimensions, selection, and Direct Manipulation share the existing geometry systems. The user subsequently tested the implemented Line tool in the real browser, reported that it worked well, and accepted the milestone.
 
+### September 2026 directional drag-box selection acceptance
+
+Directional Drawing drag-box selection merged in PR #551 at main commit
+`a91f794333d49935f3743116286f679fc025550a`. Left-to-right Window selection accepts only
+strictly enclosed Lines, while right-to-left Crossing selection also accepts partly
+contained, crossed, and boundary-touching Lines; the mode changes live with direction.
+An ordinary box replaces selection and Ctrl toggles qualifying Lines through the common
+selection system. The accepted scope is Line-only rather than independent point box
+selection. Mikael tested the merged interaction in the real browser, reported “det
+fungerar bra,” and accepted it.
+
 ### September 2026 equivalent-demand browser failure and policy correction
 
 The browser trace after #518–#520 showed frame 345 correctly detecting and accepting compatible Parallel, Perpendicular, and Point Reference channels and presenting Parallel alone. The click then began a fresh chained segment at frame 346. Multiple Parallel references, a Perpendicular reference, and Point Reference produced essentially the same candidate point at about 8.4169 px, while Y alignment was about 4.6948 px and generic angular intent reported 45°. Because each semantic family was independently outside its 8 px acquisition threshold and the new segment intentionally had no hysteresis, alignment won with all direction channels null. Thus the first incorrect stage was candidate acquisition, before Line resolution or presentation: equivalent geometric evidence was still arbitrated as unrelated family candidates.

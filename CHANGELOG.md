@@ -1,5 +1,11 @@
 # Unreleased
 
+## Drawing — directional box selection
+
+- Added directional Line multi-selection in Drawing Select: left-to-right Window selection requires complete strict enclosure, while right-to-left Crossing selection includes enclosed, crossed, partly enclosed, and boundary-touching Lines.
+- The transient box switches its visual treatment live when drag direction changes; selection commits on release, with an ordinary box replacing selection and Ctrl toggling qualifying Lines.
+- Kept points outside independent box qualification and preserved click selection, Direct Manipulation, and the separate Dimensions interaction workflow.
+
 ## Drawing — accepted snap tuning
 
 - Tuned Drawing snap areas for a less magnetic feel: Endpoint and Midpoint capture/release at 7/9 CSS px, while finite Line, alignment, and Point Reference use 5/7 CSS px.
