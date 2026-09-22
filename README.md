@@ -1,10 +1,10 @@
 # SVG Box Designer
 
-SVG Box Designer is a browser-based React application for drawing 2D line geometry and turning imported SVG panels into fabrication-ready box geometry. It combines a constraint-aware Drawing workspace with SVG panel, connection, composition, compensation, preview, and export workflows.
+SVG Box Designer is a browser-based React application for drawing semantic 2D sketch geometry and turning imported SVG panels into fabrication-ready box geometry. It combines a constraint-aware Drawing workspace with SVG panel, connection, composition, compensation, preview, and export workflows.
 
 ## Application areas
 
-- **2D Drawing** provides an SVG CAD-style canvas with Dimension and constraint workflows, shared `SketchPoint` topology, click and directional Window/Crossing multi-selection for Lines, snapping and geometric inference, Direct Manipulation, and Drawing Undo/Redo. `Line` authors one independent straight segment from P1 to P2 and completes; `Profile` authors continuing/chained connected straight segments. Both workflows store each segment as the same ordinary Line entity. Authoring can infer endpoints, midpoints, axes, alignments, angular directions, Parallel, Perpendicular, and Point References; Ctrl temporarily bypasses automatic inference.
+- **2D Drawing** provides an SVG CAD-style canvas with Dimension and constraint workflows, shared `SketchPoint` topology, click and directional Window/Crossing multi-selection for Lines, snapping and geometric inference, Direct Manipulation, and Drawing Undo/Redo. `Line` authors one independent straight segment from P1 to P2 and completes; `Profile` authors continuing/chained connected straight segments. Both workflows store each segment as the same ordinary Line entity. Circle Stage 1 is merged, with a visible working authoring preview, but browser acceptance remains pending because normal committed Circle presentation is currently invisible until selected. Authoring can infer endpoints, midpoints, axes, alignments, angular directions, Parallel, Perpendicular, and Point References; Ctrl temporarily bypasses automatic inference.
 - **Box / Construction** imports or starts an SVG document, identifies panels and selectable straight edges, and applies Panel Manager, TB (Top/Bottom finger-joint), W (Wall), and S (Slot) workflows. Generated geometry is composed, reconciled, manufacturing-compensated for clearances and kerf, previewed, and exported as SVG.
 - **Puzzle** is reserved in the workspace selector but is **not implemented**.
 
@@ -65,7 +65,7 @@ svg-box-designer/
 │       └── panel*.ts              # panel model, contributors, and composition
 ├── tests/                         # focused behavior and diagnostic regressions
 ├── docs/                          # specifications, analyses, diagnostics, and release snapshots
-├── PROJECT_MASTER.md              # current product and architecture authority
+├── PROJECT_MASTER.md              # current product, architecture, and Drawing presentation authority
 ├── PROJECT_HISTORY.md             # architectural evolution
 ├── ROADMAP.md                     # planned product development and open design work
 ├── REGLER_FOR_CHATT_MED_CHATGPT.md # collaboration and development workflow rules

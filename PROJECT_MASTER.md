@@ -30,7 +30,7 @@ A shared, versioned cross-workspace `ProjectDocument`, cross-workspace reference
 
 The current workspace implements Select, Profile, Line, Dimension, a floating Constraints tool, Direct Manipulation, snapping/inference, solver-backed constraints, and bounded Drawing Undo/Redo. Profile and standalone Line are browser-verified and accepted as separate authoring workflows: Profile authors continuing/chained connected straight segments, while Line accepts P1 and P2, creates exactly one straight segment, and completes without chaining from P2. Normal Line activation returns to Select after completion; persistent Line activation remains active but resets completely so the next click defines a fresh independent P1.
 
-Both workflows reuse the neutral straight-segment foundation rather than duplicating snapping, inference, constraints, topology, presentation, or mutation behavior. Circle and Arc are planned rather than implemented. Their accepted architecture direction is to extend shared Drawing systems wherever geometry semantics allow, including selection, hit testing, snapping/inference, topology, Constraints, Dimensions, presentation, Direct Manipulation, History, persistence, and deletion, while retaining true semantic circular geometry and one authoritative radius rather than geometry-specific duplicate subsystems. Every committed segment remains an ordinary `DrawingLineEntity` with persistent `type: 'line'`; neither Profile nor Line introduces a separate geometry type or authoring-origin metadata. Consequently topology, selection, Direct Manipulation, Constraints, Dimensions, and History operate on the committed geometry without distinguishing which authoring workflow created it. Menu visibility does not prove implementation of other prospective geometry tools.
+Both workflows reuse the neutral straight-segment foundation rather than duplicating snapping, inference, constraints, topology, presentation, or mutation behavior. Circle Stage 1 is **Implemented / merged — browser acceptance pending** because its visible, live P1–P2 authoring preview works, but its committed Circle normally has no semantic presentation class and is therefore invisible until selected. Arc remains planned. Their accepted architecture direction is to extend shared Drawing systems wherever geometry semantics allow, including selection, hit testing, snapping/inference, topology, Constraints, Dimensions, presentation, Direct Manipulation, History, persistence, and deletion, while retaining true semantic circular geometry and one authoritative radius rather than geometry-specific duplicate subsystems. Every committed segment remains an ordinary `DrawingLineEntity` with persistent `type: 'line'`; neither Profile nor Line introduces a separate geometry type or authoring-origin metadata. Consequently topology, selection, Direct Manipulation, Constraints, Dimensions, and History operate on the committed geometry without distinguishing which authoring workflow created it. Menu visibility does not prove implementation of other prospective geometry tools.
 
 `drawingLineSegmentSupport.ts` owns neutral straight-segment support, while `drawingProfileTool.ts` owns the chained Profile lifecycle and `drawingLineTool.ts` owns the standalone Line lifecycle. Generic document mutation remains in `drawingDocumentMutation.ts`. The delayed commit/double-click boundary in `drawingProfileCommitBoundary.ts` remains Profile-specific. Shared cursor, preview, and inference presentation consume neutral segment interaction state rather than treating Profile as their owner.
 
@@ -125,6 +125,145 @@ The committed document snapshot is made visible to candidate collection in the s
 ### 4.8 Interaction and History
 
 Left mouse authors/selects, right-drag pans, the wheel zooms, and Esc exits the applicable interaction. Drawing transactions group semantic user actions for Undo/Redo. A completed standalone Line is one transaction containing its accepted geometry, topology, and automatic semantics; persistent Line activation produces one transaction per completed independent Line. UI-only panel state does not create document History. Deleting geometry cleans dependent dimensions/constraints through model operations.
+
+### 4.9 Normative Drawing Presentation Standard
+
+This section is the global, normative authority for Drawing presentation. Numeric values here describe current accepted behavior; production token names remain current implementation details until a later code generalization. Line is the accepted reference implementation for applicable committed curves, but does not own these meanings.
+
+```text
+semantic geometry / semantic relation
+  -> semantic presentation classification
+  -> global Drawing Presentation Standard
+  -> geometry-specific SVG presentation (<line>, <circle>, future <path>, or role-specific glyphs)
+```
+
+Global policy means shared semantics consume shared roles; it does **not** make curves, Points, Dimensions, Constraints, and support graphics look identical.
+
+#### 4.9.1 Committed Geometry
+
+| Semantic role | Current code value | Color | Width | Fill | Dash | Opacity | Applicability/status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `FREE` | `--drawing-line-free` | `#39ff5a` | `1.8` | none | solid | `1` | Established global state for applicable committed curve geometry. |
+| `CONSTRAINED` | `--drawing-line-constrained` | `#00a83e` | `1.8` | none | solid | `1` | Established global state for applicable committed curve geometry. |
+| `FULLY_LOCKED` | `--drawing-line-fully-locked` | `#111827` | `1.8` | none | solid | `1` | Established global state for applicable committed curve geometry. |
+| Inference target | `--drawing-inference` | `#38bdf8` | `1.8` | none | solid | `1` | Temporary inference-target override; separate semantic token/role from Authoring Preview. |
+
+Strokes are non-scaling where applicable. The current CSS names say “line” because Line is the reference implementation; the semantic states are global and future production generalization must remove conceptual Line ownership without changing these values.
+
+#### 4.9.2 Geometry Constraint State
+
+`FREE`, `CONSTRAINED`, and `FULLY_LOCKED` form the global `GeometryConstraintVisualState`, but each entity type derives that classification from its own authoritative mobility/freedoms:
+
+```text
+entity-specific mobility / freedom derivation
+  -> global GeometryConstraintVisualState
+  -> global committed-geometry presentation
+```
+
+A Line currently derives state from endpoint mobility. A Circle must derive state from Circle-authoritative freedoms; a future Arc must use Arc-authoritative freedoms. For Circle Stage 1 the center is a persistent `SketchPoint` and radius is an authoritative scalar. A fully constrained center cannot make the whole Circle `FULLY_LOCKED` while radius remains free. A Point-on-Circle relation must not make a Circle `CONSTRAINED` merely because its record references that Circle. Future implementation must calculate actual Circle-relevant freedom; this documentation does not prescribe that calculation.
+
+#### 4.9.3 Selection / Preselection / Direct Manipulation
+
+| Temporary role | Semantic token/current value | Color | Width | Applicability/status |
+| --- | --- | --- | --- | --- |
+| Selected committed curve | geometry selection / `--drawing-hover` | `#06b6d4` | `2.6` | Established Line behavior; standard for Circle and future applicable curves as interaction support is integrated. |
+| Preselected committed curve | geometry preselection / `--drawing-hover` | `#06b6d4` | `2.6` | Established. |
+| Direct Manipulation | geometry dragging / `--drawing-hover` | `#06b6d4` | `2.6` | Established. |
+| Dimension-input geometry preselection | dimension preselection / `--drawing-hover` | `#06b6d4` | `2.4` | Established. |
+
+These are temporary paint overrides. They never replace or mutate the underlying constraint visual state.
+
+#### 4.9.4 Authoring Preview
+
+| Role | Semantic token/current value | Color | Width | Fill | Dash | Applicability/status |
+| --- | --- | --- | --- | --- | --- | --- |
+| Ordinary Authoring Preview | currently painted with `--drawing-inference`; future dedicated preview role | `#38bdf8` | `1.25` | none | `5 4` | Established for Line, Profile segment, and Circle previews; non-scaling stroke where applicable. |
+| Line/Profile angular-authority modifier | preview modifier | `#38bdf8` | `1.7` | none | solid | Established exception for genuine Line-direction semantic state. |
+
+Authoring Preview and Inference are separate semantic roles even though both currently use `#38bdf8`; implementations must not couple their future values. Arc, Rectangle, Ellipse, Spline, and other applicable geometry default to ordinary Authoring Preview unless an explicit, documented tool semantic requires a modifier. The Circle P1–P2/radius preview is browser-observed, visible, and updates live. There is no dedicated mandatory Circle radius helper line in current code; any straight line seen during authoring belongs to the actual inference/reference role that produces it.
+
+#### 4.9.5 Inference
+
+Inference is its own transient category with semantic color `#38bdf8`. Alignment, Point Reference, Midpoint, Parallel, Perpendicular, and inference-target geometry may share that color while retaining role-specific glyphs, widths, dash, opacity, and support geometry. Shared color does not flatten distinct semantic feedback.
+
+#### 4.9.6 Helper / Reference / Support Geometry
+
+There is no generic “helper line” role. Presentation must retain the following semantic ownership:
+
+| Role | Current color | Width | Dash | Opacity/fill | Status |
+| --- | --- | --- | --- | --- | --- |
+| Alignment inference guide | `#38bdf8` | `1.25` | `5 4` | default / none | Established. |
+| Point Reference guide | `#38bdf8` | `1` | `5 5` | `0.8` / none | Established. |
+| Transient Perpendicular relation support | 55% inference cyan mixed with transparent | `1` | `3 3` | mixed/faded / none | Established. |
+| Persistent Perpendicular relation support | `#94a3b8` | `1` | `3 3` | default / none | Established. |
+| Dimension witness/extension | Dimension `currentColor` | `0.65` | solid | `0.72` / none | Established Dimension-owned geometry. |
+| Construction/reference geometry | unresolved | unresolved | unresolved | unresolved | Future category only if it becomes a real product concept. |
+
+Support graphics are presentation only unless their owning semantic model explicitly says otherwise; they do not silently become selectable/exported Drawing entities, topology, solver authority, or History state.
+
+#### 4.9.7 Constraints
+
+Constraints remain a separate presentation system. Implemented Constraints are **Midpoint, Coincidence, Parallelism, Perpendicular, Horizontal, and Vertical**. Tangency, Concentricity, Radius/Diameter, Fix, Symmetry, Distance Constraint, Length Constraint, and Angle Constraint are not implemented.
+
+| State | Semantic token/current value | Color | Applicability/status |
+| --- | --- | --- | --- |
+| Persistent Constraint base | `--drawing-geometric-constraint` | `#2563eb` | Established; relation-specific glyphs and support presentation remain distinct. |
+| Constraint hover | current `--drawing-hover`; semantically Constraint hover | `#06b6d4` | Established current behavior; separate role despite numeric sharing. |
+| Constraint selected | current `--drawing-dimension-active`; semantically Constraint selected | `#137a3e` | Established current behavior; separate role despite numeric sharing. |
+
+Midpoint, Parallel, and Perpendicular demonstrate the rule that transient and persistent forms may share semantic relation/layout derivation while paint/state differs. Persistent Midpoint currently uses width `1`; transient Midpoint uses `1.4`.
+
+#### 4.9.8 Dimensions
+
+Dimensions are not Constraints and retain a separate presentation category.
+
+| Role | Current token/color | Width/other value | Status |
+| --- | --- | --- | --- |
+| Dimension normal | `--drawing-dimension`, `#2db65b` | — | Established. |
+| Dimension hover | `--drawing-dimension-hover`, `#2fb85f` | — | Established. |
+| Dimension active | `--drawing-dimension-active`, `#137a3e` | — | Established. |
+| Dimension line | `currentColor` | `0.75` | Established. |
+| Witness/extension | `currentColor` | `0.65`, opacity `0.72`, solid | Established. |
+| Text | `currentColor` with `#f8fafc` halo | `10` screen px; halo `2` px | Established. |
+| Arrows | state-colored current triangular marker system | existing `7 × 7` marker geometry | Established. |
+| Preview Dimension | owning Dimension paint | opacity `0.7` | Established. |
+
+Distance, Length, and Angle exist as Dimensions. Radius/Diameter Dimension is not implemented.
+
+#### 4.9.9 Points
+
+Points participate in shared semantic interaction where appropriate but retain point-specific glyphs rather than being forced into curve strokes. Preserve distinct presentation for the invisible `SketchPoint` hit target, selected and preselected point glyphs, Endpoint snap, Midpoint relation, Dimension point preselection and selected point, Coincidence point glyph, and reference points.
+
+#### 4.9.10 Interaction Overlays
+
+| Overlay | Stroke | Width | Fill | Dash | Status |
+| --- | --- | --- | --- | --- | --- |
+| Directional box selection — Window | `#0e7490` | `1.25` | `rgb(14 116 144 / 10%)` | solid | Browser-accepted. |
+| Directional box selection — Crossing | `#16803d` | `1.25` | `rgb(22 163 74 / 9%)` | `6 4` | Browser-accepted. |
+
+#### 4.9.11 Presentation Precedence
+
+1. Entity-specific freedom analysis establishes the persistent underlying `GeometryConstraintVisualState`.
+2. Normal committed paint represents that state.
+3. Applicable transient context can override paint without changing semantic state: inference target, Dimension-input preselection, geometry preselection, selection, and Direct Manipulation.
+4. Points, Constraints, Dimensions, previews, inference glyphs, supports, and interaction overlays remain within their own systems rather than inheriting curve paint.
+
+Current curve override behavior is implemented by CSS class rules and source order: the later dimension-preselection and geometry selection/preselection/dragging rules override normal and inference-target curve rules. That observable current behavior is preserved, but the ordering mechanism itself has not been approved as permanent product semantics. Future production generalization must encode/test explicit precedence rather than silently canonize accidental CSS ordering.
+
+#### 4.9.12 OPEN / FUTURE PRESENTATION DECISIONS
+
+Every item below is normative tracking: the triggered implementation must resolve and document the question rather than silently invent behavior.
+
+| Question | Why unresolved | Current behavior | Decision trigger / mandatory action |
+| --- | --- | --- | --- |
+| Which category owns the future three-point Arc's full support/reference Circle? | Its eventual semantic purpose determines whether it is Dimension/reference, Constraint/support, or another already-established category. | Arc and its support Circle are not implemented; no style is assigned. | Resolve during Arc presentation design before implementation; reuse an established semantic category where truthful and document the decision. |
+| How should future construction/reference entities look? | Construction/reference geometry is not yet a real defined product concept. | No global category exists. | When the entity concept is designed, define ownership and presentation explicitly; do not invent per-tool paint. |
+| How should future Radius/Diameter presentation work? | Neither Radius/Diameter Dimension nor Constraint is implemented, and the two systems must remain distinct. | No presentation exists. | Decide when either capability is designed; do not infer a style now. |
+| Should persistent and transient Midpoint intentionally retain widths `1` and `1.4`? | Current difference has not been explicitly normalized or approved as permanent. | Persistent `1`; transient `1.4`. | Preserve until a focused presentation decision; that work must explicitly resolve and document it. |
+| Are Alignment dash `5 4` and Point Reference dash `5 5` intentionally distinct? | Both are accepted current behavior but permanent differentiation has not been decided. | They remain distinct. | Preserve until explicitly revisited; any convergence must be a documented decision. |
+| Should Constraint hover permanently equal geometry hover numerically? | Both are `#06b6d4`, but roles are semantically independent. | Values match. | Maintain separate roles/tokens when production tokens are generalized; any future coupling or divergence requires an explicit decision. |
+| Should Constraint selected permanently equal Dimension active numerically? | Both are `#137a3e`, but roles are semantically independent. | Values match. | Maintain separate roles/tokens when production tokens are generalized; any future coupling or divergence requires an explicit decision. |
+| May a future special authoring tool deviate from ordinary Authoring Preview? | No such tool-specific semantic has been established. | Applicable current tools use the global preview, except the explicit Line/Profile angular-authority modifier. | Default to the global standard; before deviation, identify a genuine semantic reason and document the modifier. |
 
 ## 5. Box / Construction architecture
 
