@@ -1,11 +1,16 @@
 :root {
-  /* The only three normal committed-Line solver-state colors: two greens and graphite. */
-  --drawing-line-free: #39ff5a;
-  --drawing-line-constrained: #00a83e;
-  --drawing-line-fully-locked: #111827;
+  /* The only three normal committed-geometry solver-state colors: two greens and graphite. */
+  --drawing-geometry-free: #39ff5a;
+  --drawing-geometry-constrained: #00a83e;
+  --drawing-geometry-fully-locked: #111827;
+  /* Compatibility aliases for integrations that still consume the historical Line tokens. */
+  --drawing-line-free: var(--drawing-geometry-free);
+  --drawing-line-constrained: var(--drawing-geometry-constrained);
+  --drawing-line-fully-locked: var(--drawing-geometry-fully-locked);
   --drawing-hover: #06b6d4;
   --drawing-selected-point: #1d4ed8;
   --drawing-inference: #38bdf8;
+  --drawing-authoring-preview: #38bdf8;
   --drawing-dimension: #2db65b;
   --drawing-dimension-hover: #2fb85f;
   --drawing-dimension-active: #137a3e;
@@ -932,34 +937,37 @@ button:disabled {
   cursor: not-allowed;
 }
 
-.drawing-line-entity,
+.drawing-geometry-entity,
+.drawing-authoring-preview,
 .drawing-segment-preview {
   vector-effect: non-scaling-stroke;
   pointer-events: none;
   fill: none;
 }
 
-.drawing-line-entity {
+.drawing-geometry-entity {
   stroke-width: 1.8;
   stroke-opacity: 1;
 }
 
-.drawing-line-entity.geometry-free { stroke: var(--drawing-line-free); }
-.drawing-line-entity.geometry-constrained { stroke: var(--drawing-line-constrained); }
-.drawing-line-entity.geometry-fully-locked { stroke: var(--drawing-line-fully-locked); }
+.drawing-geometry-entity.geometry-free { stroke: var(--drawing-geometry-free); }
+.drawing-geometry-entity.geometry-constrained { stroke: var(--drawing-geometry-constrained); }
+.drawing-geometry-entity.geometry-fully-locked { stroke: var(--drawing-geometry-fully-locked); }
 
-.drawing-line-entity.is-inference-target {
+.drawing-geometry-entity.is-inference-target {
   stroke: var(--drawing-inference);
   stroke-width: 1.8;
   pointer-events: none;
 }
 
+.drawing-authoring-preview,
 .drawing-segment-preview {
-  stroke: var(--drawing-inference);
+  stroke: var(--drawing-authoring-preview);
   stroke-width: 1.25;
   stroke-dasharray: 5 4;
 }
 
+.drawing-authoring-preview.is-angular-snapped,
 .drawing-segment-preview.is-angular-snapped {
   stroke-width: 1.7;
   stroke-dasharray: none;
@@ -1617,11 +1625,11 @@ button:disabled {
 .drawing-dimension-hit { stroke: transparent; stroke-width: 14; vector-effect: non-scaling-stroke; pointer-events: stroke; }
 .drawing-dimension-value-hit { fill: transparent; pointer-events: all; }
 .drawing-sketch-point-hit { fill: transparent; stroke: none; pointer-events: all; }
-.drawing-line-entity { pointer-events: stroke; }
-.drawing-line-entity.is-geometry-selected { stroke: var(--drawing-hover); stroke-width: 2.6; }
-.drawing-line-entity.is-dimension-preselected { stroke: var(--drawing-hover); stroke-width: 2.4; }
-.drawing-line-entity.is-geometry-preselected,
-.drawing-line-entity.is-geometry-dragging { stroke: var(--drawing-hover); stroke-width: 2.6; }
+.drawing-geometry-entity { pointer-events: stroke; }
+.drawing-geometry-entity.is-geometry-selected { stroke: var(--drawing-hover); stroke-width: 2.6; }
+.drawing-geometry-entity.is-dimension-preselected { stroke: var(--drawing-hover); stroke-width: 2.4; }
+.drawing-geometry-entity.is-geometry-preselected,
+.drawing-geometry-entity.is-geometry-dragging { stroke: var(--drawing-hover); stroke-width: 2.6; }
 .drawing-geometry-point-preselection, .drawing-geometry-point-selected { fill: #0e7490; stroke: none; vector-effect: non-scaling-stroke; pointer-events: none; }
 .drawing-geometry-point-selected { fill: var(--drawing-selected-point); stroke: none; }
 .drawing-selection-box { pointer-events: none; vector-effect: non-scaling-stroke; stroke-width: 1.25; }

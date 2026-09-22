@@ -43,7 +43,7 @@ test('workspace exposes Line UI, shared placement, synchronous commit, and neutr
   assert.match(workspace, /aria-pressed=\{activeTool === 'line'\}/);
   assert.match(workspace, /commitSegmentPlacement\('line'/);
   assert.doesNotMatch(workspace, /scheduleDrawingProfileCommit[\s\S]{0,300}commitSegmentPlacement\('line'/);
-  assert.match(workspace, /drawing-segment-preview/);
+  assert.match(workspace, /drawing-authoring-preview/);
   assert.match(workspace, /drawing-segment-cursor/);
   assert.match(styles, /\.drawing-svg\.has-segment-cursor/);
   assert.match(app, /'select' \| 'line' \| 'profile' \| 'dimension'/);

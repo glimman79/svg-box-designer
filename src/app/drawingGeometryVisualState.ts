@@ -1,5 +1,5 @@
 import { sketchPointIdFromReference } from './drawingDimension.js';
-import type { DrawingSketchV2 } from './drawingTypes.js';
+import type { DrawingEntity, DrawingSketchV2 } from './drawingTypes.js';
 import { analyzeDrawingConstraints, analyzeDrawingPointMobility } from './drawingConstraintAnalysis.js';
 
 export const GEOMETRY_CONSTRAINT_VISUAL_STATES = ['FREE', 'CONSTRAINED', 'FULLY_LOCKED'] as const;
@@ -7,6 +7,7 @@ export type GeometryConstraintVisualState = typeof GEOMETRY_CONSTRAINT_VISUAL_ST
 
 export type GeometryConstraintVisualTarget =
   | Readonly<{ kind: 'line'; lineId: string }>
+  | Readonly<{ kind: 'circle'; circleId: string }>
   | Readonly<{ kind: 'point'; pointId: string }>;
 
 /**
@@ -19,13 +20,17 @@ export type GeometryFreedomProof = Readonly<{
 
 const targetPointIds = (sketch: DrawingSketchV2, target: GeometryConstraintVisualTarget): ReadonlySet<string> => {
   if (target.kind === 'point') return new Set(sketch.points[target.pointId] ? [target.pointId] : []);
+  if (target.kind === 'circle') {
+    const circle = (sketch.entities as Record<string, DrawingEntity>)[target.circleId];
+    return new Set(circle?.type === 'circle' ? [circle.centerPointId] : []);
+  }
   const line = sketch.entities[target.lineId];
   return new Set(line?.type === 'line' ? [line.startPointId, line.endPointId] : []);
 };
 
 const hasDrivingRestriction = (sketch: DrawingSketchV2, pointIds: ReadonlySet<string>): boolean => (
   Object.values(sketch.dimensions).some((dimension) => dimension.role === 'driving' && dimension.references.some((reference) => {
-    if (reference.kind === 'entity') { const line = sketch.entities[reference.entityId]; return Boolean(line && (pointIds.has(line.startPointId) || pointIds.has(line.endPointId))); }
+    if (reference.kind === 'entity') { const line = sketch.entities[reference.entityId]; return Boolean(line?.type === 'line' && (pointIds.has(line.startPointId) || pointIds.has(line.endPointId))); }
     const pointId = sketchPointIdFromReference(sketch, reference);
     return Boolean(pointId && pointIds.has(pointId));
   }))
@@ -43,12 +48,23 @@ export const getGeometryConstraintVisualState = (
   target: GeometryConstraintVisualTarget,
   freedomProof?: GeometryFreedomProof,
 ): GeometryConstraintVisualState => {
-  if (freedomProof?.isRigorous && freedomProof.degreesOfFreedom === 0) return 'FULLY_LOCKED';
+  // Circle Stage 1 has no radius constraint authority, so even an endpoint-style
+  // proof about its center cannot establish zero freedom for the whole Circle.
+  if (target.kind !== 'circle' && freedomProof?.isRigorous && freedomProof.degreesOfFreedom === 0) return 'FULLY_LOCKED';
   const pointIds = targetPointIds(sketch, target);
   if (target.kind === 'line') {
     const mobility = analyzeDrawingPointMobility(sketch, [...pointIds]);
     if (mobility.degreesOfFreedom === mobility.unconstrainedDegreesOfFreedom) return 'FREE';
     return mobility.degreesOfFreedom === 0 ? 'FULLY_LOCKED' : 'CONSTRAINED';
+  }
+  if (target.kind === 'circle') {
+    const centerMobility = analyzeDrawingPointMobility(sketch, [...pointIds]);
+    // Stage 1 radius is an authoritative but unconstrained scalar. Consequently
+    // a Circle can be constrained by reduced center mobility, but cannot yet be
+    // proven fully locked even when its center has no translational freedom.
+    return centerMobility.degreesOfFreedom === centerMobility.unconstrainedDegreesOfFreedom
+      ? 'FREE'
+      : 'CONSTRAINED';
   }
   if (!hasDrivingRestriction(sketch, pointIds)) return 'FREE';
   const analysis = analyzeDrawingConstraints(sketch);
