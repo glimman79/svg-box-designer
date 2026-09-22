@@ -1133,10 +1133,11 @@ export function DrawingWorkspace({
             </g>
             <g className="drawing-sketch-geometry" aria-label="Committed sketch geometry">
               {resolvedLines.map((entity) => (
-                <line key={entity.id} data-sketch-line-id={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} data-inference-target={segmentCursor?.lineReference?.targetLineId === entity.id ? segmentCursor.lineReference.relation : undefined} className={`drawing-line-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${segmentCursor?.lineReference?.targetLineId === entity.id ? ' is-inference-target' : ''}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'line', lineId: entity.id })}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
+                <line key={entity.id} data-sketch-line-id={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} data-inference-target={segmentCursor?.lineReference?.targetLineId === entity.id ? segmentCursor.lineReference.relation : undefined} className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${segmentCursor?.lineReference?.targetLineId === entity.id ? ' is-inference-target' : ''}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'line', lineId: entity.id })}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
               ))}
               {resolvedCircles.map((entity) => <circle key={entity.id} data-sketch-circle-id={entity.id}
-                className={`drawing-line-entity drawing-interactive-hit${drawingGeometrySelectionClass(selectedGeometry, { kind: 'circle', circleId: entity.id })}`}
+                data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'circle', circleId: entity.id })}
+                className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'circle', circleId: entity.id }))}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'circle', circleId: entity.id })}`}
                 cx={entity.center.x} cy={entity.center.y} r={entity.radius} fill="none" vectorEffect="non-scaling-stroke" />)}
               {activeTool === 'select' && activeSketch && Object.values(activeSketch.points).map((point) => (
                 <circle key={point.id} className="drawing-sketch-point-hit drawing-interactive-hit" data-sketch-point-id={point.id}
@@ -1263,10 +1264,10 @@ export function DrawingWorkspace({
               })}
             </g>
             {isSegmentTool && segmentInteraction.start && segmentInteraction.effectivePreviewPoint && (
-              <line className={`drawing-segment-preview${hasAngularPresentationTruth(segmentInteraction) ? ' is-angular-snapped' : ''}`} x1={segmentInteraction.start.x} y1={segmentInteraction.start.y} x2={segmentInteraction.effectivePreviewPoint.x} y2={segmentInteraction.effectivePreviewPoint.y} />
+              <line className={`drawing-authoring-preview${hasAngularPresentationTruth(segmentInteraction) ? ' is-angular-snapped' : ''}`} x1={segmentInteraction.start.x} y1={segmentInteraction.start.y} x2={segmentInteraction.effectivePreviewPoint.x} y2={segmentInteraction.effectivePreviewPoint.y} />
             )}
             {activeTool === 'circle' && circleInteraction.center && circlePreviewRadius(circleInteraction) !== null && <circle
-              className="drawing-segment-preview" cx={circleInteraction.center.x} cy={circleInteraction.center.y}
+              className="drawing-authoring-preview" cx={circleInteraction.center.x} cy={circleInteraction.center.y}
               r={circlePreviewRadius(circleInteraction)!} fill="none" vectorEffect="non-scaling-stroke" />}
             {selectionBoxRect && selectionBoxMode && <rect className={`drawing-selection-box is-${selectionBoxMode}`}
               data-selection-mode={selectionBoxMode} x={selectionBoxRect.minX} y={selectionBoxRect.minY}

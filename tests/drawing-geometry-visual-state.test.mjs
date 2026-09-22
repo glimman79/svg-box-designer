@@ -40,6 +40,26 @@ const mixed = {
 assert.equal(getGeometryConstraintVisualState(mixed, { kind: 'line', lineId: 'ab' }), 'FULLY_LOCKED', 'both endpoints have zero legitimate mobility');
 assert.equal(getGeometryConstraintVisualState(mixed, { kind: 'line', lineId: 'bc' }), 'CONSTRAINED', 'one fixed endpoint removes two of the Line endpoint freedoms');
 assert.equal(getGeometryConstraintVisualState(mixed, { kind: 'line', lineId: 'cd' }), 'FREE', 'a connected Line whose endpoints retain all four motions remains free');
+const circleSketch = {
+  ...sketch(),
+  entities: { ...sketch().entities, circle: { id: 'circle', type: 'circle', centerPointId: 'a', radius: 5 } },
+  entityOrder: [...sketch().entityOrder, 'circle'],
+};
+assert.equal(getGeometryConstraintVisualState(circleSketch, { kind: 'circle', circleId: 'circle' }), 'FREE', 'an unconstrained Circle is FREE');
+const centerLockedCircle = {
+  ...mixed,
+  entities: { ...mixed.entities, circle: { id: 'circle', type: 'circle', centerPointId: 'a', radius: 5 } },
+  entityOrder: [...mixed.entityOrder, 'circle'],
+};
+assert.equal(getGeometryConstraintVisualState(centerLockedCircle, { kind: 'circle', circleId: 'circle' }), 'CONSTRAINED', 'a fixed center cannot fully lock the still-free authoritative radius');
+assert.equal(getGeometryConstraintVisualState(centerLockedCircle, { kind: 'circle', circleId: 'circle' }, { isRigorous: true, degreesOfFreedom: 0 }), 'CONSTRAINED', 'a center proof cannot masquerade as a whole-Circle radius proof');
+const pointOnCircle = {
+  ...circleSketch,
+  geometricConstraints: {
+    poc: { id: 'poc', kind: 'COINCIDENT', variant: 'point-curve', references: [{ kind: 'sketchPoint', pointId: 'x' }, { kind: 'entity', entityId: 'circle' }] },
+  },
+};
+assert.equal(getGeometryConstraintVisualState(pointOnCircle, { kind: 'circle', circleId: 'circle' }), 'FREE', 'a point-on-Circle record does not classify the Circle by mere constraint presence');
 assert.equal(geometryConstraintVisualClass('FULLY_LOCKED'), 'geometry-fully-locked');
 assert.deepEqual(
   ['FREE', 'CONSTRAINED', 'FULLY_LOCKED'].map(geometryConstraintVisualClass),
@@ -50,39 +70,50 @@ assert.deepEqual(
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const css = fs.readFileSync('src/styles.css', 'utf8');
 assert.match(workspace, /data-constraint-state=\{getGeometryConstraintVisualState/);
+assert.match(workspace, /kind: 'circle', circleId: entity\.id[\s\S]*geometryConstraintVisualClass\(getGeometryConstraintVisualState\(activeSketch, \{ kind: 'circle', circleId: entity\.id \}\)\)/,
+  'committed Circle retains its semantic state class beneath interaction overrides');
+assert.match(workspace, /className=\{`drawing-geometry-entity drawing-interactive-hit \$\{geometryConstraintVisualClass[\s\S]*kind: 'circle'/,
+  'Circle consumes the same committed-geometry base presentation as Line');
 assert.match(workspace, /if \(geometryDrag\.exceeded\) setSelectedGeometry\(\[\]\)/, 'meaningful drag clears persistent selection at release');
 assert.match(workspace, /is-geometry-dragging/, 'active manipulation has explicit semantic state');
 const normalLineColors = {
-  FREE: ['--drawing-line-free', '#39ff5a'],
-  CONSTRAINED: ['--drawing-line-constrained', '#00a83e'],
-  FULLY_LOCKED: ['--drawing-line-fully-locked', '#111827'],
+  FREE: ['--drawing-geometry-free', '#39ff5a'],
+  CONSTRAINED: ['--drawing-geometry-constrained', '#00a83e'],
+  FULLY_LOCKED: ['--drawing-geometry-fully-locked', '#111827'],
 };
 for (const [state, [token, color]] of Object.entries(normalLineColors)) {
   assert.match(css, new RegExp(`${token}:\\s*${color};`, 'i'), `${state} has its exact authoritative color`);
 }
 assert.equal(Object.values(normalLineColors).filter(([, color]) => color !== '#111827').length, 2, 'normal Line status has exactly two green authorities');
-assert.match(css, /\.drawing-line-entity\s*\{[^}]*stroke-opacity:\s*1;/s, 'committed Line status cannot blend through CSS stroke opacity');
-assert.match(css, /\.drawing-line-entity\.geometry-free \{ stroke: var\(--drawing-line-free\); \}/i);
-assert.match(css, /\.drawing-line-entity\.geometry-constrained \{ stroke: var\(--drawing-line-constrained\); \}/i);
-assert.match(css, /\.drawing-line-entity\.geometry-fully-locked \{ stroke: var\(--drawing-line-fully-locked\); \}/i);
-assert.match(css, /\.drawing-line-entity\.is-inference-target \{[^}]*stroke: var\(--drawing-inference\);[^}]*stroke-width: 1\.8;/s,
+assert.match(css, /\.drawing-geometry-entity\s*\{[^}]*stroke-opacity:\s*1;/s, 'committed Line status cannot blend through CSS stroke opacity');
+assert.match(css, /\.drawing-geometry-entity\.geometry-free \{ stroke: var\(--drawing-geometry-free\); \}/i);
+assert.match(css, /\.drawing-geometry-entity\.geometry-constrained \{ stroke: var\(--drawing-geometry-constrained\); \}/i);
+assert.match(css, /\.drawing-geometry-entity\.geometry-fully-locked \{ stroke: var\(--drawing-geometry-fully-locked\); \}/i);
+assert.match(css, /\.drawing-geometry-entity\.is-inference-target \{[^}]*stroke: var\(--drawing-inference\);[^}]*stroke-width: 1\.8;/s,
   'transient relation target overrides solver color at the normal Line stroke weight');
-assert.match(css, /\.drawing-line-entity\.is-geometry-selected \{ stroke: var\(--drawing-hover\); stroke-width: 2\.6; \}/, 'selected interaction blue persistently overrides the permanent solver color');
-assert.match(css, /--drawing-hover:\s*#06b6d4;[\s\S]*\.drawing-line-entity\.is-geometry-preselected,[\s\S]*\.drawing-line-entity\.is-geometry-dragging \{ stroke: var\(--drawing-hover\); stroke-width: 2\.6; \}/, 'light-blue hover temporarily overrides every permanent state through one semantic token');
-assert.match(css, /\.drawing-line-entity\.is-dimension-preselected \{ stroke: var\(--drawing-hover\); stroke-width: 2\.4; \}/, 'Dimension preselection uses only the shared temporary hover authority');
-assert.doesNotMatch(css, /\.drawing-line-entity[^}]*stroke:\s*(?:#2db65b|var\(--drawing-dimension(?:-hover|-active)?\))/i, 'Dimension green and the old FREE green cannot control committed geometry');
+assert.match(css, /\.drawing-geometry-entity\.is-geometry-selected \{ stroke: var\(--drawing-hover\); stroke-width: 2\.6; \}/, 'selected interaction blue persistently overrides the permanent solver color');
+assert.doesNotMatch(css, /--drawing-circle-|\.circle-(?:free|constrained|fully-locked|selected)/i, 'Circle introduces no private palette or semantic presentation policy');
+assert.match(workspace, /className="drawing-authoring-preview" cx=\{circleInteraction\.center\.x\}/, 'Circle preview consumes the global Authoring Preview role');
+assert.match(workspace, /<line className=\{`drawing-authoring-preview/, 'Line and Profile previews consume the global Authoring Preview role');
+assert.match(css, /--drawing-inference:\s*#38bdf8;[\s\S]*--drawing-authoring-preview:\s*#38bdf8;/,
+  'Inference and Authoring Preview retain separate semantic tokens even while their values match');
+assert.match(css, /\.drawing-authoring-preview,[\s\S]*stroke: var\(--drawing-authoring-preview\);[\s\S]*stroke-width: 1\.25;[\s\S]*stroke-dasharray: 5 4;/,
+  'global Authoring Preview keeps its established visible values');
+assert.match(css, /--drawing-hover:\s*#06b6d4;[\s\S]*\.drawing-geometry-entity\.is-geometry-preselected,[\s\S]*\.drawing-geometry-entity\.is-geometry-dragging \{ stroke: var\(--drawing-hover\); stroke-width: 2\.6; \}/, 'light-blue hover temporarily overrides every permanent state through one semantic token');
+assert.match(css, /\.drawing-geometry-entity\.is-dimension-preselected \{ stroke: var\(--drawing-hover\); stroke-width: 2\.4; \}/, 'Dimension preselection uses only the shared temporary hover authority');
+assert.doesNotMatch(css, /\.drawing-geometry-entity[^}]*stroke:\s*(?:#2db65b|var\(--drawing-dimension(?:-hover|-active)?\))/i, 'Dimension green and the old FREE green cannot control committed geometry');
 
-const committedLineStrokeRules = [...css.matchAll(/([^{}]*\.drawing-line-entity[^{}]*)\{([^{}]*)\}/g)]
+const committedLineStrokeRules = [...css.matchAll(/([^{}]*\.drawing-geometry-entity[^{}]*)\{([^{}]*)\}/g)]
   .filter(([, , declarations]) => /(?:^|;)\s*stroke\s*:/.test(declarations))
   .map(([, selector, declarations]) => ({ selector: selector.trim(), stroke: declarations.match(/(?:^|;)\s*stroke\s*:\s*([^;]+)/)?.[1].trim() }));
 assert.deepEqual(committedLineStrokeRules, [
-  { selector: '.drawing-line-entity.geometry-free', stroke: 'var(--drawing-line-free)' },
-  { selector: '.drawing-line-entity.geometry-constrained', stroke: 'var(--drawing-line-constrained)' },
-  { selector: '.drawing-line-entity.geometry-fully-locked', stroke: 'var(--drawing-line-fully-locked)' },
-  { selector: '.drawing-line-entity.is-inference-target', stroke: 'var(--drawing-inference)' },
-  { selector: '.drawing-line-entity.is-geometry-selected', stroke: 'var(--drawing-hover)' },
-  { selector: '.drawing-line-entity.is-dimension-preselected', stroke: 'var(--drawing-hover)' },
-  { selector: '.drawing-line-entity.is-geometry-preselected,\n.drawing-line-entity.is-geometry-dragging', stroke: 'var(--drawing-hover)' },
+  { selector: '.drawing-geometry-entity.geometry-free', stroke: 'var(--drawing-geometry-free)' },
+  { selector: '.drawing-geometry-entity.geometry-constrained', stroke: 'var(--drawing-geometry-constrained)' },
+  { selector: '.drawing-geometry-entity.geometry-fully-locked', stroke: 'var(--drawing-geometry-fully-locked)' },
+  { selector: '.drawing-geometry-entity.is-inference-target', stroke: 'var(--drawing-inference)' },
+  { selector: '.drawing-geometry-entity.is-geometry-selected', stroke: 'var(--drawing-hover)' },
+  { selector: '.drawing-geometry-entity.is-dimension-preselected', stroke: 'var(--drawing-hover)' },
+  { selector: '.drawing-geometry-entity.is-geometry-preselected,\n.drawing-geometry-entity.is-geometry-dragging', stroke: 'var(--drawing-hover)' },
 ], 'committed Lines retain three solver authorities plus separate selected and temporary interaction overrides');
 assert.match(css, /drawing-geometry-point-preselection[^}]*fill: #0e7490;[^}]*stroke: none;/, 'Point preselection uses the stronger blue square fill');
 assert.match(css, /has-geometry-cursor\.is-line-target[\s\S]*cursor: default;/, 'geometry uses normal Dimension arrow convention');
