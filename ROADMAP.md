@@ -29,7 +29,7 @@ future task:
 | Standalone straight-segment authoring | **IMPLEMENTED / BROWSER-VERIFIED AND ACCEPTED** | The `Line` tool creates exactly one straight Line from P1 to P2 and then completes. Normal activation returns to Select; persistent activation remains in Line but resets fully so the next click starts a fresh independent P1. |
 | Topology | **IMPLEMENTED** | Stable `SketchPoint` records own point identity and coordinates; connected Lines share point identity. |
 | Inference and snapping | **IMPLEMENTED** | Endpoint, Midpoint, finite-Line, alignment, angular, Parallel, Perpendicular, and Point Reference candidates feed the shared Profile and Line straight-segment foundation. |
-| Geometric constraints and solver | **IMPLEMENTED** | Midpoint, Coincidence, Concentricity, Tangency, Parallelism, Perpendicular, Horizontal, and Vertical are browser-verified Constraint operations. |
+| Geometric constraints and solver | **IMPLEMENTED** | Midpoint, Coincidence, Parallelism, Perpendicular, Horizontal, and Vertical are implemented Constraint operations. Concentricity and Tangency remain inactive placeholders and are not implemented. |
 | Dimensions | **IMPLEMENTED** | Driving and reference distance, length, and Line-to-Line angle forms have solver and annotation paths. |
 | Authority model | **IMPLEMENTED** | Position, direction, and topology authority are distinct; compatible directional and positional truths can coexist. |
 | Presentation | **IMPLEMENTED** | Transient inference and persistent constraint layers exist. Midpoint and Parallel share Line-marker layout between live and persistent presentation; Perpendicular shares presentation geometry derivation. Other relations still need convergence. |
@@ -178,12 +178,12 @@ still has work remaining.
 | Perpendicular | **IMPLEMENTED** (`PERPENDICULAR`) | Transient and persistent right-angle presentation share geometry derivation, including support extensions when needed. |
 | Coincidence | **IMPLEMENTED** (`COINCIDENT`) | Persistent square marker and selected-relation reference presentation exist; transient presentation still needs to converge on the shared model. |
 | Midpoint | **IMPLEMENTED** (`MIDPOINT`) | Browser-verified reference path: transient and persistent `—□—` presentation uses the shared Line-marker layout. |
-| Concentricity | **IMPLEMENTED** | Constraint operation is browser-verified; further shared-presentation convergence remains separate roadmap work. |
-| Tangency | **IMPLEMENTED** | Constraint operation is browser-verified; further shared-presentation convergence remains separate roadmap work. |
+| Concentricity | **PLANNED / NOT IMPLEMENTED** | Inactive panel placeholder only. Implement later as a global Constraint using semantic geometry centers; it is not solver-supported or currently usable. |
+| Tangency | **PLANNED / NOT IMPLEMENTED** | Inactive panel placeholder only. Implement later through the global Constraints architecture over true semantic geometry; it is not solver-supported or currently usable. |
 | Distance | **DESIGN REQUIRED** | Present in the panel, but Constraints integration, applicability, authoring, and presentation are not yet developed. Reuse the implemented Dimension capability's common geometric/semantic basis rather than creating an independent Distance implementation. |
 | Length | **DESIGN REQUIRED** | Present in the panel, but Constraints integration, applicability, authoring, and presentation are not yet developed. Reuse the implemented Dimension capability's common geometric/semantic basis rather than creating an independent Length implementation. |
 | Angle | **DESIGN REQUIRED** | Present in the panel, but Constraints integration, applicability, authoring, and presentation are not yet developed. Reuse the implemented Dimension capability's common geometric/semantic basis rather than creating an independent Angle implementation. |
-| Radius / Diameter | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
+| Radius / Diameter | **PLANNED / NOT IMPLEMENTED** | Inactive panel placeholder only. Constraint behavior and presentation are not developed; future Radius/Diameter Constraints must consume the Circle’s authoritative semantic radius. |
 | Symmetry | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
 | Fix | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
 
@@ -335,7 +335,69 @@ not imply group movement, and current Delete behavior must not be read as batch 
 | Mirror | **DESIGN REQUIRED** | Mirror selected geometry around a selected/reference axis. | Copy, constraint, and associativity behavior remain open. |
 | Quick Trim | **DESIGN REQUIRED** | Quickly trim geometry at relevant intersections or boundaries. | Exact interaction remains open. |
 | Rectangle | **DESIGN REQUIRED** | Add a Rectangle family with **four variants**. | The four variants have not been specified and will be defined later. |
-| Circle | **DESIGN REQUIRED** | Add exactly two currently planned variants: (1) standard Circle and (2) three-point-defined Circle. | UI sequence and parameterization remain open. |
+| Circle — Center + Radius | **PLANNED / NOT IMPLEMENTED; NEXT DRAWING GEOMETRY** | P1 establishes the center, pointer movement previews a true semantic Circle, and P2 establishes the radius and commits it. The first implementation includes ordinary click selection, common Ctrl toggle, and directional Window/Crossing box selection. | Tangency, Concentricity, and Radius/Diameter Dimension or Constraint are explicitly excluded from this first implementation. |
+| Arc — standalone three-point | **PLANNED / NOT IMPLEMENTED; AFTER CIRCLE** | Author in the order P1 = start, P2 = end, P3 = form/curvature/radius-defining point: **Start → End → Form Point**, not Start → Through Point → End. | P3 need not remain an independent persistent SketchPoint; exact persistence is decided during implementation architecture. |
+| Circle — older three-point full-Circle item | **DESIGN REQUIRED / UNRESOLVED** | The prior roadmap separately proposed a three-point-defined full Circle. The newly decided standalone three-point Arc does not silently cancel that older item. | Its continued product need, authoring order, and priority require a future explicit decision; it must not be confused with the Arc workflow. |
+
+
+### Near-term circular-geometry sequence
+
+This is planning order, not implementation status:
+
+1. Circle — Center + Radius;
+2. standalone three-point Arc — Start + End + Form Point;
+3. Radius / Diameter Dimension;
+4. Radius / Diameter Constraint;
+5. Concentricity; and
+6. Tangency.
+
+Radius / Diameter **Dimension** and Radius / Diameter **Constraint** remain distinct
+Drawing workflows and are both **PLANNED / NOT IMPLEMENTED**. Circle must provide one
+authoritative semantic radius consumed by both future systems rather than separate
+radius authorities.
+
+### Decided first-Circle semantics
+
+- P1 is the center. If it snaps to an existing persistent `SketchPoint`, the Circle
+  shares that same topological identity; it does not create a duplicate point plus
+  Coincidence.
+- If P1 is accepted through a valid existing Midpoint inference/snap, its persistent
+  Midpoint semantic relation is retained after Circle creation.
+- P2 establishes radius. A Midpoint used at P2 is placement assistance only and creates
+  no persistent Midpoint relation or permanent Circle control point.
+- If P2 resolves to an existing persistent `SketchPoint`, that point must remain on the
+  Circle while retaining free angular motion: `distance(point, center) == radius`.
+  Exact constraint/type naming remains open, but this persistent point-on-curve meaning
+  belongs to the global Constraints/geometric-relation architecture.
+- If P2 does not resolve to an existing persistent `SketchPoint`, it is authoring input
+  only; no new permanent radius point is required merely because P2 was clicked.
+- Circle is semantic circular geometry, not tessellated/polyline Line geometry. Its
+  center and single radius truth must support later global relationships without a
+  Circle-specific mini-system.
+
+The first Circle implementation participates in common click selection, Ctrl selection
+and toggle, and directional box selection. For left-to-right Window selection, the
+entire finite circumference must be strictly inside the normalized rectangle; boundary
+contact does not qualify. For right-to-left Crossing selection, the actual
+circumference qualifies when partly inside, crossing, touching an edge/corner, or fully
+contained, with boundary contact inclusive. A rectangle wholly inside the Circle's
+empty interior without touching the circumference does not qualify. Ctrl+box uses the
+same accepted toggle semantics as other eligible Drawing geometry.
+
+Tangency and Concentricity are not part of first-Circle implementation. Future Tangency
+must consume true semantic circular geometry through global Constraints; future
+Concentricity must consume the Circle's semantic center. Radius/Diameter Dimensions and
+Constraints likewise follow later and share the Circle's authoritative radius.
+
+### Decided standalone Arc direction
+
+The planned standalone Arc is circular geometry authored **P1 Start → P2 End → P3 Form
+Point**. P3 determines the final circular Arc between P1 and P2, but current intent does
+not require P3 to persist as an independent SketchPoint. During authoring, show the
+actual Arc prominently and a thin full support Circle as reference presentation. That
+support Circle is not automatically a second persistent entity, selectable or snap
+geometry, topology, History state, or exported geometry. Exact styling, lifecycle, and
+persistence representation remain implementation decisions.
 
 **Current naming note:** The chained Drawing tool is named `Profile`; it authors
 persistent Line entities as a continuing chain. The separate standalone `Line` tool
@@ -344,9 +406,14 @@ straight-segment foundation and produce the same persistent Line geometry.
 
 ## F. Rules for all future Drawing tools
 
-Future tools must integrate with the common Drawing architecture. They must not create
-independent, tool-specific systems for snapping, inference, constraints, transient
-preview, persistent glyphs, or support/reference visualization.
+Future tools must integrate with the common Drawing architecture. Drawing capability
+remains global/shared wherever geometry semantics allow it: reuse and generalize an
+existing foundation when a real multi-geometry consumer exists, rather than inventing
+a speculative framework or geometry-specific subsystem. This applies to Constraints,
+Dimensions, selection, hit testing, directional box selection, snap, inference,
+topology, semantic geometry, presentation, Direct Manipulation, History, persistence,
+deletion, and future trim/mirror/corner behavior. Future tools must not create
+independent, tool-specific systems for those concerns.
 
 The architecture must continue to keep these concerns distinct:
 
