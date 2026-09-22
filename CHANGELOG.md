@@ -1,5 +1,11 @@
 # Unreleased
 
+## Documentation — circular Drawing direction and placeholder status
+
+- Corrected current documentation to match accepted code truth: the implemented Constraint set is Midpoint, Coincidence, Parallelism, Perpendicular, Horizontal, and Vertical; Concentricity, Tangency, and Radius / Diameter remain inactive, not-implemented choices.
+- Recorded Circle — Center + Radius as the next planned Drawing geometry and the standalone three-point Arc order as Start → End → Form Point, including the decided Circle topology, radius-input, and directional-selection semantics.
+- Recorded the global/shared Drawing architecture direction and the planned sequence for later Radius/Diameter Dimension, Radius/Diameter Constraint, Concentricity, and Tangency work without promoting any placeholder to implemented status.
+
 ## Drawing — directional box selection
 
 - Added directional Line multi-selection in Drawing Select: left-to-right Window selection requires complete strict enclosure, while right-to-left Crossing selection includes enclosed, crossed, partly enclosed, and boundary-touching Lines.
