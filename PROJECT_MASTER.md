@@ -38,7 +38,35 @@ Both workflows reuse the neutral straight-segment foundation rather than duplica
 
 Every committed segment is its own Line. A Profile continuation begins a **fresh Profile segment interaction** at the committed end SketchPoint. No candidate, acquired snap, direction authority, or other transient inference state is inherited. For equivalent document geometry, topology, pointer input, and viewport, a manually started Profile segment and a chained continuation use the same inference architecture. A persistently activated standalone Line also begins a fresh interaction after every commit, but it does not reuse the preceding endpoint unless the user explicitly snaps the new P1 to existing geometry.
 
-### 4.2 Dimensions, constraints, and solver
+### 4.2 Drawing selection
+
+Directional drag-box selection is browser-verified and accepted for Lines in Select. A
+primary-button drag beginning on empty canvas activates after the existing 4 CSS-pixel
+client-space threshold; an existing geometry hit instead continues through ordinary
+selection or Direct Manipulation. Left-to-right is Window mode, which requires both
+finite Line endpoints to be strictly inside the rectangle. Right-to-left is Crossing
+mode, which includes contained, partly contained, crossing, and boundary- or
+corner-touching Lines. Mode and the visually distinct rectangle presentation switch
+continuously when horizontal drag direction crosses the origin.
+
+The existing common selection remains unchanged while dragging and commits on release.
+An unmodified box replaces it, including with an empty result; Ctrl toggles qualifying
+Lines against the ordered selection, preserves selected points, and preserves all
+selection when no Line qualifies. The box currently qualifies Lines only—SketchPoints
+and endpoints remain available to click selection but are not independently box
+selected. Constraints consumes the common `selectedGeometry` using its existing
+applicability rules; Dimensions continues to use its separate interaction state.
+
+Pointer travel, direction, and the 4 CSS-pixel threshold use client coordinates, while
+rectangle bounds, rendering, and Line qualification use Drawing model coordinates via
+the existing SVG CTM conversion. The captured gesture survives leaving the visible SVG
+and is cleaned up on Escape, pointer cancellation or lost capture, tool change, and
+workspace cleanup. The rectangle follows the raw transformed pointer without
+snap/inference. It is transient SVG presentation—not document geometry, topology,
+Constraints, Dimensions, export, or Drawing History—and selecting multiple Lines adds
+neither group Direct Manipulation nor batch deletion.
+
+### 4.3 Dimensions, constraints, and solver
 
 Dimensions is the dedicated dimensional authoring workflow. The model supports driving and reference dimensions over stable point/Line references: aligned, horizontal, and vertical point distances; point-to-Line distance; Line-to-Line distance; and Line-to-Line angle. Reference dimensions annotate but add no equation.
 
@@ -48,7 +76,7 @@ Fix, Symmetry, Radius / Diameter, Angle, Length, and Distance are not currently 
 
 SketchPoint coordinates are solver variables. Typed driving dimensions and geometric constraints produce equations, connected-component solving produces resolved geometry, and rank/null-space analysis classifies degrees of freedom. Invalid, degenerate, duplicate, or unsatisfied requests fail closed. Direct Manipulation requests movement through this semantic authority; it does not permanently bypass constraints.
 
-### 4.3 Snap and inference channels
+### 4.4 Snap and inference channels
 
 Line placement deliberately separates:
 
@@ -67,7 +95,7 @@ Candidate discovery includes existing endpoints/shared points, Midpoint, finite 
 
 During Profile or Line authoring, Ctrl is a raw bypass: it suppresses automatic acquisition, associated guides, and automatic semantics for that live placement. It does not remove committed topology or constraints. In Select, Ctrl instead toggles selection.
 
-### 4.4 Established direction and Point Reference invariant
+### 4.5 Established direction and Point Reference invariant
 
 A Line may establish a direction authority (for example Parallel) and independently acquire a compatible positional Point Reference. Once direction is established, Point Reference support is evaluated against that construction:
 
@@ -82,19 +110,19 @@ Drawing snap acquisition and retention use browser-accepted, family-specific cli
 
 Parallel and Perpendicular direction authority likewise captures at 5 CSS px and remains authoritative only while the matching candidate stays within a 7 CSS px lateral client-space corridor. Longitudinal movement along the valid construction direction does not itself release authority, and the client-space measurement keeps the feel consistent across zoom. Leaving the corridor releases the transient authority and its semantic evidence; ordinary acquisition still runs in that frame, so returning within 5 px can reacquire immediately without a cooldown, neutral frame, timer, or re-arm action. Ctrl remains an immediate bypass, H/V arbitration is unchanged, and compatible positional snaps continue to compose with direction authority. This tuned behavior is browser-verified and accepted. Presentation and persistence consume the accepted placement; they do not rerun competing authority selection.
 
-### 4.5 Transient and persistent semantics
+### 4.6 Transient and persistent semantics
 
 Detection, presentation, and persistence are different stages. A transient inference is evidence during authoring; a persistent geometric constraint is durable document meaning. Geometrically equivalent direction demands may be normalized for construction and minimal persistence without erasing their semantic identity prematurely.
 
 Transient inference and persistent constraint presentation use shared semantic layout authorities where available. Midpoint is the regression-sensitive example: its transient and persistent `—□—` use the same placement geometry and differ by state styling. Parallel markers likewise derive from shared layout rules. UI-specific or solver-specific duplicate marker geometry should not be introduced.
 
-### 4.6 Accepted placement and commit ownership
+### 4.7 Accepted placement and commit ownership
 
 A click first accepts a resolved placement; the transaction that owns that accepted result must also own its commit. Profile retains its delayed, native-double-click-safe commit boundary because it continues a chain: a later same-tool primary click flushes the pending owner before resolving the next placement, and timer identity prevents stale callbacks from committing into a later interaction. Standalone Line commits synchronously when its valid P2 is accepted and needs no separate double-click-finish semantic because that point completes the construction.
 
 The committed document snapshot is made visible to candidate collection in the same event. This preserves rapid Line segments, exposes newly committed topology immediately, and keeps manual and chained starts equivalent. Cancellation may clear a pending transaction; a new click must not silently replace and lose it.
 
-### 4.7 Interaction and History
+### 4.8 Interaction and History
 
 Left mouse authors/selects, right-drag pans, the wheel zooms, and Esc exits the applicable interaction. Drawing transactions group semantic user actions for Undo/Redo. A completed standalone Line is one transaction containing its accepted geometry, topology, and automatic semantics; persistent Line activation produces one transaction per completed independent Line. UI-only panel state does not create document History. Deleting geometry cleans dependent dimensions/constraints through model operations.
 

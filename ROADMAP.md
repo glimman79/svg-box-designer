@@ -282,32 +282,27 @@ for later design.
 
 ### Directional drag-box selection
 
-**Status: PLANNED / NOT YET IMPLEMENTED.** Add directional drag-box multi-selection to
-the common 2D Drawing selection system. It supplements rather than replaces direct
-click selection. A drag begins with a mouse press in an appropriate empty canvas area;
-that press establishes the selection origin. While the pointer moves, a rectangular
-selection box updates continuously from the origin to the current pointer position.
-Horizontal drag direction determines the active selection mode, and releasing the
-mouse commits all qualifying Drawing objects to the resulting selection.
-
-Both modes are planned:
+**Status: IMPLEMENTED / BROWSER-VERIFIED AND ACCEPTED FOR LINES.** Directional drag-box
+multi-selection supplements direct click selection in the common 2D Drawing selection
+system. In Select, a primary-button drag from empty canvas becomes a box after the
+existing 4 CSS-pixel client-space drag threshold. Geometry hits remain authoritative
+for ordinary selection and Direct Manipulation. Horizontal direction continuously
+determines the mode, including immediate Window/Crossing switching if the pointer moves
+back across the origin; the visually distinct transient rectangle follows the raw
+pointer in Drawing model coordinates and commits selection only on release.
 
 | Mode | Status | Direction and qualification |
 | --- | --- | --- |
-| Window / containment selection | **PLANNED** | A left-to-right drag qualifies only Drawing objects completely contained by the selection rectangle. A Line that merely crosses or partially enters the rectangle does not qualify. |
-| Crossing / intersection selection | **PLANNED** | A right-to-left drag qualifies Drawing objects that are completely contained **or** touched/intersected by the selection rectangle. A Line may therefore qualify without being completely inside it. |
+| Window / containment selection | **IMPLEMENTED FOR LINES** | A left-to-right drag qualifies a finite Line only when both endpoints are strictly inside the rectangle. Partial containment, crossing, and boundary contact do not qualify. |
+| Crossing / intersection selection | **IMPLEMENTED FOR LINES** | A right-to-left drag qualifies Lines that are contained, partly contained, crossing, or touching the rectangle; edge and corner contact count. |
 
-The rectangle must provide immediate, clearly distinguishable visual feedback for
-Window and Crossing modes as direction changes during the drag. The distinction may
-use color, fill, border, or another treatment, but exact styling and colors are not yet
-defined.
-
-This must operate through shared selection infrastructure over selectable Drawing
-geometry/entities, not through separate drag-selection implementations for Profile,
-Line, Circle, Rectangle, Spline, or other tools. Exact per-entity hit-testing rules
-remain later design work. Modifier behavior, add/remove/toggle semantics, nested
-entities, endpoint-versus-object precedence, support geometry, and locked or hidden
-object behavior are also deliberately undefined here.
+An unmodified completed box replaces the common geometry selection, including clearing
+it when no Line qualifies. Ctrl toggles each qualifying Line against the existing
+ordered common selection, preserves selected points, and makes an empty result a no-op.
+The current box does not independently select SketchPoints/endpoints. It does not run
+snap/inference or author automatic constraints; Ctrl here means selection toggle rather
+than snap bypass. Selection and its rectangle remain transient UI state and create no
+Drawing document or History entry.
 
 The intended common selection direction is:
 
@@ -317,17 +312,15 @@ direct click selection OR directional drag-box multi-selection
   -> where supported, a Drawing tool evaluates the existing selection
 ```
 
-Accordingly, drag-box results must be compatible with the planned Dimensions and the
-implemented Constraints canvas-preselection workflows described above. A future user may select
-several relevant Drawing objects with a box and then open a tool that supports
-preselection. That drag-box end-to-end workflow remains planned; Dimensions remains
-tool-first, while Constraints already supports direct point/Line selection before or
-while its panel is active.
+Constraints consumes the resulting common `selectedGeometry` through its existing
+applicability and cardinality rules; no automatic subset selection was added.
+Dimensions remains tool-first, and its canvas-preselection workflow remains planned.
 
-The current implementation provides direct geometry click selection and unified
-selected-geometry state, but no directional selection rectangle or containment/crossing
-commit behavior. Supporting selection state or hit-testing code must not be mistaken
-for an implemented drag-box feature.
+Further selection capability remains future work: independent point/endpoint box
+selection, Shift behavior, batch delete, group Direct Manipulation, additional entity
+types and their qualification semantics, and policies for nested, support, locked, or
+hidden geometry are not implemented or remain undefined. Multiple selected Lines do
+not imply group movement, and current Delete behavior must not be read as batch delete.
 
 ## E. Planned drawing tools
 
