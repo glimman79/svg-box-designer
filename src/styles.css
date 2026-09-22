@@ -1624,6 +1624,9 @@ button:disabled {
 .drawing-line-entity.is-geometry-dragging { stroke: var(--drawing-hover); stroke-width: 2.6; }
 .drawing-geometry-point-preselection, .drawing-geometry-point-selected { fill: #0e7490; stroke: none; vector-effect: non-scaling-stroke; pointer-events: none; }
 .drawing-geometry-point-selected { fill: var(--drawing-selected-point); stroke: none; }
+.drawing-selection-box { pointer-events: none; vector-effect: non-scaling-stroke; stroke-width: 1.25; }
+.drawing-selection-box.is-window { fill: rgb(14 116 144 / 10%); stroke: #0e7490; }
+.drawing-selection-box.is-crossing { fill: rgb(22 163 74 / 9%); stroke: #16803d; stroke-dasharray: 6 4; }
 .drawing-dimension-point-preselection, .drawing-dimension-point-selected { fill: #f8fafc; stroke: #06b6d4; stroke-width: 2; vector-effect: non-scaling-stroke; pointer-events: none; }
 .drawing-dimension-point-selected { fill: #06b6d4; stroke: #f8fafc; }
 .drawing-svg.has-geometry-cursor.is-line-target, .drawing-svg.has-geometry-cursor.is-point-target,

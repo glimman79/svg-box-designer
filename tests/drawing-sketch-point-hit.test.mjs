@@ -69,10 +69,13 @@ assert.doesNotMatch(source, /event\.shiftKey/, 'Shift is not a semantic geometry
 assert.match(source, /const beginDrag = !event\.ctrlKey && !constraintsPanelOpen;[\s\S]*if \(beginDrag\) \{[\s\S]*setGeometryDrag/, 'only an ordinary replacing Select click may begin direct manipulation');
 const emptyMissStart = source.indexOf('if (!hit && !explicitPointId && !explicitLineId)');
 const emptyMissBranch = source.slice(emptyMissStart, source.indexOf('setDimensionDrag(null)', emptyMissStart));
-assert.match(emptyMissBranch, /if \(!event\.ctrlKey\)/, 'an unmodified Select miss clears selection whether or not Constraints is open');
-assert.match(emptyMissBranch, /setSelectedGeometry\(\[\]\)/, 'an ordinary empty-canvas miss clears all geometry selection');
-assert.match(emptyMissBranch, /setSelectedDimensionId\(null\)/, 'an ordinary empty-canvas miss clears persistent Dimension selection');
-assert.match(emptyMissBranch, /setSelectedGeometricConstraintId\(null\)/, 'an ordinary empty-canvas miss clears persistent geometric-constraint selection');
+assert.match(emptyMissBranch, /setBoxSelection\(session\)/, 'an empty Select miss defers click clearing until the potential box gesture resolves');
+const finishBoxStart = source.indexOf('const finishBoxSelection');
+const finishBoxBranch = source.slice(finishBoxStart, source.indexOf('const finishDimensionDrag', finishBoxStart));
+assert.match(finishBoxBranch, /else if \(!event\.ctrlKey\)/, 'an unmodified sub-threshold Select miss clears selection at pointer-up');
+assert.match(finishBoxBranch, /setSelectedGeometry\(\[\]\)/, 'an ordinary empty-canvas click clears all geometry selection');
+assert.match(finishBoxBranch, /setSelectedDimensionId\(null\)/, 'an ordinary empty-canvas click clears persistent Dimension selection');
+assert.match(finishBoxBranch, /setSelectedGeometricConstraintId\(null\)/, 'an ordinary empty-canvas click clears persistent geometric-constraint selection');
 assert.doesNotMatch(emptyMissBranch, /!constraintsPanelOpen/, 'Constraints does not preserve accumulated selection after an empty-canvas click');
 
 console.log('Drawing SketchPoint rendered interaction-layer regression tests passed');

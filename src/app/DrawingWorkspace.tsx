@@ -28,6 +28,7 @@ import { deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT
 import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, initialConstraintsPanelPosition, toggleDrawingGeometrySelection, type DrawingSelectionRef } from './drawingConstraintsTool.js';
 import { deriveDrawingInferencePresentations, type DrawingInferencePresentation } from './drawingInferencePresentation.js';
 import { createDrawingDirectionDiagnosticRecorder } from './drawingDirectionDiagnostic.js';
+import { applyDrawingBoxSelection, drawingSelectionMode, normalizeDrawingSelectionRect, selectDrawingGeometryInRect } from './drawingBoxSelection.js';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -99,6 +100,10 @@ type GeometryDragSession = Readonly<{
 type DimensionAnnotationDragSession = Readonly<{
   pointerId: number; id: string; startClient: CoordinatePoint;
   startPlacement: DrawingDimension['placement']; previewPlacement: DrawingDimension['placement']; exceeded: boolean;
+}>;
+type BoxSelectionSession = Readonly<{
+  pointerId: number; originClient: CoordinatePoint; originModel: DrawingPoint;
+  currentClient: CoordinatePoint; currentModel: DrawingPoint; exceeded: boolean;
 }>;
 type DrawingPlacementResolution = Readonly<{
   rawPoint: DrawingPoint;
@@ -174,6 +179,8 @@ export function DrawingWorkspace({
   const [hoveredDimensionId, setHoveredDimensionId] = useState<string | null>(null);
   const [dimensionDrag, setDimensionDrag] = useState<DimensionAnnotationDragSession | null>(null);
   const [geometryDrag, setGeometryDrag] = useState<GeometryDragSession | null>(null);
+  const [boxSelection, setBoxSelection] = useState<BoxSelectionSession | null>(null);
+  const boxSelectionRef = useRef<BoxSelectionSession | null>(null);
   const [geometryPreselection, setGeometryPreselection] = useState<DimensionPreselection | null>(null);
   const [selectedGeometry, setSelectedGeometry] = useState<readonly DrawingSelectionRef[]>([]);
   const finishConstraintSelection = () => setSelectedGeometry([]);
@@ -224,6 +231,15 @@ export function DrawingWorkspace({
   segmentInteractionRef.current = segmentInteraction;
   drawingSnapRef.current = drawingSnap;
   documentRef.current = document;
+  boxSelectionRef.current = boxSelection;
+
+  const endBoxSelection = (releaseCapture = true) => {
+    const session = boxSelectionRef.current;
+    boxSelectionRef.current = null;
+    setBoxSelection(null);
+    const svg = svgRef.current;
+    if (releaseCapture && session && svg?.hasPointerCapture(session.pointerId)) svg.releasePointerCapture(session.pointerId);
+  };
 
   const transactDocument = (update: (current: DrawingDocumentV2) => DrawingDocumentV2) => {
     const result = transactDrawingDocument(historyRef.current, documentRef.current, update);
@@ -539,6 +555,7 @@ export function DrawingWorkspace({
   });
 
   const exitActiveTool = () => {
+    if (boxSelectionRef.current) { endBoxSelection(); return; }
     if (geometryDrag) { setGeometryDrag(null); return; }
     if (dimensionDrag) { setDimensionDrag(null); return; }
     if (editingDimensionId) { setEditingDimensionId(null); setDimensionEditError(null); return; }
@@ -577,11 +594,12 @@ export function DrawingWorkspace({
       const matrix = svgRef.current?.getScreenCTM();
       const startModel = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
       if (!hit && !explicitPointId && !explicitLineId) {
-        if (!event.ctrlKey) {
-          setSelectedGeometry([]);
-          setSelectedDimensionId(null);
-          setSelectedGeometricConstraintId(null);
-        }
+        if (!startModel) return;
+        const session = { pointerId: event.pointerId, originClient: { x: event.clientX, y: event.clientY }, originModel: startModel,
+          currentClient: { x: event.clientX, y: event.clientY }, currentModel: startModel, exceeded: false };
+        boxSelectionRef.current = session;
+        setBoxSelection(session);
+        event.currentTarget.setPointerCapture(event.pointerId);
         return;
       }
       if (!startModel) return;
@@ -721,6 +739,14 @@ export function DrawingWorkspace({
 
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
     if (panHandlers.onPointerMove(event)) return;
+    if (boxSelectionRef.current?.pointerId === event.pointerId) {
+      const session = boxSelectionRef.current, matrix = svgRef.current?.getScreenCTM();
+      const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
+      if (!point) return;
+      const exceeded = session.exceeded || Math.hypot(event.clientX - session.originClient.x, event.clientY - session.originClient.y) >= DRAWING_DRAG_THRESHOLD_PX;
+      const next = { ...session, currentClient: { x: event.clientX, y: event.clientY }, currentModel: point, exceeded };
+      boxSelectionRef.current = next; setBoxSelection(next); return;
+    }
     if (geometryDrag?.pointerId === event.pointerId) {
       const matrix = svgRef.current?.getScreenCTM();
       const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
@@ -786,9 +812,15 @@ export function DrawingWorkspace({
     if (activeTool === 'select') setGeometryPreselection(resolveDimensionCandidate({ x: event.clientX, y: event.clientY }));
   };
 
-  useEffect(() => () => { cancelDrawingProfileCommit(pendingProfileClickRef, window); }, []);
+  useEffect(() => () => {
+    cancelDrawingProfileCommit(pendingProfileClickRef, window);
+    const session = boxSelectionRef.current, svg = svgRef.current;
+    if (session && svg?.hasPointerCapture(session.pointerId)) svg.releasePointerCapture(session.pointerId);
+    boxSelectionRef.current = null;
+  }, []);
 
   const selectTool = (tool: DrawingActiveTool, activationMode: 'normal' | 'persistent' = 'normal') => {
+    endBoxSelection();
     cancelDrawingProfileCommit(pendingProfileClickRef, window);
     setSegmentInteraction(EMPTY_LINE_SEGMENT_INTERACTION);
     segmentInteractionRef.current = EMPTY_LINE_SEGMENT_INTERACTION;
@@ -876,6 +908,21 @@ export function DrawingWorkspace({
     // the existing persistent selection semantics for future selection tools.
     if (geometryDrag.exceeded) setSelectedGeometry([]);
     setGeometryDrag(null);
+  };
+
+  const finishBoxSelection = (event: PointerEvent<SVGSVGElement>) => {
+    const session = boxSelectionRef.current;
+    if (!session || session.pointerId !== event.pointerId) return;
+    if (session.exceeded) {
+      const rect = normalizeDrawingSelectionRect(session.originModel, session.currentModel);
+      const mode = drawingSelectionMode(session.originClient.x, session.currentClient.x);
+      const qualifying = selectDrawingGeometryInRect(resolveActiveSketchLines(documentRef.current), rect, mode);
+      setSelectedGeometry((current) => applyDrawingBoxSelection(current, qualifying, event.ctrlKey));
+      if (!event.ctrlKey) { setSelectedDimensionId(null); setSelectedGeometricConstraintId(null); }
+    } else if (!event.ctrlKey) {
+      setSelectedGeometry([]); setSelectedDimensionId(null); setSelectedGeometricConstraintId(null);
+    }
+    endBoxSelection();
   };
 
   const finishDimensionDrag = () => {
@@ -978,6 +1025,8 @@ export function DrawingWorkspace({
   const inferencePresentations = isSegmentTool && drawingSnap && drawingTransform && overlayTransform
     ? deriveDrawingInferencePresentations(drawingSnap, activeSketch, pixelsPerMm, drawingTransform, overlayTransform, segmentInteraction)
     : [];
+  const selectionBoxRect = boxSelection?.exceeded ? normalizeDrawingSelectionRect(boxSelection.originModel, boxSelection.currentModel) : null;
+  const selectionBoxMode = boxSelection ? drawingSelectionMode(boxSelection.originClient.x, boxSelection.currentClient.x) : null;
   return (
     <section className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace">
       <aside ref={toolSidebarRef} className="drawing-tool-sidebar" aria-label="Drawing tools" onPointerDownCapture={preventToolChromePointerSelection} onMouseDownCapture={preventToolChromeMouseSelection}>
@@ -1014,8 +1063,9 @@ export function DrawingWorkspace({
             onMouseDown={handleDrawingMouseDown}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
-            onPointerUp={(event) => { if (geometryDrag) finishGeometryDrag(event); else if (dimensionDrag) finishDimensionDrag(); else panHandlers.onPointerUp(event); }}
-            onPointerCancel={(event) => { if (geometryDrag) setGeometryDrag(null); else if (dimensionDrag) setDimensionDrag(null); else panHandlers.onPointerCancel(event); }}
+            onPointerUp={(event) => { if (boxSelectionRef.current) finishBoxSelection(event); else if (geometryDrag) finishGeometryDrag(event); else if (dimensionDrag) finishDimensionDrag(); else panHandlers.onPointerUp(event); }}
+            onPointerCancel={(event) => { if (boxSelectionRef.current?.pointerId === event.pointerId) endBoxSelection(); else if (geometryDrag) setGeometryDrag(null); else if (dimensionDrag) setDimensionDrag(null); else panHandlers.onPointerCancel(event); }}
+            onLostPointerCapture={(event) => { if (boxSelectionRef.current?.pointerId === event.pointerId) endBoxSelection(false); }}
             onContextMenu={panHandlers.onContextMenu}
             onPointerLeave={clearSegmentCursor}
             onDoubleClick={() => { if (activeTool === 'profile') finishProfile(); }}
@@ -1166,6 +1216,9 @@ export function DrawingWorkspace({
             {isSegmentTool && segmentInteraction.start && segmentInteraction.effectivePreviewPoint && (
               <line className={`drawing-segment-preview${hasAngularPresentationTruth(segmentInteraction) ? ' is-angular-snapped' : ''}`} x1={segmentInteraction.start.x} y1={segmentInteraction.start.y} x2={segmentInteraction.effectivePreviewPoint.x} y2={segmentInteraction.effectivePreviewPoint.y} />
             )}
+            {selectionBoxRect && selectionBoxMode && <rect className={`drawing-selection-box is-${selectionBoxMode}`}
+              data-selection-mode={selectionBoxMode} x={selectionBoxRect.minX} y={selectionBoxRect.minY}
+              width={selectionBoxRect.maxX - selectionBoxRect.minX} height={selectionBoxRect.maxY - selectionBoxRect.minY} />}
           </svg>
           <svg ref={overlaySvgRef} className="drawing-label-overlay" viewBox={`0 0 ${viewport.width} ${viewport.height}`} aria-label="Model coordinate scale">
             {editingDimension && editorAnchor && <foreignObject className="drawing-dimension-editor-frame" x={editorAnchor.x - editorWidth / 2} y={editorAnchor.y - DIMENSION_EDITOR_HEIGHT_PX + 2} width={editorWidth} height={DIMENSION_EDITOR_HEIGHT_PX}><input ref={dimensionEditorInputRef} className="drawing-dimension-editor" value={dimensionDraft} aria-label={editingDimension.kind === 'LINE_TO_LINE_ANGLE' ? 'Dimension value in degrees' : 'Dimension value in millimetres'} onChange={(event) => { setDimensionDraft(event.target.value); setDimensionEditError(null); }} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingDimensionId(null); setDimensionEditError(null); } if (event.key === 'Enter') { const parsed = parseLinearDimension(dimensionDraft); if (parsed === null) { setDimensionEditError(editingDimension.kind === 'LINE_TO_LINE_ANGLE' ? 'Angle must be greater than 0° and less than 180°.' : 'Dimension must be 0 mm or greater.'); return; } const result = solveDrawingDimensionEdit({ document, dimensionId: editingDimension.id, targetValue: parsed }); if (!result.ok) { setDimensionEditError(result.message); return; } transactDocument(() => result.document); setEditingDimensionId(null); setDimensionEditError(null); } }} /></foreignObject>}
