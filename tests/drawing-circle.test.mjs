@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/drawing-circle/drawingTypes.js';
 import { applyResolvedCircleClick, circlePreviewRadius, EMPTY_CIRCLE_INTERACTION, updateCirclePreview } from '../.test-build/drawing-circle/drawingCircleTool.js';
 import { appendCircleToActiveSketch, appendEntityToActiveSketch } from '../.test-build/drawing-circle/drawingDocumentMutation.js';
-import { resolveCircle, removeEntityAndOrphans, validateDrawingTopology } from '../.test-build/drawing-circle/drawingTopology.js';
+import { deriveEntityDefiningPointIds, resolveCircle, removeEntityAndOrphans, validateDrawingTopology } from '../.test-build/drawing-circle/drawingTopology.js';
 import { distanceToDrawingEntity } from '../.test-build/drawing-circle/drawingEntityGeometry.js';
 import { drawingCircleQualifiesForRect, applyDrawingBoxSelection } from '../.test-build/drawing-circle/drawingBoxSelection.js';
 import { solveDrawingComponentDrag, verifyDrawingConstraints } from '../.test-build/drawing-circle/drawingConstraintSolver.js';
@@ -45,6 +45,25 @@ test('P1 midpoint persists but P2 midpoint does not', () => {
   const constraints = Object.values(document.sketches[document.activeSketchId].geometricConstraints);
   assert.equal(constraints.filter(({ kind }) => kind === 'MIDPOINT').length, 1);
   assert.equal(constraints[0].references[0].pointId, 'center');
+});
+
+test('P1 finite-Line placement persists the global point-linear-support relation', () => {
+  let document = appendEntityToActiveSketch(createDrawingDocumentV2(), { id: 'l', type: 'line', start: { x: 0, y: 0 }, end: { x: 10, y: 0 } }, ids('a', 'b'));
+  document = appendCircleToActiveSketch(document, { id: 'c', type: 'circle', center: { x: 4, y: 0 }, radius: 2 }, ids('center'), null, null, 'l');
+  const sketch = document.sketches[document.activeSketchId];
+  assert.deepEqual(sketch.points.center, { id: 'center', x: 4, y: 0 });
+  assert.deepEqual(sketch.geometricConstraints['coincident:center:support:l'], {
+    id: 'coincident:center:support:l', kind: 'COINCIDENT', variant: 'point-linear-support',
+    references: [{ kind: 'sketchPoint', pointId: 'center' }, { kind: 'entity', entityId: 'l' }],
+  });
+});
+
+test('Circle centers derive one shared entity-defining point presentation role', () => {
+  let document = appendCircleToActiveSketch(createDrawingDocumentV2(), { id: 'a', type: 'circle', center: { x: 1, y: 2 }, centerPointId: 'shared', radius: 2 });
+  document = appendCircleToActiveSketch(document, { id: 'b', type: 'circle', center: { x: 1, y: 2 }, centerPointId: 'shared', radius: 4 });
+  const sketch = document.sketches[document.activeSketchId];
+  assert.deepEqual([...deriveEntityDefiningPointIds(sketch)], ['shared']);
+  assert.equal(Object.keys(sketch.points).length, 1);
 });
 
 test('existing P2 creates global point-curve coincidence and solver preserves free angle', () => {

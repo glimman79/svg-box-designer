@@ -26,6 +26,12 @@ export const resolveActiveSketchLines = (document: DrawingDocumentV2): readonly 
 
 export const pointIdForLineEndpoint = (line: DrawingLineEntity, endpoint: 'start' | 'end'): string => endpoint === 'start' ? line.startPointId : line.endPointId;
 
+/** Derived presentation roles for persistent points that define semantic entities. */
+export const deriveEntityDefiningPointIds = (sketch: DrawingSketchV2): ReadonlySet<string> => new Set(
+  Object.values(sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)
+    .flatMap((entity) => entity.type === 'circle' ? [entity.centerPointId] : []),
+);
+
 export const updateSketchPoint = (sketch: DrawingSketchV2, id: string, point: DrawingPoint): DrawingSketchV2 => {
   const current = sketch.points[id];
   if (!current || current.x === point.x && current.y === point.y) return sketch;
