@@ -1,6 +1,6 @@
 import { sketchPointIdFromReference } from './drawingDimension.js';
 import type { DrawingEntity, DrawingSketchV2 } from './drawingTypes.js';
-import { analyzeDrawingConstraints, analyzeDrawingPointMobility } from './drawingConstraintAnalysis.js';
+import { analyzeDrawingConstraints, analyzeDrawingEntityMobility, analyzeDrawingPointMobility } from './drawingConstraintAnalysis.js';
 
 export const GEOMETRY_CONSTRAINT_VISUAL_STATES = ['FREE', 'CONSTRAINED', 'FULLY_LOCKED'] as const;
 export type GeometryConstraintVisualState = typeof GEOMETRY_CONSTRAINT_VISUAL_STATES[number];
@@ -72,8 +72,9 @@ export const getGeometryConstraintVisualState = (
       : 'CONSTRAINED';
   }
   if (target.kind === 'arc') {
-    const mobility = analyzeDrawingPointMobility(sketch, [...pointIds]);
-    return mobility.degreesOfFreedom === mobility.unconstrainedDegreesOfFreedom ? 'FREE' : 'CONSTRAINED';
+    const mobility = analyzeDrawingEntityMobility(sketch, target.arcId);
+    if (!mobility || mobility.degreesOfFreedom === mobility.unconstrainedDegreesOfFreedom) return 'FREE';
+    return mobility.degreesOfFreedom === 0 ? 'FULLY_LOCKED' : 'CONSTRAINED';
   }
   if (!hasDrivingRestriction(sketch, pointIds)) return 'FREE';
   const analysis = analyzeDrawingConstraints(sketch);
