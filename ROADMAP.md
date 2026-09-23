@@ -282,7 +282,7 @@ for later design.
 
 ### Directional drag-box selection
 
-**Status: IMPLEMENTED / BROWSER-VERIFIED AND ACCEPTED FOR LINES.** Directional drag-box
+**Status: IMPLEMENTED / BROWSER-VERIFIED AND ACCEPTED FOR LINES AND CIRCLES.** Directional drag-box
 multi-selection supplements direct click selection in the common 2D Drawing selection
 system. In Select, a primary-button drag from empty canvas becomes a box after the
 existing 4 CSS-pixel client-space drag threshold. Geometry hits remain authoritative
@@ -295,10 +295,13 @@ pointer in Drawing model coordinates and commits selection only on release.
 | --- | --- | --- |
 | Window / containment selection | **IMPLEMENTED FOR LINES** | A left-to-right drag qualifies a finite Line only when both endpoints are strictly inside the rectangle. Partial containment, crossing, and boundary contact do not qualify. |
 | Crossing / intersection selection | **IMPLEMENTED FOR LINES** | A right-to-left drag qualifies Lines that are contained, partly contained, crossing, or touching the rectangle; edge and corner contact count. |
+| Window / containment selection | **IMPLEMENTED FOR CIRCLES** | A left-to-right drag qualifies a Circle only when its entire curve is strictly inside the rectangle. |
+| Crossing / intersection selection | **IMPLEMENTED FOR CIRCLES** | A right-to-left drag qualifies a Circle when its curve lies in, intersects, or touches the rectangle; a rectangle wholly inside the empty interior without touching the circumference does not qualify. |
 
 An unmodified completed box replaces the common geometry selection, including clearing
-it when no Line qualifies. Ctrl toggles each qualifying Line against the existing
-ordered common selection, preserves selected points, and makes an empty result a no-op.
+it when no eligible entity qualifies. Ctrl toggles each qualifying Line or Circle
+against the existing ordered common selection, preserves selected points, and makes an
+empty result a no-op.
 The current box does not independently select SketchPoints/endpoints. It does not run
 snap/inference or author automatic constraints; Ctrl here means selection toggle rather
 than snap bypass. Selection and its rectangle remain transient UI state and create no
@@ -318,9 +321,10 @@ Dimensions remains tool-first, and its canvas-preselection workflow remains plan
 
 Further selection capability remains future work: independent point/endpoint box
 selection, Shift behavior, batch delete, group Direct Manipulation, additional entity
-types and their qualification semantics, and policies for nested, support, locked, or
-hidden geometry are not implemented or remain undefined. Multiple selected Lines do
-not imply group movement, and current Delete behavior must not be read as batch delete.
+types beyond Lines and Circles and their qualification semantics, and policies for
+nested, support, locked, or hidden geometry are not implemented or remain undefined.
+Multiple selected entities do not imply group movement, and current Delete behavior
+must not be read as batch delete.
 
 ## E. Planned drawing tools
 
@@ -335,16 +339,16 @@ not imply group movement, and current Delete behavior must not be read as batch 
 | Mirror | **DESIGN REQUIRED** | Mirror selected geometry around a selected/reference axis. | Copy, constraint, and associativity behavior remain open. |
 | Quick Trim | **DESIGN REQUIRED** | Quickly trim geometry at relevant intersections or boundaries. | Exact interaction remains open. |
 | Rectangle | **DESIGN REQUIRED** | Add a Rectangle family with **four variants**. | The four variants have not been specified and will be defined later. |
-| Circle — Center + Radius | **IMPLEMENTED / MERGED — BROWSER ACCEPTANCE PENDING** | P1 establishes a persistent center `SketchPoint`; pointer movement shows a visible, live semantic Circle preview; P2 establishes the authoritative scalar radius and commits the Circle. Committed Circle selection and directional Window/Crossing qualification exist. | Known defect: normal committed Circle presentation is invisible because the Circle lacks a `FREE` / `CONSTRAINED` / `FULLY_LOCKED` class; selection reveals it in cyan. Fix and entity-specific Circle freedom derivation remain future production work. Tangency, Concentricity, and Radius/Diameter Dimension/Constraint remain excluded and unimplemented. |
+| Circle — Center + Radius | **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED** | P1 establishes or reuses a persistent center `SketchPoint`; pointer movement shows a visible live semantic Circle preview; P2 is a radius-defining authoring control and commits the Circle with one authoritative scalar radius. Persistence, History, selection, hit testing, deletion/topology cleanup, directional Window/Crossing selection, shared presentation, and accepted P1/P2 acquisition are integrated. | Circle is true semantic geometry, not persistent tessellation. P2 is not a persistent radius point. Arc, Tangency, Concentricity, and Radius/Diameter Dimension/Constraint remain excluded and unimplemented. |
 | Arc — standalone three-point | **PLANNED / NOT IMPLEMENTED; AFTER CIRCLE** | Author in the order P1 = start, P2 = end, P3 = form/curvature/radius-defining point: **Start → End → Form Point**, not Start → Through Point → End. | P3 need not remain an independent persistent SketchPoint; exact persistence is decided during implementation architecture. |
 | Circle — older three-point full-Circle item | **DESIGN REQUIRED / UNRESOLVED** | The prior roadmap separately proposed a three-point-defined full Circle. The newly decided standalone three-point Arc does not silently cancel that older item. | Its continued product need, authoring order, and priority require a future explicit decision; it must not be confused with the Arc workflow. |
 
 
 ### Near-term circular-geometry sequence
 
-This sequence records product order; item 1 is now merged but acceptance remains pending:
+This sequence records product order; item 1 is complete and accepted:
 
-1. Circle — Center + Radius — **IMPLEMENTED / MERGED; BROWSER ACCEPTANCE PENDING** due the committed-presentation defect;
+1. Circle — Center + Radius — **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED**;
 2. standalone three-point Arc — Start + End + Form Point;
 3. Radius / Diameter Dimension;
 4. Radius / Diameter Constraint;
@@ -358,22 +362,35 @@ radius authorities.
 
 ### Decided first-Circle semantics
 
-- P1 is the center. If it snaps to an existing persistent `SketchPoint`, the Circle
+- P1 is the center. It can use an existing persistent `SketchPoint`, Line Midpoint,
+  finite Line body, existing Circle circumference, applicable shared positional
+  Alignment, or raw/free placement. If it snaps to an existing persistent `SketchPoint`, the Circle
   shares that same topological identity; it does not create a duplicate point plus
   Coincidence.
 - If P1 is accepted through a valid existing Midpoint inference/snap, its persistent
   Midpoint semantic relation is retained after Circle creation.
-- P2 establishes radius. A Midpoint used at P2 is placement assistance only and creates
-  no persistent Midpoint relation or permanent Circle control point.
-- If P2 resolves to an existing persistent `SketchPoint`, that point must remain on the
-  Circle while retaining free angular motion: `distance(point, center) == radius`.
-  Exact constraint/type naming remains open, but this persistent point-on-curve meaning
-  belongs to the global Constraints/geometric-relation architecture.
-- If P2 does not resolve to an existing persistent `SketchPoint`, it is authoring input
-  only; no new permanent radius point is required merely because P2 was clicked.
+- A finite-Line P1 persists global `COINCIDENT` / `point-linear-support` semantics;
+  acquisition is against the visible finite Line while the persistent relation follows
+  the established linear-support semantics.
+- An existing-Circle-circumference P1 is projected onto true Circle geometry and
+  persists global `COINCIDENT` / `point-curve` (Point-on-Curve) semantics. It creates no
+  duplicate point and is not Tangency. Curve capture/release is 5/7 CSS px.
+- P2 establishes radius but is not a persistent radius point. Raw/free P2 uses the
+  accepted pointer position and creates neither a P2 `SketchPoint` nor a P2 relation.
+- Automatic P2 acquisition is intentionally limited to existing persistent
+  `SketchPoint`s and is circumference-driven: radial error compares the candidate
+  Circle radius with the center-to-point distance in client/screen-space terms. On
+  acquisition, radius becomes that exact distance and global `COINCIDENT` /
+  `point-curve` (Point-on-Curve) semantics relate the existing point to the new Circle;
+  the point remains angularly free. Capture/release is 7/9 CSS px.
+- P2 does not automatically acquire Midpoint, finite Line, Alignment, Point Reference,
+  Parallel, Perpendicular, another Circle circumference, Tangency, or quadrant.
 - Circle is semantic circular geometry, not tessellated/polyline Line geometry. Its
   center and single radius truth must support later global relationships without a
   Circle-specific mini-system.
+- Ctrl bypasses automatic P1 and P2 acquisition, and stationary Ctrl press/release
+  immediately recomputes placement and presentation. Line, Profile, and Circle use the
+  shared Drawing geometry-authoring cursor policy.
 
 The first Circle implementation participates in common click selection, Ctrl selection
 and toggle, and directional box selection. For left-to-right Window selection, the

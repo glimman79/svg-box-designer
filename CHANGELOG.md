@@ -1,10 +1,18 @@
 # Unreleased
 
+## Drawing — Circle Stage 1 accepted
+
+- Completed and browser-accepted the semantic Center + Radius Circle workflow: P1 defines or reuses a persistent center `SketchPoint`, the live preview follows P2, and P2 commits one authoritative scalar radius without creating a persistent radius point.
+- Integrated committed Circles with normal shared Drawing presentation, visible derived center presentation, persistence, History, selection, hit testing, deletion cleanup, and directional Window/Crossing selection.
+- Made persistent SketchPoints global snap candidates and added accepted Circle P1 acquisition for points, Line Midpoints, finite Lines, existing Circle circumferences through global Point-on-Curve semantics, applicable Alignment, and free placement.
+- Added circumference-driven P2 acquisition of existing persistent points through the same global Point-on-Curve foundation; this is not Tangency and creates no duplicate point or persistent P2 point.
+- Included Circle in the global Ctrl authoring bypass and shared Line/Profile/Circle geometry-authoring cursor policy. Arc, Radius/Diameter Dimension and Constraint, Concentricity, and Tangency remain not implemented.
+
 ## Documentation — global Drawing Presentation Standard
 
 - Defined `PROJECT_MASTER.md` as the normative global authority for committed geometry states, interaction overrides, Authoring Preview, Inference, support/reference geometry, Constraints, Dimensions, Points, directional selection overlays, precedence, and explicitly tracked future decisions.
 - Recorded the semantic pipeline from entity-specific freedom/relation derivation through shared presentation classification to geometry-specific SVG primitives, with Line as reference implementation rather than owner.
-- Corrected Circle Stage 1 status: merged implementation with visible working authoring preview, but browser acceptance pending because committed normal presentation is invisible until selected. No production code or visual value changed.
+- Recorded the presentation standard before Circle Stage 1's later committed-presentation integration and final browser acceptance; the accepted current status is recorded above.
 
 ## Documentation — circular Drawing direction and placeholder status
 
