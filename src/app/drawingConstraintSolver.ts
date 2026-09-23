@@ -2,6 +2,7 @@ import type { DrawingDimension, DrawingDocumentV2, DrawingGeometricConstraint, D
 import { analyzeDrawingConstraints, constraintEquation, constraintPointKey, drawingConstraintDegreesOfFreedomForPoints, DRAWING_ORIGIN_CONSTRAINT_KEY, geometricConstraintEquation, geometricConstraintEquations, lineToLineAngleAndGradient, lineToLineDistanceAndGradient, parallelAndGradient, perpendicularAndGradient, pointOnLinearSupportAndGradient, pointToLineDistanceAndGradient } from './drawingConstraintAnalysis.js';
 import { measureDimension, measureLineToLineDistance, measurePointToLine, resolveDimensionLineReference, resolveDrawingPointReference } from './drawingDimension.js';
 import { angleIsOnDrawingArc, resolveArcFromBulge } from './drawingArcGeometry.js';
+import { applyDrawingSolverVector, drawingSolverVariableKey, type DrawingSolverVariable } from './drawingSolverVariables.js';
 
 export const DRAWING_CONSTRAINT_TOLERANCE_MM = 1e-7;
 export const DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS = 80;
@@ -192,6 +193,37 @@ export const solveDrawingComponentDrag = (
     if (!verifyDrawingConstraints(working, analyzed!.dimensionIds, analyzed!.geometricConstraintIds)) return null;
   }
   return working;
+};
+
+/** Shared direct-target projection entry point for a single authoritative
+ * solver scalar. It is intentionally UI- and History-free; Arc body routing is
+ * a later concern. The requested scalar remains an exact target while the
+ * existing component equations may move connected point coordinates. */
+export const solveDrawingVariableTarget = (
+  sketch: DrawingSketchV2,
+  target: Readonly<{ variable: DrawingSolverVariable; value: number }>,
+): DrawingSketchV2 | null => {
+  const candidate = applyDrawingSolverVector(sketch, [target.variable], [target.value]);
+  if (!candidate) return null;
+  const analysis = analyzeDrawingConstraints(candidate);
+  const component = target.variable.kind === 'point-axis'
+    ? analysis.componentByPointId.get(target.variable.pointId)
+    : analysis.componentByVariableKey.get(drawingSolverVariableKey(target.variable));
+  if (!component) return candidate;
+  if (verifyDrawingConstraints(candidate, component.dimensionIds, component.geometricConstraintIds)) return candidate;
+  const state: ComponentState = {
+    pointIds: [...component.pointIds],
+    equations: [
+      ...component.dimensionIds.map((id) => { const dimension = candidate.dimensions[id], equation = dimension && constraintEquation(candidate, dimension); return equation ? { ...equation, target: dimension.value } : null; }),
+      ...component.geometricConstraintIds.flatMap((id) => { const constraint = candidate.geometricConstraints[id]; return constraint ? geometricConstraintEquations(candidate, constraint).map((equation) => ({ ...equation, target: 0 })) : []; }),
+    ].filter((equation): equation is Equation => Boolean(equation)),
+  };
+  const solved = solveComponent(candidate, state, state.pointIds);
+  if (!solved) return null;
+  const points = { ...candidate.points };
+  state.pointIds.forEach((id, index) => { points[id] = { ...points[id], x: solved.values[index * 2], y: solved.values[index * 2 + 1] }; });
+  const projected = { ...candidate, points };
+  return verifyDrawingConstraints(projected, component.dimensionIds, component.geometricConstraintIds) ? projected : null;
 };
 
 const measurement = (sketch: DrawingSketchV2, dimension: DrawingDimension): number | null => { if (dimension.kind === 'LINE_TO_LINE_ANGLE') { const equation = constraintEquation(sketch, dimension); if (!equation) return null; const [a0, a1, b0, b1] = equation.pointKeys, sector = dimension.angleSector; return lineToLineAngleAndGradient(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1], sector.sideA * sector.sideB as -1 | 1)?.angleDegrees ?? null; } if (dimension.kind === 'POINT_TO_LINE_DISTANCE') { const p = resolveDrawingPointReference(sketch, dimension.references[0]), l = resolveDimensionLineReference(sketch, dimension.references[1]); return p && l ? measurePointToLine(p, l) : null; } if (dimension.kind === 'LINE_TO_LINE_DISTANCE') { const a = resolveDimensionLineReference(sketch, dimension.references[0]), b = resolveDimensionLineReference(sketch, dimension.references[1]); return a && b ? measureLineToLineDistance(a, b) : null; } const a = resolveDrawingPointReference(sketch, dimension.references[0]), b = resolveDrawingPointReference(sketch, dimension.references[1]); return a && b ? measureDimension(dimension.kind, a, b) : null; };

@@ -62,5 +62,17 @@ export const distanceToArc = (point: DrawingPoint, arc: ResolvedDrawingArc): num
   return Math.hypot(point.x - nearest.x, point.y - nearest.y);
 };
 
+/** Signed equation used by the shared constraint solver. Outside the directed
+ * finite domain it deliberately becomes endpoint distance, never support-circle
+ * distance. */
+export const finiteArcConstraintResidual = (point: DrawingPoint, entity: DrawingArcEntity, start: DrawingPoint, end: DrawingPoint): number | null => {
+  const arc = resolveArcFromBulge(entity, start, end);
+  if (!arc) return null;
+  const angle = Math.atan2(point.y - arc.center.y, point.x - arc.center.x);
+  return angleIsOnDrawingArc(angle, arc.startAngle, arc.signedSweep)
+    ? Math.hypot(point.x - arc.center.x, point.y - arc.center.y) - arc.radius
+    : Math.min(Math.hypot(point.x - start.x, point.y - start.y), Math.hypot(point.x - end.x, point.y - end.y));
+};
+
 export const drawingArcPath = (arc: ResolvedDrawingArc): string =>
   `M ${arc.start.x} ${arc.start.y} A ${arc.radius} ${arc.radius} 0 ${Math.abs(arc.signedSweep) > Math.PI ? 1 : 0} ${arc.signedSweep > 0 ? 1 : 0} ${arc.end.x} ${arc.end.y}`;

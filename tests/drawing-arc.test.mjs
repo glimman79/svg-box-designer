@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { angleIsOnDrawingArc, deriveArcThroughThreePoints, distanceToArc, projectPointToArc, resolveArcFromBulge } from '../.test-build/drawing-arc/drawingArcGeometry.js';
+import { angleIsOnDrawingArc, deriveArcThroughThreePoints, distanceToArc, finiteArcConstraintResidual, projectPointToArc, resolveArcFromBulge } from '../.test-build/drawing-arc/drawingArcGeometry.js';
 import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcEndpointReference, resolveArcPreview, updateArcPreview } from '../.test-build/drawing-arc/drawingArcTool.js';
 import { drawingArcQualifiesForRect } from '../.test-build/drawing-arc/drawingBoxSelection.js';
 import { appendArcToActiveSketch } from '../.test-build/drawing-arc/drawingDocumentMutation.js';
 import { migrateDrawingDocument } from '../.test-build/drawing-arc/drawingTypes.js';
 import { deriveEntityDefiningPointIds, removeEntityAndOrphans, resolveArc, validateDrawingTopology } from '../.test-build/drawing-arc/drawingTopology.js';
 import { solveDrawingDragCandidate } from '../.test-build/drawing-arc/drawingDirectManipulation.js';
-import { verifyDrawingConstraints } from '../.test-build/drawing-arc/drawingConstraintSolver.js';
+import { solveDrawingVariableTarget, verifyDrawingConstraints } from '../.test-build/drawing-arc/drawingConstraintSolver.js';
+import { analyzeDrawingConstraints, analyzeDrawingEntityMobility, constraintJacobianRow, geometricConstraintEquation } from '../.test-build/drawing-arc/drawingConstraintAnalysis.js';
+import { applyDrawingSolverVector, arcBulgeSolverVariable, deduplicateDrawingSolverVariables, drawingSolverVariableKey, flattenDrawingSolverVariables, pointSolverVariables, readDrawingSolverVariable, writeDrawingSolverVariable } from '../.test-build/drawing-arc/drawingSolverVariables.js';
 
 const close = (a, b, e = 1e-8) => assert.ok(Math.abs(a - b) <= e, `${a} != ${b}`);
 const endpoint = (x, y, pointId = null) => ({ point: { x, y }, pointId, midpointLineId: null, lineBodyId: null, curveId: null });
@@ -101,6 +103,56 @@ test('finite point-on-arc verifies interior and rejects opposite support side', 
   doc.sketches.s.entityOrder = ['arc']; doc.sketches.s.geometricConstraints.c = { id: 'c', kind: 'COINCIDENT', variant: 'point-curve', references: [{ kind: 'sketchPoint', pointId: 'q' }, { kind: 'entity', entityId: 'arc' }] }; doc.sketches.s.geometricConstraintOrder = ['c'];
   assert.ok(verifyDrawingConstraints(doc.sketches.s, [], ['c']));
   doc.sketches.s.points.q = { id: 'q', x: 0, y: 1 }; assert.equal(verifyDrawingConstraints(doc.sketches.s, [], ['c']), null);
+});
+
+test('shared solver variables preserve point behavior and immutably apply Arc bulge', () => {
+  const doc = document(), sketch = doc.sketches.s;
+  Object.assign(sketch.points, { a: { id: 'a', x: -1, y: 0 }, b: { id: 'b', x: 1, y: 0 } });
+  sketch.entities.arc = { id: 'arc', type: 'arc', startPointId: 'a', endPointId: 'b', bulge: 1 };
+  const pointVariables = pointSolverVariables('a'), bulge = arcBulgeSolverVariable('arc');
+  assert.deepEqual(flattenDrawingSolverVariables(sketch, [...pointVariables, bulge]), [-1, 0, 1]);
+  assert.equal(drawingSolverVariableKey(bulge), 'entity:arc:arc-bulge');
+  assert.equal(deduplicateDrawingSolverVariables([bulge, bulge]).length, 1);
+  assert.equal(readDrawingSolverVariable(sketch, bulge), 1);
+  const candidate = writeDrawingSolverVariable(sketch, bulge, -0.5); assert.ok(candidate);
+  assert.notEqual(candidate, sketch); assert.equal(sketch.entities.arc.bulge, 1);
+  assert.deepEqual({ id: candidate.entities.arc.id, start: candidate.entities.arc.startPointId, end: candidate.entities.arc.endPointId }, { id: 'arc', start: 'a', end: 'b' });
+  assert.ok(resolveArcFromBulge(candidate.entities.arc, candidate.points.a, candidate.points.b));
+  assert.equal(writeDrawingSolverVariable(sketch, bulge, 0), null);
+  assert.equal(applyDrawingSolverVector(sketch, [bulge], [Infinity]), null);
+  const unconstrained = analyzeDrawingConstraints(sketch).componentByVariableKey.get(drawingSolverVariableKey(bulge));
+  assert.ok(unconstrained); assert.equal(unconstrained.variableCount, 5); assert.equal(unconstrained.degreesOfFreedom, 5);
+});
+
+test('point-on-finite-Arc component and Jacobian include meaningful bulge sensitivity', () => {
+  const sketch = document().sketches.s;
+  Object.assign(sketch.points, { a: { id: 'a', x: -1, y: 0 }, b: { id: 'b', x: 1, y: 0 }, q: { id: 'q', x: 0, y: -1 } });
+  sketch.entities.arc = { id: 'arc', type: 'arc', startPointId: 'a', endPointId: 'b', bulge: 1 };
+  sketch.geometricConstraints.c = { id: 'c', kind: 'COINCIDENT', variant: 'point-curve', references: [{ kind: 'sketchPoint', pointId: 'q' }, { kind: 'entity', entityId: 'arc' }] };
+  sketch.geometricConstraintOrder = ['c'];
+  const equation = geometricConstraintEquation(sketch, sketch.geometricConstraints.c), bulge = arcBulgeSolverVariable('arc'); assert.ok(equation);
+  const component = analyzeDrawingConstraints(sketch).componentByPointId.get('q'); assert.ok(component);
+  assert.deepEqual([...component.pointIds].sort(), ['a', 'b', 'q']);
+  assert.deepEqual(component.scalarVariables, [bulge]); assert.equal(component.variableCount, 7);
+  const row = constraintJacobianRow(sketch, equation, ['q', 'a', 'b'], [bulge]); assert.ok(row);
+  assert.ok(Math.abs(row.at(-1)) > 1e-6);
+  const changed = finiteArcConstraintResidual(sketch.points.q, { ...sketch.entities.arc, bulge: .8 }, sketch.points.a, sketch.points.b);
+  assert.ok(changed !== null && Math.abs(changed) > 1e-3);
+  assert.equal(finiteArcConstraintResidual({ x: 0, y: 1 }, sketch.entities.arc, sketch.points.a, sketch.points.b), 2 ** .5);
+});
+
+test('direct scalar target projects through shared constraints without mutating source or History', () => {
+  const sketch = document().sketches.s;
+  Object.assign(sketch.points, { a: { id: 'a', x: -1, y: 0 }, b: { id: 'b', x: 1, y: 0 }, q: { id: 'q', x: 0, y: -1 } });
+  sketch.entities.arc = { id: 'arc', type: 'arc', startPointId: 'a', endPointId: 'b', bulge: 1 };
+  sketch.geometricConstraints.c = { id: 'c', kind: 'COINCIDENT', variant: 'point-curve', references: [{ kind: 'sketchPoint', pointId: 'q' }, { kind: 'entity', entityId: 'arc' }] };
+  sketch.geometricConstraintOrder = ['c'];
+  const candidate = solveDrawingVariableTarget(sketch, { variable: arcBulgeSolverVariable('arc'), value: .5 });
+  assert.ok(candidate); assert.equal(candidate.entities.arc.bulge, .5); assert.equal(sketch.entities.arc.bulge, 1);
+  assert.ok(verifyDrawingConstraints(candidate, [], ['c'])); assert.equal('history' in candidate, false);
+  assert.equal(solveDrawingVariableTarget(sketch, { variable: arcBulgeSolverVariable('arc'), value: 0 }), null);
+  assert.deepEqual(analyzeDrawingEntityMobility(document().sketches.s, 'missing'), null);
+  const mobility = analyzeDrawingEntityMobility(sketch, 'arc'); assert.ok(mobility); assert.equal(mobility.unconstrainedDegreesOfFreedom, 5);
 });
 
 test('analytic Window/Crossing considers only the finite arc', () => {
