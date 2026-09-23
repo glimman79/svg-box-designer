@@ -128,7 +128,8 @@ test('Circle stages apply only their locked shared candidate semantics', () => {
   assert.deepEqual([p1.endpoints.length, p1.midpoints.length, p1.lines.length, p1.alignmentsX.length], [1, 1, 1, 1]);
   assert.deepEqual([p1.pointReferences.length, p1.perpendiculars.length, p1.parallels.length], [0, 0, 0]);
   const p2 = inference.filterDrawingInferenceCandidatesForAuthoring(candidates, 'circle-p2');
-  assert.equal(p2.endpoints.length, 1);
-  assert.deepEqual([p2.midpoints, p2.lines, p2.alignmentsX, p2.alignmentsY, p2.pointReferences, p2.perpendiculars, p2.parallels],
-    [[], [], [], [], [], [], []]);
+  // P2 point acquisition is produced by circumference-to-persistent-point
+  // geometry, never the cursor-proximity endpoint channel.
+  assert.deepEqual([p2.endpoints, p2.midpoints, p2.lines, p2.alignmentsX, p2.alignmentsY,
+    p2.pointReferences, p2.perpendiculars, p2.parallels], [[], [], [], [], [], [], [], []]);
 });

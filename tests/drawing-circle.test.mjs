@@ -8,8 +8,64 @@ import { distanceToDrawingEntity } from '../.test-build/drawing-circle/drawingEn
 import { drawingCircleQualifiesForRect, applyDrawingBoxSelection } from '../.test-build/drawing-circle/drawingBoxSelection.js';
 import { solveDrawingComponentDrag, verifyDrawingConstraints } from '../.test-build/drawing-circle/drawingConstraintSolver.js';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-circle/drawingHistory.js';
+import { projectPointToCircle, resolveCircumferencePointSnap, resolvePointOnCurveSnap } from '../.test-build/drawing-circle/drawingCurveSnap.js';
+import { isDrawingGeometryAuthoringTool } from '../.test-build/drawing-circle/drawingToolLifecycle.js';
 
 const ids = (...values) => { let i = 0; return () => values[i++]; };
+const scale = (value) => ({ a: value, b: 0, c: 0, d: value, e: 0, f: 0 });
+
+test('P1 uses exact, zoom-stable Circle projection with curve identity hysteresis', () => {
+  const circle = { id: 'existing', type: 'circle', centerPointId: 'center', center: { x: 0, y: 0 }, radius: 10 };
+  assert.deepEqual(projectPointToCircle({ x: 6, y: 8 }, circle), { x: 6, y: 8 });
+  assert.deepEqual(projectPointToCircle({ x: 0, y: 0 }, circle), { x: 10, y: 0 });
+  for (const zoom of [1, 4]) {
+    const rawPoint = { x: 10 + 4 / zoom, y: 0 };
+    const candidate = resolvePointOnCurveSnap({ rawPoint, pointerClient: { x: rawPoint.x * zoom, y: 0 },
+      circles: [circle], transform: scale(zoom), previousCurveId: null });
+    assert.equal(candidate?.curveId, 'existing');
+    assert.deepEqual(candidate?.point, { x: 10, y: 0 });
+    assert.equal(candidate?.screenDistance, 4);
+  }
+  const retained = resolvePointOnCurveSnap({ rawPoint: { x: 16.5, y: 0 }, pointerClient: { x: 16.5, y: 0 },
+    circles: [circle], transform: scale(1), previousCurveId: 'existing' });
+  assert.equal(retained?.curveId, 'existing');
+});
+
+test('P2 acquisition is circumference-driven, deterministic, and angle-independent', () => {
+  const points = [{ id: 'b', x: 0, y: 10 }, { id: 'a', x: -10, y: 0 }];
+  const acquired = resolveCircumferencePointSnap({ center: { x: 0, y: 0 }, rawPoint: { x: 10.4, y: 0 },
+    points, transform: scale(1), previousPointId: null });
+  assert.equal(acquired?.pointId, 'a');
+  assert.equal(acquired?.radius, 10);
+  assert.deepEqual(acquired?.point, { x: -10, y: 0 });
+  // The cursor is close to Q, but its radius is more than the capture tolerance away.
+  assert.equal(resolveCircumferencePointSnap({ center: { x: 0, y: 0 }, rawPoint: { x: 18, y: 0 },
+    points: [{ id: 'q', x: 10, y: 0 }], transform: scale(1), previousPointId: null }), null);
+  const held = resolveCircumferencePointSnap({ center: { x: 0, y: 0 }, rawPoint: { x: 18, y: 0 },
+    points: [{ id: 'q', x: 0, y: 10 }], transform: scale(1), previousPointId: 'q' });
+  assert.equal(held?.pointId, 'q');
+});
+
+test('shared authoring cursor classification covers geometry tools only', () => {
+  assert.equal(isDrawingGeometryAuthoringTool('line'), true);
+  assert.equal(isDrawingGeometryAuthoringTool('profile'), true);
+  assert.equal(isDrawingGeometryAuthoringTool('circle'), true);
+  assert.equal(isDrawingGeometryAuthoringTool('select'), false);
+  assert.equal(isDrawingGeometryAuthoringTool('dimension'), false);
+});
+
+test('P1 point-on-Circle persists the global point-curve relation without fake curve point or Tangency', () => {
+  let document = appendCircleToActiveSketch(createDrawingDocumentV2(), { id: 'existing', type: 'circle', center: { x: 0, y: 0 }, radius: 10 }, ids('existing-center'));
+  document = appendCircleToActiveSketch(document, { id: 'new', type: 'circle', center: { x: 10, y: 0 }, radius: 2 }, ids('new-center'), null, null, null, 'existing');
+  const sketch = document.sketches[document.activeSketchId];
+  assert.equal(Object.keys(sketch.points).length, 2);
+  assert.deepEqual(sketch.points['new-center'], { id: 'new-center', x: 10, y: 0 });
+  assert.deepEqual(sketch.geometricConstraints['coincident:new-center:curve:existing'], {
+    id: 'coincident:new-center:curve:existing', kind: 'COINCIDENT', variant: 'point-curve',
+    references: [{ kind: 'sketchPoint', pointId: 'new-center' }, { kind: 'entity', entityId: 'existing' }],
+  });
+  assert.equal(Object.values(sketch.geometricConstraints).some(({ kind }) => kind === 'TANGENCY'), false);
+});
 
 test('two-click circle rejects degeneracy and preview is transient', () => {
   const first = applyResolvedCircleClick(EMPTY_CIRCLE_INTERACTION, { x: 2, y: 3 }, () => 'circle');

@@ -3,6 +3,11 @@ export type CadToolActivationMode = 'normal' | 'persistent';
 export type DrawingToolLifecycle = Readonly<{ activeTool: DrawingActiveTool; activationMode: CadToolActivationMode }>;
 export type DrawingToolLifecycleAction = 'activate' | 'cancel-construction' | 'finish-construction' | 'deactivate';
 
+/** Drawing-wide CSS/system cursor policy for geometry authoring tools. */
+export const isDrawingGeometryAuthoringTool = (tool: DrawingActiveTool): boolean => (
+  tool === 'line' || tool === 'profile' || tool === 'circle'
+);
+
 /** Shared vocabulary for tool lifetime; transient construction remains owned by each tool. */
 export const nextDrawingTool = (activeTool: DrawingActiveTool, action: DrawingToolLifecycleAction, tool: DrawingActiveTool = activeTool): DrawingActiveTool => {
   if (action === 'activate') return tool;
