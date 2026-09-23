@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 
 const snaps = await import(pathToFileURL(path.resolve('.test-build/drawing-acquisition-tolerances/drawingSnapEngine.js')));
+const inference = await import(pathToFileURL(path.resolve('.test-build/drawing-acquisition-tolerances/drawingInference.js')));
 const origin = { x: 0, y: 0 };
 const empty = () => ({ endpoints: [], midpoints: [], lines: [], alignmentsX: [], alignmentsY: [], perpendiculars: [], parallels: [], pointReferences: [] });
 const direction = (type, screenDistance) => ({ type, entityId: `${type}-reference`, candidatePoint: { x: 20, y: 0 },
@@ -59,7 +60,7 @@ test('production position target tolerances use the Stage 1 values', () => {
   { endpoint: [7, 9], midpoint: [7, 9], line: [5, 7], alignment: [5, 7], pointReference: [5, 7] });
 });
 
-const endpoint = (screenDistance) => ({ type: 'endpoint', entityId: 'endpoint-line', endpoint: 'start',
+const endpoint = (screenDistance) => ({ type: 'endpoint', pointId: 'endpoint-point', entityId: 'endpoint-line', endpoint: 'start',
   candidatePoint: { x: 0, y: 0 }, screenDistance });
 const midpoint = (screenDistance) => ({ type: 'midpoint', entityId: 'midpoint-line', stableKey: 'midpoint-line:midpoint',
   candidatePoint: { x: 10, y: 0 }, screenDistance });
@@ -99,4 +100,35 @@ test('positional Point Reference observes its production capture and release bou
   assert.equal(resolve({ pointReferences: [pointReference(5.001)] }).type, 'none');
   assert.equal(resolve({ pointReferences: [pointReference(6.999)] }, acquired).type, 'point-reference');
   assert.equal(resolve({ pointReferences: [pointReference(7.001)] }, acquired).type, 'none');
+});
+
+test('persistent point candidates are global, exact, stable, and deduplicated across entity ownership', () => {
+  const transform = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+  const lines = [{ id: 'line', type: 'line', startPointId: 'shared', endPointId: 'line-end',
+    start: { x: 3, y: 4 }, end: { x: 20, y: 4 } }];
+  const points = [{ id: 'shared', x: 3, y: 4 }, { id: 'line-end', x: 20, y: 4 }, { id: 'circle-center', x: 8, y: 9 }];
+  const candidates = inference.collectDrawingInferenceCandidates({ x: 8, y: 9 }, lines, transform, undefined, null, null, null, points);
+  assert.deepEqual(candidates.endpoints.map(({ pointId }) => pointId).sort(), ['circle-center', 'line-end', 'shared']);
+  assert.equal(candidates.endpoints.filter(({ pointId }) => pointId === 'shared').length, 1);
+  const center = candidates.endpoints.find(({ pointId }) => pointId === 'circle-center');
+  assert.deepEqual(center.candidatePoint, { x: 8, y: 9 });
+  assert.equal(center.screenDistance, 0);
+  const accepted = resolve({ endpoints: [center] }, null, { x: 8.1, y: 9.1 });
+  assert.equal(accepted.pointId, 'circle-center');
+  assert.deepEqual(accepted.effectivePoint, { x: 8, y: 9 });
+});
+
+test('Circle stages apply only their locked shared candidate semantics', () => {
+  const candidates = {
+    endpoints: [endpoint(1)], midpoints: [midpoint(1)], lines: [line(1)],
+    alignmentsX: [alignmentX(1)], alignmentsY: [alignmentX(1)],
+    pointReferences: [pointReference(1)], perpendiculars: [direction('perpendicular', 1)], parallels: [direction('parallel', 1)],
+  };
+  const p1 = inference.filterDrawingInferenceCandidatesForAuthoring(candidates, 'circle-p1');
+  assert.deepEqual([p1.endpoints.length, p1.midpoints.length, p1.lines.length, p1.alignmentsX.length], [1, 1, 1, 1]);
+  assert.deepEqual([p1.pointReferences.length, p1.perpendiculars.length, p1.parallels.length], [0, 0, 0]);
+  const p2 = inference.filterDrawingInferenceCandidatesForAuthoring(candidates, 'circle-p2');
+  assert.equal(p2.endpoints.length, 1);
+  assert.deepEqual([p2.midpoints, p2.lines, p2.alignmentsX, p2.alignmentsY, p2.pointReferences, p2.perpendiculars, p2.parallels],
+    [[], [], [], [], [], [], []]);
 });

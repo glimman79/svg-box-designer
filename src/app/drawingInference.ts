@@ -1,4 +1,4 @@
-import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingPoint, type ResolvedDrawingLine } from './drawingTypes.js';
+import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingPoint, type DrawingSketchPoint, type ResolvedDrawingLine } from './drawingTypes.js';
 import type { AffineTransform, CoordinatePoint } from './drawingTransform';
 
 export const DRAWING_ENDPOINT_INFERENCE_TOLERANCE_PX = 9;
@@ -53,6 +53,7 @@ export type DrawingInference = Readonly<{
   referenceIncidentToActiveLineStart?: boolean;
 }> | PointReferenceConstruction | Readonly<{
   type: 'endpoint';
+  pointId: string;
   entityId: string;
   endpoint: 'start' | 'end';
   candidatePoint: DrawingPoint;
@@ -96,6 +97,19 @@ export type DrawingInferenceCandidates = Readonly<{
   parallels: ReadonlyArray<Extract<DrawingInference, { type: 'parallel' }>>;
   pointReferences: ReadonlyArray<PointReferenceConstruction>;
 }>;
+
+/** Applies tool-stage semantics without forking candidate production. */
+export const filterDrawingInferenceCandidatesForAuthoring = (
+  candidates: DrawingInferenceCandidates,
+  applicability: 'segment' | 'circle-p1' | 'circle-p2',
+): DrawingInferenceCandidates => applicability === 'segment' ? candidates : {
+  ...candidates,
+  midpoints: applicability === 'circle-p1' ? candidates.midpoints : [],
+  lines: applicability === 'circle-p1' ? candidates.lines : [],
+  alignmentsX: applicability === 'circle-p1' ? candidates.alignmentsX : [],
+  alignmentsY: applicability === 'circle-p1' ? candidates.alignmentsY : [],
+  pointReferences: [], perpendiculars: [], parallels: [],
+};
 
 const toScreenPoint = (point: CoordinatePoint, transform: AffineTransform): CoordinatePoint => ({
   x: transform.a * point.x + transform.c * point.y + transform.e,
@@ -202,15 +216,30 @@ export const collectDrawingInferenceCandidates = (
   activeLineStart?: DrawingPoint | null,
   activeAngularDegrees?: number | null,
   activeLineStartPointId?: string | null,
+  persistentPoints?: ReadonlyArray<DrawingSketchPoint>,
 ): DrawingInferenceCandidates => {
   const endpoints: Array<Extract<DrawingInference, { type: 'endpoint' }>> = [];
+  const sources = new Map<string, { entityId: string; endpoint: 'start' | 'end' }>();
   for (const line of lines) {
     for (const endpoint of ['start', 'end'] as const) {
-      const candidatePoint = line[endpoint];
+      const pointId = endpoint === 'start' ? line.startPointId : line.endPointId;
+      if (pointId && !sources.has(pointId)) sources.set(pointId, { entityId: line.id, endpoint });
+    }
+  }
+  const points = persistentPoints ?? lines.flatMap((line) => [
+    { id: line.startPointId ?? `${line.id}:start`, ...line.start },
+    { id: line.endPointId ?? `${line.id}:end`, ...line.end },
+  ]);
+  const seen = new Set<string>();
+  for (const point of points) {
+      if (seen.has(point.id)) continue;
+      seen.add(point.id);
+      const candidatePoint = { x: point.x, y: point.y };
       const screenPoint = toScreenPoint(candidatePoint, drawingToClientTransform);
       const screenDistance = Math.hypot(pointerClientPoint.x - screenPoint.x, pointerClientPoint.y - screenPoint.y);
-      endpoints.push({ type: 'endpoint', entityId: line.id, endpoint, candidatePoint, screenDistance });
-    }
+      const source = sources.get(point.id);
+      endpoints.push({ type: 'endpoint', pointId: point.id, entityId: source?.entityId ?? `point:${point.id}`,
+        endpoint: source?.endpoint ?? 'start', candidatePoint, screenDistance });
   }
   const midpoints: Array<Extract<DrawingInference, { type: 'midpoint' }>> = [];
   for (const line of lines) {

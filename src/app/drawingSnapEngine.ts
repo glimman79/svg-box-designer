@@ -61,7 +61,7 @@ export type DrawingSnap = (Readonly<{
   stableKey: string; screenDistance: number;
 }> | Readonly<{
   type: 'endpoint'; active: true; effectivePoint: DrawingPoint; entityId: string;
-  endpoint: 'start' | 'end'; screenDistance: number;
+  endpoint: 'start' | 'end'; pointId: string; screenDistance: number;
 }> | Readonly<{
   type: 'line'; active: true; effectivePoint: DrawingPoint; entityId: string;
   segmentParameter: number; screenDistance: number; lineStart?: DrawingPoint; lineEnd?: DrawingPoint;
@@ -82,12 +82,12 @@ export type DrawingInferenceCandidates = Readonly<{
   pointReferences: ReadonlyArray<PointReferenceInference>;
 }>;
 
-const endpointIdentity = (candidate: EndpointInference) => `${candidate.entityId}:${candidate.endpoint}`;
+const endpointIdentity = (candidate: EndpointInference) => candidate.pointId;
 const retainedEndpoint = (previous: DrawingSnap | null, candidates: ReadonlyArray<EndpointInference>) => previous?.type === 'endpoint'
-  ? candidates.find((candidate) => endpointIdentity(candidate) === `${previous.entityId}:${previous.endpoint}`) ?? null : null;
+  ? candidates.find((candidate) => endpointIdentity(candidate) === previous.pointId) ?? null : null;
 
-/** Endpoint switching rule: nearest eligible endpoint wins; the retained identity
- * wins only an exact distance tie. Stable entity/endpoint identity breaks all other ties. */
+/** Point switching rule: nearest eligible point wins; retained semantic point
+ * identity wins only an exact distance tie. */
 const chooseEndpoint = (candidates: ReadonlyArray<EndpointInference>, previous: DrawingSnap | null): EndpointInference | null => {
   const eligible = candidates.filter(({ screenDistance }) => screenDistance <= DRAWING_ENDPOINT_SNAP_ACQUIRE_PX)
     .slice().sort((a, b) => a.screenDistance - b.screenDistance || endpointIdentity(a).localeCompare(endpointIdentity(b)));
@@ -217,7 +217,7 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
 
   const endpoint = chooseEndpoint(candidates.endpoints, previousSnap);
   if (endpoint) return { active: true, type: 'endpoint', effectivePoint: endpoint.candidatePoint, entityId: endpoint.entityId,
-    endpoint: endpoint.endpoint, screenDistance: endpoint.screenDistance, channels };
+    endpoint: endpoint.endpoint, pointId: endpoint.pointId, screenDistance: endpoint.screenDistance, channels };
   const retainedMidpoint = previousSnap?.type === 'midpoint' ? (candidates.midpoints ?? []).find(({ stableKey }) => stableKey === previousSnap.stableKey) : null;
   const midpoint = retainedMidpoint && retainedMidpoint.screenDistance <= DRAWING_MIDPOINT_SNAP_RELEASE_PX ? retainedMidpoint
     : (candidates.midpoints ?? []).find(({ screenDistance }) => screenDistance <= DRAWING_MIDPOINT_SNAP_ACQUIRE_PX);

@@ -5,7 +5,8 @@ import type { DrawingCircleDraft } from './drawingCircleTool.js';
 
 export const appendCircleToActiveSketch = (document: DrawingDocumentV2, draft: DrawingCircleDraft,
   createPointId: () => string = () => `point-${crypto.randomUUID()}`,
-  midpointLineId: string | null = null, circumferencePointId: string | null = null): DrawingDocumentV2 => {
+  midpointLineId: string | null = null, circumferencePointId: string | null = null,
+  centerLineId: string | null = null): DrawingDocumentV2 => {
   const sketch = document.sketches[document.activeSketchId];
   if (!sketch || (sketch.entities as unknown as Record<string, unknown>)[draft.id] || !Number.isFinite(draft.radius) || draft.radius <= 1e-9) return document;
   const centerPointId = draft.centerPointId ?? createPointId();
@@ -13,6 +14,11 @@ export const appendCircleToActiveSketch = (document: DrawingDocumentV2, draft: D
   const constraints: DrawingGeometricConstraint[] = [];
   if (midpointLineId && sketch.entities[midpointLineId]?.type === 'line') constraints.push({ id: `midpoint:${centerPointId}:${midpointLineId}`, kind: 'MIDPOINT',
     references: [{ kind: 'sketchPoint', pointId: centerPointId }, { kind: 'entity', entityId: midpointLineId }] });
+  // Finite-segment acquisition persists through the existing infinite-support semantic.
+  if (!midpointLineId && centerLineId && sketch.entities[centerLineId]?.type === 'line') constraints.push({
+    id: `coincident:${centerPointId}:support:${centerLineId}`, kind: 'COINCIDENT', variant: 'point-linear-support',
+    references: [{ kind: 'sketchPoint', pointId: centerPointId }, { kind: 'entity', entityId: centerLineId }],
+  });
   if (circumferencePointId && sketch.points[circumferencePointId] && circumferencePointId !== centerPointId) constraints.push({
     id: `coincident:${circumferencePointId}:curve:${draft.id}`, kind: 'COINCIDENT', variant: 'point-curve',
     references: [{ kind: 'sketchPoint', pointId: circumferencePointId }, { kind: 'entity', entityId: draft.id }],
