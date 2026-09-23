@@ -1,5 +1,6 @@
 import { pointIdForLineEndpoint } from './drawingTopology.js';
 import type { DrawingDimension, DrawingGeometricConstraint, DrawingPoint, DrawingPointReference, DrawingSketchV2 } from './drawingTypes.js';
+import { angleIsOnDrawingArc, resolveArcFromBulge } from './drawingArcGeometry.js';
 
 export const DRAWING_CONSTRAINT_RANK_TOLERANCE = Object.freeze({ absolute: 1e-10, relative: 1e-9 });
 export const DRAWING_ORIGIN_CONSTRAINT_KEY = 'datum:ORIGIN';
@@ -55,9 +56,11 @@ export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricCo
     }
     if (geometricConstraint.variant === 'point-curve') {
       const pointId = geometricConstraint.references[0].pointId;
-      const circle = (sketch.entities as unknown as Record<string, import('./drawingTypes.js').DrawingEntity>)[geometricConstraint.references[1].entityId];
-      return circle?.type === 'circle' && sketch.points[pointId] && sketch.points[circle.centerPointId]
-        ? { geometricConstraint, pointKeys: [pointId, circle.centerPointId] } : null;
+      const curve = (sketch.entities as unknown as Record<string, import('./drawingTypes.js').DrawingEntity>)[geometricConstraint.references[1].entityId];
+      return curve?.type === 'circle' && sketch.points[pointId] && sketch.points[curve.centerPointId]
+        ? { geometricConstraint, pointKeys: [pointId, curve.centerPointId] }
+        : curve?.type === 'arc' && sketch.points[pointId] && sketch.points[curve.startPointId] && sketch.points[curve.endPointId]
+          ? { geometricConstraint, pointKeys: [pointId, curve.startPointId, curve.endPointId] } : null;
     }
     const [a, b] = geometricConstraint.references.map(({ pointId }) => pointId);
     return a !== b && sketch.points[a] && sketch.points[b] ? { geometricConstraint, pointKeys: [a, b], coordinateAxis: 'x' } : null;
@@ -200,6 +203,26 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
       const [p, a, b] = equation.pointKeys, result = pointOnLinearSupportAndGradient(coordinate(sketch, p), coordinate(sketch, a), coordinate(sketch, b));
       if (!result) return null;
       [p, a, b].forEach((key, i) => set(key, result.gradient[i * 2], result.gradient[i * 2 + 1])); return row;
+    }
+    if (equation.geometricConstraint.variant === 'point-curve') {
+      const curve = (sketch.entities as unknown as Record<string, import('./drawingTypes.js').DrawingEntity>)[equation.geometricConstraint.references[1].entityId];
+      const [p, a, b] = equation.pointKeys;
+      if (curve?.type === 'circle') {
+        const point = coordinate(sketch, p), center = coordinate(sketch, a), length = Math.hypot(point.x - center.x, point.y - center.y);
+        if (length <= DRAWING_CONSTRAINT_RANK_TOLERANCE.absolute) return null;
+        const gx = (point.x - center.x) / length, gy = (point.y - center.y) / length; set(p, gx, gy); set(a, -gx, -gy); return row;
+      }
+      if (curve?.type === 'arc' && b) {
+        const arc = resolveArcFromBulge(curve, coordinate(sketch, a), coordinate(sketch, b));
+        const point = coordinate(sketch, p); if (!arc) return null;
+        const angle = Math.atan2(point.y - arc.center.y, point.x - arc.center.x);
+        if (!angleIsOnDrawingArc(angle, arc.startAngle, arc.signedSweep)) return null;
+        const keys = [p, a, b], coordinates = keys.flatMap((key) => { const q = coordinate(sketch, key); return [q.x, q.y]; });
+        const value = (v: number[]) => { const resolved = resolveArcFromBulge(curve, { x: v[2], y: v[3] }, { x: v[4], y: v[5] }); return resolved ? Math.hypot(v[0] - resolved.center.x, v[1] - resolved.center.y) - resolved.radius : NaN; };
+        coordinates.forEach((coordinateValue, index) => { const h = 1e-6 * Math.max(1, Math.abs(coordinateValue)); const plus = [...coordinates], minus = [...coordinates]; plus[index] += h; minus[index] -= h; const gradient = (value(plus) - value(minus)) / (2 * h); set(keys[Math.floor(index / 2)], index % 2 === 0 ? gradient : 0, index % 2 ? gradient : 0); });
+        return row;
+      }
+      return null;
     }
     const [a, b] = equation.pointKeys, x = equation.coordinateAxis === 'x';
     set(a, x ? 1 : 0, x ? 0 : 1); set(b, x ? -1 : 0, x ? 0 : -1); return row;

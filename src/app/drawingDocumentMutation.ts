@@ -2,6 +2,32 @@ import { canonicalCoincidentPointPair } from './drawingCoincidentConstraint.js';
 import type { DrawingDocumentV2, DrawingGeometricConstraint, DrawingLineEntity } from './drawingTypes.js';
 import type { DrawingLineDraft } from './drawingLineSegmentSupport.js';
 import type { DrawingCircleDraft } from './drawingCircleTool.js';
+import type { DrawingArcDraft, AcceptedArcEndpoint } from './drawingArcTool.js';
+
+export const appendArcToActiveSketch = (document: DrawingDocumentV2, draft: DrawingArcDraft,
+  createPointId: () => string = () => `point-${crypto.randomUUID()}`): DrawingDocumentV2 => {
+  const sketch = document.sketches[document.activeSketchId];
+  if (!sketch || sketch.entities[draft.id] || !Number.isFinite(draft.bulge) || Math.abs(draft.bulge) <= 1e-9) return document;
+  const startPointId = draft.start.pointId ?? createPointId(), endPointId = draft.end.pointId ?? createPointId();
+  if (startPointId === endPointId) return document;
+  const arc = { id: draft.id, type: 'arc' as const, startPointId, endPointId, bulge: draft.bulge };
+  const constraints: DrawingGeometricConstraint[] = [];
+  const addEndpointSemantics = (accepted: AcceptedArcEndpoint, pointId: string) => {
+    if (accepted.midpointLineId && sketch.entities[accepted.midpointLineId]?.type === 'line') constraints.push({ id: `midpoint:${pointId}:${accepted.midpointLineId}`, kind: 'MIDPOINT', references: [{ kind: 'sketchPoint', pointId }, { kind: 'entity', entityId: accepted.midpointLineId }] });
+    else if (accepted.lineBodyId && sketch.entities[accepted.lineBodyId]?.type === 'line') constraints.push({ id: `coincident:${pointId}:support:${accepted.lineBodyId}`, kind: 'COINCIDENT', variant: 'point-linear-support', references: [{ kind: 'sketchPoint', pointId }, { kind: 'entity', entityId: accepted.lineBodyId }] });
+    else if (accepted.curveId && ['circle', 'arc'].includes((sketch.entities as unknown as Record<string, { type: string }>)[accepted.curveId]?.type)) constraints.push({ id: `coincident:${pointId}:curve:${accepted.curveId}`, kind: 'COINCIDENT', variant: 'point-curve', references: [{ kind: 'sketchPoint', pointId }, { kind: 'entity', entityId: accepted.curveId }] });
+  };
+  addEndpointSemantics(draft.start, startPointId); addEndpointSemantics(draft.end, endPointId);
+  if (draft.formPointId && sketch.points[draft.formPointId] && draft.formPointId !== startPointId && draft.formPointId !== endPointId) constraints.push({ id: `coincident:${draft.formPointId}:curve:${draft.id}`, kind: 'COINCIDENT', variant: 'point-curve', references: [{ kind: 'sketchPoint', pointId: draft.formPointId }, { kind: 'entity', entityId: draft.id }] });
+  return { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch,
+    points: { ...sketch.points,
+      ...(sketch.points[startPointId] ? {} : { [startPointId]: { id: startPointId, ...draft.start.point } }),
+      ...(sketch.points[endPointId] ? {} : { [endPointId]: { id: endPointId, ...draft.end.point } }) },
+    entities: { ...sketch.entities, [draft.id]: arc } as unknown as typeof sketch.entities, entityOrder: [...sketch.entityOrder, draft.id],
+    geometricConstraints: { ...sketch.geometricConstraints, ...Object.fromEntries(constraints.map((constraint) => [constraint.id, constraint])) },
+    geometricConstraintOrder: [...sketch.geometricConstraintOrder, ...constraints.map(({ id }) => id)],
+  } } };
+};
 
 export const appendCircleToActiveSketch = (document: DrawingDocumentV2, draft: DrawingCircleDraft,
   createPointId: () => string = () => `point-${crypto.randomUUID()}`,
@@ -23,7 +49,7 @@ export const appendCircleToActiveSketch = (document: DrawingDocumentV2, draft: D
     id: `coincident:${circumferencePointId}:curve:${draft.id}`, kind: 'COINCIDENT', variant: 'point-curve',
     references: [{ kind: 'sketchPoint', pointId: circumferencePointId }, { kind: 'entity', entityId: draft.id }],
   });
-  if (centerCurveId && (sketch.entities as unknown as Record<string, { type: string }>)[centerCurveId]?.type === 'circle') constraints.push({
+  if (centerCurveId && ['circle', 'arc'].includes((sketch.entities as unknown as Record<string, { type: string }>)[centerCurveId]?.type)) constraints.push({
     id: `coincident:${centerPointId}:curve:${centerCurveId}`, kind: 'COINCIDENT', variant: 'point-curve',
     references: [{ kind: 'sketchPoint', pointId: centerPointId }, { kind: 'entity', entityId: centerCurveId }],
   });

@@ -25,13 +25,25 @@ export type DrawingCircleEntity = Readonly<{
   centerPointId: string;
   radius: number;
 }>;
+export type DrawingArcEntity = Readonly<{
+  id: string;
+  type: 'arc';
+  startPointId: string;
+  endPointId: string;
+  /** tan(signed sweep / 4); the sole persistent curvature authority. */
+  bulge: number;
+}>;
 export type DrawingLineEntityV1 = Readonly<{ id: string; type: 'line'; start: DrawingPoint; end: DrawingPoint }>;
 
 /** Non-persistent geometry resolved from a line's point references. */
 export type ResolvedDrawingLine = DrawingLineEntity & Readonly<{ start: DrawingPoint; end: DrawingPoint }>;
 export type ResolvedDrawingCircle = DrawingCircleEntity & Readonly<{ center: DrawingPoint }>;
+export type ResolvedDrawingArc = DrawingArcEntity & Readonly<{
+  start: DrawingPoint; end: DrawingPoint; center: DrawingPoint; radius: number;
+  startAngle: number; signedSweep: number; endAngle: number;
+}>;
 
-export type DrawingEntity = DrawingLineEntity | DrawingCircleEntity;
+export type DrawingEntity = DrawingLineEntity | DrawingCircleEntity | DrawingArcEntity;
 
 export type DrawingGeometryReference =
   | Readonly<{ kind: 'entity'; entityId: string }>
@@ -188,6 +200,9 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
       const entities = Object.fromEntries(Object.entries(legacySketch.entities).flatMap(([entityId, entity]): readonly (readonly [string, DrawingEntity])[] => {
         if (entity.type === 'circle') return Number.isFinite(entity.radius) && entity.radius > DRAWING_MODEL_SPACE_TOLERANCE
           && Boolean(points[entity.centerPointId]) ? [[entityId, entity] as const] : [];
+        if (entity.type === 'arc') return Number.isFinite(entity.bulge) && Math.abs(entity.bulge) > DRAWING_MODEL_SPACE_TOLERANCE
+          && Boolean(points[entity.startPointId]) && Boolean(points[entity.endPointId]) && entity.startPointId !== entity.endPointId
+          ? [[entityId, entity] as const] : [];
         if ('startPointId' in entity) return [[entityId, entity] as const];
         // Legacy documents contain no authoritative connectivity metadata. Each endpoint
         // therefore receives a deterministic, independent identity; equal coordinates are not merged.
@@ -227,7 +242,7 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
             const edge = sketch.entities[second.entityId] as DrawingLineEntity, a = sketch.points[edge.startPointId], b = sketch.points[edge.endPointId];
             if (!a || !b || Math.hypot(b.x - a.x, b.y - a.y) <= DRAWING_MODEL_SPACE_TOLERANCE) return false;
           } else if (legacyVariant === 'point-curve') {
-            if (second.kind !== 'entity' || (sketch.entities as unknown as Record<string, DrawingEntity>)[second.entityId]?.type !== 'circle') return false;
+            if (second.kind !== 'entity' || !['circle', 'arc'].includes((sketch.entities as unknown as Record<string, DrawingEntity>)[second.entityId]?.type ?? '')) return false;
           } else if (second.kind !== 'sketchPoint' || !sketch.points[second.pointId] || constraint.references[0].pointId === second.pointId) return false;
           const key = legacyVariant === 'point-linear-support'
             ? `COINCIDENT:${constraint.references[0].pointId}:support:${(second as DrawingEntityReference).entityId}`

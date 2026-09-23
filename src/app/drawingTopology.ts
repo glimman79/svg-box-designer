@@ -1,4 +1,5 @@
-import type { DrawingDimension, DrawingDocumentV2, DrawingLineEntity, DrawingPoint, DrawingSketchPoint, DrawingSketchV2, ResolvedDrawingCircle, ResolvedDrawingLine } from './drawingTypes';
+import type { DrawingArcEntity, DrawingDimension, DrawingDocumentV2, DrawingLineEntity, DrawingPoint, DrawingSketchPoint, DrawingSketchV2, ResolvedDrawingArc, ResolvedDrawingCircle, ResolvedDrawingLine } from './drawingTypes';
+import { resolveArcFromBulge } from './drawingArcGeometry.js';
 
 export type DrawingTopologyValidation = Readonly<{ ok: true } | { ok: false; errors: readonly string[] }>;
 
@@ -11,6 +12,10 @@ export const resolveLine = (sketch: DrawingSketchV2, line: DrawingLineEntity): R
 export const resolveCircle = (sketch: DrawingSketchV2, circle: import('./drawingTypes').DrawingCircleEntity): ResolvedDrawingCircle | null => {
   const center = resolveSketchPoint(sketch, circle.centerPointId);
   return center && Number.isFinite(circle.radius) && circle.radius > 0 ? { ...circle, center: { x: center.x, y: center.y } } : null;
+};
+export const resolveArc = (sketch: DrawingSketchV2, arc: DrawingArcEntity): ResolvedDrawingArc | null => {
+  const start = resolveSketchPoint(sketch, arc.startPointId), end = resolveSketchPoint(sketch, arc.endPointId);
+  return start && end ? resolveArcFromBulge(arc, start, end) : null;
 };
 
 /** Resolves the active sketch's committed Lines from the supplied document snapshot. */
@@ -41,8 +46,8 @@ export const updateSketchPoint = (sketch: DrawingSketchV2, id: string, point: Dr
 export const removeEntityAndOrphans = (sketch: DrawingSketchV2, entityId: string): DrawingSketchV2 => {
   if (!sketch.entities[entityId]) return sketch;
   const entities = { ...sketch.entities } as unknown as Record<string, import('./drawingTypes').DrawingEntity>; delete entities[entityId];
-  const referenced = new Set(Object.values(entities).flatMap((entity) => entity.type === 'line'
-    ? [entity.startPointId, entity.endPointId] : [entity.centerPointId]));
+  const referenced = new Set(Object.values(entities).flatMap((entity) => entity.type === 'circle'
+    ? [entity.centerPointId] : [entity.startPointId, entity.endPointId]));
   const points = Object.fromEntries(Object.entries(sketch.points).filter(([id]) => referenced.has(id)));
   const removedPointIds = new Set(Object.keys(sketch.points).filter((id) => !points[id]));
   const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, dimension]) => dimension.references.every((reference) =>
@@ -73,6 +78,11 @@ export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTop
         if (!sketch.points[entity.centerPointId] || !Number.isFinite(entity.radius) || entity.radius <= 0) errors.push(`Malformed Circle: ${entity.id}`);
         continue;
       }
+      if (entity.type === 'arc') {
+        const start = sketch.points[entity.startPointId], end = sketch.points[entity.endPointId];
+        if (!start || !end || entity.startPointId === entity.endPointId || !resolveArcFromBulge(entity, start, end)) errors.push(`Malformed Arc: ${entity.id}`);
+        continue;
+      }
       if (!sketch.points[entity.startPointId] || !sketch.points[entity.endPointId]) errors.push(`Line references missing point: ${entity.id}`);
       if (entity.startPointId === entity.endPointId) errors.push(`Line references one point twice: ${entity.id}`);
     }
@@ -99,7 +109,7 @@ export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTop
         }
         if (constraint.variant === 'point-curve') {
           const [point, curve] = constraint.references, circle = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[curve.entityId];
-          if (!sketch.points[point.pointId] || circle?.type !== 'circle') errors.push(`Geometric constraint reference cannot resolve: ${constraint.id}`);
+          if (!sketch.points[point.pointId] || !circle || !['circle', 'arc'].includes(circle.type)) errors.push(`Geometric constraint reference cannot resolve: ${constraint.id}`);
           continue;
         }
         const [a, b] = constraint.references;
@@ -111,7 +121,7 @@ export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTop
       if (constraint.references.length !== expectedReferences || constraint.references.some(({ entityId }) => !sketch.entities[entityId])
         || expectedReferences === 2 && constraint.references[0]?.entityId === constraint.references[1]?.entityId) errors.push(`Geometric constraint reference cannot resolve: ${constraint.id}`);
     }
-    const referenced = new Set(Object.values(sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>).flatMap((entity) => entity.type === 'line' ? [entity.startPointId, entity.endPointId] : [entity.centerPointId]));
+    const referenced = new Set(Object.values(sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>).flatMap((entity) => entity.type === 'circle' ? [entity.centerPointId] : [entity.startPointId, entity.endPointId]));
     for (const id of Object.keys(sketch.points)) if (!referenced.has(id)) errors.push(`Orphan point: ${id}`);
   }
   return errors.length ? { ok: false, errors } : { ok: true };

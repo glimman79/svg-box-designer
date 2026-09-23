@@ -966,6 +966,14 @@ button:disabled {
   stroke-width: 1.25;
   stroke-dasharray: 5 4;
 }
+.drawing-authoring-reference {
+  color: var(--drawing-authoring-preview);
+  stroke: currentColor;
+  stroke-width: 0.7;
+  stroke-opacity: 0.45;
+  fill: none;
+  pointer-events: none;
+}
 
 .drawing-authoring-preview.is-angular-snapped,
 .drawing-segment-preview.is-angular-snapped {
