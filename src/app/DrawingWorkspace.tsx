@@ -24,7 +24,7 @@ import { solveDrawingDimensionEdit } from './drawingConstraintSolver';
 import type { HistoryControlsProps } from './HistoryControls';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from './drawingHistory';
 import { deriveEntityDefiningPointIds, pointIdForLineEndpoint, removeEntityAndOrphans, resolveActiveSketchLines, resolveArc, resolveCircle, resolveLine } from './drawingTopology.js';
-import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcPreview, updateArcPreview, type ArcToolInteraction } from './drawingArcTool.js';
+import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcEndpointReference, resolveArcPreview, updateArcPreview, type ArcToolInteraction } from './drawingArcTool.js';
 import { drawingArcPath } from './drawingArcGeometry.js';
 import { distanceToArc } from './drawingArcGeometry.js';
 import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
@@ -189,6 +189,7 @@ export function DrawingWorkspace({
   const [hoveredDimensionId, setHoveredDimensionId] = useState<string | null>(null);
   const [dimensionDrag, setDimensionDrag] = useState<DimensionAnnotationDragSession | null>(null);
   const [geometryDrag, setGeometryDrag] = useState<GeometryDragSession | null>(null);
+  const geometryDragRef = useRef<GeometryDragSession | null>(null);
   const [boxSelection, setBoxSelection] = useState<BoxSelectionSession | null>(null);
   const boxSelectionRef = useRef<BoxSelectionSession | null>(null);
   const [geometryPreselection, setGeometryPreselection] = useState<DimensionPreselection | null>(null);
@@ -262,6 +263,13 @@ export function DrawingWorkspace({
   drawingSnapRef.current = drawingSnap;
   documentRef.current = document;
   boxSelectionRef.current = boxSelection;
+  geometryDragRef.current = geometryDrag;
+
+  const cancelGeometryDrag = (pointerId?: number) => {
+    if (pointerId !== undefined && geometryDragRef.current?.pointerId !== pointerId) return;
+    geometryDragRef.current = null;
+    setGeometryDrag(null);
+  };
 
   const endBoxSelection = (releaseCapture = true) => {
     const session = boxSelectionRef.current;
@@ -632,7 +640,7 @@ export function DrawingWorkspace({
 
   const exitActiveTool = () => {
     if (boxSelectionRef.current) { endBoxSelection(); return; }
-    if (geometryDrag) { setGeometryDrag(null); return; }
+    if (geometryDrag) { cancelGeometryDrag(); return; }
     if (dimensionDrag) { setDimensionDrag(null); return; }
     if (editingDimensionId) { setEditingDimensionId(null); setDimensionEditError(null); return; }
     if (activeToolRef.current === 'select' && constraintsPanelOpen) {
@@ -711,7 +719,9 @@ export function DrawingWorkspace({
       setSelectedDimensionId(null); setSelectedGeometricConstraintId(null);
       if (beginDrag) {
         event.currentTarget.setPointerCapture(event.pointerId);
-        setGeometryDrag({ pointerId: event.pointerId, target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false });
+        const session: GeometryDragSession = { pointerId: event.pointerId, target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false };
+        geometryDragRef.current = session;
+        setGeometryDrag(session);
       }
       return;
     }
@@ -891,7 +901,9 @@ export function DrawingWorkspace({
       const exceeded = geometryDrag.exceeded || Math.hypot(event.clientX - geometryDrag.startClient.x, event.clientY - geometryDrag.startClient.y) >= DRAWING_DRAG_THRESHOLD_PX;
       if (!exceeded) return;
       const candidate = solveDrawingDragCandidate(geometryDrag.startDocument, geometryDrag.target, { x: point.x - geometryDrag.startModel.x, y: point.y - geometryDrag.startModel.y });
-      setGeometryDrag({ ...geometryDrag, exceeded, candidate: candidate ?? geometryDrag.candidate });
+      const next = { ...geometryDrag, exceeded, candidate: candidate ?? geometryDrag.candidate };
+      geometryDragRef.current = next;
+      setGeometryDrag(next);
       return;
     }
     if (dimensionDrag) {
@@ -1045,13 +1057,15 @@ export function DrawingWorkspace({
   const editorWidth = dimensionEditorWidthPixels(dimensionDraft);
 
   const finishGeometryDrag = (event: PointerEvent<SVGSVGElement>) => {
-    if (!geometryDrag || geometryDrag.pointerId !== event.pointerId) return;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    if (geometryDrag.exceeded && geometryDrag.candidate !== geometryDrag.startDocument) transactDocument(() => geometryDrag.candidate);
+    const session = geometryDragRef.current;
+    if (!session || session.pointerId !== event.pointerId) return;
+    geometryDragRef.current = null;
+    setGeometryDrag(null);
+    if (session.exceeded && session.candidate !== session.startDocument) transactDocument(() => session.candidate);
     // A meaningful drag owns only transient interaction emphasis. A click keeps
     // the existing persistent selection semantics for future selection tools.
-    if (geometryDrag.exceeded) setSelectedGeometry([]);
-    setGeometryDrag(null);
+    if (session.exceeded) setSelectedGeometry([]);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
   const finishBoxSelection = (event: PointerEvent<SVGSVGElement>) => {
@@ -1215,8 +1229,8 @@ export function DrawingWorkspace({
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={(event) => { if (boxSelectionRef.current) finishBoxSelection(event); else if (geometryDrag) finishGeometryDrag(event); else if (dimensionDrag) finishDimensionDrag(); else panHandlers.onPointerUp(event); }}
-            onPointerCancel={(event) => { if (boxSelectionRef.current?.pointerId === event.pointerId) endBoxSelection(); else if (geometryDrag) setGeometryDrag(null); else if (dimensionDrag) setDimensionDrag(null); else panHandlers.onPointerCancel(event); }}
-            onLostPointerCapture={(event) => { if (boxSelectionRef.current?.pointerId === event.pointerId) endBoxSelection(false); }}
+            onPointerCancel={(event) => { if (boxSelectionRef.current?.pointerId === event.pointerId) endBoxSelection(); else if (geometryDragRef.current?.pointerId === event.pointerId) cancelGeometryDrag(event.pointerId); else if (dimensionDrag) setDimensionDrag(null); else panHandlers.onPointerCancel(event); }}
+            onLostPointerCapture={(event) => { if (boxSelectionRef.current?.pointerId === event.pointerId) endBoxSelection(false); else cancelGeometryDrag(event.pointerId); }}
             onContextMenu={panHandlers.onContextMenu}
             onPointerLeave={clearSegmentCursor}
             onDoubleClick={() => { if (activeTool === 'profile') finishProfile(); }}
@@ -1248,6 +1262,8 @@ export function DrawingWorkspace({
                 data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'arc', arcId: entity.id })}
                 className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'arc', arcId: entity.id }))}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'arc', arcId: entity.id })}`}
                 d={drawingArcPath(entity)} fill="none" vectorEffect="non-scaling-stroke" />)}
+              {resolvedArcs.map((entity) => <circle key={`center:${entity.id}`} className="drawing-circular-center drawing-entity-defining-point"
+                cx={entity.center.x} cy={entity.center.y} r={2.5 / pixelsPerMm} pointerEvents="none" aria-hidden="true" />)}
               {activeSketch && [...entityDefiningPointIds].flatMap((pointId) => {
                 const point = activeSketch.points[pointId];
                 const overridden = selectedPointIds.has(pointId) || geometryPreselection?.kind === 'point' && geometryPreselection.pointId === pointId;
@@ -1387,6 +1403,10 @@ export function DrawingWorkspace({
             {activeTool === 'arc' && (() => { const arc = resolveArcPreview(arcInteraction); return arc ? <>
               <circle className="drawing-authoring-reference" cx={arc.center.x} cy={arc.center.y} r={arc.radius} fill="none" vectorEffect="non-scaling-stroke" pointerEvents="none" />
               <path className="drawing-authoring-preview" d={drawingArcPath(arc)} fill="none" vectorEffect="non-scaling-stroke" />
+            </> : null; })()}
+            {activeTool === 'arc' && (() => { const reference = resolveArcEndpointReference(arcInteraction); return reference ? <>
+              <line className="drawing-authoring-reference" x1={reference.start.x} y1={reference.start.y} x2={reference.end.x} y2={reference.end.y} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+              <circle className="drawing-entity-defining-point" cx={reference.start.x} cy={reference.start.y} r={2.5 / pixelsPerMm} pointerEvents="none" />
             </> : null; })()}
             {activeTool === 'circle' && circlePointCandidate && <circle className="drawing-entity-defining-point"
               cx={circlePointCandidate.point.x} cy={circlePointCandidate.point.y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} />}
