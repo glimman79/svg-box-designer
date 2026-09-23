@@ -47,7 +47,9 @@ assert.equal(transactDrawingDocument(EMPTY_DRAWING_HISTORY,make(),d=>d).history.
 const workspace=fs.readFileSync('src/app/DrawingWorkspace.tsx','utf8');
 const css=fs.readFileSync('src/styles.css','utf8');
 assert.match(workspace,/DRAWING_DRAG_THRESHOLD_PX/); assert.match(workspace,/setPointerCapture/); assert.match(workspace,/candidate: candidate \?\? geometryDrag\.candidate/,'invalid preview retains last valid candidate');
-assert.match(workspace,/if \(geometryDrag\) \{ setGeometryDrag\(null\); return; \}/,'Escape cancels transient drag');
+assert.match(workspace,/if \(geometryDrag\) \{ cancelGeometryDrag\(\); return; \}/,'Escape cancels transient drag');
+assert.match(workspace,/onPointerCancel=.*cancelGeometryDrag\(event\.pointerId\)/s,'pointer cancellation clears the shared transient drag');
+assert.match(workspace,/onLostPointerCapture=.*cancelGeometryDrag\(event\.pointerId\)/s,'lost capture clears the shared transient drag without committing');
 assert.match(workspace,/activeTool === 'select'[\s\S]*resolveDimensionCandidate[\s\S]*setSelectedGeometry\(\(current\)/,'Select click uses the shared finite-geometry hit resolver and unified multi-selection');
 assert.match(workspace,/selectedGeometry\.length === 1[\s\S]*selectedEntityId[\s\S]*selectedGeometry\[0\]\.kind === 'line' \? deleteEntityWithDependentDimensions\(current, selectedEntityId\)/,'single selected Line deletion retains the existing dependency cascade while shared entity deletion supports Circle');
 assert.match(workspace,/onMouseDown=\{handleDrawingMouseDown\}/,'Drawing-local primary preventDefault remains');

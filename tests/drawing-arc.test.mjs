@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { angleIsOnDrawingArc, deriveArcThroughThreePoints, distanceToArc, projectPointToArc, resolveArcFromBulge } from '../.test-build/drawing-arc/drawingArcGeometry.js';
-import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcPreview } from '../.test-build/drawing-arc/drawingArcTool.js';
+import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcEndpointReference, resolveArcPreview, updateArcPreview } from '../.test-build/drawing-arc/drawingArcTool.js';
 import { drawingArcQualifiesForRect } from '../.test-build/drawing-arc/drawingBoxSelection.js';
 import { appendArcToActiveSketch } from '../.test-build/drawing-arc/drawingDocumentMutation.js';
 import { migrateDrawingDocument } from '../.test-build/drawing-arc/drawingTypes.js';
-import { removeEntityAndOrphans, validateDrawingTopology } from '../.test-build/drawing-arc/drawingTopology.js';
+import { deriveEntityDefiningPointIds, removeEntityAndOrphans, resolveArc, validateDrawingTopology } from '../.test-build/drawing-arc/drawingTopology.js';
+import { solveDrawingDragCandidate } from '../.test-build/drawing-arc/drawingDirectManipulation.js';
 import { verifyDrawingConstraints } from '../.test-build/drawing-arc/drawingConstraintSolver.js';
 
 const close = (a, b, e = 1e-8) => assert.ok(Math.abs(a - b) <= e, `${a} != ${b}`);
@@ -53,6 +54,30 @@ test('authoring rejects duplicate P2 and invalid P3 without resetting', () => {
   assert.equal(resolveArcPreview({ ...p2, form: { x: 5, y: 0 } }), null);
 });
 
+test('P1 to P2 reference consumes the authoritative effective placement and has no persistent effects', () => {
+  assert.equal(resolveArcEndpointReference(EMPTY_ARC_INTERACTION), null);
+  const p1 = acceptArcEndpoint(EMPTY_ARC_INTERACTION, endpoint(2, 3, 'existing'));
+  assert.deepEqual(resolveArcEndpointReference(p1), { start: { x: 2, y: 3 }, end: { x: 2, y: 3 } });
+  const effectiveCandidates = [
+    { x: 9, y: 4 }, // free/raw
+    { x: 10, y: 5 }, // persistent point
+    { x: 11, y: 6 }, // midpoint
+    { x: 12, y: 7 }, // finite line
+    { x: 13, y: 8 }, // Circle curve
+    { x: 14, y: 9 }, // finite Arc curve
+    { x: 15, y: 3 }, // alignment
+    { x: 16, y: 10 }, // stationary Ctrl bypass/recompute
+  ];
+  let preview = p1;
+  for (const candidate of effectiveCandidates) {
+    preview = updateArcPreview(preview, candidate);
+    assert.deepEqual(resolveArcEndpointReference(preview), { start: { x: 2, y: 3 }, end: candidate });
+  }
+  const p2 = acceptArcEndpoint(preview, endpoint(preview.preview.x, preview.preview.y));
+  assert.equal(resolveArcEndpointReference(p2), null);
+  assert.equal(p2.start.pointId, 'existing');
+});
+
 test('successful P3 produces canonical draft and resets interaction', () => {
   const p2 = acceptArcEndpoint(acceptArcEndpoint(EMPTY_ARC_INTERACTION, endpoint(0, 0)), endpoint(10, 0));
   const result = commitArcForm(p2, { x: 5, y: 5 }, 'arc'); assert.ok(result.entity); assert.equal(result.interaction, EMPTY_ARC_INTERACTION);
@@ -91,4 +116,38 @@ test('schema v2 restores valid arcs, rejects malformed arcs, and orphan cleanup 
   Object.assign(doc.sketches.s.entities, { arc: { id: 'arc', type: 'arc', startPointId: 'a', endPointId: 'b', bulge: 1 }, line: { id: 'line', type: 'line', startPointId: 'b', endPointId: 'c' }, bad: { id: 'bad', type: 'arc', startPointId: 'a', endPointId: 'missing', bulge: 0 } }); doc.sketches.s.entityOrder = ['arc', 'line', 'bad'];
   const restored = migrateDrawingDocument(doc); assert.deepEqual(restored.sketches.s.entityOrder, ['arc', 'line']);
   const removed = removeEntityAndOrphans(restored.sketches.s, 'arc'); assert.ok(removed.points.b); assert.equal(removed.points.a, undefined);
+});
+
+test('Arc endpoints are entity-defining persistent points and shared point dragging preserves identities', () => {
+  const doc = document();
+  Object.assign(doc.sketches.s.points, {
+    a: { id: 'a', x: -1, y: 0 }, shared: { id: 'shared', x: 1, y: 0 }, c: { id: 'c', x: 3, y: 0 }, d: { id: 'd', x: 1, y: 2 },
+  });
+  Object.assign(doc.sketches.s.entities, {
+    arc1: { id: 'arc1', type: 'arc', startPointId: 'a', endPointId: 'shared', bulge: 1 },
+    arc2: { id: 'arc2', type: 'arc', startPointId: 'shared', endPointId: 'd', bulge: .5 },
+    line: { id: 'line', type: 'line', startPointId: 'shared', endPointId: 'c' },
+  });
+  doc.sketches.s.entityOrder = ['arc1', 'arc2', 'line'];
+  assert.deepEqual([...deriveEntityDefiningPointIds(doc.sketches.s)], ['a', 'shared', 'd']);
+  const candidate = solveDrawingDragCandidate(doc, { kind: 'point', pointId: 'shared' }, { x: 2, y: 1 });
+  assert.ok(candidate);
+  assert.equal(Object.keys(candidate.sketches.s.points).length, 4);
+  assert.deepEqual(candidate.sketches.s.points.shared, { id: 'shared', x: 3, y: 1 });
+  for (const id of ['arc1', 'arc2', 'line']) assert.equal(candidate.sketches.s.entities[id], doc.sketches.s.entities[id]);
+  assert.deepEqual(resolveArc(candidate.sketches.s, candidate.sketches.s.entities.arc1).end, { id: 'shared', x: 3, y: 1 });
+  assert.deepEqual(resolveArc(candidate.sketches.s, candidate.sketches.s.entities.arc2).start, { id: 'shared', x: 3, y: 1 });
+});
+
+test('derived Arc center follows endpoint movement without entering topology or persistence', () => {
+  const doc = document();
+  Object.assign(doc.sketches.s.points, { a: { id: 'a', x: -1, y: 0 }, b: { id: 'b', x: 1, y: 0 } });
+  doc.sketches.s.entities.arc = { id: 'arc', type: 'arc', startPointId: 'a', endPointId: 'b', bulge: 1 };
+  doc.sketches.s.entityOrder = ['arc'];
+  const before = resolveArc(doc.sketches.s, doc.sketches.s.entities.arc); assert.ok(before); close(before.center.x, 0); close(before.center.y, 0);
+  const moved = solveDrawingDragCandidate(doc, { kind: 'point', pointId: 'b' }, { x: 2, y: 2 }); assert.ok(moved);
+  const after = resolveArc(moved.sketches.s, moved.sketches.s.entities.arc); assert.ok(after); assert.notDeepEqual(after.center, before.center);
+  assert.deepEqual(Object.keys(after).filter((key) => ['center', 'radius', 'startAngle', 'endAngle', 'signedSweep'].includes(key)).sort(), ['center', 'endAngle', 'radius', 'signedSweep', 'startAngle']);
+  assert.deepEqual(Object.keys(moved.sketches.s.entities.arc).sort(), ['bulge', 'endPointId', 'id', 'startPointId', 'type']);
+  assert.deepEqual(Object.keys(moved.sketches.s.points).sort(), ['a', 'b']);
 });

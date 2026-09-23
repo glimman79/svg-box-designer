@@ -34,7 +34,8 @@ export const pointIdForLineEndpoint = (line: DrawingLineEntity, endpoint: 'start
 /** Derived presentation roles for persistent points that define semantic entities. */
 export const deriveEntityDefiningPointIds = (sketch: DrawingSketchV2): ReadonlySet<string> => new Set(
   Object.values(sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)
-    .flatMap((entity) => entity.type === 'circle' ? [entity.centerPointId] : []),
+    .flatMap((entity) => entity.type === 'circle' ? [entity.centerPointId]
+      : entity.type === 'arc' ? [entity.startPointId, entity.endPointId] : []),
 );
 
 export const updateSketchPoint = (sketch: DrawingSketchV2, id: string, point: DrawingPoint): DrawingSketchV2 => {
