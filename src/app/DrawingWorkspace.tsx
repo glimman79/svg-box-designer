@@ -27,7 +27,7 @@ import { deriveEntityDefiningPointIds, pointIdForLineEndpoint, removeEntityAndOr
 import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcEndpointReference, resolveArcPreview, updateArcPreview, type ArcToolInteraction } from './drawingArcTool.js';
 import { drawingArcPath } from './drawingArcGeometry.js';
 import { distanceToArc } from './drawingArcGeometry.js';
-import { createCircleRadiusDragTarget, DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
+import { createArcBulgeDragTarget, createArcCenterDragTarget, createCircleRadiusDragTarget, DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
 import { deleteGeometricConstraint, deriveMidpointMarkerPresentation, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
 import { deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
@@ -256,6 +256,11 @@ export function DrawingWorkspace({
     const arc = entity?.type === 'arc' ? resolveArc(activeSketch, entity) : null;
     return arc ? [arc] : [];
   }) ?? [];
+  const activeArcDragId = geometryDrag?.target.kind === 'rigid-translation'
+    || geometryDrag?.target.kind === 'entity-scalar' && geometryDrag.target.scalar === 'arc-bulge'
+    ? geometryDrag.target.entityId : null;
+  const activeArcBodyDragId = geometryDrag?.target.kind === 'entity-scalar' && geometryDrag.target.scalar === 'arc-bulge'
+    ? geometryDrag.target.entityId : null;
   const gridSpacing = getDrawingGridSpacing(viewBox.width);
   const gridHierarchy = getDrawingGridHierarchy(gridSpacing);
   segmentInteractionRef.current = segmentInteraction;
@@ -677,6 +682,7 @@ export function DrawingWorkspace({
       const explicitPointId = (event.target as Element).closest<SVGCircleElement>('[data-sketch-point-id]')?.dataset.sketchPointId;
       const explicitLineId = (event.target as Element).closest<SVGLineElement>('[data-sketch-line-id]')?.dataset.sketchLineId;
       const explicitCircleId = (event.target as Element).closest<SVGCircleElement>('[data-sketch-circle-id]')?.dataset.sketchCircleId;
+      const explicitArcCenterId = (event.target as Element).closest<SVGCircleElement>('[data-sketch-arc-center-id]')?.dataset.sketchArcCenterId;
       const explicitArcId = (event.target as Element).closest<SVGPathElement>('[data-sketch-arc-id]')?.dataset.sketchArcId;
       const hit = explicitPointId || explicitLineId ? null : resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
       const matrix = svgRef.current?.getScreenCTM();
@@ -688,7 +694,7 @@ export function DrawingWorkspace({
       const startModel = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
       const arcHit = startModel && matrix ? resolvedArcs.map((arc) => ({ id: arc.id, distance: distanceToArc(startModel, arc) * Math.hypot(matrix.a, matrix.b) }))
         .filter(({ distance }) => distance <= DRAWING_CURVE_HIT_TOLERANCE_PX).sort((a, b) => a.distance - b.distance)[0]?.id : undefined;
-      if (!hit && !explicitPointId && !explicitLineId && !explicitCircleId && !explicitArcId && !circleHit && !arcHit) {
+      if (!hit && !explicitPointId && !explicitLineId && !explicitCircleId && !explicitArcCenterId && !explicitArcId && !circleHit && !arcHit) {
         if (!startModel) return;
         const session = { pointerId: event.pointerId, originClient: { x: event.clientX, y: event.clientY }, originModel: startModel,
           currentClient: { x: event.clientX, y: event.clientY }, currentModel: startModel, exceeded: false };
@@ -711,9 +717,20 @@ export function DrawingWorkspace({
         }
         return;
       }
-      if (explicitArcId || !hit && arcHit) {
-        setSelectedGeometry((current) => routeDrawingGeometryPointerSelection(current, { kind: 'arc', arcId: (explicitArcId ?? arcHit)! }, event.ctrlKey, constraintsPanelOpen).selection);
-        setSelectedDimensionId(null); setSelectedGeometricConstraintId(null); return;
+      if (explicitArcCenterId || explicitArcId || !hit && arcHit) {
+        const arcId = (explicitArcCenterId ?? explicitArcId ?? arcHit)!;
+        const route = routeDrawingGeometryPointerSelection(selectedGeometry, { kind: 'arc', arcId }, event.ctrlKey, constraintsPanelOpen);
+        setSelectedGeometry(route.selection);
+        setSelectedDimensionId(null); setSelectedGeometricConstraintId(null);
+        const target = route.beginDrag ? explicitArcCenterId
+          ? createArcCenterDragTarget(documentRef.current, arcId)
+          : createArcBulgeDragTarget(documentRef.current, arcId, startModel) : null;
+        if (target) {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          const session: GeometryDragSession = { pointerId: event.pointerId, target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false };
+          geometryDragRef.current = session; setGeometryDrag(session);
+        }
+        return;
       }
       setDimensionDrag(null);
       const target: DrawingGeometryTarget | null = explicitPointId
@@ -1269,16 +1286,22 @@ export function DrawingWorkspace({
                 cx={entity.center.x} cy={entity.center.y} r={entity.radius} fill="none" vectorEffect="non-scaling-stroke" />)}
               {resolvedArcs.map((entity) => <path key={entity.id} data-sketch-arc-id={entity.id}
                 data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'arc', arcId: entity.id })}
-                className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'arc', arcId: entity.id }))}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'arc', arcId: entity.id })}`}
+                className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'arc', arcId: entity.id }))}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'arc', arcId: entity.id })}${activeArcDragId === entity.id ? ' is-geometry-dragging' : ''}`}
                 d={drawingArcPath(entity)} fill="none" vectorEffect="non-scaling-stroke" />)}
               {resolvedArcs.map((entity) => <circle key={`center:${entity.id}`} className="drawing-circular-center drawing-entity-defining-point"
                 cx={entity.center.x} cy={entity.center.y} r={2.5 / pixelsPerMm} pointerEvents="none" aria-hidden="true" />)}
+              {activeArcBodyDragId && resolvedArcs.flatMap((entity) => entity.id === activeArcBodyDragId
+                ? [<circle key={`support:${entity.id}`} className="drawing-authoring-reference" cx={entity.center.x} cy={entity.center.y} r={entity.radius}
+                  fill="none" vectorEffect="non-scaling-stroke" pointerEvents="none" aria-hidden="true" />] : [])}
               {activeSketch && [...entityDefiningPointIds].flatMap((pointId) => {
                 const point = activeSketch.points[pointId];
                 const overridden = selectedPointIds.has(pointId) || geometryPreselection?.kind === 'point' && geometryPreselection.pointId === pointId;
                 return point && !overridden ? [<circle key={pointId} className="drawing-entity-defining-point"
                   data-entity-defining-point-id={pointId} cx={point.x} cy={point.y} r={2.5 / pixelsPerMm} />] : [];
               })}
+              {activeTool === 'select' && resolvedArcs.map((entity) => <circle key={`center-hit:${entity.id}`}
+                className="drawing-arc-center-hit drawing-interactive-hit" data-sketch-arc-center-id={entity.id}
+                cx={entity.center.x} cy={entity.center.y} r={DRAWING_SKETCH_POINT_HIT_RADIUS_PX / pixelsPerMm} />)}
               {activeTool === 'select' && activeSketch && Object.values(activeSketch.points).map((point) => (
                 <circle key={point.id} className="drawing-sketch-point-hit drawing-interactive-hit" data-sketch-point-id={point.id}
                   cx={point.x} cy={point.y} r={DRAWING_SKETCH_POINT_HIT_RADIUS_PX / pixelsPerMm}
