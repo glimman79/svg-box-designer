@@ -53,8 +53,6 @@ export const getGeometryConstraintVisualState = (
   target: GeometryConstraintVisualTarget,
   freedomProof?: GeometryFreedomProof,
 ): GeometryConstraintVisualState => {
-  // Circle Stage 1 has no radius constraint authority, so even an endpoint-style
-  // proof about its center cannot establish zero freedom for the whole Circle.
   if (target.kind !== 'circle' && target.kind !== 'arc' && freedomProof?.isRigorous && freedomProof.degreesOfFreedom === 0) return 'FULLY_LOCKED';
   const pointIds = targetPointIds(sketch, target);
   if (target.kind === 'line') {
@@ -63,13 +61,9 @@ export const getGeometryConstraintVisualState = (
     return mobility.degreesOfFreedom === 0 ? 'FULLY_LOCKED' : 'CONSTRAINED';
   }
   if (target.kind === 'circle') {
-    const centerMobility = analyzeDrawingPointMobility(sketch, [...pointIds]);
-    // Stage 1 radius is an authoritative but unconstrained scalar. Consequently
-    // a Circle can be constrained by reduced center mobility, but cannot yet be
-    // proven fully locked even when its center has no translational freedom.
-    return centerMobility.degreesOfFreedom === centerMobility.unconstrainedDegreesOfFreedom
-      ? 'FREE'
-      : 'CONSTRAINED';
+    const mobility = analyzeDrawingEntityMobility(sketch, target.circleId);
+    if (!mobility || mobility.degreesOfFreedom === mobility.unconstrainedDegreesOfFreedom) return 'FREE';
+    return mobility.degreesOfFreedom === 0 ? 'FULLY_LOCKED' : 'CONSTRAINED';
   }
   if (target.kind === 'arc') {
     const mobility = analyzeDrawingEntityMobility(sketch, target.arcId);

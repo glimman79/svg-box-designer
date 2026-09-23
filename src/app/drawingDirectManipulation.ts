@@ -1,13 +1,25 @@
-import { DRAWING_CONSTRAINT_TOLERANCE_MM, solveDrawingComponentDrag } from './drawingConstraintSolver.js';
+import { DRAWING_CONSTRAINT_TOLERANCE_MM, solveDrawingComponentDrag, solveDrawingVariableTarget } from './drawingConstraintSolver.js';
+import { circleRadiusSolverVariable } from './drawingSolverVariables.js';
 import { displayedDimensionMeasurement, measureDimension, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
 import { pointIdForLineEndpoint, updateSketchPoint } from './drawingTopology.js';
-import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes.js';
+import type { DrawingDimension, DrawingDocumentV2, DrawingEntity, DrawingPoint } from './drawingTypes.js';
 
 export const DRAWING_DRAG_THRESHOLD_PX = 4;
 
 export type DrawingGeometryTarget =
   | Readonly<{ kind: 'point'; pointId: string }>
-  | Readonly<{ kind: 'line'; lineId: string }>;
+  | Readonly<{ kind: 'line'; lineId: string }>
+  | Readonly<{ kind: 'entity-scalar'; entityId: string; scalar: 'circle-radius'; radialGrabOffset: number }>;
+
+/** Converts a circumference hit into a semantic scalar target. The stored
+ * offset makes the pointer-down pose an identity mapping despite hit slop. */
+export const createCircleRadiusDragTarget = (document: DrawingDocumentV2, circleId: string, pointer: DrawingPoint): DrawingGeometryTarget | null => {
+  const sketch = document.sketches[document.activeSketchId];
+  const circle = sketch ? (sketch.entities as unknown as Record<string, DrawingEntity>)[circleId] : undefined;
+  if (circle?.type !== 'circle') return null;
+  const center = sketch.points[circle.centerPointId];
+  return center ? { kind: 'entity-scalar', entityId: circle.id, scalar: 'circle-radius', radialGrabOffset: Math.hypot(pointer.x - center.x, pointer.y - center.y) - circle.radius } : null;
+};
 
 export const pointIdFromHit = (document: DrawingDocumentV2, lineId: string, endpoint: 'start' | 'end'): string | null => {
   const sketch = document.sketches[document.activeSketchId];
@@ -60,9 +72,19 @@ export const validateDrivingDimensions = (document: DrawingDocumentV2, dimension
 };
 
 /** Derive each preview from the drag-start document and total pointer delta. */
-export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: DrawingGeometryTarget, delta: DrawingPoint): DrawingDocumentV2 | null => {
+export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: DrawingGeometryTarget, delta: DrawingPoint, startPointer?: DrawingPoint): DrawingDocumentV2 | null => {
   const sketch = document.sketches[document.activeSketchId];
   if (!sketch || !Number.isFinite(delta.x) || !Number.isFinite(delta.y)) return null;
+  if (target.kind === 'entity-scalar') {
+    if (!startPointer) return null;
+    const circle = (sketch.entities as unknown as Record<string, DrawingEntity>)[target.entityId];
+    const center = circle?.type === 'circle' ? sketch.points[circle.centerPointId] : null;
+    if (!center) return null;
+    const pointer = { x: startPointer.x + delta.x, y: startPointer.y + delta.y };
+    const desired = Math.hypot(pointer.x - center.x, pointer.y - center.y) - target.radialGrabOffset;
+    const solved = solveDrawingVariableTarget(sketch, { variable: circleRadiusSolverVariable(circle.id), value: desired });
+    return solved ? { ...document, sketches: { ...document.sketches, [sketch.id]: solved } } : null;
+  }
   const ids = target.kind === 'point'
     ? [target.pointId]
     : (() => { const line = sketch.entities[target.lineId]; return line ? [...new Set([line.startPointId, line.endPointId])] : []; })();
