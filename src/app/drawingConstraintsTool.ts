@@ -2,8 +2,8 @@ import { addCoincidentConstraint, addPointOnLinearSupportConstraint } from './dr
 import { solveDrawingComponentDrag } from './drawingConstraintSolver.js';
 import type { DrawingDocumentV2, DrawingGeometricConstraint, DrawingSketchV2 } from './drawingTypes.js';
 
-export type DrawingSelectionRef = Readonly<{ kind: 'line'; lineId: string }> | Readonly<{ kind: 'circle'; circleId: string }> | Readonly<{ kind: 'point'; pointId: string }>;
-const drawingSelectionKey = (ref: DrawingSelectionRef) => ref.kind === 'line' ? `line:${ref.lineId}` : ref.kind === 'circle' ? `circle:${ref.circleId}` : `point:${ref.pointId}`;
+export type DrawingSelectionRef = Readonly<{ kind: 'line'; lineId: string }> | Readonly<{ kind: 'circle'; circleId: string }> | Readonly<{ kind: 'arc'; arcId: string }> | Readonly<{ kind: 'point'; pointId: string }>;
+const drawingSelectionKey = (ref: DrawingSelectionRef) => ref.kind === 'line' ? `line:${ref.lineId}` : ref.kind === 'circle' ? `circle:${ref.circleId}` : ref.kind === 'arc' ? `arc:${ref.arcId}` : `point:${ref.pointId}`;
 
 /** Toggles exactly one stable semantic target while preserving the order of every other selection. */
 export const toggleDrawingGeometrySelection = (selection: readonly DrawingSelectionRef[], target: DrawingSelectionRef): readonly DrawingSelectionRef[] => {
@@ -27,7 +27,7 @@ export type DrawingConstraintApplicability = Readonly<{
 
 const existing = (sketch: DrawingSketchV2, kind: DrawingConstraintChoice, refs: readonly DrawingSelectionRef[]) => {
   const semanticKind = kind === 'parallelism' ? 'PARALLEL' : kind === 'coincidence' ? 'COINCIDENT' : kind.toUpperCase();
-  const ids = refs.map((ref) => ref.kind === 'line' ? ref.lineId : ref.kind === 'circle' ? ref.circleId : ref.pointId).sort().join('\0');
+  const ids = refs.map((ref) => ref.kind === 'line' ? ref.lineId : ref.kind === 'circle' ? ref.circleId : ref.kind === 'arc' ? ref.arcId : ref.pointId).sort().join('\0');
   return Object.values(sketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === semanticKind
     && constraint.references.map((ref) => 'entityId' in ref ? ref.entityId : ref.pointId).sort().join('\0') === ids);
 };
@@ -57,7 +57,7 @@ export const getDrawingConstraintApplicability = (selection: readonly DrawingSel
       : (kind === 'parallelism' || kind === 'perpendicular') ? twoLines : kind === 'coincidence' ? twoPoints || pointAndLine && validLinearSupport
         : kind === 'midpoint' ? pointAndLine && validLinearSupport && externalPoint : false;
     const references = applicable ? [...selection].sort((a, b) => a.kind === b.kind
-      ? (a.kind === 'line' ? a.lineId : a.kind === 'circle' ? a.circleId : a.pointId).localeCompare(b.kind === 'line' ? b.lineId : b.kind === 'circle' ? b.circleId : b.pointId)
+      ? (a.kind === 'line' ? a.lineId : a.kind === 'circle' ? a.circleId : a.kind === 'arc' ? a.arcId : a.pointId).localeCompare(b.kind === 'line' ? b.lineId : b.kind === 'circle' ? b.circleId : b.kind === 'arc' ? b.arcId : b.pointId)
       : a.kind === 'point' ? -1 : 1) : [];
     const axisAlreadyConstrained = Boolean(sketch && selectedLine && (kind === 'horizontal' || kind === 'vertical')
       && getExistingAxisConstraintForLine(sketch, selectedLine.lineId));

@@ -1,10 +1,12 @@
-import type { DrawingPoint, ResolvedDrawingCircle, ResolvedDrawingLine } from './drawingTypes.js';
+import type { DrawingPoint, ResolvedDrawingArc, ResolvedDrawingCircle, ResolvedDrawingLine } from './drawingTypes.js';
+import { angleIsOnDrawingArc } from './drawingArcGeometry.js';
 import type { DrawingSelectionRef } from './drawingConstraintsTool.js';
 
 export type DrawingSelectionMode = 'window' | 'crossing';
 export type DrawingSelectionRect = Readonly<{ minX: number; maxX: number; minY: number; maxY: number }>;
 type DrawingLineSelectionRef = Extract<DrawingSelectionRef, { kind: 'line' }>;
 type DrawingCircleSelectionRef = Extract<DrawingSelectionRef, { kind: 'circle' }>;
+type DrawingArcSelectionRef = Extract<DrawingSelectionRef, { kind: 'arc' }>;
 
 const SELECTION_EPSILON = 1e-9;
 
@@ -57,23 +59,43 @@ export const drawingCircleQualifiesForRect = (circle: ResolvedDrawingCircle, rec
   ]);
   return nearest <= radius + SELECTION_EPSILON && farthest >= radius - SELECTION_EPSILON;
 };
+const arcCriticalPoints = (arc: ResolvedDrawingArc) => [arc.start, arc.end, ...[0, Math.PI / 2, Math.PI, Math.PI * 1.5]
+  .filter((angle) => angleIsOnDrawingArc(angle, arc.startAngle, arc.signedSweep))
+  .map((angle) => ({ x: arc.center.x + arc.radius * Math.cos(angle), y: arc.center.y + arc.radius * Math.sin(angle) }))];
+export const drawingArcQualifiesForRect = (arc: ResolvedDrawingArc, rect: DrawingSelectionRect, mode: DrawingSelectionMode) => {
+  if (mode === 'window') return arcCriticalPoints(arc).every((point) => strictlyInside(point, rect));
+  if (insideInclusive(arc.start, rect) || insideInclusive(arc.end, rect)) return true;
+  const candidates: DrawingPoint[] = [];
+  for (const x of [rect.minX, rect.maxX]) {
+    const delta = arc.radius * arc.radius - (x - arc.center.x) ** 2;
+    if (delta >= -SELECTION_EPSILON) { const root = Math.sqrt(Math.max(0, delta)); candidates.push({ x, y: arc.center.y - root }, { x, y: arc.center.y + root }); }
+  }
+  for (const y of [rect.minY, rect.maxY]) {
+    const delta = arc.radius * arc.radius - (y - arc.center.y) ** 2;
+    if (delta >= -SELECTION_EPSILON) { const root = Math.sqrt(Math.max(0, delta)); candidates.push({ x: arc.center.x - root, y }, { x: arc.center.x + root, y }); }
+  }
+  return candidates.some((point) => insideInclusive(point, rect)
+    && angleIsOnDrawingArc(Math.atan2(point.y - arc.center.y, point.x - arc.center.x), arc.startAngle, arc.signedSweep));
+};
 
 /** Input order is retained, so callers can pass active-sketch entityOrder resolution. */
 export const selectDrawingGeometryInRect = (lines: readonly ResolvedDrawingLine[], rect: DrawingSelectionRect, mode: DrawingSelectionMode): readonly DrawingLineSelectionRef[] =>
   lines.filter((line) => drawingLineQualifiesForRect(line, rect, mode)).map((line) => ({ kind: 'line', lineId: line.id }));
 
-export const selectDrawingEntitiesInRect = (entities: readonly (ResolvedDrawingLine | ResolvedDrawingCircle)[], rect: DrawingSelectionRect, mode: DrawingSelectionMode): readonly (DrawingLineSelectionRef | DrawingCircleSelectionRef)[] =>
-  entities.reduce<(DrawingLineSelectionRef | DrawingCircleSelectionRef)[]>((selected, entity) => {
+export const selectDrawingEntitiesInRect = (entities: readonly (ResolvedDrawingLine | ResolvedDrawingCircle | ResolvedDrawingArc)[], rect: DrawingSelectionRect, mode: DrawingSelectionMode): readonly (DrawingLineSelectionRef | DrawingCircleSelectionRef | DrawingArcSelectionRef)[] =>
+  entities.reduce<(DrawingLineSelectionRef | DrawingCircleSelectionRef | DrawingArcSelectionRef)[]>((selected, entity) => {
     if (entity.type === 'line' && drawingLineQualifiesForRect(entity, rect, mode)) selected.push({ kind: 'line', lineId: entity.id });
     if (entity.type === 'circle' && drawingCircleQualifiesForRect(entity, rect, mode)) selected.push({ kind: 'circle', circleId: entity.id });
+    if (entity.type === 'arc' && drawingArcQualifiesForRect(entity, rect, mode)) selected.push({ kind: 'arc', arcId: entity.id });
     return selected;
   }, []);
 
-export const applyDrawingBoxSelection = (current: readonly DrawingSelectionRef[], qualifying: readonly (DrawingLineSelectionRef | DrawingCircleSelectionRef)[], ctrlKey: boolean) => {
+export const applyDrawingBoxSelection = (current: readonly DrawingSelectionRef[], qualifying: readonly (DrawingLineSelectionRef | DrawingCircleSelectionRef | DrawingArcSelectionRef)[], ctrlKey: boolean) => {
   if (!ctrlKey) return qualifying;
   return qualifying.reduce<readonly DrawingSelectionRef[]>((selection, target) => {
-    const key = target.kind === 'line' ? `line:${target.lineId}` : `circle:${target.circleId}`;
-    const exists = selection.some((ref) => (ref.kind === 'line' ? `line:${ref.lineId}` : ref.kind === 'circle' ? `circle:${ref.circleId}` : '') === key);
-    return exists ? selection.filter((ref) => (ref.kind === 'line' ? `line:${ref.lineId}` : ref.kind === 'circle' ? `circle:${ref.circleId}` : '') !== key) : [...selection, target];
+    const key = target.kind === 'line' ? `line:${target.lineId}` : target.kind === 'circle' ? `circle:${target.circleId}` : `arc:${target.arcId}`;
+    const refKey = (ref: DrawingSelectionRef) => ref.kind === 'line' ? `line:${ref.lineId}` : ref.kind === 'circle' ? `circle:${ref.circleId}` : ref.kind === 'arc' ? `arc:${ref.arcId}` : '';
+    const exists = selection.some((ref) => refKey(ref) === key);
+    return exists ? selection.filter((ref) => refKey(ref) !== key) : [...selection, target];
   }, current);
 };

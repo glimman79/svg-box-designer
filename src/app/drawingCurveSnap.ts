@@ -1,5 +1,7 @@
 import type { AffineTransform, CoordinatePoint } from './drawingTransform.js';
-import type { DrawingPoint, DrawingSketchPoint, ResolvedDrawingCircle } from './drawingTypes.js';
+import type { DrawingPoint, DrawingSketchPoint, ResolvedDrawingArc, ResolvedDrawingCircle } from './drawingTypes.js';
+import { projectPointToArc } from './drawingArcGeometry.js';
+import { deriveArcThroughThreePoints, distanceToArc } from './drawingArcGeometry.js';
 
 export const DRAWING_CURVE_SNAP_ACQUIRE_PX = 5;
 export const DRAWING_CURVE_SNAP_RELEASE_PX = 7;
@@ -27,14 +29,17 @@ export const projectPointToCircle = (point: DrawingPoint, circle: ResolvedDrawin
     ? { x: circle.center.x + circle.radius * dx / length, y: circle.center.y + circle.radius * dy / length }
     : { x: circle.center.x + circle.radius, y: circle.center.y };
 };
+export const projectPointToDrawingCurve = (point: DrawingPoint, curve: ResolvedDrawingCircle | ResolvedDrawingArc): DrawingPoint =>
+  curve.type === 'circle' ? projectPointToCircle(point, curve) : projectPointToArc(point, curve);
 
-export const resolvePointOnCurveSnap = ({ rawPoint, pointerClient, circles, transform, previousCurveId }: {
-  rawPoint: DrawingPoint; pointerClient: CoordinatePoint; circles: readonly ResolvedDrawingCircle[];
+export const resolvePointOnCurveSnap = ({ rawPoint, pointerClient, circles = [], curves = circles, transform, previousCurveId }: {
+  rawPoint: DrawingPoint; pointerClient: CoordinatePoint; circles?: readonly ResolvedDrawingCircle[];
+  curves?: readonly (ResolvedDrawingCircle | ResolvedDrawingArc)[];
   transform: AffineTransform; previousCurveId: string | null;
 }): DrawingCurveSnapCandidate | null => {
-  const candidates = circles.map((circle) => {
-    const point = projectPointToCircle(rawPoint, circle), client = toClient(point, transform);
-    return { curveId: circle.id, point, screenDistance: Math.hypot(pointerClient.x - client.x, pointerClient.y - client.y) };
+  const candidates = curves.map((curve) => {
+    const point = projectPointToDrawingCurve(rawPoint, curve), client = toClient(point, transform);
+    return { curveId: curve.id, point, screenDistance: Math.hypot(pointerClient.x - client.x, pointerClient.y - client.y) };
   }).sort((a, b) => a.screenDistance - b.screenDistance || a.curveId.localeCompare(b.curveId));
   const acquired = candidates.find(({ screenDistance }) => screenDistance <= DRAWING_CURVE_SNAP_ACQUIRE_PX);
   if (acquired) return acquired;
@@ -67,4 +72,21 @@ export const resolveCircumferencePointSnap = ({ center, rawPoint, points, transf
   if (acquired) return acquired;
   const retained = candidates.find(({ pointId }) => pointId === previousPointId);
   return retained && retained.screenDistance <= DRAWING_CIRCUMFERENCE_POINT_RELEASE_PX ? retained : null;
+};
+export const resolveArcFormPointSnap = ({ start, end, rawPoint, points, transform, previousPointId }: {
+  start: DrawingPoint; end: DrawingPoint; rawPoint: DrawingPoint; points: readonly DrawingSketchPoint[];
+  transform: AffineTransform; previousPointId: string | null;
+}): DrawingCircumferencePointCandidate | null => {
+  const candidate = deriveArcThroughThreePoints(start, end, rawPoint);
+  if (!candidate) return null;
+  const scale = Math.hypot(transform.a, transform.b);
+  const candidates = points.flatMap((point) => {
+    if (Math.hypot(point.x - start.x, point.y - start.y) <= 1e-9 || Math.hypot(point.x - end.x, point.y - end.y) <= 1e-9) return [];
+    const exact = deriveArcThroughThreePoints(start, end, point);
+    if (!exact) return [];
+    return [{ pointId: point.id, point: { x: point.x, y: point.y }, radius: exact.radius,
+      screenDistance: distanceToArc(point, candidate) * scale }];
+  }).sort((a, b) => a.screenDistance - b.screenDistance || a.pointId.localeCompare(b.pointId));
+  return candidates.find(({ screenDistance }) => screenDistance <= DRAWING_CIRCUMFERENCE_POINT_ACQUIRE_PX)
+    ?? candidates.find(({ pointId, screenDistance }) => pointId === previousPointId && screenDistance <= DRAWING_CIRCUMFERENCE_POINT_RELEASE_PX) ?? null;
 };
