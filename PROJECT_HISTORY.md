@@ -446,11 +446,17 @@ Real-browser validation accepted the resulting positional snap feel and the fini
 
 ### 11.12 Global Drawing Presentation Standard
 
-**Problem:** Accepted presentation values were implemented chiefly through Line-named CSS and distributed relation-specific rules, inviting future geometry to duplicate or reinterpret colors, widths, previews, and support graphics. Circle Stage 1 also exposed the distinction sharply: its authoring preview is visible and live, while the committed Circle exists and is selectable but lacks a normal semantic constraint-state class and is normally invisible.
+**Problem:** Accepted presentation values were implemented chiefly through Line-named CSS and distributed relation-specific rules, inviting future geometry to duplicate or reinterpret colors, widths, previews, and support graphics. At that stage of Circle development, its authoring preview was visible and live while the committed Circle existed and was selectable but lacked a normal semantic constraint-state class and was normally invisible.
 
-**Decision/change:** `PROJECT_MASTER.md` became the normative Drawing Presentation Standard. Shared semantics now flow from entity-specific mobility or relation truth through semantic presentation classification into global roles, then geometry-specific SVG primitives. Committed curve states, temporary overrides, Authoring Preview, Inference, support geometry, Constraints, Dimensions, Points, overlays, precedence, and unresolved future decisions are explicitly separated. Line is the current accepted reference, not the owner. Circle remains merged with browser acceptance pending; no production fix was made in this documentation decision.
+**Decision/change:** `PROJECT_MASTER.md` became the normative Drawing Presentation Standard. Shared semantics now flow from entity-specific mobility or relation truth through semantic presentation classification into global roles, then geometry-specific SVG primitives. Committed curve states, temporary overrides, Authoring Preview, Inference, support geometry, Constraints, Dimensions, Points, overlays, precedence, and unresolved future decisions are explicitly separated. Line is the current accepted reference, not the owner. That documentation decision made no production fix; the Circle presentation integration and browser acceptance recorded in 11.13 followed later.
 
 **Result:** Future geometry must consume global roles where semantics match, preserve category-specific glyphs where they do not, and explicitly resolve the tracked Arc/reference, construction geometry, Radius/Diameter, and token-coupling questions rather than inventing styles.
+
+### 11.13 Circle Stage 1 browser acceptance
+
+The initial semantic Circle implementation established a persistent Circle with a referenced center `SketchPoint`, scalar radius, two-stage center/radius authoring, persistence, History, selection, hit testing, deletion cleanup, and directional box selection. Follow-up work corrected normal committed-Circle presentation, integrated the center into the derived entity-defining persistent-point role, and made persistent SketchPoints global positional snap candidates so shared topology is reused across Line, Profile, and Circle.
+
+Circle P1 then gained exact Point-on-Curve acquisition against true existing Circle geometry alongside point, Midpoint, finite-Line, Alignment, and free placement. P2 remained a non-persistent radius-defining control and gained circumference-driven acquisition of existing persistent points, persisting the global `COINCIDENT` / `point-curve` relation without fixing the point's angle. Circle joined the shared geometry-authoring cursor policy and global Ctrl bypass. Final real-browser verification accepted the complete Stage 1 behavior and presentation. Arc, Radius/Diameter Dimension and Constraint, Concentricity, and Tangency remained unimplemented.
 
 ## 12. Superseded or Temporary Material
 
