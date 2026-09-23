@@ -27,7 +27,7 @@ import { deriveEntityDefiningPointIds, pointIdForLineEndpoint, removeEntityAndOr
 import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcEndpointReference, resolveArcPreview, updateArcPreview, type ArcToolInteraction } from './drawingArcTool.js';
 import { drawingArcPath } from './drawingArcGeometry.js';
 import { distanceToArc } from './drawingArcGeometry.js';
-import { DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
+import { createCircleRadiusDragTarget, DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
 import { deleteGeometricConstraint, deriveMidpointMarkerPresentation, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
 import { deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
@@ -699,8 +699,17 @@ export function DrawingWorkspace({
       }
       if (!startModel) return;
       if (explicitCircleId || !hit && circleHit) {
-        setSelectedGeometry((current) => routeDrawingGeometryPointerSelection(current, { kind: 'circle', circleId: (explicitCircleId ?? circleHit)! }, event.ctrlKey, constraintsPanelOpen).selection);
-        setSelectedDimensionId(null); setSelectedGeometricConstraintId(null); return;
+        const circleId = (explicitCircleId ?? circleHit)!;
+        const route = routeDrawingGeometryPointerSelection(selectedGeometry, { kind: 'circle', circleId }, event.ctrlKey, constraintsPanelOpen);
+        setSelectedGeometry(route.selection);
+        setSelectedDimensionId(null); setSelectedGeometricConstraintId(null);
+        const target = route.beginDrag ? createCircleRadiusDragTarget(documentRef.current, circleId, startModel) : null;
+        if (target) {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          const session: GeometryDragSession = { pointerId: event.pointerId, target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false };
+          geometryDragRef.current = session; setGeometryDrag(session);
+        }
+        return;
       }
       if (explicitArcId || !hit && arcHit) {
         setSelectedGeometry((current) => routeDrawingGeometryPointerSelection(current, { kind: 'arc', arcId: (explicitArcId ?? arcHit)! }, event.ctrlKey, constraintsPanelOpen).selection);
@@ -900,7 +909,7 @@ export function DrawingWorkspace({
       if (!point) return;
       const exceeded = geometryDrag.exceeded || Math.hypot(event.clientX - geometryDrag.startClient.x, event.clientY - geometryDrag.startClient.y) >= DRAWING_DRAG_THRESHOLD_PX;
       if (!exceeded) return;
-      const candidate = solveDrawingDragCandidate(geometryDrag.startDocument, geometryDrag.target, { x: point.x - geometryDrag.startModel.x, y: point.y - geometryDrag.startModel.y });
+      const candidate = solveDrawingDragCandidate(geometryDrag.startDocument, geometryDrag.target, { x: point.x - geometryDrag.startModel.x, y: point.y - geometryDrag.startModel.y }, geometryDrag.startModel);
       const next = { ...geometryDrag, exceeded, candidate: candidate ?? geometryDrag.candidate };
       geometryDragRef.current = next;
       setGeometryDrag(next);
