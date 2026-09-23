@@ -999,8 +999,8 @@ button:disabled {
   cursor: crosshair;
 }
 
-.drawing-svg.has-segment-cursor,
-.drawing-svg.has-segment-cursor * {
+.drawing-svg.has-authoring-cursor,
+.drawing-svg.has-authoring-cursor * {
   cursor: none;
 }
 

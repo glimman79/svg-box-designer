@@ -6,7 +6,7 @@ import type { DrawingCircleDraft } from './drawingCircleTool.js';
 export const appendCircleToActiveSketch = (document: DrawingDocumentV2, draft: DrawingCircleDraft,
   createPointId: () => string = () => `point-${crypto.randomUUID()}`,
   midpointLineId: string | null = null, circumferencePointId: string | null = null,
-  centerLineId: string | null = null): DrawingDocumentV2 => {
+  centerLineId: string | null = null, centerCurveId: string | null = null): DrawingDocumentV2 => {
   const sketch = document.sketches[document.activeSketchId];
   if (!sketch || (sketch.entities as unknown as Record<string, unknown>)[draft.id] || !Number.isFinite(draft.radius) || draft.radius <= 1e-9) return document;
   const centerPointId = draft.centerPointId ?? createPointId();
@@ -22,6 +22,10 @@ export const appendCircleToActiveSketch = (document: DrawingDocumentV2, draft: D
   if (circumferencePointId && sketch.points[circumferencePointId] && circumferencePointId !== centerPointId) constraints.push({
     id: `coincident:${circumferencePointId}:curve:${draft.id}`, kind: 'COINCIDENT', variant: 'point-curve',
     references: [{ kind: 'sketchPoint', pointId: circumferencePointId }, { kind: 'entity', entityId: draft.id }],
+  });
+  if (centerCurveId && (sketch.entities as unknown as Record<string, { type: string }>)[centerCurveId]?.type === 'circle') constraints.push({
+    id: `coincident:${centerPointId}:curve:${centerCurveId}`, kind: 'COINCIDENT', variant: 'point-curve',
+    references: [{ kind: 'sketchPoint', pointId: centerPointId }, { kind: 'entity', entityId: centerCurveId }],
   });
   const entities = { ...sketch.entities, [draft.id]: circle } as unknown as typeof sketch.entities;
   return { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch,
