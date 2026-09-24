@@ -204,26 +204,60 @@ export type DrawingPointMobilityAnalysis = Readonly<{
   degreesOfFreedom: number;
 }>;
 
+const canonicalScalarVariables = (sketch: DrawingSketchV2): DrawingSolverVariable[] => Object.values(
+  sketch.entities as unknown as Record<string, DrawingEntity>,
+).flatMap((entity) => entity.type === 'arc' ? [arcBulgeSolverVariable(entity.id)]
+  : entity.type === 'circle' ? [circleRadiusSolverVariable(entity.id)] : []);
+
+const analyzeDrawingVariableMobility = (
+  sketch: DrawingSketchV2,
+  selectedVariables: readonly DrawingSolverVariable[],
+): DrawingPointMobilityAnalysis => {
+  const pointOrder = Object.keys(sketch.points), scalarOrder = canonicalScalarVariables(sketch);
+  const variableCount = pointOrder.length * 2 + scalarOrder.length;
+  const equations = Object.values(sketch.dimensions)
+    .filter(({ role }) => role === 'driving')
+    .map((dimension) => constraintEquation(sketch, dimension))
+    .filter((equation): equation is DrawingConstraintEquation => Boolean(equation));
+  equations.push(...Object.values(sketch.geometricConstraints ?? {}).flatMap((constraint) => geometricConstraintEquations(sketch, constraint)));
+  const constraintRows = equations
+    .map((equation) => constraintJacobianRow(sketch, equation, pointOrder, scalarOrder))
+    .filter((row): row is number[] => Boolean(row));
+  const extractionRows = [...new Map(selectedVariables.map((variable) => [drawingSolverVariableKey(variable), variable])).values()]
+    .flatMap((variable) => {
+      const index = variable.kind === 'point-axis'
+        ? pointOrder.indexOf(variable.pointId) * 2 + (variable.axis === 'x' ? 0 : 1)
+        : pointOrder.length * 2 + scalarOrder.findIndex((scalar) => drawingSolverVariableKey(scalar) === drawingSolverVariableKey(variable));
+      if (index < 0 || index >= variableCount) return [];
+      const row = Array(variableCount).fill(0); row[index] = 1; return [row];
+    });
+  const constraintRank = matrixRank(constraintRows);
+  return {
+    unconstrainedDegreesOfFreedom: extractionRows.length,
+    degreesOfFreedom: matrixRank([...constraintRows, ...extractionRows]) - constraintRank,
+  };
+};
+
 /** Entity-authoritative mobility. Arc curvature is a genuine scalar freedom,
  * even when both endpoint coordinates are locked. */
 export const analyzeDrawingEntityMobility = (sketch: DrawingSketchV2, entityId: string): DrawingPointMobilityAnalysis | null => {
   const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[entityId];
   if (!entity) return null;
   if (entity.type === 'circle') {
-    const center = analyzeDrawingPointMobility(sketch, [entity.centerPointId]);
-    const component = analyzeDrawingConstraints(sketch).componentByVariableKey.get(drawingSolverVariableKey(circleRadiusSolverVariable(entity.id)));
-    const scalarFreedom = component && component.scalarVariables.length
-      ? Math.max(0, component.degreesOfFreedom - analyzeDrawingPointMobility(sketch, [...component.pointIds]).degreesOfFreedom)
-      : 1;
-    return { unconstrainedDegreesOfFreedom: center.unconstrainedDegreesOfFreedom + 1, degreesOfFreedom: center.degreesOfFreedom + Math.min(1, scalarFreedom) };
+    return analyzeDrawingVariableMobility(sketch, [
+      { kind: 'point-axis', pointId: entity.centerPointId, axis: 'x' },
+      { kind: 'point-axis', pointId: entity.centerPointId, axis: 'y' },
+      circleRadiusSolverVariable(entity.id),
+    ]);
   }
-  const endpoints = analyzeDrawingPointMobility(sketch, [entity.startPointId, entity.endPointId]);
-  if (entity.type !== 'arc') return endpoints;
-  const component = analyzeDrawingConstraints(sketch).componentByVariableKey.get(drawingSolverVariableKey(arcBulgeSolverVariable(entity.id)));
-  const scalarFreedom = component && component.scalarVariables.length
-    ? Math.max(0, component.degreesOfFreedom - analyzeDrawingPointMobility(sketch, [...component.pointIds]).degreesOfFreedom)
-    : 1;
-  return { unconstrainedDegreesOfFreedom: endpoints.unconstrainedDegreesOfFreedom + 1, degreesOfFreedom: endpoints.degreesOfFreedom + Math.min(1, scalarFreedom) };
+  if (entity.type !== 'arc') return analyzeDrawingPointMobility(sketch, [entity.startPointId, entity.endPointId]);
+  return analyzeDrawingVariableMobility(sketch, [
+    { kind: 'point-axis', pointId: entity.startPointId, axis: 'x' },
+    { kind: 'point-axis', pointId: entity.startPointId, axis: 'y' },
+    { kind: 'point-axis', pointId: entity.endPointId, axis: 'x' },
+    { kind: 'point-axis', pointId: entity.endPointId, axis: 'y' },
+    arcBulgeSolverVariable(entity.id),
+  ]);
 };
 
 const coordinate = (sketch: DrawingSketchV2, key: string): DrawingPoint => key === DRAWING_ORIGIN_CONSTRAINT_KEY ? { x: 0, y: 0 } : sketch.points[key];
@@ -402,28 +436,8 @@ export const analyzeDrawingPointMobility = (
   sketch: DrawingSketchV2,
   selectedPointIds: readonly string[],
 ): DrawingPointMobilityAnalysis => {
-  const pointOrder = Object.keys(sketch.points);
-  const selected = [...new Set(selectedPointIds)].filter((id) => sketch.points[id]);
-  const constraintRows = Object.values(sketch.dimensions)
-    .filter(({ role }) => role === 'driving')
-    .map((dimension) => constraintEquation(sketch, dimension))
-    .filter((equation): equation is DrawingConstraintEquation => Boolean(equation))
-    .map((equation) => constraintJacobianRow(sketch, equation, pointOrder))
-    .filter((row): row is number[] => Boolean(row));
-  constraintRows.push(...Object.values(sketch.geometricConstraints ?? {}).flatMap((constraint) => geometricConstraintEquations(sketch, constraint)).map((equation) => constraintJacobianRow(sketch, equation, pointOrder)).filter((row): row is number[] => Boolean(row)));
-  const extractionRows = selected.flatMap((id) => {
-    const pointIndex = pointOrder.indexOf(id);
-    return [0, 1].map((axis) => {
-      const row = Array(pointOrder.length * 2).fill(0);
-      row[pointIndex * 2 + axis] = 1;
-      return row;
-    });
-  });
-  const constraintRank = matrixRank(constraintRows);
-  return {
-    unconstrainedDegreesOfFreedom: extractionRows.length,
-    degreesOfFreedom: matrixRank([...constraintRows, ...extractionRows]) - constraintRank,
-  };
+  return analyzeDrawingVariableMobility(sketch, [...new Set(selectedPointIds)].filter((id) => sketch.points[id])
+    .flatMap((pointId) => ([{ kind: 'point-axis', pointId, axis: 'x' }, { kind: 'point-axis', pointId, axis: 'y' }] as DrawingSolverVariable[])));
 };
 
 export const dimensionIncreasesConstraintRank = (sketch: DrawingSketchV2, candidate: DrawingDimension): boolean => {
