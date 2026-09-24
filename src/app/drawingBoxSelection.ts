@@ -79,9 +79,6 @@ export const drawingArcQualifiesForRect = (arc: ResolvedDrawingArc, rect: Drawin
 };
 
 /** Input order is retained, so callers can pass active-sketch entityOrder resolution. */
-export const selectDrawingGeometryInRect = (lines: readonly ResolvedDrawingLine[], rect: DrawingSelectionRect, mode: DrawingSelectionMode): readonly DrawingLineSelectionRef[] =>
-  lines.filter((line) => drawingLineQualifiesForRect(line, rect, mode)).map((line) => ({ kind: 'line', lineId: line.id }));
-
 export const selectDrawingEntitiesInRect = (entities: readonly (ResolvedDrawingLine | ResolvedDrawingCircle | ResolvedDrawingArc)[], rect: DrawingSelectionRect, mode: DrawingSelectionMode): readonly (DrawingLineSelectionRef | DrawingCircleSelectionRef | DrawingArcSelectionRef)[] =>
   entities.reduce<(DrawingLineSelectionRef | DrawingCircleSelectionRef | DrawingArcSelectionRef)[]>((selected, entity) => {
     if (entity.type === 'line' && drawingLineQualifiesForRect(entity, rect, mode)) selected.push({ kind: 'line', lineId: entity.id });

@@ -2,7 +2,7 @@ import { DRAWING_CONSTRAINT_TOLERANCE_MM, minimizeDrawingVariableObjective, solv
 import { deriveArcThroughThreePoints, projectPointToArc, resolveArcFromBulge } from './drawingArcGeometry.js';
 import { arcBulgeSolverVariable, circleRadiusSolverVariable } from './drawingSolverVariables.js';
 import { displayedDimensionMeasurement, measureDimension, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
-import { pointIdForLineEndpoint, updateSketchPoint } from './drawingTopology.js';
+import { pointIdForLineEndpoint } from './drawingTopology.js';
 import type { DrawingDimension, DrawingDocumentV2, DrawingEntity, DrawingPoint } from './drawingTypes.js';
 
 export const DRAWING_DRAG_THRESHOLD_PX = 4;
@@ -84,14 +84,6 @@ export const pointIdFromHit = (document: DrawingDocumentV2, lineId: string, endp
   const sketch = document.sketches[document.activeSketchId];
   const line = sketch?.entities[lineId];
   return line ? pointIdForLineEndpoint(line, endpoint) : null;
-};
-
-/** Apply absolute point positions without replacing their stable identities. */
-export const applyDrawingPointMoves = (document: DrawingDocumentV2, moves: Readonly<Record<string, DrawingPoint>>): DrawingDocumentV2 => {
-  const sketch = document.sketches[document.activeSketchId];
-  if (!sketch) return document;
-  const moved = Object.entries(moves).reduce((next, [id, point]) => updateSketchPoint(next, id, point), sketch);
-  return moved === sketch ? document : { ...document, sketches: { ...document.sketches, [sketch.id]: moved } };
 };
 
 /** Collect equations touching the authoritative points moved by a candidate. */
