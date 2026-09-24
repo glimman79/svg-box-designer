@@ -95,6 +95,9 @@ assert.match(workspace, /drawing-geometry-entity drawing-interactive-hit/, 'sele
 assert.match(workspace, /drawing-dimension-hit drawing-interactive-hit/, 'Dimension line and arc handles consume shared cursor authority');
 assert.match(workspace, /drawing-dimension-value-hit drawing-interactive-hit/, 'Dimension text handles consume shared cursor authority');
 assert.match(workspace, /onPointerDown=\{\(event\) => beginDimensionAnnotationDrag\(event, dimension\)\}/, 'text and main graphics initiate one semantic drag operation');
+assert.match(workspace, /data-dimension-sketch-point-id=\{pointId\}/, 'Dimension authoring renders a semantic hit target for every entity-defining SketchPoint, including Circle centers');
+assert.match(workspace, /explicitPointId[\s\S]*kind: 'sketchPoint'[\s\S]*resolveDimensionCandidate/, 'an explicit semantic point hit wins before curve arbitration');
+assert.match(workspace, /editingCircularAnchor[\s\S]*editingDimension\.placement\.anchor[\s\S]*const editorAnchor/, 'circular driving dimensions use the existing value editor at their radial label');
 assert.match(css, /\.drawing-svg\.has-dimension-cursor \{ cursor: crosshair; \}/, 'empty Dimension canvas uses crosshair');
 assert.match(css, /is-hovered \{ color: var\(--drawing-dimension-hover\); \}[\s\S]*is-selected[^}]*var\(--drawing-dimension-active\)/, 'interactive states remain distinct through semantic tokens');
 console.log('drawing dimension interaction tests passed');
