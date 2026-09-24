@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-circle-direct-manipulation/drawingTypes.js';
 import { analyzeDrawingConstraints, analyzeDrawingEntityMobility, constraintJacobianRow, geometricConstraintEquation } from '../.test-build/drawing-circle-direct-manipulation/drawingConstraintAnalysis.js';
-import { solveDrawingVariableTarget, verifyDrawingConstraints } from '../.test-build/drawing-circle-direct-manipulation/drawingConstraintSolver.js';
+import { solveDrawingVariableTarget, solveDrawingVariableTargets, verifyDrawingConstraints } from '../.test-build/drawing-circle-direct-manipulation/drawingConstraintSolver.js';
 import { createCircleRadiusDragTarget, solveDrawingDragCandidate } from '../.test-build/drawing-circle-direct-manipulation/drawingDirectManipulation.js';
-import { circleRadiusSolverVariable, drawingSolverVariableKey, readDrawingSolverVariable, writeDrawingSolverVariable } from '../.test-build/drawing-circle-direct-manipulation/drawingSolverVariables.js';
+import { circleRadiusSolverVariable, drawingSolverVariableKey, pointSolverVariables, readDrawingSolverVariable, writeDrawingSolverVariable } from '../.test-build/drawing-circle-direct-manipulation/drawingSolverVariables.js';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-circle-direct-manipulation/drawingHistory.js';
 
 const make = (constrained = false) => {
@@ -50,6 +50,24 @@ test('direct scalar target projects connected point while preserving hard equati
   const solved = solveDrawingVariableTarget(sketch, { variable: circleRadiusSolverVariable('circle'), value: 15 });
   assert.ok(solved); assert.equal(solved.entities.circle.radius, 15);
   assert.ok(verifyDrawingConstraints(solved, [], ['on'])); assert.ok(Math.abs(Math.hypot(solved.points.q.x - solved.points.center.x, solved.points.q.y - solved.points.center.y) - 15) < 1e-7);
+});
+
+test('point targets and Circle radius participate in one candidate-document solve', () => {
+  const document = make(true), sketch = document.sketches[document.activeSketchId];
+  const solved = solveDrawingVariableTargets(sketch, [
+    { variable: pointSolverVariables('q')[0], value: 17 },
+    { variable: pointSolverVariables('q')[1], value: 4 },
+  ]);
+  assert.ok(solved); assert.equal(solved.points.q.x, 17); assert.equal(solved.points.q.y, 4);
+  assert.notEqual(solved.entities.circle.radius, 10);
+  assert.ok(verifyDrawingConstraints(solved, [], ['on']));
+  const impossible = solveDrawingVariableTargets(sketch, [
+    { variable: pointSolverVariables('q')[0], value: 2 },
+    { variable: pointSolverVariables('q')[1], value: 3 },
+    { variable: pointSolverVariables('center')[0], value: 2 },
+    { variable: pointSolverVariables('center')[1], value: 3 },
+  ]);
+  assert.equal(impossible, null, 'invalid zero-radius or hard-residual candidates must not be accepted');
 });
 
 test('circumference mapping has no jump and always derives from start document', () => {

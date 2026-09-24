@@ -2,7 +2,7 @@ import type { DrawingDimension, DrawingDocumentV2, DrawingGeometricConstraint, D
 import { analyzeDrawingConstraints, constraintEquation, constraintPointKey, drawingConstraintDegreesOfFreedomForPoints, DRAWING_ORIGIN_CONSTRAINT_KEY, geometricConstraintEquation, geometricConstraintEquations, lineToLineAngleAndGradient, lineToLineDistanceAndGradient, parallelAndGradient, perpendicularAndGradient, pointOnLinearSupportAndGradient, pointToLineDistanceAndGradient } from './drawingConstraintAnalysis.js';
 import { measureDimension, measureLineToLineDistance, measurePointToLine, resolveDimensionLineReference, resolveDrawingPointReference } from './drawingDimension.js';
 import { angleIsOnDrawingArc, resolveArcFromBulge } from './drawingArcGeometry.js';
-import { applyDrawingSolverVector, drawingSolverVariableKey, type DrawingSolverVariable } from './drawingSolverVariables.js';
+import { applyDrawingSolverVector, deduplicateDrawingSolverVariables, drawingSolverVariableKey, flattenDrawingSolverVariables, pointSolverVariables, type DrawingSolverVariable } from './drawingSolverVariables.js';
 
 export const DRAWING_CONSTRAINT_TOLERANCE_MM = 1e-7;
 export const DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS = 80;
@@ -99,6 +99,76 @@ const evaluateSystem = (sketch: DrawingSketchV2, component: ComponentState, vari
 };
 const norm = (v: readonly number[]) => v.reduce((s, x) => s + x * x, 0);
 const solveLinear = (matrix: number[][], rhs: number[]): number[] | null => { const a = matrix.map((r, i) => [...r, rhs[i]]), n = rhs.length; for (let c = 0; c < n; c += 1) { let p = c; for (let r = c + 1; r < n; r += 1) if (Math.abs(a[r][c]) > Math.abs(a[p][c])) p = r; if (Math.abs(a[p][c]) < 1e-14) return null; [a[c], a[p]] = [a[p], a[c]]; const d = a[c][c]; for (let j = c; j <= n; j += 1) a[c][j] /= d; for (let r = 0; r < n; r += 1) if (r !== c) { const f = a[r][c]; for (let j = c; j <= n; j += 1) a[r][j] -= f * a[c][j]; } } return a.map((r) => r[n]); };
+type ComponentSolve = Readonly<{ values: readonly number[]; residuals: readonly number[]; iterations: number; sketch: DrawingSketchV2 }>;
+
+/**
+ * Shared nonlinear component kernel.  Its columns are canonical
+ * DrawingSolverVariables rather than an implicit pair of columns per Point.
+ * Residuals are deliberately evaluated from the reconstructed candidate
+ * sketch, so a Point-on-Curve equation observes candidate radii and bulges.
+ *
+ * Columns are scaled into roughly unit solver coordinates. Coordinates and
+ * radii use model-unit magnitude; dimensionless bulge uses its own magnitude.
+ * This only conditions the finite-difference Jacobian and damping--it does not
+ * weaken hard equations or introduce a geometry-specific objective.
+ */
+const solveVariableComponent = (
+  sketch: DrawingSketchV2,
+  component: ComponentState,
+  requestedVariables: readonly DrawingSolverVariable[],
+  movementWeights?: ReadonlyMap<string, number>,
+): ComponentSolve | null => {
+  const variables = deduplicateDrawingSolverVariables(requestedVariables);
+  const initialValues = flattenDrawingSolverVariables(sketch, variables);
+  if (!initialValues) return null;
+  let values: number[] = initialValues;
+  const scales = values.map((value, index) => variables[index].kind === 'entity-scalar' && variables[index].scalar === 'arc-bulge'
+    ? Math.max(.1, Math.abs(value)) : Math.max(1, Math.abs(value)));
+  const residualsAt = (candidateValues: readonly number[]) => {
+    const candidate = applyDrawingSolverVector(sketch, variables, candidateValues);
+    if (!candidate) return null;
+    const evaluated = evaluateSystem(candidate, component, [], []);
+    return evaluated && evaluated.residuals.every(Number.isFinite) ? { candidate, residuals: evaluated.residuals } : null;
+  };
+  let damping = INITIAL_DAMPING;
+  for (let iteration = 0; iteration <= DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS; iteration += 1) {
+    const current = residualsAt(values);
+    if (!current) return null;
+    if (current.residuals.every((value) => Math.abs(value) <= ITERATION_CONVERGENCE_MM)) return { values, residuals: current.residuals, iterations: iteration, sketch: current.candidate };
+    if (iteration === DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS || !values.length) break;
+    const jacobian = current.residuals.map(() => Array(values.length).fill(0));
+    for (let column = 0; column < values.length; column += 1) {
+      const step = 1e-6 * scales[column], plusValues = [...values], minusValues = [...values];
+      plusValues[column] += step; minusValues[column] -= step;
+      const plus = residualsAt(plusValues), minus = residualsAt(minusValues);
+      if (!plus && !minus) return null;
+      for (let row = 0; row < jacobian.length; row += 1) {
+        // Derivatives are with respect to the normalized column (actual value
+        // divided by scale), which keeps bulge and drawing-unit columns
+        // comparable. One-sided differences keep valid scalar boundaries safe.
+        jacobian[row][column] = plus && minus
+          ? (plus.residuals[row] - minus.residuals[row]) / (2e-6)
+          : plus ? (plus.residuals[row] - current.residuals[row]) / 1e-6
+            : (current.residuals[row] - minus!.residuals[row]) / 1e-6;
+      }
+    }
+    const n = values.length, normal = Array.from({ length: n }, () => Array(n).fill(0)), rhs = Array(n).fill(0);
+    for (let row = 0; row < current.residuals.length; row += 1) for (let i = 0; i < n; i += 1) {
+      rhs[i] -= jacobian[row][i] * current.residuals[row];
+      for (let j = 0; j < n; j += 1) normal[i][j] += jacobian[row][i] * jacobian[row][j];
+    }
+    for (let i = 0; i < n; i += 1) normal[i][i] += damping * (movementWeights?.get(drawingSolverVariableKey(variables[i])) ?? 1);
+    const normalizedDelta = solveLinear(normal, rhs);
+    if (!normalizedDelta?.every(Number.isFinite)) break;
+    const candidateValues: number[] = values.map((value, index) => value + normalizedDelta[index] * scales[index]), next = residualsAt(candidateValues);
+    if (next && norm(next.residuals) < norm(current.residuals)) { values = candidateValues; damping = Math.max(1e-12, damping * .25); }
+    else damping = Math.min(1e12, damping * 10);
+  }
+  return null;
+};
+
+// Preserve the established analytic point-only path (including its exact
+// interaction results); mixed point/scalar consumers use the kernel above.
 const solveComponent = (sketch: DrawingSketchV2, component: ComponentState, variableIds: readonly string[], movementWeights?: ReadonlyMap<string, number>) => { let values = variableIds.flatMap((id) => [sketch.points[id].x, sketch.points[id].y]), damping = INITIAL_DAMPING; for (let iteration = 0; iteration <= DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS; iteration += 1) { const system = evaluateSystem(sketch, component, variableIds, values); if (!system) return null; if (system.residuals.every((v) => Math.abs(v) <= ITERATION_CONVERGENCE_MM)) return { values, residuals: system.residuals, iterations: iteration }; if (iteration === DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS || !values.length) break; const n = values.length, normal = Array.from({ length: n }, () => Array(n).fill(0)), rhs = Array(n).fill(0); for (let r = 0; r < system.residuals.length; r += 1) for (let i = 0; i < n; i += 1) { rhs[i] -= system.jacobian[r][i] * system.residuals[r]; for (let j = 0; j < n; j += 1) normal[i][j] += system.jacobian[r][i] * system.jacobian[r][j]; } for (let i = 0; i < n; i += 1) normal[i][i] += damping * (movementWeights?.get(variableIds[Math.floor(i / 2)]) ?? 1); const delta = solveLinear(normal, rhs); if (!delta?.every(Number.isFinite)) break; const candidate = values.map((v, i) => v + delta[i]), next = evaluateSystem(sketch, component, variableIds, candidate); if (next && norm(next.residuals) < norm(system.residuals)) { values = candidate; damping = Math.max(1e-12, damping * .25); } else damping = Math.min(1e12, damping * 10); } return null; };
 
 /**
@@ -195,21 +265,26 @@ export const solveDrawingComponentDrag = (
   return working;
 };
 
-/** Shared direct-target projection entry point for a single authoritative
- * solver scalar. It is intentionally UI- and History-free; Arc body routing is
- * a later concern. The requested scalar remains an exact target while the
- * existing component equations may move connected point coordinates. */
-export const solveDrawingVariableTarget = (
+/** Shared direct-target projection entry point for authoritative solver
+ * variables. It is intentionally UI- and History-free; Arc endpoint routing
+ * is a later concern. Requested values remain exact while the component's
+ * remaining point axes and entity scalars jointly satisfy hard equations. */
+export const solveDrawingVariableTargets = (
   sketch: DrawingSketchV2,
-  target: Readonly<{ variable: DrawingSolverVariable; value: number }>,
+  targets: readonly Readonly<{ variable: DrawingSolverVariable; value: number }>[],
 ): DrawingSketchV2 | null => {
-  const candidate = applyDrawingSolverVector(sketch, [target.variable], [target.value]);
+  if (!targets.length) return null;
+  const targetVariables = deduplicateDrawingSolverVariables(targets.map(({ variable }) => variable));
+  if (targetVariables.length !== targets.length) return null;
+  const candidate = applyDrawingSolverVector(sketch, targetVariables, targets.map(({ value }) => value));
   if (!candidate) return null;
   const analysis = analyzeDrawingConstraints(candidate);
-  const component = target.variable.kind === 'point-axis'
-    ? analysis.componentByPointId.get(target.variable.pointId)
-    : analysis.componentByVariableKey.get(drawingSolverVariableKey(target.variable));
+  const componentFor = (variable: DrawingSolverVariable) => variable.kind === 'point-axis'
+    ? analysis.componentByPointId.get(variable.pointId)
+    : analysis.componentByVariableKey.get(drawingSolverVariableKey(variable));
+  const component = componentFor(targetVariables[0]);
   if (!component) return candidate;
+  if (targetVariables.some((variable) => componentFor(variable) !== component)) return null;
   if (verifyDrawingConstraints(candidate, component.dimensionIds, component.geometricConstraintIds)) return candidate;
   const state: ComponentState = {
     pointIds: [...component.pointIds],
@@ -218,13 +293,22 @@ export const solveDrawingVariableTarget = (
       ...component.geometricConstraintIds.flatMap((id) => { const constraint = candidate.geometricConstraints[id]; return constraint ? geometricConstraintEquations(candidate, constraint).map((equation) => ({ ...equation, target: 0 })) : []; }),
     ].filter((equation): equation is Equation => Boolean(equation)),
   };
-  const solved = solveComponent(candidate, state, state.pointIds);
+  if (state.equations.length < component.dimensionIds.length + component.geometricConstraintIds.length) return null;
+  const targetKeys = new Set(targetVariables.map(drawingSolverVariableKey));
+  const variables = deduplicateDrawingSolverVariables([
+    ...state.pointIds.flatMap(pointSolverVariables),
+    ...component.scalarVariables,
+  ]).filter((variable) => !targetKeys.has(drawingSolverVariableKey(variable)));
+  const solved = solveVariableComponent(candidate, state, variables);
   if (!solved) return null;
-  const points = { ...candidate.points };
-  state.pointIds.forEach((id, index) => { points[id] = { ...points[id], x: solved.values[index * 2], y: solved.values[index * 2 + 1] }; });
-  const projected = { ...candidate, points };
+  const projected = solved.sketch;
   return verifyDrawingConstraints(projected, component.dimensionIds, component.geometricConstraintIds) ? projected : null;
 };
+
+export const solveDrawingVariableTarget = (
+  sketch: DrawingSketchV2,
+  target: Readonly<{ variable: DrawingSolverVariable; value: number }>,
+): DrawingSketchV2 | null => solveDrawingVariableTargets(sketch, [target]);
 
 const measurement = (sketch: DrawingSketchV2, dimension: DrawingDimension): number | null => { if (dimension.kind === 'LINE_TO_LINE_ANGLE') { const equation = constraintEquation(sketch, dimension); if (!equation) return null; const [a0, a1, b0, b1] = equation.pointKeys, sector = dimension.angleSector; return lineToLineAngleAndGradient(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1], sector.sideA * sector.sideB as -1 | 1)?.angleDegrees ?? null; } if (dimension.kind === 'POINT_TO_LINE_DISTANCE') { const p = resolveDrawingPointReference(sketch, dimension.references[0]), l = resolveDimensionLineReference(sketch, dimension.references[1]); return p && l ? measurePointToLine(p, l) : null; } if (dimension.kind === 'LINE_TO_LINE_DISTANCE') { const a = resolveDimensionLineReference(sketch, dimension.references[0]), b = resolveDimensionLineReference(sketch, dimension.references[1]); return a && b ? measureLineToLineDistance(a, b) : null; } const a = resolveDrawingPointReference(sketch, dimension.references[0]), b = resolveDrawingPointReference(sketch, dimension.references[1]); return a && b ? measureDimension(dimension.kind, a, b) : null; };
 export const verifyDrawingDrivingDimensions = (sketch: DrawingSketchV2, ids: readonly string[]): readonly number[] | null => { const residuals = ids.map((id) => { const d = sketch.dimensions[id], value = d?.role === 'driving' ? measurement(sketch, d) : null; return d && value !== null ? Math.abs(value - d.value) : Infinity; }); return residuals.every((v) => Number.isFinite(v) && v <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? residuals : null; };
