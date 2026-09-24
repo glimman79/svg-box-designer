@@ -17,8 +17,8 @@ assert.equal(once.activationMode, 'normal', 'single activation selects one-shot 
 assert.equal(persistent.activationMode, 'persistent', 'second resolved activation selects persistent mode');
 assert.deepEqual(lifecycle.finishDrawingConstruction(lifecycle.activateDrawingTool('dimension', 'normal')), { activeTool: 'select', activationMode: 'normal' });
 assert.deepEqual(lifecycle.finishDrawingConstruction(lifecycle.activateDrawingTool('dimension', 'persistent')), { activeTool: 'dimension', activationMode: 'persistent' });
-assert.match(workspace, /line\?\.type !== 'line'\) return;[\s\S]*finishDrawingConstruction\(toolLifecycle\)/, 'only a valid completed placement finishes one-shot construction');
-assert.match(workspace, /nextLifecycle\.activeTool === 'dimension' \? \{ phase: 'acquiringReference' \}/, 'persistent completion immediately reacquires a reference');
+assert.match(workspace, /appendDimension\(current, committed\)[\s\S]*finishDrawingConstruction\(toolLifecycle\)/, 'a completed placement commits through the shared lifecycle');
+assert.match(workspace, /nextLifecycle\.activeTool === 'dimension' \? \{ phase: 'waitingForFirstTarget' \}/, 'persistent completion immediately reacquires a reference');
 assert.match(workspace, /setToolLifecycle\(activateDrawingTool\('select'\)\);[\s\S]*setDimensionTool\(\{ phase: 'inactive' \}\)/, 'Escape exits Dimension through the shared tool contract');
 assert.match(workspace, /const selectTool = \(tool[\s\S]*setDimensionTool\(tool === 'dimension'/, 'Select and other tools clear Dimension transient state');
 assert.match(app, /aria-pressed=\{drawingActiveTool === 'dimension'\}/, 'upper Dimension button exposes pressed state');

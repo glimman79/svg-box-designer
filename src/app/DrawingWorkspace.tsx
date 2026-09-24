@@ -18,7 +18,7 @@ import { resolveArcFormPointSnap, resolveCircumferencePointSnap, resolvePointOnC
 import { useCadWheelCapture } from './useCadWheelCapture';
 import { CAD_PRIMARY_BUTTON, useCadCtrlSnapOverride, useCadEscapeToolExit, useCadPanGesture } from './cadInteraction';
 import { resolveCadToolPointerActivation, type CadToolActivationRecord } from './cadToolActivation';
-import { appendDimension, chooseLineDimensionKind, choosePointDimensionKind, createDimensionId, createLineDimension, createLinePairDimension, createLineToLineAngleDimension, createPointToLineDimension, createPointToPointDimension, deleteDimension, deleteEntityWithDependentDimensions, deriveLineToLineAnnotationGeometry, derivePointToLineAnnotationGeometry, dimensionEditorWidthPixels, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatAngleDimension, formatDimensionEditValue, formatDimensionValue, lineToLineDimensionOffset, moveDimensionPlacement, parseLinearDimension, pointToLineDimensionOffset, preselectionReference, resolveDimensionAnnotationPlacement, resolveDimensionLineReference, resolveDimensionPreselection, resolveDimensionPreselectionForTarget, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
+import { appendDimension, chooseLineDimensionKind, choosePointDimensionKind, createDimensionId, createCircularSizeDimension, createLineDimension, createLinePairDimension, createLineToLineAngleDimension, createPointToLineDimension, createPointToPointDimension, deleteDimension, deleteEntityWithDependentDimensions, deriveLineToLineAnnotationGeometry, derivePointToLineAnnotationGeometry, dimensionEditorWidthPixels, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatAngleDimension, formatCircularDimension, formatDimensionEditValue, formatDimensionValue, lineToLineDimensionOffset, moveDimensionPlacement, parseLinearDimension, pointToLineDimensionOffset, preselectionReference, resolveDimensionAnnotationPlacement, resolveDimensionLineReference, resolveDimensionPreselection, resolveDimensionPreselectionForTarget, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
 import { candidateForSector, createLineAngleBasis, deriveLineAngleAnnotation } from './drawingLineAngle';
 import { solveDrawingDimensionEdit } from './drawingConstraintSolver';
 import type { HistoryControlsProps } from './HistoryControls';
@@ -26,6 +26,7 @@ import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, un
 import { deriveEntityDefiningPointIds, pointIdForLineEndpoint, removeEntityAndOrphans, resolveActiveSketchLines, resolveArc, resolveCircle, resolveLine } from './drawingTopology.js';
 import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcEndpointReference, resolveArcPreview, updateArcPreview, type ArcToolInteraction } from './drawingArcTool.js';
 import { drawingArcPath } from './drawingArcGeometry.js';
+import { circularAttachment, resolveCircularSize } from './drawingCircularSize.js';
 import { distanceToArc } from './drawingArcGeometry.js';
 import { createArcCenterDragTarget, createArcEndpointDragTarget, createArcRadiusDragTarget, createCircleRadiusDragTarget, DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, resolveArcEndpointOwner, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
@@ -633,9 +634,16 @@ export function DrawingWorkspace({
     const candidate = target === 'any'
       ? resolveDimensionPreselection(clientLines, client, origin)
       : resolveDimensionPreselectionForTarget(clientLines, client, target, origin);
-    if (candidate?.kind !== 'point') return candidate;
-    const line = activeSketch.entities[candidate.lineId];
-    return line ? { ...candidate, pointId: pointIdForLineEndpoint(line, candidate.point) } : candidate;
+    if (candidate) {
+      if (candidate.kind !== 'point') return candidate;
+      const line = activeSketch.entities[candidate.lineId];
+      return line ? { ...candidate, pointId: pointIdForLineEndpoint(line, candidate.point) } : candidate;
+    }
+    if (target !== 'any') return null;
+    const model = clientToModelPoint(client, matrix); if (!model) return null;
+    const pixelsPerModel = Math.hypot(matrix.a, matrix.b);
+    const curves = [...resolvedCircles.map((curve) => ({ entityId: curve.id, distancePx: Math.abs(Math.hypot(model.x - curve.center.x, model.y - curve.center.y) - curve.radius) * pixelsPerModel })), ...resolvedArcs.map((curve) => ({ entityId: curve.id, distancePx: distanceToArc(model, curve) * pixelsPerModel }))].sort((a, b) => a.distancePx - b.distancePx);
+    return curves[0] && curves[0].distancePx <= 8 ? { kind: 'curve', ...curves[0] } : null;
   };
 
   const ctrlSnapOverride = useCadCtrlSnapOverride((held) => {
@@ -805,6 +813,12 @@ export function DrawingWorkspace({
           }
         }
         const preview = dimensionTool.dimension;
+        if (preview.kind === 'CIRCULAR_SIZE') {
+          const committed = { ...preview, id: createDimensionId(), placement: { kind: 'radial' as const, anchor: point } };
+          transactDocument((current) => appendDimension(current, committed));
+          const nextLifecycle = finishDrawingConstruction(toolLifecycle); setToolLifecycle(nextLifecycle);
+          setDimensionTool(nextLifecycle.activeTool === 'dimension' ? { phase: 'waitingForFirstTarget' } : { phase: 'inactive' }); setDimensionPreselection(null); return;
+        }
         if (preview.kind === 'LINE_TO_LINE_ANGLE') {
           const first = resolveDimensionLineReference(activeSketch, preview.references[0]), second = resolveDimensionLineReference(activeSketch, preview.references[1]);
           const refreshed = first && second ? createLineToLineAngleDimension(first, second, point, createDimensionId()) : null;
@@ -854,8 +868,14 @@ export function DrawingWorkspace({
           }
           if (preview) setDimensionTool({ phase: 'placementPreview', dimension: preview, cursor: point });
         } else if (reference.kind === 'entity') {
-          const lineEntity = activeSketch.entities[reference.entityId], resolved = lineEntity ? resolveLine(activeSketch, lineEntity) : null;
-          if (resolved) setDimensionTool({ phase: 'lineTargetSelected', line: reference, dimension: createLineDimension(resolved, chooseLineDimensionKind(resolved, point, undefined, viewport.width / viewBox.width), point, 'preview'), cursor: point });
+          const entity = (activeSketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[reference.entityId];
+          if (entity?.type === 'circle' || entity?.type === 'arc') {
+            const circular = createCircularSizeDimension(activeSketch, entity.id, point, 'preview');
+            if (circular) setDimensionTool({ phase: 'placementPreview', dimension: circular, cursor: point });
+          } else {
+            const resolved = entity?.type === 'line' ? resolveLine(activeSketch, entity) : null;
+            if (resolved) setDimensionTool({ phase: 'lineTargetSelected', line: reference, dimension: createLineDimension(resolved, chooseLineDimensionKind(resolved, point, undefined, viewport.width / viewBox.width), point, 'preview'), cursor: point });
+          }
         } else setDimensionTool({ phase: 'waitingForSecondTarget', first: reference });
       }
       return;
@@ -974,7 +994,9 @@ export function DrawingWorkspace({
       const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
       if (point && activeSketch) {
         const d = dimensionTool.dimension;
-        if (d.kind === 'POINT_TO_LINE_DISTANCE') {
+        if (d.kind === 'CIRCULAR_SIZE') {
+          setDimensionTool({ ...dimensionTool, cursor: point, dimension: { ...d, placement: { kind: 'radial', anchor: point } } });
+        } else if (d.kind === 'POINT_TO_LINE_DISTANCE') {
           const line = resolveDimensionLineReference(activeSketch, d.references[1]);
           const targetPoint = resolveDrawingPointReference(activeSketch, d.references[0]);
           if (line && targetPoint) setDimensionTool({ ...dimensionTool, cursor: point, dimension: { ...d, placement: { kind: 'linear', offset: pointToLineDimensionOffset(targetPoint, line, point) } } });
@@ -1072,7 +1094,7 @@ export function DrawingWorkspace({
 
   const annotationGeometry = (dimension: DrawingDimension) => {
     if (!activeSketch) return null;
-    if (dimension.kind === 'LINE_TO_LINE_ANGLE') return null;
+    if (dimension.kind === 'LINE_TO_LINE_ANGLE' || dimension.kind === 'CIRCULAR_SIZE' || dimension.placement.kind !== 'linear') return null;
     if (dimension.kind === 'LINE_TO_LINE_DISTANCE') {
       const a = resolveDimensionLineReference(activeSketch, dimension.references[0]), b = resolveDimensionLineReference(activeSketch, dimension.references[1]);
       return a && b ? deriveLineToLineAnnotationGeometry(a, b, dimension.placement.offset) : null;
@@ -1394,6 +1416,26 @@ export function DrawingWorkspace({
             </g>
             <g className="drawing-dimension-layer" aria-label="Drawing dimensions">
               {[...displayedDimensions, ...(previewDimension ? [previewDimension] : [])].map((dimension) => {
+                if (dimension.kind === 'CIRCULAR_SIZE' && dimension.placement.kind === 'radial') {
+                  const resolved = activeSketch ? resolveCircularSize(activeSketch, dimension.references[0].entityId) : null;
+                  const measurement = activeSketch ? displayedDimensionMeasurement(activeSketch, dimension) : null;
+                  if (!resolved || measurement === null) return null;
+                  const anchor = dimension.placement.anchor, attachment = circularAttachment(resolved, anchor), center = resolved.entity.center;
+                  const dx = attachment.x - center.x, dy = attachment.y - center.y, length = Math.hypot(dx, dy) || 1;
+                  const opposite = { x: center.x - dx / length * resolved.radius, y: center.y - dy / length * resolved.radius };
+                  const start = dimension.mode === 'diameter' ? opposite : center, label = formatCircularDimension(measurement, dimension.mode, dimension.role);
+                  const selected = dimension.id === selectedDimensionId, editing = dimension.id === editingDimensionId;
+                  const arrowState = selected || editing || dimensionDrag?.id === dimension.id ? 'active' : dimension.id === hoveredDimensionId ? 'hover' : 'normal';
+                  const beginDimensionEdit = () => { setSelectedDimensionId(dimension.id); if (dimension.role === 'reference') return; setEditingDimensionId(dimension.id); setDimensionDraft(formatDimensionEditValue(dimension.value)); setDimensionEditError(null); };
+                  const valueHitWidth = (label.length * 6 + 12) / pixelsPerMm;
+                  return <g key={dimension.id} className={`drawing-dimension is-${dimension.role} is-circular${selected ? ' is-selected' : ''}${dimension.id === hoveredDimensionId ? ' is-hovered' : ''}${dimension.id === 'preview' ? ' is-preview' : ''}`}>
+                    <line className="drawing-dimension-line" markerStart={`url(#dimension-arrow-${arrowState})`} x1={start.x} y1={start.y} x2={attachment.x} y2={attachment.y} />
+                    <line className="drawing-dimension-line drawing-dimension-leader" x1={attachment.x} y1={attachment.y} x2={anchor.x} y2={anchor.y} />
+                    <text className="drawing-dimension-value" x={anchor.x} y={anchor.y - 4 / pixelsPerMm} textAnchor="middle" style={{ fontSize: dimensionScreenPixelsToModelUnits(DIMENSION_TEXT_SIZE_PX, pixelsPerMm) }}>{label}</text>
+                    {dimension.id !== 'preview' && <line className="drawing-dimension-hit drawing-interactive-hit" x1={start.x} y1={start.y} x2={anchor.x} y2={anchor.y} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => beginDimensionAnnotationDrag(event, dimension)} />}
+                    {dimension.id !== 'preview' && <rect className="drawing-dimension-value-hit drawing-interactive-hit" x={anchor.x - valueHitWidth / 2} y={anchor.y - 16 / pixelsPerMm} width={valueHitWidth} height={18 / pixelsPerMm} onPointerDown={(event) => beginDimensionAnnotationDrag(event, dimension)} onDoubleClick={beginDimensionEdit} />}
+                  </g>;
+                }
                 if (dimension.kind === 'LINE_TO_LINE_ANGLE') {
                   const angleGeometry = angleAnnotationGeometry(dimension); if (!angleGeometry) return null;
                   const measurement = activeSketch ? displayedDimensionMeasurement(activeSketch, dimension) : null; if (measurement === null) return null;

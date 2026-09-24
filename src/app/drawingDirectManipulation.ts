@@ -104,7 +104,7 @@ export const validateDrivingDimensions = (document: DrawingDocumentV2, dimension
   const sketch = document.sketches[document.activeSketchId];
   if (!sketch) return false;
   return (dimensions ?? Object.values(sketch.dimensions).filter(({ role }) => role === 'driving')).every((dimension) => {
-    if (dimension.kind === 'LINE_TO_LINE_ANGLE' || dimension.kind === 'LINE_TO_LINE_DISTANCE') {
+    if (dimension.kind === 'LINE_TO_LINE_ANGLE' || dimension.kind === 'LINE_TO_LINE_DISTANCE' || dimension.kind === 'CIRCULAR_SIZE') {
       const value = displayedDimensionMeasurement(sketch, dimension);
       return value !== null && Math.abs(value - dimension.value) <= DRAWING_CONSTRAINT_TOLERANCE_MM;
     }

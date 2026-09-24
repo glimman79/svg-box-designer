@@ -20,6 +20,12 @@ export const constraintPointKey = (sketch: DrawingSketchV2, reference: DrawingPo
 };
 
 export const constraintEquation = (sketch: DrawingSketchV2, dimension: DrawingDimension): DrawingConstraintEquation | null => {
+  if (dimension.kind === 'CIRCULAR_SIZE') {
+    const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[dimension.references[0].entityId];
+    if (entity?.type === 'circle' && dimension.mode === 'diameter' && sketch.points[entity.centerPointId]) return { dimension, pointKeys: [entity.centerPointId], scalarVariables: [circleRadiusSolverVariable(entity.id)] };
+    if (entity?.type === 'arc' && dimension.mode === 'radius' && sketch.points[entity.startPointId] && sketch.points[entity.endPointId]) return { dimension, pointKeys: [entity.startPointId, entity.endPointId], scalarVariables: [arcBulgeSolverVariable(entity.id)] };
+    return null;
+  }
   if (dimension.kind === 'LINE_TO_LINE_ANGLE') {
     const a = sketch.entities[dimension.references[0].entityId], b = sketch.entities[dimension.references[1].entityId];
     if (!a || !b || a.startPointId === a.endPointId || b.startPointId === b.endPointId) return null;
@@ -275,6 +281,29 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
     [a0, a1, b0, b1].forEach((key, i) => set(key, result.gradient[i * 2], result.gradient[i * 2 + 1])); return row;
   }
   const dimension = equation.dimension!;
+  if (dimension.kind === 'CIRCULAR_SIZE') {
+    const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[dimension.references[0].entityId];
+    const measure = (candidate: DrawingSketchV2) => {
+      const current = (candidate.entities as unknown as Record<string, DrawingEntity>)[dimension.references[0].entityId];
+      if (current?.type === 'circle') return 2 * current.radius;
+      if (current?.type === 'arc') return resolveArcFromBulge(current, candidate.points[current.startPointId], candidate.points[current.endPointId])?.radius ?? NaN;
+      return NaN;
+    };
+    const variables = [...equation.pointKeys.flatMap((pointId) => ([{ kind: 'point-axis', pointId, axis: 'x' }, { kind: 'point-axis', pointId, axis: 'y' }] as DrawingSolverVariable[])), ...(equation.scalarVariables ?? [])];
+    for (const variable of variables) {
+      const scalarIndex = scalarOrder.findIndex((item) => drawingSolverVariableKey(item) === drawingSolverVariableKey(variable));
+      const pointIndex = variable.kind === 'point-axis' ? pointOrder.indexOf(variable.pointId) * 2 + (variable.axis === 'x' ? 0 : 1) : -1;
+      const value = variable.kind === 'point-axis' ? sketch.points[variable.pointId]?.[variable.axis] : entity?.type === 'circle' ? entity.radius : entity?.type === 'arc' ? entity.bulge : NaN;
+      if (!Number.isFinite(value)) return null;
+      const h = 1e-6 * Math.max(1, Math.abs(value));
+      const plus = variable.kind === 'point-axis' ? { ...sketch, points: { ...sketch.points, [variable.pointId]: { ...sketch.points[variable.pointId], [variable.axis]: value + h } } } : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, [variable.scalar === 'circle-radius' ? 'radius' : 'bulge']: value + h } } as DrawingSketchV2['entities'] };
+      const minus = variable.kind === 'point-axis' ? { ...sketch, points: { ...sketch.points, [variable.pointId]: { ...sketch.points[variable.pointId], [variable.axis]: value - h } } } : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, [variable.scalar === 'circle-radius' ? 'radius' : 'bulge']: value - h } } as DrawingSketchV2['entities'] };
+      const derivative = (measure(plus) - measure(minus)) / (2 * h);
+      if (pointIndex >= 0) row[pointIndex] = derivative;
+      else if (scalarIndex >= 0) row[pointOrder.length * 2 + scalarIndex] = derivative;
+    }
+    return row;
+  }
   if (dimension.kind === 'LINE_TO_LINE_ANGLE') {
     const [a0, a1, b0, b1] = equation.pointKeys, sector = dimension.angleSector;
     const result = lineToLineAngleAndGradient(coordinate(sketch, a0), coordinate(sketch, a1), coordinate(sketch, b0), coordinate(sketch, b1), sector.sideA * sector.sideB as -1 | 1);
