@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCircularSizeDimension, createPointToPointDimension, displayedDimensionMeasurement, drawingPointReferenceDependencies, formatCircularDimension, appendDimension, moveDimensionPlacement, deleteEntityWithDependentDimensions, resolveDrawingPointReference } from '../.test-build/drawing-circular-dimension/drawingDimension.js';
+import { createCircularSizeDimension, createPointToLineDimension, createPointToPointDimension, displayedDimensionMeasurement, drawingPointReferenceDependencies, formatCircularDimension, appendDimension, moveDimensionPlacement, deleteEntityWithDependentDimensions, resolveDrawingPointReference } from '../.test-build/drawing-circular-dimension/drawingDimension.js';
 import { resolveCircularSize, circularAttachment, circularDimensionEndpoints } from '../.test-build/drawing-circular-dimension/drawingCircularSize.js';
 import { solveDrawingDimensionEdit } from '../.test-build/drawing-circular-dimension/drawingConstraintSolver.js';
 import { migrateDrawingDocument } from '../.test-build/drawing-circular-dimension/drawingTypes.js';
@@ -101,4 +101,36 @@ test('ordinary derived-center dimension edits through the mixed canonical solver
   assert.equal(deleteEntityWithDependentDimensions(solved.document, 'arc').sketches.s.dimensions.ordinary, undefined);
   const malformed = document(); malformed.sketches.s.dimensions.ordinary = { ...doc.sketches.s.dimensions.ordinary, references: [{ ...center, entityId: 'circle' }, circleCenter] }; malformed.sketches.s.dimensionOrder = ['ordinary'];
   assert.deepEqual(migrateDrawingDocument(malformed).sketches.s.dimensionOrder, []);
+});
+
+test('independent Arc-center dimensions drive canonical endpoints and bulge while redundant equations remain reference', () => {
+  for (const bulge of [.25, -.25, 1, 2, -2, 1e-4]) {
+    let doc = document(); doc.sketches.s.points.a = { ...doc.sketches.s.points.a, y: 2 }; doc.sketches.s.points.b = { ...doc.sketches.s.points.b, y: 2 };
+    doc.sketches.s.entities.arc = { ...doc.sketches.s.entities.arc, bulge };
+    const center = { kind: 'derivedPoint', entityId: 'arc', role: 'center' }, origin = { kind: 'datum', datum: 'ORIGIN' };
+    const a = resolveDrawingPointReference(doc.sketches.s, center), b = resolveDrawingPointReference(doc.sketches.s, origin);
+    const kind = Math.abs(a.y) > 1e-8 ? 'VERTICAL_DISTANCE' : 'HORIZONTAL_DISTANCE';
+    doc = appendDimension(doc, createPointToPointDimension([center, origin], a, b, kind, { x: 2, y: 8 }, 'center-axis'));
+    assert.equal(doc.sketches.s.dimensions['center-axis'].role, 'driving', `bulge ${bulge} has a driving center equation`);
+    const target = doc.sketches.s.dimensions['center-axis'].value + 1;
+    const solved = solveDrawingDimensionEdit({ document: doc, dimensionId: 'center-axis', targetValue: target });
+    assert.equal(solved.ok, true); assert.ok(Math.abs(displayedDimensionMeasurement(solved.document.sketches.s, solved.document.sketches.s.dimensions['center-axis']) - target) < 1e-7);
+    assert.equal(Object.keys(solved.document.sketches.s.points).length, 3, 'Arc center remains derived rather than persisted');
+  }
+  let doc = document();
+  const center = { kind: 'derivedPoint', entityId: 'arc', role: 'center' }, origin = { kind: 'datum', datum: 'ORIGIN' };
+  const a = resolveDrawingPointReference(doc.sketches.s, center), b = resolveDrawingPointReference(doc.sketches.s, origin);
+  doc = appendDimension(doc, createPointToPointDimension([center, origin], a, b, 'VERTICAL_DISTANCE', { x: 2, y: 8 }, 'vertical'));
+  doc = appendDimension(doc, createPointToPointDimension([center, origin], a, b, 'ALIGNED_DISTANCE', { x: 3, y: 8 }, 'redundant'));
+  assert.equal(doc.sketches.s.dimensions.redundant.role, 'reference');
+  assert.match(`(${displayedDimensionMeasurement(doc.sketches.s, doc.sketches.s.dimensions.redundant)} mm)`, /^\(/);
+});
+
+test('Arc center to Line is rank-independent and editable', () => {
+  let doc = document(); doc.sketches.s.points.l0 = { id: 'l0', x: -10, y: 10 }; doc.sketches.s.points.l1 = { id: 'l1', x: 10, y: 10 };
+  doc.sketches.s.entities.line = { id: 'line', type: 'line', startPointId: 'l0', endPointId: 'l1' }; doc.sketches.s.entityOrder.push('line');
+  const center = { kind: 'derivedPoint', entityId: 'arc', role: 'center' }, line = { kind: 'entity', entityId: 'line' };
+  const d = createPointToLineDimension(center, line, resolveDrawingPointReference(doc.sketches.s, center), { ...doc.sketches.s.entities.line, start: doc.sketches.s.points.l0, end: doc.sketches.s.points.l1 }, 'point', { x: 0, y: 8 }, 'center-line');
+  doc = appendDimension(doc, d); assert.equal(doc.sketches.s.dimensions['center-line'].role, 'driving');
+  assert.equal(solveDrawingDimensionEdit({ document: doc, dimensionId: 'center-line', targetValue: 5 }).ok, true);
 });

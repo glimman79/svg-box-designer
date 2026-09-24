@@ -866,7 +866,11 @@ export function DrawingWorkspace({
       const expectedTarget = dimensionTool.phase === 'waitingForSecondTarget'
         ? dimensionTool.first.kind === 'entity' ? 'point' : 'any'
         : 'any';
-      const candidate = resolveDimensionCandidate({ x: event.clientX, y: event.clientY }, expectedTarget);
+      const explicitPointId = (event.target as Element).closest<SVGCircleElement>('[data-dimension-sketch-point-id]')?.dataset.dimensionSketchPointId;
+      const explicitPoint = explicitPointId && activeSketch.points[explicitPointId];
+      const candidate: DimensionPreselection | null = explicitPoint
+        ? { kind: 'point', reference: { kind: 'sketchPoint', pointId: explicitPointId }, pointId: explicitPointId, lineId: '', point: 'start', clientPoint: { x: event.clientX, y: event.clientY }, distancePx: 0 }
+        : resolveDimensionCandidate({ x: event.clientX, y: event.clientY }, expectedTarget);
       if (candidate) {
         const reference = preselectionReference(candidate);
         if (dimensionTool.phase === 'waitingForSecondTarget') {
@@ -1142,7 +1146,8 @@ export function DrawingWorkspace({
   const editingDimension = displayedDimensions.find(({ id }) => id === editingDimensionId);
   const editingGeometry = editingDimension ? annotationGeometry(editingDimension) : null;
   const editingAngleGeometry = editingDimension?.kind === 'LINE_TO_LINE_ANGLE' ? angleAnnotationGeometry(editingDimension) : null;
-  const editingMiddle = editingAngleGeometry?.label ?? (editingGeometry ? { x: (editingGeometry.a.x + editingGeometry.b.x) / 2, y: (editingGeometry.a.y + editingGeometry.b.y) / 2 } : null);
+  const editingCircularAnchor = editingDimension?.kind === 'CIRCULAR_SIZE' && editingDimension.placement.kind === 'radial' ? editingDimension.placement.anchor : null;
+  const editingMiddle = editingCircularAnchor ?? editingAngleGeometry?.label ?? (editingGeometry ? { x: (editingGeometry.a.x + editingGeometry.b.x) / 2, y: (editingGeometry.a.y + editingGeometry.b.y) / 2 } : null);
   const editorAnchor = editingMiddle && svgRef.current && overlaySvgRef.current
     ? modelToOverlayPoint(editingMiddle, svgRef.current.getScreenCTM()!, overlaySvgRef.current.getScreenCTM()!) : null;
   const editorWidth = dimensionEditorWidthPixels(dimensionDraft);
@@ -1373,6 +1378,10 @@ export function DrawingWorkspace({
                   onPointerEnter={() => setGeometryPreselection({ kind: 'point', lineId: '', point: 'start', pointId: point.id, clientPoint: point, distancePx: 0 })}
                   onPointerLeave={() => setGeometryPreselection((current) => current?.kind === 'point' && current.pointId === point.id ? null : current)} />
               ))}
+              {activeTool === 'dimension' && activeSketch && [...entityDefiningPointIds].map((pointId) => activeSketch.points[pointId] ? (
+                <circle key={`dimension-hit:${pointId}`} className="drawing-sketch-point-hit drawing-interactive-hit" data-dimension-sketch-point-id={pointId}
+                  cx={activeSketch.points[pointId].x} cy={activeSketch.points[pointId].y} r={DRAWING_SKETCH_POINT_HIT_RADIUS_PX / pixelsPerMm} />
+              ) : null)}
               {activeSketch && selectedGeometry.flatMap((ref) => ref.kind === 'point' && activeSketch.points[ref.pointId]
                 ? [<circle key={ref.pointId} className="drawing-geometry-point-selected" cx={activeSketch.points[ref.pointId].x} cy={activeSketch.points[ref.pointId].y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} />] : [])}
               {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = geometryPreselection.pointId ? activeSketch.points[geometryPreselection.pointId] : resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); const size = DRAWING_POINT_HOVER_MARKER_SIZE_PX / pixelsPerMm; return p ? <rect className="drawing-geometry-point-preselection" x={p.x - size / 2} y={p.y - size / 2} width={size} height={size} /> : null; })()}

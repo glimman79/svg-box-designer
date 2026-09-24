@@ -2,7 +2,7 @@ import type { DrawingDimension, DrawingDocumentV2, DrawingGeometricConstraint, D
 import { analyzeDrawingConstraints, constraintEquation, constraintPointKey, drawingConstraintDegreesOfFreedomForPoints, DRAWING_ORIGIN_CONSTRAINT_KEY, geometricConstraintEquation, geometricConstraintEquations, lineToLineAngleAndGradient, lineToLineDistanceAndGradient, parallelAndGradient, perpendicularAndGradient, pointOnLinearSupportAndGradient, pointToLineDistanceAndGradient } from './drawingConstraintAnalysis.js';
 import { measureDimension, measureLineToLineDistance, measurePointToLine, resolveDimensionLineReference, resolveDrawingPointReference } from './drawingDimension.js';
 import { angleIsOnDrawingArc, resolveArcFromBulge } from './drawingArcGeometry.js';
-import { applyDrawingSolverVector, deduplicateDrawingSolverVariables, drawingSolverVariableKey, flattenDrawingSolverVariables, pointSolverVariables, type DrawingSolverVariable } from './drawingSolverVariables.js';
+import { applyDrawingSolverVector, arcBulgeSolverVariable, circleRadiusSolverVariable, deduplicateDrawingSolverVariables, drawingSolverVariableKey, flattenDrawingSolverVariables, pointSolverVariables, type DrawingSolverVariable } from './drawingSolverVariables.js';
 import { measureCircularDimension } from './drawingCircularSize.js';
 
 export const DRAWING_CONSTRAINT_TOLERANCE_MM = 1e-7;
@@ -618,16 +618,14 @@ export const solveDrawingDimensionEdit = ({ document, dimensionId, targetValue }
     const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[edited.references[0].entityId];
     if (!entity || entity.type === 'circle' && edited.mode !== 'diameter' || entity.type === 'arc' && edited.mode !== 'radius') return fail('MISSING_REFERENCE');
     const dimensions = { ...sketch.dimensions, [dimensionId]: { ...edited, value: targetValue } };
+    const base = { ...sketch, dimensions };
+    const scalar = entity.type === 'circle' ? circleRadiusSolverVariable(entity.id) : arcBulgeSolverVariable(entity.id);
+    const analysis = analyzeDrawingConstraints(base), component = analysis.componentByVariableKey.get(drawingSolverVariableKey(scalar));
     let candidate: DrawingSketchV2 | null = null;
-    if (entity.type === 'circle') candidate = { ...sketch, entities: { ...sketch.entities, [entity.id]: { ...entity, radius: targetValue / 2 } } as DrawingSketchV2['entities'], dimensions };
-    else if (entity.type === 'arc') {
-      const base = { ...sketch, dimensions };
-      const analysis = analyzeDrawingConstraints(base), component = analysis.componentByVariableKey.get(drawingSolverVariableKey({ kind: 'entity-scalar', entityId: entity.id, scalar: 'arc-bulge' }));
-      if (component) {
-        const state: ComponentState = { pointIds: [...component.pointIds], equations: [...component.dimensionIds.map((id) => { const dimension = base.dimensions[id], equation = dimension && constraintEquation(base, dimension); return equation ? { ...equation, target: dimension.value } : null; }), ...component.geometricConstraintIds.flatMap((id) => { const constraint = base.geometricConstraints[id]; return constraint ? geometricConstraintEquations(base, constraint).map((equation) => ({ ...equation, target: 0 })) : []; })].filter((item): item is Equation => Boolean(item)) };
-        const variables = deduplicateDrawingSolverVariables([...state.pointIds.flatMap(pointSolverVariables), ...component.scalarVariables]);
-        candidate = solveVariableComponent(base, state, variables)?.sketch ?? null;
-      }
+    if (component) {
+      const state: ComponentState = { pointIds: [...component.pointIds], equations: [...component.dimensionIds.map((id) => { const dimension = base.dimensions[id], equation = dimension && constraintEquation(base, dimension); return equation ? { ...equation, target: dimension.value } : null; }), ...component.geometricConstraintIds.flatMap((id) => { const constraint = base.geometricConstraints[id]; return constraint ? geometricConstraintEquations(base, constraint).map((equation) => ({ ...equation, target: 0 })) : []; })].filter((item): item is Equation => Boolean(item)) };
+      const variables = deduplicateDrawingSolverVariables([...state.pointIds.flatMap(pointSolverVariables), ...component.scalarVariables]);
+      candidate = solveVariableComponent(base, state, variables)?.sketch ?? null;
     }
     if (!candidate || !verifyDrawingDrivingDimensions(candidate, Object.values(candidate.dimensions).filter(({ role }) => role === 'driving').map(({ id }) => id))) return fail('UNSATISFIABLE_DIMENSION_SET');
     return { ok: true, document: { ...document, sketches: { ...document.sketches, [sketch.id]: candidate } }, diagnostics: { constraintCount: 1, residuals: [0], iterations: 0, pointIds: entity.type === 'circle' ? [entity.centerPointId] : [entity.startPointId, entity.endPointId] } };

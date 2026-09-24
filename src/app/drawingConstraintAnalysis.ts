@@ -297,7 +297,7 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
       const a = resolveDrawingPointReference(candidate, references[0]), b = resolveDrawingPointReference(candidate, references[1]);
       return a && b ? measureDimension(dimension.kind, a, b) : NaN;
     };
-    const variables = [...equation.pointKeys.flatMap((pointId) => ([{ kind: 'point-axis', pointId, axis: 'x' }, { kind: 'point-axis', pointId, axis: 'y' }] as DrawingSolverVariable[])), ...(equation.scalarVariables ?? [])];
+    const variables = [...equation.pointKeys.filter((pointId) => pointId !== DRAWING_ORIGIN_CONSTRAINT_KEY).flatMap((pointId) => ([{ kind: 'point-axis', pointId, axis: 'x' }, { kind: 'point-axis', pointId, axis: 'y' }] as DrawingSolverVariable[])), ...(equation.scalarVariables ?? [])];
     for (const variable of variables) {
       const pointIndex = variable.kind === 'point-axis' ? pointOrder.indexOf(variable.pointId) * 2 + (variable.axis === 'x' ? 0 : 1) : -1;
       const scalarIndex = scalarOrder.findIndex((item) => drawingSolverVariableKey(item) === drawingSolverVariableKey(variable));
