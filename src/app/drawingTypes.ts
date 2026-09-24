@@ -1,3 +1,5 @@
+import { resolveArcFromBulge } from './drawingArcGeometry.js';
+
 export type WorkspaceId = 'drawing' | 'puzzle' | 'construction';
 
 export const DEFAULT_WORKSPACE: WorkspaceId = 'construction';
@@ -49,7 +51,9 @@ export type DrawingGeometryReference =
   | Readonly<{ kind: 'entity'; entityId: string }>
   | Readonly<{ kind: 'point'; entityId: string; point: 'start' | 'end' }>
   | Readonly<{ kind: 'sketchPoint'; pointId: string }>
+  | DrawingDerivedPointReference
   | Readonly<{ kind: 'datum'; datum: 'ORIGIN' | 'X_AXIS' | 'Y_AXIS' }>;
+export type DrawingDerivedPointReference = Readonly<{ kind: 'derivedPoint'; entityId: string; role: 'center' }>;
 export type DrawingPointReference = Exclude<DrawingGeometryReference, { kind: 'entity' }>;
 export type DrawingEntityReference = Extract<DrawingGeometryReference, { kind: 'entity' }>;
 export type DrawingDimensionKind = 'ALIGNED_DISTANCE' | 'HORIZONTAL_DISTANCE' | 'VERTICAL_DISTANCE' | 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE' | 'CIRCULAR_SIZE';
@@ -229,7 +233,9 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
           return Boolean(entity && (entity.type === 'circle' && dimension.mode === 'diameter' || entity.type === 'arc' && dimension.mode === 'radius')
             && dimension.placement.kind === 'radial' && Number.isFinite(dimension.placement.anchor.x) && Number.isFinite(dimension.placement.anchor.y));
         }
-        return dimension.references.every((reference) => reference.kind === 'datum' ? reference.datum === 'ORIGIN' : reference.kind === 'sketchPoint' ? Boolean(sketch.points[reference.pointId]) : Boolean(sketch.entities[reference.entityId]));
+        return dimension.references.every((reference) => reference.kind === 'datum' ? reference.datum === 'ORIGIN' : reference.kind === 'sketchPoint' ? Boolean(sketch.points[reference.pointId]) : reference.kind === 'derivedPoint'
+          ? (() => { const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[reference.entityId]; return reference.role === 'center' && entity?.type === 'arc' && Boolean(resolveArcFromBulge(entity, points[entity.startPointId], points[entity.endPointId])); })()
+          : Boolean(sketch.entities[reference.entityId]));
       }).map(([dimensionId, dimension]) => [
           dimensionId,
           { ...dimension, role: (dimension.role === 'reference' ? 'reference' : 'driving') as DrawingDimensionRole },

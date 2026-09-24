@@ -1,7 +1,7 @@
 import { DRAWING_CONSTRAINT_TOLERANCE_MM, minimizeDrawingVariableObjective, solveDrawingComponentDrag, solveDrawingVariableTarget } from './drawingConstraintSolver.js';
 import { resolveArcFromBulge } from './drawingArcGeometry.js';
 import { arcBulgeSolverVariable, circleRadiusSolverVariable } from './drawingSolverVariables.js';
-import { displayedDimensionMeasurement, measureDimension, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
+import { displayedDimensionMeasurement, drawingPointReferenceDependencies, measureDimension, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
 import { pointIdForLineEndpoint } from './drawingTopology.js';
 import type { DrawingDimension, DrawingDocumentV2, DrawingEntity, DrawingPoint } from './drawingTypes.js';
 
@@ -94,8 +94,7 @@ export const collectAffectedDrivingDimensions = (
   if (!sketch) return [];
   return Object.values(sketch.dimensions).filter((dimension) => dimension.role === 'driving' && dimension.references.some((reference) => {
     if (reference.kind === 'entity') { const line = sketch.entities[reference.entityId]; return Boolean(line && (movedPointIds.has(line.startPointId) || movedPointIds.has(line.endPointId))); }
-    const pointId = sketchPointIdFromReference(sketch, reference);
-    return Boolean(pointId && movedPointIds.has(pointId));
+    return drawingPointReferenceDependencies(sketch, reference).some((variable) => variable.kind === 'point-axis' && movedPointIds.has(variable.pointId));
   }));
 };
 

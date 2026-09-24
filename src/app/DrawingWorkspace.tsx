@@ -631,6 +631,22 @@ export function DrawingWorkspace({
     const toClient = (point: DrawingPoint) => ({ x: matrix.a * point.x + matrix.c * point.y + matrix.e, y: matrix.b * point.x + matrix.d * point.y + matrix.f });
     const clientLines = resolvedLines.map((line) => ({ id: line.id, start: toClient(line.start), end: toClient(line.end) }));
     const origin = activeTool === 'dimension' ? toClient(DRAWING_ORIGIN) : undefined;
+    const eligiblePointIds = new Set(Object.values(activeSketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>).flatMap((entity) => entity.type === 'circle'
+      ? [entity.centerPointId] : [entity.startPointId, entity.endPointId]));
+    const semanticPoints: Extract<DimensionPreselection, { kind: 'point' }>[] = [...eligiblePointIds].flatMap((pointId) => {
+      const modelPoint = activeSketch.points[pointId]; if (!modelPoint) return [];
+      const clientPoint = toClient(modelPoint), distancePx = Math.hypot(client.x - clientPoint.x, client.y - clientPoint.y);
+      return distancePx <= 9 ? [{ kind: 'point' as const, reference: { kind: 'sketchPoint' as const, pointId }, pointId, lineId: '', point: 'start' as const, clientPoint, distancePx }] : [];
+    });
+    for (const entity of Object.values(activeSketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)) if (entity.type === 'arc') {
+      const reference = { kind: 'derivedPoint' as const, entityId: entity.id, role: 'center' as const }, center = resolveDrawingPointReference(activeSketch, reference);
+      if (center) { const clientPoint = toClient(center), distancePx = Math.hypot(client.x - clientPoint.x, client.y - clientPoint.y); if (distancePx <= 9) semanticPoints.push({ kind: 'point', reference, lineId: '', point: 'start', clientPoint, distancePx }); }
+    }
+    semanticPoints.sort((a, b) => a.distancePx - b.distancePx || JSON.stringify(a.reference).localeCompare(JSON.stringify(b.reference)));
+    const originCandidate = origin && Math.hypot(client.x - origin.x, client.y - origin.y) <= 9
+      ? { kind: 'origin' as const, clientPoint: origin, distancePx: Math.hypot(client.x - origin.x, client.y - origin.y) } : null;
+    if (target === 'point' && originCandidate) return originCandidate;
+    if (target !== 'line' && semanticPoints[0] && (!originCandidate || semanticPoints[0].distancePx <= originCandidate.distancePx)) return semanticPoints[0];
     const candidate = target === 'any'
       ? resolveDimensionPreselection(clientLines, client, origin)
       : resolveDimensionPreselectionForTarget(clientLines, client, target, origin);
@@ -1360,7 +1376,7 @@ export function DrawingWorkspace({
               {activeSketch && selectedGeometry.flatMap((ref) => ref.kind === 'point' && activeSketch.points[ref.pointId]
                 ? [<circle key={ref.pointId} className="drawing-geometry-point-selected" cx={activeSketch.points[ref.pointId].x} cy={activeSketch.points[ref.pointId].y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} />] : [])}
               {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = geometryPreselection.pointId ? activeSketch.points[geometryPreselection.pointId] : resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); const size = DRAWING_POINT_HOVER_MARKER_SIZE_PX / pixelsPerMm; return p ? <rect className="drawing-geometry-point-preselection" x={p.x - size / 2} y={p.y - size / 2} width={size} height={size} /> : null; })()}
-              {activeTool === 'dimension' && dimensionPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: dimensionPreselection.lineId, point: dimensionPreselection.point }); return p ? <circle className="drawing-dimension-point-preselection" cx={p.x} cy={p.y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} /> : null; })()}
+              {activeTool === 'dimension' && dimensionPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, preselectionReference(dimensionPreselection)); return p ? <circle className="drawing-dimension-point-preselection" cx={p.x} cy={p.y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} /> : null; })()}
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'origin' && <circle className="drawing-dimension-point-preselection drawing-origin-preselection" cx={0} cy={0} r={6 / pixelsPerMm} />}
               {dimensionTool.phase === 'waitingForSecondTarget' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, dimensionTool.first); return p ? <circle className="drawing-dimension-point-selected" cx={p.x} cy={p.y} r={6 / pixelsPerMm} /> : null; })()}
             </g>
