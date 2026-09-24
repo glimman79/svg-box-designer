@@ -27,7 +27,7 @@ import { deriveEntityDefiningPointIds, pointIdForLineEndpoint, removeEntityAndOr
 import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcEndpointReference, resolveArcPreview, updateArcPreview, type ArcToolInteraction } from './drawingArcTool.js';
 import { drawingArcPath } from './drawingArcGeometry.js';
 import { distanceToArc } from './drawingArcGeometry.js';
-import { createArcBulgeDragTarget, createArcCenterDragTarget, createArcEndpointDragTarget, createCircleRadiusDragTarget, DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, resolveArcEndpointOwner, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
+import { createArcCenterDragTarget, createArcEndpointDragTarget, createArcRadiusDragTarget, createCircleRadiusDragTarget, DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, resolveArcEndpointOwner, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
 import { deleteGeometricConstraint, deriveMidpointMarkerPresentation, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
 import { deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
@@ -273,9 +273,9 @@ export function DrawingWorkspace({
   }) ?? [];
   const activeArcDragId = geometryDrag?.target.kind === 'rigid-translation'
     || geometryDrag?.target.kind === 'arc-endpoint'
-    || geometryDrag?.target.kind === 'entity-scalar' && geometryDrag.target.scalar === 'arc-bulge'
+    || geometryDrag?.target.kind === 'arc-radius'
     ? geometryDrag.target.entityId : null;
-  const activeArcBodyDragId = geometryDrag?.target.kind === 'entity-scalar' && geometryDrag.target.scalar === 'arc-bulge'
+  const activeArcBodyDragId = geometryDrag?.target.kind === 'arc-radius'
     ? geometryDrag.target.entityId : null;
   const activeArcSupportDragId = geometryDrag?.target.kind === 'arc-endpoint' ? geometryDrag.target.entityId : activeArcBodyDragId;
   const gridSpacing = getDrawingGridSpacing(viewBox.width);
@@ -741,7 +741,7 @@ export function DrawingWorkspace({
         setSelectedDimensionId(null); setSelectedGeometricConstraintId(null);
         const target = route.beginDrag ? explicitArcCenterId
           ? createArcCenterDragTarget(documentRef.current, arcId)
-          : createArcBulgeDragTarget(documentRef.current, arcId, startModel) : null;
+          : createArcRadiusDragTarget(documentRef.current, arcId, startModel) : null;
         if (target) {
           event.currentTarget.setPointerCapture(event.pointerId);
           const session: GeometryDragSession = { pointerId: event.pointerId, target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false };
