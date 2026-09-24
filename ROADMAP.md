@@ -282,7 +282,7 @@ for later design.
 
 ### Directional drag-box selection
 
-**Status: IMPLEMENTED / BROWSER-VERIFIED AND ACCEPTED FOR LINES AND CIRCLES.** Directional drag-box
+**Status: IMPLEMENTED / BROWSER-VERIFIED AND ACCEPTED FOR LINES, CIRCLES, AND ARCS.** Directional drag-box
 multi-selection supplements direct click selection in the common 2D Drawing selection
 system. In Select, a primary-button drag from empty canvas becomes a box after the
 existing 4 CSS-pixel client-space drag threshold. Geometry hits remain authoritative
@@ -297,9 +297,11 @@ pointer in Drawing model coordinates and commits selection only on release.
 | Crossing / intersection selection | **IMPLEMENTED FOR LINES** | A right-to-left drag qualifies Lines that are contained, partly contained, crossing, or touching the rectangle; edge and corner contact count. |
 | Window / containment selection | **IMPLEMENTED FOR CIRCLES** | A left-to-right drag qualifies a Circle only when its entire curve is strictly inside the rectangle. |
 | Crossing / intersection selection | **IMPLEMENTED FOR CIRCLES** | A right-to-left drag qualifies a Circle when its curve lies in, intersects, or touches the rectangle; a rectangle wholly inside the empty interior without touching the circumference does not qualify. |
+| Window / containment selection | **IMPLEMENTED FOR ARCS** | A left-to-right drag qualifies an Arc only when its complete finite curve is strictly inside the rectangle. |
+| Crossing / intersection selection | **IMPLEMENTED FOR ARCS** | A right-to-left drag qualifies an Arc when its finite curve lies in, intersects, or touches the rectangle; the full support Circle is not selection geometry. |
 
 An unmodified completed box replaces the common geometry selection, including clearing
-it when no eligible entity qualifies. Ctrl toggles each qualifying Line or Circle
+it when no eligible entity qualifies. Ctrl toggles each qualifying Line, Circle, or Arc
 against the existing ordered common selection, preserves selected points, and makes an
 empty result a no-op.
 The current box does not independently select SketchPoints/endpoints. It does not run
@@ -321,7 +323,7 @@ Dimensions remains tool-first, and its canvas-preselection workflow remains plan
 
 Further selection capability remains future work: independent point/endpoint box
 selection, Shift behavior, batch delete, group Direct Manipulation, additional entity
-types beyond Lines and Circles and their qualification semantics, and policies for
+types beyond Lines, Circles, and Arcs and their qualification semantics, and policies for
 nested, support, locked, or hidden geometry are not implemented or remain undefined.
 Multiple selected entities do not imply group movement, and current Delete behavior
 must not be read as batch delete.
@@ -339,18 +341,18 @@ must not be read as batch delete.
 | Mirror | **DESIGN REQUIRED** | Mirror selected geometry around a selected/reference axis. | Copy, constraint, and associativity behavior remain open. |
 | Quick Trim | **DESIGN REQUIRED** | Quickly trim geometry at relevant intersections or boundaries. | Exact interaction remains open. |
 | Rectangle | **DESIGN REQUIRED** | Add a Rectangle family with **four variants**. | The four variants have not been specified and will be defined later. |
-| Circle — Center + Radius | **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED** | P1 establishes or reuses a persistent center `SketchPoint`; pointer movement shows a visible live semantic Circle preview; P2 is a radius-defining authoring control and commits the Circle with one authoritative scalar radius. Persistence, History, selection, hit testing, deletion/topology cleanup, directional Window/Crossing selection, shared presentation, and accepted P1/P2 acquisition are integrated. | Circle is true semantic geometry, not persistent tessellation. P2 is not a persistent radius point. Arc, Tangency, Concentricity, and Radius/Diameter Dimension/Constraint remain excluded and unimplemented. |
-| Arc — standalone three-point | **PLANNED / NOT IMPLEMENTED; AFTER CIRCLE** | Author in the order P1 = start, P2 = end, P3 = form/curvature/radius-defining point: **Start → End → Form Point**, not Start → Through Point → End. | P3 need not remain an independent persistent SketchPoint; exact persistence is decided during implementation architecture. |
+| Circle — Center + Radius | **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED** | P1 establishes or reuses a persistent center `SketchPoint`; pointer movement shows a visible live semantic Circle preview; P2 is a radius-defining authoring control and commits the Circle with one authoritative scalar radius. Persistence, History, selection, hit testing, deletion/topology cleanup, directional Window/Crossing selection, shared presentation, accepted P1/P2 acquisition, center Direct Manipulation, and body/radius Direct Manipulation are integrated. | Circle is true semantic geometry, not persistent tessellation. P2 is not a persistent radius point. Tangency, Concentricity, and Radius/Diameter Dimension/Constraint remain excluded and unimplemented. |
+| Arc — standalone three-point | **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED** | Authors P1 = start, P2 = end, P3 = form/radius point in the order **Start → End → Form Point**. Arc Stage 1 includes finite-Arc selection and Window/Crossing, Point-on-Arc foundations, topology, deletion, History, persistence, shared presentation, and center/body/endpoint Direct Manipulation. | Persistence is the two endpoint `SketchPoint` references plus bulge. Center, radius, angles, signed sweep, P3, and the support Circle are derived rather than persistent. |
 | Circle — older three-point full-Circle item | **DESIGN REQUIRED / UNRESOLVED** | The prior roadmap separately proposed a three-point-defined full Circle. The newly decided standalone three-point Arc does not silently cancel that older item. | Its continued product need, authoring order, and priority require a future explicit decision; it must not be confused with the Arc workflow. |
 
 
 ### Near-term circular-geometry sequence
 
-This sequence records product order; item 1 is complete and accepted:
+The first two items are complete and accepted. The next Drawing item is item 3:
 
 1. Circle — Center + Radius — **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED**;
-2. standalone three-point Arc — Start + End + Form Point;
-3. Radius / Diameter Dimension;
+2. standalone three-point Arc — Start + End + Form Point — **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED**;
+3. **NEXT:** Radius / Diameter Dimension — **PLANNED / NOT IMPLEMENTED**;
 4. Radius / Diameter Constraint;
 5. Concentricity; and
 6. Tangency.
@@ -406,22 +408,25 @@ must consume true semantic circular geometry through global Constraints; future
 Concentricity must consume the Circle's semantic center. Radius/Diameter Dimensions and
 Constraints likewise follow later and share the Circle's authoritative radius.
 
-### Decided standalone Arc direction
+### Accepted standalone Arc Stage 1
 
-The planned standalone Arc is circular geometry authored **P1 Start → P2 End → P3 Form
-Point**. P3 determines the final circular Arc between P1 and P2, but current intent does
-not require P3 to persist as an independent SketchPoint. During authoring, show the
-actual Arc prominently and a thin full support Circle as reference presentation. That
-support Circle is not automatically a second persistent entity, selectable or snap
-geometry, topology, History state, or exported geometry. It has no assigned style yet.
-When Arc presentation is designed, its actual semantic purpose must determine whether it
-belongs to Dimension/reference presentation, Constraint/support presentation, or another
-already-established category; implementation must resolve and document this rather than
-silently inventing paint.
+The standalone Arc is circular geometry authored **P1 Start → P2 End → P3 Form/Radius
+Point**. After P1, a thin transient P1-to-current-P2 reference line and visible accepted
+P1 support endpoint placement. After P2, the live finite-Arc preview includes its full
+underlying support Circle. These helpers and P3 are presentation/authoring state only,
+not persistent entities, topology, History, selection, or export geometry.
+
+Arc Stage 1 is accepted with three distinct Direct Manipulation meanings. Center drag
+translates both endpoints and preserves form/bulge. Body/radius drag holds the derived
+drag-start center and endpoint angles fixed in the free case, moves both endpoint
+SketchPoints radially, and preserves bulge/signed sweep. Endpoint drag moves the chosen
+endpoint freely while the opposite endpoint is the free-case pivot; a geometric
+least-change objective chooses the remaining circular form degree of freedom, so center,
+radius, and bulge may change. Persistent hard constraints remain authoritative.
 
 ### Open / future presentation work
 
-The normative unresolved-decision register is in `PROJECT_MASTER.md` under **OPEN / FUTURE PRESENTATION DECISIONS**. Roadmap triggers are: design the Arc support Circle's semantic ownership with Arc; define construction/reference presentation only when that entity concept exists; decide Radius/Diameter presentation with its Dimension and/or Constraint design; and preserve the current Midpoint widths, Alignment/Point Reference dash distinction, and separately named Constraint hover/selected roles until focused decisions revisit them. Future authoring tools default to the global Authoring Preview role; any modifier needs an explicit semantic reason and documentation. No future implementation may silently invent these behaviors.
+The normative unresolved-decision register is in `PROJECT_MASTER.md` under **OPEN / FUTURE PRESENTATION DECISIONS**. Roadmap triggers are: define construction/reference presentation only when that entity concept exists; decide Radius/Diameter presentation with its Dimension and/or Constraint design; and preserve the current Midpoint widths, Alignment/Point Reference dash distinction, and separately named Constraint hover/selected roles until focused decisions revisit them. Future authoring tools default to the global Authoring Preview role; any modifier needs an explicit semantic reason and documentation. No future implementation may silently invent these behaviors.
 
 **Current naming note:** The chained Drawing tool is named `Profile`; it authors
 persistent Line entities as a continuing chain. The separate standalone `Line` tool

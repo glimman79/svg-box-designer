@@ -2,7 +2,7 @@
 
 > **Status: current orientation document.** This file is a concise map of the Box / Construction geometry pipeline. [PROJECT_MASTER.md](PROJECT_MASTER.md) is the authority for current product architecture, including Drawing and Puzzle. Historical pipeline snapshots and investigations are indexed in [docs/README.md](docs/README.md).
 
-## Drawing presentation architecture
+## Drawing architecture
 
 Drawing presentation follows a semantic pipeline rather than geometry- or tool-owned paint:
 
@@ -13,9 +13,38 @@ semantic geometry / semantic relation
   -> geometry-specific SVG primitive or role-specific glyph
 ```
 
-Thus a Line renders as `<line>`, true semantic Circle geometry as `<circle>`, a future Arc may render as `<path>`, and Points, Dimensions, and Constraints use their own glyphs/primitives while consuming global roles wherever semantics are shared. Entity-specific mobility derives the global geometry constraint visual state; temporary selection or inference paint does not change that underlying state. Entity-defining persistent points, including Circle centers, receive a derived normal presentation role rather than duplicate entity-owned geometry or persisted presentation state. Transient and persistent forms may share relation/layout derivation while retaining distinct paint. Line, Profile, and Circle also share the Drawing geometry-authoring cursor policy. The normative roles, values, precedence, and open decisions are owned by [PROJECT_MASTER.md](PROJECT_MASTER.md#49-normative-drawing-presentation-standard), not duplicated here.
+Thus a Line renders as `<line>`, true semantic Circle geometry as `<circle>`, and true finite Arc geometry as `<path>`, while Points, Dimensions, and Constraints use their own glyphs/primitives and consume global roles wherever semantics are shared. Entity-specific mobility derives the global geometry constraint visual state; temporary selection or inference paint does not change that underlying state. Entity-defining persistent points, including Circle centers and the derived Arc center presentation, receive semantic roles rather than duplicate entity-owned geometry or persisted presentation state. Transient and persistent forms may share relation/layout derivation while retaining distinct paint. Line, Profile, Circle, and Arc share the Drawing authoring, selection, topology, History, deletion, and presentation foundations where applicable. The normative roles, values, and precedence are owned by [PROJECT_MASTER.md](PROJECT_MASTER.md#49-normative-drawing-presentation-standard), not duplicated here.
 
-Persistent `SketchPoint`s are discovered globally as positional snap candidates regardless of which geometry references them, so shared topology is reused rather than duplicated. Point-on-Curve is likewise a global semantic relationship represented by `COINCIDENT` / `point-curve`, not a Circle-owned constraint system. Circle Stage 1 uses that foundation both when its center is authored on an existing Circle and when its circumference acquires an existing persistent point. This reusable foundation does not imply that Arc or a generic curve system is implemented.
+Persistent `SketchPoint`s are discovered globally as positional snap candidates regardless of which geometry references them, so shared topology is reused rather than duplicated. Point-on-Curve is likewise a global semantic relationship represented by `COINCIDENT` / `point-curve`, not a Circle- or Arc-owned constraint system. Circle Stage 1 and Arc Stage 1 reuse this foundation, including Point-on-Arc semantics.
+
+Circle persistence is `centerPointId` plus a radius scalar; its center is a real shared
+SketchPoint and authoring P2 is not persistent. Arc persistence is
+`DrawingArcEntity { id, type: 'arc', startPointId, endPointId, bulge }`; bulge is the
+curvature/signed-sweep authority. Arc center, radius, start/end angles, signed sweep,
+authoring P3/form point, and support Circle are derived. The Arc authoring P1-to-P2
+reference line and P3 support Circle are transient presentation only—not entity
+geometry, topology, History, or export geometry.
+
+Direct Manipulation uses shared component solving but respects each geometry's canonical
+storage. Circle body drag changes its radius scalar about the fixed free-case center.
+Arc center drag translates both endpoint SketchPoints and preserves bulge; Arc
+body/radius drag moves both endpoints radially about the derived drag-start center while
+preserving endpoint angles and bulge/signed sweep. Arc endpoint drag makes the dragged
+endpoint authoritative, keeps the opposite endpoint as the free-case pivot, and uses a
+generic solver secondary objective for geometric least change of the remaining form
+degree of freedom. It writes the result back as bulge from drag-start state plus absolute
+pointer displacement, so it is reversible and event-rate independent without a
+persistent form anchor or three-point reconstruction.
+
+Hard persistent constraints and driving Dimensions remain authoritative. Ideal Arc
+body/radius endpoint targets are projected through the shared solver while bulge stays
+fixed, so constrained achieved center/radius/angles can differ from the ideal free pose.
+This is one global architecture—constraints, applicability, solver, selection, hit
+testing, Direct Manipulation, snap, inference, topology, Dimensions, presentation,
+History, transactions, serialization, and deletion are shared concerns. Geometry-specific
+math does not create separate mini-CAD systems. Compatible relations coexist; priority
+chooses only among incompatible alternatives, keeping position, direction, topology,
+semantic evidence, presentation, and persistence authority distinct.
 
 ## Pipeline
 

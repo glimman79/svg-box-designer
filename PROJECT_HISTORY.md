@@ -15,7 +15,7 @@ Status labels have the meanings defined in `ROADMAP.md`. Detailed B3.x reports a
 - **Locked commit:** `e787eb5b1f3ff530fbae9292d56ec4a1da0e2ba2`
 - **Official release tag:** `v1.2.0`
 - **Acceptance result:** B3.23 concluded that Wall was stable enough to leave stabilization.
-- **Current development position:** substantial solver-backed 2D Drawing development followed v1.2. Direction/position authority and natural Point Reference acquisition under Parallel are browser-verified, and the standalone one-segment Line tool is merged, browser-verified, and accepted; a shared ProjectDocument remains later cross-module work.
+- **Current development position:** substantial solver-backed 2D Drawing development followed v1.2. Profile, standalone Line, directional Window/Crossing selection, Circle Stage 1, and Arc Stage 1 are merged, browser-verified, and accepted; a shared ProjectDocument remains later cross-module work.
 
 ### September 2026 Profile tool identity migration
 
@@ -456,7 +456,33 @@ Real-browser validation accepted the resulting positional snap feel and the fini
 
 The initial semantic Circle implementation established a persistent Circle with a referenced center `SketchPoint`, scalar radius, two-stage center/radius authoring, persistence, History, selection, hit testing, deletion cleanup, and directional box selection. Follow-up work corrected normal committed-Circle presentation, integrated the center into the derived entity-defining persistent-point role, and made persistent SketchPoints global positional snap candidates so shared topology is reused across Line, Profile, and Circle.
 
-Circle P1 then gained exact Point-on-Curve acquisition against true existing Circle geometry alongside point, Midpoint, finite-Line, Alignment, and free placement. P2 remained a non-persistent radius-defining control and gained circumference-driven acquisition of existing persistent points, persisting the global `COINCIDENT` / `point-curve` relation without fixing the point's angle. Circle joined the shared geometry-authoring cursor policy and global Ctrl bypass. Final real-browser verification accepted the complete Stage 1 behavior and presentation. Arc, Radius/Diameter Dimension and Constraint, Concentricity, and Tangency remained unimplemented.
+Circle P1 then gained exact Point-on-Curve acquisition against true existing Circle geometry alongside point, Midpoint, finite-Line, Alignment, and free placement. P2 remained a non-persistent radius-defining control and gained circumference-driven acquisition of existing persistent points, persisting the global `COINCIDENT` / `point-curve` relation without fixing the point's angle. Circle joined the shared geometry-authoring cursor policy and global Ctrl bypass. Center Direct Manipulation moves the persistent center SketchPoint, while circumference/body Direct Manipulation changes the persistent radius about the free-case fixed center with no-jump radial grabbing through shared constraint machinery. Final real-browser verification accepted the complete Stage 1 behavior and presentation. Arc, Radius/Diameter Dimension and Constraint, Concentricity, and Tangency remained unimplemented at that milestone.
+
+### 11.14 Arc Stage 1 implementation and browser acceptance
+
+Arc development established endpoint-first three-point authoring (Start → End → Form
+Point), canonical endpoint references plus bulge persistence, finite-Arc selection and
+Window/Crossing semantics, Point-on-Arc foundations, topology, deletion, History, and
+shared presentation. The authoring reference line and full support Circle remained
+transient. Center Direct Manipulation translated the whole Arc, while endpoint Direct
+Manipulation evolved to make the pointer-driven endpoint authoritative and select the
+remaining circular form through a shared solver-level geometric least-change objective.
+That endpoint behavior is reversible and event-rate independent and retains no
+persistent form anchor.
+
+The first Arc body manipulation treated the endpoints as fixed and changed bulge/form.
+Although useful during development, that was not the accepted radius interaction. PR
+#570 (`7930cd08c315e8adc2533130e89aef9dea257399`) replaced it with radial radius Direct
+Manipulation: the derived drag-start center and endpoint angles stay fixed in the free
+case, both existing endpoint SketchPoints move radially, and bulge/signed sweep remains
+unchanged. Hard constraints still project those ideal targets through the shared solver.
+The user tested the final merged behavior in the real browser, reported “det fungerar
+bra,” and accepted Arc Stage 1.
+
+Immediately beforehand, PR #569 (`d4ac81a76004c8af6338b8ea5b1431e99cdcaece`)
+removed dead Circle/Arc helper APIs as targeted maintenance; it introduced no product
+capability. Radius/Diameter Dimension, Radius/Diameter Constraint, Concentricity, and
+Tangency remain unimplemented, with Radius/Diameter Dimension next in the roadmap.
 
 ## 12. Superseded or Temporary Material
 

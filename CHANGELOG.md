@@ -1,12 +1,21 @@
 # Unreleased
 
+## Drawing — Arc Stage 1 accepted
+
+- Completed and browser-accepted three-point Arc authoring (Start → End → Form/Radius Point) with canonical endpoint `SketchPoint` references plus bulge persistence; center, radius, angles, signed sweep, P3, and the support Circle remain derived.
+- Integrated finite Arcs with selection and directional Window/Crossing semantics, Point-on-Arc foundations, topology, deletion, History, persistence, and shared Drawing presentation; authoring reference/support geometry remains transient.
+- Completed Arc center drag as whole-Arc translation and endpoint drag with geometric least-change selection of the remaining circular form degree of freedom under shared solver authority.
+- Corrected Arc body/radius drag to the browser-verified radial behavior: the free-case derived drag-start center and endpoint angles stay fixed, both endpoint SketchPoints move, and bulge/signed sweep remains unchanged. Hard constraints project ideal endpoint targets through the shared component solver.
+- Removed dead Circle/Arc helper APIs as targeted maintenance before the final radius behavior. Radius/Diameter Dimension and Constraint, Concentricity, and Tangency remain unimplemented; Radius/Diameter Dimension is next.
+
 ## Drawing — Circle Stage 1 accepted
 
 - Completed and browser-accepted the semantic Center + Radius Circle workflow: P1 defines or reuses a persistent center `SketchPoint`, the live preview follows P2, and P2 commits one authoritative scalar radius without creating a persistent radius point.
 - Integrated committed Circles with normal shared Drawing presentation, visible derived center presentation, persistence, History, selection, hit testing, deletion cleanup, and directional Window/Crossing selection.
 - Made persistent SketchPoints global snap candidates and added accepted Circle P1 acquisition for points, Line Midpoints, finite Lines, existing Circle circumferences through global Point-on-Curve semantics, applicable Alignment, and free placement.
 - Added circumference-driven P2 acquisition of existing persistent points through the same global Point-on-Curve foundation; this is not Tangency and creates no duplicate point or persistent P2 point.
-- Included Circle in the global Ctrl authoring bypass and shared Line/Profile/Circle geometry-authoring cursor policy. Arc, Radius/Diameter Dimension and Constraint, Concentricity, and Tangency remain not implemented.
+- Completed Circle center and circumference/body Direct Manipulation; body dragging changes the persistent radius about the free-case fixed center with no-jump radial grabbing through shared constraint machinery.
+- Included Circle in the global Ctrl authoring bypass and shared Line/Profile/Circle geometry-authoring cursor policy. At Circle Stage 1 acceptance, Arc and the later circular Dimensions/Constraints remained unimplemented; Arc Stage 1 was subsequently accepted as recorded above.
 
 ## Documentation — global Drawing Presentation Standard
 
