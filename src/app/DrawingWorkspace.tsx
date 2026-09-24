@@ -27,7 +27,7 @@ import { deriveEntityDefiningPointIds, pointIdForLineEndpoint, removeEntityAndOr
 import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcEndpointReference, resolveArcPreview, updateArcPreview, type ArcToolInteraction } from './drawingArcTool.js';
 import { drawingArcPath } from './drawingArcGeometry.js';
 import { distanceToArc } from './drawingArcGeometry.js';
-import { createArcBulgeDragTarget, createArcCenterDragTarget, createCircleRadiusDragTarget, DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
+import { createArcBulgeDragTarget, createArcCenterDragTarget, createArcEndpointDragTarget, createCircleRadiusDragTarget, DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, resolveArcEndpointOwner, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
 import { deleteGeometricConstraint, deriveMidpointMarkerPresentation, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
 import { deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
@@ -257,10 +257,12 @@ export function DrawingWorkspace({
     return arc ? [arc] : [];
   }) ?? [];
   const activeArcDragId = geometryDrag?.target.kind === 'rigid-translation'
+    || geometryDrag?.target.kind === 'arc-endpoint'
     || geometryDrag?.target.kind === 'entity-scalar' && geometryDrag.target.scalar === 'arc-bulge'
     ? geometryDrag.target.entityId : null;
   const activeArcBodyDragId = geometryDrag?.target.kind === 'entity-scalar' && geometryDrag.target.scalar === 'arc-bulge'
     ? geometryDrag.target.entityId : null;
+  const activeArcSupportDragId = geometryDrag?.target.kind === 'arc-endpoint' ? geometryDrag.target.entityId : activeArcBodyDragId;
   const gridSpacing = getDrawingGridSpacing(viewBox.width);
   const gridHierarchy = getDrawingGridHierarchy(gridSpacing);
   segmentInteractionRef.current = segmentInteraction;
@@ -734,14 +736,23 @@ export function DrawingWorkspace({
       }
       setDimensionDrag(null);
       const target: DrawingGeometryTarget | null = explicitPointId
-        ? { kind: 'point', pointId: explicitPointId }
+        ? (() => {
+          const selectedEntityIds = selectedGeometry.flatMap((reference) => reference.kind === 'arc' ? [reference.arcId]
+            : reference.kind === 'line' ? [reference.lineId] : reference.kind === 'circle' ? [reference.circleId] : []);
+          const arcId = resolveArcEndpointOwner(documentRef.current, explicitPointId, selectedEntityIds);
+          return arcId ? createArcEndpointDragTarget(documentRef.current, arcId, explicitPointId) : { kind: 'point', pointId: explicitPointId };
+        })()
         : explicitLineId ? { kind: 'line', lineId: explicitLineId }
         : hit?.kind === 'point'
         ? (() => { const pointId = pointIdFromHit(documentRef.current, hit.lineId, hit.point); return pointId ? { kind: 'point', pointId } : null; })()
         : hit?.kind === 'line' ? { kind: 'line', lineId: hit.lineId } : null;
       if (!target) return;
       const beginDrag = !event.ctrlKey && !constraintsPanelOpen;
-      setSelectedGeometry((current) => routeDrawingGeometryPointerSelection(current, target, event.ctrlKey, constraintsPanelOpen).selection);
+      const selectionTarget: DrawingSelectionRef | null = target.kind === 'arc-endpoint'
+        ? { kind: 'point', pointId: target.draggedPointId }
+        : target.kind === 'point' || target.kind === 'line' ? target : null;
+      if (!selectionTarget) return;
+      setSelectedGeometry((current) => routeDrawingGeometryPointerSelection(current, selectionTarget, event.ctrlKey, constraintsPanelOpen).selection);
       setSelectedDimensionId(null); setSelectedGeometricConstraintId(null);
       if (beginDrag) {
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -1290,7 +1301,7 @@ export function DrawingWorkspace({
                 d={drawingArcPath(entity)} fill="none" vectorEffect="non-scaling-stroke" />)}
               {resolvedArcs.map((entity) => <circle key={`center:${entity.id}`} className="drawing-circular-center drawing-entity-defining-point"
                 cx={entity.center.x} cy={entity.center.y} r={2.5 / pixelsPerMm} pointerEvents="none" aria-hidden="true" />)}
-              {activeArcBodyDragId && resolvedArcs.flatMap((entity) => entity.id === activeArcBodyDragId
+              {activeArcSupportDragId && resolvedArcs.flatMap((entity) => entity.id === activeArcSupportDragId
                 ? [<circle key={`support:${entity.id}`} className="drawing-authoring-reference" cx={entity.center.x} cy={entity.center.y} r={entity.radius}
                   fill="none" vectorEffect="non-scaling-stroke" pointerEvents="none" aria-hidden="true" />] : [])}
               {activeSketch && [...entityDefiningPointIds].flatMap((pointId) => {

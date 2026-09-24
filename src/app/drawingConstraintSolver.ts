@@ -185,7 +185,7 @@ const solveComponent = (sketch: DrawingSketchV2, component: ComponentState, vari
 export const solveDrawingComponentDrag = (
   sketch: DrawingSketchV2,
   targets: Readonly<Record<string, DrawingPoint>>,
-  intent?: Readonly<{ directPointIds?: readonly string[]; directLineIds?: readonly string[] }>,
+  intent?: Readonly<{ directPointIds?: readonly string[]; directLineIds?: readonly string[]; directPointWeights?: Readonly<Record<string, number>> }>,
 ): DrawingSketchV2 | null => {
   const targetIds = Object.keys(targets).filter((id) => Boolean(sketch.points[id]));
   if (targetIds.length !== Object.keys(targets).length || !targetIds.length) return null;
@@ -247,12 +247,13 @@ export const solveDrawingComponentDrag = (
     const hasRelationalOrientation = component.equations.some(({ dimension, geometricConstraint }) => dimension?.kind === 'LINE_TO_LINE_ANGLE'
       || Boolean(geometricConstraint && !(geometricConstraint.kind === 'COINCIDENT' && geometricConstraint.variant === 'point-curve')));
     let variableIds: readonly string[] = hasRelationalOrientation ? component.pointIds : draggedIds;
-    let solved = solveComponent(working, component, variableIds, hasRelationalOrientation
-      ? new Map(variableIds.map((id) => [id, draggedIds.includes(id) ? DIRECT_TARGET_MOVEMENT_WEIGHT : 1]))
+    const directWeight = (id: string, fallback: number) => intent?.directPointWeights?.[id] ?? fallback;
+    let solved = solveComponent(working, component, variableIds, hasRelationalOrientation || intent?.directPointWeights
+      ? new Map(variableIds.map((id) => [id, draggedIds.includes(id) ? directWeight(id, DIRECT_TARGET_MOVEMENT_WEIGHT) : 1]))
       : undefined);
     if (!solved) {
       variableIds = component.pointIds;
-      solved = solveComponent(working, component, variableIds, new Map(variableIds.map((id) => [id, draggedIds.includes(id) ? 1_000 : 1])));
+      solved = solveComponent(working, component, variableIds, new Map(variableIds.map((id) => [id, draggedIds.includes(id) ? directWeight(id, 1_000) : 1])));
     }
     if (!solved) return null;
     const points = { ...working.points };

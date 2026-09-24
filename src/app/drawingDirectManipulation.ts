@@ -10,6 +10,7 @@ export const DRAWING_DRAG_THRESHOLD_PX = 4;
 export type DrawingGeometryTarget =
   | Readonly<{ kind: 'point'; pointId: string }>
   | Readonly<{ kind: 'line'; lineId: string }>
+  | Readonly<{ kind: 'arc-endpoint'; entityId: string; draggedPointId: string; pivotPointId: string; formAnchor: DrawingPoint; initialBulge: number }>
   | Readonly<{ kind: 'rigid-translation'; entityId: string; pointIds: readonly string[]; preservedScalar: 'arc-bulge' }>
   | Readonly<{ kind: 'entity-scalar'; entityId: string; scalar: 'circle-radius'; radialGrabOffset: number }>
   | Readonly<{ kind: 'entity-scalar'; entityId: string; scalar: 'arc-bulge'; formGrabOffset: DrawingPoint; initialBulge: number }>;
@@ -32,6 +33,36 @@ export const createArcCenterDragTarget = (document: DrawingDocumentV2, arcId: st
   return arc?.type === 'arc' && sketch.points[arc.startPointId] && sketch.points[arc.endPointId]
     ? { kind: 'rigid-translation', entityId: arc.id, pointIds: [...new Set([arc.startPointId, arc.endPointId])], preservedScalar: 'arc-bulge' }
     : null;
+};
+
+/** Creates the transient endpoint-form session. The mid-sweep point is only a
+ * continuity objective: it is deliberately not added to the sketch model. */
+export const createArcEndpointDragTarget = (document: DrawingDocumentV2, arcId: string, draggedPointId: string): DrawingGeometryTarget | null => {
+  const sketch = document.sketches[document.activeSketchId];
+  const entity = sketch ? (sketch.entities as unknown as Record<string, DrawingEntity>)[arcId] : undefined;
+  if (entity?.type !== 'arc' || draggedPointId !== entity.startPointId && draggedPointId !== entity.endPointId) return null;
+  const arc = resolveArcFromBulge(entity, sketch.points[entity.startPointId], sketch.points[entity.endPointId]);
+  if (!arc) return null;
+  const middleAngle = arc.startAngle + arc.signedSweep / 2;
+  return { kind: 'arc-endpoint', entityId: entity.id, draggedPointId,
+    pivotPointId: draggedPointId === entity.startPointId ? entity.endPointId : entity.startPointId,
+    formAnchor: { x: arc.center.x + arc.radius * Math.cos(middleAngle), y: arc.center.y + arc.radius * Math.sin(middleAngle) },
+    initialBulge: entity.bulge };
+};
+
+/** Resolves semantic ownership after the physical point hit. A unique selected
+ * incident Arc disambiguates a shared endpoint; otherwise multiple Arc owners
+ * intentionally fall back to ordinary point manipulation. */
+export const resolveArcEndpointOwner = (document: DrawingDocumentV2, pointId: string, selectedEntityIds: readonly string[]): string | null => {
+  const sketch = document.sketches[document.activeSketchId];
+  if (!sketch?.points[pointId]) return null;
+  const incident = Object.values(sketch.entities as unknown as Record<string, DrawingEntity>).filter((entity): entity is Extract<DrawingEntity, { type: 'arc' }> =>
+    entity.type === 'arc' && (entity.startPointId === pointId || entity.endPointId === pointId));
+  const selectedIncident = incident.filter(({ id }) => selectedEntityIds.includes(id));
+  if (selectedIncident.length === 1) return selectedIncident[0].id;
+  if (selectedIncident.length > 1 || incident.length !== 1) return null;
+  // A selected non-Arc entity is an explicit conflicting context.
+  return selectedEntityIds.length === 0 ? incident[0].id : null;
 };
 
 /** Resolve hit slop against the finite directed Arc. The vector from the exact
@@ -101,6 +132,27 @@ export const validateDrivingDimensions = (document: DrawingDocumentV2, dimension
 export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: DrawingGeometryTarget, delta: DrawingPoint, startPointer?: DrawingPoint): DrawingDocumentV2 | null => {
   const sketch = document.sketches[document.activeSketchId];
   if (!sketch || !Number.isFinite(delta.x) || !Number.isFinite(delta.y)) return null;
+  if (target.kind === 'arc-endpoint') {
+    if (delta.x === 0 && delta.y === 0) return document;
+    const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[target.entityId];
+    const dragged = sketch.points[target.draggedPointId], pivot = sketch.points[target.pivotPointId];
+    if (entity?.type !== 'arc' || !dragged || !pivot) return null;
+    const positioned = solveDrawingComponentDrag(sketch, {
+      [target.draggedPointId]: { x: dragged.x + delta.x, y: dragged.y + delta.y },
+      [target.pivotPointId]: { x: pivot.x, y: pivot.y },
+    }, { directPointIds: [target.draggedPointId, target.pivotPointId], directPointWeights: {
+      [target.draggedPointId]: 1_000_000,
+      [target.pivotPointId]: 1_000,
+    } });
+    if (!positioned) return null;
+    const start = positioned.points[entity.startPointId], end = positioned.points[entity.endPointId];
+    const formed = deriveArcThroughThreePoints(start, end, target.formAnchor, entity.id, entity.startPointId, entity.endPointId);
+    // Reject the straight boundary, branch reversal, and impractically
+    // conditioned near-full-circle candidates; the UI retains its last valid frame.
+    if (!formed || Math.sign(formed.bulge) !== Math.sign(target.initialBulge) || Math.abs(formed.bulge) > 1e6) return null;
+    const solved = solveDrawingVariableTarget(positioned, { variable: arcBulgeSolverVariable(entity.id), value: formed.bulge });
+    return solved ? { ...document, sketches: { ...document.sketches, [sketch.id]: solved } } : null;
+  }
   if (target.kind === 'entity-scalar') {
     if (!startPointer) return null;
     const pointer = { x: startPointer.x + delta.x, y: startPointer.y + delta.y };
