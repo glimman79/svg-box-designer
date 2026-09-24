@@ -60,7 +60,7 @@ test('workspace keeps threshold in client space and isolates transient selection
   const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
   assert.match(workspace, /Math\.hypot\(event\.clientX - session\.originClient\.x, event\.clientY - session\.originClient\.y\) >= DRAWING_DRAG_THRESHOLD_PX/);
   assert.match(workspace, /if \(activeTool === 'select'\)/);
-  assert.match(workspace, /if \(!hit && !explicitPointId && !explicitLineId && !explicitCircleId && !circleHit\)/);
+  assert.match(workspace, /if \(!hit && !explicitPointId && !explicitLineId && !explicitCircleId && !explicitArcCenterId && !explicitArcId && !circleHit && !arcHit\)/);
   assert.match(workspace, /onLostPointerCapture=/);
   assert.match(workspace, /className=\{`drawing-selection-box is-\$\{selectionBoxMode\}`\}/);
   assert.doesNotMatch(workspace, /transactDocument\([^\n]*BoxSelection/);

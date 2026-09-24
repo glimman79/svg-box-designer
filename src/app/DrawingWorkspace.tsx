@@ -135,6 +135,21 @@ export const DRAWING_LINE_HOVER_MARKER_SIZE_PX = 3;
 export const DRAWING_POINT_HOVER_MARKER_SIZE_PX = 5;
 export const DRAWING_CURVE_HIT_TOLERANCE_PX = 7;
 
+export const shouldRouteCircleBodyPointer = (
+  explicitCircleId: string | undefined,
+  explicitPointId: string | undefined,
+  hasDimensionHit: boolean,
+  circleHit: string | undefined,
+) => Boolean(explicitCircleId || (!explicitPointId && !hasDimensionHit && circleHit));
+
+export const shouldRouteArcBodyPointer = (
+  explicitArcCenterId: string | undefined,
+  explicitArcId: string | undefined,
+  explicitPointId: string | undefined,
+  hasDimensionHit: boolean,
+  arcHit: string | undefined,
+) => Boolean(explicitArcCenterId || explicitArcId || (!explicitPointId && !hasDimensionHit && arcHit));
+
 export const drawingGeometrySelectionClass = (selection: readonly DrawingSelectionRef[], target: DrawingSelectionRef) =>
   selection.some((ref) => ref.kind === target.kind && (ref.kind === 'line'
     ? ref.lineId === (target as Extract<DrawingSelectionRef, { kind: 'line' }>).lineId
@@ -706,7 +721,7 @@ export function DrawingWorkspace({
         return;
       }
       if (!startModel) return;
-      if (explicitCircleId || !hit && circleHit) {
+      if (shouldRouteCircleBodyPointer(explicitCircleId, explicitPointId, Boolean(hit), circleHit)) {
         const circleId = (explicitCircleId ?? circleHit)!;
         const route = routeDrawingGeometryPointerSelection(selectedGeometry, { kind: 'circle', circleId }, event.ctrlKey, constraintsPanelOpen);
         setSelectedGeometry(route.selection);
@@ -719,7 +734,7 @@ export function DrawingWorkspace({
         }
         return;
       }
-      if (explicitArcCenterId || explicitArcId || !hit && arcHit) {
+      if (shouldRouteArcBodyPointer(explicitArcCenterId, explicitArcId, explicitPointId, Boolean(hit), arcHit)) {
         const arcId = (explicitArcCenterId ?? explicitArcId ?? arcHit)!;
         const route = routeDrawingGeometryPointerSelection(selectedGeometry, { kind: 'arc', arcId }, event.ctrlKey, constraintsPanelOpen);
         setSelectedGeometry(route.selection);
