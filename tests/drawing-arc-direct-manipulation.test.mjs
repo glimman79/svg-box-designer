@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-arc-direct-manipulation/drawingTypes.js';
 import { finiteArcConstraintResidual, resolveArcFromBulge } from '../.test-build/drawing-arc-direct-manipulation/drawingArcGeometry.js';
-import { createArcBulgeDragTarget, createArcCenterDragTarget, solveDrawingDragCandidate } from '../.test-build/drawing-arc-direct-manipulation/drawingDirectManipulation.js';
+import { createArcBulgeDragTarget, createArcCenterDragTarget, createArcEndpointDragTarget, resolveArcEndpointOwner, solveDrawingDragCandidate } from '../.test-build/drawing-arc-direct-manipulation/drawingDirectManipulation.js';
 import { verifyDrawingConstraints } from '../.test-build/drawing-arc-direct-manipulation/drawingConstraintSolver.js';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-arc-direct-manipulation/drawingHistory.js';
 
@@ -32,6 +32,79 @@ test('derived Arc center resolves to rigid authoritative endpoints without creat
   assert.deepEqual(entity(candidate), { id: 'arc', type: 'arc', startPointId: 's', endPointId: 'e', bulge: 0.5 });
   close(resolved(candidate).center.x, before.center.x + 3); close(resolved(candidate).center.y, before.center.y - 4);
   close(resolved(candidate).radius, before.radius); close(resolved(candidate).signedSweep, before.signedSweep);
+});
+
+test('either free endpoint follows the pointer while its pivot stays and form changes', () => {
+  for (const [draggedId, pivotId, delta] of [['s', 'e', { x: -2, y: 3 }], ['e', 's', { x: 2, y: 3 }]]) {
+    const document = make(), before = resolved(document);
+    const target = createArcEndpointDragTarget(document, 'arc', draggedId);
+    assert.ok(target); assert.equal(target.pivotPointId, pivotId);
+    const candidate = solveDrawingDragCandidate(document, target, delta);
+    assert.ok(candidate);
+    close(sketch(candidate).points[draggedId].x, sketch(document).points[draggedId].x + delta.x);
+    close(sketch(candidate).points[draggedId].y, sketch(document).points[draggedId].y + delta.y);
+    assert.deepEqual(sketch(candidate).points[pivotId], sketch(document).points[pivotId]);
+    assert.notEqual(entity(candidate).bulge, entity(document).bulge);
+    const after = resolved(candidate); assert.ok(after);
+    assert.notEqual(after.center.x, before.center.x); assert.notEqual(after.center.y, before.center.y);
+    assert.notEqual(after.radius, before.radius); assert.notEqual(after.signedSweep, before.signedSweep);
+    assert.deepEqual(entity(candidate), { id: 'arc', type: 'arc', startPointId: 's', endPointId: 'e', bulge: entity(candidate).bulge });
+    assert.deepEqual(Object.keys(sketch(candidate).points).sort(), ['e', 's']);
+  }
+});
+
+test('endpoint form anchor is transient, gives identity at pointer-down, and supports both branches', () => {
+  for (const bulge of [.5, -.5, 2, -2, 1, -1]) {
+    const document = make(bulge), target = createArcEndpointDragTarget(document, 'arc', 'e');
+    assert.ok(target); assert.deepEqual(solveDrawingDragCandidate(document, target, { x: 0, y: 0 }), document);
+    const candidate = solveDrawingDragCandidate(document, target, { x: 0.25, y: Math.sign(bulge) * .15 });
+    assert.ok(candidate); assert.equal(Math.sign(entity(candidate).bulge), Math.sign(bulge));
+    assert.equal('formAnchor' in entity(candidate), false);
+    assert.equal(Object.values(sketch(candidate).geometricConstraints).length, 0);
+  }
+});
+
+test('endpoint rejects zero chord and straight-branch crossing so caller can retain last valid', () => {
+  const document = make(), target = createArcEndpointDragTarget(document, 'arc', 's');
+  const valid = solveDrawingDragCandidate(document, target, { x: 1, y: 1 }); assert.ok(valid);
+  assert.equal(solveDrawingDragCandidate(document, target, { x: 10, y: 0 }), null);
+  assert.equal(solveDrawingDragCandidate(document, target, { x: -10, y: -30 }), null);
+  assert.ok(entity(valid).bulge > 0);
+});
+
+test('endpoint ownership is unique, selected-context disambiguated, and never iteration-ordered', () => {
+  const document = make(), s = sketch(document);
+  assert.equal(resolveArcEndpointOwner(document, 's', []), 'arc');
+  s.entities.arc2 = { id: 'arc2', type: 'arc', startPointId: 's', endPointId: 'e', bulge: -0.5 };
+  s.entityOrder.push('arc2');
+  assert.equal(resolveArcEndpointOwner(document, 's', []), null);
+  assert.equal(resolveArcEndpointOwner(document, 's', ['arc2']), 'arc2');
+  assert.equal(resolveArcEndpointOwner(document, 's', ['arc', 'arc2']), null);
+});
+
+test('endpoint keeps shared point identity and hard horizontal constraint authoritative', () => {
+  const document = make(), s = sketch(document);
+  s.points.other = { id: 'other', x: -5, y: 0 };
+  s.entities.line = { id: 'line', type: 'line', startPointId: 'other', endPointId: 's' };
+  s.entityOrder.unshift('line');
+  s.geometricConstraints.horizontal = { id: 'horizontal', kind: 'HORIZONTAL', references: [{ kind: 'entity', entityId: 'line' }] };
+  s.geometricConstraintOrder = ['horizontal'];
+  const target = createArcEndpointDragTarget(document, 'arc', 's');
+  const candidate = solveDrawingDragCandidate(document, target, { x: -2, y: 3 });
+  assert.ok(candidate); assert.equal(sketch(candidate).entities.line.endPointId, 's');
+  close(sketch(candidate).points.s.y, sketch(candidate).points.other.y);
+  assert.ok(verifyDrawingConstraints(sketch(candidate), [], ['horizontal']));
+});
+
+test('endpoint bulge participates in a connected Point-on-Arc solve', () => {
+  const document = make(), s = sketch(document), q = midpoint(resolved(document));
+  s.points.p = { id: 'p', ...q };
+  s.geometricConstraints.on = { id: 'on', kind: 'COINCIDENT', variant: 'point-curve', references: [{ kind: 'sketchPoint', pointId: 'p' }, { kind: 'entity', entityId: 'arc' }] };
+  s.geometricConstraintOrder = ['on'];
+  const target = createArcEndpointDragTarget(document, 'arc', 'e');
+  const candidate = solveDrawingDragCandidate(document, target, { x: 4, y: -2 });
+  assert.ok(candidate); assert.notEqual(entity(candidate).bulge, .5);
+  assert.ok(verifyDrawingConstraints(sketch(candidate), [], ['on']));
 });
 
 test('center candidate always derives from drag-start and preserves shared endpoint identity', () => {
@@ -126,4 +199,7 @@ test('workspace gives Points then derived center then finite body the shared lif
   assert.match(source, /onLostPointerCapture=.*cancelGeometryDrag\(event\.pointerId\)/s);
   assert.match(source, /className="drawing-authoring-reference".*pointerEvents="none"/s);
   assert.match(source, /activeArcBodyDragId/);
+  assert.match(source, /resolveArcEndpointOwner\(documentRef\.current, explicitPointId, selectedEntityIds\)/);
+  assert.match(source, /createArcEndpointDragTarget\(documentRef\.current, arcId, explicitPointId\)/);
+  assert.match(source, /activeArcSupportDragId/);
 });
