@@ -7,7 +7,7 @@ import { appendArcToActiveSketch } from '../.test-build/drawing-arc/drawingDocum
 import { migrateDrawingDocument } from '../.test-build/drawing-arc/drawingTypes.js';
 import { deriveEntityDefiningPointIds, removeEntityAndOrphans, resolveArc, validateDrawingTopology } from '../.test-build/drawing-arc/drawingTopology.js';
 import { solveDrawingDragCandidate } from '../.test-build/drawing-arc/drawingDirectManipulation.js';
-import { solveDrawingVariableTarget, verifyDrawingConstraints } from '../.test-build/drawing-arc/drawingConstraintSolver.js';
+import { solveDrawingVariableTarget, solveDrawingVariableTargets, verifyDrawingConstraints } from '../.test-build/drawing-arc/drawingConstraintSolver.js';
 import { analyzeDrawingConstraints, analyzeDrawingEntityMobility, constraintJacobianRow, geometricConstraintEquation } from '../.test-build/drawing-arc/drawingConstraintAnalysis.js';
 import { applyDrawingSolverVector, arcBulgeSolverVariable, deduplicateDrawingSolverVariables, drawingSolverVariableKey, flattenDrawingSolverVariables, pointSolverVariables, readDrawingSolverVariable, writeDrawingSolverVariable } from '../.test-build/drawing-arc/drawingSolverVariables.js';
 
@@ -153,6 +153,20 @@ test('direct scalar target projects through shared constraints without mutating 
   assert.equal(solveDrawingVariableTarget(sketch, { variable: arcBulgeSolverVariable('arc'), value: 0 }), null);
   assert.deepEqual(analyzeDrawingEntityMobility(document().sketches.s, 'missing'), null);
   const mobility = analyzeDrawingEntityMobility(sketch, 'arc'); assert.ok(mobility); assert.equal(mobility.unconstrainedDegreesOfFreedom, 5);
+});
+
+test('mixed point-axis and Arc-bulge component solve uses candidate scalar residuals deterministically', () => {
+  const sketch = document().sketches.s;
+  Object.assign(sketch.points, { a: { id: 'a', x: -1, y: 0 }, b: { id: 'b', x: 1, y: 0 }, q: { id: 'q', x: 0, y: -1 } });
+  sketch.entities.arc = { id: 'arc', type: 'arc', startPointId: 'a', endPointId: 'b', bulge: 1 };
+  sketch.geometricConstraints.c = { id: 'c', kind: 'COINCIDENT', variant: 'point-curve', references: [{ kind: 'sketchPoint', pointId: 'q' }, { kind: 'entity', entityId: 'arc' }] };
+  sketch.geometricConstraintOrder = ['c'];
+  const targets = [{ variable: pointSolverVariables('q')[0], value: .25 }, { variable: pointSolverVariables('q')[1], value: -1.2 }];
+  const first = solveDrawingVariableTargets(sketch, targets), second = solveDrawingVariableTargets(sketch, targets);
+  assert.ok(first); assert.ok(second); assert.equal(first.points.q.x, .25); assert.equal(first.points.q.y, -1.2);
+  assert.notEqual(first.entities.arc.bulge, 1); assert.ok(verifyDrawingConstraints(first, [], ['c']));
+  close(first.entities.arc.bulge, second.entities.arc.bulge, 1e-10);
+  assert.deepEqual(first.points, second.points);
 });
 
 test('analytic Window/Crossing considers only the finite arc', () => {
