@@ -3,6 +3,7 @@ import { analyzeDrawingConstraints, constraintEquation, constraintPointKey, draw
 import { measureDimension, measureLineToLineDistance, measurePointToLine, resolveDimensionLineReference, resolveDrawingPointReference } from './drawingDimension.js';
 import { angleIsOnDrawingArc, resolveArcFromBulge } from './drawingArcGeometry.js';
 import { applyDrawingSolverVector, deduplicateDrawingSolverVariables, drawingSolverVariableKey, flattenDrawingSolverVariables, pointSolverVariables, type DrawingSolverVariable } from './drawingSolverVariables.js';
+import { measureCircularDimension } from './drawingCircularSize.js';
 
 export const DRAWING_CONSTRAINT_TOLERANCE_MM = 1e-7;
 export const DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS = 80;
@@ -28,7 +29,19 @@ const evaluateSystem = (sketch: DrawingSketchV2, component: ComponentState, vari
   const index = new Map(variableIds.map((id, i) => [id, i])), residuals: number[] = [], jacobian: number[][] = [];
   for (const equation of component.equations) {
     const row = Array(variableIds.length * 2).fill(0);
-    if (equation.geometricConstraint?.kind === 'MIDPOINT') {
+    if (equation.dimension?.kind === 'CIRCULAR_SIZE') {
+      const points = { ...sketch.points };
+      for (const key of equation.pointKeys) points[key] = { ...points[key], ...coordinate(sketch, values, index, key) };
+      const measured = measureCircularDimension({ ...sketch, points }, equation.dimension);
+      if (measured === null) return null;
+      residuals.push(measured - equation.target);
+      for (const key of equation.pointKeys) for (const axis of [0, 1] as const) {
+        const i = index.get(key); if (i === undefined) continue;
+        const offset = i * 2 + axis, h = 1e-6 * Math.max(1, Math.abs(values[offset])), plus = [...values], minus = [...values]; plus[offset] += h; minus[offset] -= h;
+        const build = (next: readonly number[]) => { const nextPoints = { ...sketch.points }; for (const pointKey of equation.pointKeys) nextPoints[pointKey] = { ...nextPoints[pointKey], ...coordinate(sketch, next, index, pointKey) }; return measureCircularDimension({ ...sketch, points: nextPoints }, equation.dimension!); };
+        const p = build(plus), m = build(minus); row[offset] = p === null || m === null ? 0 : (p - m) / (2 * h);
+      }
+    } else if (equation.geometricConstraint?.kind === 'MIDPOINT') {
       const [pKey, aKey, bKey] = equation.pointKeys, axis = equation.coordinateAxis === 'x' ? 0 : 1;
       const p = coordinate(sketch, values, index, pKey), a = coordinate(sketch, values, index, aKey), b = coordinate(sketch, values, index, bKey);
       residuals.push((axis === 0 ? p.x : p.y) - ((axis === 0 ? a.x : a.y) + (axis === 0 ? b.x : b.y)) / 2);
@@ -366,7 +379,7 @@ export const minimizeDrawingVariableObjective = (
   return best?.candidate ?? null;
 };
 
-const measurement = (sketch: DrawingSketchV2, dimension: DrawingDimension): number | null => { if (dimension.kind === 'LINE_TO_LINE_ANGLE') { const equation = constraintEquation(sketch, dimension); if (!equation) return null; const [a0, a1, b0, b1] = equation.pointKeys, sector = dimension.angleSector; return lineToLineAngleAndGradient(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1], sector.sideA * sector.sideB as -1 | 1)?.angleDegrees ?? null; } if (dimension.kind === 'POINT_TO_LINE_DISTANCE') { const p = resolveDrawingPointReference(sketch, dimension.references[0]), l = resolveDimensionLineReference(sketch, dimension.references[1]); return p && l ? measurePointToLine(p, l) : null; } if (dimension.kind === 'LINE_TO_LINE_DISTANCE') { const a = resolveDimensionLineReference(sketch, dimension.references[0]), b = resolveDimensionLineReference(sketch, dimension.references[1]); return a && b ? measureLineToLineDistance(a, b) : null; } const a = resolveDrawingPointReference(sketch, dimension.references[0]), b = resolveDrawingPointReference(sketch, dimension.references[1]); return a && b ? measureDimension(dimension.kind, a, b) : null; };
+const measurement = (sketch: DrawingSketchV2, dimension: DrawingDimension): number | null => { if (dimension.kind === 'CIRCULAR_SIZE') return measureCircularDimension(sketch, dimension); if (dimension.kind === 'LINE_TO_LINE_ANGLE') { const equation = constraintEquation(sketch, dimension); if (!equation) return null; const [a0, a1, b0, b1] = equation.pointKeys, sector = dimension.angleSector; return lineToLineAngleAndGradient(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1], sector.sideA * sector.sideB as -1 | 1)?.angleDegrees ?? null; } if (dimension.kind === 'POINT_TO_LINE_DISTANCE') { const p = resolveDrawingPointReference(sketch, dimension.references[0]), l = resolveDimensionLineReference(sketch, dimension.references[1]); return p && l ? measurePointToLine(p, l) : null; } if (dimension.kind === 'LINE_TO_LINE_DISTANCE') { const a = resolveDimensionLineReference(sketch, dimension.references[0]), b = resolveDimensionLineReference(sketch, dimension.references[1]); return a && b ? measureLineToLineDistance(a, b) : null; } const a = resolveDrawingPointReference(sketch, dimension.references[0]), b = resolveDrawingPointReference(sketch, dimension.references[1]); return a && b ? measureDimension(dimension.kind, a, b) : null; };
 export const verifyDrawingDrivingDimensions = (sketch: DrawingSketchV2, ids: readonly string[]): readonly number[] | null => { const residuals = ids.map((id) => { const d = sketch.dimensions[id], value = d?.role === 'driving' ? measurement(sketch, d) : null; return d && value !== null ? Math.abs(value - d.value) : Infinity; }); return residuals.every((v) => Number.isFinite(v) && v <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? residuals : null; };
 export const verifyDrawingConstraints = (sketch: DrawingSketchV2, dimensionIds: readonly string[], geometricConstraintIds: readonly string[]): readonly number[] | null => {
   const dimensions = verifyDrawingDrivingDimensions(sketch, dimensionIds); if (!dimensions) return null;
@@ -593,6 +606,25 @@ const solveAngleToParallel = (document: DrawingDocumentV2, sketch: DrawingSketch
 
 export const solveDrawingDimensionEdit = ({ document, dimensionId, targetValue }: Readonly<{ document: DrawingDocumentV2; dimensionId: string; targetValue: number }>): DrawingDimensionSolveResult => {
   if (!Number.isFinite(targetValue) || targetValue < 0) return fail('INVALID_TARGET'); const sketch = document.sketches[document.activeSketchId], edited = sketch?.dimensions[dimensionId]; if (!sketch || !edited || edited.role !== 'driving') return fail('MISSING_REFERENCE');
+  if (edited.kind === 'CIRCULAR_SIZE') {
+    if (targetValue <= DRAWING_CONSTRAINT_TOLERANCE_MM) return fail('INVALID_TARGET');
+    const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[edited.references[0].entityId];
+    if (!entity || entity.type === 'circle' && edited.mode !== 'diameter' || entity.type === 'arc' && edited.mode !== 'radius') return fail('MISSING_REFERENCE');
+    const dimensions = { ...sketch.dimensions, [dimensionId]: { ...edited, value: targetValue } };
+    let candidate: DrawingSketchV2 | null = null;
+    if (entity.type === 'circle') candidate = { ...sketch, entities: { ...sketch.entities, [entity.id]: { ...entity, radius: targetValue / 2 } } as DrawingSketchV2['entities'], dimensions };
+    else if (entity.type === 'arc') {
+      const base = { ...sketch, dimensions };
+      const analysis = analyzeDrawingConstraints(base), component = analysis.componentByVariableKey.get(drawingSolverVariableKey({ kind: 'entity-scalar', entityId: entity.id, scalar: 'arc-bulge' }));
+      if (component) {
+        const state: ComponentState = { pointIds: [...component.pointIds], equations: [...component.dimensionIds.map((id) => { const dimension = base.dimensions[id], equation = dimension && constraintEquation(base, dimension); return equation ? { ...equation, target: dimension.value } : null; }), ...component.geometricConstraintIds.flatMap((id) => { const constraint = base.geometricConstraints[id]; return constraint ? geometricConstraintEquations(base, constraint).map((equation) => ({ ...equation, target: 0 })) : []; })].filter((item): item is Equation => Boolean(item)) };
+        const variables = deduplicateDrawingSolverVariables([...state.pointIds.flatMap(pointSolverVariables), ...component.scalarVariables]);
+        candidate = solveVariableComponent(base, state, variables)?.sketch ?? null;
+      }
+    }
+    if (!candidate || !verifyDrawingDrivingDimensions(candidate, Object.values(candidate.dimensions).filter(({ role }) => role === 'driving').map(({ id }) => id))) return fail('UNSATISFIABLE_DIMENSION_SET');
+    return { ok: true, document: { ...document, sketches: { ...document.sketches, [sketch.id]: candidate } }, diagnostics: { constraintCount: 1, residuals: [0], iterations: 0, pointIds: entity.type === 'circle' ? [entity.centerPointId] : [entity.startPointId, entity.endPointId] } };
+  }
   if (edited.kind === 'LINE_TO_LINE_ANGLE' && targetValue === 0) return solveAngleToParallel(document, sketch, edited);
   if (edited.kind === 'LINE_TO_LINE_ANGLE' && targetValue >= 180) return fail('INVALID_ANGLE_TARGET');
   if (edited.kind === 'LINE_TO_LINE_ANGLE') { const equation = constraintEquation(sketch, edited); if (!equation || !measurement(sketch, edited)) return fail('UNSUPPORTED_DEGENERATE_GEOMETRY'); }

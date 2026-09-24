@@ -52,7 +52,7 @@ export type DrawingGeometryReference =
   | Readonly<{ kind: 'datum'; datum: 'ORIGIN' | 'X_AXIS' | 'Y_AXIS' }>;
 export type DrawingPointReference = Exclude<DrawingGeometryReference, { kind: 'entity' }>;
 export type DrawingEntityReference = Extract<DrawingGeometryReference, { kind: 'entity' }>;
-export type DrawingDimensionKind = 'ALIGNED_DISTANCE' | 'HORIZONTAL_DISTANCE' | 'VERTICAL_DISTANCE' | 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE';
+export type DrawingDimensionKind = 'ALIGNED_DISTANCE' | 'HORIZONTAL_DISTANCE' | 'VERTICAL_DISTANCE' | 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE' | 'CIRCULAR_SIZE';
 export type DrawingAngleSector = Readonly<{ sideA: -1 | 1; sideB: -1 | 1 }>;
 export type DrawingDimensionRole = 'driving' | 'reference';
 export type DrawingParallelConstraint = Readonly<{
@@ -108,11 +108,11 @@ type DrawingDimensionBase = Readonly<{
   role: DrawingDimensionRole;
   /** Authoritative future target for driving dimensions; ignored for reference display. */
   value: number;
-  placement: Readonly<{ kind: 'linear'; offset: number } | { kind: 'angular'; anchor: DrawingPoint; radius: number; offset: number }>;
+  placement: Readonly<{ kind: 'linear'; offset: number } | { kind: 'angular'; anchor: DrawingPoint; radius: number; offset: number } | { kind: 'radial'; anchor: DrawingPoint }>;
 }>;
 export type DrawingDimension =
   | (DrawingDimensionBase & Readonly<{
-    kind: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE'>;
+    kind: Exclude<DrawingDimensionKind, 'POINT_TO_LINE_DISTANCE' | 'LINE_TO_LINE_DISTANCE' | 'LINE_TO_LINE_ANGLE' | 'CIRCULAR_SIZE'>;
     references: readonly [DrawingPointReference, DrawingPointReference];
   }>)
   | (DrawingDimensionBase & Readonly<{
@@ -138,6 +138,11 @@ export type DrawingDimension =
     references: readonly [DrawingEntityReference, DrawingEntityReference];
     /** Signed half-plane membership relative to the canonical directed supports. */
     angleSector: DrawingAngleSector;
+  }>)
+  | (DrawingDimensionBase & Readonly<{
+    kind: 'CIRCULAR_SIZE';
+    mode: 'radius' | 'diameter';
+    references: readonly [DrawingEntityReference];
   }>);
 
 export type DrawingSketchV1 = {
@@ -217,8 +222,15 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
       } as DrawingSketchV2;
       // D2.5a3 migration: legacy schema-v2 dimensions without a role become driving.
       // An explicitly persisted reference role is retained and is never reclassified here.
-      const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, dimension]) =>
-        dimension.references.every((reference) => reference.kind === 'datum' ? reference.datum === 'ORIGIN' : reference.kind === 'sketchPoint' ? Boolean(sketch.points[reference.pointId]) : Boolean(sketch.entities[reference.entityId]))).map(([dimensionId, dimension]) => [
+      const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, dimension]) => {
+        if (!Number.isFinite(dimension.value) || dimension.value < 0) return false;
+        if (dimension.kind === 'CIRCULAR_SIZE') {
+          const reference = dimension.references.length === 1 ? dimension.references[0] : undefined, entity = reference?.kind === 'entity' ? (sketch.entities as unknown as Record<string, DrawingEntity>)[reference.entityId] : null;
+          return Boolean(entity && (entity.type === 'circle' && dimension.mode === 'diameter' || entity.type === 'arc' && dimension.mode === 'radius')
+            && dimension.placement.kind === 'radial' && Number.isFinite(dimension.placement.anchor.x) && Number.isFinite(dimension.placement.anchor.y));
+        }
+        return dimension.references.every((reference) => reference.kind === 'datum' ? reference.datum === 'ORIGIN' : reference.kind === 'sketchPoint' ? Boolean(sketch.points[reference.pointId]) : Boolean(sketch.entities[reference.entityId]));
+      }).map(([dimensionId, dimension]) => [
           dimensionId,
           { ...dimension, role: (dimension.role === 'reference' ? 'reference' : 'driving') as DrawingDimensionRole },
         ]));
