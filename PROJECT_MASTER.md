@@ -28,9 +28,9 @@ A shared, versioned cross-workspace `ProjectDocument`, cross-workspace reference
 
 ### 4.1 Scope and topology
 
-The current workspace implements Select, Profile, Line, Circle, Dimension, a floating Constraints tool, Direct Manipulation, snapping/inference, solver-backed constraints, and bounded Drawing Undo/Redo. Profile and standalone Line are browser-verified and accepted as separate authoring workflows: Profile authors continuing/chained connected straight segments, while Line accepts P1 and P2, creates exactly one straight segment, and completes without chaining from P2. Normal Line activation returns to Select after completion; persistent Line activation remains active but resets completely so the next click defines a fresh independent P1.
+The current workspace implements Select, Profile, Line, Circle, Arc, Dimension, a floating Constraints tool, Direct Manipulation, snapping/inference, solver-backed constraints, and bounded Drawing Undo/Redo. Profile and standalone Line are browser-verified and accepted as separate authoring workflows: Profile authors continuing/chained connected straight segments, while Line accepts P1 and P2, creates exactly one straight segment, and completes without chaining from P2. Normal Line activation returns to Select after completion; persistent Line activation remains active but resets completely so the next click defines a fresh independent P1.
 
-Both workflows reuse the neutral straight-segment foundation rather than duplicating snapping, inference, constraints, topology, presentation, or mutation behavior. Circle Stage 1 is **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED**. A persistent Circle references one persistent center `SketchPoint` through `centerPointId` and owns one scalar radius; it remains true Circle geometry rather than persistent tessellation. Circle participates in persistence, History, selection, hit testing, deletion/topology cleanup, directional box selection, and shared Drawing presentation. Arc remains planned and not implemented. Every committed segment remains an ordinary `DrawingLineEntity` with persistent `type: 'line'`; neither Profile nor Line introduces a separate geometry type or authoring-origin metadata. Consequently topology, selection, Direct Manipulation, Constraints, Dimensions, and History operate on the committed geometry without distinguishing which straight-segment authoring workflow created it. Menu visibility does not prove implementation of other prospective geometry tools.
+Both workflows reuse the neutral straight-segment foundation rather than duplicating snapping, inference, constraints, topology, presentation, or mutation behavior. Circle Stage 1 and Arc Stage 1 are **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED**. A persistent Circle references one persistent center `SketchPoint` through `centerPointId` and owns one scalar radius; it remains true Circle geometry rather than persistent tessellation. An Arc references two persistent endpoint SketchPoints and owns a bulge; its center, radius, angles, signed sweep, authoring P3, and support Circle are derived. Circle and Arc participate in persistence, History, selection, hit testing, deletion/topology cleanup, directional box selection, and shared Drawing presentation. Every committed segment remains an ordinary `DrawingLineEntity` with persistent `type: 'line'`; neither Profile nor Line introduces a separate geometry type or authoring-origin metadata. Consequently topology, selection, Direct Manipulation, Constraints, Dimensions, and History operate on the committed geometry without distinguishing which straight-segment authoring workflow created it. Menu visibility does not prove implementation of other prospective geometry tools.
 
 `drawingLineSegmentSupport.ts` owns neutral straight-segment support, while `drawingProfileTool.ts` owns the chained Profile lifecycle and `drawingLineTool.ts` owns the standalone Line lifecycle. Generic document mutation remains in `drawingDocumentMutation.ts`. The delayed commit/double-click boundary in `drawingProfileCommitBoundary.ts` remains Profile-specific. Shared cursor, preview, and inference presentation consume neutral segment interaction state rather than treating Profile as their owner.
 
@@ -40,7 +40,7 @@ Every committed segment is its own Line. A Profile continuation begins a **fresh
 
 ### 4.2 Drawing selection
 
-Directional drag-box selection is browser-verified and accepted for Lines and Circles in Select. A
+Directional drag-box selection is browser-verified and accepted for Lines, Circles, and Arcs in Select. A
 primary-button drag beginning on empty canvas activates after the existing 4 CSS-pixel
 client-space threshold; an existing geometry hit instead continues through ordinary
 selection or Direct Manipulation. Left-to-right is Window mode, which requires both
@@ -48,14 +48,15 @@ finite Line endpoints to be strictly inside the rectangle. Right-to-left is Cros
 mode, which includes contained, partly contained, crossing, and boundary- or
 corner-touching Lines. For Circles, Window requires the entire curve strictly inside;
 Crossing qualifies a curve that lies in, intersects, or touches the rectangle, but not
-a rectangle wholly inside the empty interior without touching the circumference. Mode
+a rectangle wholly inside the empty interior without touching the circumference. For
+Arcs, both modes evaluate the finite Arc rather than its full support Circle. Mode
 and the visually distinct rectangle presentation switch
 continuously when horizontal drag direction crosses the origin.
 
 The existing common selection remains unchanged while dragging and commits on release.
 An unmodified box replaces it, including with an empty result; Ctrl toggles qualifying
 entities against the ordered selection, preserves selected points, and preserves all
-selection when no entity qualifies. The box currently qualifies Lines and Circles—SketchPoints
+selection when no entity qualifies. The box currently qualifies Lines, Circles, and Arcs—SketchPoints
 and endpoints remain available to click selection but are not independently box
 selected. Constraints consumes the common `selectedGeometry` using its existing
 applicability rules; Dimensions continues to use its separate interaction state.
@@ -109,6 +110,18 @@ Reference, Parallel, Perpendicular, Circle circumference, Tangency, or quadrant.
 bypasses P1 and P2 automatic acquisition; stationary Ctrl changes recompute placement
 and presentation immediately.
 
+Arc authoring is three-point: P1 is start, P2 is end, and P3 is the form/radius point.
+Between P1 and P2, a thin P1-to-current-P2 reference line and accepted-P1 marker are
+transient presentation. During P3, the finite Arc preview and full underlying support
+Circle are also transient. None of this support/reference geometry is an entity,
+topology, History, or export geometry. Point-on-Arc uses the shared Point-on-Curve
+foundation rather than an Arc-specific constraint system.
+
+The canonical persistent Arc is `DrawingArcEntity { id, type: 'arc', startPointId,
+endPointId, bulge }`. Bulge is the curvature and signed-sweep authority. Center, radius,
+start/end angles, signed sweep, P3/form point, and support Circle are derived and are not
+persisted.
+
 Line placement deliberately separates:
 
 - **position authority** — the one effective accepted endpoint;
@@ -157,6 +170,33 @@ The committed document snapshot is made visible to candidate collection in the s
 
 Left mouse authors/selects, right-drag pans, the wheel zooms, and Esc exits the applicable interaction. Drawing transactions group semantic user actions for Undo/Redo. A completed standalone Line is one transaction containing its accepted geometry, topology, and automatic semantics; persistent Line activation produces one transaction per completed independent Line. UI-only panel state does not create document History. Deleting geometry cleans dependent dimensions/constraints through model operations.
 
+Circle and Arc use the shared Direct Manipulation and component-solver architecture,
+with geometry-specific canonical variables. Circle center drag moves its persistent
+center SketchPoint; Circle body/radius drag changes its persistent radius about the
+free-case fixed center with no jump at grab.
+
+Arc has three distinct accepted interactions:
+
+- **Center drag** translates both endpoint SketchPoints together while preserving
+  radius/form and bulge; the center remains derived.
+- **Body/radius drag** uses a transient semantic `arc-radius` target. In the free case,
+  the derived drag-start center stays fixed, radius follows radial pointer motion, both
+  endpoint SketchPoints move radially, endpoint angles stay fixed, and bulge/signed
+  sweep stays exactly unchanged. It does not edit bulge with fixed endpoints.
+- **Endpoint drag** makes the dragged endpoint authoritative in the free case and keeps
+  the opposite endpoint as pivot. The Arc remains circular while center, radius, and
+  bulge/sweep may change. A generic solver-level secondary objective selects the
+  remaining form degree of freedom by geometric least change; canonical write-back is
+  still bulge. Evaluation starts from drag-start state plus absolute pointer displacement,
+  making the interaction event-rate independent and reversible, without a persistent
+  form point or three-point endpoint reconstruction.
+
+Persistent hard constraints and driving dimensions remain authoritative. For Arc
+body/radius drag, ideal radial endpoint positions are projected through the shared
+component solver while bulge is preserved; constrained achieved center, radius, or
+angles may therefore differ from the ideal free pose. Shared SketchPoint identity is
+never bypassed or treated as frozen merely because a constraint conflicts.
+
 ### 4.9 Normative Drawing Presentation Standard
 
 This section is the global, normative authority for Drawing presentation. Numeric values here describe current accepted behavior; production token names remain current implementation details until a later code generalization. Line is the accepted reference implementation for applicable committed curves, but does not own these meanings.
@@ -165,7 +205,7 @@ This section is the global, normative authority for Drawing presentation. Numeri
 semantic geometry / semantic relation
   -> semantic presentation classification
   -> global Drawing Presentation Standard
-  -> geometry-specific SVG presentation (<line>, <circle>, future <path>, or role-specific glyphs)
+  -> geometry-specific SVG presentation (<line>, <circle>, <path>, or role-specific glyphs)
 ```
 
 Global policy means shared semantics consume shared roles; it does **not** make curves, Points, Dimensions, Constraints, and support graphics look identical.
@@ -191,13 +231,13 @@ entity-specific mobility / freedom derivation
   -> global committed-geometry presentation
 ```
 
-A Line currently derives state from endpoint mobility. A Circle derives state from Circle-authoritative freedoms; a future Arc must use Arc-authoritative freedoms. For Circle Stage 1 the center is a persistent `SketchPoint` and radius is an authoritative scalar. A fully constrained center cannot make the whole Circle `FULLY_LOCKED` while radius remains free. A Point-on-Curve relation does not constrain the referenced Circle merely because its record references that Circle.
+A Line derives state from endpoint mobility. A Circle derives state from its persistent center `SketchPoint` and authoritative radius scalar; an Arc derives state from its two endpoint SketchPoints and bulge authority. A fully constrained Circle center cannot make the whole Circle `FULLY_LOCKED` while radius remains free. A Point-on-Curve relation does not constrain the referenced curve merely because its record references that curve.
 
 #### 4.9.3 Selection / Preselection / Direct Manipulation
 
 | Temporary role | Semantic token/current value | Color | Width | Applicability/status |
 | --- | --- | --- | --- | --- |
-| Selected committed curve | geometry selection / `--drawing-hover` | `#06b6d4` | `2.6` | Established Line behavior; standard for Circle and future applicable curves as interaction support is integrated. |
+| Selected committed curve | geometry selection / `--drawing-hover` | `#06b6d4` | `2.6` | Established shared behavior for Line, Circle, and Arc. |
 | Preselected committed curve | geometry preselection / `--drawing-hover` | `#06b6d4` | `2.6` | Established. |
 | Direct Manipulation | geometry dragging / `--drawing-hover` | `#06b6d4` | `2.6` | Established. |
 | Dimension-input geometry preselection | dimension preselection / `--drawing-hover` | `#06b6d4` | `2.4` | Established. |
@@ -211,7 +251,7 @@ These are temporary paint overrides. They never replace or mutate the underlying
 | Ordinary Authoring Preview | currently painted with `--drawing-inference`; future dedicated preview role | `#38bdf8` | `1.25` | none | `5 4` | Established for Line, Profile segment, and Circle previews; non-scaling stroke where applicable. |
 | Line/Profile angular-authority modifier | preview modifier | `#38bdf8` | `1.7` | none | solid | Established exception for genuine Line-direction semantic state. |
 
-Authoring Preview and Inference are separate semantic roles even though both currently use `#38bdf8`; implementations must not couple their future values. Arc, Rectangle, Ellipse, Spline, and other applicable geometry default to ordinary Authoring Preview unless an explicit, documented tool semantic requires a modifier. The Circle P1–P2/radius preview is browser-observed, visible, and updates live. There is no dedicated mandatory Circle radius helper line in current code; any straight line seen during authoring belongs to the actual inference/reference role that produces it.
+Authoring Preview and Inference are separate semantic roles even though both currently use `#38bdf8`; implementations must not couple their future values. Arc, Rectangle, Ellipse, Spline, and other applicable geometry default to ordinary Authoring Preview unless an explicit, documented tool semantic requires a modifier. The Circle P1–P2/radius preview is browser-observed, visible, and updates live. There is no dedicated mandatory Circle radius helper line in current code; any straight line seen during authoring belongs to the actual inference/reference role that produces it. Arc's authoring reference line and support Circle use the established helper/support presentation category and remain transient.
 
 #### 4.9.5 Inference
 
@@ -287,7 +327,6 @@ Every item below is normative tracking: the triggered implementation must resolv
 
 | Question | Why unresolved | Current behavior | Decision trigger / mandatory action |
 | --- | --- | --- | --- |
-| Which category owns the future three-point Arc's full support/reference Circle? | Its eventual semantic purpose determines whether it is Dimension/reference, Constraint/support, or another already-established category. | Arc and its support Circle are not implemented; no style is assigned. | Resolve during Arc presentation design before implementation; reuse an established semantic category where truthful and document the decision. |
 | How should future construction/reference entities look? | Construction/reference geometry is not yet a real defined product concept. | No global category exists. | When the entity concept is designed, define ownership and presentation explicitly; do not invent per-tool paint. |
 | How should future Radius/Diameter presentation work? | Neither Radius/Diameter Dimension nor Constraint is implemented, and the two systems must remain distinct. | No presentation exists. | Decide when either capability is designed; do not infer a style now. |
 | Should persistent and transient Midpoint intentionally retain widths `1` and `1.4`? | Current difference has not been explicitly normalized or approved as permanent. | Persistent `1`; transient `1.4`. | Preserve until a focused presentation decision; that work must explicitly resolve and document it. |
@@ -340,7 +379,7 @@ Puzzle has a reserved, disabled workspace selector only. It has no current docum
 ## 8. Current limitations and documentation boundaries
 
 - Puzzle and a shared global project document are planned.
-- Drawing supports chained straight-segment authoring through Profile and independent one-segment authoring through Line, with every committed segment stored as the same Line geometry; it does not yet provide the full prospective CAD tool catalog.
+- Drawing supports accepted Profile, standalone Line, Circle Stage 1, and Arc Stage 1 workflows; it does not yet provide the full prospective CAD tool catalog.
 - The Constraints panel intentionally displays disabled future choices alongside implemented ones.
 - Box v1.2 remains the locked release baseline; post-v1.2 Drawing features are implemented without a new declared product release.
 - Detailed reports under `docs/` include historical hypotheses and diagnostic evidence. Consult `docs/README.md` before treating one as a current specification.
