@@ -1,4 +1,4 @@
-import { DRAWING_CONSTRAINT_TOLERANCE_MM, solveDrawingComponentDrag, solveDrawingVariableTarget } from './drawingConstraintSolver.js';
+import { DRAWING_CONSTRAINT_TOLERANCE_MM, minimizeDrawingVariableObjective, solveDrawingComponentDrag, solveDrawingVariableTarget } from './drawingConstraintSolver.js';
 import { deriveArcThroughThreePoints, projectPointToArc, resolveArcFromBulge } from './drawingArcGeometry.js';
 import { arcBulgeSolverVariable, circleRadiusSolverVariable } from './drawingSolverVariables.js';
 import { displayedDimensionMeasurement, measureDimension, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
@@ -10,7 +10,7 @@ export const DRAWING_DRAG_THRESHOLD_PX = 4;
 export type DrawingGeometryTarget =
   | Readonly<{ kind: 'point'; pointId: string }>
   | Readonly<{ kind: 'line'; lineId: string }>
-  | Readonly<{ kind: 'arc-endpoint'; entityId: string; draggedPointId: string; pivotPointId: string; formAnchor: DrawingPoint; initialBulge: number }>
+  | Readonly<{ kind: 'arc-endpoint'; entityId: string; draggedPointId: string; pivotPointId: string; initialBulge: number }>
   | Readonly<{ kind: 'rigid-translation'; entityId: string; pointIds: readonly string[]; preservedScalar: 'arc-bulge' }>
   | Readonly<{ kind: 'entity-scalar'; entityId: string; scalar: 'circle-radius'; radialGrabOffset: number }>
   | Readonly<{ kind: 'entity-scalar'; entityId: string; scalar: 'arc-bulge'; formGrabOffset: DrawingPoint; initialBulge: number }>;
@@ -35,20 +35,22 @@ export const createArcCenterDragTarget = (document: DrawingDocumentV2, arcId: st
     : null;
 };
 
-/** Creates the transient endpoint-form session. The mid-sweep point is only a
- * continuity objective: it is deliberately not added to the sketch model. */
+/** Creates an endpoint session referenced exclusively to the drag-start Arc. */
 export const createArcEndpointDragTarget = (document: DrawingDocumentV2, arcId: string, draggedPointId: string): DrawingGeometryTarget | null => {
   const sketch = document.sketches[document.activeSketchId];
   const entity = sketch ? (sketch.entities as unknown as Record<string, DrawingEntity>)[arcId] : undefined;
   if (entity?.type !== 'arc' || draggedPointId !== entity.startPointId && draggedPointId !== entity.endPointId) return null;
   const arc = resolveArcFromBulge(entity, sketch.points[entity.startPointId], sketch.points[entity.endPointId]);
   if (!arc) return null;
-  const middleAngle = arc.startAngle + arc.signedSweep / 2;
   return { kind: 'arc-endpoint', entityId: entity.id, draggedPointId,
     pivotPointId: draggedPointId === entity.startPointId ? entity.endPointId : entity.startPointId,
-    formAnchor: { x: arc.center.x + arc.radius * Math.cos(middleAngle), y: arc.center.y + arc.radius * Math.sin(middleAngle) },
     initialBulge: entity.bulge };
 };
+
+const arcPointAt = (arc: NonNullable<ReturnType<typeof resolveArcFromBulge>>, t: number): DrawingPoint => ({
+  x: arc.center.x + arc.radius * Math.cos(arc.startAngle + arc.signedSweep * t),
+  y: arc.center.y + arc.radius * Math.sin(arc.startAngle + arc.signedSweep * t),
+});
 
 /** Resolves semantic ownership after the physical point hit. A unique selected
  * incident Arc disambiguates a shared endpoint; otherwise multiple Arc owners
@@ -145,12 +147,32 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
       [target.pivotPointId]: 1_000,
     } });
     if (!positioned) return null;
-    const start = positioned.points[entity.startPointId], end = positioned.points[entity.endPointId];
-    const formed = deriveArcThroughThreePoints(start, end, target.formAnchor, entity.id, entity.startPointId, entity.endPointId);
-    // Reject the straight boundary, branch reversal, and impractically
-    // conditioned near-full-circle candidates; the UI retains its last valid frame.
-    if (!formed || Math.sign(formed.bulge) !== Math.sign(target.initialBulge) || Math.abs(formed.bulge) > 1e6) return null;
-    const solved = solveDrawingVariableTarget(positioned, { variable: arcBulgeSolverVariable(entity.id), value: formed.bulge });
+    const originalArc = resolveArcFromBulge(entity, sketch.points[entity.startPointId], sketch.points[entity.endPointId]);
+    if (!originalArc) return null;
+    const scale = Math.max(Math.hypot(originalArc.end.x - originalArc.start.x, originalArc.end.y - originalArc.start.y), originalArc.radius, DRAWING_CONSTRAINT_TOLERANCE_MM);
+    const sampleTs = [1 / 8, 1 / 4, 3 / 8, 1 / 2, 5 / 8, 3 / 4, 7 / 8] as const;
+    const originalSamples = sampleTs.map((t) => arcPointAt(originalArc, t));
+    const sign = Math.sign(target.initialBulge) || 1, edge = Math.PI / 2 - 1e-6;
+    const endpointTargets = [target.draggedPointId, target.pivotPointId].flatMap((pointId) => ([
+      { variable: { kind: 'point-axis' as const, pointId, axis: 'x' as const }, value: positioned.points[pointId].x },
+      { variable: { kind: 'point-axis' as const, pointId, axis: 'y' as const }, value: positioned.points[pointId].y },
+    ]));
+    const solved = minimizeDrawingVariableObjective(positioned, {
+      variable: arcBulgeSolverVariable(entity.id),
+      coordinateRange: sign > 0 ? [1e-6, edge] : [-edge, -1e-6],
+      valueFromCoordinate: Math.tan,
+      exactTargets: endpointTargets,
+      evaluate: (candidateSketch) => {
+        const candidateEntity = (candidateSketch.entities as unknown as Record<string, DrawingEntity>)[entity.id];
+        if (candidateEntity?.type !== 'arc') return Infinity;
+        const candidateArc = resolveArcFromBulge(candidateEntity, candidateSketch.points[entity.startPointId], candidateSketch.points[entity.endPointId]);
+        if (!candidateArc) return Infinity;
+        return sampleTs.reduce((sum, t, index) => {
+          const point = arcPointAt(candidateArc, t), original = originalSamples[index];
+          return sum + ((point.x - original.x) ** 2 + (point.y - original.y) ** 2) / (scale * scale);
+        }, 0) / sampleTs.length;
+      },
+    });
     return solved ? { ...document, sketches: { ...document.sketches, [sketch.id]: solved } } : null;
   }
   if (target.kind === 'entity-scalar') {

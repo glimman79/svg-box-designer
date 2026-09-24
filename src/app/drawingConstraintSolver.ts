@@ -311,6 +311,61 @@ export const solveDrawingVariableTarget = (
   target: Readonly<{ variable: DrawingSolverVariable; value: number }>,
 ): DrawingSketchV2 | null => solveDrawingVariableTargets(sketch, [target]);
 
+export type DrawingSoftVariableObjective = Readonly<{
+  variable: DrawingSolverVariable;
+  /** Finite optimization interval in a caller-selected, well-conditioned coordinate. */
+  coordinateRange: readonly [number, number];
+  valueFromCoordinate: (coordinate: number) => number;
+  evaluate: (candidate: DrawingSketchV2) => number;
+  exactTargets?: readonly Readonly<{ variable: DrawingSolverVariable; value: number }>[];
+  sampleCount?: number;
+  refinementIterations?: number;
+}>;
+
+/**
+ * Minimizes a secondary objective without weakening hard equations or exact
+ * interaction targets. Every trial is projected by the shared mixed-variable
+ * solver, then the best hard-valid candidate is selected. The optimizer is
+ * deliberately domain-agnostic: callers provide both coordinate mapping and
+ * candidate objective.
+ */
+export const minimizeDrawingVariableObjective = (
+  sketch: DrawingSketchV2,
+  objective: DrawingSoftVariableObjective,
+): DrawingSketchV2 | null => {
+  const [lower, upper] = objective.coordinateRange;
+  if (!Number.isFinite(lower) || !Number.isFinite(upper) || lower >= upper) return null;
+  const samples = Math.max(5, Math.floor(objective.sampleCount ?? 25));
+  const evaluateAt = (coordinate: number) => {
+    const value = objective.valueFromCoordinate(coordinate);
+    if (!Number.isFinite(value)) return null;
+    const candidate = solveDrawingVariableTargets(sketch, [
+      ...(objective.exactTargets ?? []),
+      { variable: objective.variable, value },
+    ]);
+    if (!candidate) return null;
+    const score = objective.evaluate(candidate);
+    return Number.isFinite(score) ? { coordinate, candidate, score } : null;
+  };
+  let best: ReturnType<typeof evaluateAt> = null;
+  for (let index = 0; index < samples; index += 1) {
+    const trial = evaluateAt(lower + (upper - lower) * index / (samples - 1));
+    if (trial && (!best || trial.score < best.score)) best = trial;
+  }
+  if (!best) return null;
+  const step = (upper - lower) / (samples - 1);
+  let a = Math.max(lower, best.coordinate - step), b = Math.min(upper, best.coordinate + step);
+  const ratio = (Math.sqrt(5) - 1) / 2;
+  let c = b - ratio * (b - a), d = a + ratio * (b - a), fc = evaluateAt(c), fd = evaluateAt(d);
+  for (let iteration = 0; iteration < (objective.refinementIterations ?? 18); iteration += 1) {
+    if (fc && (!best || fc.score < best.score)) best = fc;
+    if (fd && (!best || fd.score < best.score)) best = fd;
+    if ((fc?.score ?? Infinity) <= (fd?.score ?? Infinity)) { b = d; d = c; fd = fc; c = b - ratio * (b - a); fc = evaluateAt(c); }
+    else { a = c; c = d; fc = fd; d = a + ratio * (b - a); fd = evaluateAt(d); }
+  }
+  return best?.candidate ?? null;
+};
+
 const measurement = (sketch: DrawingSketchV2, dimension: DrawingDimension): number | null => { if (dimension.kind === 'LINE_TO_LINE_ANGLE') { const equation = constraintEquation(sketch, dimension); if (!equation) return null; const [a0, a1, b0, b1] = equation.pointKeys, sector = dimension.angleSector; return lineToLineAngleAndGradient(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1], sector.sideA * sector.sideB as -1 | 1)?.angleDegrees ?? null; } if (dimension.kind === 'POINT_TO_LINE_DISTANCE') { const p = resolveDrawingPointReference(sketch, dimension.references[0]), l = resolveDimensionLineReference(sketch, dimension.references[1]); return p && l ? measurePointToLine(p, l) : null; } if (dimension.kind === 'LINE_TO_LINE_DISTANCE') { const a = resolveDimensionLineReference(sketch, dimension.references[0]), b = resolveDimensionLineReference(sketch, dimension.references[1]); return a && b ? measureLineToLineDistance(a, b) : null; } const a = resolveDrawingPointReference(sketch, dimension.references[0]), b = resolveDrawingPointReference(sketch, dimension.references[1]); return a && b ? measureDimension(dimension.kind, a, b) : null; };
 export const verifyDrawingDrivingDimensions = (sketch: DrawingSketchV2, ids: readonly string[]): readonly number[] | null => { const residuals = ids.map((id) => { const d = sketch.dimensions[id], value = d?.role === 'driving' ? measurement(sketch, d) : null; return d && value !== null ? Math.abs(value - d.value) : Infinity; }); return residuals.every((v) => Number.isFinite(v) && v <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? residuals : null; };
 export const verifyDrawingConstraints = (sketch: DrawingSketchV2, dimensionIds: readonly string[], geometricConstraintIds: readonly string[]): readonly number[] | null => {

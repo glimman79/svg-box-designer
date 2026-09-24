@@ -53,23 +53,57 @@ test('either free endpoint follows the pointer while its pivot stays and form ch
   }
 });
 
-test('endpoint form anchor is transient, gives identity at pointer-down, and supports both branches', () => {
+test('endpoint target has no form anchor, gives identity at pointer-down, and supports both orientation branches', () => {
   for (const bulge of [.5, -.5, 2, -2, 1, -1]) {
     const document = make(bulge), target = createArcEndpointDragTarget(document, 'arc', 'e');
     assert.ok(target); assert.deepEqual(solveDrawingDragCandidate(document, target, { x: 0, y: 0 }), document);
     const candidate = solveDrawingDragCandidate(document, target, { x: 0.25, y: Math.sign(bulge) * .15 });
     assert.ok(candidate); assert.equal(Math.sign(entity(candidate).bulge), Math.sign(bulge));
-    assert.equal('formAnchor' in entity(candidate), false);
+    assert.equal('formAnchor' in target, false); assert.equal('formAnchor' in entity(candidate), false);
     assert.equal(Object.values(sketch(candidate).geometricConstraints).length, 0);
   }
 });
 
-test('endpoint rejects zero chord and straight-branch crossing so caller can retain last valid', () => {
+test('endpoint rejects only chord collapse and remains valid across the former anchor half-plane', () => {
   const document = make(), target = createArcEndpointDragTarget(document, 'arc', 's');
   const valid = solveDrawingDragCandidate(document, target, { x: 1, y: 1 }); assert.ok(valid);
   assert.equal(solveDrawingDragCandidate(document, target, { x: 10, y: 0 }), null);
-  assert.equal(solveDrawingDragCandidate(document, target, { x: -10, y: -30 }), null);
-  assert.ok(entity(valid).bulge > 0);
+  const crossing = solveDrawingDragCandidate(document, target, { x: -10, y: -30 }); assert.ok(crossing);
+  assert.deepEqual(sketch(crossing).points.s, { id: 's', x: -10, y: -30 });
+  assert.deepEqual(sketch(crossing).points.e, sketch(document).points.e);
+  assert.ok(entity(valid).bulge > 0); assert.ok(entity(crossing).bulge > 0);
+});
+
+test('free endpoint reaches all quadrants, far chords, and short nondegenerate chords exactly', () => {
+  const document = make(), target = createArcEndpointDragTarget(document, 'arc', 'e');
+  for (const destination of [{ x: 6, y: 7 }, { x: -6, y: 7 }, { x: -6, y: -7 }, { x: 6, y: -7 }, { x: 200, y: -150 }, { x: 1e-4, y: -2e-4 }]) {
+    const candidate = solveDrawingDragCandidate(document, target, { x: destination.x - 10, y: destination.y });
+    assert.ok(candidate, `valid at ${JSON.stringify(destination)}`);
+    close(sketch(candidate).points.e.x, destination.x); close(sketch(candidate).points.e.y, destination.y);
+    assert.deepEqual(sketch(candidate).points.s, sketch(document).points.s);
+    assert.ok(resolved(candidate));
+  }
+});
+
+test('endpoint result is drag-start absolute, event-rate independent, and reversible', () => {
+  const document = make(2), target = createArcEndpointDragTarget(document, 'arc', 'e'), finalDelta = { x: -17, y: 13 };
+  const direct = solveDrawingDragCandidate(document, target, finalDelta); assert.ok(direct);
+  for (let step = 1; step <= 40; step += 1) assert.ok(solveDrawingDragCandidate(document, target, { x: finalDelta.x * step / 40, y: finalDelta.y * step / 40 }));
+  const denseFinal = solveDrawingDragCandidate(document, target, finalDelta); assert.deepEqual(denseFinal, direct);
+  const returned = solveDrawingDragCandidate(document, target, { x: 0, y: 0 }); assert.deepEqual(returned, document);
+  assert.equal(entity(returned).bulge, 2);
+});
+
+test('geometric form search evolves continuously from minor through semicircle to major', () => {
+  const document = make(0.5), target = createArcEndpointDragTarget(document, 'arc', 'e');
+  const destinations = [{ x: 20, y: 0 }, { x: 10, y: 10 }, { x: 5, y: 10 }, { x: 5, y: 5 }];
+  const bulges = destinations.map((destination) => {
+    const candidate = solveDrawingDragCandidate(document, target, { x: destination.x - 10, y: destination.y });
+    assert.ok(candidate); assert.ok(resolved(candidate)); return entity(candidate).bulge;
+  });
+  assert.ok(bulges[0] < 1); assert.ok(bulges[2] > 0.9 && bulges[2] < 1.1); assert.ok(bulges[3] > 1);
+  const semicircle = make(1), semicircleTarget = createArcEndpointDragTarget(semicircle, 'arc', 'e');
+  assert.ok(solveDrawingDragCandidate(semicircle, semicircleTarget, { x: 2, y: -3 }), '|bulge| = 1 is not a branch failure');
 });
 
 test('endpoint ownership is unique, selected-context disambiguated, and never iteration-ordered', () => {
