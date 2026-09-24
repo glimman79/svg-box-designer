@@ -44,3 +44,15 @@ export const circularAttachment = (resolved: ResolvedCircularSize, anchor: Drawi
   }
   return { x: center.x + Math.cos(angle) * resolved.radius, y: center.y + Math.sin(angle) * resolved.radius };
 };
+
+/** Derived annotation endpoints; neither endpoint becomes persisted sketch geometry. */
+export const circularDimensionEndpoints = (resolved: ResolvedCircularSize, anchor: DrawingPoint): Readonly<{ start: DrawingPoint; end: DrawingPoint }> => {
+  const end = circularAttachment(resolved, anchor);
+  if (resolved.mode === 'radius') return { start: resolved.entity.center, end };
+  const center = resolved.entity.center;
+  const dx = end.x - center.x, dy = end.y - center.y, length = Math.hypot(dx, dy) || 1;
+  return {
+    start: { x: center.x - dx / length * resolved.radius, y: center.y - dy / length * resolved.radius },
+    end,
+  };
+};

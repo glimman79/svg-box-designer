@@ -9,6 +9,7 @@ assert.match(css, /--drawing-dimension:\s*#2db65b;[\s\S]*--drawing-dimension-hov
 assert.match(workspace, /id=\{`dimension-arrow-\$\{state\}`\}/);
 assert.match(workspace, /className=\{`drawing-dimension-arrow is-\$\{state\}`\}/);
 assert.match(workspace, /markerStart=\{arrowMarker\} markerEnd=\{arrowMarker\}/);
+assert.match(workspace, /is-circular[\s\S]*markerStart=\{`url\(#dimension-arrow-\$\{arrowState\}\)`\} markerEnd=\{`url\(#dimension-arrow-\$\{arrowState\}\)`\}/, 'Circle and Arc dimensions reuse the shared two-ended CAD arrow markers');
 assert.match(workspace, /drawing-dimension-angle-arc[^>]*[\s\S]*markerStart=\{arrowMarker\} markerEnd=\{arrowMarker\}/, 'angle arc uses the same two-ended CAD arrow markers as linear dimensions');
 const geometryLayerIndex = workspace.indexOf('className="drawing-sketch-geometry"');
 const dimensionLayerIndex = workspace.indexOf('className="drawing-dimension-layer"');
