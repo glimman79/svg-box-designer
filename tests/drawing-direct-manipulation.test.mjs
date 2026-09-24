@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-direct-manipulation/drawingTypes.js';
-import { applyDrawingPointMoves, pointIdFromHit, solveDrawingDragCandidate, validateDrivingDimensions } from '../.test-build/drawing-direct-manipulation/drawingDirectManipulation.js';
+import { pointIdFromHit, solveDrawingDragCandidate, validateDrivingDimensions } from '../.test-build/drawing-direct-manipulation/drawingDirectManipulation.js';
 import { transactDrawingDocument, EMPTY_DRAWING_HISTORY, undoDrawingDocument, redoDrawingDocument } from '../.test-build/drawing-direct-manipulation/drawingHistory.js';
 
 const line = (id, startPointId, endPointId) => ({ id, type: 'line', startPointId, endPointId });

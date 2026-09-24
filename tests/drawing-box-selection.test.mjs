@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import test from 'node:test';
 import {
   applyDrawingBoxSelection, drawingLineQualifiesForRect, drawingSelectionMode,
-  normalizeDrawingSelectionRect, selectDrawingGeometryInRect,
+  normalizeDrawingSelectionRect, selectDrawingEntitiesInRect,
 } from '../.test-build/drawing-box-selection/drawingBoxSelection.js';
 
 const line = (id, start, end) => ({ id, type: 'line', startPointId: `${id}:a`, endPointId: `${id}:b`, start, end });
@@ -42,8 +42,8 @@ test('direction is derived continuously and final qualification uses the current
   assert.equal(drawingSelectionMode(5, 1), 'crossing');
   assert.equal(drawingSelectionMode(5, 7), 'window');
   const crossingOnly = line('crossing-only', { x: -2, y: 5 }, { x: 5, y: 5 });
-  assert.deepEqual(selectDrawingGeometryInRect([crossingOnly], rect, drawingSelectionMode(10, 0)), [{ kind: 'line', lineId: 'crossing-only' }]);
-  assert.deepEqual(selectDrawingGeometryInRect([crossingOnly], rect, drawingSelectionMode(0, 10)), []);
+  assert.deepEqual(selectDrawingEntitiesInRect([crossingOnly], rect, drawingSelectionMode(10, 0)), [{ kind: 'line', lineId: 'crossing-only' }]);
+  assert.deepEqual(selectDrawingEntitiesInRect([crossingOnly], rect, drawingSelectionMode(0, 10)), []);
 });
 
 test('replacement and ordered Ctrl toggle preserve point selections', () => {
