@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCircularSizeDimension, displayedDimensionMeasurement, formatCircularDimension, appendDimension, moveDimensionPlacement, deleteEntityWithDependentDimensions } from '../.test-build/drawing-circular-dimension/drawingDimension.js';
-import { resolveCircularSize, circularAttachment } from '../.test-build/drawing-circular-dimension/drawingCircularSize.js';
+import { resolveCircularSize, circularAttachment, circularDimensionEndpoints } from '../.test-build/drawing-circular-dimension/drawingCircularSize.js';
 import { solveDrawingDimensionEdit } from '../.test-build/drawing-circular-dimension/drawingConstraintSolver.js';
 import { migrateDrawingDocument } from '../.test-build/drawing-circular-dimension/drawingTypes.js';
 
@@ -46,6 +46,22 @@ test('radial placement move changes presentation only and finite Arc attachment 
   const moved = moveDimensionPlacement(doc, 'd', { kind: 'radial', anchor: { x: 100, y: 100 } }); assert.equal(JSON.stringify({ points: moved.sketches.s.points, entities: moved.sketches.s.entities }), geometry);
   const resolved = resolveCircularSize(moved.sketches.s, 'arc'), attachment = circularAttachment(resolved, { x: 100, y: 100 });
   const endpointDistances = [resolved.entity.start, resolved.entity.end].map((p) => Math.hypot(p.x - attachment.x, p.y - attachment.y)); assert.ok(Math.min(...endpointDistances) < 1e-8 || Math.abs(Math.hypot(attachment.x-resolved.entity.center.x, attachment.y-resolved.entity.center.y)-resolved.radius)<1e-8);
+});
+
+test('Circle diameter presentation derives opposite circumference endpoints through center', () => {
+  const resolved = resolveCircularSize(document().sketches.s, 'circle');
+  const endpoints = circularDimensionEndpoints(resolved, { x: 12, y: 3 });
+  assert.deepEqual(endpoints, { start: { x: -3, y: 3 }, end: { x: 7, y: 3 } });
+  assert.deepEqual({ x: (endpoints.start.x + endpoints.end.x) / 2, y: (endpoints.start.y + endpoints.end.y) / 2 }, { x: resolved.entity.center.x, y: resolved.entity.center.y });
+});
+
+test('Arc radius presentation keeps its center start and finite Arc attachment end', () => {
+  const resolved = resolveCircularSize(document().sketches.s, 'arc');
+  const endpoints = circularDimensionEndpoints(resolved, { x: 100, y: 100 });
+  assert.deepEqual(endpoints.start, resolved.entity.center);
+  assert.deepEqual(endpoints.end, circularAttachment(resolved, { x: 100, y: 100 }));
+  const endpointDistances = [resolved.entity.start, resolved.entity.end].map((point) => Math.hypot(point.x - endpoints.end.x, point.y - endpoints.end.y));
+  assert.ok(Math.min(...endpointDistances) < 1e-8, 'an anchor outside the finite sweep clamps to an Arc endpoint');
 });
 
 test('deleting geometry removes dependent circular dimension', () => {

@@ -35,15 +35,19 @@ assert.doesNotMatch(workspace, /setDimensionDraft\(dimension\.value\.toString\(\
 assert.match(workspace, /if \(dimension\.role === 'reference'\) return;/, 'reference values cannot enter numeric editing');
 assert.match(css, /drawing-dimension-editor[^}]*font-size: 17px;[^}]*font-weight: 400;/, 'editor exceeds the painted annotation silhouette with normal weight');
 assert.match(css, /drawing-dimension-editor[^}]*color: #137a3e;/, 'editor uses the selected Dimension green');
-assert.match(css, /drawing-dimension-value-hit\.is-editable \{ cursor: pointer; \}/, 'only editable value hit targets show the hand cursor');
+assert.match(css, /drawing-dimension-value-hit \{ fill: transparent; pointer-events: all; \}/, 'value hit targets remain interaction-capable without imposing a separate cursor language');
 assert.match(css, /is-line-target \{ cursor: default; \}[\s\S]*is-point-target \{ cursor: default; \}/, 'Line and endpoint targets keep the normal arrow');
+assert.match(css, /has-dimension-cursor\.is-curve-target \{ cursor: default; \}/, 'Circle and Arc candidates use the existing Dimension pointer feedback');
+assert.match(workspace, /resolvedCircles\.map[\s\S]*dimensionPreselection\?\.kind === 'curve'[\s\S]*is-dimension-preselected/, 'Circle candidates use shared Dimension geometry preselection');
+assert.match(workspace, /resolvedArcs\.map[\s\S]*dimensionPreselection\?\.kind === 'curve'[\s\S]*is-dimension-preselected/, 'finite Arc candidates use shared Dimension geometry preselection');
+assert.match(workspace, /if \(circular\) \{ setDimensionTool\(\{ phase: 'placementPreview'[\s\S]*setDimensionPreselection\(null\)/, 'circular acquisition clears hover feedback as placement begins');
 
 const marker = workspace.match(/<marker key=\{state\} id=\{`dimension-arrow-\$\{state\}`\}[^>]*>/)?.[0] ?? '';
 assert.match(marker, /viewBox="0 0 7 7"/);
 assert.match(marker, /refX="7" refY="3\.5"/, 'marker reference is the actual arrow tip');
 assert.match(marker, /orient="auto-start-reverse"/, 'one tip geometry serves both endpoints');
-assert.match(workspace, /<path d="M 7 3\.5 L 0 0 L 0 7 Z" fill=\{color\} stroke="none" \/>/, 'arrow receives an explicit browser-safe state color');
+assert.match(css, /drawing-dimension-arrow\.is-normal path \{ fill: var\(--drawing-dimension\); \}/, 'arrow receives a browser-safe state color from the shared marker class');
 assert.doesNotMatch(css, /context-stroke/, 'arrow rendering does not depend on context paint inheritance');
-assert.match(css, /\.drawing-dimension \{ color: #2db65b; \}/, 'normal green is brighter than D2.5a3');
+assert.match(css, /--drawing-dimension: #2db65b;/, 'normal green is brighter than D2.5a3');
 
 console.log('drawing Dimension tool lifecycle and polish tests passed');

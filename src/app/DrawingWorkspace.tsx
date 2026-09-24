@@ -26,7 +26,7 @@ import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, un
 import { deriveEntityDefiningPointIds, pointIdForLineEndpoint, removeEntityAndOrphans, resolveActiveSketchLines, resolveArc, resolveCircle, resolveLine } from './drawingTopology.js';
 import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcEndpointReference, resolveArcPreview, updateArcPreview, type ArcToolInteraction } from './drawingArcTool.js';
 import { drawingArcPath } from './drawingArcGeometry.js';
-import { circularAttachment, resolveCircularSize } from './drawingCircularSize.js';
+import { circularDimensionEndpoints, resolveCircularSize } from './drawingCircularSize.js';
 import { distanceToArc } from './drawingArcGeometry.js';
 import { createArcCenterDragTarget, createArcEndpointDragTarget, createArcRadiusDragTarget, createCircleRadiusDragTarget, DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, resolveArcEndpointOwner, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
@@ -688,6 +688,7 @@ export function DrawingWorkspace({
     setDrawingSnap(null);
     drawingSnapRef.current = null;
     setCadCursor(null);
+    setDimensionPreselection(null);
     setToolLifecycle(activateDrawingTool('select'));
     setDimensionTool({ phase: 'inactive' });
   };
@@ -871,7 +872,7 @@ export function DrawingWorkspace({
           const entity = (activeSketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[reference.entityId];
           if (entity?.type === 'circle' || entity?.type === 'arc') {
             const circular = createCircularSizeDimension(activeSketch, entity.id, point, 'preview');
-            if (circular) setDimensionTool({ phase: 'placementPreview', dimension: circular, cursor: point });
+            if (circular) { setDimensionTool({ phase: 'placementPreview', dimension: circular, cursor: point }); setDimensionPreselection(null); }
           } else {
             const resolved = entity?.type === 'line' ? resolveLine(activeSketch, entity) : null;
             if (resolved) setDimensionTool({ phase: 'lineTargetSelected', line: reference, dimension: createLineDimension(resolved, chooseLineDimensionKind(resolved, point, undefined, viewport.width / viewBox.width), point, 'preview'), cursor: point });
@@ -1330,11 +1331,11 @@ export function DrawingWorkspace({
               ))}
               {resolvedCircles.map((entity) => <circle key={entity.id} data-sketch-circle-id={entity.id}
                 data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'circle', circleId: entity.id })}
-                className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'circle', circleId: entity.id }))}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'circle', circleId: entity.id })}`}
+                className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'circle', circleId: entity.id }))}${dimensionPreselection?.kind === 'curve' && dimensionPreselection.entityId === entity.id ? ' is-dimension-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'circle', circleId: entity.id })}`}
                 cx={entity.center.x} cy={entity.center.y} r={entity.radius} fill="none" vectorEffect="non-scaling-stroke" />)}
               {resolvedArcs.map((entity) => <path key={entity.id} data-sketch-arc-id={entity.id}
                 data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'arc', arcId: entity.id })}
-                className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'arc', arcId: entity.id }))}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'arc', arcId: entity.id })}${activeArcDragId === entity.id ? ' is-geometry-dragging' : ''}`}
+                className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'arc', arcId: entity.id }))}${dimensionPreselection?.kind === 'curve' && dimensionPreselection.entityId === entity.id ? ' is-dimension-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'arc', arcId: entity.id })}${activeArcDragId === entity.id ? ' is-geometry-dragging' : ''}`}
                 d={drawingArcPath(entity)} fill="none" vectorEffect="non-scaling-stroke" />)}
               {resolvedArcs.map((entity) => <circle key={`center:${entity.id}`} className="drawing-circular-center drawing-entity-defining-point"
                 cx={entity.center.x} cy={entity.center.y} r={2.5 / pixelsPerMm} pointerEvents="none" aria-hidden="true" />)}
@@ -1420,16 +1421,14 @@ export function DrawingWorkspace({
                   const resolved = activeSketch ? resolveCircularSize(activeSketch, dimension.references[0].entityId) : null;
                   const measurement = activeSketch ? displayedDimensionMeasurement(activeSketch, dimension) : null;
                   if (!resolved || measurement === null) return null;
-                  const anchor = dimension.placement.anchor, attachment = circularAttachment(resolved, anchor), center = resolved.entity.center;
-                  const dx = attachment.x - center.x, dy = attachment.y - center.y, length = Math.hypot(dx, dy) || 1;
-                  const opposite = { x: center.x - dx / length * resolved.radius, y: center.y - dy / length * resolved.radius };
-                  const start = dimension.mode === 'diameter' ? opposite : center, label = formatCircularDimension(measurement, dimension.mode, dimension.role);
+                  const anchor = dimension.placement.anchor, endpoints = circularDimensionEndpoints(resolved, anchor);
+                  const start = endpoints.start, attachment = endpoints.end, label = formatCircularDimension(measurement, dimension.mode, dimension.role);
                   const selected = dimension.id === selectedDimensionId, editing = dimension.id === editingDimensionId;
                   const arrowState = selected || editing || dimensionDrag?.id === dimension.id ? 'active' : dimension.id === hoveredDimensionId ? 'hover' : 'normal';
                   const beginDimensionEdit = () => { setSelectedDimensionId(dimension.id); if (dimension.role === 'reference') return; setEditingDimensionId(dimension.id); setDimensionDraft(formatDimensionEditValue(dimension.value)); setDimensionEditError(null); };
                   const valueHitWidth = (label.length * 6 + 12) / pixelsPerMm;
                   return <g key={dimension.id} className={`drawing-dimension is-${dimension.role} is-circular${selected ? ' is-selected' : ''}${dimension.id === hoveredDimensionId ? ' is-hovered' : ''}${dimension.id === 'preview' ? ' is-preview' : ''}`}>
-                    <line className="drawing-dimension-line" markerStart={`url(#dimension-arrow-${arrowState})`} x1={start.x} y1={start.y} x2={attachment.x} y2={attachment.y} />
+                    <line className="drawing-dimension-line" markerStart={`url(#dimension-arrow-${arrowState})`} markerEnd={`url(#dimension-arrow-${arrowState})`} x1={start.x} y1={start.y} x2={attachment.x} y2={attachment.y} />
                     <line className="drawing-dimension-line drawing-dimension-leader" x1={attachment.x} y1={attachment.y} x2={anchor.x} y2={anchor.y} />
                     <text className="drawing-dimension-value" x={anchor.x} y={anchor.y - 4 / pixelsPerMm} textAnchor="middle" style={{ fontSize: dimensionScreenPixelsToModelUnits(DIMENSION_TEXT_SIZE_PX, pixelsPerMm) }}>{label}</text>
                     {dimension.id !== 'preview' && <line className="drawing-dimension-hit drawing-interactive-hit" x1={start.x} y1={start.y} x2={anchor.x} y2={anchor.y} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => beginDimensionAnnotationDrag(event, dimension)} />}
