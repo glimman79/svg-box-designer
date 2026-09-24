@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { getGeometryConstraintVisualState, geometryConstraintVisualClass } from '../.test-build/drawing-geometry-visual-state/drawingGeometryVisualState.js';
+import { analyzeDrawingEntityMobility } from '../.test-build/drawing-geometry-visual-state/drawingConstraintAnalysis.js';
 
 const point = (id, x, y) => ({ id, x, y });
 const line = (id, startPointId, endPointId) => ({ id, type: 'line', startPointId, endPointId });
@@ -60,6 +61,54 @@ const pointOnCircle = {
   },
 };
 assert.equal(getGeometryConstraintVisualState(pointOnCircle, { kind: 'circle', circleId: 'circle' }), 'FREE', 'a point-on-Circle record does not classify the Circle by mere constraint presence');
+
+const axisDimension = (id, kind, reference, role = 'driving') => ({
+  id, kind, role, value: 1, references: [origin, reference], placement: { kind: 'linear', offset: 5 },
+});
+const circularDimension = (id, entityId, mode, role = 'driving') => ({
+  id, kind: 'CIRCULAR_SIZE', role, mode, value: 5,
+  references: [{ kind: 'entity', entityId }], placement: { kind: 'radial', anchor: { x: 0, y: -10 } },
+});
+const arcBase = (dimensions = {}, extraEntities = {}) => ({
+  id: 'arc-sketch', name: 'Arc',
+  points: { p1: point('p1', -5, 2), p2: point('p2', 5, 4) },
+  entities: { arc: { id: 'arc', type: 'arc', startPointId: 'p1', endPointId: 'p2', bulge: .5 }, ...extraEntities },
+  entityOrder: ['arc', ...Object.keys(extraEntities)], dimensions, dimensionOrder: Object.keys(dimensions),
+  geometricConstraints: {}, geometricConstraintOrder: [],
+});
+const p1 = pointReference('p1'), p2 = pointReference('p2');
+const endpointAxes = {
+  p1x: axisDimension('p1x', 'HORIZONTAL_DISTANCE', p1), p1y: axisDimension('p1y', 'VERTICAL_DISTANCE', p1),
+  p2x: axisDimension('p2x', 'HORIZONTAL_DISTANCE', p2), p2y: axisDimension('p2y', 'VERTICAL_DISTANCE', p2),
+};
+assert.equal(getGeometryConstraintVisualState(arcBase(), { kind: 'arc', arcId: 'arc' }), 'FREE', 'a free Arc retains all five canonical freedoms');
+assert.equal(getGeometryConstraintVisualState(arcBase({ radius: circularDimension('radius', 'arc', 'radius') }), { kind: 'arc', arcId: 'arc' }), 'CONSTRAINED', 'Radius alone leaves an Arc under-constrained');
+assert.equal(getGeometryConstraintVisualState(arcBase({ p1x: endpointAxes.p1x, p1y: endpointAxes.p1y }), { kind: 'arc', arcId: 'arc' }), 'CONSTRAINED', 'locking P1 leaves P2 and bulge free');
+assert.equal(getGeometryConstraintVisualState(arcBase(endpointAxes), { kind: 'arc', arcId: 'arc' }), 'CONSTRAINED', 'locking both endpoints leaves bulge free');
+const lockedArcDimensions = { ...endpointAxes, radius: circularDimension('radius', 'arc', 'radius') };
+assert.equal(getGeometryConstraintVisualState(arcBase(lockedArcDimensions), { kind: 'arc', arcId: 'arc' }), 'FULLY_LOCKED', 'four endpoint axes plus independent Radius lock the five canonical Arc variables');
+
+const browserCase = arcBase(lockedArcDimensions, {
+  'connected-arc': { id: 'connected-arc', type: 'arc', startPointId: 'p1', endPointId: 'p2', bulge: -.25 },
+});
+assert.deepEqual(analyzeDrawingEntityMobility(browserCase, 'arc'), { unconstrainedDegreesOfFreedom: 5, degreesOfFreedom: 0 }, 'the visual state agrees with zero canonical Arc mobility');
+assert.equal(getGeometryConstraintVisualState(browserCase, { kind: 'arc', arcId: 'arc' }), 'FULLY_LOCKED', 'a free scalar elsewhere in the component is not misattributed to the already locked Arc');
+const redundantP2 = { ...browserCase, dimensions: { ...browserCase.dimensions, redundant: axisDimension('redundant', 'ALIGNED_DISTANCE', p2, 'reference') }, dimensionOrder: [...browserCase.dimensionOrder, 'redundant'] };
+assert.equal(getGeometryConstraintVisualState(redundantP2, { kind: 'arc', arcId: 'arc' }), 'FULLY_LOCKED', 'a redundant/reference P2 Dimension does not cause the fully constrained transition');
+
+const arcCenter = { kind: 'derivedPoint', entityId: 'arc', role: 'center' };
+const centerLocked = arcBase({
+  p1x: endpointAxes.p1x, p1y: endpointAxes.p1y, p2x: endpointAxes.p2x,
+  centerY: axisDimension('centerY', 'VERTICAL_DISTANCE', arcCenter), radius: circularDimension('radius', 'arc', 'radius'),
+});
+assert.equal(getGeometryConstraintVisualState(centerLocked, { kind: 'arc', arcId: 'arc' }), 'FULLY_LOCKED', 'a derived-center equation contributes rank over endpoints and bulge without creating center DOF');
+const redundantDriving = arcBase({ ...endpointAxes, aligned: axisDimension('aligned', 'ALIGNED_DISTANCE', p2) });
+assert.equal(getGeometryConstraintVisualState(redundantDriving, { kind: 'arc', arcId: 'arc' }), 'CONSTRAINED', 'five records with a rank-redundant equation cannot replace the free bulge');
+
+const radiusOnlyCircle = { ...circleSketch, dimensions: { diameter: circularDimension('diameter', 'circle', 'diameter') }, dimensionOrder: ['diameter'] };
+assert.equal(getGeometryConstraintVisualState(radiusOnlyCircle, { kind: 'circle', circleId: 'circle' }), 'CONSTRAINED', 'Circle diameter locks radius but leaves center free');
+const lockedCircle = { ...centerLockedCircle, dimensions: { ...centerLockedCircle.dimensions, diameter: circularDimension('diameter', 'circle', 'diameter') }, dimensionOrder: [...centerLockedCircle.dimensionOrder, 'diameter'] };
+assert.equal(getGeometryConstraintVisualState(lockedCircle, { kind: 'circle', circleId: 'circle' }), 'FULLY_LOCKED', 'Circle center axes plus diameter lock its three canonical variables');
 assert.equal(geometryConstraintVisualClass('FULLY_LOCKED'), 'geometry-fully-locked');
 assert.deepEqual(
   ['FREE', 'CONSTRAINED', 'FULLY_LOCKED'].map(geometryConstraintVisualClass),
