@@ -1,5 +1,5 @@
 import { DRAWING_CONSTRAINT_TOLERANCE_MM, minimizeDrawingVariableObjective, solveDrawingComponentDrag, solveDrawingVariableTarget } from './drawingConstraintSolver.js';
-import { deriveArcThroughThreePoints, projectPointToArc, resolveArcFromBulge } from './drawingArcGeometry.js';
+import { resolveArcFromBulge } from './drawingArcGeometry.js';
 import { arcBulgeSolverVariable, circleRadiusSolverVariable } from './drawingSolverVariables.js';
 import { displayedDimensionMeasurement, measureDimension, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
 import { pointIdForLineEndpoint } from './drawingTopology.js';
@@ -11,9 +11,9 @@ export type DrawingGeometryTarget =
   | Readonly<{ kind: 'point'; pointId: string }>
   | Readonly<{ kind: 'line'; lineId: string }>
   | Readonly<{ kind: 'arc-endpoint'; entityId: string; draggedPointId: string; pivotPointId: string; initialBulge: number }>
+  | Readonly<{ kind: 'arc-radius'; entityId: string; radialGrabOffset: number }>
   | Readonly<{ kind: 'rigid-translation'; entityId: string; pointIds: readonly string[]; preservedScalar: 'arc-bulge' }>
-  | Readonly<{ kind: 'entity-scalar'; entityId: string; scalar: 'circle-radius'; radialGrabOffset: number }>
-  | Readonly<{ kind: 'entity-scalar'; entityId: string; scalar: 'arc-bulge'; formGrabOffset: DrawingPoint; initialBulge: number }>;
+  | Readonly<{ kind: 'entity-scalar'; entityId: string; scalar: 'circle-radius'; radialGrabOffset: number }>;
 
 /** Converts a circumference hit into a semantic scalar target. The stored
  * offset makes the pointer-down pose an identity mapping despite hit slop. */
@@ -67,17 +67,16 @@ export const resolveArcEndpointOwner = (document: DrawingDocumentV2, pointId: st
   return selectedEntityIds.length === 0 ? incident[0].id : null;
 };
 
-/** Resolve hit slop against the finite directed Arc. The vector from the exact
- * curve grab Q0 to pointer M0 is retained so delta zero reproduces b0. */
-export const createArcBulgeDragTarget = (document: DrawingDocumentV2, arcId: string, pointer: DrawingPoint): DrawingGeometryTarget | null => {
+/** Converts an Arc body hit into a radial interaction. The hit-slop offset
+ * makes the pointer-down pose an identity while the endpoints remain canonical. */
+export const createArcRadiusDragTarget = (document: DrawingDocumentV2, arcId: string, pointer: DrawingPoint): DrawingGeometryTarget | null => {
   const sketch = document.sketches[document.activeSketchId];
   const entity = sketch ? (sketch.entities as unknown as Record<string, DrawingEntity>)[arcId] : undefined;
   if (entity?.type !== 'arc') return null;
   const arc = resolveArcFromBulge(entity, sketch.points[entity.startPointId], sketch.points[entity.endPointId]);
   if (!arc) return null;
-  const grab = projectPointToArc(pointer, arc);
-  return { kind: 'entity-scalar', entityId: entity.id, scalar: 'arc-bulge',
-    formGrabOffset: { x: pointer.x - grab.x, y: pointer.y - grab.y }, initialBulge: entity.bulge };
+  return { kind: 'arc-radius', entityId: entity.id,
+    radialGrabOffset: Math.hypot(pointer.x - arc.center.x, pointer.y - arc.center.y) - arc.radius };
 };
 
 export const pointIdFromHit = (document: DrawingDocumentV2, lineId: string, endpoint: 'start' | 'end'): string | null => {
@@ -126,6 +125,26 @@ export const validateDrivingDimensions = (document: DrawingDocumentV2, dimension
 export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: DrawingGeometryTarget, delta: DrawingPoint, startPointer?: DrawingPoint): DrawingDocumentV2 | null => {
   const sketch = document.sketches[document.activeSketchId];
   if (!sketch || !Number.isFinite(delta.x) || !Number.isFinite(delta.y)) return null;
+  if (target.kind === 'arc-radius') {
+    if (delta.x === 0 && delta.y === 0) return document;
+    if (!startPointer) return null;
+    const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[target.entityId];
+    if (entity?.type !== 'arc') return null;
+    const arc = resolveArcFromBulge(entity, sketch.points[entity.startPointId], sketch.points[entity.endPointId]);
+    if (!arc || !Number.isFinite(arc.radius) || arc.radius <= 0) return null;
+    const pointer = { x: startPointer.x + delta.x, y: startPointer.y + delta.y };
+    const desiredRadius = Math.hypot(pointer.x - arc.center.x, pointer.y - arc.center.y) - target.radialGrabOffset;
+    if (!Number.isFinite(desiredRadius) || desiredRadius <= 0) return null;
+    const scale = desiredRadius / arc.radius;
+    const desiredStart = { x: arc.center.x + (arc.start.x - arc.center.x) * scale, y: arc.center.y + (arc.start.y - arc.center.y) * scale };
+    const desiredEnd = { x: arc.center.x + (arc.end.x - arc.center.x) * scale, y: arc.center.y + (arc.end.y - arc.center.y) * scale };
+    if (Math.hypot(desiredEnd.x - desiredStart.x, desiredEnd.y - desiredStart.y) <= DRAWING_CONSTRAINT_TOLERANCE_MM) return null;
+    const solved = solveDrawingComponentDrag(sketch, {
+      [entity.startPointId]: desiredStart,
+      [entity.endPointId]: desiredEnd,
+    }, { directPointIds: [entity.startPointId, entity.endPointId] });
+    return solved ? { ...document, sketches: { ...document.sketches, [sketch.id]: solved } } : null;
+  }
   if (target.kind === 'arc-endpoint') {
     if (delta.x === 0 && delta.y === 0) return document;
     const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[target.entityId];
@@ -171,24 +190,10 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
     if (!startPointer) return null;
     const pointer = { x: startPointer.x + delta.x, y: startPointer.y + delta.y };
     const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[target.entityId];
-    let variable, desired: number;
-    if (target.scalar === 'circle-radius') {
-      const center = entity?.type === 'circle' ? sketch.points[entity.centerPointId] : null;
-      if (!center) return null;
-      variable = circleRadiusSolverVariable(entity.id);
-      desired = Math.hypot(pointer.x - center.x, pointer.y - center.y) - target.radialGrabOffset;
-    } else {
-      if (entity?.type !== 'arc') return null;
-      const start = sketch.points[entity.startPointId], end = sketch.points[entity.endPointId];
-      if (!start || !end) return null;
-      const form = { x: pointer.x - target.formGrabOffset.x, y: pointer.y - target.formGrabOffset.y };
-      const candidate = deriveArcThroughThreePoints(start, end, form, entity.id, entity.startPointId, entity.endPointId);
-      // The chord is the singular branch boundary. Never cross it implicitly;
-      // the caller keeps its last valid candidate instead.
-      if (!candidate || Math.sign(candidate.bulge) !== Math.sign(target.initialBulge)) return null;
-      variable = arcBulgeSolverVariable(entity.id);
-      desired = delta.x === 0 && delta.y === 0 ? target.initialBulge : candidate.bulge;
-    }
+    const center = entity?.type === 'circle' ? sketch.points[entity.centerPointId] : null;
+    if (!center) return null;
+    const variable = circleRadiusSolverVariable(entity.id);
+    const desired = Math.hypot(pointer.x - center.x, pointer.y - center.y) - target.radialGrabOffset;
     const solved = solveDrawingVariableTarget(sketch, { variable, value: desired });
     return solved ? { ...document, sketches: { ...document.sketches, [sketch.id]: solved } } : null;
   }
