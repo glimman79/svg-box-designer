@@ -90,6 +90,7 @@ export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTop
     for (const dimension of Object.values(sketch.dimensions) as DrawingDimension[]) for (const reference of dimension.references) {
       if (reference.kind === 'datum') { if (reference.datum !== 'ORIGIN') errors.push(`Unsupported datum reference: ${dimension.id}`); continue; }
       if (reference.kind === 'sketchPoint') { if (!sketch.points[reference.pointId]) errors.push(`Dimension reference cannot resolve: ${dimension.id}`); continue; }
+      if (reference.kind === 'derivedPoint') { const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[reference.entityId]; if (reference.role !== 'center' || entity?.type !== 'arc' || !resolveArc(sketch, entity)) errors.push(`Dimension reference cannot resolve: ${dimension.id}`); continue; }
       const line = sketch.entities[reference.entityId]; if (!line || reference.kind === 'point' && (line.type !== 'line' || !sketch.points[pointIdForLineEndpoint(line, reference.point)])) errors.push(`Dimension reference cannot resolve: ${dimension.id}`);
     }
     for (const constraint of Object.values(sketch.geometricConstraints ?? {})) {

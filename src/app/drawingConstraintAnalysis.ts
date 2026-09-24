@@ -2,6 +2,7 @@ import { pointIdForLineEndpoint } from './drawingTopology.js';
 import type { DrawingDimension, DrawingEntity, DrawingGeometricConstraint, DrawingPoint, DrawingPointReference, DrawingSketchV2 } from './drawingTypes.js';
 import { angleIsOnDrawingArc, finiteArcConstraintResidual, resolveArcFromBulge } from './drawingArcGeometry.js';
 import { arcBulgeSolverVariable, circleRadiusSolverVariable, drawingSolverVariableKey, type DrawingSolverVariable } from './drawingSolverVariables.js';
+import { drawingPointReferenceDependencies, measureDimension, measurePointToLine, resolveDimensionLineReference, resolveDrawingPointReference } from './drawingDimension.js';
 
 export const DRAWING_CONSTRAINT_RANK_TOLERANCE = Object.freeze({ absolute: 1e-10, relative: 1e-9 });
 export const DRAWING_ORIGIN_CONSTRAINT_KEY = 'datum:ORIGIN';
@@ -13,6 +14,7 @@ export type DrawingConstraintAnalysis = Readonly<{ components: readonly DrawingC
 export const constraintPointKey = (sketch: DrawingSketchV2, reference: DrawingPointReference): string | null => {
   if (reference.kind === 'datum') return reference.datum === 'ORIGIN' ? DRAWING_ORIGIN_CONSTRAINT_KEY : null;
   if (reference.kind === 'sketchPoint') return sketch.points[reference.pointId] ? reference.pointId : null;
+  if (reference.kind === 'derivedPoint') return null;
   const line = sketch.entities[reference.entityId];
   if (line?.type !== 'line') return null;
   const pointId = pointIdForLineEndpoint(line, reference.point);
@@ -39,11 +41,15 @@ export const constraintEquation = (sketch: DrawingSketchV2, dimension: DrawingDi
   if (dimension.kind === 'POINT_TO_LINE_DISTANCE') {
     const point = constraintPointKey(sketch, dimension.references[0]);
     const line = sketch.entities[dimension.references[1].entityId];
-    if (!point || !line || !sketch.points[line.startPointId] || !sketch.points[line.endPointId] || line.startPointId === line.endPointId) return null;
-    return { dimension, pointKeys: [point, line.startPointId, line.endPointId] };
+    if (!resolveDrawingPointReference(sketch, dimension.references[0]) || !line || !sketch.points[line.startPointId] || !sketch.points[line.endPointId] || line.startPointId === line.endPointId) return null;
+    const deps = drawingPointReferenceDependencies(sketch, dimension.references[0]);
+    return { dimension, pointKeys: [...new Set([...(point ? [point] : deps.filter((v) => v.kind === 'point-axis').map((v) => v.pointId)), line.startPointId, line.endPointId])], scalarVariables: deps.filter((v) => v.kind === 'entity-scalar') };
   }
   const a = constraintPointKey(sketch, dimension.references[0]), b = constraintPointKey(sketch, dimension.references[1]);
-  return a && b && a !== b ? { dimension, pointKeys: [a, b] } : null;
+  if (!resolveDrawingPointReference(sketch, dimension.references[0]) || !resolveDrawingPointReference(sketch, dimension.references[1])) return null;
+  const deps = [...drawingPointReferenceDependencies(sketch, dimension.references[0]), ...drawingPointReferenceDependencies(sketch, dimension.references[1])];
+  const pointKeys = [...new Set([...(a ? [a] : []), ...(b ? [b] : []), ...deps.filter((v) => v.kind === 'point-axis').map((v) => v.pointId)])];
+  return pointKeys.length && !(a && b && a === b) ? { dimension, pointKeys, scalarVariables: deps.filter((v) => v.kind === 'entity-scalar') } : null;
 };
 
 export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricConstraint: DrawingGeometricConstraint): DrawingConstraintEquation | null => {
@@ -281,6 +287,33 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
     [a0, a1, b0, b1].forEach((key, i) => set(key, result.gradient[i * 2], result.gradient[i * 2 + 1])); return row;
   }
   const dimension = equation.dimension!;
+  if (dimension.references.some((reference) => reference.kind === 'derivedPoint')) {
+    const measure = (candidate: DrawingSketchV2): number => {
+      if (dimension.kind === 'POINT_TO_LINE_DISTANCE') {
+        const point = resolveDrawingPointReference(candidate, dimension.references[0]), line = resolveDimensionLineReference(candidate, dimension.references[1]);
+        return point && line ? measurePointToLine(point, line) ?? NaN : NaN;
+      }
+      const references = dimension.references as readonly [DrawingPointReference, DrawingPointReference];
+      const a = resolveDrawingPointReference(candidate, references[0]), b = resolveDrawingPointReference(candidate, references[1]);
+      return a && b ? measureDimension(dimension.kind, a, b) : NaN;
+    };
+    const variables = [...equation.pointKeys.flatMap((pointId) => ([{ kind: 'point-axis', pointId, axis: 'x' }, { kind: 'point-axis', pointId, axis: 'y' }] as DrawingSolverVariable[])), ...(equation.scalarVariables ?? [])];
+    for (const variable of variables) {
+      const pointIndex = variable.kind === 'point-axis' ? pointOrder.indexOf(variable.pointId) * 2 + (variable.axis === 'x' ? 0 : 1) : -1;
+      const scalarIndex = scalarOrder.findIndex((item) => drawingSolverVariableKey(item) === drawingSolverVariableKey(variable));
+      const entity = variable.kind === 'entity-scalar' ? (sketch.entities as unknown as Record<string, DrawingEntity>)[variable.entityId] : null;
+      const value = variable.kind === 'point-axis' ? sketch.points[variable.pointId]?.[variable.axis] : entity?.type === 'arc' ? entity.bulge : entity?.type === 'circle' ? entity.radius : NaN;
+      if (!Number.isFinite(value)) return null;
+      const h = 1e-6 * Math.max(1, Math.abs(value));
+      const candidate = (next: number): DrawingSketchV2 => variable.kind === 'point-axis'
+        ? { ...sketch, points: { ...sketch.points, [variable.pointId]: { ...sketch.points[variable.pointId], [variable.axis]: next } } }
+        : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, [variable.scalar === 'arc-bulge' ? 'bulge' : 'radius']: next } } as DrawingSketchV2['entities'] };
+      const derivative = (measure(candidate(value + h)) - measure(candidate(value - h))) / (2 * h);
+      if (!Number.isFinite(derivative)) return null;
+      if (pointIndex >= 0) row[pointIndex] = derivative; else if (scalarIndex >= 0) row[pointOrder.length * 2 + scalarIndex] = derivative;
+    }
+    return row;
+  }
   if (dimension.kind === 'CIRCULAR_SIZE') {
     const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[dimension.references[0].entityId];
     const measure = (candidate: DrawingSketchV2) => {

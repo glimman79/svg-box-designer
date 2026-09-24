@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCircularSizeDimension, displayedDimensionMeasurement, formatCircularDimension, appendDimension, moveDimensionPlacement, deleteEntityWithDependentDimensions } from '../.test-build/drawing-circular-dimension/drawingDimension.js';
+import { createCircularSizeDimension, createPointToPointDimension, displayedDimensionMeasurement, drawingPointReferenceDependencies, formatCircularDimension, appendDimension, moveDimensionPlacement, deleteEntityWithDependentDimensions, resolveDrawingPointReference } from '../.test-build/drawing-circular-dimension/drawingDimension.js';
 import { resolveCircularSize, circularAttachment, circularDimensionEndpoints } from '../.test-build/drawing-circular-dimension/drawingCircularSize.js';
 import { solveDrawingDimensionEdit } from '../.test-build/drawing-circular-dimension/drawingConstraintSolver.js';
 import { migrateDrawingDocument } from '../.test-build/drawing-circular-dimension/drawingTypes.js';
@@ -73,4 +73,32 @@ test('restore rejects invalid circular applicability and placement', () => {
   const doc = document(), valid = createCircularSizeDimension(doc.sketches.s, 'circle', { x: 8, y: 3 }, 'valid');
   doc.sketches.s.dimensions = { valid, badMode: { ...valid, id: 'badMode', mode: 'radius' }, badPlacement: { ...valid, id: 'badPlacement', placement: { kind: 'radial', anchor: { x: NaN, y: 0 } } } }; doc.sketches.s.dimensionOrder = Object.keys(doc.sketches.s.dimensions);
   const restored = migrateDrawingDocument(doc); assert.deepEqual(restored.sketches.s.dimensionOrder, ['valid']);
+});
+
+test('derived Arc center is semantic-only, live, and contributes endpoint/bulge dependencies', () => {
+  const doc = document(), sketch = doc.sketches.s, reference = { kind: 'derivedPoint', entityId: 'arc', role: 'center' };
+  assert.deepEqual(resolveDrawingPointReference(sketch, reference), { x: 0, y: 0 });
+  assert.deepEqual(drawingPointReferenceDependencies(sketch, reference), [
+    { kind: 'point-axis', pointId: 'a', axis: 'x' }, { kind: 'point-axis', pointId: 'a', axis: 'y' },
+    { kind: 'point-axis', pointId: 'b', axis: 'x' }, { kind: 'point-axis', pointId: 'b', axis: 'y' },
+    { kind: 'entity-scalar', entityId: 'arc', scalar: 'arc-bulge' },
+  ]);
+  assert.equal(Object.keys(sketch.points).length, 3);
+  sketch.entities.arc = { ...sketch.entities.arc, bulge: .5 };
+  assert.notDeepEqual(resolveDrawingPointReference(sketch, reference), { x: 0, y: 0 });
+  assert.equal(Object.keys(sketch.points).length, 3);
+});
+
+test('ordinary derived-center dimension edits through the mixed canonical solver and deletes/restores strictly', () => {
+  let doc = document();
+  const center = { kind: 'derivedPoint', entityId: 'arc', role: 'center' }, circleCenter = { kind: 'sketchPoint', pointId: 'c' };
+  const a = resolveDrawingPointReference(doc.sketches.s, center), b = resolveDrawingPointReference(doc.sketches.s, circleCenter);
+  doc = appendDimension(doc, createPointToPointDimension([center, circleCenter], a, b, 'HORIZONTAL_DISTANCE', { x: 1, y: 8 }, 'ordinary'));
+  assert.deepEqual(doc.sketches.s.dimensions.ordinary.references[0], center);
+  const solved = solveDrawingDimensionEdit({ document: doc, dimensionId: 'ordinary', targetValue: 4 });
+  assert.equal(solved.ok, true); assert.ok(Math.abs(displayedDimensionMeasurement(solved.document.sketches.s, solved.document.sketches.s.dimensions.ordinary) - 4) < 1e-7);
+  assert.equal(Object.keys(solved.document.sketches.s.points).length, 3);
+  assert.equal(deleteEntityWithDependentDimensions(solved.document, 'arc').sketches.s.dimensions.ordinary, undefined);
+  const malformed = document(); malformed.sketches.s.dimensions.ordinary = { ...doc.sketches.s.dimensions.ordinary, references: [{ ...center, entityId: 'circle' }, circleCenter] }; malformed.sketches.s.dimensionOrder = ['ordinary'];
+  assert.deepEqual(migrateDrawingDocument(malformed).sketches.s.dimensionOrder, []);
 });
