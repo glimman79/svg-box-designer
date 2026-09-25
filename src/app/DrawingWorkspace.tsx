@@ -718,7 +718,11 @@ export function DrawingWorkspace({
     // In Select, let the model-space resolver arbitrate an annotation hit
     // against finite sketch geometry beneath it. The annotation's own handler
     // remains authoritative when there is no geometry candidate.
-    if (dimensionTarget && (activeTool !== 'select' || explicitDimensionValueTarget)) return;
+    // During Dimension authoring, broad annotation lines are presentation,
+    // not acquisition authority: let the model-space semantic resolver see
+    // geometry beneath their 14 px hit corridor. Value/editor targets remain
+    // explicit UI authority, while every other tool keeps the old isolation.
+    if (dimensionTarget && (explicitDimensionValueTarget || activeTool !== 'select' && activeTool !== 'dimension')) return;
     if (event.button !== CAD_PRIMARY_BUTTON) return;
     if (activeTool === 'select') {
       const explicitPointId = (event.target as Element).closest<SVGCircleElement>('[data-sketch-point-id]')?.dataset.sketchPointId;
