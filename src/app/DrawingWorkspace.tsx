@@ -273,7 +273,7 @@ export function DrawingWorkspace({
     const arc = entity?.type === 'arc' ? resolveArc(activeSketch, entity) : null;
     return arc ? [arc] : [];
   }) ?? [];
-  const activeArcDragId = geometryDrag?.target.kind === 'rigid-translation'
+  const activeArcDragId = geometryDrag?.target.kind === 'arc-center'
     || geometryDrag?.target.kind === 'arc-endpoint'
     || geometryDrag?.target.kind === 'arc-radius'
     ? geometryDrag.target.entityId : null;
