@@ -281,16 +281,17 @@ test('one completed Arc candidate round-trips one History transaction', () => {
 test('workspace gives Points then derived center then finite body the shared lifecycle', () => {
   const source = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
   assert.match(source, /key={`center-hit:[\s\S]*data-sketch-arc-center-id[\s\S]*Object\.values\(activeSketch\.points\)/);
-  assert.match(source, /explicitArcCenterId\s*\? createArcCenterDragTarget/);
-  assert.match(source, /createArcRadiusDragTarget\(documentRef\.current, arcId, startModel\)/);
-  assert.match(source, /distanceToArc\(startModel, arc\)/);
+  const arbitration = fs.readFileSync('src/app/drawingPointerArbitration.ts', 'utf8');
+  assert.match(arbitration, /createArcCenterDragTarget\(document, pointCandidate\.reference\.entityId\)/);
+  assert.match(arbitration, /createArcRadiusDragTarget\(document, entity\.id, pointer\)/);
+  assert.match(source, /distanceToArc\(model, curve\)/);
   assert.match(source, /DRAWING_DRAG_THRESHOLD_PX/);
   assert.match(source, /candidate: candidate \?\? geometryDrag\.candidate/);
   assert.match(source, /onPointerCancel=.*cancelGeometryDrag\(event\.pointerId\)/s);
   assert.match(source, /onLostPointerCapture=.*cancelGeometryDrag\(event\.pointerId\)/s);
   assert.match(source, /className="drawing-authoring-reference".*pointerEvents="none"/s);
   assert.match(source, /activeArcBodyDragId/);
-  assert.match(source, /resolveArcEndpointOwner\(documentRef\.current, explicitPointId, selectedEntityIds\)/);
-  assert.match(source, /createArcEndpointDragTarget\(documentRef\.current, arcId, explicitPointId\)/);
+  assert.match(arbitration, /resolveArcEndpointOwner\(document, pointId, selectedEntityIds\)/);
+  assert.match(arbitration, /createArcEndpointDragTarget\(document, arcId, pointId\)/);
   assert.match(source, /activeArcSupportDragId/);
 });

@@ -127,8 +127,9 @@ test('circle body projects onto the one remaining axis and becomes a no-op at ze
 
 test('workspace routes center before body and shares threshold/cancel/history lifecycle', () => {
   const source = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
-  assert.match(source, /circleHit = !explicitPointId && !explicitLineId/);
-  assert.match(source, /createCircleRadiusDragTarget\(documentRef\.current, circleId, startModel\)/);
+  const arbitration = fs.readFileSync('src/app/drawingPointerArbitration.ts', 'utf8');
+  assert.match(source, /resolveDrawingPointerOwner/);
+  assert.match(arbitration, /createCircleRadiusDragTarget\(document, entity\.id, pointer\)/);
   assert.match(source, /DRAWING_DRAG_THRESHOLD_PX/);
   assert.match(source, /candidate: candidate \?\? geometryDrag\.candidate/);
   assert.match(source, /if \(geometryDrag\) \{ cancelGeometryDrag\(\); return; \}/);

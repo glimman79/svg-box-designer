@@ -28,7 +28,8 @@ import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcEndp
 import { drawingArcPath } from './drawingArcGeometry.js';
 import { circularDimensionEndpoints, resolveCircularSize } from './drawingCircularSize.js';
 import { distanceToArc } from './drawingArcGeometry.js';
-import { createArcCenterDragTarget, createArcEndpointDragTarget, createArcRadiusDragTarget, createCircleRadiusDragTarget, createLineBodyDragTarget, DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, resolveArcEndpointOwner, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
+import { DRAWING_DRAG_THRESHOLD_PX, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
+import { resolveDrawingCurveProximity, resolveDrawingPointerOwner, type DrawingPointerEvidence } from './drawingPointerArbitration.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
 import { deleteGeometricConstraint, deriveMidpointMarkerPresentation, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
 import { deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
@@ -139,17 +140,17 @@ export const DRAWING_CURVE_HIT_TOLERANCE_PX = 7;
 export const shouldRouteCircleBodyPointer = (
   explicitCircleId: string | undefined,
   explicitPointId: string | undefined,
-  hasDimensionHit: boolean,
+  hasHigherPriorityGeometryHit: boolean,
   circleHit: string | undefined,
-) => Boolean(explicitCircleId || (!explicitPointId && !hasDimensionHit && circleHit));
+) => Boolean(explicitCircleId || (!explicitPointId && !hasHigherPriorityGeometryHit && circleHit));
 
 export const shouldRouteArcBodyPointer = (
   explicitArcCenterId: string | undefined,
   explicitArcId: string | undefined,
   explicitPointId: string | undefined,
-  hasDimensionHit: boolean,
+  hasHigherPriorityGeometryHit: boolean,
   arcHit: string | undefined,
-) => Boolean(explicitArcCenterId || explicitArcId || (!explicitPointId && !hasDimensionHit && arcHit));
+) => Boolean(explicitArcCenterId || explicitArcId || (!explicitPointId && !hasHigherPriorityGeometryHit && arcHit));
 
 export const drawingGeometrySelectionClass = (selection: readonly DrawingSelectionRef[], target: DrawingSelectionRef) =>
   selection.some((ref) => ref.kind === target.kind && (ref.kind === 'line'
@@ -658,8 +659,8 @@ export function DrawingWorkspace({
     if (target !== 'any') return null;
     const model = clientToModelPoint(client, matrix); if (!model) return null;
     const pixelsPerModel = Math.hypot(matrix.a, matrix.b);
-    const curves = [...resolvedCircles.map((curve) => ({ entityId: curve.id, distancePx: Math.abs(Math.hypot(model.x - curve.center.x, model.y - curve.center.y) - curve.radius) * pixelsPerModel })), ...resolvedArcs.map((curve) => ({ entityId: curve.id, distancePx: distanceToArc(model, curve) * pixelsPerModel }))].sort((a, b) => a.distancePx - b.distancePx);
-    return curves[0] && curves[0].distancePx <= 8 ? { kind: 'curve', ...curves[0] } : null;
+    const curves = [...resolvedCircles.map((curve) => ({ entityId: curve.id, distancePx: Math.abs(Math.hypot(model.x - curve.center.x, model.y - curve.center.y) - curve.radius) * pixelsPerModel })), ...resolvedArcs.map((curve) => ({ entityId: curve.id, distancePx: distanceToArc(model, curve) * pixelsPerModel }))];
+    return resolveDrawingCurveProximity(curves);
   };
 
   const ctrlSnapOverride = useCadCtrlSnapOverride((held) => {
@@ -722,87 +723,49 @@ export function DrawingWorkspace({
     // not acquisition authority: let the model-space semantic resolver see
     // geometry beneath their 14 px hit corridor. Value/editor targets remain
     // explicit UI authority, while every other tool keeps the old isolation.
-    if (dimensionTarget && (explicitDimensionValueTarget || activeTool !== 'select' && activeTool !== 'dimension')) return;
+    if (dimensionTarget && activeTool !== 'select' && (explicitDimensionValueTarget || activeTool !== 'dimension')) return;
     if (event.button !== CAD_PRIMARY_BUTTON) return;
     if (activeTool === 'select') {
-      const explicitPointId = (event.target as Element).closest<SVGCircleElement>('[data-sketch-point-id]')?.dataset.sketchPointId;
-      const explicitLineId = (event.target as Element).closest<SVGLineElement>('[data-sketch-line-id]')?.dataset.sketchLineId;
-      const explicitCircleId = (event.target as Element).closest<SVGCircleElement>('[data-sketch-circle-id]')?.dataset.sketchCircleId;
-      const explicitArcCenterId = (event.target as Element).closest<SVGCircleElement>('[data-sketch-arc-center-id]')?.dataset.sketchArcCenterId;
-      const explicitArcId = (event.target as Element).closest<SVGPathElement>('[data-sketch-arc-id]')?.dataset.sketchArcId;
-      const hit = explicitPointId || explicitLineId ? null : resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
+      const element = event.target as Element;
+      const dimensionElement = element.closest<SVGElement>('[data-dimension-id]');
+      const evidence: DrawingPointerEvidence = {
+        explicitPointId: element.closest<SVGCircleElement>('[data-sketch-point-id]')?.dataset.sketchPointId,
+        explicitLineId: element.closest<SVGLineElement>('[data-sketch-line-id]')?.dataset.sketchLineId,
+        explicitCircleId: element.closest<SVGCircleElement>('[data-sketch-circle-id]')?.dataset.sketchCircleId,
+        explicitArcCenterId: element.closest<SVGCircleElement>('[data-sketch-arc-center-id]')?.dataset.sketchArcCenterId,
+        explicitArcId: element.closest<SVGPathElement>('[data-sketch-arc-id]')?.dataset.sketchArcId,
+        dimensionId: dimensionElement?.dataset.dimensionId,
+        dimensionSurface: dimensionElement?.dataset.dimensionSurface as 'line' | 'value' | undefined,
+      };
       const matrix = svgRef.current?.getScreenCTM();
-      const circleHit = !explicitPointId && !explicitLineId && matrix ? resolvedCircles.map((circle) => {
-        const center = { x: matrix.a * circle.center.x + matrix.c * circle.center.y + matrix.e, y: matrix.b * circle.center.x + matrix.d * circle.center.y + matrix.f };
-        const radiusPx = circle.radius * Math.hypot(matrix.a, matrix.b);
-        return { id: circle.id, distance: Math.abs(Math.hypot(event.clientX - center.x, event.clientY - center.y) - radiusPx) };
-      }).filter(({ distance }) => distance <= DRAWING_CURVE_HIT_TOLERANCE_PX).sort((a, b) => a.distance - b.distance)[0]?.id : undefined;
       const startModel = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
-      const arcHit = startModel && matrix ? resolvedArcs.map((arc) => ({ id: arc.id, distance: distanceToArc(startModel, arc) * Math.hypot(matrix.a, matrix.b) }))
-        .filter(({ distance }) => distance <= DRAWING_CURVE_HIT_TOLERANCE_PX).sort((a, b) => a.distance - b.distance)[0]?.id : undefined;
-      if (!hit && !explicitPointId && !explicitLineId && !explicitCircleId && !explicitArcCenterId && !explicitArcId && !circleHit && !arcHit) {
-        if (!startModel) return;
+      if (!startModel) return;
+      const semantic = resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
+      const selectedEntityIds = selectedGeometry.flatMap((reference) => reference.kind === 'arc' ? [reference.arcId]
+        : reference.kind === 'line' ? [reference.lineId] : reference.kind === 'circle' ? [reference.circleId] : []);
+      const owner = resolveDrawingPointerOwner(documentRef.current, startModel, semantic, evidence, selectedEntityIds);
+      // Ownership is decided once at the root. Capture and session creation
+      // happen only after this semantic arbitration.
+      if (owner.kind === 'dimension') {
+        const dimension = activeSketch?.dimensions[owner.dimensionId];
+        if (dimension) beginDimensionAnnotationDrag(event, dimension);
+        return;
+      }
+      if (owner.kind === 'empty') {
         const session = { pointerId: event.pointerId, originClient: { x: event.clientX, y: event.clientY }, originModel: startModel,
           currentClient: { x: event.clientX, y: event.clientY }, currentModel: startModel, exceeded: false };
-        boxSelectionRef.current = session;
-        setBoxSelection(session);
+        boxSelectionRef.current = session; setBoxSelection(session);
         event.currentTarget.setPointerCapture(event.pointerId);
-        return;
-      }
-      if (!startModel) return;
-      if (shouldRouteCircleBodyPointer(explicitCircleId, explicitPointId, Boolean(hit), circleHit)) {
-        const circleId = (explicitCircleId ?? circleHit)!;
-        const route = routeDrawingGeometryPointerSelection(selectedGeometry, { kind: 'circle', circleId }, event.ctrlKey, constraintsPanelOpen);
-        setSelectedGeometry(route.selection);
-        setSelectedDimensionId(null); setSelectedGeometricConstraintId(null);
-        const target = route.beginDrag ? createCircleRadiusDragTarget(documentRef.current, circleId, startModel) : null;
-        if (target) {
-          event.currentTarget.setPointerCapture(event.pointerId);
-          const session: GeometryDragSession = { pointerId: event.pointerId, target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false };
-          geometryDragRef.current = session; setGeometryDrag(session);
-        }
-        return;
-      }
-      if (shouldRouteArcBodyPointer(explicitArcCenterId, explicitArcId, explicitPointId, Boolean(hit), arcHit)) {
-        const arcId = (explicitArcCenterId ?? explicitArcId ?? arcHit)!;
-        const route = routeDrawingGeometryPointerSelection(selectedGeometry, { kind: 'arc', arcId }, event.ctrlKey, constraintsPanelOpen);
-        setSelectedGeometry(route.selection);
-        setSelectedDimensionId(null); setSelectedGeometricConstraintId(null);
-        const target = route.beginDrag ? explicitArcCenterId
-          ? createArcCenterDragTarget(documentRef.current, arcId)
-          : createArcRadiusDragTarget(documentRef.current, arcId, startModel) : null;
-        if (target) {
-          event.currentTarget.setPointerCapture(event.pointerId);
-          const session: GeometryDragSession = { pointerId: event.pointerId, target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false };
-          geometryDragRef.current = session; setGeometryDrag(session);
-        }
         return;
       }
       setDimensionDrag(null);
-      const target: DrawingGeometryTarget | null = explicitPointId
-        ? (() => {
-          const selectedEntityIds = selectedGeometry.flatMap((reference) => reference.kind === 'arc' ? [reference.arcId]
-            : reference.kind === 'line' ? [reference.lineId] : reference.kind === 'circle' ? [reference.circleId] : []);
-          const arcId = resolveArcEndpointOwner(documentRef.current, explicitPointId, selectedEntityIds);
-          return arcId ? createArcEndpointDragTarget(documentRef.current, arcId, explicitPointId) : { kind: 'point', pointId: explicitPointId };
-        })()
-        : explicitLineId ? createLineBodyDragTarget(documentRef.current, explicitLineId, startModel)
-        : hit?.kind === 'point'
-        ? (() => { const pointId = pointIdFromHit(documentRef.current, hit.lineId, hit.point); return pointId ? { kind: 'point', pointId } : null; })()
-        : hit?.kind === 'line' ? createLineBodyDragTarget(documentRef.current, hit.lineId, startModel) : null;
-      if (!target) return;
-      const beginDrag = !event.ctrlKey && !constraintsPanelOpen;
-      const selectionTarget: DrawingSelectionRef | null = target.kind === 'arc-endpoint'
-        ? { kind: 'point', pointId: target.draggedPointId }
-        : target.kind === 'point' || target.kind === 'line' ? target : null;
-      if (!selectionTarget) return;
-      setSelectedGeometry((current) => routeDrawingGeometryPointerSelection(current, selectionTarget, event.ctrlKey, constraintsPanelOpen).selection);
+      const route = routeDrawingGeometryPointerSelection(selectedGeometry, owner.selection, event.ctrlKey, constraintsPanelOpen);
+      setSelectedGeometry(route.selection);
       setSelectedDimensionId(null); setSelectedGeometricConstraintId(null);
-      if (beginDrag) {
+      if (route.beginDrag) {
         event.currentTarget.setPointerCapture(event.pointerId);
-        const session: GeometryDragSession = { pointerId: event.pointerId, target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false };
-        geometryDragRef.current = session;
-        setGeometryDrag(session);
+        const session: GeometryDragSession = { pointerId: event.pointerId, target: owner.target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false };
+        geometryDragRef.current = session; setGeometryDrag(session);
       }
       return;
     }
@@ -1062,7 +1025,22 @@ export function DrawingWorkspace({
       if (activeTool === 'arc' && placement) setArcInteraction((current) => { const next = updateArcPreview(current, placement.position.point); arcInteractionRef.current = next; return next; });
       return;
     }
-    if (activeTool === 'select') setGeometryPreselection(resolveDimensionCandidate({ x: event.clientX, y: event.clientY }));
+    if (activeTool === 'select') {
+      const element = event.target as Element, dimensionElement = element.closest<SVGElement>('[data-dimension-id]');
+      const semantic = resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
+      const matrix = svgRef.current?.getScreenCTM(), model = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
+      const owner = model ? resolveDrawingPointerOwner(documentRef.current, model, semantic, {
+        explicitPointId: element.closest<SVGCircleElement>('[data-sketch-point-id]')?.dataset.sketchPointId,
+        explicitLineId: element.closest<SVGLineElement>('[data-sketch-line-id]')?.dataset.sketchLineId,
+        explicitCircleId: element.closest<SVGCircleElement>('[data-sketch-circle-id]')?.dataset.sketchCircleId,
+        explicitArcCenterId: element.closest<SVGCircleElement>('[data-sketch-arc-center-id]')?.dataset.sketchArcCenterId,
+        explicitArcId: element.closest<SVGPathElement>('[data-sketch-arc-id]')?.dataset.sketchArcId,
+        dimensionId: dimensionElement?.dataset.dimensionId,
+        dimensionSurface: dimensionElement?.dataset.dimensionSurface as 'line' | 'value' | undefined,
+      }) : { kind: 'empty' as const };
+      setGeometryPreselection(owner.kind === 'geometry' ? semantic : null);
+      if (owner.kind === 'geometry') setHoveredDimensionId(null);
+    }
   };
 
   useEffect(() => () => {
@@ -1162,9 +1140,8 @@ export function DrawingWorkspace({
     geometryDragRef.current = null;
     setGeometryDrag(null);
     if (session.exceeded && session.candidate !== session.startDocument) transactDocument(() => session.candidate);
-    // A meaningful drag owns only transient interaction emphasis. A click keeps
-    // the existing persistent selection semantics for future selection tools.
-    if (session.exceeded) setSelectedGeometry([]);
+    // Selection is independent from solver mobility and remains after both a
+    // meaningful drag and a fully constrained/no-op drag.
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
@@ -1356,11 +1333,11 @@ export function DrawingWorkspace({
               ))}
               {resolvedCircles.map((entity) => <circle key={entity.id} data-sketch-circle-id={entity.id}
                 data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'circle', circleId: entity.id })}
-                className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'circle', circleId: entity.id }))}${dimensionPreselection?.kind === 'curve' && dimensionPreselection.entityId === entity.id ? ' is-dimension-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'circle', circleId: entity.id })}`}
+                className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'circle', circleId: entity.id }))}${dimensionPreselection?.kind === 'curve' && dimensionPreselection.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'curve' && geometryPreselection.entityId === entity.id ? ' is-geometry-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'circle', circleId: entity.id })}`}
                 cx={entity.center.x} cy={entity.center.y} r={entity.radius} fill="none" vectorEffect="non-scaling-stroke" />)}
               {resolvedArcs.map((entity) => <path key={entity.id} data-sketch-arc-id={entity.id}
                 data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'arc', arcId: entity.id })}
-                className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'arc', arcId: entity.id }))}${dimensionPreselection?.kind === 'curve' && dimensionPreselection.entityId === entity.id ? ' is-dimension-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'arc', arcId: entity.id })}${activeArcDragId === entity.id ? ' is-geometry-dragging' : ''}`}
+                className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'arc', arcId: entity.id }))}${dimensionPreselection?.kind === 'curve' && dimensionPreselection.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'curve' && geometryPreselection.entityId === entity.id ? ' is-geometry-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'arc', arcId: entity.id })}${activeArcDragId === entity.id ? ' is-geometry-dragging' : ''}`}
                 d={drawingArcPath(entity)} fill="none" vectorEffect="non-scaling-stroke" />)}
               {resolvedArcs.map((entity) => <circle key={`center:${entity.id}`} className="drawing-circular-center drawing-entity-defining-point"
                 cx={entity.center.x} cy={entity.center.y} r={2.5 / pixelsPerMm} pointerEvents="none" aria-hidden="true" />)}
@@ -1388,7 +1365,7 @@ export function DrawingWorkspace({
               ) : null)}
               {activeSketch && selectedGeometry.flatMap((ref) => ref.kind === 'point' && activeSketch.points[ref.pointId]
                 ? [<circle key={ref.pointId} className="drawing-geometry-point-selected" cx={activeSketch.points[ref.pointId].x} cy={activeSketch.points[ref.pointId].y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} />] : [])}
-              {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = geometryPreselection.pointId ? activeSketch.points[geometryPreselection.pointId] : resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); const size = DRAWING_POINT_HOVER_MARKER_SIZE_PX / pixelsPerMm; return p ? <rect className="drawing-geometry-point-preselection" x={p.x - size / 2} y={p.y - size / 2} width={size} height={size} /> : null; })()}
+              {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = geometryPreselection.pointId ? activeSketch.points[geometryPreselection.pointId] : geometryPreselection.reference ? resolveDrawingPointReference(activeSketch, geometryPreselection.reference) : resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); const size = DRAWING_POINT_HOVER_MARKER_SIZE_PX / pixelsPerMm; return p ? <rect className="drawing-geometry-point-preselection" x={p.x - size / 2} y={p.y - size / 2} width={size} height={size} /> : null; })()}
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, preselectionReference(dimensionPreselection)); return p ? <circle className="drawing-dimension-point-preselection" cx={p.x} cy={p.y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} /> : null; })()}
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'origin' && <circle className="drawing-dimension-point-preselection drawing-origin-preselection" cx={0} cy={0} r={6 / pixelsPerMm} />}
               {dimensionTool.phase === 'waitingForSecondTarget' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, dimensionTool.first); return p ? <circle className="drawing-dimension-point-selected" cx={p.x} cy={p.y} r={6 / pixelsPerMm} /> : null; })()}
@@ -1460,8 +1437,8 @@ export function DrawingWorkspace({
                     <line className="drawing-dimension-line" markerStart={`url(#dimension-arrow-${arrowState})`} markerEnd={`url(#dimension-arrow-${arrowState})`} x1={start.x} y1={start.y} x2={attachment.x} y2={attachment.y} />
                     <line className="drawing-dimension-line drawing-dimension-leader" x1={attachment.x} y1={attachment.y} x2={anchor.x} y2={anchor.y} />
                     <text className="drawing-dimension-value" x={anchor.x} y={anchor.y - 4 / pixelsPerMm} textAnchor="middle" style={{ fontSize: dimensionScreenPixelsToModelUnits(DIMENSION_TEXT_SIZE_PX, pixelsPerMm) }}>{label}</text>
-                    {dimension.id !== 'preview' && <line className="drawing-dimension-hit drawing-interactive-hit" x1={start.x} y1={start.y} x2={anchor.x} y2={anchor.y} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => beginDimensionAnnotationDrag(event, dimension)} />}
-                    {dimension.id !== 'preview' && <rect className="drawing-dimension-value-hit drawing-interactive-hit" x={anchor.x - valueHitWidth / 2} y={anchor.y - 16 / pixelsPerMm} width={valueHitWidth} height={18 / pixelsPerMm} onPointerDown={(event) => beginDimensionAnnotationDrag(event, dimension)} onDoubleClick={beginDimensionEdit} />}
+                    {dimension.id !== 'preview' && <line data-dimension-id={dimension.id} data-dimension-surface="line" className="drawing-dimension-hit drawing-interactive-hit" x1={start.x} y1={start.y} x2={anchor.x} y2={anchor.y} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} />}
+                    {dimension.id !== 'preview' && <rect data-dimension-id={dimension.id} data-dimension-surface="value" className="drawing-dimension-value-hit drawing-interactive-hit" x={anchor.x - valueHitWidth / 2} y={anchor.y - 16 / pixelsPerMm} width={valueHitWidth} height={18 / pixelsPerMm} onDoubleClick={beginDimensionEdit} />}
                   </g>;
                 }
                 if (dimension.kind === 'LINE_TO_LINE_ANGLE') {
@@ -1479,8 +1456,8 @@ export function DrawingWorkspace({
                     {angleGeometry.supportExtensions.map((extension) => <line key={extension.lineId} className="drawing-dimension-witness drawing-dimension-lineage" x1={extension.start.x} y1={extension.start.y} x2={extension.end.x} y2={extension.end.y} />)}
                     <path className="drawing-dimension-line drawing-dimension-angle-arc" d={path} fill="none" markerStart={arrowMarker} markerEnd={arrowMarker} />
                     <text className="drawing-dimension-value" x={angleGeometry.label.x} y={angleGeometry.label.y} textAnchor="middle" style={{ fontSize: dimensionScreenPixelsToModelUnits(DIMENSION_TEXT_SIZE_PX, pixelsPerMm) }}>{label}</text>
-                    {dimension.id !== 'preview' && <path className="drawing-dimension-hit drawing-interactive-hit" d={path} fill="none" onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => beginDimensionAnnotationDrag(event, dimension)} />}
-                    {dimension.id !== 'preview' && <rect className="drawing-dimension-value-hit drawing-interactive-hit" x={angleGeometry.label.x - valueHitWidth / 2} y={angleGeometry.label.y - 16 / pixelsPerMm} width={valueHitWidth} height={18 / pixelsPerMm} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => beginDimensionAnnotationDrag(event, dimension)} onDoubleClick={beginDimensionEdit} />}
+                    {dimension.id !== 'preview' && <path data-dimension-id={dimension.id} data-dimension-surface="line" className="drawing-dimension-hit drawing-interactive-hit" d={path} fill="none" onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} />}
+                    {dimension.id !== 'preview' && <rect data-dimension-id={dimension.id} data-dimension-surface="value" className="drawing-dimension-value-hit drawing-interactive-hit" x={angleGeometry.label.x - valueHitWidth / 2} y={angleGeometry.label.y - 16 / pixelsPerMm} width={valueHitWidth} height={18 / pixelsPerMm} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onDoubleClick={beginDimensionEdit} />}
                     {editing && dimensionEditError && <text className="drawing-dimension-error" x={angleGeometry.label.x} y={angleGeometry.label.y + 24 / pixelsPerMm} textAnchor="middle">{dimensionEditError}</text>}
                   </g>;
                 }
@@ -1516,8 +1493,8 @@ export function DrawingWorkspace({
                   <line className="drawing-dimension-witness" x1={extensionA.start.x} y1={extensionA.start.y} x2={extensionA.end.x} y2={extensionA.end.y} /><line className="drawing-dimension-witness" x1={extensionB.start.x} y1={extensionB.start.y} x2={extensionB.end.x} y2={extensionB.end.y} />
                   <line className="drawing-dimension-line" markerStart={arrowMarker} markerEnd={arrowMarker} x1={geometry.a.x} y1={geometry.a.y} x2={geometry.b.x} y2={geometry.b.y} />
                   <text className="drawing-dimension-value" x={middle.x} y={middle.y - 4 / pixelsPerMm} textAnchor="middle" style={{ fontSize: dimensionScreenPixelsToModelUnits(DIMENSION_TEXT_SIZE_PX, pixelsPerMm) }} transform={`rotate(${textAngle} ${middle.x} ${middle.y})`}>{label}</text>
-                  {dimension.id !== 'preview' && <line className="drawing-dimension-hit drawing-interactive-hit" x1={geometry.a.x} y1={geometry.a.y} x2={geometry.b.x} y2={geometry.b.y} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => beginDimensionAnnotationDrag(event, dimension)} />}
-                  {dimension.id !== 'preview' && <rect className="drawing-dimension-value-hit drawing-interactive-hit" x={middle.x - valueHitWidth / 2} y={middle.y - 16 / pixelsPerMm} width={valueHitWidth} height={18 / pixelsPerMm} transform={`rotate(${textAngle} ${middle.x} ${middle.y})`} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onPointerDown={(event) => beginDimensionAnnotationDrag(event, dimension)} onDoubleClick={beginDimensionEdit} />}
+                  {dimension.id !== 'preview' && <line data-dimension-id={dimension.id} data-dimension-surface="line" className="drawing-dimension-hit drawing-interactive-hit" x1={geometry.a.x} y1={geometry.a.y} x2={geometry.b.x} y2={geometry.b.y} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} />}
+                  {dimension.id !== 'preview' && <rect data-dimension-id={dimension.id} data-dimension-surface="value" className="drawing-dimension-value-hit drawing-interactive-hit" x={middle.x - valueHitWidth / 2} y={middle.y - 16 / pixelsPerMm} width={valueHitWidth} height={18 / pixelsPerMm} transform={`rotate(${textAngle} ${middle.x} ${middle.y})`} onPointerEnter={() => setHoveredDimensionId(dimension.id)} onPointerLeave={() => setHoveredDimensionId(null)} onDoubleClick={beginDimensionEdit} />}
                   {editingDimensionId === dimension.id && dimensionEditError && <text className="drawing-dimension-error" x={middle.x} y={middle.y + 24 / pixelsPerMm} textAnchor="middle">{dimensionEditError}</text>}
                 </g>;
               })}

@@ -123,7 +123,8 @@ assert.match(workspace, /kind: 'circle', circleId: entity\.id[\s\S]*geometryCons
   'committed Circle retains its semantic state class beneath interaction overrides');
 assert.match(workspace, /className=\{`drawing-geometry-entity drawing-interactive-hit \$\{geometryConstraintVisualClass[\s\S]*kind: 'circle'/,
   'Circle consumes the same committed-geometry base presentation as Line');
-assert.match(workspace, /if \(geometryDrag\.exceeded\) setSelectedGeometry\(\[\]\)/, 'meaningful drag clears persistent selection at release');
+assert.doesNotMatch(workspace, /if \((?:geometryDrag|session)\.exceeded\) setSelectedGeometry\(\[\]\)/,
+  'drag completion never couples solver mobility or threshold crossing to selection clearing');
 assert.match(workspace, /is-geometry-dragging/, 'active manipulation has explicit semantic state');
 const normalLineColors = {
   FREE: ['--drawing-geometry-free', '#39ff5a'],
