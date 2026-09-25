@@ -94,18 +94,19 @@ assert.match(css, /\.drawing-svg\.has-geometry-cursor \.drawing-interactive-hit 
 assert.match(workspace, /drawing-geometry-entity drawing-interactive-hit/, 'selectable Sketch Lines consume shared cursor authority');
 assert.match(workspace, /drawing-dimension-hit drawing-interactive-hit/, 'Dimension line and arc handles consume shared cursor authority');
 assert.match(workspace, /drawing-dimension-value-hit drawing-interactive-hit/, 'Dimension text handles consume shared cursor authority');
-assert.match(workspace, /onPointerDown=\{\(event\) => beginDimensionAnnotationDrag\(event, dimension\)\}/, 'text and main graphics initiate one semantic drag operation');
+assert.doesNotMatch(workspace, /drawing-dimension-(?:hit|value-hit)[^>]*onPointerDown=/, 'Dimension children do not compete with root pointer arbitration');
+assert.match(workspace, /data-dimension-id=\{dimension\.id\} data-dimension-surface="(?:line|value)"/, 'Dimension surfaces provide semantic evidence to the root');
 assert.match(workspace, /data-dimension-sketch-point-id=\{pointId\}/, 'Dimension authoring renders a semantic hit target for every entity-defining SketchPoint, including Circle centers');
 assert.match(workspace, /explicitPointId[\s\S]*kind: 'sketchPoint'[\s\S]*resolveDimensionCandidate/, 'an explicit semantic point hit wins before curve arbitration');
 const pointerRouter = workspace.slice(workspace.indexOf('const handlePointerDown'), workspace.indexOf("if (activeTool === 'profile')"));
-assert.match(pointerRouter, /dimensionTarget && \(explicitDimensionValueTarget \|\| activeTool !== 'select' && activeTool !== 'dimension'\)/,
-  'a broad annotation hit bubbles through the real root pointer route in Dimension mode while value/editor hits retain priority');
+assert.match(pointerRouter, /dimensionTarget && activeTool !== 'select'/,
+  'Select-mode annotation hits always reach the authoritative root arbitration');
 assert.match(pointerRouter, /if \(activeTool === 'dimension'\)[\s\S]*explicitPointId[\s\S]*resolveDimensionCandidate/,
   'Dimension-mode annotation-line events reach semantic point-first acquisition and then curve acquisition');
 assert.match(css, /\.drawing-dimension-hit\s*\{[^}]*stroke:\s*transparent;[^}]*stroke-width:\s*14;[^}]*vector-effect:\s*non-scaling-stroke;[^}]*pointer-events:\s*stroke;/s,
   'routing regression exercises the retained 14 px transparent annotation corridor rather than shrinking it');
-assert.match(workspace, /activeTool !== 'select'\) return;[\s\S]*setSelectedDimensionId\(dimension\.id\);[\s\S]*setDimensionDrag/,
-  'Select-mode annotation selection and drag remain routed by the annotation handler');
+assert.match(pointerRouter, /resolveDrawingPointerOwner[\s\S]*owner\.kind === 'dimension'[\s\S]*beginDimensionAnnotationDrag/,
+  'Select-mode annotation selection and drag begin only after root semantic ownership is resolved');
 assert.match(workspace, /drawing-dimension-value-hit[\s\S]*onDoubleClick=\{beginDimensionEdit\}/,
   'explicit circular/linear value targets remain double-click editable');
 assert.match(workspace, /drawing-dimension-editor-frame[\s\S]*drawing-dimension-editor/, 'the mounted editor remains an explicit interactive target');

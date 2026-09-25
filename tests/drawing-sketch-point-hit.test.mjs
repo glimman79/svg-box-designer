@@ -97,12 +97,11 @@ assert.match(source, /r=\{DRAWING_SKETCH_POINT_HIT_RADIUS_PX \/ pixelsPerMm\}/, 
 assert.match(css, /--drawing-selected-point:\s*#1d4ed8;/i);
 assert.match(css, /\.drawing-geometry-point-selected \{ fill: var\(--drawing-selected-point\); stroke: none; \}/, 'selected Point uses only the compact dark-blue presentation authority');
 assert.match(source, /closest<SVGCircleElement>\('\[data-sketch-point-id\]'\)\?\.dataset\.sketchPointId/, 'the real root pointer handler acquires semantic identity from the DOM target');
-assert.match(source, /resolveArcEndpointOwner\(documentRef\.current, explicitPointId, selectedEntityIds\)/, 'the DOM Point identity is semantically checked for deterministic Arc endpoint ownership');
-assert.match(source, /arcId \? createArcEndpointDragTarget\(documentRef\.current, arcId, explicitPointId\) : \{ kind: 'point', pointId: explicitPointId \}/, 'non-owned persistent Points retain generic Point manipulation');
-assert.match(source, /routeDrawingGeometryPointerSelection\(current, selectionTarget, event\.ctrlKey, constraintsPanelOpen\)\.selection/, 'the rendered target uses the shared production selection route with functional state');
+assert.match(source, /resolveDrawingPointerOwner\(documentRef\.current, startModel, semantic, evidence, selectedEntityIds\)/, 'DOM and semantic evidence enter one deterministic owner resolver');
+assert.match(source, /routeDrawingGeometryPointerSelection\(selectedGeometry, owner\.selection, event\.ctrlKey, constraintsPanelOpen\)/, 'the resolved owner uses the shared production selection route');
 assert.doesNotMatch(source, /event\.shiftKey/, 'Shift is not a semantic geometry multi-selection modifier');
-assert.match(source, /const beginDrag = !event\.ctrlKey && !constraintsPanelOpen;[\s\S]*if \(beginDrag\) \{[\s\S]*setGeometryDrag/, 'only an ordinary replacing Select click may begin direct manipulation');
-const emptyMissStart = source.indexOf('if (!hit && !explicitPointId && !explicitLineId && !explicitCircleId && !explicitArcCenterId && !explicitArcId && !circleHit && !arcHit)');
+assert.match(source, /if \(route\.beginDrag\) \{[\s\S]*setGeometryDrag/, 'only an ordinary replacing Select click may begin direct manipulation');
+const emptyMissStart = source.indexOf("if (owner.kind === 'empty')");
 const emptyMissBranch = source.slice(emptyMissStart, source.indexOf('setDimensionDrag(null)', emptyMissStart));
 assert.match(emptyMissBranch, /setBoxSelection\(session\)/, 'an empty Select miss defers click clearing until the potential box gesture resolves');
 const finishBoxStart = source.indexOf('const finishBoxSelection');
