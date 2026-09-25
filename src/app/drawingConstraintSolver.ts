@@ -184,7 +184,10 @@ const solveVariableComponent = (
     if (next && norm(next.residuals) < norm(current.residuals)) { values = candidateValues; damping = Math.max(1e-12, damping * .25); }
     else damping = Math.min(1e12, damping * 10);
   }
-  return null;
+  const final = residualsAt(values);
+  return final && final.residuals.every((value) => Math.abs(value) <= DRAWING_CONSTRAINT_TOLERANCE_MM)
+    ? { values, residuals: final.residuals, iterations: DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS, sketch: final.candidate }
+    : null;
 };
 
 // Preserve the established analytic point-only path (including its exact
@@ -330,6 +333,57 @@ export const solveDrawingVariableTarget = (
   sketch: DrawingSketchV2,
   target: Readonly<{ variable: DrawingSolverVariable; value: number }>,
 ): DrawingSketchV2 | null => solveDrawingVariableTargets(sketch, [target]);
+
+export type DrawingVariableIntent = Readonly<{
+  variable: DrawingSolverVariable;
+  value: number;
+  /** Lower numbered levels outrank every lower-priority (higher numbered) level. */
+  priority: 1 | 2 | 3;
+}>;
+
+/**
+ * Projects transient interaction intent onto a complete canonical constraint
+ * component. Unlike `solveDrawingVariableTargets`, these values are stays,
+ * not equations: every point axis and entity scalar remains available to the
+ * hard solve. Priority levels use bounded, adjacent decade weights to avoid
+ * ill-conditioning; hard equations are always verified independently before
+ * a candidate is returned.
+ */
+export const solveDrawingConstrainedVariableIntent = (
+  sketch: DrawingSketchV2,
+  intents: readonly DrawingVariableIntent[],
+): DrawingSketchV2 | null => {
+  if (!intents.length) return null;
+  const intentVariables = deduplicateDrawingSolverVariables(intents.map(({ variable }) => variable));
+  if (intentVariables.length !== intents.length) return null;
+  const seeded = applyDrawingSolverVector(sketch, intentVariables, intents.map(({ value }) => value));
+  if (!seeded) return null;
+  const analysis = analyzeDrawingConstraints(seeded);
+  const componentFor = (variable: DrawingSolverVariable) => variable.kind === 'point-axis'
+    ? analysis.componentByPointId.get(variable.pointId)
+    : analysis.componentByVariableKey.get(drawingSolverVariableKey(variable));
+  const component = componentFor(intentVariables[0]);
+  if (!component) return seeded;
+  if (intentVariables.some((variable) => componentFor(variable) !== component)) return null;
+  const state: ComponentState = {
+    pointIds: [...component.pointIds],
+    equations: [
+      ...component.dimensionIds.map((id) => { const dimension = seeded.dimensions[id], equation = dimension && constraintEquation(seeded, dimension); return equation ? { ...equation, target: dimension.value } : null; }),
+      ...component.geometricConstraintIds.flatMap((id) => { const constraint = seeded.geometricConstraints[id]; return constraint ? geometricConstraintEquations(seeded, constraint).map((equation) => ({ ...equation, target: 0 })) : []; }),
+    ].filter((equation): equation is Equation => Boolean(equation)),
+  };
+  if (state.equations.length < component.dimensionIds.length + component.geometricConstraintIds.length) return null;
+  const variables = deduplicateDrawingSolverVariables([
+    ...state.pointIds.flatMap(pointSolverVariables),
+    ...component.scalarVariables,
+  ]);
+  const priorityByKey = new Map(intents.map(({ variable, priority }) => [drawingSolverVariableKey(variable), priority]));
+  const levelWeight = (priority: number | undefined) => priority === 1 ? 100 : priority === 2 ? 10 : 1;
+  const solved = solveVariableComponent(seeded, state, variables,
+    new Map(variables.map((variable) => [drawingSolverVariableKey(variable), levelWeight(priorityByKey.get(drawingSolverVariableKey(variable)))])));
+  return solved && verifyDrawingConstraints(solved.sketch, component.dimensionIds, component.geometricConstraintIds)
+    ? solved.sketch : null;
+};
 
 export type DrawingSoftVariableObjective = Readonly<{
   variable: DrawingSolverVariable;

@@ -1,4 +1,4 @@
-import { DRAWING_CONSTRAINT_TOLERANCE_MM, minimizeDrawingVariableObjective, solveDrawingComponentDrag, solveDrawingVariableTarget } from './drawingConstraintSolver.js';
+import { DRAWING_CONSTRAINT_TOLERANCE_MM, minimizeDrawingVariableObjective, solveDrawingComponentDrag, solveDrawingConstrainedVariableIntent, solveDrawingVariableTarget } from './drawingConstraintSolver.js';
 import { resolveArcFromBulge } from './drawingArcGeometry.js';
 import { arcBulgeSolverVariable, circleRadiusSolverVariable } from './drawingSolverVariables.js';
 import { displayedDimensionMeasurement, drawingPointReferenceDependencies, measureDimension, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
@@ -149,13 +149,16 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
     const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[target.entityId];
     const dragged = sketch.points[target.draggedPointId], pivot = sketch.points[target.pivotPointId];
     if (entity?.type !== 'arc' || !dragged || !pivot) return null;
-    const positioned = solveDrawingComponentDrag(sketch, {
-      [target.draggedPointId]: { x: dragged.x + delta.x, y: dragged.y + delta.y },
-      [target.pivotPointId]: { x: pivot.x, y: pivot.y },
-    }, { directPointIds: [target.draggedPointId, target.pivotPointId], directPointWeights: {
-      [target.draggedPointId]: 1_000_000,
-      [target.pivotPointId]: 1_000,
-    } });
+    // Endpoint coordinates, the opposite-end stay, and Arc bulge are solved
+    // together. Pointer and pivot are transient priorities, never additional
+    // hard equations; the component's persistent equations remain sovereign.
+    const positioned = solveDrawingConstrainedVariableIntent(sketch, [
+      { variable: { kind: 'point-axis', pointId: target.draggedPointId, axis: 'x' }, value: dragged.x + delta.x, priority: 1 },
+      { variable: { kind: 'point-axis', pointId: target.draggedPointId, axis: 'y' }, value: dragged.y + delta.y, priority: 1 },
+      { variable: { kind: 'point-axis', pointId: target.pivotPointId, axis: 'x' }, value: pivot.x, priority: 2 },
+      { variable: { kind: 'point-axis', pointId: target.pivotPointId, axis: 'y' }, value: pivot.y, priority: 2 },
+      { variable: arcBulgeSolverVariable(entity.id), value: target.initialBulge, priority: 3 },
+    ]);
     if (!positioned) return null;
     const originalArc = resolveArcFromBulge(entity, sketch.points[entity.startPointId], sketch.points[entity.endPointId]);
     if (!originalArc) return null;
@@ -183,7 +186,13 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
         }, 0) / sampleTs.length;
       },
     });
-    return solved ? { ...document, sketches: { ...document.sketches, [sketch.id]: solved } } : null;
+    // With a hard circular equation, fixing both endpoints during the
+    // secondary one-dimensional form search can leave exactly one admissible
+    // bulge between sample coordinates. The joint projection is already the
+    // least-change stay solution in that case, so retain it rather than
+    // rejecting a valid interaction.
+    const accepted = solved ?? positioned;
+    return { ...document, sketches: { ...document.sketches, [sketch.id]: accepted } };
   }
   if (target.kind === 'entity-scalar') {
     if (!startPointer) return null;

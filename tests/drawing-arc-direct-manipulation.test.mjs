@@ -5,6 +5,7 @@ import { createDrawingDocumentV2 } from '../.test-build/drawing-arc-direct-manip
 import { finiteArcConstraintResidual, resolveArcFromBulge } from '../.test-build/drawing-arc-direct-manipulation/drawingArcGeometry.js';
 import { createArcRadiusDragTarget, createArcCenterDragTarget, createArcEndpointDragTarget, resolveArcEndpointOwner, solveDrawingDragCandidate } from '../.test-build/drawing-arc-direct-manipulation/drawingDirectManipulation.js';
 import { verifyDrawingConstraints } from '../.test-build/drawing-arc-direct-manipulation/drawingConstraintSolver.js';
+import { createCircularSizeDimension } from '../.test-build/drawing-arc-direct-manipulation/drawingDimension.js';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-arc-direct-manipulation/drawingHistory.js';
 
 const make = (bulge = 0.5) => {
@@ -139,6 +140,32 @@ test('endpoint bulge participates in a connected Point-on-Arc solve', () => {
   const candidate = solveDrawingDragCandidate(document, target, { x: 4, y: -2 });
   assert.ok(candidate); assert.notEqual(entity(candidate).bulge, .5);
   assert.ok(verifyDrawingConstraints(sketch(candidate), [], ['on']));
+});
+
+test('driving R endpoint intent jointly uses endpoints and bulge while preserving hard radius', () => {
+  for (const bulge of [.05, .5, 1, 2, -.05, -.5, -1, -2]) {
+    const document = make(bulge), s = sketch(document);
+    const radius = createCircularSizeDimension(s, 'arc', { x: 5, y: -20 }, 'radius');
+    s.dimensions.radius = radius; s.dimensionOrder = ['radius'];
+    const target = createArcEndpointDragTarget(document, 'arc', 'e');
+    const candidate = solveDrawingDragCandidate(document, target, { x: 3, y: 4 });
+    assert.ok(candidate, `R-constrained endpoint remains movable for bulge ${bulge}`);
+    assert.ok(verifyDrawingConstraints(sketch(candidate), ['radius'], []), `R remains exact for bulge ${bulge}`);
+    assert.ok(Math.hypot(sketch(candidate).points.e.x - s.points.e.x, sketch(candidate).points.e.y - s.points.e.y) > 1,
+      'pointer motion outranks an unconstrained opposite-end stay');
+    assert.ok(resolved(candidate));
+  }
+});
+
+test('driving R plus one endpoint axis retains feasible endpoint motion', () => {
+  const document = make(.5), s = sketch(document);
+  s.dimensions.radius = createCircularSizeDimension(s, 'arc', { x: 5, y: -20 }, 'radius');
+  s.dimensions.endY = { id: 'endY', kind: 'VERTICAL_DISTANCE', references: [{ kind: 'datum', datum: 'ORIGIN' }, { kind: 'sketchPoint', pointId: 'e' }], value: 0, role: 'driving', placement: { kind: 'linear', offset: 5 } };
+  s.dimensionOrder = ['radius', 'endY'];
+  const candidate = solveDrawingDragCandidate(document, createArcEndpointDragTarget(document, 'arc', 'e'), { x: 4, y: 5 });
+  assert.ok(candidate); close(sketch(candidate).points.e.y, 0);
+  assert.ok(Math.abs(sketch(candidate).points.e.x - 10) > 1, 'remaining feasible axis is not frozen');
+  assert.ok(verifyDrawingConstraints(sketch(candidate), ['radius', 'endY'], []));
 });
 
 test('center candidate always derives from drag-start and preserves shared endpoint identity', () => {
