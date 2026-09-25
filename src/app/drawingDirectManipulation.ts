@@ -11,7 +11,7 @@ export type DrawingGeometryTarget =
   | Readonly<{ kind: 'point'; pointId: string }>
   | Readonly<{ kind: 'line'; lineId: string; segmentParameter?: number; grabOffset?: DrawingPoint }>
   | Readonly<{ kind: 'arc-endpoint'; entityId: string; draggedPointId: string; pivotPointId: string; initialBulge: number }>
-  | Readonly<{ kind: 'arc-radius'; entityId: string; sweepParameter: number; grabOffset: DrawingPoint; initialBulge: number }>
+  | Readonly<{ kind: 'arc-radius'; entityId: string; sweepParameter: number; radialDirection: DrawingPoint; grabOffset: DrawingPoint; initialBulge: number }>
   | Readonly<{ kind: 'arc-center'; entityId: string }>
   | Readonly<{ kind: 'entity-scalar'; entityId: string; scalar: 'circle-radius'; radialDirection: DrawingPoint; grabOffset: DrawingPoint }>;
 
@@ -86,7 +86,8 @@ export const createArcRadiusDragTarget = (document: DrawingDocumentV2, arcId: st
     : ((arc.startAngle - direction) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
   const sweepParameter = Math.max(0, Math.min(1, progress / Math.abs(arc.signedSweep)));
   const resolved = arcPointAt(arc, sweepParameter);
-  return { kind: 'arc-radius', entityId: entity.id, sweepParameter,
+  const radialDirection = { x: (resolved.x - arc.center.x) / arc.radius, y: (resolved.y - arc.center.y) / arc.radius };
+  return { kind: 'arc-radius', entityId: entity.id, sweepParameter, radialDirection,
     grabOffset: { x: pointer.x - resolved.x, y: pointer.y - resolved.y }, initialBulge: entity.bulge };
 };
 
@@ -155,7 +156,8 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
     if (entity?.type !== 'arc') return null;
     const arc = resolveArcFromBulge(entity, sketch.points[entity.startPointId], sketch.points[entity.endPointId]);
     if (!arc || !Number.isFinite(arc.radius) || arc.radius <= 0) return null;
-    const pointer = { x: startPointer.x + delta.x - target.grabOffset.x, y: startPointer.y + delta.y - target.grabOffset.y };
+    const requestedRadius = Math.max(DRAWING_CONSTRAINT_TOLERANCE_MM * 100,
+      arc.radius + delta.x * target.radialDirection.x + delta.y * target.radialDirection.y);
     const angleResidual = (a: number, b: number) => Math.atan2(Math.sin(a - b), Math.cos(a - b)) * arc.radius;
     const solved = solveDrawingGeometricIntent(sketch, {
       seedVariable: arcBulgeSolverVariable(entity.id), modelScale: Math.max(1, arc.radius),
@@ -163,16 +165,17 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
         const candidateEntity = (candidate.entities as unknown as Record<string, DrawingEntity>)[entity.id];
         if (candidateEntity?.type !== 'arc' || Math.sign(candidateEntity.bulge) !== Math.sign(target.initialBulge)) return null;
         const candidateArc = resolveArcFromBulge(candidateEntity, candidate.points[entity.startPointId], candidate.points[entity.endPointId]);
-        if (!candidateArc) return null; const point = arcPointAt(candidateArc, target.sweepParameter);
-        return [point.x - pointer.x, point.y - pointer.y];
+        if (!candidateArc) return null;
+        return [candidateArc.radius - requestedRadius];
       },
-      secondaryResiduals: (candidate) => {
+      semanticResiduals: (candidate) => {
         const candidateEntity = (candidate.entities as unknown as Record<string, DrawingEntity>)[entity.id];
-        if (candidateEntity?.type !== 'arc') return null;
+        if (candidateEntity?.type !== 'arc' || Math.sign(candidateEntity.bulge) !== Math.sign(target.initialBulge)) return null;
         const candidateArc = resolveArcFromBulge(candidateEntity, candidate.points[entity.startPointId], candidate.points[entity.endPointId]);
         if (!candidateArc) return null;
-        return [angleResidual(candidateArc.startAngle, arc.startAngle),
-          (candidateArc.signedSweep - arc.signedSweep) * arc.radius];
+        return [candidateArc.center.x - arc.center.x, candidateArc.center.y - arc.center.y,
+          angleResidual(candidateArc.startAngle, arc.startAngle),
+          (candidateEntity.bulge - target.initialBulge) * arc.radius];
       },
     });
     if (solved && Math.hypot(solved.points[entity.endPointId].x - solved.points[entity.startPointId].x,
@@ -216,8 +219,20 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
     const pointer = { x: before.center.x + delta.x, y: before.center.y + delta.y };
     const solved = solveDrawingGeometricIntent(sketch, {
       seedVariable: arcBulgeSolverVariable(entity.id), variables: [...pointSolverVariables(entity.startPointId), ...pointSolverVariables(entity.endPointId)], modelScale: Math.max(1, before.radius),
-      primaryResiduals: (candidate) => { const e = (candidate.entities as unknown as Record<string, DrawingEntity>)[entity.id]; if (e?.type !== 'arc' || Math.sign(e.bulge) !== Math.sign(initialBulge)) return null; const arc = resolveArcFromBulge(e, candidate.points[e.startPointId], candidate.points[e.endPointId]); return arc ? [arc.center.x - pointer.x, arc.center.y - pointer.y] : null; },
-      secondaryResiduals: (candidate) => { const a = candidate.points[entity.startPointId], b = candidate.points[entity.endPointId], e = (candidate.entities as unknown as Record<string, DrawingEntity>)[entity.id]; return a && b && e?.type === 'arc' ? [(b.x - a.x) - (before.end.x - before.start.x), (b.y - a.y) - (before.end.y - before.start.y), (e.bulge - initialBulge) * before.radius] : null; },
+      primaryResiduals: (candidate) => {
+        const e = (candidate.entities as unknown as Record<string, DrawingEntity>)[entity.id], a = candidate.points[entity.startPointId], b = candidate.points[entity.endPointId];
+        if (e?.type !== 'arc' || !a || !b || Math.sign(e.bulge) !== Math.sign(initialBulge)) return null;
+        const arc = resolveArcFromBulge(e, a, b);
+        return arc ? [arc.center.x - pointer.x, arc.center.y - pointer.y] : null;
+      },
+      semanticResiduals: (candidate) => {
+        const e = (candidate.entities as unknown as Record<string, DrawingEntity>)[entity.id], a = candidate.points[entity.startPointId], b = candidate.points[entity.endPointId];
+        if (e?.type !== 'arc' || !a || !b || Math.sign(e.bulge) !== Math.sign(initialBulge)) return null;
+        const arc = resolveArcFromBulge(e, a, b); if (!arc) return null;
+        return [(a.x - before.start.x) - (b.x - before.end.x),
+          (a.y - before.start.y) - (b.y - before.end.y),
+          (e.bulge - initialBulge) * before.radius];
+      },
     });
     return solved === sketch ? document : solved ? { ...document, sketches: { ...document.sketches, [sketch.id]: solved } } : null;
   }

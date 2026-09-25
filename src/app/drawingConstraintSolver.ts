@@ -10,7 +10,7 @@ export const DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS = 80;
 const INITIAL_DAMPING = 1e-6, ITERATION_CONVERGENCE_MM = 1e-12, DIRECT_TARGET_MOVEMENT_WEIGHT = 1_000_000_000;
 const INTERACTION_RANK_DAMPING = 1e-10, INTERACTION_SCORE_EPSILON = 1e-14;
 const INTERACTION_IMPROVEMENT_RELATIVE = 1e-9, INTERACTION_EQUIVALENCE_RELATIVE = 1e-12;
-const INTERACTION_LINE_SEARCH_STEPS = 12, INTERACTION_TIER_ITERATIONS = 30;
+const INTERACTION_LINE_SEARCH_STEPS = 12, INTERACTION_TIER_ITERATIONS = 120;
 export type DrawingDimensionSolveFailureReason = 'INVALID_TARGET' | 'INVALID_ANGLE_TARGET' | 'MISSING_REFERENCE' | 'UNSUPPORTED_DEGENERATE_GEOMETRY' | 'UNDERDETERMINED_ORIENTATION' | 'UNSATISFIABLE_DIMENSION_SET' | 'SOLUTION_VERIFICATION_FAILED';
 export type DrawingDimensionSolveResult = Readonly<{ ok: true; document: DrawingDocumentV2; diagnostics: Readonly<{ constraintCount: number; residuals: readonly number[]; iterations: number; pointIds: readonly string[] }> }> | Readonly<{ ok: false; reason: DrawingDimensionSolveFailureReason; message: string }>;
 const failureMessages: Record<DrawingDimensionSolveFailureReason, string> = { INVALID_TARGET: 'Dimension must be 0 mm or greater.', INVALID_ANGLE_TARGET: 'Angle must be greater than 0° and less than 180°.', MISSING_REFERENCE: 'This dimension no longer has valid geometry.', UNSUPPORTED_DEGENERATE_GEOMETRY: 'This dimension cannot be solved from the current geometry.', UNDERDETERMINED_ORIENTATION: 'This dimension cannot be solved from the current geometry.', UNSATISFIABLE_DIMENSION_SET: 'This value conflicts with another driving dimension.', SOLUTION_VERIFICATION_FAILED: 'The dimension solution could not be verified.' };
@@ -351,6 +351,8 @@ export type DrawingGeometricIntent = Readonly<{
   variables?: readonly DrawingSolverVariable[];
   /** Candidate-evaluated model-space pointer residuals (normally x and y). */
   primaryResiduals: (candidate: DrawingSketchV2) => readonly number[] | null;
+  /** Equality rows defining the interaction's semantic motion subspace. */
+  semanticResiduals?: (candidate: DrawingSketchV2) => readonly number[] | null;
   /** Lower-priority, interaction-specific free-case residuals. */
   secondaryResiduals?: (candidate: DrawingSketchV2) => readonly number[] | null;
   /** Characteristic model length used only to normalize dimensionless scalar motion. */
@@ -388,15 +390,15 @@ export const solveDrawingGeometricIntent = (
   const evaluate = (values: readonly number[]) => {
     const candidate = applyDrawingSolverVector(sketch, variables, values); if (!candidate) return null;
     const hard = evaluateSystem(candidate, state, [], [])?.residuals ?? [];
-    const primary = intent.primaryResiduals(candidate), secondary = intent.secondaryResiduals?.(candidate) ?? [];
-    if (!primary || ![...hard, ...primary, ...secondary].every(Number.isFinite)) return null;
+    const semantic = intent.semanticResiduals?.(candidate) ?? [], primary = intent.primaryResiduals(candidate), secondary = intent.secondaryResiduals?.(candidate) ?? [];
+    if (!primary || ![...hard, ...semantic, ...primary, ...secondary].every(Number.isFinite)) return null;
     const least = values.map((value, index) => (value - initial[index]) * scalarMm[index] / intent.modelScale);
-    return { candidate, hard, primary: [...primary], secondary: [...secondary], least };
+    return { candidate, hard, semantic: [...semantic], primary: [...primary], secondary: [...secondary], least };
   };
   let values = [...initial]; const initialEvaluation = evaluate(values); if (!initialEvaluation) return null;
   let best: NonNullable<ReturnType<typeof evaluate>> = initialEvaluation;
   const initialPrimaryError = norm(best.primary);
-  const jacobianAt = (at: readonly number[], groups: readonly (keyof Pick<NonNullable<ReturnType<typeof evaluate>>, 'hard' | 'primary' | 'secondary' | 'least'>)[]) => {
+  const jacobianAt = (at: readonly number[], groups: readonly (keyof Pick<NonNullable<ReturnType<typeof evaluate>>, 'hard' | 'semantic' | 'primary' | 'secondary' | 'least'>)[]) => {
     const current = evaluate(at); if (!current) return null;
     const rows = groups.flatMap((group) => current[group]), jacobian = rows.map(() => Array(variables.length).fill(0));
     for (let column = 0; column < variables.length; column += 1) {
@@ -416,9 +418,9 @@ export const solveDrawingGeometricIntent = (
   const optimizeTier = (objective: 'primary' | 'secondary' | 'least', preserved: readonly ('primary' | 'secondary')[]) => {
     if (!best[objective].length) return;
     for (let iteration = 0; iteration < INTERACTION_TIER_ITERATIONS; iteration += 1) {
-      const groups = [objective, 'hard', ...preserved] as const, data = jacobianAt(values, groups); if (!data) break;
+      const groups = [objective, 'hard', 'semantic', ...preserved] as const, data = jacobianAt(values, groups); if (!data) break;
       const n = variables.length, objectiveCount = data.current[objective].length;
-      const constraintResiduals = [...data.current.hard, ...preserved.flatMap((group) => data.current[group])];
+      const constraintResiduals = [...data.current.hard, ...data.current.semantic, ...preserved.flatMap((group) => data.current[group])];
       const constraintStart = objectiveCount, m = constraintResiduals.length;
       const matrix = Array.from({ length: n + m }, () => Array(n + m).fill(0)), rhs = Array(n + m).fill(0);
       for (let row = 0; row < objectiveCount; row += 1) for (let i = 0; i < n; i += 1) {
@@ -427,9 +429,15 @@ export const solveDrawingGeometricIntent = (
       }
       for (let i = 0; i < n; i += 1) matrix[i][i] += INTERACTION_RANK_DAMPING;
       for (let row = 0; row < m; row += 1) for (let i = 0; i < n; i += 1) matrix[i][n + row] = matrix[n + row][i] = data.jacobian[constraintStart + row][i];
+      // A semantic invariant may duplicate an already-hard equation (for
+      // example a fixed Arc center during a radius drag). A minute multiplier
+      // regularization keeps that equivalent KKT row from making the system
+      // singular without relaxing the independently verified equations.
+      for (let row = 0; row < m; row += 1) matrix[n + row][n + row] = -INTERACTION_RANK_DAMPING;
       // Hard equations converge to zero. Completed interaction tiers preserve
       // their attained residual vector, hence have a zero delta RHS.
       data.current.hard.forEach((residual, row) => { rhs[n + row] = -residual; });
+      data.current.semantic.forEach((residual, row) => { rhs[n + data.current.hard.length + row] = -residual; });
       const step = solveLinear(matrix, rhs); if (!step?.every(Number.isFinite) || norm(step.slice(0, n)) < 1e-22) break;
       const oldScore = norm(data.current[objective]); let accepted = false;
       for (let reduction = 0; reduction < INTERACTION_LINE_SEARCH_STEPS; reduction += 1) {
@@ -444,6 +452,7 @@ export const solveDrawingGeometricIntent = (
         const primaryLimit = norm(best.primary) + Math.max(ITERATION_CONVERGENCE_MM, intent.modelScale ** 2 * INTERACTION_EQUIVALENCE_RELATIVE);
         const secondaryLimit = norm(best.secondary) + Math.max(ITERATION_CONVERGENCE_MM, intent.modelScale ** 2 * INTERACTION_EQUIVALENCE_RELATIVE);
         if (trial.hard.every((v) => Math.abs(v) <= DRAWING_CONSTRAINT_TOLERANCE_MM)
+          && norm(trial.semantic) <= norm(data.current.semantic) + Math.max(DRAWING_CONSTRAINT_TOLERANCE_MM, intent.modelScale * 1e-5)
           && norm(trial[objective]) < oldScore - INTERACTION_SCORE_EPSILON
           && (!preserved.includes('primary') || norm(trial.primary) <= primaryLimit)
           && (!preserved.includes('secondary') || norm(trial.secondary) <= secondaryLimit)) {
@@ -467,6 +476,7 @@ export const solveDrawingGeometricIntent = (
   };
   const snappedPrimary = intent.primaryResiduals(snapped);
   if ((!component || verifyDrawingConstraints(snapped, component.dimensionIds, component.geometricConstraintIds))
+    && (intent.semanticResiduals?.(snapped) ?? []).every((value) => Math.abs(value) <= DRAWING_CONSTRAINT_TOLERANCE_MM)
     && snappedPrimary && (initialPrimaryError <= INTERACTION_RANK_DAMPING || norm(snappedPrimary) < initialPrimaryError - Math.max(ITERATION_CONVERGENCE_MM, initialPrimaryError * INTERACTION_IMPROVEMENT_RELATIVE))) return noOpOr(snapped);
   // Finish nonlinear equality convergence independently of soft convergence.
   // The projection starts at the selected pointer optimum and changes it only
@@ -475,6 +485,7 @@ export const solveDrawingGeometricIntent = (
   const projected = solveVariableComponent(snapped, state, variables)?.sketch;
   const projectedPrimary = projected && intent.primaryResiduals(projected);
   return projected && projectedPrimary && constrainedComponent && verifyDrawingConstraints(projected, constrainedComponent.dimensionIds, constrainedComponent.geometricConstraintIds)
+    && (intent.semanticResiduals?.(projected) ?? []).every((value) => Math.abs(value) <= DRAWING_CONSTRAINT_TOLERANCE_MM)
     && (initialPrimaryError <= INTERACTION_RANK_DAMPING || norm(projectedPrimary) < initialPrimaryError - Math.max(ITERATION_CONVERGENCE_MM, initialPrimaryError * INTERACTION_IMPROVEMENT_RELATIVE)) ? noOpOr(projected) : sketch;
 };
 

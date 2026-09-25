@@ -27,7 +27,14 @@ test('derived Arc center uses a semantic geometric-intent target without creatin
   assert.deepEqual(target, { kind: 'arc-center', entityId: 'arc' });
   assert.deepEqual(Object.keys(sketch(document).points).sort(), ['e', 's']);
   const candidate = solveDrawingDragCandidate(document, target, { x: 3, y: -4 });
-  close(resolved(candidate).center.x, before.center.x + 3, 1e-4); close(resolved(candidate).center.y, before.center.y - 4, 1e-4);
+  const after = resolved(candidate);
+  close(after.center.x, before.center.x + 3, 1e-6); close(after.center.y, before.center.y - 4, 1e-6);
+  close(sketch(candidate).points.s.x - sketch(document).points.s.x, 3, 1e-6);
+  close(sketch(candidate).points.s.y - sketch(document).points.s.y, -4, 1e-6);
+  close(sketch(candidate).points.e.x - sketch(document).points.e.x, 3, 1e-6);
+  close(sketch(candidate).points.e.y - sketch(document).points.e.y, -4, 1e-6);
+  close(after.radius, before.radius); close(after.signedSweep, before.signedSweep);
+  close(entity(candidate).bulge, entity(document).bulge);
   assert.deepEqual(Object.keys(sketch(candidate).points).sort(), ['e', 's']);
 });
 
@@ -177,7 +184,7 @@ test('center candidate always derives from drag-start and preserves shared endpo
   assert.equal(Object.keys(sketch(near).points).length, 3);
 });
 
-test('body drag has no initial jump and its finite grab point reaches the pointer', () => {
+test('free body drag has no jump and changes only radius for outward and inward motion', () => {
   const document = make(), before = resolved(document), q = midpoint(before);
   const pointer = { x: q.x + 0.35, y: q.y - 0.2 };
   const target = createArcRadiusDragTarget(document, 'arc', pointer); assert.ok(target);
@@ -186,13 +193,16 @@ test('body drag has no initial jump and its finite grab point reaches the pointe
 
   const radial = { x: pointer.x - before.center.x, y: pointer.y - before.center.y };
   const length = Math.hypot(radial.x, radial.y), delta = { x: radial.x / length * 2, y: radial.y / length * 2 };
-  const candidate = solveDrawingDragCandidate(document, target, delta, pointer); assert.ok(candidate);
-  const after = resolved(candidate);
-  const grabbed = arcPointAtForTest(after, target.sweepParameter), originalGrab = arcPointAtForTest(before, target.sweepParameter);
-  close(grabbed.x, originalGrab.x + delta.x, 1e-4); close(grabbed.y, originalGrab.y + delta.y, 1e-4);
-  assert.notDeepEqual(sketch(candidate).points.s, sketch(document).points.s);
-  assert.notDeepEqual(sketch(candidate).points.e, sketch(document).points.e);
-  assert.equal(entity(candidate).startPointId, 's'); assert.equal(entity(candidate).endPointId, 'e');
+  for (const [amount, expected] of [[2, before.radius + 2], [-2, before.radius - 2]]) {
+    const candidate = solveDrawingDragCandidate(document, target, { x: delta.x * amount / 2, y: delta.y * amount / 2 }, pointer); assert.ok(candidate);
+    const after = resolved(candidate);
+    close(after.center.x, before.center.x); close(after.center.y, before.center.y);
+    close(after.radius, expected, 1e-6); close(after.startAngle, before.startAngle, 1e-6);
+    close(after.endAngle, before.endAngle, 1e-6); close(after.signedSweep, before.signedSweep, 1e-6);
+    close(entity(candidate).bulge, entity(document).bulge);
+    assert.notDeepEqual(sketch(candidate).points.s, sketch(document).points.s);
+    assert.notDeepEqual(sketch(candidate).points.e, sketch(document).points.e);
+  }
 });
 
 test('body drag reaches outward and inward pointers for minor, semicircle, and major signed Arcs', () => {
@@ -232,8 +242,51 @@ test('dragging through the old center keeps a valid signed branch', () => {
 
 const axisDimension = (id, pointId, axis, value) => ({ id, kind: axis === 'x' ? 'HORIZONTAL_DISTANCE' : 'VERTICAL_DISTANCE',
   references: [{ kind: 'datum', datum: 'ORIGIN' }, { kind: 'sketchPoint', pointId }], value, role: 'driving', placement: { kind: 'linear', offset: 5 } });
+const centerAxisDimension = (id, axis, value) => ({ id, kind: axis === 'x' ? 'HORIZONTAL_DISTANCE' : 'VERTICAL_DISTANCE',
+  references: [{ kind: 'datum', datum: 'ORIGIN' }, { kind: 'derivedPoint', entityId: 'arc', role: 'center' }], value, role: 'driving', placement: { kind: 'linear', offset: 5 } });
 
-test('fixed endpoint axes leave Arc body bulge as usable geometric grab motion', () => {
+test('center axis equations project rigid translation without allowing Arc deformation', () => {
+  for (const fixedAxis of ['x', 'y']) {
+    const document = make(), s = sketch(document), before = resolved(document);
+    s.dimensions.fixed = centerAxisDimension('fixed', fixedAxis, before.center[fixedAxis]); s.dimensionOrder = ['fixed'];
+    const candidate = solveDrawingDragCandidate(document, createArcCenterDragTarget(document, 'arc'), { x: 20, y: 15 });
+    assert.ok(candidate); assert.ok(verifyDrawingConstraints(sketch(candidate), ['fixed'], []));
+    const after = resolved(candidate), expected = fixedAxis === 'x' ? { x: 0, y: 15 } : { x: 20, y: 0 };
+    close(after.center.x - before.center.x, expected.x, 1e-5); close(after.center.y - before.center.y, expected.y, 1e-5);
+    for (const id of ['s', 'e']) {
+      close(sketch(candidate).points[id].x - s.points[id].x, expected.x, 1e-5);
+      close(sketch(candidate).points[id].y - s.points[id].y, expected.y, 1e-5);
+    }
+    close(after.radius, before.radius); close(after.signedSweep, before.signedSweep); close(entity(candidate).bulge, entity(document).bulge);
+  }
+  const document = make(), s = sketch(document), before = resolved(document);
+  s.dimensions.cx = centerAxisDimension('cx', 'x', before.center.x); s.dimensions.cy = centerAxisDimension('cy', 'y', before.center.y); s.dimensionOrder = ['cx', 'cy'];
+  assert.equal(solveDrawingDragCandidate(document, createArcCenterDragTarget(document, 'arc'), { x: 20, y: 15 }), document);
+});
+
+test('endpoint pivot stays exact with a compatible derived-center axis equation', () => {
+  for (const fixedAxis of ['x', 'y']) for (const [draggedId, pivotId, delta] of [['s', 'e', { x: -2, y: 3 }], ['e', 's', { x: 2, y: 3 }]]) {
+    const document = make(), s = sketch(document), before = resolved(document);
+    s.dimensions.fixed = centerAxisDimension('fixed', fixedAxis, before.center[fixedAxis]); s.dimensionOrder = ['fixed'];
+    const candidate = solveDrawingDragCandidate(document, createArcEndpointDragTarget(document, 'arc', draggedId), delta);
+    assert.ok(candidate); assert.ok(verifyDrawingConstraints(sketch(candidate), ['fixed'], []));
+    close(sketch(candidate).points[pivotId].x, s.points[pivotId].x, 1e-7);
+    close(sketch(candidate).points[pivotId].y, s.points[pivotId].y, 1e-7);
+  }
+});
+
+test('body radius drag remains radial when the derived center is fixed', () => {
+  const document = make(), s = sketch(document), before = resolved(document), q = midpoint(before);
+  s.dimensions.cx = centerAxisDimension('cx', 'x', before.center.x); s.dimensions.cy = centerAxisDimension('cy', 'y', before.center.y); s.dimensionOrder = ['cx', 'cy'];
+  const radial = { x: (q.x - before.center.x) / before.radius, y: (q.y - before.center.y) / before.radius };
+  const candidate = solveDrawingDragCandidate(document, createArcRadiusDragTarget(document, 'arc', q), { x: radial.x * 2, y: radial.y * 2 }, q);
+  assert.ok(candidate); assert.ok(verifyDrawingConstraints(sketch(candidate), ['cx', 'cy'], []));
+  const after = resolved(candidate); close(after.center.x, before.center.x); close(after.center.y, before.center.y);
+  close(after.radius, before.radius + 2, 1e-5); close(after.startAngle, before.startAngle, 1e-5); close(after.signedSweep, before.signedSweep, 1e-5);
+  close(entity(candidate).bulge, entity(document).bulge); assert.notDeepEqual(sketch(candidate).points.s, s.points.s); assert.notDeepEqual(sketch(candidate).points.e, s.points.e);
+});
+
+test('fixed endpoint axes do not reinterpret Arc body radius intent as form motion', () => {
   for (const bulge of [.05, .5, 1, 2, -.05, -.5, -1, -2]) {
     const document = make(bulge), s = sketch(document); s.points.s = { id: 's', x: 2, y: 3 }; s.points.e = { id: 'e', x: 12, y: 3 };
     const before = resolved(document), q = midpoint(before);
@@ -241,25 +294,20 @@ test('fixed endpoint axes leave Arc body bulge as usable geometric grab motion',
     s.dimensions.ex = axisDimension('ex', 'e', 'x', 12); s.dimensions.ey = axisDimension('ey', 'e', 'y', 3);
     s.dimensionOrder = ['sx', 'sy', 'ex', 'ey'];
     const target = createArcRadiusDragTarget(document, 'arc', q), towardCenter = { x: 0, y: Math.sign(q.y || -bulge) * 2 };
-    const candidate = solveDrawingDragCandidate(document, target, towardCenter, q); assert.ok(candidate, `bulge ${bulge}`);
-    assert.ok(verifyDrawingConstraints(sketch(candidate), s.dimensionOrder, []));
-    assert.deepEqual(sketch(candidate).points.s, s.points.s); assert.deepEqual(sketch(candidate).points.e, s.points.e);
-    assert.notEqual(entity(candidate).bulge, bulge); assert.equal(Math.sign(entity(candidate).bulge), Math.sign(bulge));
-    assert.notEqual(resolved(candidate).radius, before.radius); assert.notEqual(resolved(candidate).center.y, before.center.y);
-    assert.notEqual(resolved(candidate).signedSweep, before.signedSweep);
-    const oldError = Math.hypot(q.x - (q.x + towardCenter.x), q.y - (q.y + towardCenter.y));
-    const moved = arcPointAtForTest(resolved(candidate), .5);
-    assert.ok(Math.hypot(moved.x - q.x - towardCenter.x, moved.y - q.y - towardCenter.y) < oldError);
+    const candidate = solveDrawingDragCandidate(document, target, towardCenter, q); assert.equal(candidate, document, `bulge ${bulge}`);
+    close(resolved(candidate).radius, before.radius); assert.equal(entity(candidate).bulge, bulge);
   }
 });
 
-test('driving radius stays hard while Arc body grab uses remaining canonical motion', () => {
+test('driving radius makes body radius drag a selected no-op instead of substitute translation', () => {
   const document = make(.5), s = sketch(document), before = resolved(document), q = midpoint(before);
   s.dimensions.radius = createCircularSizeDimension(s, 'arc', { x: 5, y: -20 }, 'radius'); s.dimensionOrder = ['radius'];
   const candidate = solveDrawingDragCandidate(document, createArcRadiusDragTarget(document, 'arc', q), { x: 3, y: -2 }, q);
-  assert.ok(candidate); assert.ok(verifyDrawingConstraints(sketch(candidate), ['radius'], []));
+  assert.equal(candidate, document); assert.ok(verifyDrawingConstraints(sketch(candidate), ['radius'], []));
   close(resolved(candidate).radius, before.radius, 1e-7);
-  assert.ok(Math.hypot(resolved(candidate).center.x - before.center.x, resolved(candidate).center.y - before.center.y) > 1e-3);
+  close(resolved(candidate).center.x, before.center.x); close(resolved(candidate).center.y, before.center.y);
+  assert.deepEqual(sketch(candidate).points.s, s.points.s); assert.deepEqual(sketch(candidate).points.e, s.points.e);
+  assert.equal(transactDrawingDocument(EMPTY_DRAWING_HISTORY, document, () => candidate).history.undo.length, 0);
 });
 
 const arcPointAtForTest = (arc, t) => ({ x: arc.center.x + arc.radius * Math.cos(arc.startAngle + arc.signedSweep * t), y: arc.center.y + arc.radius * Math.sin(arc.startAngle + arc.signedSweep * t) });
