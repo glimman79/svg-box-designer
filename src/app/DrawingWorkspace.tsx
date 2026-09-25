@@ -28,7 +28,7 @@ import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcEndp
 import { drawingArcPath } from './drawingArcGeometry.js';
 import { circularDimensionEndpoints, resolveCircularSize } from './drawingCircularSize.js';
 import { distanceToArc } from './drawingArcGeometry.js';
-import { createArcCenterDragTarget, createArcEndpointDragTarget, createArcRadiusDragTarget, createCircleRadiusDragTarget, DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, resolveArcEndpointOwner, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
+import { createArcCenterDragTarget, createArcEndpointDragTarget, createArcRadiusDragTarget, createCircleRadiusDragTarget, createLineBodyDragTarget, DRAWING_DRAG_THRESHOLD_PX, pointIdFromHit, resolveArcEndpointOwner, solveDrawingDragCandidate, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
 import { deleteGeometricConstraint, deriveMidpointMarkerPresentation, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
 import { deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
@@ -786,10 +786,10 @@ export function DrawingWorkspace({
           const arcId = resolveArcEndpointOwner(documentRef.current, explicitPointId, selectedEntityIds);
           return arcId ? createArcEndpointDragTarget(documentRef.current, arcId, explicitPointId) : { kind: 'point', pointId: explicitPointId };
         })()
-        : explicitLineId ? { kind: 'line', lineId: explicitLineId }
+        : explicitLineId ? createLineBodyDragTarget(documentRef.current, explicitLineId, startModel)
         : hit?.kind === 'point'
         ? (() => { const pointId = pointIdFromHit(documentRef.current, hit.lineId, hit.point); return pointId ? { kind: 'point', pointId } : null; })()
-        : hit?.kind === 'line' ? { kind: 'line', lineId: hit.lineId } : null;
+        : hit?.kind === 'line' ? createLineBodyDragTarget(documentRef.current, hit.lineId, startModel) : null;
       if (!target) return;
       const beginDrag = !event.ctrlKey && !constraintsPanelOpen;
       const selectionTarget: DrawingSelectionRef | null = target.kind === 'arc-endpoint'

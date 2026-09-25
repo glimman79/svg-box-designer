@@ -341,6 +341,104 @@ export type DrawingVariableIntent = Readonly<{
   priority: 1 | 2 | 3;
 }>;
 
+export type DrawingGeometricIntent = Readonly<{
+  /** Any variable owned by the canonical component which the grab addresses. */
+  seedVariable: DrawingSolverVariable;
+  /** Additional canonical variables owned by the same transient interaction. */
+  variables?: readonly DrawingSolverVariable[];
+  /** Candidate-evaluated model-space pointer residuals (normally x and y). */
+  pointerResiduals: (candidate: DrawingSketchV2) => readonly number[] | null;
+  /** Lower-priority, interaction-specific free-case residuals. */
+  preferenceResiduals?: (candidate: DrawingSketchV2) => readonly number[] | null;
+  /** Characteristic model length used only to normalize dimensionless scalar motion. */
+  modelScale: number;
+}>;
+
+/**
+ * Solves a transient geometric grab against every canonical variable in its
+ * connected component. Persistent equations are equality constraints in a
+ * KKT step and are independently verified; they are never soft weights.
+ * Pointer residuals have a bounded 100:1 weight over free-case preferences,
+ * while a 1e-8 normalized least-change term only selects deterministic points
+ * on otherwise equivalent manifolds. Point/radius columns use millimetres;
+ * bulge columns use the caller's characteristic model length.
+ */
+export const solveDrawingGeometricIntent = (
+  sketch: DrawingSketchV2,
+  intent: DrawingGeometricIntent,
+): DrawingSketchV2 | null => {
+  const analysis = analyzeDrawingConstraints(sketch);
+  const component = intent.seedVariable.kind === 'point-axis'
+    ? analysis.componentByPointId.get(intent.seedVariable.pointId)
+    : analysis.componentByVariableKey.get(drawingSolverVariableKey(intent.seedVariable));
+  const pointIds = component ? [...component.pointIds] : intent.seedVariable.kind === 'point-axis' ? [intent.seedVariable.pointId] : [];
+  const scalarVariables = component?.scalarVariables ?? (intent.seedVariable.kind === 'entity-scalar' ? [intent.seedVariable] : []);
+  const variables = deduplicateDrawingSolverVariables([...pointIds.flatMap(pointSolverVariables), ...scalarVariables, ...(intent.variables ?? [])]);
+  const initial = flattenDrawingSolverVariables(sketch, variables);
+  if (!initial || !variables.length || !Number.isFinite(intent.modelScale) || intent.modelScale <= 0) return null;
+  const state: ComponentState = { pointIds, equations: component ? [
+    ...component.dimensionIds.map((id) => { const dimension = sketch.dimensions[id], equation = dimension && constraintEquation(sketch, dimension); return equation ? { ...equation, target: dimension.value } : null; }),
+    ...component.geometricConstraintIds.flatMap((id) => { const constraint = sketch.geometricConstraints[id]; return constraint ? geometricConstraintEquations(sketch, constraint).map((equation) => ({ ...equation, target: 0 })) : []; }),
+  ].filter((equation): equation is Equation => Boolean(equation)) : [] };
+  if (component && state.equations.length < component.dimensionIds.length + component.geometricConstraintIds.length) return null;
+  const scales = variables.map((variable) => variable.kind === 'entity-scalar' && variable.scalar === 'arc-bulge' ? Math.max(.1, Math.abs(initial[variables.indexOf(variable)])) : 1);
+  const scalarMm = variables.map((variable) => variable.kind === 'entity-scalar' && variable.scalar === 'arc-bulge' ? intent.modelScale : 1);
+  const evaluate = (values: readonly number[]) => {
+    const candidate = applyDrawingSolverVector(sketch, variables, values); if (!candidate) return null;
+    const hard = evaluateSystem(candidate, state, [], [])?.residuals ?? [];
+    const pointer = intent.pointerResiduals(candidate), preference = intent.preferenceResiduals?.(candidate) ?? [];
+    if (!pointer || ![...hard, ...pointer, ...preference].every(Number.isFinite)) return null;
+    const least = values.map((value, index) => (value - initial[index]) * scalarMm[index] / intent.modelScale);
+    return { candidate, hard, soft: [...pointer.map((value) => value * 100), ...preference, ...least.map((value) => value * 1e-8)] };
+  };
+  let values = [...initial], damping = 1e-8, best = evaluate(values); if (!best) return null;
+  for (let iteration = 0; iteration < DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS; iteration += 1) {
+    const current = evaluate(values); if (!current) break;
+    const rows = [...current.soft, ...current.hard], jacobian = rows.map(() => Array(variables.length).fill(0));
+    for (let column = 0; column < variables.length; column += 1) {
+      const step = 1e-6 * scales[column], plus = [...values], minus = [...values]; plus[column] += step; minus[column] -= step;
+      const a = evaluate(plus), b = evaluate(minus);
+      if (!a && !b) continue;
+      const ar = a ? [...a.soft, ...a.hard] : null, br = b ? [...b.soft, ...b.hard] : null;
+      for (let row = 0; row < rows.length; row += 1) {
+        const central = ar && br ? (ar[row] - br[row]) / (2e-6) : NaN;
+        const forward = ar ? (ar[row] - rows[row]) / 1e-6 : NaN;
+        jacobian[row][column] = Number.isFinite(central) && (Math.abs(central) > 1e-12 || !Number.isFinite(forward) || Math.abs(forward) <= 1e-12)
+          ? central : Number.isFinite(forward) ? forward : (rows[row] - br![row]) / 1e-6;
+      }
+    }
+    const n = variables.length, m = current.hard.length, matrix = Array.from({ length: n + m }, () => Array(n + m).fill(0)), rhs = Array(n + m).fill(0);
+    for (let row = 0; row < current.soft.length; row += 1) for (let i = 0; i < n; i += 1) {
+      rhs[i] -= jacobian[row][i] * current.soft[row];
+      for (let j = 0; j < n; j += 1) matrix[i][j] += jacobian[row][i] * jacobian[row][j];
+    }
+    for (let i = 0; i < n; i += 1) matrix[i][i] += damping;
+    for (let row = 0; row < m; row += 1) for (let i = 0; i < n; i += 1) {
+      const derivative = jacobian[current.soft.length + row][i]; matrix[i][n + row] = derivative; matrix[n + row][i] = derivative;
+    }
+    for (let row = 0; row < m; row += 1) rhs[n + row] = -current.hard[row];
+    const step = solveLinear(matrix, rhs); if (!step?.every(Number.isFinite)) break;
+    const trialValues = values.map((value, index) => value + step[index] * scales[index]), trial = evaluate(trialValues);
+    const score = (item: NonNullable<typeof trial>) => norm(item.soft) + norm(item.hard) * 1e12;
+    if (trial && score(trial) < score(current)) { values = trialValues; best = trial; damping = Math.max(1e-12, damping * .25); }
+    else damping = Math.min(1e8, damping * 10);
+    if (best.hard.every((value) => Math.abs(value) <= ITERATION_CONVERGENCE_MM) && norm(step.slice(0, n)) <= 1e-20) break;
+  }
+  const snappedValues = [...values];
+  for (let index = 0; index < snappedValues.length; index += 1) if (Math.abs(snappedValues[index] - initial[index]) <= 1e-12 * Math.max(1, Math.abs(initial[index]))) snappedValues[index] = initial[index];
+  const snapped = applyDrawingSolverVector(sketch, variables, snappedValues) ?? best.candidate;
+  const noOpOr = (candidate: DrawingSketchV2) => {
+    const candidateValues = flattenDrawingSolverVariables(candidate, variables);
+    return candidateValues?.every((value, index) => Math.abs(value - initial[index]) <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? sketch : candidate;
+  };
+  if (!component || verifyDrawingConstraints(snapped, component.dimensionIds, component.geometricConstraintIds)) return noOpOr(snapped);
+  // Finish nonlinear equality convergence independently of soft convergence.
+  // The projection starts at the selected pointer optimum and changes it only
+  // as required to meet the established 1e-7 hard acceptance contract.
+  const projected = solveVariableComponent(snapped, state, variables)?.sketch;
+  return projected && verifyDrawingConstraints(projected, component.dimensionIds, component.geometricConstraintIds) ? noOpOr(projected) : null;
+};
+
 /**
  * Projects transient interaction intent onto a complete canonical constraint
  * component. Unlike `solveDrawingVariableTargets`, these values are stays,
