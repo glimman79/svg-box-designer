@@ -42,7 +42,7 @@ test('derived Arc center routes to existing center target without persistent top
   const document = make(), before = Object.keys(document.sketches[document.activeSketchId].points);
   const candidate = point(undefined, { kind: 'derivedPoint', entityId: 'arc', role: 'center' });
   const owner = resolveDrawingPointerOwner(document, { x: 55, y: 3.75 }, candidate, overlay);
-  assert.equal(owner.kind, 'geometry'); assert.equal(owner.target.kind, 'rigid-translation');
+  assert.equal(owner.kind, 'geometry'); assert.equal(owner.target.kind, 'arc-center');
   assert.deepEqual(Object.keys(document.sketches[document.activeSketchId].points), before);
 });
 

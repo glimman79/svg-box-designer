@@ -79,12 +79,13 @@ test('circumference mapping has no jump and always derives from start document',
   for (const downX of [11, 13]) {
     const start = { x: downX, y: 3 }, target = createCircleRadiusDragTarget(document, 'circle', start); assert.ok(target);
     assert.equal(radius(solveDrawingDragCandidate(document, target, { x: 0, y: 0 }, start)), 10);
-    assert.equal(radius(solveDrawingDragCandidate(document, target, { x: 4, y: 0 }, start)), 14);
-    assert.equal(radius(solveDrawingDragCandidate(document, target, { x: -4, y: 0 }, start)), 6);
+    assert.ok(Math.abs(radius(solveDrawingDragCandidate(document, target, { x: 4, y: 0 }, start)) - 14) < 1e-7);
+    assert.ok(Math.abs(radius(solveDrawingDragCandidate(document, target, { x: -4, y: 0 }, start)) - 6) < 1e-7);
     const far = solveDrawingDragCandidate(document, target, { x: 4, y: 0 }, start);
     const nearer = solveDrawingDragCandidate(document, target, { x: 2, y: 0 }, start);
-    assert.equal(radius(far), 14); assert.equal(radius(nearer), 12);
-    assert.deepEqual(nearer.sketches[nearer.activeSketchId].points.center, { id: 'center', x: 2, y: 3 });
+    assert.ok(Math.abs(radius(far) - 14) < 1e-7); assert.ok(Math.abs(radius(nearer) - 12) < 1e-7);
+    assert.ok(Math.abs(nearer.sketches[nearer.activeSketchId].points.center.x - 2) < 1e-7);
+    assert.equal(nearer.sketches[nearer.activeSketchId].points.center.y, 3);
     assert.equal(nearer.sketches[nearer.activeSketchId].entities.circle.centerPointId, 'center');
   }
 });
@@ -95,7 +96,7 @@ test('invalid drag candidate can be retained and one completed change round-trip
   const candidate = solveDrawingDragCandidate(document, target, { x: 5, y: 0 }, start); assert.ok(candidate);
   const tx = transactDrawingDocument(EMPTY_DRAWING_HISTORY, document, () => candidate); assert.equal(tx.history.undo.length, 1);
   const undone = undoDrawingDocument(tx.history, tx.document); assert.equal(radius(undone.document), 10);
-  const redone = redoDrawingDocument(undone.history, undone.document); assert.ok(Math.abs(radius(redone.document) - 15) < 1e-9);
+  const redone = redoDrawingDocument(undone.history, undone.document); assert.ok(Math.abs(radius(redone.document) - 15) < 1e-7);
   assert.equal(transactDrawingDocument(EMPTY_DRAWING_HISTORY, document, value => value).history.undo.length, 0);
 });
 

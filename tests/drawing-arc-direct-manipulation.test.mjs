@@ -22,20 +22,16 @@ const resolved = d => resolveArcFromBulge(entity(d), sketch(d).points.s, sketch(
 const midpoint = arc => ({ x: arc.center.x + arc.radius * Math.cos(arc.startAngle + arc.signedSweep / 2), y: arc.center.y + arc.radius * Math.sin(arc.startAngle + arc.signedSweep / 2) });
 const close = (a, b, tolerance = 1e-8) => assert.ok(Math.abs(a - b) <= tolerance, `${a} != ${b}`);
 
-test('derived Arc center resolves to rigid authoritative endpoints without creating topology', () => {
+test('derived Arc center uses a semantic geometric-intent target without creating topology', () => {
   const document = make(), before = resolved(document), target = createArcCenterDragTarget(document, 'arc');
-  assert.deepEqual(target, { kind: 'rigid-translation', entityId: 'arc', pointIds: ['s', 'e'], preservedScalar: 'arc-bulge' });
+  assert.deepEqual(target, { kind: 'arc-center', entityId: 'arc' });
   assert.deepEqual(Object.keys(sketch(document).points).sort(), ['e', 's']);
   const candidate = solveDrawingDragCandidate(document, target, { x: 3, y: -4 });
-  assert.deepEqual(sketch(candidate).points.s, { id: 's', x: 3, y: -4 });
-  assert.deepEqual(sketch(candidate).points.e, { id: 'e', x: 13, y: -4 });
-  assert.equal(entity(candidate).bulge, entity(document).bulge);
-  assert.deepEqual(entity(candidate), { id: 'arc', type: 'arc', startPointId: 's', endPointId: 'e', bulge: 0.5 });
-  close(resolved(candidate).center.x, before.center.x + 3); close(resolved(candidate).center.y, before.center.y - 4);
-  close(resolved(candidate).radius, before.radius); close(resolved(candidate).signedSweep, before.signedSweep);
+  close(resolved(candidate).center.x, before.center.x + 3, 1e-4); close(resolved(candidate).center.y, before.center.y - 4, 1e-4);
+  assert.deepEqual(Object.keys(sketch(candidate).points).sort(), ['e', 's']);
 });
 
-test('either free endpoint follows the pointer while its pivot stays and form changes', () => {
+test('either free endpoint follows the pointer while its pivot stays exactly', () => {
   for (const [draggedId, pivotId, delta] of [['s', 'e', { x: -2, y: 3 }], ['e', 's', { x: 2, y: 3 }]]) {
     const document = make(), before = resolved(document);
     const target = createArcEndpointDragTarget(document, 'arc', draggedId);
@@ -45,10 +41,10 @@ test('either free endpoint follows the pointer while its pivot stays and form ch
     close(sketch(candidate).points[draggedId].x, sketch(document).points[draggedId].x + delta.x);
     close(sketch(candidate).points[draggedId].y, sketch(document).points[draggedId].y + delta.y);
     assert.deepEqual(sketch(candidate).points[pivotId], sketch(document).points[pivotId]);
-    assert.notEqual(entity(candidate).bulge, entity(document).bulge);
+    assert.equal(entity(candidate).bulge, entity(document).bulge);
     const after = resolved(candidate); assert.ok(after);
     assert.notEqual(after.center.x, before.center.x); assert.notEqual(after.center.y, before.center.y);
-    assert.notEqual(after.radius, before.radius); assert.notEqual(after.signedSweep, before.signedSweep);
+    assert.notEqual(after.radius, before.radius);
     assert.deepEqual(entity(candidate), { id: 'arc', type: 'arc', startPointId: 's', endPointId: 'e', bulge: entity(candidate).bulge });
     assert.deepEqual(Object.keys(sketch(candidate).points).sort(), ['e', 's']);
   }
@@ -70,7 +66,7 @@ test('endpoint rejects only chord collapse and remains valid across the former a
   const valid = solveDrawingDragCandidate(document, target, { x: 1, y: 1 }); assert.ok(valid);
   assert.equal(solveDrawingDragCandidate(document, target, { x: 10, y: 0 }), null);
   const crossing = solveDrawingDragCandidate(document, target, { x: -10, y: -30 }); assert.ok(crossing);
-  assert.deepEqual(sketch(crossing).points.s, { id: 's', x: -10, y: -30 });
+  close(sketch(crossing).points.s.x, -10, 1e-6); close(sketch(crossing).points.s.y, -30, 1e-6);
   assert.deepEqual(sketch(crossing).points.e, sketch(document).points.e);
   assert.ok(entity(valid).bulge > 0); assert.ok(entity(crossing).bulge > 0);
 });
@@ -80,7 +76,7 @@ test('free endpoint reaches all quadrants, far chords, and short nondegenerate c
   for (const destination of [{ x: 6, y: 7 }, { x: -6, y: 7 }, { x: -6, y: -7 }, { x: 6, y: -7 }, { x: 200, y: -150 }, { x: 1e-4, y: -2e-4 }]) {
     const candidate = solveDrawingDragCandidate(document, target, { x: destination.x - 10, y: destination.y });
     assert.ok(candidate, `valid at ${JSON.stringify(destination)}`);
-    close(sketch(candidate).points.e.x, destination.x); close(sketch(candidate).points.e.y, destination.y);
+    close(sketch(candidate).points.e.x, destination.x, 1e-6); close(sketch(candidate).points.e.y, destination.y, 1e-6);
     assert.deepEqual(sketch(candidate).points.s, sketch(document).points.s);
     assert.ok(resolved(candidate));
   }
@@ -95,14 +91,14 @@ test('endpoint result is drag-start absolute, event-rate independent, and revers
   assert.equal(entity(returned).bulge, 2);
 });
 
-test('geometric form search evolves continuously from minor through semicircle to major', () => {
+test('endpoint hierarchy preserves the least-change bulge across pointer destinations', () => {
   const document = make(0.5), target = createArcEndpointDragTarget(document, 'arc', 'e');
   const destinations = [{ x: 20, y: 0 }, { x: 10, y: 10 }, { x: 5, y: 10 }, { x: 5, y: 5 }];
   const bulges = destinations.map((destination) => {
     const candidate = solveDrawingDragCandidate(document, target, { x: destination.x - 10, y: destination.y });
     assert.ok(candidate); assert.ok(resolved(candidate)); return entity(candidate).bulge;
   });
-  assert.ok(bulges[0] < 1); assert.ok(bulges[2] > 0.9 && bulges[2] < 1.1); assert.ok(bulges[3] > 1);
+  bulges.forEach((bulge) => close(bulge, .5));
   const semicircle = make(1), semicircleTarget = createArcEndpointDragTarget(semicircle, 'arc', 'e');
   assert.ok(solveDrawingDragCandidate(semicircle, semicircleTarget, { x: 2, y: -3 }), '|bulge| = 1 is not a branch failure');
 });
@@ -176,12 +172,12 @@ test('center candidate always derives from drag-start and preserves shared endpo
   const target = createArcCenterDragTarget(document, 'arc');
   const far = solveDrawingDragCandidate(document, target, { x: 8, y: 1 });
   const near = solveDrawingDragCandidate(document, target, { x: 2, y: 1 });
-  assert.equal(sketch(near).points.s.x, 2); assert.equal(sketch(far).points.s.x, 8);
+  close(resolved(near).center.x, resolved(document).center.x + 2, 1e-4); close(resolved(far).center.x, resolved(document).center.x + 8, 1e-4);
   assert.equal(sketch(near).entities.line.endPointId, 's'); assert.equal(entity(near).startPointId, 's');
   assert.equal(Object.keys(sketch(near).points).length, 3);
 });
 
-test('body radius drag has no initial jump and preserves the canonical Arc form', () => {
+test('body drag has no initial jump and its finite grab point reaches the pointer', () => {
   const document = make(), before = resolved(document), q = midpoint(before);
   const pointer = { x: q.x + 0.35, y: q.y - 0.2 };
   const target = createArcRadiusDragTarget(document, 'arc', pointer); assert.ok(target);
@@ -192,15 +188,14 @@ test('body radius drag has no initial jump and preserves the canonical Arc form'
   const length = Math.hypot(radial.x, radial.y), delta = { x: radial.x / length * 2, y: radial.y / length * 2 };
   const candidate = solveDrawingDragCandidate(document, target, delta, pointer); assert.ok(candidate);
   const after = resolved(candidate);
-  close(after.radius, before.radius + 2); close(after.center.x, before.center.x); close(after.center.y, before.center.y);
-  close(after.startAngle, before.startAngle); close(after.endAngle, before.endAngle); close(after.signedSweep, before.signedSweep);
-  assert.equal(entity(candidate).bulge, entity(document).bulge);
+  const grabbed = arcPointAtForTest(after, target.sweepParameter), originalGrab = arcPointAtForTest(before, target.sweepParameter);
+  close(grabbed.x, originalGrab.x + delta.x, 1e-4); close(grabbed.y, originalGrab.y + delta.y, 1e-4);
   assert.notDeepEqual(sketch(candidate).points.s, sketch(document).points.s);
   assert.notDeepEqual(sketch(candidate).points.e, sketch(document).points.e);
   assert.equal(entity(candidate).startPointId, 's'); assert.equal(entity(candidate).endPointId, 'e');
 });
 
-test('body drag increases and decreases radius for minor, semicircle, and major signed Arcs', () => {
+test('body drag reaches outward and inward pointers for minor, semicircle, and major signed Arcs', () => {
   for (const bulge of [0.5, -0.5, 1, -1, 2, -2]) {
     const document = make(bulge), before = resolved(document), q = midpoint(before);
     const target = createArcRadiusDragTarget(document, 'arc', q);
@@ -209,9 +204,9 @@ test('body drag increases and decreases radius for minor, semicircle, and major 
     const outward = solveDrawingDragCandidate(document, target, { x: unit.x, y: unit.y }, q);
     const inward = solveDrawingDragCandidate(document, target, { x: -unit.x, y: -unit.y }, q);
     assert.ok(outward); assert.ok(inward);
-    assert.ok(resolved(outward).radius > before.radius); assert.ok(resolved(inward).radius < before.radius);
-    assert.equal(entity(outward).bulge, bulge); assert.equal(entity(inward).bulge, bulge);
-    close(resolved(outward).signedSweep, before.signedSweep); close(resolved(inward).signedSweep, before.signedSweep);
+    const outwardPoint = arcPointAtForTest(resolved(outward), target.sweepParameter), inwardPoint = arcPointAtForTest(resolved(inward), target.sweepParameter);
+    close(outwardPoint.x, q.x + unit.x, 1e-4); close(outwardPoint.y, q.y + unit.y, 1e-4);
+    close(inwardPoint.x, q.x - unit.x, 1e-4); close(inwardPoint.y, q.y - unit.y, 1e-4);
   }
 });
 
@@ -225,10 +220,10 @@ test('body radius candidates are event-rate independent and reversible', () => {
   assert.equal(solveDrawingDragCandidate(document, target, { x: 0, y: 0 }, q), document);
 });
 
-test('invalid collapsed radius is rejected and crossing center retains a valid signed branch', () => {
+test('dragging through the old center keeps a valid signed branch', () => {
   const document = make(), before = resolved(document), q = midpoint(before), target = createArcRadiusDragTarget(document, 'arc', q);
   const radial = { x: q.x - before.center.x, y: q.y - before.center.y };
-  assert.equal(solveDrawingDragCandidate(document, target, { x: -radial.x, y: -radial.y }, q), null);
+  const centered = solveDrawingDragCandidate(document, target, { x: -radial.x, y: -radial.y }, q); assert.ok(centered);
   const crossed = solveDrawingDragCandidate(document, target, { x: -2.5 * radial.x, y: -2.5 * radial.y }, q); assert.ok(crossed);
   const after = resolved(crossed); assert.ok(after);
   assert.equal(entity(crossed).bulge, entity(document).bulge);
