@@ -21,6 +21,13 @@ const entity = d => sketch(d).entities.arc;
 const resolved = d => resolveArcFromBulge(entity(d), sketch(d).points.s, sketch(d).points.e);
 const midpoint = arc => ({ x: arc.center.x + arc.radius * Math.cos(arc.startAngle + arc.signedSweep / 2), y: arc.center.y + arc.radius * Math.sin(arc.startAngle + arc.signedSweep / 2) });
 const close = (a, b, tolerance = 1e-8) => assert.ok(Math.abs(a - b) <= tolerance, `${a} != ${b}`);
+const geometricContinuationScore = (before, after) => {
+  const ts = [1 / 8, 1 / 4, 3 / 8, 1 / 2, 5 / 8, 3 / 4, 7 / 8];
+  const scale = Math.max(before.radius, Math.hypot(before.end.x - before.start.x, before.end.y - before.start.y));
+  const point = (arc, t) => ({ x: arc.center.x + arc.radius * Math.cos(arc.startAngle + arc.signedSweep * t), y: arc.center.y + arc.radius * Math.sin(arc.startAngle + arc.signedSweep * t) });
+  const curve = ts.reduce((sum, t) => { const a = point(before, t), b = point(after, t); return sum + ((a.x - b.x) ** 2 + (a.y - b.y) ** 2) / (scale * scale * ts.length); }, 0);
+  return curve + ((after.center.x - before.center.x) / scale) ** 2 + ((after.center.y - before.center.y) / scale) ** 2 + Math.log(after.radius / before.radius) ** 2;
+};
 
 test('derived Arc center uses a semantic geometric-intent target without creating topology', () => {
   const document = make(), before = resolved(document), target = createArcCenterDragTarget(document, 'arc');
@@ -48,7 +55,7 @@ test('either free endpoint follows the pointer while its pivot stays exactly', (
     close(sketch(candidate).points[draggedId].x, sketch(document).points[draggedId].x + delta.x);
     close(sketch(candidate).points[draggedId].y, sketch(document).points[draggedId].y + delta.y);
     assert.deepEqual(sketch(candidate).points[pivotId], sketch(document).points[pivotId]);
-    assert.equal(entity(candidate).bulge, entity(document).bulge);
+    assert.equal(Math.sign(entity(candidate).bulge), Math.sign(entity(document).bulge));
     const after = resolved(candidate); assert.ok(after);
     assert.notEqual(after.center.x, before.center.x); assert.notEqual(after.center.y, before.center.y);
     assert.notEqual(after.radius, before.radius);
@@ -98,14 +105,18 @@ test('endpoint result is drag-start absolute, event-rate independent, and revers
   assert.equal(entity(returned).bulge, 2);
 });
 
-test('endpoint hierarchy preserves the least-change bulge across pointer destinations', () => {
+test('endpoint hierarchy selects whole-Arc geometry instead of constant-bulge canonical stay', () => {
   const document = make(0.5), target = createArcEndpointDragTarget(document, 'arc', 'e');
   const destinations = [{ x: 20, y: 0 }, { x: 10, y: 10 }, { x: 5, y: 10 }, { x: 5, y: 5 }];
-  const bulges = destinations.map((destination) => {
+  const before = resolved(document);
+  destinations.forEach((destination) => {
     const candidate = solveDrawingDragCandidate(document, target, { x: destination.x - 10, y: destination.y });
-    assert.ok(candidate); assert.ok(resolved(candidate)); return entity(candidate).bulge;
+    const after = resolved(candidate); assert.ok(candidate); assert.ok(after);
+    const constantBulge = resolveArcFromBulge(entity(document), sketch(document).points.s, destination);
+    assert.ok(constantBulge);
+    assert.ok(geometricContinuationScore(before, after) <= geometricContinuationScore(before, constantBulge) + 1e-8);
+    assert.equal(Math.sign(entity(candidate).bulge), 1);
   });
-  bulges.forEach((bulge) => close(bulge, .5));
   const semicircle = make(1), semicircleTarget = createArcEndpointDragTarget(semicircle, 'arc', 'e');
   assert.ok(solveDrawingDragCandidate(semicircle, semicircleTarget, { x: 2, y: -3 }), '|bulge| = 1 is not a branch failure');
 });
