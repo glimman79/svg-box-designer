@@ -6,6 +6,7 @@ import { pointIdForLineEndpoint } from './drawingTopology.js';
 import type { DrawingDimension, DrawingDocumentV2, DrawingEntity, DrawingPoint } from './drawingTypes.js';
 
 export const DRAWING_DRAG_THRESHOLD_PX = 4;
+const ARC_CONTINUATION_SAMPLE_PARAMETERS = [1 / 8, 1 / 4, 3 / 8, 1 / 2, 5 / 8, 3 / 4, 7 / 8] as const;
 
 export type DrawingGeometryTarget =
   | Readonly<{ kind: 'point'; pointId: string }>
@@ -203,6 +204,27 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
       secondaryResiduals: (candidate) => {
         const point = candidate.points[target.pivotPointId];
         return point ? [point.x - pivot.x, point.y - pivot.y] : null;
+      },
+      geometricResiduals: (candidate) => {
+        const candidateEntity = (candidate.entities as unknown as Record<string, DrawingEntity>)[entity.id];
+        if (candidateEntity?.type !== 'arc' || Math.sign(candidateEntity.bulge) !== Math.sign(target.initialBulge)) return null;
+        const candidateArc = resolveArcFromBulge(candidateEntity, candidate.points[entity.startPointId], candidate.points[entity.endPointId]);
+        if (!candidateArc) return null;
+        // The seven directed-sweep samples are normalized so their squared
+        // residual norm is the mean whole-curve displacement in units of the
+        // drag-start geometric scale. Center displacement and log radius ratio
+        // use that same scale (or no units) to keep shallow supporting circles
+        // well-conditioned without assigning a canonical cost to bulge.
+        const scale = Math.max(originalArc.radius, Math.hypot(originalArc.end.x - originalArc.start.x, originalArc.end.y - originalArc.start.y), DRAWING_CONSTRAINT_TOLERANCE_MM);
+        const sampleScale = scale * Math.sqrt(ARC_CONTINUATION_SAMPLE_PARAMETERS.length);
+        const curve = ARC_CONTINUATION_SAMPLE_PARAMETERS.flatMap((t) => {
+          const before = arcPointAt(originalArc, t), after = arcPointAt(candidateArc, t);
+          return [(after.x - before.x) / sampleScale, (after.y - before.y) / sampleScale];
+        });
+        return [...curve,
+          (candidateArc.center.x - originalArc.center.x) / scale,
+          (candidateArc.center.y - originalArc.center.y) / scale,
+          Math.log(candidateArc.radius / originalArc.radius)];
       },
     });
     if (!solved) return null;
