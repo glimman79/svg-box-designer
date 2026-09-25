@@ -7,6 +7,7 @@ import { solveDrawingVariableTarget, solveDrawingVariableTargets, verifyDrawingC
 import { createCircleRadiusDragTarget, solveDrawingDragCandidate } from '../.test-build/drawing-circle-direct-manipulation/drawingDirectManipulation.js';
 import { circleRadiusSolverVariable, drawingSolverVariableKey, pointSolverVariables, readDrawingSolverVariable, writeDrawingSolverVariable } from '../.test-build/drawing-circle-direct-manipulation/drawingSolverVariables.js';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-circle-direct-manipulation/drawingHistory.js';
+import { createCircularSizeDimension } from '../.test-build/drawing-circle-direct-manipulation/drawingDimension.js';
 
 const make = (constrained = false) => {
   const document = createDrawingDocumentV2(), sketch = document.sketches[document.activeSketchId];
@@ -22,6 +23,9 @@ const make = (constrained = false) => {
 };
 
 const radius = document => document.sketches[document.activeSketchId].entities.circle.radius;
+const close = (a, b, tolerance = 1e-8) => assert.ok(Math.abs(a - b) <= tolerance, `${a} != ${b}`);
+const axisDimension = (id, pointId, axis, value) => ({ id, kind: axis === 'x' ? 'HORIZONTAL_DISTANCE' : 'VERTICAL_DISTANCE',
+  references: [{ kind: 'datum', datum: 'ORIGIN' }, { kind: 'sketchPoint', pointId }], value, role: 'driving', placement: { kind: 'linear', offset: 5 } });
 
 test('circle radius is a stable shared scalar with immutable validated writes', () => {
   const document = make(), sketch = document.sketches[document.activeSketchId], variable = circleRadiusSolverVariable('circle');
@@ -91,8 +95,34 @@ test('invalid drag candidate can be retained and one completed change round-trip
   const candidate = solveDrawingDragCandidate(document, target, { x: 5, y: 0 }, start); assert.ok(candidate);
   const tx = transactDrawingDocument(EMPTY_DRAWING_HISTORY, document, () => candidate); assert.equal(tx.history.undo.length, 1);
   const undone = undoDrawingDocument(tx.history, tx.document); assert.equal(radius(undone.document), 10);
-  const redone = redoDrawingDocument(undone.history, undone.document); assert.equal(radius(redone.document), 15);
+  const redone = redoDrawingDocument(undone.history, undone.document); assert.ok(Math.abs(radius(redone.document) - 15) < 1e-9);
   assert.equal(transactDrawingDocument(EMPTY_DRAWING_HISTORY, document, value => value).history.undo.length, 0);
+});
+
+test('diameter-constrained circumference grab uses remaining center freedom', () => {
+  const document = make(), s = document.sketches[document.activeSketchId];
+  s.dimensions.diameter = createCircularSizeDimension(s, 'circle', { x: 12, y: 8 }, 'diameter'); s.dimensionOrder = ['diameter'];
+  const pointer = { x: 12, y: 3 }, target = createCircleRadiusDragTarget(document, 'circle', pointer);
+  const candidate = solveDrawingDragCandidate(document, target, { x: 4, y: 5 }, pointer); assert.ok(candidate);
+  assert.ok(verifyDrawingConstraints(candidate.sketches[candidate.activeSketchId], ['diameter'], []));
+  assert.ok(Math.abs(radius(candidate) - 10) < 1e-7);
+  assert.ok(Math.hypot(candidate.sketches[candidate.activeSketchId].points.center.x - 6,
+    candidate.sketches[candidate.activeSketchId].points.center.y - 8) < 1e-3);
+});
+
+test('circle body projects onto the one remaining axis and becomes a no-op at zero mobility', () => {
+  const document = make(), s = document.sketches[document.activeSketchId];
+  s.dimensions.diameter = createCircularSizeDimension(s, 'circle', { x: 12, y: 8 }, 'diameter');
+  s.dimensions.centerX = axisDimension('centerX', 'center', 'x', 2); s.dimensionOrder = ['diameter', 'centerX'];
+  const pointer = { x: 12, y: 3 }, target = createCircleRadiusDragTarget(document, 'circle', pointer);
+  const yOnly = solveDrawingDragCandidate(document, target, { x: 4, y: 5 }, pointer); assert.ok(yOnly);
+  assert.ok(verifyDrawingConstraints(yOnly.sketches[yOnly.activeSketchId], ['diameter', 'centerX'], []));
+  close(yOnly.sketches[yOnly.activeSketchId].points.center.x, 2); assert.ok(yOnly.sketches[yOnly.activeSketchId].points.center.y > 7.9);
+  s.dimensions.centerY = axisDimension('centerY', 'center', 'y', 3); s.dimensionOrder.push('centerY');
+  const fixed = solveDrawingDragCandidate(document, target, { x: 4, y: 5 }, pointer); assert.ok(fixed);
+  assert.equal(fixed, document, 'zero interaction mobility retains the drag-start document for History no-op semantics');
+  assert.ok(Math.hypot(fixed.sketches[fixed.activeSketchId].points.center.x - 2, fixed.sketches[fixed.activeSketchId].points.center.y - 3) < 1e-7);
+  assert.ok(Math.abs(radius(fixed) - 10) < 1e-7);
 });
 
 test('workspace routes center before body and shares threshold/cancel/history lifecycle', () => {

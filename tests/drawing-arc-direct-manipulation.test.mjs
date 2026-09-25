@@ -225,19 +225,49 @@ test('body radius candidates are event-rate independent and reversible', () => {
   assert.equal(solveDrawingDragCandidate(document, target, { x: 0, y: 0 }, q), document);
 });
 
-test('invalid collapsed radius is rejected and crossing center retains endpoint rays and bulge', () => {
+test('invalid collapsed radius is rejected and crossing center retains a valid signed branch', () => {
   const document = make(), before = resolved(document), q = midpoint(before), target = createArcRadiusDragTarget(document, 'arc', q);
   const radial = { x: q.x - before.center.x, y: q.y - before.center.y };
   assert.equal(solveDrawingDragCandidate(document, target, { x: -radial.x, y: -radial.y }, q), null);
   const crossed = solveDrawingDragCandidate(document, target, { x: -2.5 * radial.x, y: -2.5 * radial.y }, q); assert.ok(crossed);
-  const after = resolved(crossed);
+  const after = resolved(crossed); assert.ok(after);
   assert.equal(entity(crossed).bulge, entity(document).bulge);
-  const ray = (p, center) => ({ x: p.x - center.x, y: p.y - center.y });
-  for (const id of ['s', 'e']) {
-    const a = ray(sketch(document).points[id], before.center), b = ray(sketch(crossed).points[id], after.center);
-    assert.ok(a.x * b.x + a.y * b.y > 0);
+  assert.equal(Math.sign(after.signedSweep), Math.sign(before.signedSweep));
+});
+
+const axisDimension = (id, pointId, axis, value) => ({ id, kind: axis === 'x' ? 'HORIZONTAL_DISTANCE' : 'VERTICAL_DISTANCE',
+  references: [{ kind: 'datum', datum: 'ORIGIN' }, { kind: 'sketchPoint', pointId }], value, role: 'driving', placement: { kind: 'linear', offset: 5 } });
+
+test('fixed endpoint axes leave Arc body bulge as usable geometric grab motion', () => {
+  for (const bulge of [.05, .5, 1, 2, -.05, -.5, -1, -2]) {
+    const document = make(bulge), s = sketch(document); s.points.s = { id: 's', x: 2, y: 3 }; s.points.e = { id: 'e', x: 12, y: 3 };
+    const before = resolved(document), q = midpoint(before);
+    s.dimensions.sx = axisDimension('sx', 's', 'x', 2); s.dimensions.sy = axisDimension('sy', 's', 'y', 3);
+    s.dimensions.ex = axisDimension('ex', 'e', 'x', 12); s.dimensions.ey = axisDimension('ey', 'e', 'y', 3);
+    s.dimensionOrder = ['sx', 'sy', 'ex', 'ey'];
+    const target = createArcRadiusDragTarget(document, 'arc', q), towardCenter = { x: 0, y: Math.sign(q.y || -bulge) * 2 };
+    const candidate = solveDrawingDragCandidate(document, target, towardCenter, q); assert.ok(candidate, `bulge ${bulge}`);
+    assert.ok(verifyDrawingConstraints(sketch(candidate), s.dimensionOrder, []));
+    assert.deepEqual(sketch(candidate).points.s, s.points.s); assert.deepEqual(sketch(candidate).points.e, s.points.e);
+    assert.notEqual(entity(candidate).bulge, bulge); assert.equal(Math.sign(entity(candidate).bulge), Math.sign(bulge));
+    assert.notEqual(resolved(candidate).radius, before.radius); assert.notEqual(resolved(candidate).center.y, before.center.y);
+    assert.notEqual(resolved(candidate).signedSweep, before.signedSweep);
+    const oldError = Math.hypot(q.x - (q.x + towardCenter.x), q.y - (q.y + towardCenter.y));
+    const moved = arcPointAtForTest(resolved(candidate), .5);
+    assert.ok(Math.hypot(moved.x - q.x - towardCenter.x, moved.y - q.y - towardCenter.y) < oldError);
   }
 });
+
+test('driving radius stays hard while Arc body grab uses remaining canonical motion', () => {
+  const document = make(.5), s = sketch(document), before = resolved(document), q = midpoint(before);
+  s.dimensions.radius = createCircularSizeDimension(s, 'arc', { x: 5, y: -20 }, 'radius'); s.dimensionOrder = ['radius'];
+  const candidate = solveDrawingDragCandidate(document, createArcRadiusDragTarget(document, 'arc', q), { x: 3, y: -2 }, q);
+  assert.ok(candidate); assert.ok(verifyDrawingConstraints(sketch(candidate), ['radius'], []));
+  close(resolved(candidate).radius, before.radius, 1e-7);
+  assert.ok(Math.hypot(resolved(candidate).center.x - before.center.x, resolved(candidate).center.y - before.center.y) > 1e-3);
+});
+
+const arcPointAtForTest = (arc, t) => ({ x: arc.center.x + arc.radius * Math.cos(arc.startAngle + arc.signedSweep * t), y: arc.center.y + arc.radius * Math.sin(arc.startAngle + arc.signedSweep * t) });
 
 test('one completed Arc candidate round-trips one History transaction', () => {
   const document = make(), q = midpoint(resolved(document)), target = createArcRadiusDragTarget(document, 'arc', q);

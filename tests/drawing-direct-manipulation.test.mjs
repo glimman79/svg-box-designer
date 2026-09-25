@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-direct-manipulation/drawingTypes.js';
-import { pointIdFromHit, solveDrawingDragCandidate, validateDrivingDimensions } from '../.test-build/drawing-direct-manipulation/drawingDirectManipulation.js';
+import { createLineBodyDragTarget, pointIdFromHit, solveDrawingDragCandidate, validateDrivingDimensions } from '../.test-build/drawing-direct-manipulation/drawingDirectManipulation.js';
 import { transactDrawingDocument, EMPTY_DRAWING_HISTORY, undoDrawingDocument, redoDrawingDocument } from '../.test-build/drawing-direct-manipulation/drawingHistory.js';
 
 const line = (id, startPointId, endPointId) => ({ id, type: 'line', startPointId, endPointId });
@@ -22,6 +22,12 @@ candidate=solveDrawingDragCandidate(document,{kind:'line',lineId:'l0'},{x:5,y:-2
 assert.deepEqual(sketch.points.p0,{id:'p0',x:5,y:-2}); assert.deepEqual(sketch.points.p1,{id:'p1',x:15,y:-2});
 assert.equal(Math.hypot(sketch.points.p1.x-sketch.points.p0.x,sketch.points.p1.y-sketch.points.p0.y),10);
 assert.deepEqual(sketch.points.p2,{id:'p2',x:20,y:0},'line drag does not recursively move chain');
+const linePointer={x:2.5,y:.4}, lineTarget=createLineBodyDragTarget(document,'l0',linePointer);
+assert.ok(lineTarget); assert.equal(lineTarget.segmentParameter,.25);
+assert.equal(solveDrawingDragCandidate(document,lineTarget,{x:0,y:0},linePointer),document,'finite Line grab has no pointer-down jump');
+const geometricLine=solveDrawingDragCandidate(document,lineTarget,{x:3,y:-2},linePointer); assert.ok(geometricLine);
+assert.ok(Math.abs(geometricLine.sketches[geometricLine.activeSketchId].points.p0.x-3)<1e-6);
+assert.ok(Math.abs(geometricLine.sketches[geometricLine.activeSketchId].points.p0.y+2)<1e-6);
 const active=document.sketches[document.activeSketchId];
 const dimension=(id,kind,role,value,entityId='l0')=>({id,kind,role,value,references:[{kind:'point',entityId,point:'start'},{kind:'point',entityId,point:'end'}],placement:{kind:'linear',offset:5}});
 document={...document,sketches:{...document.sketches,[active.id]:{...active,dimensions:{a:dimension('a','ALIGNED_DISTANCE','driving',10),r:dimension('r','VERTICAL_DISTANCE','reference',999)},dimensionOrder:['a','r']}}};
