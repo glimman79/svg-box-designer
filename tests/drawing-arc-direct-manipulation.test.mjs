@@ -165,8 +165,9 @@ test('driving R endpoint intent jointly uses endpoints and bulge while preservin
     const candidate = solveDrawingDragCandidate(document, target, { x: 3, y: 4 });
     assert.ok(candidate, `R-constrained endpoint remains movable for bulge ${bulge}`);
     assert.ok(verifyDrawingConstraints(sketch(candidate), ['radius'], []), `R remains exact for bulge ${bulge}`);
-    assert.ok(Math.hypot(sketch(candidate).points.e.x - s.points.e.x, sketch(candidate).points.e.y - s.points.e.y) > 1,
-      'pointer motion outranks an unconstrained opposite-end stay');
+    close(sketch(candidate).points.s.x, s.points.s.x, 1e-7);
+    close(sketch(candidate).points.s.y, s.points.s.y, 1e-7);
+    if (Math.abs(bulge) !== 1) assert.ok(Math.hypot(sketch(candidate).points.e.x - s.points.e.x, sketch(candidate).points.e.y - s.points.e.y) > 1);
     assert.ok(resolved(candidate));
   }
 });
@@ -284,6 +285,40 @@ test('endpoint pivot stays exact with a compatible derived-center axis equation'
     close(sketch(candidate).points[pivotId].x, s.points[pivotId].x, 1e-7);
     close(sketch(candidate).points[pivotId].y, s.points[pivotId].y, 1e-7);
   }
+});
+
+test('either endpoint keeps its exact pivot across radius and derived-center dimension combinations', () => {
+  const cases = [
+    ['R', ['radius']], ['center X', ['cx']], ['center Y', ['cy']],
+    ['R + center X', ['radius', 'cx']], ['R + center Y', ['radius', 'cy']],
+  ];
+  for (const [label, dimensionIds] of cases) for (const [draggedId, pivotId, delta] of [
+    ['s', 'e', { x: -3, y: 4 }], ['e', 's', { x: 3, y: 4 }],
+  ]) {
+    const document = make(.5), s = sketch(document), before = resolved(document);
+    s.dimensions.radius = createCircularSizeDimension(s, 'arc', { x: 5, y: -20 }, 'radius');
+    s.dimensions.cx = centerAxisDimension('cx', 'x', before.center.x);
+    s.dimensions.cy = centerAxisDimension('cy', 'y', before.center.y);
+    s.dimensionOrder = dimensionIds;
+    const candidate = solveDrawingDragCandidate(document, createArcEndpointDragTarget(document, 'arc', draggedId), delta);
+    assert.ok(candidate, `${draggedId}, ${label}`);
+    assert.ok(verifyDrawingConstraints(sketch(candidate), dimensionIds, []), `${draggedId}, ${label}: hard equations`);
+    close(sketch(candidate).points[pivotId].x, s.points[pivotId].x, 1e-7);
+    close(sketch(candidate).points[pivotId].y, s.points[pivotId].y, 1e-7);
+    assert.ok(resolved(candidate), `${draggedId}, ${label}: valid Arc`);
+  }
+});
+
+test('an unreachable endpoint pointer projects onto the radius locus without sacrificing the pivot', () => {
+  const document = make(.5), s = sketch(document);
+  s.dimensions.radius = createCircularSizeDimension(s, 'arc', { x: 5, y: -20 }, 'radius'); s.dimensionOrder = ['radius'];
+  const requested = { x: 30, y: 30 }, delta = { x: requested.x - s.points.e.x, y: requested.y - s.points.e.y };
+  const candidate = solveDrawingDragCandidate(document, createArcEndpointDragTarget(document, 'arc', 'e'), delta);
+  assert.ok(candidate); assert.ok(verifyDrawingConstraints(sketch(candidate), ['radius'], []));
+  close(sketch(candidate).points.s.x, s.points.s.x, 1e-7); close(sketch(candidate).points.s.y, s.points.s.y, 1e-7);
+  assert.ok(Math.hypot(sketch(candidate).points.e.x - requested.x, sketch(candidate).points.e.y - requested.y) > 1,
+    'the impossible pointer is not reached by translating the pivot');
+  assert.ok(Math.hypot(sketch(candidate).points.e.x - s.points.e.x, sketch(candidate).points.e.y - s.points.e.y) > 1);
 });
 
 test('body radius drag remains radial when the derived center is fixed', () => {
