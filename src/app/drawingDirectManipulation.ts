@@ -201,7 +201,7 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
         return candidateEntity?.type === 'arc' && point && Math.sign(candidateEntity.bulge) === Math.sign(target.initialBulge)
           ? [point.x - pointer.x, point.y - pointer.y] : null;
       },
-      secondaryResiduals: (candidate) => {
+      semanticResiduals: (candidate) => {
         const point = candidate.points[target.pivotPointId];
         return point ? [point.x - pivot.x, point.y - pivot.y] : null;
       },

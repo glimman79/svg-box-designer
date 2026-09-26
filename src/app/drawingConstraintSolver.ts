@@ -418,6 +418,34 @@ export const solveDrawingGeometricIntent = (
     }
     return { current, rows, jacobian };
   };
+  const projectSemanticSubspace = (from: readonly number[]) => {
+    let projected = [...from];
+    for (let iteration = 0; iteration < DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS; iteration += 1) {
+      const data = jacobianAt(projected, ['hard', 'semantic']); if (!data) return null;
+      if (data.rows.every((value) => Math.abs(value) <= DRAWING_CONSTRAINT_TOLERANCE_MM)) return projected;
+      const n = variables.length, m = data.rows.length;
+      const matrix = Array.from({ length: n + m }, () => Array(n + m).fill(0)), rhs = Array(n + m).fill(0);
+      for (let i = 0; i < n; i += 1) matrix[i][i] = INTERACTION_RANK_DAMPING;
+      for (let row = 0; row < m; row += 1) {
+        rhs[n + row] = -data.rows[row];
+        for (let i = 0; i < n; i += 1) matrix[i][n + row] = matrix[n + row][i] = data.jacobian[row][i];
+        matrix[n + row][n + row] = -INTERACTION_RANK_DAMPING;
+      }
+      const step = solveLinear(matrix, rhs); if (!step?.every(Number.isFinite)) return null;
+      const oldScore = norm(data.rows); let accepted = false;
+      for (let reduction = 0; reduction < INTERACTION_LINE_SEARCH_STEPS; reduction += 1) {
+        const alpha = 2 ** -reduction, trial = projected.map((value, index) => value + alpha * step[index] * scales[index]);
+        const evaluation = evaluate(trial);
+        if (evaluation && norm([...evaluation.hard, ...evaluation.semantic]) < oldScore) {
+          projected = trial; accepted = true; break;
+        }
+      }
+      if (!accepted) return null;
+    }
+    const evaluation = evaluate(projected);
+    return evaluation && [...evaluation.hard, ...evaluation.semantic].every((value) => Math.abs(value) <= DRAWING_CONSTRAINT_TOLERANCE_MM)
+      ? projected : null;
+  };
   const optimizeTier = (objective: Objective, preserved: readonly Exclude<Objective, 'least'>[]) => {
     if (!best[objective].length) return;
     for (let iteration = 0; iteration < INTERACTION_TIER_ITERATIONS; iteration += 1) {
@@ -446,9 +474,8 @@ export const solveDrawingGeometricIntent = (
       for (let reduction = 0; reduction < INTERACTION_LINE_SEARCH_STEPS; reduction += 1) {
         const alpha = 2 ** -reduction, trialValues = values.map((value, index) => value + alpha * step[index] * scales[index]);
         let trial = evaluate(trialValues); if (!trial) continue;
-        if (component && trial.hard.some((v) => Math.abs(v) > DRAWING_CONSTRAINT_TOLERANCE_MM)) {
-          const corrected = solveVariableComponent(trial.candidate, state, variables)?.sketch;
-          const correctedValues = corrected && flattenDrawingSolverVariables(corrected, variables);
+        if ([...trial.hard, ...trial.semantic].some((v) => Math.abs(v) > DRAWING_CONSTRAINT_TOLERANCE_MM)) {
+          const correctedValues = projectSemanticSubspace(trialValues);
           if (!correctedValues) continue; trial = evaluate(correctedValues); if (!trial) continue;
           trialValues.splice(0, trialValues.length, ...correctedValues);
         }
