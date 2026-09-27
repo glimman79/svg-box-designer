@@ -37,6 +37,7 @@ import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanel
 import { deriveDrawingInferencePresentations, type DrawingInferencePresentation } from './drawingInferencePresentation.js';
 import { createDrawingDirectionDiagnosticRecorder } from './drawingDirectionDiagnostic.js';
 import { applyDrawingBoxSelection, drawingSelectionMode, normalizeDrawingSelectionRect, selectDrawingEntitiesInRect } from './drawingBoxSelection.js';
+import { beginDimensionAnnotationDragSession, cancelDimensionAnnotationDragSession, dimensionPlacementForDisplay, finishDimensionAnnotationDragSession, updateDimensionAnnotationDragSession, type DimensionAnnotationDragSession } from './drawingDimensionDrag.js';
 
 const preventToolChromeMouseSelection = (event: MouseEvent<HTMLElement>) => {
   if (event.button !== CAD_PRIMARY_BUTTON) return;
@@ -104,10 +105,6 @@ export const DrawingInferenceOverlay = ({ presentations }: { presentations: read
 type GeometryDragSession = Readonly<{
   pointerId: number; target: DrawingGeometryTarget; startClient: CoordinatePoint; startModel: DrawingPoint;
   startDocument: DrawingDocumentV2; candidate: DrawingDocumentV2; exceeded: boolean;
-}>;
-type DimensionAnnotationDragSession = Readonly<{
-  pointerId: number; id: string; startClient: CoordinatePoint;
-  startPlacement: DrawingDimension['placement']; previewPlacement: DrawingDimension['placement']; exceeded: boolean;
 }>;
 type BoxSelectionSession = Readonly<{
   pointerId: number; originClient: CoordinatePoint; originModel: DrawingPoint;
@@ -205,6 +202,7 @@ export function DrawingWorkspace({
   const [dimensionPreselection, setDimensionPreselection] = useState<DimensionPreselection | null>(null);
   const [hoveredDimensionId, setHoveredDimensionId] = useState<string | null>(null);
   const [dimensionDrag, setDimensionDrag] = useState<DimensionAnnotationDragSession | null>(null);
+  const dimensionDragRef = useRef<DimensionAnnotationDragSession | null>(null);
   const [geometryDrag, setGeometryDrag] = useState<GeometryDragSession | null>(null);
   const geometryDragRef = useRef<GeometryDragSession | null>(null);
   const [boxSelection, setBoxSelection] = useState<BoxSelectionSession | null>(null);
@@ -288,6 +286,20 @@ export function DrawingWorkspace({
   documentRef.current = document;
   boxSelectionRef.current = boxSelection;
   geometryDragRef.current = geometryDrag;
+
+  const setDimensionDragSession = (session: DimensionAnnotationDragSession | null) => {
+    dimensionDragRef.current = session;
+    setDimensionDrag(session);
+  };
+
+  const cancelDimensionDrag = (pointerId?: number) => {
+    const session = dimensionDragRef.current;
+    const next = cancelDimensionAnnotationDragSession(session, pointerId);
+    if (next === session) return false;
+    setDimensionDragSession(next);
+    if (session && svgRef.current?.hasPointerCapture(session.pointerId)) svgRef.current.releasePointerCapture(session.pointerId);
+    return true;
+  };
 
   const cancelGeometryDrag = (pointerId?: number) => {
     if (pointerId !== undefined && geometryDragRef.current?.pointerId !== pointerId) return;
@@ -688,7 +700,7 @@ export function DrawingWorkspace({
   const exitActiveTool = () => {
     if (boxSelectionRef.current) { endBoxSelection(); return; }
     if (geometryDrag) { cancelGeometryDrag(); return; }
-    if (dimensionDrag) { setDimensionDrag(null); return; }
+    if (dimensionDragRef.current) { cancelDimensionDrag(); return; }
     if (editingDimensionId) { setEditingDimensionId(null); setDimensionEditError(null); return; }
     if (activeToolRef.current === 'select' && constraintsPanelOpen) {
       setConstraintsPanelOpen(false);
@@ -758,7 +770,7 @@ export function DrawingWorkspace({
         event.currentTarget.setPointerCapture(event.pointerId);
         return;
       }
-      setDimensionDrag(null);
+      cancelDimensionDrag();
       const route = routeDrawingGeometryPointerSelection(selectedGeometry, owner.selection, event.ctrlKey, constraintsPanelOpen);
       setSelectedGeometry(route.selection);
       setSelectedDimensionId(null); setSelectedGeometricConstraintId(null);
@@ -966,14 +978,16 @@ export function DrawingWorkspace({
       setGeometryDrag(next);
       return;
     }
-    if (dimensionDrag) {
+    const activeDimensionDrag = dimensionDragRef.current;
+    if (activeDimensionDrag?.pointerId === event.pointerId) {
+      if ((event.buttons & 1) === 0) { cancelDimensionDrag(event.pointerId); return; }
       const matrix = svgRef.current?.getScreenCTM(), sketch = activeSketch;
       const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
-      const dimension = sketch?.dimensions[dimensionDrag.id];
+      const dimension = sketch?.dimensions[activeDimensionDrag.id];
       const placement = point && dimension && sketch ? resolveDimensionAnnotationPlacement(sketch, dimension, point) : null;
       if (placement) {
-        const exceeded = dimensionDrag.exceeded || Math.hypot(event.clientX - dimensionDrag.startClient.x, event.clientY - dimensionDrag.startClient.y) >= 4;
-        setDimensionDrag({ ...dimensionDrag, previewPlacement: placement, exceeded });
+        setDimensionDragSession(updateDimensionAnnotationDragSession(activeDimensionDrag, event.pointerId, event.buttons,
+          { x: event.clientX, y: event.clientY }, placement, DRAWING_DRAG_THRESHOLD_PX));
       }
       return;
     }
@@ -1045,13 +1059,16 @@ export function DrawingWorkspace({
 
   useEffect(() => () => {
     cancelDrawingProfileCommit(pendingProfileClickRef, window);
-    const session = boxSelectionRef.current, svg = svgRef.current;
+    const session = boxSelectionRef.current, dimensionSession = dimensionDragRef.current, svg = svgRef.current;
     if (session && svg?.hasPointerCapture(session.pointerId)) svg.releasePointerCapture(session.pointerId);
+    if (dimensionSession && svg?.hasPointerCapture(dimensionSession.pointerId)) svg.releasePointerCapture(dimensionSession.pointerId);
     boxSelectionRef.current = null;
+    dimensionDragRef.current = null;
   }, []);
 
   const selectTool = (tool: DrawingActiveTool, activationMode: 'normal' | 'persistent' = 'normal') => {
     endBoxSelection();
+    cancelDimensionDrag();
     cancelDrawingProfileCommit(pendingProfileClickRef, window);
     setSegmentInteraction(EMPTY_LINE_SEGMENT_INTERACTION);
     setCircleInteraction(EMPTY_CIRCLE_INTERACTION);
@@ -1123,7 +1140,7 @@ export function DrawingWorkspace({
   const previewDimension = dimensionTool.phase === 'placementPreview' || dimensionTool.phase === 'lineTargetSelected' ? dimensionTool.dimension : null;
   const displayedDimensions = activeSketch?.dimensionOrder.map((id) => {
     const dimension = activeSketch.dimensions[id];
-    return dimensionDrag?.id === id ? { ...dimension, placement: dimensionDrag.previewPlacement } : dimension;
+    return dimension ? { ...dimension, placement: dimensionPlacementForDisplay(dimension, dimensionDrag) } : dimension;
   }).filter(Boolean) ?? [];
   const editingDimension = displayedDimensions.find(({ id }) => id === editingDimensionId);
   const editingGeometry = editingDimension ? annotationGeometry(editingDimension) : null;
@@ -1163,17 +1180,19 @@ export function DrawingWorkspace({
     endBoxSelection();
   };
 
-  const finishDimensionDrag = () => {
-    if (!dimensionDrag) return;
-    if (dimensionDrag.exceeded) transactDocument((current) => moveDimensionPlacement(current, dimensionDrag.id, dimensionDrag.previewPlacement));
-    setDimensionDrag(null);
+  const finishDimensionDrag = (event: PointerEvent<SVGSVGElement>) => {
+    const result = finishDimensionAnnotationDragSession(dimensionDragRef.current, event.pointerId);
+    if (result.session === dimensionDragRef.current) return;
+    setDimensionDragSession(result.session);
+    if (result.commit) transactDocument((current) => moveDimensionPlacement(current, result.commit!.id, result.commit!.placement));
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
   const beginDimensionAnnotationDrag = (event: PointerEvent<SVGElement>, dimension: DrawingDimension) => {
     if (event.button !== CAD_PRIMARY_BUTTON || editingDimensionId || activeTool !== 'select') return;
     event.currentTarget.setPointerCapture(event.pointerId);
     setSelectedDimensionId(dimension.id);
-    setDimensionDrag({ pointerId: event.pointerId, id: dimension.id, startClient: { x: event.clientX, y: event.clientY }, startPlacement: dimension.placement, previewPlacement: dimension.placement, exceeded: false });
+    setDimensionDragSession(beginDimensionAnnotationDragSession(event.pointerId, dimension, { x: event.clientX, y: event.clientY }));
   };
 
   const undo = () => {
@@ -1305,9 +1324,9 @@ export function DrawingWorkspace({
             onMouseDown={handleDrawingMouseDown}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
-            onPointerUp={(event) => { if (boxSelectionRef.current) finishBoxSelection(event); else if (geometryDrag) finishGeometryDrag(event); else if (dimensionDrag) finishDimensionDrag(); else panHandlers.onPointerUp(event); }}
-            onPointerCancel={(event) => { if (boxSelectionRef.current?.pointerId === event.pointerId) endBoxSelection(); else if (geometryDragRef.current?.pointerId === event.pointerId) cancelGeometryDrag(event.pointerId); else if (dimensionDrag) setDimensionDrag(null); else panHandlers.onPointerCancel(event); }}
-            onLostPointerCapture={(event) => { if (boxSelectionRef.current?.pointerId === event.pointerId) endBoxSelection(false); else cancelGeometryDrag(event.pointerId); }}
+            onPointerUp={(event) => { if (boxSelectionRef.current) finishBoxSelection(event); else if (geometryDragRef.current) finishGeometryDrag(event); else if (dimensionDragRef.current) finishDimensionDrag(event); else panHandlers.onPointerUp(event); }}
+            onPointerCancel={(event) => { if (boxSelectionRef.current?.pointerId === event.pointerId) endBoxSelection(); else if (geometryDragRef.current?.pointerId === event.pointerId) cancelGeometryDrag(event.pointerId); else if (!cancelDimensionDrag(event.pointerId)) panHandlers.onPointerCancel(event); }}
+            onLostPointerCapture={(event) => { if (boxSelectionRef.current?.pointerId === event.pointerId) endBoxSelection(false); else if (geometryDragRef.current?.pointerId === event.pointerId) cancelGeometryDrag(event.pointerId); else cancelDimensionDrag(event.pointerId); }}
             onContextMenu={panHandlers.onContextMenu}
             onPointerLeave={clearSegmentCursor}
             onDoubleClick={() => { if (activeTool === 'profile') finishProfile(); }}
