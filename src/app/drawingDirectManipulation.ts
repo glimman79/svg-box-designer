@@ -357,7 +357,7 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
           candidateCenter.y + candidateEntity.radius * target.radialDirection.y - resolvedPointer.y,
         ] : null;
       },
-      secondaryResiduals: (candidate) => {
+      semanticResiduals: (candidate) => {
         const candidateCenter = candidate.points[entity.centerPointId];
         return candidateCenter ? [candidateCenter.x - center.x, candidateCenter.y - center.y] : null;
       },
