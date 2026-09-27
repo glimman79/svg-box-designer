@@ -25,26 +25,36 @@ authoring P3/form point, and support Circle are derived. The Arc authoring P1-to
 reference line and P3 support Circle are transient presentation only—not entity
 geometry, topology, History, or export geometry.
 
-Direct Manipulation uses shared component solving but respects each geometry's canonical
-storage. Circle body drag changes its radius scalar about the fixed free-case center.
-Arc center drag translates both endpoint SketchPoints and preserves bulge; Arc
-body/radius drag moves both endpoints radially about the derived drag-start center while
-preserving endpoint angles and bulge/signed sweep. Arc endpoint drag makes the dragged
-endpoint authoritative, keeps the opposite endpoint as the free-case pivot, and uses a
-generic solver secondary objective for geometric least change of the remaining form
-degree of freedom. It writes the result back as bulge from drag-start state plus absolute
-pointer displacement, so it is reversible and event-rate independent without a
-persistent form anchor or three-point reconstruction.
+Direct Manipulation uses shared constrained solving while respecting canonical storage.
+A grip defines the semantic subspace of an interaction: persistent Constraints and
+driving Dimensions restrict motion inside it but do not redefine the grip. Exact grip
+invariants enter as transient semantic equations rather than weighted preferences.
+Circle center drag moves the persistent center with unchanged free-case radius; Circle
+body drag varies radius about an exact fixed-center pivot. Arc center drag is rigid
+translation subject to persistent hard equations; Arc body/radius drag keeps the
+free-case derived center stationary while radius and endpoints change consistently; Arc
+endpoint drag keeps the opposite endpoint as an exact transient fixed pivot throughout
+full feasible branch continuation.
 
-Hard persistent constraints and driving Dimensions remain authoritative. Ideal Arc
-body/radius endpoint targets are projected through the shared solver while bulge stays
-fixed, so constrained achieved center/radius/angles can differ from the ideal free pose.
-This is one global architecture—constraints, applicability, solver, selection, hit
+Conceptually, Tier 0 contains persistent hard geometric Constraints, driving Dimensions,
+and exact transient grip-semantic equations. Tier 1 expresses pointer/geometric intent
+within the feasible semantic manifold. Continuity, least-change, and other non-semantic
+tie-breaking are lower priority. Canonical mobility is likewise per variable: Circle
+center X/Y plus radius, and Arc P1 X/Y, P2 X/Y plus bulge, allowing partial and fully
+constrained visual states to be distinguished.
+
+Ordinary Dimensions share the existing system for the Circle persistent center, Arc
+persistent endpoints, and Arc derived semantic center. Circular-size Dimensions are
+also shared solver entities: a full Circle produces diameter (Ø), while an Arc produces
+radius (R), with no Stage 1 user chooser. These are not the still-planned
+Radius/Diameter Constraint. The committed annotation placement is authoritative while
+idle; transient placement is authoritative only during an intentional annotation drag,
+and completion, cancellation, lost capture, or tool exit clears that transient state.
+
+This remains one global architecture—constraints, applicability, solver, selection, hit
 testing, Direct Manipulation, snap, inference, topology, Dimensions, presentation,
 History, transactions, serialization, and deletion are shared concerns. Geometry-specific
-math does not create separate mini-CAD systems. Compatible relations coexist; priority
-chooses only among incompatible alternatives, keeping position, direction, topology,
-semantic evidence, presentation, and persistence authority distinct.
+math does not create separate mini-CAD systems.
 
 ## Pipeline
 
