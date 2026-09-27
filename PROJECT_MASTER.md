@@ -72,13 +72,13 @@ neither group Direct Manipulation nor batch deletion.
 
 ### 4.3 Dimensions, constraints, and solver
 
-Dimensions is the dedicated dimensional authoring workflow. The model supports driving and reference dimensions over stable point/Line references: aligned, horizontal, and vertical point distances; point-to-Line distance; Line-to-Line distance; and Line-to-Line angle. Reference dimensions annotate but add no equation.
+Dimensions is the dedicated dimensional authoring workflow. The model supports driving and reference dimensions over stable point/Line references: aligned, horizontal, and vertical point distances; point-to-Line distance; Line-to-Line distance; and Line-to-Line angle. Ordinary Dimensions also address supported curve semantic points: the Circle’s persistent center, Arc P1/P2 persistent endpoints, and the Arc’s derived semantic center, with origin as the fixed datum where supported. Circular-size Dimension Stage 1 is accepted: a full Circle creates a diameter (Ø) Dimension and an Arc creates a radius (R) Dimension, selected by geometry type rather than a user R/Ø choice. These persistent Dimensions use the shared solver, value editing, and placement architecture. Reference dimensions annotate but add no equation.
 
 Constraints is a separate floating workflow. It browser-verifiably consumes points and Lines selected before the panel opens and updates applicable operations when point/Line selection changes while the panel remains active. Its implemented operations are Midpoint, Coincidence, Parallelism, Perpendicular, Horizontal, and Vertical. Concentricity and Tangency appear only as inactive future choices; they have no current Constraint or solver implementation and are not browser-verified capabilities.
 
-Fix, Symmetry, Radius / Diameter, Angle, Length, and Distance are not currently implemented as Constraints. Circle Radius/Diameter Dimensions are also not implemented; the current Dimensions system remains point/Line-oriented. Existing Dimension functionality for Distance, Length, and Angle does not make those Constraint operations implemented; future integration must reuse appropriate common geometric and semantic foundations rather than duplicate them.
+Fix, Symmetry, Radius / Diameter, Angle, Length, and Distance are not currently implemented as Constraints. Circular-size Dimensions are implemented, but they do not make Radius/Diameter Constraint implemented; that Constraint is the planned next curve-constraint step. Concentricity and Tangency remain later planned Constraints. Existing Dimension functionality for Distance, Length, Angle, radius, or diameter does not make same-named Constraint operations implemented; future integration must reuse appropriate common geometric and semantic foundations rather than duplicate them.
 
-SketchPoint coordinates are solver variables. Typed driving dimensions and geometric constraints produce equations, connected-component solving produces resolved geometry, and rank/null-space analysis classifies degrees of freedom. Invalid, degenerate, duplicate, or unsatisfied requests fail closed. Direct Manipulation requests movement through this semantic authority; it does not permanently bypass constraints.
+SketchPoint coordinates and entity-owned curve parameters participate in canonical solver geometry. Circle mobility is analyzed over center X/Y plus radius; Arc mobility is analyzed over P1 X/Y, P2 X/Y, plus bulge. Typed driving dimensions and geometric constraints produce equations, connected-component solving produces resolved geometry, and rank/null-space analysis classifies partial and fully constrained states by actual remaining degrees of freedom. Invalid, degenerate, duplicate, or unsatisfied requests fail closed. Direct Manipulation requests movement through this semantic authority; it does not permanently bypass constraints.
 
 ### 4.4 Snap and inference channels
 
@@ -170,32 +170,32 @@ The committed document snapshot is made visible to candidate collection in the s
 
 Left mouse authors/selects, right-drag pans, the wheel zooms, and Esc exits the applicable interaction. Drawing transactions group semantic user actions for Undo/Redo. A completed standalone Line is one transaction containing its accepted geometry, topology, and automatic semantics; persistent Line activation produces one transaction per completed independent Line. UI-only panel state does not create document History. Deleting geometry cleans dependent dimensions/constraints through model operations.
 
-Circle and Arc use the shared Direct Manipulation and component-solver architecture,
-with geometry-specific canonical variables. Circle center drag moves its persistent
-center SketchPoint; Circle body/radius drag changes its persistent radius about the
-free-case fixed center with no jump at grab.
+Circle and Arc use the shared constrained Direct Manipulation architecture over their
+canonical variables. A grip defines the semantic subspace of its interaction;
+persistent Constraints and driving Dimensions restrict motion within that subspace and
+do not redefine the grip. Exact grip invariants are transient semantic equations, not
+weighted preferences.
 
-Arc has three distinct accepted interactions:
+- **Circle center drag** moves the persistent center; in the free case radius is
+  unchanged.
+- **Circle body/circumference drag** changes radius about an exact fixed-center pivot.
+  If a driving diameter fixes radius, body drag has no motion, while center drag may
+  still translate when positional degrees of freedom remain.
+- **Arc center drag** rigidly translates both endpoint SketchPoints and preserves form,
+  subject to persistent hard equations; the center remains derived.
+- **Arc body/radius drag** provides the accepted radial/form interaction. In the free
+  case the derived center stays stationary, radius changes, and endpoints move
+  consistently with the Arc form.
+- **Arc endpoint drag** keeps the opposite endpoint as an exact transient fixed pivot.
+  Constraints and Dimensions can restrict the dragged endpoint and form but never
+  release that pivot; accepted branch continuation provides full feasible travel.
 
-- **Center drag** translates both endpoint SketchPoints together while preserving
-  radius/form and bulge; the center remains derived.
-- **Body/radius drag** uses a transient semantic `arc-radius` target. In the free case,
-  the derived drag-start center stays fixed, radius follows radial pointer motion, both
-  endpoint SketchPoints move radially, endpoint angles stay fixed, and bulge/signed
-  sweep stays exactly unchanged. It does not edit bulge with fixed endpoints.
-- **Endpoint drag** makes the dragged endpoint authoritative in the free case and keeps
-  the opposite endpoint as pivot. The Arc remains circular while center, radius, and
-  bulge/sweep may change. A generic solver-level secondary objective selects the
-  remaining form degree of freedom by geometric least change; canonical write-back is
-  still bulge. Evaluation starts from drag-start state plus absolute pointer displacement,
-  making the interaction event-rate independent and reversible, without a persistent
-  form point or three-point endpoint reconstruction.
-
-Persistent hard constraints and driving dimensions remain authoritative. For Arc
-body/radius drag, ideal radial endpoint positions are projected through the shared
-component solver while bulge is preserved; constrained achieved center, radius, or
-angles may therefore differ from the ideal free pose. Shared SketchPoint identity is
-never bypassed or treated as frozen merely because a constraint conflicts.
+The conceptual solve hierarchy places persistent hard geometric Constraints, driving
+Dimensions, and exact transient grip-semantic equations together at Tier 0. Tier 1
+expresses pointer/geometric intent inside that feasible semantic manifold. Continuity,
+least-change, and other non-semantic tie-breaking are lower priority. Shared SketchPoint
+identity is never bypassed, and results write back through the Circle radius or Arc
+endpoint-plus-bulge canonical representation.
 
 ### 4.9 Normative Drawing Presentation Standard
 
@@ -299,7 +299,8 @@ Dimensions are not Constraints and retain a separate presentation category.
 | Arrows | state-colored current triangular marker system | existing `7 × 7` marker geometry | Established. |
 | Preview Dimension | owning Dimension paint | opacity `0.7` | Established. |
 
-Distance, Length, and Angle exist as Dimensions. Radius/Diameter Dimension is not implemented.
+Distance, Length, Angle, Circle diameter (Ø), and Arc radius (R) exist as Dimensions.
+Radius/Diameter Constraint is not implemented.
 
 #### 4.9.9 Points
 

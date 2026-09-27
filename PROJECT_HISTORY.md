@@ -484,6 +484,24 @@ removed dead Circle/Arc helper APIs as targeted maintenance; it introduced no pr
 capability. Radius/Diameter Dimension, Radius/Diameter Constraint, Concentricity, and
 Tangency remain unimplemented, with Radius/Diameter Dimension next in the roadmap.
 
+### 11.15 Accepted Circle, Arc, and circular-Dimension foundation
+
+Circular-size Dimensions added persistent Circle diameter (Ø) and Arc radius (R) forms
+through the existing Dimension solver, value-editing, and annotation-placement paths.
+Ordinary Dimensions also gained supported Circle/Arc semantic-point acquisition,
+including the persistent Circle center and Arc endpoints plus the derived Arc center. A
+follow-up fixed annotation drag cleanup so passive pointer movement cannot displace a
+committed Dimension after completion, cancellation, lost capture, or tool exit.
+
+Constrained Arc Direct Manipulation was refined through browser feedback: endpoint drag
+now holds the opposite endpoint as an exact transient pivot and continues across the
+full feasible branch, while center and body/radius grips retain their distinct meanings.
+Circle body drag was finally restored to an exact fixed-center radius interaction, even
+when Dimensions or Constraints restrict available motion. The resulting Circle Stage 1,
+Arc Stage 1, curve semantic-point Dimensions, circular-size Dimensions, mobility states,
+and annotation lifecycle are browser-accepted. Radius/Diameter Constraint,
+Concentricity, and Tangency remain planned and unimplemented.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics
