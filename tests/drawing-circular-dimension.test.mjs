@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createCircularSizeDimension, createPointToLineDimension, createPointToPointDimension, displayedDimensionMeasurement, drawingPointReferenceDependencies, formatCircularDimension, appendDimension, moveDimensionPlacement, deleteEntityWithDependentDimensions, resolveDrawingPointReference } from '../.test-build/drawing-circular-dimension/drawingDimension.js';
-import { resolveCircularSize, circularAttachment, circularDimensionEndpoints } from '../.test-build/drawing-circular-dimension/drawingCircularSize.js';
+import { appendCircularSizeDimensions, createCircularSizeDimension, createPointToLineDimension, createPointToPointDimension, displayedDimensionMeasurement, drawingPointReferenceDependencies, formatCircularDimension, appendDimension, moveDimensionPlacement, deleteEntityWithDependentDimensions, resolveDrawingPointReference } from '../.test-build/drawing-circular-dimension/drawingDimension.js';
+import { resolveCircularSize, circularAttachment, circularDimensionEndpoints, defaultCircularSizePlacementAnchor } from '../.test-build/drawing-circular-dimension/drawingCircularSize.js';
 import { solveDrawingDimensionEdit } from '../.test-build/drawing-circular-dimension/drawingConstraintSolver.js';
 import { migrateDrawingDocument } from '../.test-build/drawing-circular-dimension/drawingTypes.js';
 
@@ -11,6 +11,27 @@ test('Circle creates diameter semantic, measures and formats Ø', () => {
   const doc = document(), sketch = doc.sketches.s, d = createCircularSizeDimension(sketch, 'circle', { x: 10, y: 3 }, 'd');
   assert.equal(d.mode, 'diameter'); assert.equal(d.value, 10); assert.equal(formatCircularDimension(10, d.mode, 'driving'), 'Ø10');
   assert.equal(displayedDimensionMeasurement(sketch, d), 10);
+});
+
+test('automatic circular placement is deterministic and follows Circle axis and finite Arc midpoint', () => {
+  const sketch = document().sketches.s;
+  const circle = resolveCircularSize(sketch, 'circle'), arc = resolveCircularSize(sketch, 'arc');
+  assert.deepEqual(defaultCircularSizePlacementAnchor(circle), { x: 9, y: 3 });
+  const arcAnchor = defaultCircularSizePlacementAnchor(arc);
+  assert.ok(Math.abs(arcAnchor.x) < 1e-10 && Math.abs(arcAnchor.y + 7) < 1e-10);
+  const attachment = circularAttachment(arc, arcAnchor);
+  assert.ok(Math.abs(attachment.x) < 1e-10 && Math.abs(attachment.y + 5) < 1e-10);
+  assert.deepEqual(defaultCircularSizePlacementAnchor(arc), arcAnchor);
+});
+
+test('batch append creates independent automatic placements and rejects exact duplicates', () => {
+  let sequence = 0, doc = appendCircularSizeDimensions(document(), ['circle', 'arc'], () => `auto-${++sequence}`);
+  assert.deepEqual(doc.sketches.s.dimensionOrder, ['auto-1', 'auto-2']);
+  assert.deepEqual(doc.sketches.s.dimensions['auto-1'].placement.anchor, { x: 9, y: 3 });
+  assert.ok(Math.abs(doc.sketches.s.dimensions['auto-2'].placement.anchor.x) < 1e-10);
+  assert.strictEqual(appendCircularSizeDimensions(doc, ['arc', 'circle'], () => 'duplicate'), doc);
+  const moved = moveDimensionPlacement(doc, 'auto-1', { kind: 'radial', anchor: { x: 30, y: 40 } });
+  assert.deepEqual(moved.sketches.s.dimensions['auto-1'].placement.anchor, { x: 30, y: 40 });
 });
 
 test('Arc creates radius semantic for positive/negative, minor/major and semicircle bulges', () => {

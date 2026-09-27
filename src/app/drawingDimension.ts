@@ -3,7 +3,7 @@ import { pointIdForLineEndpoint, removeLineAndOrphans, resolveArc, resolveLine }
 import { arcBulgeSolverVariable, pointSolverVariables, type DrawingSolverVariable } from './drawingSolverVariables.js';
 import { dimensionIncreasesConstraintRank } from './drawingConstraintAnalysis.js';
 import { candidateForSector, createLineAngleBasis, selectLineAngleCandidate } from './drawingLineAngle.js';
-import { measureCircularDimension, resolveCircularSize } from './drawingCircularSize.js';
+import { defaultCircularSizePlacementAnchor, measureCircularDimension, resolveCircularSize } from './drawingCircularSize.js';
 
 export const DIMENSION_AXIS_EPSILON_MM = 1e-7;
 /** |cross(unitA, unitB)| at or below this value is geometrically parallel. */
@@ -323,6 +323,26 @@ export const appendDimension = (document: DrawingDocumentV2, dimension: DrawingD
   if (classification.reason === 'duplicate') return document;
   const classified = { ...dimension, role: classification.role };
   return { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch, dimensions: { ...sketch.dimensions, [dimension.id]: classified }, dimensionOrder: [...sketch.dimensionOrder, dimension.id] } } };
+};
+
+/** Appends every valid, uncovered circular size in one immutable document mutation. */
+export const appendCircularSizeDimensions = (
+  document: DrawingDocumentV2,
+  entityIds: readonly string[],
+  idFactory: () => string = createDimensionId,
+): DrawingDocumentV2 => {
+  let next = document;
+  for (const entityId of entityIds) {
+    const sketch = next.sketches[next.activeSketchId];
+    const resolved = sketch && resolveCircularSize(sketch, entityId);
+    if (!sketch || !resolved) continue;
+    const covered = Object.values(sketch.dimensions).some((dimension) => dimension.kind === 'CIRCULAR_SIZE'
+      && dimension.mode === resolved.mode && dimension.references[0].entityId === entityId);
+    if (covered) continue;
+    const candidate = createCircularSizeDimension(sketch, entityId, defaultCircularSizePlacementAnchor(resolved), idFactory());
+    if (candidate) next = appendDimension(next, candidate);
+  }
+  return next;
 };
 export const deleteDimension = (document: DrawingDocumentV2, id: string): DrawingDocumentV2 => {
   const sketch = document.sketches[document.activeSketchId]; if (!sketch?.dimensions[id]) return document;
