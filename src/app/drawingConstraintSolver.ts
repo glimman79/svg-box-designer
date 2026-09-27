@@ -357,6 +357,10 @@ export type DrawingGeometricIntent = Readonly<{
   secondaryResiduals?: (candidate: DrawingSketchV2) => readonly number[] | null;
   /** Geometric continuation below primary/secondary intent and above canonical stay. */
   geometricResiduals?: (candidate: DrawingSketchV2) => readonly number[] | null;
+  /** Deterministic, interaction-owned branch poses. They are only starting
+   * points for this same constrained solve: hard and semantic equations are
+   * projected and the normal hierarchy still selects and verifies the result. */
+  continuationSeeds?: readonly DrawingSketchV2[];
   /** Characteristic model length used only to normalize dimensionless scalar motion. */
   modelScale: number;
 }>;
@@ -446,6 +450,27 @@ export const solveDrawingGeometricIntent = (
     return evaluation && [...evaluation.hard, ...evaluation.semantic].every((value) => Math.abs(value) <= DRAWING_CONSTRAINT_TOLERANCE_MM)
       ? projected : null;
   };
+  // A local Newton solve cannot discover another chart across a nonlinear
+  // fold.  Admit bounded deterministic branch poses, project each through the
+  // exact same hard+semantic subspace, and start the hierarchy at the best
+  // pointer pose.  The drag-start vector remains the canonical least-change
+  // reference; seeds are not alternate authorities or browser-frame state.
+  for (const seed of intent.continuationSeeds ?? []) {
+    const seedValues = flattenDrawingSolverVariables(seed, variables);
+    if (!seedValues) continue;
+    const projectedValues = projectSemanticSubspace(seedValues);
+    const evaluation = projectedValues && evaluate(projectedValues);
+    if (!evaluation || evaluation.hard.some((value) => Math.abs(value) > DRAWING_CONSTRAINT_TOLERANCE_MM)
+      || evaluation.semantic.some((value) => Math.abs(value) > DRAWING_CONSTRAINT_TOLERANCE_MM)) continue;
+    const pointerError = norm(evaluation.primary), bestPointerError = norm(best.primary);
+    const equivalent = Math.abs(pointerError - bestPointerError) <= Math.max(INTERACTION_SCORE_EPSILON, intent.modelScale * 1e-8);
+    if (pointerError < bestPointerError - INTERACTION_SCORE_EPSILON
+      || equivalent && norm(evaluation.geometric) < norm(best.geometric) - INTERACTION_SCORE_EPSILON
+      || equivalent && Math.abs(norm(evaluation.geometric) - norm(best.geometric)) <= INTERACTION_SCORE_EPSILON
+        && norm(evaluation.least) < norm(best.least)) {
+      values = [...projectedValues]; best = evaluation;
+    }
+  }
   const optimizeTier = (objective: Objective, preserved: readonly Exclude<Objective, 'least'>[]) => {
     if (!best[objective].length) return;
     for (let iteration = 0; iteration < INTERACTION_TIER_ITERATIONS; iteration += 1) {
