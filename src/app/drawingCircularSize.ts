@@ -45,6 +45,18 @@ export const circularAttachment = (resolved: ResolvedCircularSize, anchor: Drawi
   return { x: center.x + Math.cos(angle) * resolved.radius, y: center.y + Math.sin(angle) * resolved.radius };
 };
 
+/** Stable model-space placement for circular dimensions created without a pointer. */
+export const defaultCircularSizePlacementAnchor = (resolved: ResolvedCircularSize): DrawingPoint => {
+  const angle = resolved.entity.type === 'arc'
+    ? resolved.entity.startAngle + resolved.entity.signedSweep / 2
+    : 0;
+  const distance = resolved.radius * 1.4;
+  return {
+    x: resolved.entity.center.x + Math.cos(angle) * distance,
+    y: resolved.entity.center.y + Math.sin(angle) * distance,
+  };
+};
+
 /** Derived annotation endpoints; neither endpoint becomes persisted sketch geometry. */
 export const circularDimensionEndpoints = (resolved: ResolvedCircularSize, anchor: DrawingPoint): Readonly<{ start: DrawingPoint; end: DrawingPoint }> => {
   const end = circularAttachment(resolved, anchor);

@@ -1,5 +1,7 @@
 import { addCoincidentConstraint, addPointOnLinearSupportConstraint } from './drawingCoincidentConstraint.js';
 import { solveDrawingComponentDrag } from './drawingConstraintSolver.js';
+import { resolveCircularSize } from './drawingCircularSize.js';
+import { appendCircularSizeDimensions, createDimensionId } from './drawingDimension.js';
 import type { DrawingDocumentV2, DrawingGeometricConstraint, DrawingSketchV2 } from './drawingTypes.js';
 
 export type DrawingSelectionRef = Readonly<{ kind: 'line'; lineId: string }> | Readonly<{ kind: 'circle'; circleId: string }> | Readonly<{ kind: 'arc'; arcId: string }> | Readonly<{ kind: 'point'; pointId: string }>;
@@ -42,7 +44,7 @@ export const getExistingAxisConstraintForLine = (sketch: DrawingSketchV2, lineId
 export const getDrawingConstraintApplicability = (selection: readonly DrawingSelectionRef[], document: DrawingDocumentV2): readonly DrawingConstraintApplicability[] => {
   const sketch = document.sketches[document.activeSketchId];
   return DRAWING_CONSTRAINT_CATALOG.map(({ kind }) => {
-    const implemented = ['midpoint', 'coincidence', 'parallelism', 'perpendicular', 'horizontal', 'vertical'].includes(kind);
+    const implemented = ['radiusDiameter', 'midpoint', 'coincidence', 'parallelism', 'perpendicular', 'horizontal', 'vertical'].includes(kind);
     const oneLine = selection.length === 1 && selection[0].kind === 'line';
     const twoLines = selection.length === 2 && selection.every((ref) => ref.kind === 'line') && selection[0].lineId !== selection[1].lineId;
     const twoPoints = selection.length === 2 && selection.every((ref) => ref.kind === 'point') && selection[0].pointId !== selection[1].pointId;
@@ -53,15 +55,27 @@ export const getDrawingConstraintApplicability = (selection: readonly DrawingSel
     const validLinearSupport = Boolean(a && b && Math.hypot(b.x - a.x, b.y - a.y) > 1e-9);
     const selectedPoint = pointAndLine ? selection.find((ref): ref is Extract<DrawingSelectionRef, { kind: 'point' }> => ref.kind === 'point') : undefined;
     const externalPoint = Boolean(selectedPoint && line && selectedPoint.pointId !== line.startPointId && selectedPoint.pointId !== line.endPointId);
-    const applicable = (kind === 'horizontal' || kind === 'vertical') ? oneLine && validLinearSupport
+    const circularReferences = kind === 'radiusDiameter' && sketch ? selection.filter((ref) => {
+      const entityId = ref.kind === 'circle' ? ref.circleId : ref.kind === 'arc' ? ref.arcId : null;
+      return entityId !== null && resolveCircularSize(sketch, entityId) !== null;
+    }) : [];
+    const uncoveredCircularReferences = circularReferences.filter((ref) => {
+      const entityId = ref.kind === 'circle' ? ref.circleId : ref.kind === 'arc' ? ref.arcId : '';
+      const resolved = sketch && resolveCircularSize(sketch, entityId);
+      return resolved && !Object.values(sketch.dimensions).some((dimension) => dimension.kind === 'CIRCULAR_SIZE'
+        && dimension.mode === resolved.mode && dimension.references[0].entityId === entityId);
+    });
+    const applicable = kind === 'radiusDiameter' ? circularReferences.length > 0
+      : (kind === 'horizontal' || kind === 'vertical') ? oneLine && validLinearSupport
       : (kind === 'parallelism' || kind === 'perpendicular') ? twoLines : kind === 'coincidence' ? twoPoints || pointAndLine && validLinearSupport
         : kind === 'midpoint' ? pointAndLine && validLinearSupport && externalPoint : false;
-    const references = applicable ? [...selection].sort((a, b) => a.kind === b.kind
+    const references = kind === 'radiusDiameter' ? circularReferences : applicable ? [...selection].sort((a, b) => a.kind === b.kind
       ? (a.kind === 'line' ? a.lineId : a.kind === 'circle' ? a.circleId : a.kind === 'arc' ? a.arcId : a.pointId).localeCompare(b.kind === 'line' ? b.lineId : b.kind === 'circle' ? b.circleId : b.kind === 'arc' ? b.arcId : b.pointId)
       : a.kind === 'point' ? -1 : 1) : [];
     const axisAlreadyConstrained = Boolean(sketch && selectedLine && (kind === 'horizontal' || kind === 'vertical')
       && getExistingAxisConstraintForLine(sketch, selectedLine.lineId));
-    const creatable = Boolean(sketch && implemented && applicable && !axisAlreadyConstrained && !existing(sketch, kind, references));
+    const creatable = kind === 'radiusDiameter' ? uncoveredCircularReferences.length > 0
+      : Boolean(sketch && implemented && applicable && !axisAlreadyConstrained && !existing(sketch, kind, references));
     return { kind, implemented, applicable, creatable, enabled: implemented && applicable && creatable, references,
       disabledReason: !implemented ? 'Not implemented yet' : !applicable ? 'Not applicable to this selection'
         : axisAlreadyConstrained ? 'Line already has a Horizontal/Vertical constraint' : !creatable ? 'Already present' : undefined };
@@ -69,9 +83,13 @@ export const getDrawingConstraintApplicability = (selection: readonly DrawingSel
 };
 
 /** Adds a validated first-class relation and asks the existing component solver to satisfy it. */
-export const applyDrawingConstraint = (document: DrawingDocumentV2, applicability: DrawingConstraintApplicability): DrawingDocumentV2 => {
+export const applyDrawingConstraint = (document: DrawingDocumentV2, applicability: DrawingConstraintApplicability, idFactory: () => string = createDimensionId): DrawingDocumentV2 => {
   if (!applicability.enabled) return document;
   const refs = applicability.references;
+  if (applicability.kind === 'radiusDiameter') {
+    const entityIds = refs.flatMap((ref) => ref.kind === 'circle' ? [ref.circleId] : ref.kind === 'arc' ? [ref.arcId] : []);
+    return appendCircularSizeDimensions(document, entityIds, idFactory);
+  }
   if (applicability.kind === 'midpoint') {
     const current = getDrawingConstraintApplicability(refs, document).find(({ kind }) => kind === 'midpoint');
     const pointRef = refs.find((ref): ref is Extract<DrawingSelectionRef, { kind: 'point' }> => ref.kind === 'point');

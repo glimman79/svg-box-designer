@@ -12,6 +12,17 @@ import { deleteGeometricConstraint, deriveGeometricConstraintMarkers } from '../
 const line = (id, y = 0) => ({ id, type: 'line', start: { x: 0, y }, end: { x: 20, y: y + 3 }, startPointId: `${id}:a`, endPointId: `${id}:b` });
 const add = (document, draft) => appendEntityToActiveSketch(document, draft);
 const enabled = (document, selection) => getDrawingConstraintApplicability(selection, document).filter((item) => item.enabled).map((item) => item.kind);
+const withCurves = () => {
+  const document = createDrawingDocumentV2(), sketch = document.sketches[document.activeSketchId];
+  sketch.points = { c1: { id: 'c1', x: 2, y: 3 }, c2: { id: 'c2', x: 20, y: 3 }, a: { id: 'a', x: -5, y: 0 }, b: { id: 'b', x: 5, y: 0 } };
+  sketch.entities = {
+    circle1: { id: 'circle1', type: 'circle', centerPointId: 'c1', radius: 5 },
+    circle2: { id: 'circle2', type: 'circle', centerPointId: 'c2', radius: 3 },
+    arc: { id: 'arc', type: 'arc', startPointId: 'a', endPointId: 'b', bulge: 1 },
+  };
+  sketch.entityOrder = ['circle1', 'circle2', 'arc'];
+  return document;
+};
 const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 const workspaceSource = readFileSync(new URL('../src/app/DrawingWorkspace.tsx', import.meta.url), 'utf8');
 
@@ -82,6 +93,54 @@ test('drag clamping follows the desired position and changes it only at a bounda
 
 test('catalog is the exact stable fourteen-option product catalog', () => {
   assert.deepEqual(DRAWING_CONSTRAINT_CATALOG.map(({ label }) => label), ['Distance', 'Length', 'Angle', 'Radius / Diameter', 'Symmetry', 'Midpoint', 'Fix', 'Coincidence', 'Concentricity', 'Tangency', 'Parallelism', 'Perpendicular', 'Horizontal', 'Vertical']);
+});
+
+test('Radius / Diameter applicability follows live ordered selection and ignores unrelated geometry', () => {
+  const document = add(withCurves(), line('line'));
+  assert.ok(!enabled(document, []).includes('radiusDiameter'));
+  assert.ok(!enabled(document, [{ kind: 'line', lineId: 'line' }]).includes('radiusDiameter'));
+  for (const selection of [
+    [{ kind: 'circle', circleId: 'circle1' }],
+    [{ kind: 'arc', arcId: 'arc' }],
+    [{ kind: 'line', lineId: 'line' }, { kind: 'arc', arcId: 'arc' }],
+  ]) assert.ok(enabled(document, selection).includes('radiusDiameter'));
+  const changed = getDrawingConstraintApplicability([{ kind: 'circle', circleId: 'circle1' }], document).find(({ kind }) => kind === 'radiusDiameter');
+  assert.deepEqual(changed.references, [{ kind: 'circle', circleId: 'circle1' }]);
+});
+
+test('Radius / Diameter batches Circle Ø and Arc R, skips covered curves, and is one History action', () => {
+  const original = add(withCurves(), line('line'));
+  const selection = [{ kind: 'circle', circleId: 'circle2' }, { kind: 'line', lineId: 'line' }, { kind: 'arc', arcId: 'arc' }, { kind: 'circle', circleId: 'circle1' }];
+  const choice = getDrawingConstraintApplicability(selection, original).find(({ kind }) => kind === 'radiusDiameter');
+  let number = 0;
+  const applied = applyDrawingConstraint(original, choice, () => `circular-${++number}`);
+  const sketch = applied.sketches[applied.activeSketchId];
+  assert.deepEqual(sketch.dimensionOrder, ['circular-1', 'circular-2', 'circular-3']);
+  assert.deepEqual(sketch.dimensionOrder.map((id) => [sketch.dimensions[id].references[0].entityId, sketch.dimensions[id].mode]), [
+    ['circle2', 'diameter'], ['arc', 'radius'], ['circle1', 'diameter'],
+  ]);
+  const transaction = transactDrawingDocument(EMPTY_DRAWING_HISTORY, original, () => applied);
+  assert.equal(transaction.history.undo.length, 1);
+  const undone = undoDrawingDocument(transaction.history, transaction.document);
+  assert.deepEqual(undone.document.sketches[original.activeSketchId].dimensionOrder, []);
+  assert.deepEqual(redoDrawingDocument(undone.history, undone.document).document.sketches[original.activeSketchId].dimensionOrder, sketch.dimensionOrder);
+
+  const current = getDrawingConstraintApplicability(selection, applied).find(({ kind }) => kind === 'radiusDiameter');
+  assert.equal(current.enabled, false);
+  assert.strictEqual(applyDrawingConstraint(applied, choice, () => 'stale-id'), applied, 'stale applicability cannot duplicate covered dimensions');
+});
+
+test('Radius / Diameter creates only uncovered members of a covered and invalid mixture', () => {
+  const original = withCurves();
+  const firstChoice = getDrawingConstraintApplicability([{ kind: 'circle', circleId: 'circle1' }], original).find(({ kind }) => kind === 'radiusDiameter');
+  const covered = applyDrawingConstraint(original, firstChoice, () => 'covered');
+  covered.sketches[covered.activeSketchId].entities.invalid = { id: 'invalid', type: 'circle', centerPointId: 'missing', radius: 2 };
+  const selection = [{ kind: 'circle', circleId: 'circle1' }, { kind: 'circle', circleId: 'invalid' }, { kind: 'arc', arcId: 'arc' }];
+  const choice = getDrawingConstraintApplicability(selection, covered).find(({ kind }) => kind === 'radiusDiameter');
+  assert.equal(choice.enabled, true);
+  const result = applyDrawingConstraint(covered, choice, () => 'new-arc');
+  assert.deepEqual(result.sketches[result.activeSketchId].dimensionOrder, ['covered', 'new-arc']);
+  assert.equal(result.sketches[result.activeSketchId].dimensions['new-arc'].references[0].entityId, 'arc');
 });
 
 test('central applicability handles line, point, mixed, and larger selections', () => {
