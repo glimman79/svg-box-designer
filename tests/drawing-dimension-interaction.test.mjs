@@ -7,6 +7,11 @@ import {
   resolveDimensionPreselection, resolveDimensionPreselectionForTarget,
 } from '../.test-build/drawing-dimension-interaction/drawingDimension.js';
 import { createDrawingDocumentV2 } from '../.test-build/drawing-dimension-interaction/drawingTypes.js';
+import {
+  beginDimensionAnnotationDragSession, cancelDimensionAnnotationDragSession,
+  dimensionPlacementForDisplay, finishDimensionAnnotationDragSession,
+  updateDimensionAnnotationDragSession,
+} from '../.test-build/drawing-dimension-interaction/drawingDimensionDrag.js';
 
 const line = { id: 'line-1', type: 'line', start: { x: 10, y: 20 }, end: { x: 110, y: 30 } };
 const clientLines = [{ id: line.id, start: line.start, end: line.end }];
@@ -58,6 +63,63 @@ assert.deepEqual(moved.sketches['sketch-1'].entities, document.sketches['sketch-
 assert.equal(moved.sketches['sketch-1'].dimensions[dimension.id].value, dimension.value, 'value unchanged');
 assert.deepEqual(moved.sketches['sketch-1'].dimensions[dimension.id].references, dimension.references, 'references unchanged');
 assert.strictEqual(moveDimensionPlacement(document, 'missing', 4), document);
+
+const persistedPlacement = dimension.placement;
+const positivePlacement = { kind: 'linear', offset: 24 };
+const negativePlacement = { kind: 'linear', offset: -24 };
+const beginDrag = (pointerId = 7) => beginDimensionAnnotationDragSession(pointerId, dimension, { x: 10, y: 10 });
+let drag = beginDrag();
+assert.strictEqual(dimensionPlacementForDisplay(dimension, drag), persistedPlacement, 'a new drag initially displays persisted placement');
+drag = updateDimensionAnnotationDragSession(drag, 8, 1, { x: 10, y: 60 }, negativePlacement, 4);
+assert.strictEqual(drag.previewPlacement, persistedPlacement, 'a foreign pointer cannot update preview placement');
+assert.strictEqual(finishDimensionAnnotationDragSession(drag, 8).session, drag, 'a foreign pointerup cannot finish the owning pointer session');
+assert.strictEqual(cancelDimensionAnnotationDragSession(drag, 8), drag, 'foreign cancel or lost capture cannot cancel the owning pointer session');
+
+drag = updateDimensionAnnotationDragSession(drag, 7, 1, { x: 10, y: 11 }, positivePlacement, 4);
+let completion = finishDimensionAnnotationDragSession(drag, 7);
+assert.equal(completion.session, null, 'click without drag clears the session');
+assert.equal(completion.commit, null, 'click without drag creates no placement transaction');
+assert.strictEqual(dimensionPlacementForDisplay(dimension, completion.session), persistedPlacement, 'passive movement after a click cannot overlay persisted placement');
+
+drag = updateDimensionAnnotationDragSession(beginDrag(), 7, 1, { x: 10, y: 30 }, positivePlacement, 4);
+assert.strictEqual(dimensionPlacementForDisplay(dimension, drag), positivePlacement, 'valid owned drag displays its transient preview');
+drag = cancelDimensionAnnotationDragSession(drag, 7);
+assert.equal(drag, null, 'matching lostpointercapture cancels the session');
+assert.strictEqual(dimensionPlacementForDisplay(dimension, drag), persistedPlacement, 'lost capture discards preview and restores persisted placement');
+for (const offset of [24, 0, -24]) {
+  assert.strictEqual(dimensionPlacementForDisplay(dimension, drag), persistedPlacement, `idle axis crossing at ${offset} cannot re-author placement`);
+}
+
+drag = updateDimensionAnnotationDragSession(beginDrag(), 7, 1, { x: 10, y: 30 }, positivePlacement, 4);
+drag = cancelDimensionAnnotationDragSession(drag, 7);
+assert.equal(drag, null, 'matching pointercancel terminates the session without a commit result');
+assert.strictEqual(document.sketches['sketch-1'].dimensions[dimension.id].placement, persistedPlacement, 'cancel does not mutate the document');
+
+drag = updateDimensionAnnotationDragSession(beginDrag(), 7, 0, { x: 10, y: 50 }, negativePlacement, 4);
+assert.equal(drag, null, 'passive no-button movement invalidates a leaked drag session');
+assert.strictEqual(dimensionPlacementForDisplay(dimension, drag), persistedPlacement, 'no-button movement cannot retain preview authority');
+
+drag = updateDimensionAnnotationDragSession(beginDrag(), 7, 1, { x: 10, y: 30 }, positivePlacement, 4);
+drag = updateDimensionAnnotationDragSession(drag, 7, 1, { x: 10, y: -30 }, negativePlacement, 4);
+completion = finishDimensionAnnotationDragSession(drag, 7);
+assert.deepEqual(completion.commit, { id: dimension.id, placement: negativePlacement }, 'intentional owned drag can cross zero and commit its signed placement');
+const intentionallyMoved = moveDimensionPlacement(document, completion.commit.id, completion.commit.placement);
+assert.deepEqual(intentionallyMoved.sketches['sketch-1'].dimensions[dimension.id].placement, negativePlacement, 'successful completion persists the final preview');
+assert.strictEqual(dimensionPlacementForDisplay(intentionallyMoved.sketches['sketch-1'].dimensions[dimension.id], completion.session), intentionallyMoved.sketches['sketch-1'].dimensions[dimension.id].placement, 'passive movement after commit uses the new persisted placement');
+
+for (const [kind, placement] of [
+  ['HORIZONTAL_DISTANCE', { kind: 'linear', offset: 12 }],
+  ['VERTICAL_DISTANCE', { kind: 'linear', offset: -12 }],
+  ['POINT_TO_LINE_DISTANCE', { kind: 'linear', offset: 8 }],
+  ['LINE_TO_LINE_DISTANCE', { kind: 'linear', offset: -8 }],
+  ['LINE_TO_LINE_ANGLE', { kind: 'angular', anchor: { x: 3, y: 4 } }],
+  ['CIRCULAR_SIZE radius', { kind: 'radial', anchor: { x: 5, y: 6 } }],
+  ['CIRCULAR_SIZE diameter', { kind: 'radial', anchor: { x: -5, y: -6 } }],
+]) {
+  const familyDimension = { ...dimension, id: kind, placement };
+  const familyDrag = beginDimensionAnnotationDragSession(11, familyDimension, { x: 0, y: 0 });
+  assert.strictEqual(dimensionPlacementForDisplay(familyDimension, cancelDimensionAnnotationDragSession(familyDrag, 11)), placement, `${kind} shares canceled-preview placement authority`);
+}
 
 const placementCursor = { x: 70, y: 90 };
 const placementLine = { ...line, startPointId: 'p0', endPointId: 'p1' };
