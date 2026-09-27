@@ -3,7 +3,7 @@ import { resolveArcFromBulge } from './drawingArcGeometry.js';
 import { arcBulgeSolverVariable, circleRadiusSolverVariable, pointSolverVariables } from './drawingSolverVariables.js';
 import { displayedDimensionMeasurement, drawingPointReferenceDependencies, measureDimension, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
 import { pointIdForLineEndpoint } from './drawingTopology.js';
-import type { DrawingDimension, DrawingDocumentV2, DrawingEntity, DrawingPoint } from './drawingTypes.js';
+import type { DrawingDimension, DrawingDocumentV2, DrawingEntity, DrawingPoint, DrawingSketchV2 } from './drawingTypes.js';
 
 export const DRAWING_DRAG_THRESHOLD_PX = 4;
 const ARC_CONTINUATION_SAMPLE_PARAMETERS = [1 / 8, 1 / 4, 3 / 8, 1 / 2, 5 / 8, 3 / 4, 7 / 8] as const;
@@ -57,6 +57,86 @@ const arcPointAt = (arc: NonNullable<ReturnType<typeof resolveArcFromBulge>>, t:
   x: arc.center.x + arc.radius * Math.cos(arc.startAngle + arc.signedSweep * t),
   y: arc.center.y + arc.radius * Math.sin(arc.startAngle + arc.signedSweep * t),
 });
+
+/** Bounded, absolute branch charts for an endpoint drag.  atan(bulge) keeps
+ * the semicircle finite and places both same-orientation sheets in the seed
+ * set.  Recognized driving-radius cases additionally use their exact endpoint
+ * disk and analytic reciprocal bulge roots. */
+const arcEndpointContinuationSeeds = (
+  sketch: DrawingSketchV2,
+  entity: Extract<DrawingEntity, { type: 'arc' }>,
+  draggedPointId: string,
+  pivot: DrawingPoint,
+  pointer: DrawingPoint,
+  initialBulge: number,
+): DrawingSketchV2[] => {
+  const sign = Math.sign(initialBulge), initialU = Math.atan(Math.abs(initialBulge));
+  const charts = [initialU, .08, .25, Math.PI / 4, 1.05, 1.3, Math.PI / 2 - .04];
+  const poses: Array<{ point: DrawingPoint; bulge: number }> = [];
+  const hasArcDrivingDimension = Object.values(sketch.dimensions).some((dimension) => dimension.role === 'driving'
+    && dimension.references.some((reference) => (reference.kind === 'entity' || reference.kind === 'derivedPoint')
+      && reference.entityId === entity.id));
+  // The ordinary free/constraint-only endpoint solve is already globally
+  // reachable and retains its established #582 tie-break. Continuation charts
+  // are needed for the nonlinear driving equations that create the fold.
+  if (!hasArcDrivingDimension) return [];
+  const radiusDimension = Object.values(sketch.dimensions).find((dimension) => dimension.role === 'driving'
+    && dimension.kind === 'CIRCULAR_SIZE' && dimension.references[0]?.kind === 'entity'
+    && dimension.references[0].entityId === entity.id);
+  if (radiusDimension?.kind === 'CIRCULAR_SIZE') {
+    const radius = radiusDimension.value / (radiusDimension.mode === 'diameter' ? 2 : 1);
+    const dx = pointer.x - pivot.x, dy = pointer.y - pivot.y, requestedDistance = Math.hypot(dx, dy);
+    if (radius > 0 && requestedDistance > DRAWING_CONSTRAINT_TOLERANCE_MM) {
+      const distance = Math.min(requestedDistance, 2 * radius);
+      const point = { x: pivot.x + dx * distance / requestedDistance, y: pivot.y + dy * distance / requestedDistance };
+      const root = Math.sqrt(Math.max(0, 4 * radius * radius - distance * distance));
+      const minor = distance / (2 * radius + root);
+      poses.push({ point, bulge: sign * (distance >= 2 * radius - 1e-10 ? 1 : minor) });
+      if (minor > 1e-10 && distance < 2 * radius - 1e-10) poses.push({ point, bulge: sign / minor });
+    }
+    const centerAxis = Object.values(sketch.dimensions).find((dimension) => dimension.role === 'driving'
+      && (dimension.kind === 'HORIZONTAL_DISTANCE' || dimension.kind === 'VERTICAL_DISTANCE')
+      && dimension.references.some((reference) => reference.kind === 'derivedPoint'
+        && reference.entityId === entity.id && reference.role === 'center'));
+    if (centerAxis && radius > 0) {
+      const axis = centerAxis.kind === 'HORIZONTAL_DISTANCE' ? 'x' : 'y', other = axis === 'x' ? 'y' : 'x';
+      for (const axisSign of [1, -1]) {
+        const fixed = axisSign * centerAxis.value, offset = fixed - pivot[axis];
+        if (Math.abs(offset) > radius + DRAWING_CONSTRAINT_TOLERANCE_MM) continue;
+        const otherOffset = Math.sqrt(Math.max(0, radius * radius - offset * offset));
+        for (const side of [1, -1]) {
+          const center = { [axis]: fixed, [other]: pivot[other] + side * otherOffset } as DrawingPoint;
+          const px = pointer.x - center.x, py = pointer.y - center.y, length = Math.hypot(px, py);
+          const point = length > DRAWING_CONSTRAINT_TOLERANCE_MM
+            ? { x: center.x + radius * px / length, y: center.y + radius * py / length }
+            : { x: center.x + radius, y: center.y };
+          const startPoint = draggedPointId === entity.startPointId ? point : pivot;
+          const endPoint = draggedPointId === entity.endPointId ? point : pivot;
+          const startAngle = Math.atan2(startPoint.y - center.y, startPoint.x - center.x);
+          const endAngle = Math.atan2(endPoint.y - center.y, endPoint.x - center.x);
+          const positive = ((endAngle - startAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+          const sweep = sign > 0 ? positive : -((startAngle - endAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+          const bulge = Math.tan(sweep / 4);
+          if (Math.abs(bulge) > 1e-10 && Number.isFinite(bulge)) poses.push({ point, bulge });
+        }
+      }
+    }
+  }
+  // Absolute pointer homotopy, rebuilt on every call.  Its fixed subdivision
+  // is deliberately independent of pointermove delivery and supplies useful
+  // charts for center-axis and generic connected constraint components.
+  const start = sketch.points[draggedPointId];
+  if (start) for (let step = 1; step <= 8; step += 1) {
+    const lambda = step / 8, point = { x: start.x + (pointer.x - start.x) * lambda, y: start.y + (pointer.y - start.y) * lambda };
+    for (const u of step === 8 ? charts : [initialU, Math.PI / 4, 1.3]) poses.push({ point, bulge: sign * Math.tan(u) });
+  }
+  return poses.flatMap(({ point, bulge }) => {
+    if (!Number.isFinite(bulge) || Math.hypot(point.x - pivot.x, point.y - pivot.y) <= DRAWING_CONSTRAINT_TOLERANCE_MM * 100) return [];
+    const points = { ...sketch.points, [draggedPointId]: { ...start!, x: point.x, y: point.y } };
+    const entities = { ...sketch.entities, [entity.id]: { ...entity, bulge } } as DrawingSketchV2['entities'];
+    return [{ ...sketch, points, entities }];
+  });
+};
 
 /** Resolves semantic ownership after the physical point hit. A unique selected
  * incident Arc disambiguates a shared endpoint; otherwise multiple Arc owners
@@ -195,6 +275,7 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
       seedVariable: arcBulgeSolverVariable(entity.id),
       variables: [...pointSolverVariables(entity.startPointId), ...pointSolverVariables(entity.endPointId)],
       modelScale: Math.max(1, originalArc.radius),
+      continuationSeeds: arcEndpointContinuationSeeds(sketch, entity, target.draggedPointId, pivot, pointer, target.initialBulge),
       primaryResiduals: (candidate) => {
         const candidateEntity = (candidate.entities as unknown as Record<string, DrawingEntity>)[entity.id];
         const point = candidate.points[target.draggedPointId];

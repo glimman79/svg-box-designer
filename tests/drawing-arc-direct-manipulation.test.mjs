@@ -172,6 +172,53 @@ test('driving R endpoint intent jointly uses endpoints and bulge while preservin
   }
 });
 
+test('fixed-radius endpoints reach the full disk, cross the semicircle fold, and stop only at 2R', () => {
+  for (const orientation of [1, -1]) for (const [draggedId, pivotId] of [['e', 's'], ['s', 'e']]) {
+    const document = make(orientation * .5), s = sketch(document), radius = resolved(document).radius;
+    s.dimensions.radius = createCircularSizeDimension(s, 'arc', { x: 5, y: -20 }, 'radius'); s.dimensionOrder = ['radius'];
+    const pivot = s.points[pivotId], dragged = s.points[draggedId], target = createArcEndpointDragTarget(document, 'arc', draggedId);
+    const solveTo = (destination) => solveDrawingDragCandidate(document, target,
+      { x: destination.x - dragged.x, y: destination.y - dragged.y });
+    const relative = (x, y) => ({ x: pivot.x + (draggedId === 'e' ? x : -x), y: pivot.y + y });
+
+    for (const destination of [relative(11, 3), relative(-10, 2)]) {
+      const candidate = solveTo(destination); assert.ok(candidate);
+      close(sketch(candidate).points[draggedId].x, destination.x, 1e-6);
+      close(sketch(candidate).points[draggedId].y, destination.y, 1e-6);
+      close(resolved(candidate).radius, radius, 1e-7);
+      assert.deepEqual(sketch(candidate).points[pivotId], pivot);
+      assert.equal(Math.sign(entity(candidate).bulge), orientation);
+    }
+
+    const boundary = relative(2 * radius, 0), semicircle = solveTo(boundary); assert.ok(semicircle);
+    close(Math.hypot(sketch(semicircle).points[draggedId].x - pivot.x, sketch(semicircle).points[draggedId].y - pivot.y), 2 * radius, 1e-5);
+    close(Math.abs(entity(semicircle).bulge), 1, 5e-4);
+
+    const majorDestination = relative(0, orientation * 6), major = solveTo(majorDestination); assert.ok(major);
+    close(sketch(major).points[draggedId].x, majorDestination.x, 1e-6);
+    close(sketch(major).points[draggedId].y, majorDestination.y, 1e-6);
+    assert.ok(Math.abs(entity(major).bulge) > 1, 'connected continuation proceeds onto the major sheet');
+    assert.equal(Math.sign(entity(major).bulge), orientation);
+
+    const outside = relative(30, 30), projected = solveTo(outside); assert.ok(projected);
+    const endpoint = sketch(projected).points[draggedId], length = Math.hypot(30, 30);
+    close(endpoint.x, pivot.x + (draggedId === 'e' ? 1 : -1) * 30 * 2 * radius / length, 2e-5);
+    close(endpoint.y, pivot.y + 30 * 2 * radius / length, 2e-5);
+    close(Math.hypot(endpoint.x - pivot.x, endpoint.y - pivot.y), 2 * radius, 2e-5);
+    assert.deepEqual(sketch(projected).points[pivotId], pivot);
+  }
+});
+
+test('fixed-radius branch result is absolute, event-rate independent, and reversible', () => {
+  const document = make(.5), s = sketch(document);
+  s.dimensions.radius = createCircularSizeDimension(s, 'arc', { x: 5, y: -20 }, 'radius'); s.dimensionOrder = ['radius'];
+  const target = createArcEndpointDragTarget(document, 'arc', 'e'), delta = { x: -10, y: 6 };
+  const direct = solveDrawingDragCandidate(document, target, delta); assert.ok(direct); assert.ok(Math.abs(entity(direct).bulge) > 1);
+  for (let step = 1; step <= 32; step += 1) solveDrawingDragCandidate(document, target, { x: delta.x * step / 32, y: delta.y * step / 32 });
+  assert.deepEqual(solveDrawingDragCandidate(document, target, delta), direct);
+  assert.deepEqual(solveDrawingDragCandidate(document, target, { x: 0, y: 0 }), document);
+});
+
 test('driving R plus one endpoint axis retains feasible endpoint motion', () => {
   const document = make(.5), s = sketch(document);
   s.dimensions.radius = createCircularSizeDimension(s, 'arc', { x: 5, y: -20 }, 'radius');
@@ -284,6 +331,24 @@ test('endpoint pivot stays exact with a compatible derived-center axis equation'
     assert.ok(candidate); assert.ok(verifyDrawingConstraints(sketch(candidate), ['fixed'], []));
     close(sketch(candidate).points[pivotId].x, s.points[pivotId].x, 1e-7);
     close(sketch(candidate).points[pivotId].y, s.points[pivotId].y, 1e-7);
+  }
+});
+
+test('center-axis endpoint branches retain substantial travel with and without driving R', () => {
+  for (const fixedAxis of ['x', 'y']) for (const withRadius of [false, true]) {
+    const document = make(.5), s = sketch(document), before = resolved(document);
+    s.dimensions.fixed = centerAxisDimension('fixed', fixedAxis, before.center[fixedAxis]); s.dimensionOrder = ['fixed'];
+    if (withRadius) {
+      s.dimensions.radius = createCircularSizeDimension(s, 'arc', { x: 5, y: -20 }, 'radius');
+      s.dimensionOrder.push('radius');
+    }
+    const candidate = solveDrawingDragCandidate(document, createArcEndpointDragTarget(document, 'arc', 'e'), { x: -18, y: 10 });
+    assert.ok(candidate); assert.ok(verifyDrawingConstraints(sketch(candidate), s.dimensionOrder, []));
+    assert.deepEqual(sketch(candidate).points.s, s.points.s);
+    assert.ok(Math.hypot(sketch(candidate).points.e.x - s.points.e.x, sketch(candidate).points.e.y - s.points.e.y) > 5,
+      `${fixedAxis}${withRadius ? ' + R' : ''} must not stop in the drag-start basin`);
+    close(Math.abs(resolved(candidate).center[fixedAxis]), Math.abs(before.center[fixedAxis]), 1e-6);
+    if (withRadius) close(resolved(candidate).radius, before.radius, 1e-6);
   }
 });
 
