@@ -12,6 +12,15 @@ import {
   dimensionPlacementForDisplay, finishDimensionAnnotationDragSession,
   updateDimensionAnnotationDragSession,
 } from '../.test-build/drawing-dimension-interaction/drawingDimensionDrag.js';
+import { captureDimensionPointer } from '../.test-build/drawing-dimension-interaction/DrawingWorkspace.js';
+
+const capturedPointers = [];
+const resolvedDimensionValueTarget = {
+  setPointerCapture(pointerId) { capturedPointers.push({ target: this, pointerId }); },
+};
+captureDimensionPointer(resolvedDimensionValueTarget, 23);
+assert.deepEqual(capturedPointers, [{ target: resolvedDimensionValueTarget, pointerId: 23 }],
+  'the already-resolved Dimension value element, rather than the root SVG event owner, receives pointer capture');
 
 const line = { id: 'line-1', type: 'line', start: { x: 10, y: 20 }, end: { x: 110, y: 30 } };
 const clientLines = [{ id: line.id, start: line.start, end: line.end }];
@@ -169,6 +178,10 @@ assert.match(css, /\.drawing-dimension-hit\s*\{[^}]*stroke:\s*transparent;[^}]*s
   'routing regression exercises the retained 14 px transparent annotation corridor rather than shrinking it');
 assert.match(pointerRouter, /resolveDrawingPointerOwner[\s\S]*owner\.kind === 'dimension'[\s\S]*beginDimensionAnnotationDrag/,
   'Select-mode annotation selection and drag begin only after root semantic ownership is resolved');
+assert.match(pointerRouter, /dimensionElement[\s\S]*beginDimensionAnnotationDrag\(event, dimension, dimensionElement\)/,
+  'root arbitration forwards its actual Dimension hit element to the shared drag path');
+assert.match(workspace, /beginDimensionAnnotationDrag[^=]*= \(event[^,]*, dimension[^,]*, captureTarget: SVGElement\)[\s\S]*captureDimensionPointer\(captureTarget, event\.pointerId\)/,
+  'all Dimension families capture the resolved value or annotation surface instead of the root SVG');
 assert.match(workspace, /drawing-dimension-value-hit[\s\S]*onDoubleClick=\{beginDimensionEdit\}/,
   'explicit circular/linear value targets remain double-click editable');
 assert.match(workspace, /drawing-dimension-editor-frame[\s\S]*drawing-dimension-editor/, 'the mounted editor remains an explicit interactive target');
