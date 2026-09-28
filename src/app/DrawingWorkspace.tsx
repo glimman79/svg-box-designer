@@ -23,7 +23,7 @@ import { candidateForSector, createLineAngleBasis, deriveLineAngleAnnotation } f
 import { solveDrawingDimensionEdit } from './drawingConstraintSolver';
 import type { HistoryControlsProps } from './HistoryControls';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from './drawingHistory';
-import { deriveEntityDefiningPointIds, pointIdForLineEndpoint, removeEntityAndOrphans, resolveActiveSketchLines, resolveArc, resolveCircle, resolveLine } from './drawingTopology.js';
+import { collectDrawingAuthoringPoints, deriveEntityDefiningPointIds, pointIdForLineEndpoint, removeEntityAndOrphans, resolveActiveSketchLines, resolveArc, resolveCircle, resolveLine } from './drawingTopology.js';
 import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcEndpointReference, resolveArcPreview, updateArcPreview, type ArcToolInteraction } from './drawingArcTool.js';
 import { drawingArcPath } from './drawingArcGeometry.js';
 import { circularDimensionEndpoints, resolveCircularSize } from './drawingCircularSize.js';
@@ -402,7 +402,7 @@ export function DrawingWorkspace({
       ? Math.atan2(priorAuthority.constructionDirection.y, priorAuthority.constructionDirection.x) * 180 / Math.PI : null;
     const allCandidates = collectDrawingInferenceCandidates(clientPoint, inferenceLines, drawingTransform, viewBox, interaction.start,
       establishedDegrees ?? (angularIntent?.snapActive ? angularIntent.snappedAngleDegrees : null), interaction.startPointId,
-      inferenceSketch ? Object.values(inferenceSketch.points) : []);
+      inferenceSketch ? Object.values(inferenceSketch.points) : [], inferenceSketch ? collectDrawingAuthoringPoints(inferenceSketch) : []);
     const circleP2 = activeToolRef.current === 'circle' && circleInteraction.center !== null;
     const arcP3 = activeToolRef.current === 'arc' && arcInteractionRef.current.end !== null;
     const candidates = filterDrawingInferenceCandidatesForAuthoring(allCandidates,
@@ -415,8 +415,10 @@ export function DrawingWorkspace({
       activeLineStart: interaction.start, activeLineStartPointId: interaction.startPointId });
     const snapBeforeHvSuppression = snap;
     const commonDirection = diagnoseLineCommonDirection(snap);
+    const authoringAlignmentReferences = snap.type === 'alignment'
+      ? { x: snap.xReference, y: snap.yReference } : { x: null, y: null };
     const lineResolution = activeToolRef.current === 'circle' || activeToolRef.current === 'arc'
-      ? { effectivePoint: snap.effectivePoint, interaction, resolvedReferences: { x: null, y: null }, diagnostic: null }
+      ? { effectivePoint: snap.effectivePoint, interaction, resolvedReferences: authoringAlignmentReferences, diagnostic: null }
       : resolveLineEffectivePoint(interaction, rawPoint, snap, ctrlHeld);
     let placementPoint = lineResolution.effectivePoint;
     const nextInteraction = lineResolution.interaction;

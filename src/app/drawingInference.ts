@@ -1,5 +1,6 @@
 import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingPoint, type DrawingSketchPoint, type ResolvedDrawingLine } from './drawingTypes.js';
 import type { AffineTransform, CoordinatePoint } from './drawingTransform';
+import type { DrawingAuthoringPoint } from './drawingTopology';
 
 export const DRAWING_ENDPOINT_INFERENCE_TOLERANCE_PX = 9;
 export const DRAWING_LINE_INFERENCE_TOLERANCE_PX = 8;
@@ -10,7 +11,9 @@ export const DRAWING_PARALLEL_INFERENCE_TOLERANCE_PX = 8;
 export const DRAWING_POINT_REFERENCE_INFERENCE_TOLERANCE_PX = 8;
 
 export type DrawingModelBounds = Readonly<{ x: number; y: number; width: number; height: number }>;
-export type DrawingReferencePoint = Readonly<{ id: string; entityId: string; point: DrawingPoint }>;
+export type DrawingReferencePoint = Readonly<{
+  id: string; entityId: string; point: DrawingPoint; incidentLineIds?: readonly string[];
+}>;
 
 export type PointReferenceConstruction = Readonly<{
   type: 'point-reference';
@@ -218,6 +221,7 @@ export const collectDrawingInferenceCandidates = (
   activeAngularDegrees?: number | null,
   activeLineStartPointId?: string | null,
   persistentPoints?: ReadonlyArray<DrawingSketchPoint>,
+  semanticPoints?: ReadonlyArray<DrawingAuthoringPoint>,
 ): DrawingInferenceCandidates => {
   const endpoints: Array<Extract<DrawingInference, { type: 'endpoint' }>> = [];
   const sources = new Map<string, { entityId: string; endpoint: 'start' | 'end' }>();
@@ -313,12 +317,16 @@ export const collectDrawingInferenceCandidates = (
     // Candidate availability is document-semantic, not viewport-semantic. Screen
     // distance still governs acquisition, but panning must not add/remove a
     // reference before role classification.
-    for (const reference of collectDrawingReferencePoints(lines)) {
+    const references: ReadonlyArray<DrawingReferencePoint> = semanticPoints
+      ? semanticPoints.map(({ id, entityId, point, incidentLineIds }) => ({ id, entityId, point, incidentLineIds }))
+      : collectDrawingReferencePoints(lines);
+    for (const reference of references) {
       // Point-owned normal constructions are position references, just like X/Y.
       // Their source topology is semantic, never coordinate equality.
       const directionsAtPoint: DrawingPoint[] = [];
-      for (const line of lines.filter((candidate) =>
-        candidate.startPointId === reference.id || candidate.endPointId === reference.id)) {
+      for (const line of lines.filter((candidate) => reference.incidentLineIds
+        ? reference.incidentLineIds.includes(candidate.id)
+        : candidate.startPointId === reference.id || candidate.endPointId === reference.id)) {
         const dx = line.end.x - line.start.x, dy = line.end.y - line.start.y, length = Math.hypot(dx, dy);
         if (length <= 1e-9) continue;
         let nx = -dy / length, ny = dx / length;

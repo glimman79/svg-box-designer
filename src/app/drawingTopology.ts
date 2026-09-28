@@ -1,4 +1,4 @@
-import type { DrawingArcEntity, DrawingDimension, DrawingDocumentV2, DrawingLineEntity, DrawingPoint, DrawingSketchPoint, DrawingSketchV2, ResolvedDrawingArc, ResolvedDrawingCircle, ResolvedDrawingLine } from './drawingTypes';
+import type { DrawingArcEntity, DrawingDimension, DrawingDocumentV2, DrawingLineEntity, DrawingPoint, DrawingPointReference, DrawingSketchPoint, DrawingSketchV2, ResolvedDrawingArc, ResolvedDrawingCircle, ResolvedDrawingLine } from './drawingTypes';
 import { resolveArcFromBulge } from './drawingArcGeometry.js';
 
 export type DrawingTopologyValidation = Readonly<{ ok: true } | { ok: false; errors: readonly string[] }>;
@@ -16,6 +16,54 @@ export const resolveCircle = (sketch: DrawingSketchV2, circle: import('./drawing
 export const resolveArc = (sketch: DrawingSketchV2, arc: DrawingArcEntity): ResolvedDrawingArc | null => {
   const start = resolveSketchPoint(sketch, arc.startPointId), end = resolveSketchPoint(sketch, arc.endPointId);
   return start && end ? resolveArcFromBulge(arc, start, end) : null;
+};
+
+/** A resolved semantic point available to geometry-authoring inference. */
+export type DrawingAuthoringPoint = Readonly<{
+  id: string;
+  reference: DrawingPointReference;
+  point: DrawingPoint;
+  entityId: string;
+  persistentPointId?: string;
+  incidentLineIds: readonly string[];
+}>;
+
+/**
+ * Collects authoring references by semantic identity. Persistent SketchPoints
+ * are shared regardless of how many entities own them; derived Arc centers
+ * retain their distinct DrawingPointReference identity even at equal coordinates.
+ */
+export const collectDrawingAuthoringPoints = (sketch: DrawingSketchV2): DrawingAuthoringPoint[] => {
+  const points = new Map<string, DrawingAuthoringPoint>();
+  const addPersistent = (pointId: string, entityId: string, incidentLineId?: string) => {
+    const point = sketch.points[pointId];
+    if (!point) return;
+    const current = points.get(`sketchPoint:${pointId}`);
+    const incidentLineIds = incidentLineId && !current?.incidentLineIds.includes(incidentLineId)
+      ? [...(current?.incidentLineIds ?? []), incidentLineId] : current?.incidentLineIds ?? [];
+    points.set(`sketchPoint:${pointId}`, current
+      ? { ...current, incidentLineIds }
+      : { id: pointId, reference: { kind: 'sketchPoint', pointId }, point: { x: point.x, y: point.y },
+        entityId, persistentPointId: pointId, incidentLineIds });
+  };
+  for (const id of sketch.entityOrder) {
+    const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[id];
+    if (!entity) continue;
+    if (entity.type === 'circle') {
+      addPersistent(entity.centerPointId, entity.id);
+      continue;
+    }
+    addPersistent(entity.startPointId, entity.id, entity.type === 'line' ? entity.id : undefined);
+    addPersistent(entity.endPointId, entity.id, entity.type === 'line' ? entity.id : undefined);
+    if (entity.type === 'arc') {
+      const arc = resolveArc(sketch, entity);
+      if (arc) points.set(`derivedPoint:${entity.id}:center`, {
+        id: `${entity.id}:center`, reference: { kind: 'derivedPoint', entityId: entity.id, role: 'center' },
+        point: arc.center, entityId: entity.id, incidentLineIds: [],
+      });
+    }
+  }
+  return [...points.values()];
 };
 
 /** Resolves the active sketch's committed Lines from the supplied document snapshot. */
