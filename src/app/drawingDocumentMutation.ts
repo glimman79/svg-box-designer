@@ -1,5 +1,5 @@
-import { canonicalCoincidentPointPair } from './drawingCoincidentConstraint.js';
-import type { DrawingDocumentV2, DrawingGeometricConstraint, DrawingLineEntity } from './drawingTypes.js';
+import { canonicalCoincidentPointPair, createPointToDerivedPointCoincidentConstraint } from './drawingCoincidentConstraint.js';
+import type { DrawingDerivedPointReference, DrawingDocumentV2, DrawingGeometricConstraint, DrawingLineEntity } from './drawingTypes.js';
 import type { DrawingLineDraft } from './drawingLineSegmentSupport.js';
 import type { DrawingCircleDraft } from './drawingCircleTool.js';
 import type { DrawingArcDraft, AcceptedArcEndpoint } from './drawingArcTool.js';
@@ -16,8 +16,15 @@ export const appendArcToActiveSketch = (document: DrawingDocumentV2, draft: Draw
     if (accepted.midpointLineId && sketch.entities[accepted.midpointLineId]?.type === 'line') constraints.push({ id: `midpoint:${pointId}:${accepted.midpointLineId}`, kind: 'MIDPOINT', references: [{ kind: 'sketchPoint', pointId }, { kind: 'entity', entityId: accepted.midpointLineId }] });
     else if (accepted.lineBodyId && sketch.entities[accepted.lineBodyId]?.type === 'line') constraints.push({ id: `coincident:${pointId}:support:${accepted.lineBodyId}`, kind: 'COINCIDENT', variant: 'point-linear-support', references: [{ kind: 'sketchPoint', pointId }, { kind: 'entity', entityId: accepted.lineBodyId }] });
     else if (accepted.curveId && ['circle', 'arc'].includes((sketch.entities as unknown as Record<string, { type: string }>)[accepted.curveId]?.type)) constraints.push({ id: `coincident:${pointId}:curve:${accepted.curveId}`, kind: 'COINCIDENT', variant: 'point-curve', references: [{ kind: 'sketchPoint', pointId }, { kind: 'entity', entityId: accepted.curveId }] });
+    else if (accepted.derivedPointReference) {
+      const constraint = createPointToDerivedPointCoincidentConstraint({ ...sketch,
+        points: { ...sketch.points, [pointId]: { id: pointId, ...accepted.point } } }, { kind: 'sketchPoint', pointId }, accepted.derivedPointReference);
+      if (constraint) constraints.push(constraint);
+    }
   };
   addEndpointSemantics(draft.start, startPointId); addEndpointSemantics(draft.end, endPointId);
+  const requestedDerivedCount = Number(Boolean(draft.start.derivedPointReference)) + Number(Boolean(draft.end.derivedPointReference));
+  if (constraints.filter((constraint) => constraint.kind === 'COINCIDENT' && constraint.variant === 'point-derived-point').length !== requestedDerivedCount) return document;
   if (draft.formPointId && sketch.points[draft.formPointId] && draft.formPointId !== startPointId && draft.formPointId !== endPointId) constraints.push({ id: `coincident:${draft.formPointId}:curve:${draft.id}`, kind: 'COINCIDENT', variant: 'point-curve', references: [{ kind: 'sketchPoint', pointId: draft.formPointId }, { kind: 'entity', entityId: draft.id }] });
   return { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch,
     points: { ...sketch.points,
@@ -73,6 +80,7 @@ export const appendEntityToActiveSketch = (
   parallelLineId: string | null = null,
   acceptedLineBodySnaps: Readonly<{ startLineId?: string; endLineId?: string }> | null = null,
   acceptedMidpointSnaps: Readonly<{ startLineId?: string; endLineId?: string }> | null = null,
+  acceptedDerivedPointSnaps: Readonly<{ startPointId?: DrawingDerivedPointReference; endPointId?: DrawingDerivedPointReference }> | null = null,
 ): DrawingDocumentV2 => {
   const activeSketch = document.sketches[document.activeSketchId];
   if (!activeSketch || activeSketch.entities[entity.id]) return document;
@@ -128,6 +136,17 @@ export const appendEntityToActiveSketch = (
     return [{ id: `midpoint:${pointId}:${targetLineId}`, kind: 'MIDPOINT' as const,
       references: [{ kind: 'sketchPoint' as const, pointId }, { kind: 'entity' as const, entityId: targetLineId }] as const }];
   });
+  const candidatePoints = { ...activeSketch.points,
+    ...(activeSketch.points[startPointId] ? {} : { [startPointId]: { id: startPointId, ...entity.start } }),
+    ...(activeSketch.points[endPointId] ? {} : { [endPointId]: { id: endPointId, ...entity.end } }) };
+  const derivedPointConstraints = ([['startPointId', startPointId], ['endPointId', endPointId]] as const).flatMap(([endpoint, pointId]) => {
+    const reference = acceptedDerivedPointSnaps?.[endpoint];
+    if (!reference) return [];
+    const constraint = createPointToDerivedPointCoincidentConstraint({ ...activeSketch, points: candidatePoints }, { kind: 'sketchPoint', pointId }, reference);
+    return constraint ? [constraint] : [];
+  });
+  const requestedDerivedCount = Number(Boolean(acceptedDerivedPointSnaps?.startPointId)) + Number(Boolean(acceptedDerivedPointSnaps?.endPointId));
+  if (derivedPointConstraints.length !== requestedDerivedCount) return document;
   const midpointKeys = new Set(midpointConstraints.map((constraint) => `${constraint.references[0].pointId}\0${constraint.references[1].entityId}`));
   const normalizedPointOnLineConstraints = pointOnLineConstraints.filter((constraint) =>
     !midpointKeys.has(`${constraint.references[0].pointId}\0${constraint.references[1].entityId}`));
@@ -135,7 +154,7 @@ export const appendEntityToActiveSketch = (
     constraint.kind === 'COINCIDENT' && constraint.variant === 'point-linear-support'
     && midpointKeys.has(`${constraint.references[0].pointId}\0${constraint.references[1].entityId}`)).map(({ id }) => id));
   const retainedConstraints = Object.fromEntries(Object.entries(activeSketch.geometricConstraints ?? {}).filter(([id]) => !redundantCoincidenceIds.has(id)));
-  const addedConstraints = [automaticConstraint, perpendicularConstraint, parallelConstraint, ...coincidentConstraints, ...normalizedPointOnLineConstraints, ...midpointConstraints].filter(Boolean) as DrawingGeometricConstraint[];
+  const addedConstraints = [automaticConstraint, perpendicularConstraint, parallelConstraint, ...coincidentConstraints, ...normalizedPointOnLineConstraints, ...midpointConstraints, ...derivedPointConstraints].filter(Boolean) as DrawingGeometricConstraint[];
   return {
     ...document,
     sketches: {

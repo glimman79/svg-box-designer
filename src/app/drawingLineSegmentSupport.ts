@@ -1,4 +1,4 @@
-import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingPoint } from './drawingTypes.js';
+import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingDerivedPointReference, type DrawingPoint } from './drawingTypes.js';
 import { intersectDrawingRayWithSupport, type DrawingInference } from './drawingInference.js';
 
 export type DrawingLineDraft = Readonly<{ id: string; type: 'line'; start: DrawingPoint; end: DrawingPoint; startPointId?: string; endPointId?: string }>;
@@ -56,6 +56,7 @@ export type LineSegmentInteractionState = Readonly<{
   startPointId: string | null;
   startLineId: string | null;
   startMidpointLineId: string | null;
+  startDerivedPointReference: DrawingDerivedPointReference | null;
   rawPointerPoint: DrawingPoint | null;
   effectivePreviewPoint: DrawingPoint | null;
   snappedAngleDegrees: number | null;
@@ -66,15 +67,15 @@ export type LineSegmentInteractionState = Readonly<{
 }>;
 
 export const EMPTY_LINE_SEGMENT_INTERACTION: LineSegmentInteractionState = {
-  start: null, startPointId: null, startLineId: null, startMidpointLineId: null,
+  start: null, startPointId: null, startLineId: null, startMidpointLineId: null, startDerivedPointReference: null,
   rawPointerPoint: null, effectivePreviewPoint: null, snappedAngleDegrees: null,
   perpendicularLineId: null, parallelLineId: null, midpointLineId: null, lineBodyId: null,
 };
 
 export const initializeLineSegmentAt = (point: DrawingPoint, pointId: string | null = null,
-  lineId: string | null = null, midpointLineId: string | null = null): LineSegmentInteractionState => ({
+  lineId: string | null = null, midpointLineId: string | null = null, derivedPointReference: DrawingDerivedPointReference | null = null): LineSegmentInteractionState => ({
   ...EMPTY_LINE_SEGMENT_INTERACTION, start: point, startPointId: pointId, startLineId: lineId,
-  startMidpointLineId: midpointLineId, rawPointerPoint: point, effectivePreviewPoint: point,
+  startMidpointLineId: midpointLineId, startDerivedPointReference: derivedPointReference, rawPointerPoint: point, effectivePreviewPoint: point,
 });
 
 /** Builds one segment from an already resolved accepted endpoint. */

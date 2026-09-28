@@ -1,4 +1,4 @@
-import type { DrawingPoint } from './drawingTypes';
+import type { DrawingPoint, DrawingPointReference } from './drawingTypes';
 import type { DrawingInference } from './drawingInference';
 import { equivalentUnorientedDirections, normalizeUnorientedDirection } from './drawingGeometricDemand.js';
 
@@ -61,7 +61,7 @@ export type DrawingSnap = (Readonly<{
   stableKey: string; screenDistance: number;
 }> | Readonly<{
   type: 'endpoint'; active: true; effectivePoint: DrawingPoint; entityId: string;
-  endpoint: 'start' | 'end'; pointId: string; screenDistance: number;
+  endpoint: 'start' | 'end'; pointId?: string; reference: DrawingPointReference; screenDistance: number;
 }> | Readonly<{
   type: 'line'; active: true; effectivePoint: DrawingPoint; entityId: string;
   segmentParameter: number; screenDistance: number; lineStart?: DrawingPoint; lineEnd?: DrawingPoint;
@@ -82,9 +82,9 @@ export type DrawingInferenceCandidates = Readonly<{
   pointReferences: ReadonlyArray<PointReferenceInference>;
 }>;
 
-const endpointIdentity = (candidate: EndpointInference) => candidate.pointId;
+const endpointIdentity = (candidate: EndpointInference) => JSON.stringify(candidate.reference);
 const retainedEndpoint = (previous: DrawingSnap | null, candidates: ReadonlyArray<EndpointInference>) => previous?.type === 'endpoint'
-  ? candidates.find((candidate) => endpointIdentity(candidate) === previous.pointId) ?? null : null;
+  ? candidates.find((candidate) => endpointIdentity(candidate) === JSON.stringify(previous.reference)) ?? null : null;
 
 /** Point switching rule: nearest eligible point wins; retained semantic point
  * identity wins only an exact distance tie. */
@@ -217,7 +217,7 @@ export const resolveDrawingSnap = ({ rawPoint, candidates, previousSnap, ctrlOve
 
   const endpoint = chooseEndpoint(candidates.endpoints, previousSnap);
   if (endpoint) return { active: true, type: 'endpoint', effectivePoint: endpoint.candidatePoint, entityId: endpoint.entityId,
-    endpoint: endpoint.endpoint, pointId: endpoint.pointId, screenDistance: endpoint.screenDistance, channels };
+    endpoint: endpoint.endpoint, pointId: endpoint.pointId, reference: endpoint.reference, screenDistance: endpoint.screenDistance, channels };
   const retainedMidpoint = previousSnap?.type === 'midpoint' ? (candidates.midpoints ?? []).find(({ stableKey }) => stableKey === previousSnap.stableKey) : null;
   const midpoint = retainedMidpoint && retainedMidpoint.screenDistance <= DRAWING_MIDPOINT_SNAP_RELEASE_PX ? retainedMidpoint
     : (candidates.midpoints ?? []).find(({ screenDistance }) => screenDistance <= DRAWING_MIDPOINT_SNAP_ACQUIRE_PX);

@@ -1,9 +1,10 @@
 import { deriveArcThroughThreePoints } from './drawingArcGeometry.js';
-import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingPoint, type ResolvedDrawingArc } from './drawingTypes.js';
+import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingDerivedPointReference, type DrawingPoint, type ResolvedDrawingArc } from './drawingTypes.js';
 
 export type AcceptedArcEndpoint = Readonly<{
   point: DrawingPoint; pointId: string | null; midpointLineId: string | null;
   lineBodyId: string | null; curveId: string | null;
+  derivedPointReference: DrawingDerivedPointReference | null;
 }>;
 export type ArcToolInteraction = Readonly<{
   start: AcceptedArcEndpoint | null;

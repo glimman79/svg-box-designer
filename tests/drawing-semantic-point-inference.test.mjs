@@ -61,12 +61,20 @@ test('Arc endpoints and Circle centers retain exact persistent acquisition and g
     'persistent point retains within 9 px');
 });
 
-test('derived Arc centers supply common alignment channels but never exact endpoint acquisition', () => {
+test('derived Arc centers supply exact semantic acquisition and retain alignment channels', () => {
   const nearX = candidates({ x: 5 + 4.9, y: 100 });
   const nearY = candidates({ x: 100, y: 4.9 });
   assert.ok(nearX.alignmentsX.some(({ referenceId }) => referenceId === 'arc:center'));
   assert.ok(nearY.alignmentsY.some(({ referenceId }) => referenceId === 'arc:center'));
-  assert.ok(!candidates({ x: 5, y: 0 }).endpoints.some(({ pointId }) => pointId === 'arc:center'));
+  const exactCandidates = candidates({ x: 5, y: 0 });
+  const centerCandidate = exactCandidates.endpoints.find(({ reference }) => reference.kind === 'derivedPoint' && reference.entityId === 'arc');
+  assert.deepEqual(centerCandidate.reference, { kind: 'derivedPoint', entityId: 'arc', role: 'center' });
+  assert.equal(centerCandidate.pointId, undefined);
+  const acquired = snap({ x: 55, y: 46.9 }, candidates({ x: 55, y: 46.9 }));
+  assert.deepEqual(acquired.reference, { kind: 'derivedPoint', entityId: 'arcOnly', role: 'center' });
+  assert.deepEqual(snap({ x: 55, y: 48.9 }, candidates({ x: 55, y: 48.9 }), acquired).reference, acquired.reference);
+  assert.notEqual(snap({ x: 55, y: 49.1 }, candidates({ x: 55, y: 49.1 }), acquired).reference?.entityId, 'arcOnly');
+  assert.equal(snap({ x: 5, y: 0 }, exactCandidates, null, true).active, false, 'Ctrl bypasses derived exact acquisition');
   assert.equal(Object.keys(sketch.points).length, 7, 'collection creates no Arc-center SketchPoint');
   assert.equal(Object.values(sketch.entities).filter(({ type }) => type === 'circle').length, 3,
     'collection persists no support Circle');

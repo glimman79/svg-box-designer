@@ -1,4 +1,4 @@
-import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingPoint, type DrawingSketchPoint, type ResolvedDrawingLine } from './drawingTypes.js';
+import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingPoint, type DrawingPointReference, type DrawingSketchPoint, type ResolvedDrawingLine } from './drawingTypes.js';
 import type { AffineTransform, CoordinatePoint } from './drawingTransform';
 import type { DrawingAuthoringPoint } from './drawingTopology';
 
@@ -56,7 +56,8 @@ export type DrawingInference = Readonly<{
   referenceIncidentToActiveLineStart?: boolean;
 }> | PointReferenceConstruction | Readonly<{
   type: 'endpoint';
-  pointId: string;
+  pointId?: string;
+  reference: DrawingPointReference;
   entityId: string;
   endpoint: 'start' | 'end';
   candidatePoint: DrawingPoint;
@@ -104,10 +105,10 @@ export type DrawingInferenceCandidates = Readonly<{
 /** Applies tool-stage semantics without forking candidate production. */
 export const filterDrawingInferenceCandidatesForAuthoring = (
   candidates: DrawingInferenceCandidates,
-  applicability: 'segment' | 'circle-p1' | 'circle-p2',
-): DrawingInferenceCandidates => applicability === 'segment' ? candidates : {
+  applicability: 'segment' | 'arc-endpoint' | 'circle-p1' | 'circle-p2',
+): DrawingInferenceCandidates => applicability === 'segment' || applicability === 'arc-endpoint' ? candidates : {
   ...candidates,
-  endpoints: applicability === 'circle-p1' ? candidates.endpoints : [],
+  endpoints: applicability === 'circle-p1' ? candidates.endpoints.filter(({ reference }) => reference.kind !== 'derivedPoint') : [],
   midpoints: applicability === 'circle-p1' ? candidates.midpoints : [],
   lines: applicability === 'circle-p1' ? candidates.lines : [],
   alignmentsX: applicability === 'circle-p1' ? candidates.alignmentsX : [],
@@ -236,14 +237,17 @@ export const collectDrawingInferenceCandidates = (
     { id: line.endPointId ?? `${line.id}:end`, ...line.end },
   ]);
   const seen = new Set<string>();
-  for (const point of points) {
-      if (seen.has(point.id)) continue;
-      seen.add(point.id);
+  const exactPoints = semanticPoints ?? points.map((point) => ({ id: point.id, point, entityId: sources.get(point.id)?.entityId ?? `point:${point.id}`,
+    persistentPointId: point.id, reference: { kind: 'sketchPoint' as const, pointId: point.id }, incidentLineIds: [] }));
+  for (const semantic of exactPoints) {
+      const point = semantic.point, identity = JSON.stringify(semantic.reference);
+      if (seen.has(identity)) continue;
+      seen.add(identity);
       const candidatePoint = { x: point.x, y: point.y };
       const screenPoint = toScreenPoint(candidatePoint, drawingToClientTransform);
       const screenDistance = Math.hypot(pointerClientPoint.x - screenPoint.x, pointerClientPoint.y - screenPoint.y);
-      const source = sources.get(point.id);
-      endpoints.push({ type: 'endpoint', pointId: point.id, entityId: source?.entityId ?? `point:${point.id}`,
+      const source = semantic.persistentPointId ? sources.get(semantic.persistentPointId) : undefined;
+      endpoints.push({ type: 'endpoint', pointId: semantic.persistentPointId, reference: semantic.reference, entityId: source?.entityId ?? semantic.entityId,
         endpoint: source?.endpoint ?? 'start', candidatePoint, screenDistance });
   }
   const midpoints: Array<Extract<DrawingInference, { type: 'midpoint' }>> = [];

@@ -1,4 +1,5 @@
-import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingCoincidentConstraint, type DrawingDocumentV2, type DrawingSketchV2 } from './drawingTypes.js';
+import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingCoincidentConstraint, type DrawingDocumentV2, type DrawingPointReference, type DrawingSketchV2 } from './drawingTypes.js';
+import { resolveDrawingPointReference } from './drawingDimension.js';
 import { deriveLineConstraintMarkerCandidates, layoutLineConstraintMarkers } from './drawingParallelMarker.js';
 
 export const canonicalCoincidentPointPair = (pointAId: string, pointBId: string): readonly [string, string] | null =>
@@ -25,6 +26,21 @@ export const createPointOnLinearSupportConstraint = (sketch: DrawingSketchV2, po
     && constraint.variant === 'point-linear-support' && constraint.references[0].pointId === pointId && constraint.references[1].entityId === entityId);
   return duplicate ? null : { id: `coincident:${pointId}:support:${entityId}`, kind: 'COINCIDENT', variant: 'point-linear-support',
     references: [{ kind: 'sketchPoint', pointId }, { kind: 'entity', entityId }] };
+};
+
+export const createPointToDerivedPointCoincidentConstraint = (sketch: DrawingSketchV2, first: DrawingPointReference,
+  second: DrawingPointReference): DrawingCoincidentConstraint | null => {
+  const point = first.kind === 'sketchPoint' ? first : second.kind === 'sketchPoint' ? second : null;
+  const derived = first.kind === 'derivedPoint' ? first : second.kind === 'derivedPoint' ? second : null;
+  if (!point || !derived || !sketch.points[point.pointId] || derived.role !== 'center') return null;
+  const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes.js').DrawingEntity>)[derived.entityId];
+  if (entity?.type !== 'arc' || entity.startPointId === entity.endPointId || !Number.isFinite(entity.bulge)
+    || Math.abs(entity.bulge) <= DRAWING_MODEL_SPACE_TOLERANCE || !resolveDrawingPointReference(sketch, derived)) return null;
+  const duplicate = Object.values(sketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'COINCIDENT'
+    && constraint.variant === 'point-derived-point' && constraint.references[0].pointId === point.pointId
+    && constraint.references[1].entityId === derived.entityId && constraint.references[1].role === derived.role);
+  return duplicate ? null : { id: `coincident:${point.pointId}:derivedPoint:${derived.entityId}:${derived.role}`,
+    kind: 'COINCIDENT', variant: 'point-derived-point', references: [point, derived] };
 };
 
 /** Adds one validated semantic relation; coordinate equality is never consulted. */
@@ -75,6 +91,10 @@ export const deriveSelectedCoincidentReferenceMarker = (sketch: DrawingSketchV2,
   if (!constraint || constraint.kind !== 'COINCIDENT') return null;
   if (constraint.variant === 'point-point') {
     const point = sketch.points[constraint.references[1].pointId];
+    return point ? { constraintId, x: point.x, y: point.y } : null;
+  }
+  if (constraint.variant === 'point-derived-point') {
+    const point = resolveDrawingPointReference(sketch, constraint.references[1]);
     return point ? { constraintId, x: point.x, y: point.y } : null;
   }
   const lineId = constraint.references[1].entityId;
