@@ -1,4 +1,4 @@
-import type { DrawingPoint } from './drawingTypes.js';
+import type { DrawingDerivedPointReference, DrawingPoint } from './drawingTypes.js';
 import { EMPTY_LINE_SEGMENT_INTERACTION, createResolvedLineDraft, initializeLineSegmentAt,
   type DrawingLineDraft, type LineSegmentInteractionState } from './drawingLineSegmentSupport.js';
 
@@ -9,8 +9,8 @@ export type LineClickResult = Readonly<{ interaction: LineToolInteraction; entit
 /** Standalone Line owns only its two-click lifetime; segment geometry is shared. */
 export const applyResolvedLineClick = (interaction: LineToolInteraction, point: DrawingPoint,
   createId: () => string, pointId: string | null = null, lineId: string | null = null,
-  midpointLineId: string | null = null): LineClickResult => {
-  if (!interaction.start) return { interaction: initializeLineSegmentAt(point, pointId, lineId, midpointLineId), entity: null };
+  midpointLineId: string | null = null, derivedPointReference: DrawingDerivedPointReference | null = null): LineClickResult => {
+  if (!interaction.start) return { interaction: initializeLineSegmentAt(point, pointId, lineId, midpointLineId, derivedPointReference), entity: null };
   const entity = createResolvedLineDraft(interaction, point, createId, pointId);
   return entity ? { interaction: EMPTY_LINE_INTERACTION, entity } : { interaction, entity: null };
 };

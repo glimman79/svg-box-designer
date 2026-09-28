@@ -45,10 +45,11 @@ export const applyProfileClick = (interaction: ProfileToolInteraction, point: Dr
 
 /** Commits a point already resolved by shared Line-segment arbitration without reapplying angular inference. */
 export const applyResolvedProfileClick = (interaction: ProfileToolInteraction, point: DrawingPoint, createId: () => string,
-  pointId: string | null = null, lineId: string | null = null, midpointLineId: string | null = null): ProfileClickResult => {
-  if (!interaction.start) return { interaction: initializeProfileSegmentAt(point, pointId, lineId, midpointLineId), entity: null };
+  pointId: string | null = null, lineId: string | null = null, midpointLineId: string | null = null,
+  derivedPointReference: import('./drawingTypes.js').DrawingDerivedPointReference | null = null): ProfileClickResult => {
+  if (!interaction.start) return { interaction: initializeProfileSegmentAt(point, pointId, lineId, midpointLineId, derivedPointReference), entity: null };
   const entity = createResolvedLineDraft(interaction, point, createId, pointId);
-  return entity ? { interaction: initializeProfileSegmentAt(point, pointId), entity } : { interaction, entity: null };
+  return entity ? { interaction: initializeProfileSegmentAt(point, pointId, null, null, derivedPointReference), entity } : { interaction, entity: null };
 };
 
 // Preserve existing Profile imports while neutral straight-segment code lives in shared support.

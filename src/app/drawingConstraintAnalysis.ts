@@ -75,6 +75,13 @@ export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricCo
         : curve?.type === 'arc' && sketch.points[pointId] && sketch.points[curve.startPointId] && sketch.points[curve.endPointId]
           ? { geometricConstraint, pointKeys: [pointId, curve.startPointId, curve.endPointId], scalarVariables: [arcBulgeSolverVariable(curve.id)] } : null;
     }
+    if (geometricConstraint.variant === 'point-derived-point') {
+      const pointId = geometricConstraint.references[0].pointId, reference = geometricConstraint.references[1];
+      const deps = drawingPointReferenceDependencies(sketch, reference);
+      return sketch.points[pointId] && resolveDrawingPointReference(sketch, reference) && deps.length
+        ? { geometricConstraint, pointKeys: [pointId, ...new Set(deps.filter((v) => v.kind === 'point-axis').map((v) => v.pointId))],
+          scalarVariables: deps.filter((v) => v.kind === 'entity-scalar'), coordinateAxis: 'x' } : null;
+    }
     const [a, b] = geometricConstraint.references.map(({ pointId }) => pointId);
     return a !== b && sketch.points[a] && sketch.points[b] ? { geometricConstraint, pointKeys: [a, b], coordinateAxis: 'x' } : null;
   }
@@ -92,7 +99,8 @@ export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricCo
 /** Point/point contributes two axes; point/support contributes one collinearity equation. */
 export const geometricConstraintEquations = (sketch: DrawingSketchV2, constraint: DrawingGeometricConstraint): DrawingConstraintEquation[] => {
   const first = geometricConstraintEquation(sketch, constraint);
-  return !first ? [] : constraint.kind === 'MIDPOINT' || constraint.kind === 'COINCIDENT' && constraint.variant === 'point-point' ? [first, { ...first, coordinateAxis: 'y' }] : [first];
+  return !first ? [] : constraint.kind === 'MIDPOINT' || constraint.kind === 'COINCIDENT'
+    && (constraint.variant === 'point-point' || constraint.variant === 'point-derived-point') ? [first, { ...first, coordinateAxis: 'y' }] : [first];
 };
 
 /** Signed normal distance to AB's infinite support; no segment parameter or clamp exists. */
@@ -303,6 +311,32 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
         return row;
       }
       return null;
+    }
+    if (equation.geometricConstraint.variant === 'point-derived-point') {
+      const persistentPointId = equation.geometricConstraint.references[0].pointId;
+      const reference = equation.geometricConstraint.references[1], axis = equation.coordinateAxis ?? 'x';
+      const measure = (candidate: DrawingSketchV2) => {
+        const point = candidate.points[persistentPointId];
+        const derived = resolveDrawingPointReference(candidate, reference);
+        return point && derived ? point[axis] - derived[axis] : NaN;
+      };
+      const variables = [...equation.pointKeys.flatMap((pointId) => ([{ kind: 'point-axis', pointId, axis: 'x' }, { kind: 'point-axis', pointId, axis: 'y' }] as DrawingSolverVariable[])), ...(equation.scalarVariables ?? [])];
+      for (const variable of variables) {
+        const pointIndex = variable.kind === 'point-axis' ? pointOrder.indexOf(variable.pointId) * 2 + (variable.axis === 'x' ? 0 : 1) : -1;
+        const scalarIndex = scalarOrder.findIndex((item) => drawingSolverVariableKey(item) === drawingSolverVariableKey(variable));
+        const entity = variable.kind === 'entity-scalar' ? (sketch.entities as unknown as Record<string, DrawingEntity>)[variable.entityId] : null;
+        const value = variable.kind === 'point-axis' ? sketch.points[variable.pointId]?.[variable.axis] : entity?.type === 'arc' ? entity.bulge : NaN;
+        if (!Number.isFinite(value)) return null;
+        const h = 1e-6 * Math.max(1, Math.abs(value));
+        const candidate = (next: number): DrawingSketchV2 => variable.kind === 'point-axis'
+          ? { ...sketch, points: { ...sketch.points, [variable.pointId]: { ...sketch.points[variable.pointId], [variable.axis]: next } } }
+          : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, bulge: next } } as DrawingSketchV2['entities'] };
+        const derivative = (measure(candidate(value + h)) - measure(candidate(value - h))) / (2 * h);
+        if (!Number.isFinite(derivative)) return null;
+        if (pointIndex >= 0) row[pointIndex] = derivative;
+        else if (scalarIndex >= 0) row[pointOrder.length * 2 + scalarIndex] = derivative;
+      }
+      return row;
     }
     const [a, b] = equation.pointKeys, x = equation.coordinateAxis === 'x';
     set(a, x ? 1 : 0, x ? 0 : 1); set(b, x ? -1 : 0, x ? 0 : -1); return row;

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/drawing-coincident/drawingTypes.js';
 import { appendEntityToActiveSketch, applyResolvedProfileClick, EMPTY_PROFILE_INTERACTION } from '../.test-build/drawing-coincident/drawingProfileTool.js';
-import { addCoincidentConstraint, addPointOnLinearSupportConstraint, canonicalCoincidentPointPair, createCoincidentConstraint, createPointOnLinearSupportConstraint, deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_SIZE_PX } from '../.test-build/drawing-coincident/drawingCoincidentConstraint.js';
+import { addCoincidentConstraint, addPointOnLinearSupportConstraint, canonicalCoincidentPointPair, createCoincidentConstraint, createPointOnLinearSupportConstraint, createPointToDerivedPointCoincidentConstraint, deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_SIZE_PX } from '../.test-build/drawing-coincident/drawingCoincidentConstraint.js';
 import { analyzeDrawingConstraints, constraintJacobianRow, geometricConstraintEquations } from '../.test-build/drawing-coincident/drawingConstraintAnalysis.js';
 import { solveDrawingComponentDrag, verifyDrawingConstraints } from '../.test-build/drawing-coincident/drawingConstraintSolver.js';
 import { deleteGeometricConstraint } from '../.test-build/drawing-coincident/drawingParallelMarker.js';
@@ -31,6 +31,47 @@ test('Coincident supplies exact x/y Jacobians, rank two, and two translational D
   assert.deepEqual(equations.map((equation) => constraintJacobianRow(sketch, equation, ['a-p2', 'b-p1'])), [[1, 0, -1, 0], [0, 1, 0, -1]]);
   const component = analyzeDrawingConstraints(sketch).componentByPointId.get('a-p2');
   assert.equal(component.constraintRank, 2); assert.equal(component.degreesOfFreedom, 2);
+});
+
+test('point/derived-point Coincident is narrow, canonical, duplicate-safe, and nonlinear', () => {
+  const sketch = { ...base().sketches['sketch-1'],
+    entities: { ...base().sketches['sketch-1'].entities, arc: { id: 'arc', type: 'arc', startPointId: 'a-p1', endPointId: 'a-p2', bulge: 0.5 } } };
+  const point = { kind: 'sketchPoint', pointId: 'b-p1' }, center = { kind: 'derivedPoint', entityId: 'arc', role: 'center' };
+  const constraint = createPointToDerivedPointCoincidentConstraint(sketch, center, point);
+  assert.deepEqual(constraint.references, [point, center]);
+  const constrained = { ...sketch, geometricConstraints: { [constraint.id]: constraint }, geometricConstraintOrder: [constraint.id] };
+  assert.equal(createPointToDerivedPointCoincidentConstraint(constrained, point, center), null);
+  assert.equal(createPointToDerivedPointCoincidentConstraint(sketch, center, { ...center, entityId: 'missing' }), null);
+  assert.equal(createPointToDerivedPointCoincidentConstraint(sketch, center, { kind: 'datum', datum: 'ORIGIN' }), null);
+  const equations = geometricConstraintEquations(constrained, constraint);
+  assert.equal(equations.length, 2);
+  const variables = [{ kind: 'entity-scalar', entityId: 'arc', scalar: 'arc-bulge' }];
+  const rows = equations.map((equation) => constraintJacobianRow(constrained, equation, ['b-p1', 'a-p1', 'a-p2'], variables));
+  assert.ok(rows.every((row) => row && row.length === 7));
+  assert.ok(rows.some((row) => Math.abs(row[6]) > 1e-6), 'Arc bulge participates in the numerical Jacobian');
+  const component = analyzeDrawingConstraints(constrained).componentByPointId.get('b-p1');
+  assert.ok(component.pointIds.has('a-p1') && component.pointIds.has('a-p2'));
+  assert.ok(component.scalarVariables.some(({ entityId }) => entityId === 'arc'));
+  assert.deepEqual(deriveSelectedCoincidentReferenceMarker(constrained, constraint.id), { constraintId: constraint.id, x: 5, y: 3.75 });
+});
+
+test('Line authoring atomically creates a persistent endpoint and Arc-center relation', () => {
+  const source = base(), sourceSketch = source.sketches['sketch-1'];
+  const document = { ...source, sketches: { ...source.sketches, 'sketch-1': { ...sourceSketch,
+    entities: { ...sourceSketch.entities, arc: { id: 'arc', type: 'arc', startPointId: 'a-p1', endPointId: 'a-p2', bulge: 1 } },
+    entityOrder: [...sourceSketch.entityOrder, 'arc'] } } };
+  const center = { kind: 'derivedPoint', entityId: 'arc', role: 'center' };
+  let sequence = 0;
+  const appended = appendEntityToActiveSketch(document, line('attached', { x: 5, y: 0 }, { x: 5, y: 10 }), () => `attached-point-${++sequence}`,
+    null, null, null, null, null, null, { startPointId: center });
+  const sketch = appended.sketches['sketch-1'], attached = sketch.entities.attached;
+  assert.ok(sketch.points[attached.startPointId]);
+  assert.deepEqual(Object.values(sketch.geometricConstraints).find(({ variant }) => variant === 'point-derived-point').references,
+    [{ kind: 'sketchPoint', pointId: attached.startPointId }, center]);
+  assert.equal(Object.values(sketch.entities).filter(({ type }) => type === 'circle').length, 0);
+  const deletedArc = removeLineAndOrphans(sketch, 'arc');
+  assert.ok(deletedArc.points[attached.startPointId], 'entity-owned attached point survives Arc deletion');
+  assert.ok(!Object.values(deletedArc.geometricConstraints).some(({ variant }) => variant === 'point-derived-point'));
 });
 
 test('component solver preserves Coincident while either point and the pair translate', () => {
