@@ -57,6 +57,9 @@ const preventToolChromeSelection = (event: Event) => {
 };
 
 export type DrawingViewBox = { x: number; y: number; width: number; height: number };
+export const captureDimensionPointer = (target: SVGElement, pointerId: number) => {
+  target.setPointerCapture(pointerId);
+};
 type CoordinateOverlayGeometry = {
   origin: CoordinatePoint;
   xLabels: Array<{ value: number; anchor: CoordinatePoint }>;
@@ -760,7 +763,7 @@ export function DrawingWorkspace({
       // happen only after this semantic arbitration.
       if (owner.kind === 'dimension') {
         const dimension = activeSketch?.dimensions[owner.dimensionId];
-        if (dimension) beginDimensionAnnotationDrag(event, dimension);
+        if (dimension && dimensionElement) beginDimensionAnnotationDrag(event, dimension, dimensionElement);
         return;
       }
       if (owner.kind === 'empty') {
@@ -1188,9 +1191,9 @@ export function DrawingWorkspace({
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
-  const beginDimensionAnnotationDrag = (event: PointerEvent<SVGElement>, dimension: DrawingDimension) => {
+  const beginDimensionAnnotationDrag = (event: PointerEvent<SVGElement>, dimension: DrawingDimension, captureTarget: SVGElement) => {
     if (event.button !== CAD_PRIMARY_BUTTON || editingDimensionId || activeTool !== 'select') return;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    captureDimensionPointer(captureTarget, event.pointerId);
     setSelectedDimensionId(dimension.id);
     setDimensionDragSession(beginDimensionAnnotationDragSession(event.pointerId, dimension, { x: event.clientX, y: event.clientY }));
   };
