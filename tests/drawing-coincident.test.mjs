@@ -5,7 +5,11 @@ import { createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/
 import { appendEntityToActiveSketch, applyResolvedProfileClick, EMPTY_PROFILE_INTERACTION } from '../.test-build/drawing-coincident/drawingProfileTool.js';
 import { addCoincidentConstraint, addPointOnLinearSupportConstraint, canonicalCoincidentPointPair, createCoincidentConstraint, createPointOnLinearSupportConstraint, createPointToDerivedPointCoincidentConstraint, deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_SIZE_PX } from '../.test-build/drawing-coincident/drawingCoincidentConstraint.js';
 import { analyzeDrawingConstraints, constraintJacobianRow, geometricConstraintEquations } from '../.test-build/drawing-coincident/drawingConstraintAnalysis.js';
-import { solveDrawingComponentDrag, verifyDrawingConstraints } from '../.test-build/drawing-coincident/drawingConstraintSolver.js';
+import { solveDrawingComponentDrag, solveDrawingDimensionEdit, verifyDrawingConstraints } from '../.test-build/drawing-coincident/drawingConstraintSolver.js';
+import { appendDimension, createCircularSizeDimension, createPointToPointDimension, resolveDrawingPointReference } from '../.test-build/drawing-coincident/drawingDimension.js';
+import { createArcCenterDragTarget, createArcEndpointDragTarget, createArcRadiusDragTarget, solveDrawingDragCandidate } from '../.test-build/drawing-coincident/drawingDirectManipulation.js';
+import { resolveArcFromBulge } from '../.test-build/drawing-coincident/drawingArcGeometry.js';
+import { collectDrawingAuthoringPoints } from '../.test-build/drawing-coincident/drawingTopology.js';
 import { deleteGeometricConstraint } from '../.test-build/drawing-coincident/drawingParallelMarker.js';
 import { removeLineAndOrphans } from '../.test-build/drawing-coincident/drawingTopology.js';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-coincident/drawingHistory.js';
@@ -210,4 +214,160 @@ test('workspace exposes selectable CAD-blue Coincident shapes and keyboard const
   assert.match(workspace, /<rect className="drawing-coincident-marker-shape"/);
   assert.match(workspace, /drawing-coincident-reference-marker drawing-coincident-marker-shape/);
   assert.match(css, /\.drawing-coincident-marker-shape \{[^}]*stroke: var\(--drawing-geometric-constraint\)/);
+});
+
+const matrixClose = (actual, expected, tolerance = 1e-6) =>
+  assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} != ${expected}`);
+const matrixCenterReference = { kind: 'derivedPoint', entityId: 'arc', role: 'center' };
+const matrixOriginReference = { kind: 'datum', datum: 'ORIGIN' };
+const matrixArc = (document) => {
+  const s = document.sketches[document.activeSketchId];
+  return resolveArcFromBulge(s.entities.arc, s.points.s, s.points.e);
+};
+const matrixAxisDimension = (id, axis, value, reference = matrixCenterReference) => ({
+  id,
+  kind: axis === 'x' ? 'HORIZONTAL_DISTANCE' : 'VERTICAL_DISTANCE',
+  references: [matrixOriginReference, reference],
+  value,
+  role: 'driving',
+  placement: { kind: 'linear', offset: 5 },
+});
+const matrixDocument = ({ radius = false, x = false, y = false, coincidence = true } = {}) => {
+  const document = createDrawingDocumentV2(), s = document.sketches[document.activeSketchId];
+  s.points.s = { id: 's', x: 0, y: 0 };
+  s.points.e = { id: 'e', x: 10, y: 0 };
+  s.entities.arc = { id: 'arc', type: 'arc', startPointId: 's', endPointId: 'e', bulge: 0.5 };
+  s.entityOrder = ['arc'];
+  const center = matrixArc(document).center;
+  if (radius) s.dimensions.radius = createCircularSizeDimension(s, 'arc', { x: 5, y: -20 }, 'radius');
+  if (x) s.dimensions.cx = matrixAxisDimension('cx', 'x', center.x);
+  if (y) s.dimensions.cy = matrixAxisDimension('cy', 'y', center.y);
+  s.dimensionOrder = [radius && 'radius', x && 'cx', y && 'cy'].filter(Boolean);
+  if (coincidence) {
+    s.points.p = { id: 'p', x: center.x, y: center.y };
+    s.entities.carrier = { id: 'carrier', type: 'line', startPointId: 'p', endPointId: 'q' };
+    s.points.q = { id: 'q', x: center.x + 3, y: center.y + 4 };
+    s.entityOrder.push('carrier');
+    const relation = createPointToDerivedPointCoincidentConstraint(s, { kind: 'sketchPoint', pointId: 'p' }, matrixCenterReference);
+    assert.ok(relation);
+    s.geometricConstraints[relation.id] = relation;
+    s.geometricConstraintOrder = [relation.id];
+  }
+  return document;
+};
+const matrixAssertExact = (document) => {
+  const s = document.sketches[document.activeSketchId], center = matrixArc(document).center;
+  if (s.points.p) {
+    matrixClose(s.points.p.x, center.x);
+    matrixClose(s.points.p.y, center.y);
+  }
+  assert.ok(verifyDrawingConstraints(s, s.dimensionOrder, s.geometricConstraintOrder));
+  assert.deepEqual(s.entities.arc, { id: 'arc', type: 'arc', startPointId: 's', endPointId: 'e', bulge: s.entities.arc.bulge });
+  assert.equal(Object.values(s.entities).some(({ type }) => type === 'circle'), false);
+};
+
+test('Arc center dimension/Coincidence matrix has rank-based DOF and remains referenceable', () => {
+  const cases = [
+    ['free', {}, 2, 5],
+    ['R', { radius: true }, 3, 4],
+    ['center X', { x: true }, 3, 4],
+    ['center X + Y', { x: true, y: true }, 4, 3],
+    ['R + center X', { radius: true, x: true }, 4, 3],
+    ['R + center X + Y', { radius: true, x: true, y: true }, 5, 2],
+  ];
+  for (const [label, options, rank, degreesOfFreedom] of cases) {
+    const document = matrixDocument(options), s = document.sketches[document.activeSketchId];
+    const component = analyzeDrawingConstraints(s).componentByPointId.get('p');
+    assert.equal(component.constraintRank, rank, `${label}: independent Jacobian rank`);
+    assert.equal(component.degreesOfFreedom, degreesOfFreedom, `${label}: canonical component DOF`);
+    const semantic = collectDrawingAuthoringPoints(s).find(({ id }) => id === 'arc:center');
+    assert.deepEqual(semantic.reference, matrixCenterReference, `${label}: semantic identity is independent of mobility`);
+    assert.deepEqual(s.geometricConstraints[s.geometricConstraintOrder[0]].references,
+      [{ kind: 'sketchPoint', pointId: 'p' }, matrixCenterReference]);
+    matrixAssertExact(document);
+    assert.deepEqual(Object.keys(s.points).sort(), ['e', 'p', 'q', 's'], `${label}: no hidden center point`);
+  }
+});
+
+test('connected endpoint and Arc-center drags obey free, partial, and fixed translation mobility', () => {
+  const cases = [
+    ['free', {}, { x: 7, y: 6 }],
+    ['R', { radius: true }, { x: 7, y: 6 }],
+    ['center X', { x: true }, { x: 0, y: 6 }],
+    ['center X + Y', { x: true, y: true }, { x: 0, y: 0 }],
+    ['R + center X', { radius: true, x: true }, { x: 0, y: 6 }],
+    ['R + center X + Y', { radius: true, x: true, y: true }, { x: 0, y: 0 }],
+  ];
+  for (const [label, options, expected] of cases) for (const mode of ['point', 'center']) {
+    const document = matrixDocument(options), s = document.sketches[document.activeSketchId];
+    const before = matrixArc(document), beforeRadius = before.radius;
+    let candidate;
+    if (mode === 'point') candidate = solveDrawingDragCandidate(document, { kind: 'point', pointId: 'p' }, { x: 7, y: 6 });
+    else candidate = solveDrawingDragCandidate(document, createArcCenterDragTarget(document, 'arc'), { x: 7, y: 6 });
+    assert.ok(candidate, `${label}/${mode}: constrained drag returns a candidate`);
+    const after = matrixArc(candidate);
+    matrixClose(after.center.x - before.center.x, expected.x, 2e-5);
+    matrixClose(after.center.y - before.center.y, expected.y, 2e-5);
+    if (options.radius) matrixClose(after.radius, beforeRadius, 2e-6);
+    matrixAssertExact(candidate);
+    assert.equal(candidate.sketches[candidate.activeSketchId].geometricConstraintOrder.length, 1);
+  }
+});
+
+test('Arc endpoint and radius grips preserve combined hard equations and derived coincidence', () => {
+  for (const options of [{ radius: true }, { x: true, y: true }, { radius: true, x: true, y: true }]) {
+    const document = matrixDocument(options), before = matrixArc(document);
+    const endpointCandidate = solveDrawingDragCandidate(document, createArcEndpointDragTarget(document, 'arc', 'e'), { x: 2, y: 3 });
+    assert.ok(endpointCandidate);
+    matrixAssertExact(endpointCandidate);
+    if (options.radius) matrixClose(matrixArc(endpointCandidate).radius, before.radius, 2e-6);
+  }
+  for (const options of [{}, { x: true, y: true }, { radius: true }, { radius: true, x: true, y: true }]) {
+    const document = matrixDocument(options), before = matrixArc(document);
+    const point = { x: before.center.x, y: before.center.y - before.radius };
+    const candidate = solveDrawingDragCandidate(document, createArcRadiusDragTarget(document, 'arc', point), { x: 0, y: -2 }, point);
+    assert.ok(candidate);
+    const after = matrixArc(candidate);
+    matrixClose(after.center.x, before.center.x); matrixClose(after.center.y, before.center.y);
+    options.radius ? matrixClose(after.radius, before.radius) : assert.ok(Math.abs(after.radius - before.radius) > 1);
+    matrixAssertExact(candidate);
+  }
+});
+
+test('radius and center-dimension edits retain the fixed center, radius, and Coincidence', () => {
+  let document = matrixDocument({ radius: true, x: true, y: true }), before = matrixArc(document);
+  let result = solveDrawingDimensionEdit({ document, dimensionId: 'radius', targetValue: 60 });
+  assert.equal(result.ok, true); document = result.document;
+  matrixClose(matrixArc(document).radius, 60);
+  matrixClose(matrixArc(document).center.x, before.center.x); matrixClose(matrixArc(document).center.y, before.center.y);
+  matrixAssertExact(document);
+
+  document = matrixDocument({ radius: true, x: true }); before = matrixArc(document);
+  result = solveDrawingDimensionEdit({ document, dimensionId: 'cx', targetValue: before.center.x + 9 });
+  assert.equal(result.ok, true); document = result.document;
+  matrixClose(matrixArc(document).center.x, before.center.x + 9);
+  matrixClose(matrixArc(document).radius, before.radius);
+  matrixAssertExact(document);
+});
+
+test('redundant endpoint dimension becomes reference and conflicting hard edit fails closed', () => {
+  let document = matrixDocument({ x: true }), s = document.sketches[document.activeSketchId];
+  const beforeRank = analyzeDrawingConstraints(s).componentByPointId.get('p').constraintRank;
+  const point = { kind: 'sketchPoint', pointId: 'p' }, p = resolveDrawingPointReference(s, point), origin = resolveDrawingPointReference(s, matrixOriginReference);
+  document = appendDimension(document, createPointToPointDimension([matrixOriginReference, point], origin, p,
+    'HORIZONTAL_DISTANCE', { x: p.x, y: p.y + 5 }, 'px'));
+  s = document.sketches[document.activeSketchId];
+  assert.equal(s.dimensions.px.role, 'reference');
+  assert.equal(analyzeDrawingConstraints(s).componentByPointId.get('p').constraintRank, beforeRank);
+  assert.ok(verifyDrawingConstraints(s, ['cx'], s.geometricConstraintOrder));
+
+  const valid = matrixDocument({ x: true }); s = valid.sketches[valid.activeSketchId];
+  s.dimensions.px = { ...matrixAxisDimension('px', 'x', s.points.p.x, { kind: 'sketchPoint', pointId: 'p' }), role: 'driving' };
+  s.dimensionOrder.push('px');
+  assert.ok(verifyDrawingConstraints(s, s.dimensionOrder, s.geometricConstraintOrder));
+  const result = solveDrawingDimensionEdit({ document: valid, dimensionId: 'px', targetValue: s.points.p.x + 10 });
+  assert.equal(result.ok, false);
+  assert.deepEqual(valid.sketches[valid.activeSketchId].geometricConstraintOrder, s.geometricConstraintOrder);
+  assert.equal(valid.sketches[valid.activeSketchId].dimensions.cx.role, 'driving');
+  matrixAssertExact(valid);
 });
