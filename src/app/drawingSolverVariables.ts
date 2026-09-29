@@ -40,10 +40,12 @@ export const writeDrawingSolverVariable = (sketch: DrawingSketchV2, variable: Dr
   const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[variable.entityId];
   if (variable.scalar === 'circle-radius') {
     if (entity?.type !== 'circle' || value <= DRAWING_MODEL_SPACE_TOLERANCE) return null;
+    if (entity.radius === value) return sketch;
     const entities = { ...sketch.entities, [entity.id]: { ...entity, radius: value } } as DrawingSketchV2['entities'];
     return { ...sketch, entities };
   }
   if (entity?.type !== 'arc' || Math.abs(value) <= DRAWING_MODEL_SPACE_TOLERANCE) return null;
+  if (entity.bulge === value) return sketch;
   const candidate = { ...entity, bulge: value };
   if (!resolveArcFromBulge(candidate, sketch.points[entity.startPointId], sketch.points[entity.endPointId])) return null;
   const entities = { ...sketch.entities, [entity.id]: candidate } as DrawingSketchV2['entities'];

@@ -1,5 +1,6 @@
 import { DRAWING_CONSTRAINT_TOLERANCE_MM, solveDrawingComponentDrag, solveDrawingGeometricIntent } from './drawingConstraintSolver.js';
 import { resolveArcFromBulge } from './drawingArcGeometry.js';
+import { analyzeDrawingConstraints } from './drawingConstraintAnalysis.js';
 import { arcBulgeSolverVariable, circleRadiusSolverVariable, pointSolverVariables } from './drawingSolverVariables.js';
 import { displayedDimensionMeasurement, drawingPointReferenceDependencies, measureDimension, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
 import { pointIdForLineEndpoint } from './drawingTopology.js';
@@ -383,17 +384,41 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
     });
     return solved === sketch ? document : solved ? { ...document, sketches: { ...document.sketches, [sketch.id]: solved } } : null;
   }
-  const ids = target.kind === 'point'
-    ? [target.pointId]
-    : (() => { const line = sketch.entities[target.lineId]; return line ? [...new Set([line.startPointId, line.endPointId])] : []; })();
+  if (target.kind === 'point') {
+    if (delta.x === 0 && delta.y === 0) return document;
+    const point = sketch.points[target.pointId];
+    if (!point) return null;
+    const requested = { x: point.x + delta.x, y: point.y + delta.y };
+    const component = analyzeDrawingConstraints(sketch).componentByPointId.get(target.pointId);
+    const dimensionOnlyStays = component && !component.geometricConstraintIds.length
+      ? [...component.pointIds].filter((pointId) => pointId !== target.pointId)
+      : [];
+    const solved = solveDrawingGeometricIntent(sketch, {
+      seedVariable: pointSolverVariables(target.pointId)[0],
+      modelScale: Math.max(1, Math.hypot(delta.x, delta.y)),
+      primaryResiduals: (candidate) => {
+        const candidatePoint = candidate.points[target.pointId];
+        return candidatePoint ? [candidatePoint.x - requested.x, candidatePoint.y - requested.y] : null;
+      },
+      semanticResiduals: dimensionOnlyStays.length ? (candidate) => dimensionOnlyStays.flatMap((pointId) => {
+        const before = sketch.points[pointId], after = candidate.points[pointId];
+        return before && after ? [after.x - before.x, after.y - before.y] : [];
+      }) : undefined,
+    });
+    if (solved && (!component || !component.dimensionIds.length && !component.geometricConstraintIds.length)) {
+      const exact = { ...solved, points: { ...solved.points, [target.pointId]: { ...solved.points[target.pointId], ...requested } } };
+      return { ...document, sketches: { ...document.sketches, [sketch.id]: exact } };
+    }
+    return solved === sketch ? document : solved ? { ...document, sketches: { ...document.sketches, [sketch.id]: solved } } : null;
+  }
+  const line = sketch.entities[target.lineId];
+  const ids = line ? [...new Set([line.startPointId, line.endPointId])] : [];
   if (!ids.length || ids.some((id) => !sketch.points[id])) return null;
   const moves = Object.fromEntries(ids.map((id) => {
     const point = sketch.points[id];
     return [id, { x: point.x + delta.x, y: point.y + delta.y }];
   }));
-  const solvedSketch = solveDrawingComponentDrag(sketch, moves, target.kind === 'point'
-    ? { directPointIds: [target.pointId] }
-    : { directLineIds: [target.lineId] });
+  const solvedSketch = solveDrawingComponentDrag(sketch, moves, { directLineIds: [target.lineId] });
   if (!solvedSketch) return null;
   const candidate = { ...document, sketches: { ...document.sketches, [sketch.id]: solvedSketch } };
   const affectedPointIds = new Set(Object.keys(sketch.points).filter((id) => {
