@@ -266,6 +266,42 @@ const matrixAssertExact = (document) => {
   assert.equal(Object.values(s.entities).some(({ type }) => type === 'circle'), false);
 };
 
+test('generic point intent reaches free poses, projects axis locks, and preserves point Coincidence', () => {
+  const pointDocument = ({ x = false, y = false } = {}) => {
+    const document = createDrawingDocumentV2(), s = document.sketches[document.activeSketchId];
+    s.points.p = { id: 'p', x: 12, y: 8 };
+    if (x) s.dimensions.px = matrixAxisDimension('px', 'x', 12, { kind: 'sketchPoint', pointId: 'p' });
+    if (y) s.dimensions.py = matrixAxisDimension('py', 'y', 8, { kind: 'sketchPoint', pointId: 'p' });
+    s.dimensionOrder = [x && 'px', y && 'py'].filter(Boolean);
+    return document;
+  };
+  for (const [label, options, expected] of [
+    ['free', {}, { x: 19, y: 14 }],
+    ['X locked', { x: true }, { x: 12, y: 14 }],
+    ['Y locked', { y: true }, { x: 19, y: 8 }],
+    ['X and Y locked', { x: true, y: true }, { x: 12, y: 8 }],
+  ]) {
+    const document = pointDocument(options);
+    const candidate = solveDrawingDragCandidate(document, { kind: 'point', pointId: 'p' }, { x: 7, y: 6 });
+    assert.ok(candidate, `${label}: drag returns a candidate`);
+    const point = candidate.sketches[candidate.activeSketchId].points.p;
+    matrixClose(point.x, expected.x); matrixClose(point.y, expected.y);
+    assert.ok(verifyDrawingConstraints(candidate.sketches[candidate.activeSketchId],
+      candidate.sketches[candidate.activeSketchId].dimensionOrder, []));
+  }
+
+  const coincident = pointDocument({ x: true }), s = coincident.sketches[coincident.activeSketchId];
+  s.points.q = { id: 'q', x: 12, y: 8 };
+  const relation = createCoincidentConstraint(s, 'p', 'q'); assert.ok(relation);
+  s.geometricConstraints[relation.id] = relation; s.geometricConstraintOrder = [relation.id];
+  const candidate = solveDrawingDragCandidate(coincident, { kind: 'point', pointId: 'q' }, { x: 7, y: 6 });
+  assert.ok(candidate, 'partially locked point pair returns a candidate');
+  const after = candidate.sketches[candidate.activeSketchId];
+  matrixClose(after.points.p.x, 12); matrixClose(after.points.q.x, 12);
+  matrixClose(after.points.p.y, 14); matrixClose(after.points.q.y, 14);
+  assert.ok(verifyDrawingConstraints(after, after.dimensionOrder, after.geometricConstraintOrder));
+});
+
 test('Arc center dimension/Coincidence matrix has rank-based DOF and remains referenceable', () => {
   const cases = [
     ['free', {}, 2, 5],
