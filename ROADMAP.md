@@ -29,7 +29,7 @@ future task:
 | Standalone straight-segment authoring | **IMPLEMENTED / BROWSER-VERIFIED AND ACCEPTED** | The `Line` tool creates exactly one straight Line from P1 to P2 and then completes. Normal activation returns to Select; persistent activation remains in Line but resets fully so the next click starts a fresh independent P1. |
 | Topology | **IMPLEMENTED** | Stable `SketchPoint` records own point identity and coordinates; connected Lines share point identity. |
 | Inference and snapping | **IMPLEMENTED** | Endpoint, Midpoint, finite-Line, alignment, angular, Parallel, Perpendicular, and Point Reference candidates feed the shared Profile and Line straight-segment foundation. |
-| Geometric constraints and solver | **IMPLEMENTED** | Midpoint, Coincidence, Parallelism, Perpendicular, Horizontal, and Vertical are implemented Constraint operations. Concentricity and Tangency remain inactive placeholders and are not implemented. |
+| Geometric constraints and solver | **IMPLEMENTED** | Midpoint, Coincidence, Parallelism, Perpendicular, Horizontal, Vertical, and Radius / Diameter are implemented operations. Radius / Diameter creates the existing circular-size Dimension model; Concentricity and Tangency remain inactive placeholders and are not implemented. |
 | Dimensions | **IMPLEMENTED / BROWSER-VERIFIED AND ACCEPTED** | Driving and reference distance, length, and Line-to-Line angle forms, ordinary dimensions to supported Circle/Arc semantic points, and geometry-selected circular size dimensions (Circle diameter Ø; Arc radius R) have shared solver and annotation paths. |
 | Authority model | **IMPLEMENTED** | Position, direction, and topology authority are distinct; compatible directional and positional truths can coexist. |
 | Presentation | **IMPLEMENTED** | Transient inference and persistent constraint layers exist. Midpoint and Parallel share Line-marker layout between live and persistent presentation; Perpendicular shares presentation geometry derivation. Other relations still need convergence. |
@@ -185,7 +185,7 @@ still has work remaining.
 | Distance | **DESIGN REQUIRED** | Present in the panel, but Constraints integration, applicability, authoring, and presentation are not yet developed. Reuse the implemented Dimension capability's common geometric/semantic basis rather than creating an independent Distance implementation. |
 | Length | **DESIGN REQUIRED** | Present in the panel, but Constraints integration, applicability, authoring, and presentation are not yet developed. Reuse the implemented Dimension capability's common geometric/semantic basis rather than creating an independent Length implementation. |
 | Angle | **DESIGN REQUIRED** | Present in the panel, but Constraints integration, applicability, authoring, and presentation are not yet developed. Reuse the implemented Dimension capability's common geometric/semantic basis rather than creating an independent Angle implementation. |
-| Radius / Diameter | **PLANNED / NOT IMPLEMENTED** | Inactive panel placeholder only. Constraint behavior and presentation are not developed; future Radius/Diameter Constraints must consume the Circle’s authoritative semantic radius. |
+| Radius / Diameter | **IMPLEMENTED** | One unary operation creates Circle diameter Ø and Arc radius R `CIRCULAR_SIZE` Dimensions. It accepts compatible preselection or live selection, batches uncovered curves, ignores unrelated geometry, and disables/no-ops when every compatible curve is already covered; it creates no separate geometric-constraint entity. |
 | Symmetry | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
 | Fix | **DESIGN REQUIRED** | Present in the panel, but Constraint behavior and presentation are not yet developed. |
 
@@ -343,27 +343,59 @@ must not be read as batch delete.
 | Mirror | **DESIGN REQUIRED** | Mirror selected geometry around a selected/reference axis. | Copy, constraint, and associativity behavior remain open. |
 | Quick Trim | **DESIGN REQUIRED** | Quickly trim geometry at relevant intersections or boundaries. | Exact interaction remains open. |
 | Rectangle | **DESIGN REQUIRED** | Add a Rectangle family with **four variants**. | The four variants have not been specified and will be defined later. |
-| Circle — Center + Radius | **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED** | P1 establishes or reuses a persistent center `SketchPoint`; pointer movement shows a visible live semantic Circle preview; P2 is a radius-defining authoring control and commits the Circle with one authoritative scalar radius. Persistence, History, selection, hit testing, deletion/topology cleanup, directional Window/Crossing selection, shared presentation, accepted P1/P2 acquisition, center Direct Manipulation, and body/radius Direct Manipulation are integrated. | Circle is true semantic geometry, not persistent tessellation. P2 is not a persistent radius point. Circular-size Dimensions are accepted; Tangency, Concentricity, and Radius/Diameter Constraint remain excluded and unimplemented. |
-| Arc — standalone three-point | **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED** | Authors P1 = start, P2 = end, P3 = form/radius point in the order **Start → End → Form Point**. Arc Stage 1 includes finite-Arc selection and Window/Crossing, Point-on-Arc foundations, topology, deletion, History, persistence, shared presentation, and center/body/endpoint Direct Manipulation. | Persistence is the two endpoint `SketchPoint` references plus bulge. Center, radius, angles, signed sweep, P3, and the support Circle are derived rather than persistent. |
+| Circle — Center + Radius | **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED / DOCUMENTED** | P1 establishes or reuses a persistent center `SketchPoint`; pointer movement shows a visible live semantic Circle preview; P2 is a radius-defining authoring control and commits the Circle with one authoritative scalar radius. Persistence, History, semantic center selection, snap/inference, constraints, Dimensions, exact box selection, and both center and body/radius Direct Manipulation are integrated. | Circle is true semantic geometry, not persistent tessellation. P2 is not a persistent radius point. Direct authoring onto the center reuses `centerPointId`; manual Coincidence between a separate endpoint and center preserves both identities and stores `COINCIDENT` / `point-point`. |
+| Arc — standalone three-point | **IMPLEMENTED FOUNDATION; REPRESENTATION UNDER REASSESSMENT** | The browser-accepted Stage 1 behavior includes Start → End → Form Point authoring, finite-Arc selection and Window/Crossing, Point-on-Arc foundations, topology, deletion, History, persistence, shared presentation, circular Radius Dimension, and center/body/endpoint Direct Manipulation. | Current persistence is two endpoint `SketchPoint` references plus bulge, with center/radius/angles/P3 derived. This records current implementation, not a final architecture; preserve accepted behavior while reassessing whether the center should remain derived or become a persistent `SketchPoint`. |
 | Circle — older three-point full-Circle item | **DESIGN REQUIRED / UNRESOLVED** | The prior roadmap separately proposed a three-point-defined full Circle. The newly decided standalone three-point Arc does not silently cancel that older item. | Its continued product need, authoring order, and priority require a future explicit decision; it must not be confused with the Arc workflow. |
 
 
 ### Near-term circular-geometry sequence
 
-The first three items are complete and accepted. The next planned Constraint work is item 4:
+Circle's current foundation and Radius / Diameter integration are accepted and documented.
+Arc Stage 1 behavior was historically accepted under the current derived-center model, but
+that representation is now explicitly under reassessment. The exact next roadmap item is:
 
-1. Circle — Center + Radius — **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED**;
-2. standalone three-point Arc — Start + End + Form Point — **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED**;
-3. Radius / Diameter circular-size Dimension Stage 1 — **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED**;
-4. **NEXT PLANNED CONSTRAINT WORK:** Radius / Diameter Constraint — **PLANNED / NOT IMPLEMENTED**;
-5. Concentricity — **PLANNED / NOT IMPLEMENTED**; and
-6. Tangency — **PLANNED / NOT IMPLEMENTED**.
+1. **ARC COMMON-ARCHITECTURE REASSESSMENT — NEXT**. Compare at minimum (A) the
+   current derived semantic center and (B) a first-class persistent Arc-center
+   `SketchPoint` analogous to Circle center; consider another model only if justified.
+2. After the decision, migrate or refine the representation as needed, correct semantic
+   center selection ownership, complete manual Constraints Coincidence through the chosen
+   point model, and reverify snap/inference, Dimensions, Direct Manipulation, persistence,
+   restore/migration, History, and browser regressions.
+3. Plan Concentricity and Tangency only after center semantics are settled. Both remain
+   **PLANNED / NOT IMPLEMENTED**.
 
-Circular-size **Dimensions** and Radius / Diameter **Constraints** are distinct Drawing
-workflows. The accepted Dimension foundation creates Circle diameter (Ø) and Arc radius
-(R) Dimensions; it does not implement the planned Constraint. Future Radius/Diameter
-Constraint work must reuse the curves’ authoritative size geometry and shared solver
-foundation rather than introduce a separate radius authority.
+The reassessment must prefer the same common Drawing architecture for Line, Circle, and
+Arc wherever possible, introducing Arc-specific structure only where mathematically
+necessary. It must answer: whether Arc center is persistent; the minimum independent Arc
+state and curvature authority; start/end/center/radius/sweep and overconstraint rules;
+what each grip varies; how Dimensions, Coincidence, snap/inference, and dependency
+components address the center; deletion/orphan cleanup; serialization, restore, migration,
+and Undo/Redo; preservation of accepted behavior; and which Circle/Arc differences are
+mathematically necessary. External CAD behavior may inform user-level expectations but
+does not prove an internal persistence model.
+
+Current implementation uses `DrawingArcEntity { id, type: 'arc', startPointId,
+endPointId, bulge }`, where `bulge = tan(signedSweep / 4)`. P1/P2 are persistent endpoint
+SketchPoints, bulge is curvature authority, and center, radius, angles, P3, and the support
+Circle are derived. The derived center already participates in Dimensions, Direct
+Manipulation, snap/inference, and narrow durable `COINCIDENT` / `point-derived-point`
+relations from persistent authoring points. Those mechanisms are current implementation
+history and may require migration; they are not preselected as the final design.
+
+Arc-center selection parity remains outstanding: a center hit can produce a manipulation
+target, but ordinary selection currently collapses its semantic identity to the parent
+Arc. Selection ownership must follow the selected feature (curve, endpoint, or center),
+not silently substitute parent geometry. Consequently the final manual Line-endpoint +
+Arc-center Constraints Coincidence workflow remains outstanding until the architecture
+decision.
+
+Radius / Diameter is one implemented Constraints-panel operation backed by the existing
+`CIRCULAR_SIZE` Dimension model: Circle produces Ø and Arc produces R, selection can
+precede or occur during the tool, compatible selections batch, unrelated entities are
+ignored, covered entities are not duplicated, and partial coverage creates only missing
+dimensions. It is not a `RadiusConstraint` or `DiameterConstraint`. Dimensions remain
+persistent dimensional relationships/annotations; geometric Constraints remain
+persistent geometric relationships.
 
 ### Decided first-Circle semantics
 
@@ -409,8 +441,9 @@ same accepted toggle semantics as other eligible Drawing geometry.
 Tangency and Concentricity are not part of first-Circle implementation. Future Tangency
 must consume true semantic circular geometry through global Constraints; future
 Concentricity must consume the Circle's semantic center. Radius/Diameter circular-size
-Dimensions are accepted and share the Circle's authoritative radius. Radius/Diameter
-Constraints remain planned and must reuse that foundation.
+Dimensions are accepted and share the Circle's authoritative radius; the implemented
+Constraints-panel Radius / Diameter operation now creates that same Dimension model and
+does not introduce a separate geometric-constraint type.
 
 ### Accepted standalone Arc Stage 1
 

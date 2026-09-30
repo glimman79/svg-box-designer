@@ -30,7 +30,7 @@ A shared, versioned cross-workspace `ProjectDocument`, cross-workspace reference
 
 The current workspace implements Select, Profile, Line, Circle, Arc, Dimension, a floating Constraints tool, Direct Manipulation, snapping/inference, solver-backed constraints, and bounded Drawing Undo/Redo. Profile and standalone Line are browser-verified and accepted as separate authoring workflows: Profile authors continuing/chained connected straight segments, while Line accepts P1 and P2, creates exactly one straight segment, and completes without chaining from P2. Normal Line activation returns to Select after completion; persistent Line activation remains active but resets completely so the next click defines a fresh independent P1.
 
-Both workflows reuse the neutral straight-segment foundation rather than duplicating snapping, inference, constraints, topology, presentation, or mutation behavior. Circle Stage 1 and Arc Stage 1 are **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED**. A persistent Circle references one persistent center `SketchPoint` through `centerPointId` and owns one scalar radius; it remains true Circle geometry rather than persistent tessellation. An Arc references two persistent endpoint SketchPoints and owns a bulge; its center, radius, angles, signed sweep, authoring P3, and support Circle are derived. Circle and Arc participate in persistence, History, selection, hit testing, deletion/topology cleanup, directional box selection, and shared Drawing presentation. Every committed segment remains an ordinary `DrawingLineEntity` with persistent `type: 'line'`; neither Profile nor Line introduces a separate geometry type or authoring-origin metadata. Consequently topology, selection, Direct Manipulation, Constraints, Dimensions, and History operate on the committed geometry without distinguishing which straight-segment authoring workflow created it. Menu visibility does not prove implementation of other prospective geometry tools.
+Both workflows reuse the neutral straight-segment foundation rather than duplicating snapping, inference, constraints, topology, presentation, or mutation behavior. Circle Stage 1 is **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED / DOCUMENTED**. Arc Stage 1 user-visible behavior was browser-accepted, while its persistence architecture is now under reassessment. A persistent Circle references one persistent center `SketchPoint` through `centerPointId` and owns one scalar radius; it remains true Circle geometry rather than persistent tessellation. An Arc references two persistent endpoint SketchPoints and owns a bulge; its center, radius, angles, signed sweep, authoring P3, and support Circle are derived. Circle and Arc participate in persistence, History, selection, hit testing, deletion/topology cleanup, directional box selection, and shared Drawing presentation. Every committed segment remains an ordinary `DrawingLineEntity` with persistent `type: 'line'`; neither Profile nor Line introduces a separate geometry type or authoring-origin metadata. Consequently topology, selection, Direct Manipulation, Constraints, Dimensions, and History operate on the committed geometry without distinguishing which straight-segment authoring workflow created it. Menu visibility does not prove implementation of other prospective geometry tools.
 
 `drawingLineSegmentSupport.ts` owns neutral straight-segment support, while `drawingProfileTool.ts` owns the chained Profile lifecycle and `drawingLineTool.ts` owns the standalone Line lifecycle. Generic document mutation remains in `drawingDocumentMutation.ts`. The delayed commit/double-click boundary in `drawingProfileCommitBoundary.ts` remains Profile-specific. Shared cursor, preview, and inference presentation consume neutral segment interaction state rather than treating Profile as their owner.
 
@@ -74,9 +74,9 @@ neither group Direct Manipulation nor batch deletion.
 
 Dimensions is the dedicated dimensional authoring workflow. The model supports driving and reference dimensions over stable point/Line references: aligned, horizontal, and vertical point distances; point-to-Line distance; Line-to-Line distance; and Line-to-Line angle. Ordinary Dimensions also address supported curve semantic points: the Circle’s persistent center, Arc P1/P2 persistent endpoints, and the Arc’s derived semantic center, with origin as the fixed datum where supported. Circular-size Dimension Stage 1 is accepted: a full Circle creates a diameter (Ø) Dimension and an Arc creates a radius (R) Dimension, selected by geometry type rather than a user R/Ø choice. These persistent Dimensions use the shared solver, value editing, and placement architecture. Reference dimensions annotate but add no equation.
 
-Constraints is a separate floating workflow. It browser-verifiably consumes points and Lines selected before the panel opens and updates applicable operations when point/Line selection changes while the panel remains active. Its implemented operations are Midpoint, Coincidence, Parallelism, Perpendicular, Horizontal, and Vertical. Concentricity and Tangency appear only as inactive future choices; they have no current Constraint or solver implementation and are not browser-verified capabilities.
+Constraints is a separate floating workflow. It browser-verifiably consumes geometry selected before the panel opens and updates applicability when selection changes while the panel remains active. Implemented operations are Midpoint, Coincidence, Parallelism, Perpendicular, Horizontal, Vertical, and the single Radius / Diameter operation. The latter processes compatible selected curves (Circle → diameter Ø; Arc → radius R), ignores unrelated geometry, skips exact existing circular dimensions, creates only uncovered members of a partial selection, and disables/no-ops when all are covered. Its persistent result is the existing `CIRCULAR_SIZE` Dimension model, not a `RadiusConstraint` or `DiameterConstraint` entity.
 
-Fix, Symmetry, Radius / Diameter, Angle, Length, and Distance are not currently implemented as Constraints. Circular-size Dimensions are implemented, but they do not make Radius/Diameter Constraint implemented; that Constraint is the planned next curve-constraint step. Concentricity and Tangency remain later planned Constraints. Existing Dimension functionality for Distance, Length, Angle, radius, or diameter does not make same-named Constraint operations implemented; future integration must reuse appropriate common geometric and semantic foundations rather than duplicate them.
+Fix, Symmetry, Angle, Length, Distance, Concentricity, and Tangency are not implemented as Constraints. Concentricity and Tangency are inactive planned choices and should wait for the Arc-center decision. Existing Dimension functionality for Distance, Length, and Angle does not make same-named Constraint operations implemented; future integration must reuse appropriate common geometric and semantic foundations rather than duplicate them.
 
 SketchPoint coordinates and entity-owned curve parameters participate in canonical solver geometry. Circle mobility is analyzed over center X/Y plus radius; Arc mobility is analyzed over P1 X/Y, P2 X/Y, plus bulge. Typed driving dimensions and geometric constraints produce equations, connected-component solving produces resolved geometry, and rank/null-space analysis classifies partial and fully constrained states by actual remaining degrees of freedom. Invalid, degenerate, duplicate, or unsatisfied requests fail closed. Direct Manipulation requests movement through this semantic authority; it does not permanently bypass constraints.
 
@@ -117,8 +117,8 @@ Circle are also transient. None of this support/reference geometry is an entity,
 topology, History, or export geometry. Point-on-Arc uses the shared Point-on-Curve
 foundation rather than an Arc-specific constraint system.
 
-The canonical persistent Arc is `DrawingArcEntity { id, type: 'arc', startPointId,
-endPointId, bulge }`. Bulge is the curvature and signed-sweep authority. Center, radius,
+The current serialized/runtime Arc is `DrawingArcEntity { id, type: 'arc', startPointId,
+endPointId, bulge }`, with `bulge = tan(signedSweep / 4)`. Bulge is currently the curvature and signed-sweep authority; this is current implementation, not a locked future architecture. Center, radius,
 start/end angles, signed sweep, P3/form point, and support Circle are derived and are not
 persisted.
 
@@ -274,7 +274,7 @@ Support graphics are presentation only unless their owning semantic model explic
 
 #### 4.9.7 Constraints
 
-Constraints remain a separate presentation system. Implemented Constraints are **Midpoint, Coincidence, Parallelism, Perpendicular, Horizontal, and Vertical**. Tangency, Concentricity, Radius/Diameter, Fix, Symmetry, Distance Constraint, Length Constraint, and Angle Constraint are not implemented.
+Constraints remains a separate tool/presentation system. Implemented geometric Constraints are **Midpoint, Coincidence, Parallelism, Perpendicular, Horizontal, and Vertical**; its implemented **Radius / Diameter** operation deliberately creates existing circular-size Dimensions rather than a geometric-constraint entity. Tangency, Concentricity, Fix, Symmetry, Distance Constraint, Length Constraint, and Angle Constraint are not implemented.
 
 | State | Semantic token/current value | Color | Applicability/status |
 | --- | --- | --- | --- |
@@ -300,7 +300,7 @@ Dimensions are not Constraints and retain a separate presentation category.
 | Preview Dimension | owning Dimension paint | opacity `0.7` | Established. |
 
 Distance, Length, Angle, Circle diameter (Ø), and Arc radius (R) exist as Dimensions.
-Radius/Diameter Constraint is not implemented.
+The Constraints-panel Radius / Diameter operation reuses the latter model; no separate Radius/Diameter geometric-constraint type exists.
 
 #### 4.9.9 Points
 
@@ -329,12 +329,58 @@ Every item below is normative tracking: the triggered implementation must resolv
 | Question | Why unresolved | Current behavior | Decision trigger / mandatory action |
 | --- | --- | --- | --- |
 | How should future construction/reference entities look? | Construction/reference geometry is not yet a real defined product concept. | No global category exists. | When the entity concept is designed, define ownership and presentation explicitly; do not invent per-tool paint. |
-| How should future Radius/Diameter presentation work? | Neither Radius/Diameter Dimension nor Constraint is implemented, and the two systems must remain distinct. | No presentation exists. | Decide when either capability is designed; do not infer a style now. |
+| Should Radius / Diameter invoked through Constraints gain distinct presentation? | The operation currently creates the existing Circle Ø / Arc R `CIRCULAR_SIZE` Dimension; no separate geometric-constraint entity or glyph exists. | Established Dimension presentation is reused. | Keep the systems conceptually distinct; define separate presentation only if a future semantic model requires it. |
 | Should persistent and transient Midpoint intentionally retain widths `1` and `1.4`? | Current difference has not been explicitly normalized or approved as permanent. | Persistent `1`; transient `1.4`. | Preserve until a focused presentation decision; that work must explicitly resolve and document it. |
 | Are Alignment dash `5 4` and Point Reference dash `5 5` intentionally distinct? | Both are accepted current behavior but permanent differentiation has not been decided. | They remain distinct. | Preserve until explicitly revisited; any convergence must be a documented decision. |
 | Should Constraint hover permanently equal geometry hover numerically? | Both are `#06b6d4`, but roles are semantically independent. | Values match. | Maintain separate roles/tokens when production tokens are generalized; any future coupling or divergence requires an explicit decision. |
 | Should Constraint selected permanently equal Dimension active numerically? | Both are `#137a3e`, but roles are semantically independent. | Values match. | Maintain separate roles/tokens when production tokens are generalized; any future coupling or divergence requires an explicit decision. |
 | May a future special authoring tool deviate from ordinary Authoring Preview? | No such tool-specific semantic has been established. | Applicable current tools use the global preview, except the explicit Line/Profile angular-authority modifier. | Default to the global standard; before deviation, identify a genuine semantic reason and document the modifier. |
+
+### 4.10 Circle checkpoint and Arc architecture decision
+
+The accepted Circle entity stores `centerPointId` plus radius. P1 is that persistent,
+globally usable center `SketchPoint`; P2 is only the radius authoring control and never
+becomes an independent point. Authoring a Line directly onto an existing Circle center
+reuses the exact `centerPointId` (shared topology), so no redundant Coincidence is needed.
+Applying Constraints → Coincidence later between a separate Line endpoint L and center C
+preserves `L !== C` and stores hard `COINCIDENT` / `point-point`. Both forms are valid.
+The production-layer regression covers the real command and stored relation, pointer
+ownership, finite Line-body and endpoint drag, History commit, reverse center and
+circumference gestures, shared-topology control, and ordinary external point-point
+control; all preserve coincidence. A browser/video break-then-jump was genuinely observed
+earlier, but is not reproducible on accepted main, and no root cause or incident-specific
+production fix is established. It is historical evidence, not an active known defect.
+
+Semantic authoring points currently include Line endpoints, Arc endpoints, Circle center,
+and the derived Arc center. Eligibility as a snap/reference is independent of mobility: a
+fully constrained point can remain a valid reference. Shared infrastructure provides
+exact point snap, horizontal/vertical alignment inference and helper lines, and durable
+relations where the representation supports them. Persistent-point dragging and finite
+Line-body dragging use common constraint-aware geometric intent: intent is soft, hard
+Constraints and driving Dimensions remain authoritative, partial X/Y freedoms remain
+usable, and fully blocked motion is a stable no-op. A grip's meaning never changes merely
+because hard relationships restrict it.
+
+Arc currently stores persistent start/end SketchPoints and bulge while deriving center,
+radius, and angles; P3 is authoring/form state. The derived center is already a semantic
+reference in Dimensions, manipulation, snap/inference, and narrow persistent
+`COINCIDENT` / `point-derived-point` relations. It is not structurally the same as the
+Circle center. Before further Arc Constraints work, **ARC COMMON-ARCHITECTURE
+REASSESSMENT** must compare this model with a persistent Arc-center SketchPoint (and any
+justified alternative) across topology, solver/DOFs, grip semantics, Dimensions,
+Constraints, persistence/restore/migration, deletion, History, authoring, compatibility,
+and mathematical necessity. No outcome is predetermined.
+
+Selection ownership follows the selected semantic feature: an Arc curve owns curve
+selection, an endpoint owns point selection, and a center marker must own center-semantic
+selection rather than silently selecting the parent Arc. Current Arc-center selection
+loses that identity and selects the parent Arc, which can incorrectly enable Radius /
+Diameter instead of point-style Coincidence. Semantic center selection parity and the
+manual endpoint + Arc-center Constraints Coincidence workflow therefore remain
+outstanding pending the architecture decision. Preserve the accepted Arc behavior
+(three-point authoring, endpoints, center/endpoint/body manipulation, Radius Dimension,
+snap/inference, partial DOFs, box selection, History, and save/restore) unless analysis
+justifies a change; current internal mechanisms may migrate.
 
 ## 5. Box / Construction architecture
 
