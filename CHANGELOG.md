@@ -1,5 +1,12 @@
 # Unreleased
 
+## Drawing — Circle checkpoint and Arc reassessment documentation
+
+- Added semantic-point inference parity for Circle center and the currently derived Arc center, durable persistent-point-to-derived-Arc-center Coincidence, and common partial-DOF point manipulation through constraint-aware geometric intent.
+- Added production-layer regression coverage for manual Circle-center point-point Coincidence across the real Constraints command, pointer ownership, finite Line-body and endpoint drag, History commit, reverse Circle gestures, shared topology, and ordinary point-point controls. The earlier browser/video break-jump remains historical, is currently not reproducible, and has no proven root cause or incident-specific production fix.
+- Documented Circle's accepted checkpoint and reopened the current Arc endpoint-plus-bulge/derived-center representation for common-architecture reassessment; no Arc representation change is implemented by this documentation update.
+- Radius / Diameter is an implemented Constraints-panel operation backed by existing `CIRCULAR_SIZE` Dimensions (Circle Ø; Arc R). Concentricity and Tangency remain unimplemented.
+
 ## Drawing — accepted Circle, Arc, and circular Dimension foundation
 
 - Added persistent diameter (Ø) Dimensions for full Circles and radius (R) Dimensions for Arcs through the shared solver, value-editing, and annotation-placement architecture; ordinary Dimensions also support the relevant persistent and derived curve semantic points.

@@ -502,6 +502,32 @@ Arc Stage 1, curve semantic-point Dimensions, circular-size Dimensions, mobility
 and annotation lifecycle are browser-accepted. Radius/Diameter Constraint,
 Concentricity, and Tangency remain planned and unimplemented.
 
+### 11.16 Circle checkpoint closed; Arc representation reopened
+
+After circular Dimensions, Constraints gained one Radius / Diameter operation that reuses
+`CIRCULAR_SIZE` (Circle Ø, Arc R), including preselection/live selection, batching,
+deduplication, and partial coverage. Dimension double-click editing was corrected; common
+semantic-point inference then added Circle-center and derived Arc-center alignment parity.
+The current Arc model gained durable persistent-point ↔ derived-center `COINCIDENT` /
+`point-derived-point`, and generic persistent-point Direct Manipulation moved to the
+constraint-aware geometric-intent solver so partial X/Y freedoms remain usable.
+
+A real browser/video observation showed an existing manual Circle-center point-point
+Coincidence visibly separate during Line drag and jump back on later Circle manipulation.
+Source investigation did not prove a root cause. A production-layer diagnostic regression
+now covers the real Constraints command, stored relation, pointer ownership, finite
+Line-body and endpoint candidates, History commit, Circle center and circumference
+gestures, shared-topology control, and ordinary point-point control; all preserve the
+relation. The same browser workflow is currently confirmed working. The incident remains
+historical evidence—currently not reproducible, with no claimed incident-specific fix.
+
+That evidence closes the accepted Circle checkpoint. Arc Stage 1 behavior remains
+historically accepted, but its endpoint-plus-bulge/derived-center representation is no
+longer treated as irrevocable future architecture. The next task is Arc common-architecture
+reassessment, including derived versus persistent center options, before semantic-center
+selection parity, final manual Arc-center Constraints Coincidence, Concentricity, or
+Tangency work.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics

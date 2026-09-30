@@ -13,15 +13,17 @@ semantic geometry / semantic relation
   -> geometry-specific SVG primitive or role-specific glyph
 ```
 
-Thus a Line renders as `<line>`, true semantic Circle geometry as `<circle>`, and true finite Arc geometry as `<path>`, while Points, Dimensions, and Constraints use their own glyphs/primitives and consume global roles wherever semantics are shared. Entity-specific mobility derives the global geometry constraint visual state; temporary selection or inference paint does not change that underlying state. Entity-defining persistent points, including Circle centers and the derived Arc center presentation, receive semantic roles rather than duplicate entity-owned geometry or persisted presentation state. Transient and persistent forms may share relation/layout derivation while retaining distinct paint. Line, Profile, Circle, and Arc share the Drawing authoring, selection, topology, History, deletion, and presentation foundations where applicable. The normative roles, values, and precedence are owned by [PROJECT_MASTER.md](PROJECT_MASTER.md#49-normative-drawing-presentation-standard), not duplicated here.
+Thus a Line renders as `<line>`, true semantic Circle geometry as `<circle>`, and true finite Arc geometry as `<path>`, while Points, Dimensions, and Constraints use their own glyphs/primitives and consume global roles wherever semantics are shared. Entity-specific mobility derives the global geometry constraint visual state; temporary selection or inference paint does not change that underlying state. Entity-defining persistent points such as Circle centers, and the currently derived Arc-center presentation, receive semantic roles rather than duplicate entity-owned geometry or persisted presentation state. Transient and persistent forms may share relation/layout derivation while retaining distinct paint. Line, Profile, Circle, and Arc share the Drawing authoring, selection, topology, History, deletion, and presentation foundations where applicable. The normative roles, values, and precedence are owned by [PROJECT_MASTER.md](PROJECT_MASTER.md#49-normative-drawing-presentation-standard), not duplicated here.
 
 Persistent `SketchPoint`s are discovered globally as positional snap candidates regardless of which geometry references them, so shared topology is reused rather than duplicated. Point-on-Curve is likewise a global semantic relationship represented by `COINCIDENT` / `point-curve`, not a Circle- or Arc-owned constraint system. Circle Stage 1 and Arc Stage 1 reuse this foundation, including Point-on-Arc semantics.
 
 Circle persistence is `centerPointId` plus a radius scalar; its center is a real shared
-SketchPoint and authoring P2 is not persistent. Arc persistence is
-`DrawingArcEntity { id, type: 'arc', startPointId, endPointId, bulge }`; bulge is the
-curvature/signed-sweep authority. Arc center, radius, start/end angles, signed sweep,
-authoring P3/form point, and support Circle are derived. The Arc authoring P1-to-P2
+SketchPoint and authoring P2 is not persistent. Current Arc persistence is
+`DrawingArcEntity { id, type: 'arc', startPointId, endPointId, bulge }`, where bulge is
+`tan(signedSweep / 4)` and is the current curvature/signed-sweep authority. Arc center,
+radius, start/end angles, signed sweep, authoring P3/form point, and support Circle are
+derived. This is the current serialized/runtime representation, not a locked final
+architecture. The Arc authoring P1-to-P2
 reference line and P3 support Circle are transient presentation only—not entity
 geometry, topology, History, or export geometry.
 
@@ -46,15 +48,33 @@ constrained visual states to be distinguished.
 Ordinary Dimensions share the existing system for the Circle persistent center, Arc
 persistent endpoints, and Arc derived semantic center. Circular-size Dimensions are
 also shared solver entities: a full Circle produces diameter (Ø), while an Arc produces
-radius (R), with no Stage 1 user chooser. These are not the still-planned
-Radius/Diameter Constraint. The committed annotation placement is authoritative while
-idle; transient placement is authoritative only during an intentional annotation drag,
+radius (R), with no Stage 1 user chooser. The implemented Constraints-panel Radius /
+Diameter operation creates these same `CIRCULAR_SIZE` Dimensions; there is no separate
+Radius/Diameter geometric-constraint entity. The committed annotation placement is
+authoritative while idle; transient placement is authoritative only during an intentional annotation drag,
 and completion, cancellation, lost capture, or tool exit clears that transient state.
 
 This remains one global architecture—constraints, applicability, solver, selection, hit
 testing, Direct Manipulation, snap, inference, topology, Dimensions, presentation,
 History, transactions, serialization, and deletion are shared concerns. Geometry-specific
 math does not create separate mini-CAD systems.
+
+The next technical task is **ARC COMMON-ARCHITECTURE REASSESSMENT**. Line, Circle, and
+Arc must use the same common Drawing architecture wherever possible, with Arc-specific
+structure only where mathematically necessary. The open decision is whether the Arc
+center remains a derived semantic point or becomes a first-class persistent SketchPoint
+analogous to Circle center; neither option is predetermined. Compare topology, minimum
+independent state and curvature authority, solver/overconstraint behavior, each grip's
+variables, Dimensions and Coincidence references, snap/inference, dependency components,
+deletion, serialization/restore/migration, History, authoring, and preservation of
+accepted behavior.
+
+Under the current model, durable authoring to an Arc center uses narrow `COINCIDENT` /
+`point-derived-point` between a persistent SketchPoint and the derived center. Current
+selection can detect and manipulate that center but collapses ordinary center selection
+to the parent Arc; semantic center ownership and manual Constraints Coincidence remain
+unresolved until reassessment. Selection must follow the feature clicked, not silently
+substitute its parent. Concentricity and Tangency remain unimplemented.
 
 ## Pipeline
 
