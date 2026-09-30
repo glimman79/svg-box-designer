@@ -528,6 +528,25 @@ reassessment, including derived versus persistent center options, before semanti
 selection parity, final manual Arc-center Constraints Coincidence, Concentricity, or
 Tangency work.
 
+### 11.17 Arc product-contract documentation correction
+
+The preceding documentation sync correctly reopened the Arc's internal representation,
+but incorrectly left the impression that required Arc user behavior was also undecided.
+The user had already established that behavior as binding: common Drawing infrastructure
+where mathematically possible; persistent P1/P2 endpoints and authoring-only P3; a usable
+semantic center with feature-owned selection; durable Line-endpoint-to-center authoring
+and manual Coincidence; distinct center, endpoint-pivot, and body/radius grip meanings
+under hard solver authority; shared Dimensions/Constraints; and preservation through
+History, persistence, reload, manipulation, deletion, and cleanup.
+
+This documentation-only correction records that contract without changing implementation
+or choosing derived versus persistent center storage. Center-selection ownership and the
+manual Constraints Coincidence workflow remain known gaps. The next task is only the
+internal architecture comparison; Concentricity and Tangency remain separately planned
+and unimplemented. The accepted Circle checkpoint remains closed, including its shared
+topology and persistent point-point Coincidence behavior; the earlier break/jump remains
+not reproducible with no proven root cause.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics
