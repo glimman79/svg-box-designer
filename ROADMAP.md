@@ -16,6 +16,11 @@ work. See [PROJECT_MASTER.md](PROJECT_MASTER.md) for the current product and arc
 | **LATER** | Intentionally deferred to a later roadmap pass. |
 | **DESIGN REQUIRED** | Goal is known, but important interaction, data, geometry, or solver decisions remain open. |
 
+For Arc work, the more precise labels **LOCKED PRODUCT REQUIREMENT**, **IMPLEMENTED
+AND VERIFIED**, **IMPLEMENTED BUT NOT YET VERIFIED**, **KNOWN GAP**, **OPEN INTERNAL
+ARCHITECTURE DECISION**, and **PLANNED FUTURE FEATURE** are used below. A locked
+requirement states required behavior, not implementation or acceptance status.
+
 # 1. 2D Drawing
 
 ## A. Existing foundation
@@ -344,58 +349,79 @@ must not be read as batch delete.
 | Quick Trim | **DESIGN REQUIRED** | Quickly trim geometry at relevant intersections or boundaries. | Exact interaction remains open. |
 | Rectangle | **DESIGN REQUIRED** | Add a Rectangle family with **four variants**. | The four variants have not been specified and will be defined later. |
 | Circle — Center + Radius | **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED / DOCUMENTED** | P1 establishes or reuses a persistent center `SketchPoint`; pointer movement shows a visible live semantic Circle preview; P2 is a radius-defining authoring control and commits the Circle with one authoritative scalar radius. Persistence, History, semantic center selection, snap/inference, constraints, Dimensions, exact box selection, and both center and body/radius Direct Manipulation are integrated. | Circle is true semantic geometry, not persistent tessellation. P2 is not a persistent radius point. Direct authoring onto the center reuses `centerPointId`; manual Coincidence between a separate endpoint and center preserves both identities and stores `COINCIDENT` / `point-point`. |
-| Arc — standalone three-point | **IMPLEMENTED FOUNDATION; REPRESENTATION UNDER REASSESSMENT** | The browser-accepted Stage 1 behavior includes Start → End → Form Point authoring, finite-Arc selection and Window/Crossing, Point-on-Arc foundations, topology, deletion, History, persistence, shared presentation, circular Radius Dimension, and center/body/endpoint Direct Manipulation. | Current persistence is two endpoint `SketchPoint` references plus bulge, with center/radius/angles/P3 derived. This records current implementation, not a final architecture; preserve accepted behavior while reassessing whether the center should remain derived or become a persistent `SketchPoint`. |
+| Arc — standalone three-point | **IMPLEMENTED AND VERIFIED FOUNDATION; OPEN INTERNAL ARCHITECTURE DECISION; KNOWN GAP** | The browser-accepted Stage 1 behavior includes Start → End → Form Point authoring, finite-Arc selection and Window/Crossing, Point-on-Arc foundations, topology, deletion, History, persistence, shared presentation, circular Radius Dimension, and center/body/endpoint Direct Manipulation. The locked product contract below governs remaining work. | Current persistence is two endpoint `SketchPoint` references plus bulge, with center/radius/angles/P3 derived. This is an implementation fact, not a final architecture. Center semantic selection ownership and the resulting manual Arc-center Coincidence workflow are known gaps. |
 | Circle — older three-point full-Circle item | **DESIGN REQUIRED / UNRESOLVED** | The prior roadmap separately proposed a three-point-defined full Circle. The newly decided standalone three-point Arc does not silently cancel that older item. | Its continued product need, authoring order, and priority require a future explicit decision; it must not be confused with the Arc workflow. |
 
 
 ### Near-term circular-geometry sequence
 
 Circle's current foundation and Radius / Diameter integration are accepted and documented.
-Arc Stage 1 behavior was historically accepted under the current derived-center model, but
-that representation is now explicitly under reassessment. The exact next roadmap item is:
+Arc Stage 1 behavior was historically accepted under the current derived-center model.
+Its required user behavior is already decided; only the internal representation is under
+reassessment.
 
-1. **ARC COMMON-ARCHITECTURE REASSESSMENT — NEXT**. Compare at minimum (A) the
-   current derived semantic center and (B) a first-class persistent Arc-center
-   `SketchPoint` analogous to Circle center; consider another model only if justified.
-2. After the decision, migrate or refine the representation as needed, correct semantic
-   center selection ownership, complete manual Constraints Coincidence through the chosen
-   point model, and reverify snap/inference, Dimensions, Direct Manipulation, persistence,
-   restore/migration, History, and browser regressions.
-3. Plan Concentricity and Tangency only after center semantics are settled. Both remain
-   **PLANNED / NOT IMPLEMENTED**.
+**LOCKED PRODUCT REQUIREMENT.** Line, Circle, and Arc share common Drawing
+infrastructure wherever mathematically possible: semantic points and topology,
+selection, snapping, inference/alignment, Constraints, Dimensions, solver/components,
+Direct Manipulation, History, and persistence. Arc-specific mechanisms are permitted
+only for actual Arc mathematics. Arc remains P1 start → P2 end → P3 form/curvature;
+P1/P2 are persistent semantic endpoints and P3 is an authoring control, not a persistent
+Arc point in the accepted workflow. The Arc center must behave to the user as a real
+semantic point: selectable even when constrained, snappable, available to relevant
+helpers, Dimensions and Constraints, connectable geometry, and manipulable over
+remaining DOFs. Curve, endpoint, and center clicks select the Arc, endpoint point, and
+center point reference respectively. A Line endpoint must connect durably to the center
+during authoring and through manual Constraints → Coincidence. Driving Dimensions and
+hard Constraints remain authoritative; references do not become driving. Center drag
+expresses feasible center movement, endpoint drag keeps the opposite endpoint as its
+intended pivot, and body/radius drag retains the accepted form/radius meaning. Required
+geometry and relations survive manipulation, Undo/Redo, save/restore, reload, deletion,
+and cleanup. This contract is not reopened by the architecture task.
 
-The reassessment must prefer the same common Drawing architecture for Line, Circle, and
-Arc wherever possible, introducing Arc-specific structure only where mathematically
-necessary. It must answer: whether Arc center is persistent; the minimum independent Arc
-state and curvature authority; start/end/center/radius/sweep and overconstraint rules;
-what each grip varies; how Dimensions, Coincidence, snap/inference, and dependency
-components address the center; deletion/orphan cleanup; serialization, restore, migration,
-and Undo/Redo; preservation of accepted behavior; and which Circle/Arc differences are
-mathematically necessary. External CAD behavior may inform user-level expectations but
-does not prove an internal persistence model.
+The remaining sequence is:
 
-Current implementation uses `DrawingArcEntity { id, type: 'arc', startPointId,
-endPointId, bulge }`, where `bulge = tan(signedSweep / 4)`. P1/P2 are persistent endpoint
-SketchPoints, bulge is curvature authority, and center, radius, angles, P3, and the support
-Circle are derived. The derived center already participates in Dimensions, Direct
-Manipulation, snap/inference, and narrow durable `COINCIDENT` / `point-derived-point`
-relations from persistent authoring points. Those mechanisms are current implementation
-history and may require migration; they are not preselected as the final design.
+1. **LOCKED PRODUCT REQUIREMENT — DOCUMENTED:** preserve the contract above.
+2. **OPEN INTERNAL ARCHITECTURE DECISION — NEXT:** analyze representation against it.
+3. Decide the internal architecture without changing the locked behavior.
+4. Implement only necessary architecture changes.
+5. Fix Arc-center semantic selection ownership.
+6. Complete manual Arc-center Constraints Coincidence.
+7. Reverify snap/inference and reference behavior.
+8. Reverify Dimensions and Constraints.
+9. Reverify center, endpoint, and body Direct Manipulation.
+10. Verify save/restore, migration, History, and deletion.
+11. Browser-test and accept.
+12. Synchronize documentation after acceptance.
 
-Arc-center selection parity remains outstanding: a center hit can produce a manipulation
-target, but ordinary selection currently collapses its semantic identity to the parent
-Arc. Selection ownership must follow the selected feature (curve, endpoint, or center),
-not silently substitute parent geometry. Consequently the final manual Line-endpoint +
-Arc-center Constraints Coincidence workflow remains outstanding until the architecture
-decision.
+Concentricity and Tangency are **PLANNED FUTURE FEATURE / NOT IMPLEMENTED** and remain
+separate from this sequence.
 
-Radius / Diameter is one implemented Constraints-panel operation backed by the existing
-`CIRCULAR_SIZE` Dimension model: Circle produces Ø and Arc produces R, selection can
-precede or occur during the tool, compatible selections batch, unrelated entities are
-ignored, covered entities are not duplicated, and partial coverage creates only missing
-dimensions. It is not a `RadiusConstraint` or `DiameterConstraint`. Dimensions remain
-persistent dimensional relationships/annotations; geometric Constraints remain
-persistent geometric relationships.
+The reassessment must compare at minimum (A) the current derived Arc center, (B) a
+persistent Arc-center `SketchPoint` analogous to Circle center, and (C) another
+representation only if justified. It must cover minimum independent state/DOFs and
+curvature authority; shared Circle/Arc center infrastructure and topology; solver
+equations and rank; selection; snap/inference; Dimensions/Constraints; each grip's
+variables; serialization and migration; deletion/History; preservation of accepted
+behavior; and the mathematical necessity of differences. It must not choose a new
+workflow, endpoint pivot, body-grip meaning, solver representation, or migration schema
+in advance.
+
+**CURRENT IMPLEMENTATION — not the product requirement.** `DrawingArcEntity` stores
+`startPointId`, `endPointId`, and `bulge = tan(signedSweep / 4)`. P1/P2 are persistent
+endpoint SketchPoints; center, radius, angles, P3, and support Circle are derived. The
+derived center participates in Dimensions, Direct Manipulation, snap/inference, and
+narrow durable `COINCIDENT` / `point-derived-point` relations from persistent authoring
+points. These facts may require migration and do not preselect the final architecture.
+
+**KNOWN GAP.** A center hit can produce a manipulation target, but ordinary selection
+currently collapses its semantic identity to the parent Arc. This can expose Radius /
+Diameter incorrectly instead of point-style Coincidence. Center selection ownership and
+the complete manual Line-endpoint + Arc-center Constraints Coincidence workflow remain
+outstanding.
+
+Radius / Diameter is **IMPLEMENTED AND VERIFIED** as a Constraints-panel operation backed
+by existing `CIRCULAR_SIZE` Dimensions (Circle Ø; Arc R); it does not create a separate
+geometric-constraint entity.
 
 ### Decided first-Circle semantics
 

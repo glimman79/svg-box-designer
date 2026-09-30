@@ -61,20 +61,28 @@ math does not create separate mini-CAD systems.
 
 The next technical task is **ARC COMMON-ARCHITECTURE REASSESSMENT**. Line, Circle, and
 Arc must use the same common Drawing architecture wherever possible, with Arc-specific
-structure only where mathematically necessary. The open decision is whether the Arc
+structure only where mathematically necessary. This is a **LOCKED PRODUCT REQUIREMENT**,
+as are P1 start → P2 end → P3 form control (persistent endpoints, nonpersistent P3), a
+usable semantic center with feature-owned selection, durable authoring and manual
+Coincidence to center, shared Dimensions/Constraints, distinct center/endpoint/body grip
+meanings, partial-DOF behavior, and persistence through History, reload, manipulation,
+deletion, and cleanup. Those user behaviors are not reassessment options. The **OPEN
+INTERNAL ARCHITECTURE DECISION** is whether the Arc
 center remains a derived semantic point or becomes a first-class persistent SketchPoint
-analogous to Circle center; neither option is predetermined. Compare topology, minimum
-independent state and curvature authority, solver/overconstraint behavior, each grip's
-variables, Dimensions and Coincidence references, snap/inference, dependency components,
-deletion, serialization/restore/migration, History, authoring, and preservation of
-accepted behavior.
+analogous to Circle center, or another representation if justified; no option is
+predetermined. Compare topology, shared Circle/Arc center infrastructure, minimum state
+and DOFs, curvature authority, solver equations/rank, selection, grip variables,
+Dimensions/Constraints, snap/inference, dependency components, deletion,
+serialization/restore/migration, History, and preservation of accepted behavior.
 
 Under the current model, durable authoring to an Arc center uses narrow `COINCIDENT` /
 `point-derived-point` between a persistent SketchPoint and the derived center. Current
 selection can detect and manipulate that center but collapses ordinary center selection
-to the parent Arc; semantic center ownership and manual Constraints Coincidence remain
-unresolved until reassessment. Selection must follow the feature clicked, not silently
-substitute its parent. Concentricity and Tangency remain unimplemented.
+to the parent Arc. This is a **KNOWN GAP**, not an undecided interaction: selection must
+follow the center, endpoint, or curve actually clicked. The resulting manual Constraints
+Coincidence workflow is also outstanding; current point-derived-point storage is an
+implementation fact, not a locked representation. Concentricity and Tangency are
+**PLANNED FUTURE FEATURES** and remain unimplemented.
 
 ## Pipeline
 

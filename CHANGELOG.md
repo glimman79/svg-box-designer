@@ -1,5 +1,13 @@
 # Unreleased
 
+## Documentation — locked Arc product contract correction
+
+- Corrected the central documentation to distinguish already locked Arc user behavior
+  from the still-open internal derived-versus-persistent center representation decision.
+- Recorded the outstanding Arc-center selection ownership and manual Constraints
+  Coincidence gaps without claiming a product-code change; Concentricity and Tangency
+  remain planned and unimplemented, and the accepted Circle checkpoint is unchanged.
+
 ## Drawing — Circle checkpoint and Arc reassessment documentation
 
 - Added semantic-point inference parity for Circle center and the currently derived Arc center, durable persistent-point-to-derived-Arc-center Coincidence, and common partial-DOF point manipulation through constraint-aware geometric intent.

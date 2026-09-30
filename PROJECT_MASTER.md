@@ -2,9 +2,19 @@
 
 ## 1. Purpose and authority
 
-This document describes the **current** product and architectural truth. Code on the accepted `main` branch wins if this document drifts. Browser verification is the acceptance authority for pointer sequences and visible interaction; tests are supporting regression evidence. `PROJECT_HISTORY.md` preserves evolution, `CHANGELOG.md` is a concise completed-change record, and `Architecture.md` is a construction-pipeline orientation map.
+This document describes the **current** product and architectural truth. Accepted `main`
+code establishes what is implemented; explicitly locked product requirements establish
+how the product must behave. If they differ, the difference is a gap—not permission to
+redefine the requirement. Browser verification is the acceptance authority for pointer
+sequences and visible interaction; tests are supporting regression evidence.
+`PROJECT_HISTORY.md` preserves evolution, `CHANGELOG.md` is a concise completed-change
+record, and `Architecture.md` is a construction-pipeline orientation map.
 
-Status terms used here are **Implemented**, **Browser-verified / regression-sensitive**, **Planned**, and **Known limitation**. Historical proposals and diagnostics under `docs/` are not current authority.
+Status terms used here include **LOCKED PRODUCT REQUIREMENT**, **IMPLEMENTED AND
+VERIFIED**, **IMPLEMENTED BUT NOT YET VERIFIED**, **KNOWN GAP**, **OPEN INTERNAL
+ARCHITECTURE DECISION**, and **PLANNED FUTURE FEATURE**. Requirements and implementation
+status are independent. Historical proposals and diagnostics under `docs/` are not
+current authority.
 
 ## 2. Product organization
 
@@ -361,6 +371,48 @@ Constraints and driving Dimensions remain authoritative, partial X/Y freedoms re
 usable, and fully blocked motion is a stable no-op. A grip's meaning never changes merely
 because hard relationships restrict it.
 
+#### Authoritative Arc product contract
+
+**LOCKED PRODUCT REQUIREMENT — not an open design question.** Line, Circle, and Arc
+must use common Drawing infrastructure wherever mathematically possible, including
+semantic-point identity/topology, selection, snap, inference/alignment helpers,
+Constraints, Dimensions, solver/component behavior, Direct Manipulation, History, and
+persistence. Arc-only mechanisms are allowed only where its geometry requires them;
+shared behavior must not be replaced with an Arc-only workaround.
+
+- Authoring remains P1 start → P2 end → P3 form/curvature. P1 and P2 are persistent
+  semantic endpoints. P3 is the accepted authoring control and is not a persistent Arc
+  point in this workflow.
+- The center must behave as a real usable semantic point comparable to Circle center:
+  selectable even when constrained; available to snap and relevant inference/alignment;
+  usable by relevant Dimensions and Constraints; connectable by geometry; and
+  manipulable over remaining DOFs. Center, endpoint, and curve clicks select the center
+  point reference, endpoint point, and Arc entity respectively.
+- A Line endpoint connects to center during authoring and afterward through Constraints
+  → Coincidence. The relation must survive manipulation, History, and persistence.
+  Endpoint-plus-center selection must offer Coincidence, not Radius / Diameter caused by
+  silently selecting the parent Arc.
+- Center manipulation expresses feasible center movement. Endpoint manipulation keeps
+  the opposite endpoint as its intended pivot subject to hard constraints. Body/radius
+  manipulation retains its accepted form/radius meaning, not unrelated translation.
+  Constraints and Dimensions restrict a grip without redefining it; accepted Stage 1
+  and partial-DOF behavior remains required absent a later explicit product decision.
+- Arc supports radius R through the shared circular Dimension system; center/endpoints
+  remain relevant positional references. Driving Dimensions and hard Constraints are
+  authoritative, reference Dimensions only measure, compatible persistent relations
+  coexist, and constrained points remain selectable references through common behavior.
+- Required geometry and relations survive Undo/Redo, save/restore, document reload,
+  manipulation, deletion, and cleanup. Representation change requires compatibility and
+  migration consideration before implementation.
+
+**IMPLEMENTED AND VERIFIED.** The accepted foundation includes three-point authoring,
+persistent endpoints, finite and box selection, Point-on-Arc, topology, deletion,
+History/persistence, radius R and supported positional Dimensions, semantic-center
+snap/inference, and distinct center/endpoint/body manipulation including endpoint pivot
+and partial-DOF solver authority. **IMPLEMENTED BUT NOT YET VERIFIED as the complete
+required workflow:** narrow persistent-point ↔ derived-center Coincidence storage exists,
+but does not establish completed manual Constraints authoring or final architecture.
+
 Arc currently stores persistent start/end SketchPoints and bulge while deriving center,
 radius, and angles; P3 is authoring/form state. The derived center is already a semantic
 reference in Dimensions, manipulation, snap/inference, and narrow persistent
@@ -376,11 +428,21 @@ selection, an endpoint owns point selection, and a center marker must own center
 selection rather than silently selecting the parent Arc. Current Arc-center selection
 loses that identity and selects the parent Arc, which can incorrectly enable Radius /
 Diameter instead of point-style Coincidence. Semantic center selection parity and the
-manual endpoint + Arc-center Constraints Coincidence workflow therefore remain
-outstanding pending the architecture decision. Preserve the accepted Arc behavior
+manual endpoint + Arc-center Constraints Coincidence workflow therefore remain **KNOWN
+GAP** items pending the architecture decision. Preserve the accepted Arc behavior
 (three-point authoring, endpoints, center/endpoint/body manipulation, Radius Dimension,
 snap/inference, partial DOFs, box selection, History, and save/restore) unless analysis
 justifies a change; current internal mechanisms may migrate.
+
+**OPEN INTERNAL ARCHITECTURE DECISION.** A dedicated future task must compare (A) the
+current derived center, (B) a persistent Arc-center `SketchPoint` analogous to Circle,
+and (C) another representation only if justified. It must cover independent state/DOFs,
+curvature authority, common Circle/Arc center infrastructure, topology, solver equations
+and rank, selection, snap/inference, Dimensions/Constraints, Direct Manipulation,
+serialization/migration, deletion/History, preservation of accepted behavior, and which
+differences are mathematically necessary. This internal question must not reopen the
+product contract. **PLANNED FUTURE FEATURE:** Concentricity and Tangency remain
+unimplemented and separate.
 
 ## 5. Box / Construction architecture
 
