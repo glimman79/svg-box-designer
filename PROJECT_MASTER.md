@@ -425,6 +425,23 @@ Legacy endpoint-plus-bulge documents must be migratable deterministically. Under
 current convention, `bulge > 0` maps to CCW and `bulge < 0` maps to CW. This requirement
 does not mean migration has begun.
 
+#### Implementation process authority
+
+The locked architecture and its implementation status are independent: architecture is
+**LOCKED**, while the Circle/Arc migration remains **NOT STARTED**. The authoritative
+Stage 0–6 scope, status metadata, and migration policies are maintained in
+[ROADMAP.md](ROADMAP.md#circlearc-implementation-stages-and-status). Repository state and
+these authority documents—not previous Codex conversations—must give each separate
+implementation thread its verified baseline, completed stage, known temporary
+regressions, acceptance evidence, and next stage.
+
+Stages 3 (canonical representation/solver cutover) and 4 (Direct Manipulation) may be
+merged separately. A Stage 3 limitation explicitly deferred to Stage 4 may therefore be
+temporarily documented, but old endpoint-plus-bulge runtime authority must not be kept or
+reintroduced merely to conceal it. The next stage must implement the deferred behavior
+on the target architecture. All stages use clean-as-you-go replacement and caller
+migration; temporary adapters require an explicit exit condition and deletion stage.
+
 #### Solver model and defining equations
 
 Target Arc solver coordinates are `Cx`, `Cy`, `R`, `P1x`, `P1y`, `P2x`, and `P2y`.

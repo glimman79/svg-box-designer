@@ -14,7 +14,9 @@ The locked Arc contract—including three-point creation, endpoint-pivot semanti
 the shared Circle/Arc foundation—is authoritative in
 [PROJECT_MASTER.md](PROJECT_MASTER.md#locked-target-circlearc-architecture); the target Arc representation is now a locked architecture decision, while its
 implementation/migration, Concentricity, and finite-Arc Tangency remain pending and
-unimplemented.
+unimplemented. The authoritative Stage 0–6 migration status and process policy are in
+[ROADMAP.md](ROADMAP.md#circlearc-implementation-stages-and-status); all migration stages
+are currently **NOT STARTED**.
 
 Repository collaboration follows the permanent rule in
 [REGLER_FOR_CHATT_MED_CHATGPT.md](REGLER_FOR_CHATT_MED_CHATGPT.md#permanent-regel-för-repositoryåtkomst):
