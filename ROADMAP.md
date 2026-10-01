@@ -437,15 +437,24 @@ means the required acceptance evidence is complete; passing automated tests alon
 not establish acceptance where real browser verification is required. A checkbox is
 checked only at **ACCEPTED**.
 
-- [ ] **Stage 0 — Characterization & invariants** — **NOT STARTED**
-  - **Status:** NOT STARTED.
+- [ ] **Stage 0 — Characterization & invariants** — **IN PROGRESS**
+  - **Status:** IN PROGRESS — characterization is complete on the unmerged Stage 0
+    branch; repository status semantics reserve IMPLEMENTED for the merged stage.
   - **Scope:** Lock accepted current Circle/Arc behavior with representation-independent
     characterization and regression tests before major refactoring. No target Arc runtime.
-  - **Baseline:** Not assigned.
-  - **PR:** Not assigned.
+  - **Baseline:** `5aa31aa0d3ce763db9b376a0382e9aa2af66ca0e` (`Document Circle
+    and Arc implementation stages (#599)`).
+  - **PR:** Current focused Stage 0 PR; number and URL are assigned when the PR is
+    created and must not be represented here as merged evidence.
   - **Merged commit:** Not assigned.
-  - **Known temporary regressions:** None — implementation not started.
-  - **Acceptance:** Not started.
+  - **Known temporary regressions:** None. Characterization adds no intentional product
+    behavior or Arc runtime/storage changes.
+  - **Acceptance:** Automated evidence on the Stage 0 branch covers Circle/Arc authoring,
+    finite directed geometry, minor/major/semicircle cases, current-format restore,
+    topology/cleanup, selection/hit behavior, Dimensions/Constraints, semantic inference,
+    center/body/endpoint Direct Manipulation, exact opposite-endpoint pivots, constrained
+    manipulation, and History. Relevant focused tests and the production build pass.
+    Merge plus Mikael's real-browser smoke test remain required before ACCEPTED.
 - [ ] **Stage 1 — Common Circular Support & radius foundation** — **NOT STARTED**
   - **Status:** NOT STARTED.
   - **Scope:** Establish a genuinely Circle/Arc-neutral Circular Support, persistent
