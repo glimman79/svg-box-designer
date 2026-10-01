@@ -10,9 +10,30 @@ import { solveDrawingDragCandidate } from '../.test-build/drawing-arc/drawingDir
 import { solveDrawingVariableTarget, solveDrawingVariableTargets, verifyDrawingConstraints } from '../.test-build/drawing-arc/drawingConstraintSolver.js';
 import { analyzeDrawingConstraints, analyzeDrawingEntityMobility, constraintJacobianRow, geometricConstraintEquation } from '../.test-build/drawing-arc/drawingConstraintAnalysis.js';
 import { applyDrawingSolverVector, arcBulgeSolverVariable, deduplicateDrawingSolverVariables, drawingSolverVariableKey, flattenDrawingSolverVariables, pointSolverVariables, readDrawingSolverVariable, writeDrawingSolverVariable } from '../.test-build/drawing-arc/drawingSolverVariables.js';
+import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-arc/drawingHistory.js';
 
 const close = (a, b, e = 1e-8) => assert.ok(Math.abs(a - b) <= e, `${a} != ${b}`);
 const endpoint = (x, y, pointId = null) => ({ point: { x, y }, pointId, midpointLineId: null, lineBodyId: null, curveId: null });
+const idsForTest = (...values) => { let index = 0; return () => values[index++]; };
+const pointAt = (arc, t) => ({
+  x: arc.center.x + arc.radius * Math.cos(arc.startAngle + arc.signedSweep * t),
+  y: arc.center.y + arc.radius * Math.sin(arc.startAngle + arc.signedSweep * t),
+});
+const assertEquivalentArcGeometry = (actual, expected, tolerance = 1e-8) => {
+  assert.ok(actual && expected);
+  for (const key of ['x', 'y']) {
+    close(actual.start[key], expected.start[key], tolerance);
+    close(actual.end[key], expected.end[key], tolerance);
+    close(actual.center[key], expected.center[key], tolerance);
+  }
+  close(actual.radius, expected.radius, tolerance);
+  close(actual.signedSweep, expected.signedSweep, tolerance);
+  for (const t of [0.25, 0.5, 0.75]) {
+    const actualPoint = pointAt(actual, t), expectedPoint = pointAt(expected, t);
+    close(actualPoint.x, expectedPoint.x, tolerance);
+    close(actualPoint.y, expectedPoint.y, tolerance);
+  }
+};
 
 test('three points construct minor arcs in both orientations and flip across chord', () => {
   const down = deriveArcThroughThreePoints({ x: -1, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 });
@@ -25,6 +46,30 @@ test('off-center form chooses a major arc when it lies on that directed portion'
   const arc = deriveArcThroughThreePoints({ x: -1, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 2 });
   assert.ok(arc); assert.ok(Math.abs(arc.signedSweep) > Math.PI);
   assert.ok(angleIsOnDrawingArc(Math.atan2(2 - arc.center.y, -arc.center.x), arc.startAngle, arc.signedSweep));
+});
+
+test('P3 selects finite minor, major, semicircle, and orientation geometry', () => {
+  const cases = [
+    { form: { x: 0, y: -0.5 }, sweep: 'minor' },
+    { form: { x: 0, y: 2 }, sweep: 'major' },
+    { form: { x: 0, y: -1 }, sweep: 'semicircle' },
+    { form: { x: 0, y: 0.999 }, sweep: 'near-semicircle' },
+  ];
+  for (const { form, sweep } of cases) {
+    const start = { x: -1, y: 0 }, end = { x: 1, y: 0 };
+    const arc = deriveArcThroughThreePoints(start, end, form); assert.ok(arc, sweep);
+    assert.deepEqual(arc.start, start); assert.deepEqual(arc.end, end);
+    close(Math.hypot(start.x - arc.center.x, start.y - arc.center.y), arc.radius);
+    close(Math.hypot(end.x - arc.center.x, end.y - arc.center.y), arc.radius);
+    close(Math.hypot(form.x - arc.center.x, form.y - arc.center.y), arc.radius);
+    assert.ok(angleIsOnDrawingArc(Math.atan2(form.y - arc.center.y, form.x - arc.center.x), arc.startAngle, arc.signedSweep), sweep);
+    if (sweep === 'minor') assert.ok(Math.abs(arc.signedSweep) < Math.PI);
+    if (sweep === 'major') assert.ok(Math.abs(arc.signedSweep) > Math.PI);
+    if (sweep === 'semicircle') close(Math.abs(arc.signedSweep), Math.PI);
+  }
+  const above = deriveArcThroughThreePoints({ x: -1, y: 0 }, { x: 1, y: 0 }, { x: 0, y: -0.5 });
+  const below = deriveArcThroughThreePoints({ x: -1, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 0.5 });
+  assert.ok(above && below); assert.equal(Math.sign(above.signedSweep), -Math.sign(below.signedSweep));
 });
 
 test('bulge round trip retains exact derived geometry', () => {
@@ -95,6 +140,26 @@ test('one mutation persists endpoints, arc, and P3 point-curve relation without 
   assert.equal(Object.keys(next.sketches.s.points).length, 4); assert.equal(next.sketches.s.entities.a.type, 'arc');
   assert.equal(next.sketches.s.geometricConstraints['coincident:q:curve:a'].variant, 'point-curve');
   assert.deepEqual(validateDrawingTopology(next), { ok: true });
+});
+
+test('Arc authoring commits as one History transaction and redo restores the same visible finite geometry', () => {
+  const original = document();
+  const draft = commitArcForm(
+    acceptArcEndpoint(acceptArcEndpoint(EMPTY_ARC_INTERACTION, endpoint(-2, 1)), endpoint(6, 3)),
+    { x: 1, y: 7 }, 'arc',
+  ).entity;
+  assert.ok(draft);
+  const transaction = transactDrawingDocument(EMPTY_DRAWING_HISTORY, original,
+    current => appendArcToActiveSketch(current, draft, idsForTest('start', 'end')));
+  assert.equal(transaction.history.undo.length, 1);
+  const committedSketch = transaction.document.sketches.s;
+  const committed = resolveArc(committedSketch, committedSketch.entities.arc); assert.ok(committed);
+
+  const undone = undoDrawingDocument(transaction.history, transaction.document);
+  assert.equal(undone.document.sketches.s.entities.arc, undefined);
+  const redone = redoDrawingDocument(undone.history, undone.document);
+  const redoneSketch = redone.document.sketches.s;
+  assertEquivalentArcGeometry(resolveArc(redoneSketch, redoneSketch.entities.arc), committed);
 });
 
 test('finite point-on-arc verifies interior and rejects opposite support side', () => {
@@ -177,11 +242,27 @@ test('analytic Window/Crossing considers only the finite arc', () => {
   assert.equal(drawingArcQualifiesForRect(arc, { minX: -.2, maxX: .2, minY: -1, maxY: -.8 }, 'crossing'), true);
 });
 
-test('schema v2 restores valid arcs, rejects malformed arcs, and orphan cleanup preserves shared points', () => {
+test('legacy/current-format restore preserves visible minor, major, semicircle, and orientation geometry', () => {
+  for (const storedBulge of [0.5, -0.5, 1, -1, 2, -2]) {
+    const doc = document(); Object.assign(doc.sketches.s.points, { a: { id: 'a', x: -2, y: 1 }, b: { id: 'b', x: 5, y: 3 } });
+    doc.sketches.s.entities.arc = { id: 'arc', type: 'arc', startPointId: 'a', endPointId: 'b', bulge: storedBulge };
+    doc.sketches.s.entityOrder = ['arc'];
+    const before = resolveArc(doc.sketches.s, doc.sketches.s.entities.arc); assert.ok(before);
+    const restored = migrateDrawingDocument(structuredClone(doc)), restoredSketch = restored.sketches.s;
+    assertEquivalentArcGeometry(resolveArc(restoredSketch, restoredSketch.entities.arc), before);
+  }
+});
+
+test('schema v2 rejects malformed arcs, and Arc cleanup removes dependents while preserving shared topology', () => {
   const doc = document(); Object.assign(doc.sketches.s.points, { a: { id: 'a', x: 0, y: 0 }, b: { id: 'b', x: 2, y: 0 }, c: { id: 'c', x: 3, y: 0 } });
   Object.assign(doc.sketches.s.entities, { arc: { id: 'arc', type: 'arc', startPointId: 'a', endPointId: 'b', bulge: 1 }, line: { id: 'line', type: 'line', startPointId: 'b', endPointId: 'c' }, bad: { id: 'bad', type: 'arc', startPointId: 'a', endPointId: 'missing', bulge: 0 } }); doc.sketches.s.entityOrder = ['arc', 'line', 'bad'];
   const restored = migrateDrawingDocument(doc); assert.deepEqual(restored.sketches.s.entityOrder, ['arc', 'line']);
+  restored.sketches.s.dimensions.radius = { id: 'radius', kind: 'CIRCULAR_SIZE', references: [{ kind: 'entity', entityId: 'arc' }], value: 1, role: 'reference', placement: { kind: 'radial', angle: 0, radialOffset: 1 } };
+  restored.sketches.s.dimensionOrder = ['radius'];
+  restored.sketches.s.geometricConstraints.onArc = { id: 'onArc', kind: 'COINCIDENT', variant: 'point-curve', references: [{ kind: 'sketchPoint', pointId: 'c' }, { kind: 'entity', entityId: 'arc' }] };
+  restored.sketches.s.geometricConstraintOrder = ['onArc'];
   const removed = removeEntityAndOrphans(restored.sketches.s, 'arc'); assert.ok(removed.points.b); assert.equal(removed.points.a, undefined);
+  assert.deepEqual(removed.dimensionOrder, []); assert.deepEqual(removed.geometricConstraintOrder, []);
 });
 
 test('Arc endpoints are entity-defining persistent points and shared point dragging preserves identities', () => {
