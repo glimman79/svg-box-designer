@@ -1,5 +1,19 @@
 # Unreleased
 
+## Documentation — Arc contract and repository authority
+
+- Documented the user-confirmed three-point Arc contract, exact opposite-endpoint pivot
+  semantics, shared Circle/Arc foundation, and the separation between locked behavior,
+  current endpoint-plus-bulge implementation, and the next open representation analysis.
+- Recorded future Concentricity and finite-Arc Tangency architecture requirements as
+  planned and unimplemented, including extensibility toward Ellipse, fillets, and
+  Profile Arcs.
+- Established the permanent collaboration rule that ChatGPT Chat is read-only and Codex
+  is the sole repository change executor, subject to explicit scope approval and
+  separate merge approval.
+- Documentation only: no production behavior, source code, tests, configuration, or
+  dependencies changed.
+
 ## Documentation — locked Arc product contract correction
 
 - Corrected the central documentation to distinguish already locked Arc user behavior

@@ -547,6 +547,29 @@ and unimplemented. The accepted Circle checkpoint remains closed, including its 
 topology and persistent point-point Coincidence behavior; the earlier break/jump remains
 not reproducible with no proven root cause.
 
+### 11.18 Locked Arc contract and repository-access authority
+
+The user confirmed that standalone Arc creation is P1 start, P2 end, and P3
+form/curvature, with center and radius calculated automatically and no later
+direction/sweep step. P1/P2 remain persistent semantic endpoints; P3 remains an
+authoring-only control. Endpoint dragging keeps the opposite endpoint as the exact
+stationary pivot, while the accepted center and body/radius grips retain their meanings
+and suitable manipulation can enlarge or shrink the Arc. Hard Constraints and driving
+Dimensions may restrict motion but do not reinterpret a grip.
+
+Circle and Arc were explicitly placed in one shared circular-geometry family. Future
+hard Concentricity must work across stored or derived centers, and future Tangency must
+respect finite-Arc contact and extent; both remain planned and unimplemented. The next
+Arc architecture analysis still owns the choice among current bulge/derived-center
+storage, a persistent center, or another justified representation. No implementation or
+representation decision was made by this documentation update.
+
+The user also permanently established repository authority: conversational ChatGPT is
+strictly read-only, while Codex is the sole assistant authorized to change the
+repository, and only under Mikael Glimvert's explicit scope-specific approval. Merge
+requires separate approval. Connector capability, urgency, small scope, and
+documentation-only work do not create exceptions.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics

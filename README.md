@@ -10,6 +10,17 @@ SVG Box Designer is a browser-based React application for drawing semantic 2D sk
 
 The Drawing and imported/construction document models are currently separate. See [PROJECT_MASTER.md](PROJECT_MASTER.md) for current product scope, architectural authority, invariants, and known boundaries.
 
+The locked Arc contract—including three-point creation, endpoint-pivot semantics, and
+the shared Circle/Arc foundation—is authoritative in
+[PROJECT_MASTER.md](PROJECT_MASTER.md#authoritative-arc-product-contract); internal Arc
+representation remains the next architecture-analysis decision, while Concentricity and
+finite-Arc Tangency remain planned and unimplemented.
+
+Repository collaboration follows the permanent rule in
+[REGLER_FOR_CHATT_MED_CHATGPT.md](REGLER_FOR_CHATT_MED_CHATGPT.md#permanent-regel-för-repositoryåtkomst):
+**ChatGPT Chat is read-only; Codex is the sole authorized change executor, subject to
+Mikael Glimvert's explicit task/scope approval and separate approval before merge.**
+
 ## Technology
 
 - React and React DOM
