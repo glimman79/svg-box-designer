@@ -419,14 +419,143 @@ persistence/restore, and deletion/cleanup. Separately, future selection/referenc
 architecture must represent both persistent and derived/dependent semantic points; it
 must not assume every future semantic point has a `pointId`.
 
-The remaining sequence is:
+#### Circle/Arc implementation stages and status
 
-1. **ARCHITECTURE DECISION — LOCKED/DOCUMENTED:** preserve this target contract.
-2. Design migration and representation-neutral implementation details without reopening it.
-3. Implement Circular Support, target Arc state, defining equations, and legacy migration.
-4. Complete semantic center selection and manual Arc-center Coincidence.
-5. Reverify inference, Dimensions/Constraints, all grips, persistence, History, and cleanup.
-6. Browser-test, accept, and synchronize implementation status documentation.
+The target architecture above is **LOCKED**; the implementation migration is **NOT
+STARTED**. The stages below track the route to that target and do not reopen its
+representation. The architecture-lock documentation PR is not Stage 0.
+
+Repository state plus the authority documents are the source of truth between separate
+Codex threads; prior chat context is not authority. Before starting a stage, record and
+verify its baseline against the preceding merged stage. On completion, update its
+metadata so the next thread can identify the last completed stage, merged commit, known
+temporary regressions, acceptance evidence, and next stage without hidden context.
+
+Status values are **NOT STARTED**, **IN PROGRESS**, **IMPLEMENTED**, and **ACCEPTED**.
+**IMPLEMENTED** means the stage-scope implementation is merged. **ACCEPTED** additionally
+means the required acceptance evidence is complete; passing automated tests alone does
+not establish acceptance where real browser verification is required. A checkbox is
+checked only at **ACCEPTED**.
+
+- [ ] **Stage 0 — Characterization & invariants** — **NOT STARTED**
+  - **Status:** NOT STARTED.
+  - **Scope:** Lock accepted current Circle/Arc behavior with representation-independent
+    characterization and regression tests before major refactoring. No target Arc runtime.
+  - **Baseline:** Not assigned.
+  - **PR:** Not assigned.
+  - **Merged commit:** Not assigned.
+  - **Known temporary regressions:** None — implementation not started.
+  - **Acceptance:** Not started.
+- [ ] **Stage 1 — Common Circular Support & radius foundation** — **NOT STARTED**
+  - **Status:** NOT STARTED.
+  - **Scope:** Establish a genuinely Circle/Arc-neutral Circular Support, persistent
+    center/radius concepts, shared circular-radius solver capability, and required neutral
+    equation infrastructure. Circle may migrate to it; the current Arc remains the sole
+    Arc runtime authority throughout this stage.
+  - **Baseline:** Not assigned.
+  - **PR:** Not assigned.
+  - **Merged commit:** Not assigned.
+  - **Known temporary regressions:** None — implementation not started.
+  - **Acceptance:** Not started.
+- [ ] **Stage 2 — Topology, semantic point & solver readiness** — **NOT STARTED**
+  - **Status:** NOT STARTED.
+  - **Scope:** Prepare generic entity-defining point/equation enumeration, solver
+    component/rank/DOF support, topology/cleanup, and semantic point/selection foundations.
+    Endpoint-plus-bulge remains the sole Arc runtime authority; there is no target Arc
+    storage in this stage.
+  - **Baseline:** Not assigned.
+  - **PR:** Not assigned.
+  - **Merged commit:** Not assigned.
+  - **Known temporary regressions:** None — implementation not started.
+  - **Acceptance:** Not started.
+- [ ] **Stage 3 — Atomic Arc representation/solver cutover** — **NOT STARTED**
+  - **Status:** NOT STARTED.
+  - **Scope:** Atomically change canonical runtime Arc from P1 + P2 + bulge to Center +
+    Radius + P1 + P2 + Orientation. Include the target entity and resolver, persistent
+    center/radius/orientation, authoring commit, solver variables and intrinsic radial
+    equations, component/rank/DOF, Dimensions, Constraints, `CIRCULAR_SIZE`, selection and
+    references, serialization/schema and legacy migration, topology, deletion/cleanup,
+    plus rendering/hit/snap required for a canonical target Arc.
+  - **Cleanup contract:** Canonical production must no longer use
+    `DrawingArcEntity.bulge`, `arc-bulge`, `arcBulgeSolverVariable`, runtime
+    `resolveArcFromBulge`, bulge sign as orientation authority, or a derived Arc center as
+    runtime center identity. These verified current symbols describe the target cleanup
+    contract, not current implementation status. Legacy bulge conversion may remain only
+    at an explicit migration/import/export boundary where required.
+  - **Baseline:** Not assigned.
+  - **PR:** Not assigned.
+  - **Merged commit:** Not assigned.
+  - **Known temporary regressions:** None — implementation not started.
+  - **Acceptance:** Not started.
+- [ ] **Stage 4 — Direct Manipulation on target Arc architecture** — **NOT STARTED**
+  - **Status:** NOT STARTED.
+  - **Scope:** Restore the accepted center, body/radius, P1, and P2 manipulation directly
+    on Center + Radius + P1 + P2 + Orientation, including exact opposite-endpoint pivot,
+    fixed-radius behavior, whole-directed-Arc continuation, orientation preservation,
+    drag-start-absolute/event-rate-independent behavior, and constrained manipulation.
+  - **Hard contract:** Do not reintroduce `bulge`, `arc-bulge`, derived Arc-center
+    authority, target-to-old-runtime conversion for manipulation, or a permanent old/new
+    dual path. Real browser verification of Direct Manipulation is required for
+    **ACCEPTED** status.
+  - **Baseline:** Not assigned.
+  - **PR:** Not assigned.
+  - **Merged commit:** Not assigned.
+  - **Known temporary regressions:** None — implementation not started.
+  - **Acceptance:** Not started.
+- [ ] **Stage 5 — Semantic cleanup & compatibility isolation** — **NOT STARTED**
+  - **Status:** NOT STARTED.
+  - **Scope:** Perform the final repository-wide audit for obsolete Arc helpers, runtime
+    branches, compatibility aliases, Arc-specific derived-center paths, stale bulge
+    assumptions, duplicate paths, dead tests, and stale comments/naming that can only be
+    removed safely after all callers migrate. Preserve/generalize legitimate semantic or
+    derived-point infrastructure, explicit legacy migration boundaries, and common
+    Circle/Arc foundations. This stage is not permission to defer obviously obsolete code
+    from Stages 1–4; clean-as-you-go applies throughout.
+  - **Baseline:** Not assigned.
+  - **PR:** Not assigned.
+  - **Merged commit:** Not assigned.
+  - **Known temporary regressions:** None — implementation not started.
+  - **Acceptance:** Not started.
+- [ ] **Stage 6 — Final acceptance & documentation sync** — **NOT STARTED**
+  - **Status:** NOT STARTED.
+  - **Scope:** Complete full regression and browser acceptance, legacy restore, target
+    save/reload, Circle and Arc regression, final cleanup audit, and documentation sync.
+    Only after accepted implementation may documentation stop calling the migration
+    pending.
+  - **Baseline:** Not assigned.
+  - **PR:** Not assigned.
+  - **Merged commit:** Not assigned.
+  - **Known temporary regressions:** None — implementation not started.
+  - **Acceptance:** Not started.
+
+#### Staged-migration policy
+
+Stages 3 and 4 may be implemented and merged separately. A completed migration stage may
+temporarily leave behavior explicitly assigned to the immediately following stage
+unavailable, disabled, incomplete, or regressed only when the completed stage records the
+specific limitation in **Known temporary regressions**. Each stage must leave a
+deterministic, understood repository state, and the following stage must explicitly
+restore the deferred behavior directly on the target architecture. This is a narrow
+migration exception, not permission for arbitrary breakage or for silently postponing
+work outside the next stage.
+
+In particular, after Stage 3 an explicitly documented Arc Direct Manipulation limitation
+scheduled for Stage 4 is preferable to hidden old bulge authority. Do not convert target
+Arc back to bulge for old manipulation and do not retain old and new Arc runtimes in
+parallel merely to mask the intermediate limitation.
+
+Every stage follows:
+
+```text
+Replace → migrate callers → verify → delete obsolete path
+```
+
+not “add a new path and leave the old path indefinitely.” Each stage must audit old
+callers/helpers, duplicate resolvers or authorities, compatibility shims, obsolete tests,
+and stale comments. Every temporary shim/adapter must record its **Purpose**, **Introduced
+in stage**, **Required callers**, **Exit condition**, and **Deletion stage**. A legitimate
+versioned legacy document reader may remain while old-format support is a product
+requirement, but it must never become a canonical-Arc runtime adapter.
 
 Legacy P1/P2/bulge migration must deterministically produce center/radius/P1/P2/orientation;
 under the current convention `bulge > 0` maps to CCW and `bulge < 0` to CW. Migration is

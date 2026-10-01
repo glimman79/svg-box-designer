@@ -587,6 +587,19 @@ continues to use endpoint-plus-bulge with derived center/radius until a separate
 approved implementation and deterministic legacy migration. Earlier sections correctly
 record that the choice was open at those historical moments; this entry closes it.
 
+### 11.20 Circle/Arc implementation staging locked
+
+Before production migration began, the implementation process was locked into seven
+independently traceable stages (Stage 0 through Stage 6), with repository documentation
+carrying baseline, PR, merged commit, temporary-regression, and acceptance status between
+separate Codex threads. Stage 3's canonical Arc cutover and Stage 4's target-native Direct
+Manipulation may merge separately under a narrow, explicitly documented intermediate-
+regression policy; old bulge runtime authority may not be retained or restored merely to
+mask that interval. Clean-as-you-go and time-bounded shim metadata apply throughout.
+
+This was documentation-only. All stages initially remained **NOT STARTED**; no production
+or test code, Drawing behavior, solver behavior, or Arc runtime representation changed.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics

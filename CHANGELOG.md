@@ -1,5 +1,17 @@
 # Unreleased
 
+## Documentation — Circle/Arc implementation staging locked
+
+- Added authoritative Stage 0–6 scope and status tracking before implementation; every
+  stage is initially **NOT STARTED**.
+- Recorded that the canonical Arc cutover and target-native Direct Manipulation may merge
+  separately under a narrow, explicitly documented temporary-regression policy, without
+  retaining or reintroducing old runtime authority to mask the intermediate state.
+- Required clean-as-you-go caller migration, explicit exit conditions for temporary
+  shims, and repository documentation as the source of truth between Codex threads.
+- Documentation only: no production or test code, Drawing or solver behavior, dependency,
+  configuration, or Arc runtime representation changed.
+
 ## Documentation — Circle/Arc architecture decision locked
 
 - Locked common Circular Support semantics for Circle and Arc, with target Arc state
