@@ -1,5 +1,6 @@
 import type { DrawingArcEntity, DrawingDimension, DrawingDocumentV2, DrawingLineEntity, DrawingPoint, DrawingPointReference, DrawingSketchPoint, DrawingSketchV2, ResolvedDrawingArc, ResolvedDrawingCircle, ResolvedDrawingLine } from './drawingTypes';
 import { resolveArcFromBulge } from './drawingArcGeometry.js';
+import { resolveCircularSupport } from './drawingCircularSupport.js';
 
 export type DrawingTopologyValidation = Readonly<{ ok: true } | { ok: false; errors: readonly string[] }>;
 
@@ -10,8 +11,8 @@ export const resolveLine = (sketch: DrawingSketchV2, line: DrawingLineEntity): R
   return start && end ? { ...line, start: { x: start.x, y: start.y }, end: { x: end.x, y: end.y } } : null;
 };
 export const resolveCircle = (sketch: DrawingSketchV2, circle: import('./drawingTypes').DrawingCircleEntity): ResolvedDrawingCircle | null => {
-  const center = resolveSketchPoint(sketch, circle.centerPointId);
-  return center && Number.isFinite(circle.radius) && circle.radius > 0 ? { ...circle, center: { x: center.x, y: center.y } } : null;
+  const support = resolveCircularSupport(sketch, circle);
+  return support?.entity.type === 'circle' ? support.entity : null;
 };
 export const resolveArc = (sketch: DrawingSketchV2, arc: DrawingArcEntity): ResolvedDrawingArc | null => {
   const start = resolveSketchPoint(sketch, arc.startPointId), end = resolveSketchPoint(sketch, arc.endPointId);

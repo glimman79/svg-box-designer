@@ -5,7 +5,7 @@ import { createDrawingDocumentV2 } from '../.test-build/drawing-circle-direct-ma
 import { analyzeDrawingConstraints, analyzeDrawingEntityMobility, constraintJacobianRow, geometricConstraintEquation } from '../.test-build/drawing-circle-direct-manipulation/drawingConstraintAnalysis.js';
 import { solveDrawingVariableTarget, solveDrawingVariableTargets, verifyDrawingConstraints } from '../.test-build/drawing-circle-direct-manipulation/drawingConstraintSolver.js';
 import { createCircleRadiusDragTarget, solveDrawingDragCandidate } from '../.test-build/drawing-circle-direct-manipulation/drawingDirectManipulation.js';
-import { circleRadiusSolverVariable, drawingSolverVariableKey, pointSolverVariables, readDrawingSolverVariable, writeDrawingSolverVariable } from '../.test-build/drawing-circle-direct-manipulation/drawingSolverVariables.js';
+import { circularRadiusSolverVariable, drawingSolverVariableKey, pointSolverVariables, readDrawingSolverVariable, writeDrawingSolverVariable } from '../.test-build/drawing-circle-direct-manipulation/drawingSolverVariables.js';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-circle-direct-manipulation/drawingHistory.js';
 import { createCircularSizeDimension } from '../.test-build/drawing-circle-direct-manipulation/drawingDimension.js';
 
@@ -30,8 +30,8 @@ const axisDimension = (id, pointId, axis, value) => ({ id, kind: axis === 'x' ? 
   references: [{ kind: 'datum', datum: 'ORIGIN' }, { kind: 'sketchPoint', pointId }], value, role: 'driving', placement: { kind: 'linear', offset: 5 } });
 
 test('circle radius is a stable shared scalar with immutable validated writes', () => {
-  const document = make(), sketch = document.sketches[document.activeSketchId], variable = circleRadiusSolverVariable('circle');
-  assert.equal(drawingSolverVariableKey(variable), 'entity:circle:circle-radius');
+  const document = make(), sketch = document.sketches[document.activeSketchId], variable = circularRadiusSolverVariable('circle');
+  assert.equal(drawingSolverVariableKey(variable), 'entity:circle:circular-radius');
   assert.equal(readDrawingSolverVariable(sketch, variable), 10);
   const changed = writeDrawingSolverVariable(sketch, variable, 14);
   assert.ok(changed); assert.notEqual(changed, sketch); assert.equal(sketch.entities.circle.radius, 10);
@@ -40,7 +40,7 @@ test('circle radius is a stable shared scalar with immutable validated writes', 
 });
 
 test('circle scalar belongs to rank component and point-on-circle Jacobian', () => {
-  const document = make(true), sketch = document.sketches[document.activeSketchId], variable = circleRadiusSolverVariable('circle');
+  const document = make(true), sketch = document.sketches[document.activeSketchId], variable = circularRadiusSolverVariable('circle');
   const equation = geometricConstraintEquation(sketch, sketch.geometricConstraints.on); assert.ok(equation);
   assert.deepEqual(equation.scalarVariables, [variable]);
   const component = analyzeDrawingConstraints(sketch).componentByVariableKey.get(drawingSolverVariableKey(variable));
@@ -53,7 +53,7 @@ test('circle scalar belongs to rank component and point-on-circle Jacobian', () 
 
 test('direct scalar target projects connected point while preserving hard equation', () => {
   const document = make(true), sketch = document.sketches[document.activeSketchId];
-  const solved = solveDrawingVariableTarget(sketch, { variable: circleRadiusSolverVariable('circle'), value: 15 });
+  const solved = solveDrawingVariableTarget(sketch, { variable: circularRadiusSolverVariable('circle'), value: 15 });
   assert.ok(solved); assert.equal(solved.entities.circle.radius, 15);
   assert.ok(verifyDrawingConstraints(solved, [], ['on'])); assert.ok(Math.abs(Math.hypot(solved.points.q.x - solved.points.center.x, solved.points.q.y - solved.points.center.y) - 15) < 1e-7);
 });

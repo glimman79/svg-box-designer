@@ -2,8 +2,9 @@ import type { DrawingDimension, DrawingDocumentV2, DrawingGeometricConstraint, D
 import { analyzeDrawingConstraints, constraintEquation, constraintPointKey, drawingConstraintDegreesOfFreedomForPoints, DRAWING_ORIGIN_CONSTRAINT_KEY, geometricConstraintEquation, geometricConstraintEquations, lineToLineAngleAndGradient, lineToLineDistanceAndGradient, parallelAndGradient, perpendicularAndGradient, pointOnLinearSupportAndGradient, pointToLineDistanceAndGradient } from './drawingConstraintAnalysis.js';
 import { measureDimension, measureLineToLineDistance, measurePointToLine, resolveDimensionLineReference, resolveDrawingPointReference } from './drawingDimension.js';
 import { angleIsOnDrawingArc, resolveArcFromBulge } from './drawingArcGeometry.js';
-import { applyDrawingSolverVector, arcBulgeSolverVariable, circleRadiusSolverVariable, deduplicateDrawingSolverVariables, drawingSolverVariableKey, flattenDrawingSolverVariables, pointSolverVariables, type DrawingSolverVariable } from './drawingSolverVariables.js';
+import { applyDrawingSolverVector, arcBulgeSolverVariable, circularRadiusSolverVariable, deduplicateDrawingSolverVariables, drawingSolverVariableKey, flattenDrawingSolverVariables, pointSolverVariables, type DrawingSolverVariable } from './drawingSolverVariables.js';
 import { measureCircularDimension } from './drawingCircularSize.js';
+import { circularSupportResidual } from './drawingCircularGeometry.js';
 
 export const DRAWING_CONSTRAINT_TOLERANCE_MM = 1e-7;
 export const DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS = 80;
@@ -70,7 +71,7 @@ const evaluateSystem = (sketch: DrawingSketchV2, component: ComponentState, vari
         const p = coordinate(sketch, values, index, pKey), center = coordinate(sketch, values, index, centerKey);
         const dx = p.x - center.x, dy = p.y - center.y, distance = Math.hypot(dx, dy);
         if (distance <= DRAWING_CONSTRAINT_TOLERANCE_MM) return null;
-        residuals.push(distance - circle.radius);
+        residuals.push(circularSupportResidual(p, { center, radius: circle.radius }));
         for (const [key, sign] of [[pKey, 1], [centerKey, -1]] as const) { const i = index.get(key); if (i !== undefined) { row[i * 2] += sign * dx / distance; row[i * 2 + 1] += sign * dy / distance; } }
         jacobian.push(row); continue;
       }
@@ -907,7 +908,7 @@ export const solveDrawingDimensionEdit = ({ document, dimensionId, targetValue }
     if (!entity || entity.type === 'circle' && edited.mode !== 'diameter' || entity.type === 'arc' && edited.mode !== 'radius') return fail('MISSING_REFERENCE');
     const dimensions = { ...sketch.dimensions, [dimensionId]: { ...edited, value: targetValue } };
     const base = { ...sketch, dimensions };
-    const scalar = entity.type === 'circle' ? circleRadiusSolverVariable(entity.id) : arcBulgeSolverVariable(entity.id);
+    const scalar = entity.type === 'circle' ? circularRadiusSolverVariable(entity.id) : arcBulgeSolverVariable(entity.id);
     const analysis = analyzeDrawingConstraints(base), component = analysis.componentByVariableKey.get(drawingSolverVariableKey(scalar));
     let candidate: DrawingSketchV2 | null = null;
     if (component) {

@@ -1,4 +1,5 @@
 import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingArcEntity, type DrawingPoint, type ResolvedDrawingArc } from './drawingTypes.js';
+import { circularSupportResidual, projectPointToCircularSupport } from './drawingCircularGeometry.js';
 
 const TAU = Math.PI * 2;
 const normalizedPositive = (angle: number) => ((angle % TAU) + TAU) % TAU;
@@ -49,9 +50,7 @@ export const deriveArcThroughThreePoints = (start: DrawingPoint, end: DrawingPoi
 };
 
 export const projectPointToArc = (point: DrawingPoint, arc: ResolvedDrawingArc): DrawingPoint => {
-  const dx = point.x - arc.center.x, dy = point.y - arc.center.y, length = Math.hypot(dx, dy);
-  const radial = length > 1e-12 ? { x: arc.center.x + arc.radius * dx / length, y: arc.center.y + arc.radius * dy / length }
-    : { x: arc.center.x + arc.radius, y: arc.center.y };
+  const radial = projectPointToCircularSupport(point, arc);
   if (angleIsOnDrawingArc(Math.atan2(radial.y - arc.center.y, radial.x - arc.center.x), arc.startAngle, arc.signedSweep)) return radial;
   const ds = Math.hypot(point.x - arc.start.x, point.y - arc.start.y), de = Math.hypot(point.x - arc.end.x, point.y - arc.end.y);
   return ds <= de ? arc.start : arc.end;
@@ -70,7 +69,7 @@ export const finiteArcConstraintResidual = (point: DrawingPoint, entity: Drawing
   if (!arc) return null;
   const angle = Math.atan2(point.y - arc.center.y, point.x - arc.center.x);
   return angleIsOnDrawingArc(angle, arc.startAngle, arc.signedSweep)
-    ? Math.hypot(point.x - arc.center.x, point.y - arc.center.y) - arc.radius
+    ? circularSupportResidual(point, arc)
     : Math.min(Math.hypot(point.x - start.x, point.y - start.y), Math.hypot(point.x - end.x, point.y - end.y));
 };
 
