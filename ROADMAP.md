@@ -437,24 +437,27 @@ means the required acceptance evidence is complete; passing automated tests alon
 not establish acceptance where real browser verification is required. A checkbox is
 checked only at **ACCEPTED**.
 
-- [ ] **Stage 0 — Characterization & invariants** — **IN PROGRESS**
-  - **Status:** IN PROGRESS — characterization is complete on the unmerged Stage 0
-    branch; repository status semantics reserve IMPLEMENTED for the merged stage.
+- [x] **Stage 0 — Characterization & invariants** — **ACCEPTED**
+  - **Status:** ACCEPTED.
   - **Scope:** Lock accepted current Circle/Arc behavior with representation-independent
     characterization and regression tests before major refactoring. No target Arc runtime.
   - **Baseline:** `5aa31aa0d3ce763db9b376a0382e9aa2af66ca0e` (`Document Circle
     and Arc implementation stages (#599)`).
-  - **PR:** Current focused Stage 0 PR; number and URL are assigned when the PR is
-    created and must not be represented here as merged evidence.
-  - **Merged commit:** Not assigned.
-  - **Known temporary regressions:** None. Characterization adds no intentional product
-    behavior or Arc runtime/storage changes.
-  - **Acceptance:** Automated evidence on the Stage 0 branch covers Circle/Arc authoring,
-    finite directed geometry, minor/major/semicircle cases, current-format restore,
-    topology/cleanup, selection/hit behavior, Dimensions/Constraints, semantic inference,
-    center/body/endpoint Direct Manipulation, exact opposite-endpoint pivots, constrained
-    manipulation, and History. Relevant focused tests and the production build pass.
-    Merge plus Mikael's real-browser smoke test remain required before ACCEPTED.
+  - **PR:** #600, `Characterize Circle and Arc migration invariants`.
+  - **Merged commit:** `c82f3e92ad0d87ebdfa6b5399d1b1ab53ee9abac`.
+  - **Known temporary regressions:** None.
+  - **Acceptance:** Automated characterization and production build passed:
+    `npm run test:drawing-circle`, `npm run test:drawing-arc`,
+    `npm run test:drawing-circle-direct-manipulation`,
+    `npm run test:drawing-arc-direct-manipulation`,
+    `npm run test:drawing-circular-dimension`,
+    `npm run test:drawing-semantic-point-inference`,
+    `npm run test:drawing-pointer-arbitration`,
+    `npm run test:drawing-circle-coincidence-runtime`, and `npm run build`. Mikael's
+    real-browser smoke acceptance passed Circle creation, center drag, and body/radius
+    drag, plus Arc P1 → P2 → P3 creation, center drag as whole-Arc translation,
+    body/radius drag, P1 drag with P2 as exact opposite-endpoint pivot, and P2 drag with
+    P1 as exact opposite-endpoint pivot.
 - [ ] **Stage 1 — Common Circular Support & radius foundation** — **NOT STARTED**
   - **Status:** NOT STARTED.
   - **Scope:** Establish a genuinely Circle/Arc-neutral Circular Support, persistent

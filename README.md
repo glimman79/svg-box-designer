@@ -16,8 +16,8 @@ the shared Circle/Arc foundation—is authoritative in
 implementation/migration, Concentricity, and finite-Arc Tangency remain pending and
 unimplemented. The authoritative Stage 0–6 migration status and process policy are in
 [ROADMAP.md](ROADMAP.md#circlearc-implementation-stages-and-status); all migration stages
-after the characterization safety-net stage are currently **NOT STARTED**. Stage 0 status
-is tracked there while its focused PR proceeds through merge and acceptance.
+after the characterization safety-net stage are currently **NOT STARTED**. Stage 0 is
+**ACCEPTED**; Stage 1 has not started.
 
 Repository collaboration follows the permanent rule in
 [REGLER_FOR_CHATT_MED_CHATGPT.md](REGLER_FOR_CHATT_MED_CHATGPT.md#permanent-regel-för-repositoryåtkomst):
