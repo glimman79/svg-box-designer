@@ -366,7 +366,8 @@ selection, snapping, inference/alignment, Constraints, Dimensions, solver/compon
 Direct Manipulation, History, and persistence. Arc-specific mechanisms are permitted
 only for actual Arc mathematics. Arc remains P1 start → P2 end → P3 form/curvature;
 P1/P2 are persistent semantic endpoints and P3 is an authoring control, not a persistent
-Arc point in the accepted workflow. The Arc center must behave to the user as a real
+Arc point in the accepted workflow. Center and radius are calculated automatically, and
+there is no separate direction/sweep action after drawing. The Arc center must behave to the user as a real
 semantic point: selectable even when constrained, snappable, available to relevant
 helpers, Dimensions and Constraints, connectable geometry, and manipulable over
 remaining DOFs. Curve, endpoint, and center clicks select the Arc, endpoint point, and
@@ -374,7 +375,9 @@ center point reference respectively. A Line endpoint must connect durably to the
 during authoring and through manual Constraints → Coincidence. Driving Dimensions and
 hard Constraints remain authoritative; references do not become driving. Center drag
 expresses feasible center movement, endpoint drag keeps the opposite endpoint as its
-intended pivot, and body/radius drag retains the accepted form/radius meaning. Required
+exact stationary pivot (P2 for a P1 drag; P1 for a P2 drag), and body/radius drag retains
+the accepted form/radius meaning and fixed-center free-case behavior. Appropriate direct
+manipulation can make the Arc larger or smaller. Required
 geometry and relations survive manipulation, Undo/Redo, save/restore, reload, deletion,
 and cleanup. This contract is not reopened by the architecture task.
 
@@ -394,7 +397,10 @@ The remaining sequence is:
 12. Synchronize documentation after acceptance.
 
 Concentricity and Tangency are **PLANNED FUTURE FEATURE / NOT IMPLEMENTED** and remain
-separate from this sequence.
+separate from this sequence. Future hard Concentricity must work between Circle and Arc
+centers regardless of whether either center is stored or derived. Future Tangency must
+respect the actual finite Arc, including contact position and arc extent. The shared
+circular foundation must remain extensible to Ellipse, fillets, and Profile Arcs.
 
 The reassessment must compare at minimum (A) the current derived Arc center, (B) a
 persistent Arc-center `SketchPoint` analogous to Circle center, and (C) another

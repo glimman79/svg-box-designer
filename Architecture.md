@@ -27,6 +27,13 @@ architecture. The Arc authoring P1-to-P2
 reference line and P3 support Circle are transient presentation only—not entity
 geometry, topology, History, or export geometry.
 
+The user-visible contract is independent of that storage choice. Arc authoring is P1
+start, P2 end, then P3 form/curvature; P1/P2 remain semantic endpoints, P3 remains an
+authoring-only control, and the program calculates center and radius without a separate
+direction/sweep action. A future representation may retain bulge, persist a center, or
+use another justified model—the next architecture analysis must decide rather than this
+document prejudging it.
+
 Direct Manipulation uses shared constrained solving while respecting canonical storage.
 A grip defines the semantic subspace of an interaction: persistent Constraints and
 driving Dimensions restrict motion inside it but do not redefine the grip. Exact grip
@@ -82,7 +89,11 @@ to the parent Arc. This is a **KNOWN GAP**, not an undecided interaction: select
 follow the center, endpoint, or curve actually clicked. The resulting manual Constraints
 Coincidence workflow is also outstanding; current point-derived-point storage is an
 implementation fact, not a locked representation. Concentricity and Tangency are
-**PLANNED FUTURE FEATURES** and remain unimplemented.
+**PLANNED FUTURE FEATURES** and remain unimplemented. Hard Concentricity must eventually
+relate Circle and Arc centers independently of stored-versus-derived representation.
+Tangency must use the actual finite Arc, including contact position and extent. The
+common circular architecture must also remain extensible to Ellipse, fillets, and
+Profile Arcs.
 
 ## Pipeline
 

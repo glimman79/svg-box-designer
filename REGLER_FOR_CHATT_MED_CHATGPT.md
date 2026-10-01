@@ -14,6 +14,32 @@ Dokumentet är inte:
 
 Repositoryt är auktoritativt för projektets faktiska tillstånd. Reglerna här ska användas tillsammans med central dokumentation och aktuell kod, inte ersätta dem.
 
+## PERMANENT REGEL FÖR REPOSITORYÅTKOMST
+
+> **CHATGPT CHAT = ENDAST LÄSBEHÖRIGHET.**
+>
+> **CODEX = ENDA GODKÄNDA ÄNDRINGSUTFÖRAREN, OCH ENDAST EFTER MIKAEL
+> GLIMVERTS UTTRYCKLIGA GODKÄNNANDE AV DEN AVSEDDA UPPGIFTEN ELLER OMFATTNINGEN.**
+
+Den konversationella ChatGPT-assistenten får läsa repositoryfiler, källkod, brancher,
+commits och diffar, analysera arkitektur, förklara resultat och—endast när användaren
+uttryckligen ber om det—förbereda en Codex-prompt. ChatGPT Chat får aldrig skapa,
+ändra eller radera repositoryfiler; skapa, radera eller ändra brancher; skapa commits;
+pusha; skapa, ändra, stänga eller merga pull requests; ändra inställningar,
+behörigheter eller workflows; eller utföra någon annan GitHub-operation som ändrar
+remote repository state.
+
+Regeln gäller även om användaren ber ChatGPT att fixa, uppdatera, implementera eller
+dokumentera något. En allmän begäran är inte skrivtillstånd, och tillgängliga
+skrivbehörigheter i en GitHub-connector är aldrig auktorisation. ChatGPT ska i stället
+förbereda en Codex-instruktion när användaren uttryckligen ber om en prompt.
+
+Codex får analysera utan att därmed få redigera. Ändringstillstånd måste ange uppgift
+eller omfattning; tillstånd att skapa branch eller commit är inte mergetillstånd, och
+dokumentationstillstånd är inte tillstånd att ändra produktionskod. Om auktorisationen
+är oklar ska Codex stoppa och fråga användaren. Ingen brådska, bekvämlighet, liten
+ändring eller dokumentationsändring medger undantag.
+
 ## 2. Hierarki för projektets sanningskällor
 
 När ChatGPT behöver fastställa projektets aktuella sanning ska följande ordning användas:
@@ -91,6 +117,12 @@ Analys och implementation ska hållas isär tills användaren uttryckligen välj
 Ny utveckling ska normalt börja från senast accepterade och mergade GitHub-`main`:
 
 > accepterad main → ny branch/session → implementation → tester → commit → PR → användargranskning → merge → webbläsarverifiering → acceptans
+
+För varje godkänd ändringsuppgift ska Codex verifiera aktuell `main`-HEAD, arbeta på en
+isolerad branch, hålla sig inom godkänd omfattning, rapportera ändrade filer och relevant
+verifiering samt presentera ändringarna för granskning. Merge kräver ett separat,
+uttryckligt godkännande från Mikael Glimvert. ChatGPT Chat förblir skrivskyddad genom
+hela arbetsflödet.
 
 Innan ChatGPT skapar en ny Codex-prompt för implementation eller dokumentation ska ChatGPT kontrollera den faktiskt accepterade `main`-branchen direkt mot GitHub, fastställa dess exakta aktuella commit-SHA och ange denna SHA i prompten som obligatorisk baseline.
 

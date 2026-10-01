@@ -9,6 +9,10 @@ redefine the requirement. Browser verification is the acceptance authority for p
 sequences and visible interaction; tests are supporting regression evidence.
 `PROJECT_HISTORY.md` preserves evolution, `CHANGELOG.md` is a concise completed-change
 record, and `Architecture.md` is a construction-pipeline orientation map.
+Repository changes are governed by [REGLER_FOR_CHATT_MED_CHATGPT.md](REGLER_FOR_CHATT_MED_CHATGPT.md):
+ChatGPT Chat is permanently read-only, and Codex is the sole authorized change executor,
+subject to Mikael Glimvert's explicit task- or scope-specific approval and separate merge
+approval.
 
 Status terms used here include **LOCKED PRODUCT REQUIREMENT**, **IMPLEMENTED AND
 VERIFIED**, **IMPLEMENTED BUT NOT YET VERIFIED**, **KNOWN GAP**, **OPEN INTERNAL
@@ -382,7 +386,9 @@ shared behavior must not be replaced with an Arc-only workaround.
 
 - Authoring remains P1 start → P2 end → P3 form/curvature. P1 and P2 are persistent
   semantic endpoints. P3 is the accepted authoring control and is not a persistent Arc
-  point in this workflow.
+  point in this workflow. The program calculates the circular center and radius from
+  the three accepted positions; direction/sweep requires no separate user action after
+  the Arc is drawn.
 - The center must behave as a real usable semantic point comparable to Circle center:
   selectable even when constrained; available to snap and relevant inference/alignment;
   usable by relevant Dimensions and Constraints; connectable by geometry; and
@@ -393,7 +399,9 @@ shared behavior must not be replaced with an Arc-only workaround.
   Endpoint-plus-center selection must offer Coincidence, not Radius / Diameter caused by
   silently selecting the parent Arc.
 - Center manipulation expresses feasible center movement. Endpoint manipulation keeps
-  the opposite endpoint as its intended pivot subject to hard constraints. Body/radius
+  the opposite endpoint as an exact stationary pivot subject to hard constraints: P2
+  stays fixed while P1 is dragged, and P1 stays fixed while P2 is dragged. The Arc can
+  become larger or smaller through appropriate direct manipulation. Body/radius
   manipulation retains its accepted form/radius meaning, not unrelated translation.
   Constraints and Dimensions restrict a grip without redefining it; accepted Stage 1
   and partial-DOF behavior remains required absent a later explicit product decision.
@@ -442,7 +450,11 @@ and rank, selection, snap/inference, Dimensions/Constraints, Direct Manipulation
 serialization/migration, deletion/History, preservation of accepted behavior, and which
 differences are mathematically necessary. This internal question must not reopen the
 product contract. **PLANNED FUTURE FEATURE:** Concentricity and Tangency remain
-unimplemented and separate.
+unimplemented and separate. Future hard Concentricity must relate Circle and Arc centers
+whether a center is stored or derived. Future Tangency must validate contact against the
+actual finite Arc, including contact position and arc extent. The circular foundation
+must remain extensible to Ellipse, fillets, and Profile Arcs without prejudging their
+representations.
 
 ## 5. Box / Construction architecture
 
