@@ -52,7 +52,7 @@ export const resolveDrawingPointerOwner = (
   if (pointCandidate) {
     if (pointCandidate.reference?.kind === 'derivedPoint' && pointCandidate.reference.role === 'center') {
       const target = createArcCenterDragTarget(document, pointCandidate.reference.entityId);
-      if (target) return { kind: 'geometry', selection: { kind: 'arc', arcId: pointCandidate.reference.entityId }, target };
+      if (target) return { kind: 'geometry', selection: { kind: 'semanticPoint', reference: pointCandidate.reference }, target };
     }
     const pointId = pointCandidate.pointId ?? (() => {
       const sketch = document.sketches[document.activeSketchId];
@@ -82,7 +82,7 @@ export const resolveDrawingPointerOwner = (
 
   if (evidence.explicitArcCenterId) {
     const target = createArcCenterDragTarget(document, evidence.explicitArcCenterId);
-    if (target) return { kind: 'geometry', selection: { kind: 'arc', arcId: evidence.explicitArcCenterId }, target };
+    if (target) return { kind: 'geometry', selection: { kind: 'semanticPoint', reference: { kind: 'derivedPoint', entityId: evidence.explicitArcCenterId, role: 'center' } }, target };
   }
   return evidence.dimensionId
     ? { kind: 'dimension', dimensionId: evidence.dimensionId, surface: evidence.dimensionSurface ?? 'line' }

@@ -483,17 +483,22 @@ checked only at **ACCEPTED**.
     Arc P1 → P2 → P3 creation, center and body/radius drag, each endpoint drag with the
     opposite endpoint as the exact stationary pivot, and Radius Dimension with the R
     presentation.
-- [ ] **Stage 2 — Topology, semantic point & solver readiness** — **NOT STARTED**
-  - **Status:** NOT STARTED.
+- [ ] **Stage 2 — Topology, semantic point & solver readiness** — **IN PROGRESS**
+  - **Status:** IN PROGRESS — implementation prepared; merge and browser acceptance pending.
   - **Scope:** Prepare generic entity-defining point/equation enumeration, solver
     component/rank/DOF support, topology/cleanup, and semantic point/selection foundations.
     Endpoint-plus-bulge remains the sole Arc runtime authority; there is no target Arc
     storage in this stage.
-  - **Baseline:** Not assigned.
+  - **Baseline:** `35ca8dbd17f8f41889d0c2b3efaf27b8259b091b` (`Accept Circular
+    Support Stage 1 (#603)`).
   - **PR:** Not assigned.
   - **Merged commit:** Not assigned.
-  - **Known temporary regressions:** None — implementation not started.
-  - **Acceptance:** Not started.
+  - **Known temporary regressions:** None known. Current Arc remains endpoint + endpoint
+    + bulge and retains `arc-bulge`; no target Arc state or radial equations are present.
+  - **Automated evidence:** Entity-definition, topology, semantic-selection,
+    component/rank/DOF, Stage 0/1 regression, TypeScript, and production-build checks are
+    recorded in the implementation PR.
+  - **Acceptance:** Merge and Mikael's real-browser verification are pending.
 - [ ] **Stage 3 — Atomic Arc representation/solver cutover** — **NOT STARTED**
   - **Status:** NOT STARTED.
   - **Scope:** Atomically change canonical runtime Arc from P1 + P2 + bulge to Center +
