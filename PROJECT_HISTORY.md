@@ -570,6 +570,23 @@ repository, and only under Mikael Glimvert's explicit scope-specific approval. M
 requires separate approval. Connector capability, urgency, small scope, and
 documentation-only work do not create exceptions.
 
+### 11.19 Circle/Arc representation architecture locked
+
+The representation analysis concluded with a locked semantic and mathematical target:
+Circle and Arc share Circular Support (persistent semantic center and radius), while Arc
+adds persistent P1/P2 and CW/CCW orientation. Orientation is the only stored branch state;
+sweep and minor/semicircle/major classification are derived. Two intrinsic radial
+defining equations reduce the target Arc's seven continuous coordinates to five generic
+geometric DOF and remain distinct from user Constraints.
+
+The decision also locked representation-independent whole-directed-Arc endpoint
+continuation, drag-start-absolute manipulation, fixed-radius semicircle projection, and
+persistent center identity. Common Concentricity and support-circle Tangency with finite
+Arc validation remain future architecture tests. This was documentation-only: production
+continues to use endpoint-plus-bulge with derived center/radius until a separately
+approved implementation and deterministic legacy migration. Earlier sections correctly
+record that the choice was open at those historical moments; this entry closes it.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics

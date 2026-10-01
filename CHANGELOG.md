@@ -1,5 +1,15 @@
 # Unreleased
 
+## Documentation — Circle/Arc architecture decision locked
+
+- Locked common Circular Support semantics for Circle and Arc, with target Arc state
+  consisting of persistent center/radius, persistent P1/P2, and CW/CCW orientation.
+- Documented five geometric DOF through two intrinsic radial defining equations, derived
+  sweep/classification, manipulation/continuation contracts, and future shared
+  Concentricity and finite-Arc Tangency requirements.
+- Kept current endpoint-plus-bulge production state explicit; implementation and legacy
+  migration remain pending, with no source code, tests, or Drawing behavior changed.
+
 ## Documentation — Arc contract and repository authority
 
 - Documented the user-confirmed three-point Arc contract, exact opposite-endpoint pivot
