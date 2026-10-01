@@ -3,7 +3,7 @@ import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingEntity, type DrawingSketchV2
 
 export type DrawingSolverVariable =
   | Readonly<{ kind: 'point-axis'; pointId: string; axis: 'x' | 'y' }>
-  | Readonly<{ kind: 'entity-scalar'; entityId: string; scalar: 'arc-bulge' | 'circle-radius' }>;
+  | Readonly<{ kind: 'entity-scalar'; entityId: string; scalar: 'arc-bulge' | 'circular-radius' }>;
 
 export const pointSolverVariables = (pointId: string): readonly DrawingSolverVariable[] => [
   { kind: 'point-axis', pointId, axis: 'x' },
@@ -13,8 +13,8 @@ export const pointSolverVariables = (pointId: string): readonly DrawingSolverVar
 export const arcBulgeSolverVariable = (entityId: string): DrawingSolverVariable =>
   ({ kind: 'entity-scalar', entityId, scalar: 'arc-bulge' });
 
-export const circleRadiusSolverVariable = (entityId: string): DrawingSolverVariable =>
-  ({ kind: 'entity-scalar', entityId, scalar: 'circle-radius' });
+export const circularRadiusSolverVariable = (entityId: string): DrawingSolverVariable =>
+  ({ kind: 'entity-scalar', entityId, scalar: 'circular-radius' });
 
 export const drawingSolverVariableKey = (variable: DrawingSolverVariable): string => variable.kind === 'point-axis'
   ? `point:${variable.pointId}:${variable.axis}`
@@ -38,7 +38,7 @@ export const writeDrawingSolverVariable = (sketch: DrawingSketchV2, variable: Dr
     return point ? { ...sketch, points: { ...sketch.points, [point.id]: { ...point, [variable.axis]: value } } } : null;
   }
   const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[variable.entityId];
-  if (variable.scalar === 'circle-radius') {
+  if (variable.scalar === 'circular-radius') {
     if (entity?.type !== 'circle' || value <= DRAWING_MODEL_SPACE_TOLERANCE) return null;
     if (entity.radius === value) return sketch;
     const entities = { ...sketch.entities, [entity.id]: { ...entity, radius: value } } as DrawingSketchV2['entities'];

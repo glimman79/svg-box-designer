@@ -133,6 +133,16 @@
 
 # Changelog
 
+## Drawing — common Circular Support foundation (Stage 1 in progress)
+
+- Added a representation-neutral resolved Circular Support contract for center, radius,
+  and center identity; Circle now resolves through it, while current Arcs expose their
+  derived support Circle without gaining persistent target-Arc state.
+- Generalized the Circle-only solver scalar name and API to circular radius, and moved
+  shared support-circle projection and radial-equation math behind neutral helpers.
+- Kept current Arc endpoint-plus-bulge persistence, `arc-bulge` solver authority, finite
+  directed-Arc behavior, Dimensions, and Direct Manipulation unchanged.
+
 ## V1.2 — TB + Wall Stabilization
 
 - Added rectangular Wall authoring with W-A/W-B roles and shared TB-equivalent generation.

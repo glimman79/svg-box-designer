@@ -1,7 +1,7 @@
 import { DRAWING_CONSTRAINT_TOLERANCE_MM, solveDrawingComponentDrag, solveDrawingGeometricIntent } from './drawingConstraintSolver.js';
 import { resolveArcFromBulge } from './drawingArcGeometry.js';
 import { analyzeDrawingConstraints } from './drawingConstraintAnalysis.js';
-import { arcBulgeSolverVariable, circleRadiusSolverVariable, pointSolverVariables } from './drawingSolverVariables.js';
+import { arcBulgeSolverVariable, circularRadiusSolverVariable, pointSolverVariables } from './drawingSolverVariables.js';
 import { displayedDimensionMeasurement, drawingPointReferenceDependencies, measureDimension, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
 import { pointIdForLineEndpoint } from './drawingTopology.js';
 import type { DrawingDimension, DrawingDocumentV2, DrawingEntity, DrawingPoint, DrawingSketchV2 } from './drawingTypes.js';
@@ -15,7 +15,7 @@ export type DrawingGeometryTarget =
   | Readonly<{ kind: 'arc-endpoint'; entityId: string; draggedPointId: string; pivotPointId: string; initialBulge: number }>
   | Readonly<{ kind: 'arc-radius'; entityId: string; sweepParameter: number; radialDirection: DrawingPoint; grabOffset: DrawingPoint; initialBulge: number }>
   | Readonly<{ kind: 'arc-center'; entityId: string }>
-  | Readonly<{ kind: 'entity-scalar'; entityId: string; scalar: 'circle-radius'; radialDirection: DrawingPoint; grabOffset: DrawingPoint }>;
+  | Readonly<{ kind: 'entity-scalar'; entityId: string; scalar: 'circular-radius'; radialDirection: DrawingPoint; grabOffset: DrawingPoint }>;
 
 /** Converts a circumference hit into a semantic scalar target. The stored
  * offset makes the pointer-down pose an identity mapping despite hit slop. */
@@ -29,7 +29,7 @@ export const createCircleRadiusDragTarget = (document: DrawingDocumentV2, circle
   if (length <= DRAWING_CONSTRAINT_TOLERANCE_MM) return null;
   const radialDirection = { x: dx / length, y: dy / length };
   const resolved = { x: center.x + circle.radius * radialDirection.x, y: center.y + circle.radius * radialDirection.y };
-  return { kind: 'entity-scalar', entityId: circle.id, scalar: 'circle-radius', radialDirection,
+  return { kind: 'entity-scalar', entityId: circle.id, scalar: 'circular-radius', radialDirection,
     grabOffset: { x: pointer.x - resolved.x, y: pointer.y - resolved.y } };
 };
 
@@ -349,7 +349,7 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
     if (!center) return null;
     const resolvedPointer = { x: pointer.x - target.grabOffset.x, y: pointer.y - target.grabOffset.y };
     const solved = solveDrawingGeometricIntent(sketch, {
-      seedVariable: circleRadiusSolverVariable(entity.id), modelScale: Math.max(1, entity.radius),
+      seedVariable: circularRadiusSolverVariable(entity.id), modelScale: Math.max(1, entity.radius),
       primaryResiduals: (candidate) => {
         const candidateEntity = (candidate.entities as unknown as Record<string, DrawingEntity>)[entity.id];
         const candidateCenter = candidateEntity?.type === 'circle' ? candidate.points[candidateEntity.centerPointId] : null;

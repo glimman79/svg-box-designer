@@ -458,17 +458,27 @@ checked only at **ACCEPTED**.
     drag, plus Arc P1 → P2 → P3 creation, center drag as whole-Arc translation,
     body/radius drag, P1 drag with P2 as exact opposite-endpoint pivot, and P2 drag with
     P1 as exact opposite-endpoint pivot.
-- [ ] **Stage 1 — Common Circular Support & radius foundation** — **NOT STARTED**
-  - **Status:** NOT STARTED.
+- [ ] **Stage 1 — Common Circular Support & radius foundation** — **IN PROGRESS**
+  - **Status:** IN PROGRESS.
   - **Scope:** Establish a genuinely Circle/Arc-neutral Circular Support, persistent
     center/radius concepts, shared circular-radius solver capability, and required neutral
     equation infrastructure. Circle may migrate to it; the current Arc remains the sole
     Arc runtime authority throughout this stage.
-  - **Baseline:** Not assigned.
-  - **PR:** Not assigned.
+  - **Baseline:** `2d30ed9decdef5bc2e326564365fb684203daf68` (`Accept Circle and
+    Arc Stage 0 (#601)`).
+  - **PR:** This Stage 1 PR, `Build common Circular Support foundation`.
   - **Merged commit:** Not assigned.
-  - **Known temporary regressions:** None — implementation not started.
-  - **Acceptance:** Not started.
+  - **Known temporary regressions:** None known. Current Arc remains endpoint + endpoint
+    + bulge and retains `arc-bulge`; no target Arc state is present.
+  - **Acceptance:** Automated Stage 1 foundation and Stage 0 regression evidence passed:
+    `npm run test:drawing-circular-support`, `npm run test:drawing-circle`,
+    `npm run test:drawing-arc`, `npm run test:drawing-circle-direct-manipulation`,
+    `npm run test:drawing-arc-direct-manipulation`,
+    `npm run test:drawing-circular-dimension`,
+    `npm run test:drawing-semantic-point-inference`,
+    `npm run test:drawing-pointer-arbitration`,
+    `npm run test:drawing-circle-coincidence-runtime`, and `npm run build`.
+    Real-browser verification after merge remains required before ACCEPTED.
 - [ ] **Stage 2 — Topology, semantic point & solver readiness** — **NOT STARTED**
   - **Status:** NOT STARTED.
   - **Scope:** Prepare generic entity-defining point/equation enumeration, solver

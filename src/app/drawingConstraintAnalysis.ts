@@ -1,7 +1,7 @@
 import { pointIdForLineEndpoint } from './drawingTopology.js';
 import type { DrawingDimension, DrawingEntity, DrawingGeometricConstraint, DrawingPoint, DrawingPointReference, DrawingSketchV2 } from './drawingTypes.js';
 import { angleIsOnDrawingArc, finiteArcConstraintResidual, resolveArcFromBulge } from './drawingArcGeometry.js';
-import { arcBulgeSolverVariable, circleRadiusSolverVariable, drawingSolverVariableKey, type DrawingSolverVariable } from './drawingSolverVariables.js';
+import { arcBulgeSolverVariable, circularRadiusSolverVariable, drawingSolverVariableKey, type DrawingSolverVariable } from './drawingSolverVariables.js';
 import { drawingPointReferenceDependencies, measureDimension, measurePointToLine, resolveDimensionLineReference, resolveDrawingPointReference } from './drawingDimension.js';
 
 export const DRAWING_CONSTRAINT_RANK_TOLERANCE = Object.freeze({ absolute: 1e-10, relative: 1e-9 });
@@ -24,7 +24,7 @@ export const constraintPointKey = (sketch: DrawingSketchV2, reference: DrawingPo
 export const constraintEquation = (sketch: DrawingSketchV2, dimension: DrawingDimension): DrawingConstraintEquation | null => {
   if (dimension.kind === 'CIRCULAR_SIZE') {
     const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[dimension.references[0].entityId];
-    if (entity?.type === 'circle' && dimension.mode === 'diameter' && sketch.points[entity.centerPointId]) return { dimension, pointKeys: [entity.centerPointId], scalarVariables: [circleRadiusSolverVariable(entity.id)] };
+    if (entity?.type === 'circle' && dimension.mode === 'diameter' && sketch.points[entity.centerPointId]) return { dimension, pointKeys: [entity.centerPointId], scalarVariables: [circularRadiusSolverVariable(entity.id)] };
     if (entity?.type === 'arc' && dimension.mode === 'radius' && sketch.points[entity.startPointId] && sketch.points[entity.endPointId]) return { dimension, pointKeys: [entity.startPointId, entity.endPointId], scalarVariables: [arcBulgeSolverVariable(entity.id)] };
     return null;
   }
@@ -71,7 +71,7 @@ export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricCo
       const pointId = geometricConstraint.references[0].pointId;
       const curve = (sketch.entities as unknown as Record<string, import('./drawingTypes.js').DrawingEntity>)[geometricConstraint.references[1].entityId];
       return curve?.type === 'circle' && sketch.points[pointId] && sketch.points[curve.centerPointId]
-        ? { geometricConstraint, pointKeys: [pointId, curve.centerPointId], scalarVariables: [circleRadiusSolverVariable(curve.id)] }
+        ? { geometricConstraint, pointKeys: [pointId, curve.centerPointId], scalarVariables: [circularRadiusSolverVariable(curve.id)] }
         : curve?.type === 'arc' && sketch.points[pointId] && sketch.points[curve.startPointId] && sketch.points[curve.endPointId]
           ? { geometricConstraint, pointKeys: [pointId, curve.startPointId, curve.endPointId], scalarVariables: [arcBulgeSolverVariable(curve.id)] } : null;
     }
@@ -215,7 +215,7 @@ export type DrawingPointMobilityAnalysis = Readonly<{
 const canonicalScalarVariables = (sketch: DrawingSketchV2): DrawingSolverVariable[] => Object.values(
   sketch.entities as unknown as Record<string, DrawingEntity>,
 ).flatMap((entity) => entity.type === 'arc' ? [arcBulgeSolverVariable(entity.id)]
-  : entity.type === 'circle' ? [circleRadiusSolverVariable(entity.id)] : []);
+  : entity.type === 'circle' ? [circularRadiusSolverVariable(entity.id)] : []);
 
 const analyzeDrawingVariableMobility = (
   sketch: DrawingSketchV2,
@@ -255,7 +255,7 @@ export const analyzeDrawingEntityMobility = (sketch: DrawingSketchV2, entityId: 
     return analyzeDrawingVariableMobility(sketch, [
       { kind: 'point-axis', pointId: entity.centerPointId, axis: 'x' },
       { kind: 'point-axis', pointId: entity.centerPointId, axis: 'y' },
-      circleRadiusSolverVariable(entity.id),
+      circularRadiusSolverVariable(entity.id),
     ]);
   }
   if (entity.type !== 'arc') return analyzeDrawingPointMobility(sketch, [entity.startPointId, entity.endPointId]);
@@ -288,7 +288,7 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
         const point = coordinate(sketch, p), center = coordinate(sketch, a), length = Math.hypot(point.x - center.x, point.y - center.y);
         if (length <= DRAWING_CONSTRAINT_RANK_TOLERANCE.absolute) return null;
         const gx = (point.x - center.x) / length, gy = (point.y - center.y) / length; set(p, gx, gy); set(a, -gx, -gy);
-        const scalarIndex = scalarOrder.findIndex((variable) => drawingSolverVariableKey(variable) === drawingSolverVariableKey(circleRadiusSolverVariable(curve.id)));
+        const scalarIndex = scalarOrder.findIndex((variable) => drawingSolverVariableKey(variable) === drawingSolverVariableKey(circularRadiusSolverVariable(curve.id)));
         if (scalarIndex >= 0) row[pointOrder.length * 2 + scalarIndex] = -1;
         return row;
       }
@@ -397,8 +397,8 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
       const value = variable.kind === 'point-axis' ? sketch.points[variable.pointId]?.[variable.axis] : entity?.type === 'circle' ? entity.radius : entity?.type === 'arc' ? entity.bulge : NaN;
       if (!Number.isFinite(value)) return null;
       const h = 1e-6 * Math.max(1, Math.abs(value));
-      const plus = variable.kind === 'point-axis' ? { ...sketch, points: { ...sketch.points, [variable.pointId]: { ...sketch.points[variable.pointId], [variable.axis]: value + h } } } : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, [variable.scalar === 'circle-radius' ? 'radius' : 'bulge']: value + h } } as DrawingSketchV2['entities'] };
-      const minus = variable.kind === 'point-axis' ? { ...sketch, points: { ...sketch.points, [variable.pointId]: { ...sketch.points[variable.pointId], [variable.axis]: value - h } } } : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, [variable.scalar === 'circle-radius' ? 'radius' : 'bulge']: value - h } } as DrawingSketchV2['entities'] };
+      const plus = variable.kind === 'point-axis' ? { ...sketch, points: { ...sketch.points, [variable.pointId]: { ...sketch.points[variable.pointId], [variable.axis]: value + h } } } : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, [variable.scalar === 'circular-radius' ? 'radius' : 'bulge']: value + h } } as DrawingSketchV2['entities'] };
+      const minus = variable.kind === 'point-axis' ? { ...sketch, points: { ...sketch.points, [variable.pointId]: { ...sketch.points[variable.pointId], [variable.axis]: value - h } } } : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, [variable.scalar === 'circular-radius' ? 'radius' : 'bulge']: value - h } } as DrawingSketchV2['entities'] };
       const derivative = (measure(plus) - measure(minus)) / (2 * h);
       if (pointIndex >= 0) row[pointIndex] = derivative;
       else if (scalarIndex >= 0) row[pointOrder.length * 2 + scalarIndex] = derivative;
@@ -446,7 +446,7 @@ export const analyzeDrawingConstraints = (sketch: DrawingSketchV2, extraDriving?
     const pointSet = new Set(pointIds), componentEquations = equations.filter((e) => e.pointKeys.some((key) => pointSet.has(key)));
     const geometryScalars = Object.values(sketch.entities as unknown as Record<string, DrawingEntity>).flatMap((entity) => entity.type === 'arc'
       && pointSet.has(entity.startPointId) && pointSet.has(entity.endPointId) ? [arcBulgeSolverVariable(entity.id)]
-      : entity.type === 'circle' && pointSet.has(entity.centerPointId) ? [circleRadiusSolverVariable(entity.id)] : []);
+      : entity.type === 'circle' && pointSet.has(entity.centerPointId) ? [circularRadiusSolverVariable(entity.id)] : []);
     const scalarVariables = [...new Map([...geometryScalars, ...componentEquations.flatMap((e) => e.scalarVariables ?? [])].map((variable) => [drawingSolverVariableKey(variable), variable])).values()];
     const rows = componentEquations.map((e) => constraintJacobianRow(sketch, e, pointIds, scalarVariables)).filter((r): r is number[] => Boolean(r));
     const constraintRank = matrixRank(rows), variableCount = pointIds.length * 2 + scalarVariables.length;

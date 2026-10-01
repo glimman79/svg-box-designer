@@ -1,5 +1,5 @@
-import { resolveArcFromBulge } from './drawingArcGeometry.js';
 import type { DrawingDimension, DrawingEntity, DrawingPoint, DrawingSketchV2, ResolvedDrawingArc, ResolvedDrawingCircle } from './drawingTypes.js';
+import { resolveCircularSupport } from './drawingCircularSupport.js';
 
 export type ResolvedCircularSize = Readonly<{
   entity: ResolvedDrawingCircle | ResolvedDrawingArc;
@@ -11,16 +11,12 @@ export type ResolvedCircularSize = Readonly<{
 /** Shared geometry boundary for circular size semantics. No derived radius or attachment is persisted. */
 export const resolveCircularSize = (sketch: DrawingSketchV2, entityId: string): ResolvedCircularSize | null => {
   const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[entityId];
-  if (entity?.type === 'circle') {
-    const center = sketch.points[entity.centerPointId];
-    return center && Number.isFinite(entity.radius) && entity.radius > 0
-      ? { entity: { ...entity, center }, mode: 'diameter', radius: entity.radius, measurement: 2 * entity.radius } : null;
-  }
-  if (entity?.type === 'arc') {
-    const resolved = resolveArcFromBulge(entity, sketch.points[entity.startPointId], sketch.points[entity.endPointId]);
-    return resolved ? { entity: resolved, mode: 'radius', radius: resolved.radius, measurement: resolved.radius } : null;
-  }
-  return null;
+  if (entity?.type !== 'circle' && entity?.type !== 'arc') return null;
+  const support = resolveCircularSupport(sketch, entity);
+  if (!support) return null;
+  const mode = entity.type === 'circle' ? 'diameter' : 'radius';
+  return { entity: support.entity, mode, radius: support.radius,
+    measurement: mode === 'diameter' ? 2 * support.radius : support.radius };
 };
 
 export const measureCircularDimension = (sketch: DrawingSketchV2, dimension: DrawingDimension): number | null => {
