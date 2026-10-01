@@ -428,8 +428,10 @@ does not mean migration has begun.
 #### Implementation process authority
 
 The locked architecture and its implementation status are independent: architecture is
-**LOCKED**, while the Circle/Arc migration remains **NOT STARTED**. The authoritative
-Stage 0–6 scope, status metadata, and migration policies are maintained in
+**LOCKED**. Stages 0 and 1 are **ACCEPTED**, including the common Circular Support and
+radius foundation; Stage 2 is **NOT STARTED**, and the target Arc representation migration
+remains pending. The authoritative Stage 0–6 scope, status metadata, and migration
+policies are maintained in
 [ROADMAP.md](ROADMAP.md#circlearc-implementation-stages-and-status). Repository state and
 these authority documents—not previous Codex conversations—must give each separate
 implementation thread its verified baseline, completed stage, known temporary

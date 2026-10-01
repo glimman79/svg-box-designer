@@ -133,7 +133,7 @@
 
 # Changelog
 
-## Drawing — common Circular Support foundation (Stage 1 in progress)
+## Drawing — common Circular Support foundation (Stage 1 accepted)
 
 - Added a representation-neutral resolved Circular Support contract for center, radius,
   and center identity; Circle now resolves through it, while current Arcs expose their
@@ -142,6 +142,9 @@
   shared support-circle projection and radial-equation math behind neutral helpers.
 - Kept current Arc endpoint-plus-bulge persistence, `arc-bulge` solver authority, finite
   directed-Arc behavior, Dimensions, and Direct Manipulation unchanged.
+- Accepted Stage 1 after its automated foundation/regression/build validation and
+  Mikael's real-browser verification of Circle and current-Arc creation, manipulation,
+  endpoint-pivot, and circular Dimension behavior (Circle Ø; Arc R).
 
 ## V1.2 — TB + Wall Stabilization
 
