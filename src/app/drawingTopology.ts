@@ -1,6 +1,7 @@
 import type { DrawingArcEntity, DrawingDimension, DrawingDocumentV2, DrawingLineEntity, DrawingPoint, DrawingPointReference, DrawingSketchPoint, DrawingSketchV2, ResolvedDrawingArc, ResolvedDrawingCircle, ResolvedDrawingLine } from './drawingTypes';
 import { resolveArcFromBulge } from './drawingArcGeometry.js';
 import { resolveCircularSupport } from './drawingCircularSupport.js';
+import { drawingEntityDefiningPointIds } from './drawingEntityDefinition.js';
 
 export type DrawingTopologyValidation = Readonly<{ ok: true } | { ok: false; errors: readonly string[] }>;
 
@@ -50,12 +51,8 @@ export const collectDrawingAuthoringPoints = (sketch: DrawingSketchV2): DrawingA
   for (const id of sketch.entityOrder) {
     const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[id];
     if (!entity) continue;
-    if (entity.type === 'circle') {
-      addPersistent(entity.centerPointId, entity.id);
-      continue;
-    }
-    addPersistent(entity.startPointId, entity.id, entity.type === 'line' ? entity.id : undefined);
-    addPersistent(entity.endPointId, entity.id, entity.type === 'line' ? entity.id : undefined);
+    for (const pointId of drawingEntityDefiningPointIds(entity))
+      addPersistent(pointId, entity.id, entity.type === 'line' ? entity.id : undefined);
     if (entity.type === 'arc') {
       const arc = resolveArc(sketch, entity);
       if (arc) points.set(`derivedPoint:${entity.id}:center`, {
@@ -83,8 +80,8 @@ export const pointIdForLineEndpoint = (line: DrawingLineEntity, endpoint: 'start
 /** Derived presentation roles for persistent points that define semantic entities. */
 export const deriveEntityDefiningPointIds = (sketch: DrawingSketchV2): ReadonlySet<string> => new Set(
   Object.values(sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)
-    .flatMap((entity) => entity.type === 'circle' ? [entity.centerPointId]
-      : entity.type === 'arc' ? [entity.startPointId, entity.endPointId] : []),
+    .filter((entity) => entity.type !== 'line')
+    .flatMap(drawingEntityDefiningPointIds),
 );
 
 export const updateSketchPoint = (sketch: DrawingSketchV2, id: string, point: DrawingPoint): DrawingSketchV2 => {
@@ -96,8 +93,7 @@ export const updateSketchPoint = (sketch: DrawingSketchV2, id: string, point: Dr
 export const removeEntityAndOrphans = (sketch: DrawingSketchV2, entityId: string): DrawingSketchV2 => {
   if (!sketch.entities[entityId]) return sketch;
   const entities = { ...sketch.entities } as unknown as Record<string, import('./drawingTypes').DrawingEntity>; delete entities[entityId];
-  const referenced = new Set(Object.values(entities).flatMap((entity) => entity.type === 'circle'
-    ? [entity.centerPointId] : [entity.startPointId, entity.endPointId]));
+  const referenced = new Set(Object.values(entities).flatMap(drawingEntityDefiningPointIds));
   const points = Object.fromEntries(Object.entries(sketch.points).filter(([id]) => referenced.has(id)));
   const removedPointIds = new Set(Object.keys(sketch.points).filter((id) => !points[id]));
   const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, dimension]) => dimension.references.every((reference) =>
@@ -179,7 +175,7 @@ export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTop
       if (constraint.references.length !== expectedReferences || constraint.references.some(({ entityId }) => !sketch.entities[entityId])
         || expectedReferences === 2 && constraint.references[0]?.entityId === constraint.references[1]?.entityId) errors.push(`Geometric constraint reference cannot resolve: ${constraint.id}`);
     }
-    const referenced = new Set(Object.values(sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>).flatMap((entity) => entity.type === 'circle' ? [entity.centerPointId] : [entity.startPointId, entity.endPointId]));
+    const referenced = new Set(Object.values(sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>).flatMap(drawingEntityDefiningPointIds));
     for (const id of Object.keys(sketch.points)) if (!referenced.has(id)) errors.push(`Orphan point: ${id}`);
   }
   return errors.length ? { ok: false, errors } : { ok: true };

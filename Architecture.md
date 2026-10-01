@@ -17,6 +17,17 @@ Thus a Line renders as `<line>`, true semantic Circle geometry as `<circle>`, an
 
 Persistent `SketchPoint`s are discovered globally as positional snap candidates regardless of which geometry references them, so shared topology is reused rather than duplicated. Point-on-Curve is likewise a global semantic relationship represented by `COINCIDENT` / `point-curve`, not a Circle- or Arc-owned constraint system. Circle Stage 1 and Arc Stage 1 reuse this foundation, including Point-on-Arc semantics.
 
+Drawing entities expose their persistent defining `SketchPoint` identities and canonical
+solver variables through one entity-definition boundary. Topology cleanup, semantic
+authoring-point discovery, component construction, and rank/DOF analysis consume that
+boundary rather than independently redispatching Line, Circle, and Arc fields.
+Entity-owned intrinsic equations have a separate runtime type and rank path from
+user-created Constraints and Dimensions; current Line, Circle, and endpoint-plus-bulge
+Arc require no intrinsic equations. Selection likewise distinguishes persistent point
+identity, derived semantic-point identity, and entity-body identity. The current Arc
+center remains derived, while current Arc runtime authority remains
+`startPointId + endPointId + bulge` until the Stage 3 cutover.
+
 Circle persistence is `centerPointId` plus a radius scalar; its center is a real shared
 SketchPoint and authoring P2 is not persistent. Current Arc persistence is
 `DrawingArcEntity { id, type: 'arc', startPointId, endPointId, bulge }`, where bulge is

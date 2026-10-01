@@ -133,6 +133,17 @@
 
 # Changelog
 
+## Drawing — Stage 2 topology and solver readiness (in progress)
+
+- Added one entity-definition boundary for persistent defining points, canonical solver
+  variables, and entity-owned intrinsic equations, with topology and component/rank/DOF
+  analysis consuming the shared metadata.
+- Kept intrinsic equations distinct from persisted user Constraints and Dimensions, and
+  retained the current Circle three-DOF and endpoint-plus-bulge Arc five-DOF models.
+- Added semantic-point selection identity so a derived Arc-center hit no longer collapses
+  into Arc-body selection while retaining the existing center Direct Manipulation target.
+- Stage 2 is awaiting merge and browser acceptance; target Arc state remains unimplemented.
+
 ## Drawing — common Circular Support foundation (Stage 1 accepted)
 
 - Added a representation-neutral resolved Circular Support contract for center, radius,

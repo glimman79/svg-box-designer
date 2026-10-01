@@ -1,15 +1,21 @@
 import { pointIdForLineEndpoint } from './drawingTopology.js';
 import type { DrawingDimension, DrawingEntity, DrawingGeometricConstraint, DrawingPoint, DrawingPointReference, DrawingSketchV2 } from './drawingTypes.js';
 import { angleIsOnDrawingArc, finiteArcConstraintResidual, resolveArcFromBulge } from './drawingArcGeometry.js';
-import { arcBulgeSolverVariable, circularRadiusSolverVariable, drawingSolverVariableKey, type DrawingSolverVariable } from './drawingSolverVariables.js';
+import { arcBulgeSolverVariable, circularRadiusSolverVariable, drawingSolverVariableKey, readDrawingSolverVariable, writeDrawingSolverVariable, type DrawingSolverVariable } from './drawingSolverVariables.js';
 import { drawingPointReferenceDependencies, measureDimension, measurePointToLine, resolveDimensionLineReference, resolveDrawingPointReference } from './drawingDimension.js';
+import { collectDrawingEntityEquations, drawingEntityDefiningPointIds, drawingEntityImplicitComponentPointIds, drawingEntitySolverVariables, type DrawingEntityEquation } from './drawingEntityDefinition.js';
 
 export const DRAWING_CONSTRAINT_RANK_TOLERANCE = Object.freeze({ absolute: 1e-10, relative: 1e-9 });
 export const DRAWING_ORIGIN_CONSTRAINT_KEY = 'datum:ORIGIN';
 
-export type DrawingConstraintEquation = Readonly<{ dimension?: DrawingDimension; geometricConstraint?: DrawingGeometricConstraint; pointKeys: readonly string[]; scalarVariables?: readonly DrawingSolverVariable[]; coordinateAxis?: 'x' | 'y' }>;
-export type DrawingConstraintComponentAnalysis = Readonly<{ pointIds: ReadonlySet<string>; scalarVariables: readonly DrawingSolverVariable[]; dimensionIds: readonly string[]; geometricConstraintIds: readonly string[]; variableCount: number; constraintRank: number; degreesOfFreedom: number }>;
+export type DrawingConstraintEquation = Readonly<{ dimension?: DrawingDimension; geometricConstraint?: DrawingGeometricConstraint; entityEquation?: DrawingEntityEquation; pointKeys: readonly string[]; scalarVariables?: readonly DrawingSolverVariable[]; coordinateAxis?: 'x' | 'y' }>;
+export type DrawingConstraintComponentAnalysis = Readonly<{ pointIds: ReadonlySet<string>; scalarVariables: readonly DrawingSolverVariable[]; entityEquationIds: readonly string[]; dimensionIds: readonly string[]; geometricConstraintIds: readonly string[]; variableCount: number; constraintRank: number; degreesOfFreedom: number }>;
 export type DrawingConstraintAnalysis = Readonly<{ components: readonly DrawingConstraintComponentAnalysis[]; componentByPointId: ReadonlyMap<string, DrawingConstraintComponentAnalysis>; componentByVariableKey: ReadonlyMap<string, DrawingConstraintComponentAnalysis> }>;
+
+export const entityConstraintEquations = (sketch: DrawingSketchV2): DrawingConstraintEquation[] =>
+  collectDrawingEntityEquations(sketch).map((entityEquation) => ({ entityEquation,
+    pointKeys: [...new Set(entityEquation.variables.filter((variable) => variable.kind === 'point-axis').map((variable) => variable.pointId))],
+    scalarVariables: entityEquation.variables.filter((variable) => variable.kind === 'entity-scalar') }));
 
 export const constraintPointKey = (sketch: DrawingSketchV2, reference: DrawingPointReference): string | null => {
   if (reference.kind === 'datum') return reference.datum === 'ORIGIN' ? DRAWING_ORIGIN_CONSTRAINT_KEY : null;
@@ -214,8 +220,7 @@ export type DrawingPointMobilityAnalysis = Readonly<{
 
 const canonicalScalarVariables = (sketch: DrawingSketchV2): DrawingSolverVariable[] => Object.values(
   sketch.entities as unknown as Record<string, DrawingEntity>,
-).flatMap((entity) => entity.type === 'arc' ? [arcBulgeSolverVariable(entity.id)]
-  : entity.type === 'circle' ? [circularRadiusSolverVariable(entity.id)] : []);
+).flatMap((entity) => drawingEntitySolverVariables(entity).filter((variable) => variable.kind === 'entity-scalar'));
 
 const analyzeDrawingVariableMobility = (
   sketch: DrawingSketchV2,
@@ -223,10 +228,10 @@ const analyzeDrawingVariableMobility = (
 ): DrawingPointMobilityAnalysis => {
   const pointOrder = Object.keys(sketch.points), scalarOrder = canonicalScalarVariables(sketch);
   const variableCount = pointOrder.length * 2 + scalarOrder.length;
-  const equations = Object.values(sketch.dimensions)
+  const equations = [...entityConstraintEquations(sketch), ...Object.values(sketch.dimensions)
     .filter(({ role }) => role === 'driving')
     .map((dimension) => constraintEquation(sketch, dimension))
-    .filter((equation): equation is DrawingConstraintEquation => Boolean(equation));
+    .filter((equation): equation is DrawingConstraintEquation => Boolean(equation))];
   equations.push(...Object.values(sketch.geometricConstraints ?? {}).flatMap((constraint) => geometricConstraintEquations(sketch, constraint)));
   const constraintRows = equations
     .map((equation) => constraintJacobianRow(sketch, equation, pointOrder, scalarOrder))
@@ -271,6 +276,21 @@ export const analyzeDrawingEntityMobility = (sketch: DrawingSketchV2, entityId: 
 const coordinate = (sketch: DrawingSketchV2, key: string): DrawingPoint => key === DRAWING_ORIGIN_CONSTRAINT_KEY ? { x: 0, y: 0 } : sketch.points[key];
 export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: DrawingConstraintEquation, pointOrder: readonly string[], scalarOrder: readonly DrawingSolverVariable[] = []): number[] | null => {
   const row = Array(pointOrder.length * 2 + scalarOrder.length).fill(0), set = (key: string, gx: number, gy: number) => { const i = pointOrder.indexOf(key); if (i >= 0) { row[i * 2] += gx; row[i * 2 + 1] += gy; } };
+  if (equation.entityEquation) {
+    const variables = equation.entityEquation.variables;
+    for (const variable of variables) {
+      const value = readDrawingSolverVariable(sketch, variable); if (value === null) return null;
+      const h = 1e-6 * Math.max(1, Math.abs(value));
+      const plus = writeDrawingSolverVariable(sketch, variable, value + h), minus = writeDrawingSolverVariable(sketch, variable, value - h);
+      const pv = plus && equation.entityEquation.residual(plus), mv = minus && equation.entityEquation.residual(minus);
+      if (pv === null || mv === null) return null;
+      const derivative = (pv - mv) / (2 * h);
+      const index = variable.kind === 'point-axis' ? pointOrder.indexOf(variable.pointId) * 2 + (variable.axis === 'x' ? 0 : 1)
+        : pointOrder.length * 2 + scalarOrder.findIndex((item) => drawingSolverVariableKey(item) === drawingSolverVariableKey(variable));
+      if (index >= 0) row[index] = derivative;
+    }
+    return row;
+  }
   if (equation.geometricConstraint?.kind === 'MIDPOINT') {
     const [p, a, b] = equation.pointKeys, x = equation.coordinateAxis === 'x';
     set(p, x ? 1 : 0, x ? 0 : 1); set(a, x ? -.5 : 0, x ? 0 : -.5); set(b, x ? -.5 : 0, x ? 0 : -.5); return row;
@@ -432,25 +452,28 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
 };
 
 export const analyzeDrawingConstraints = (sketch: DrawingSketchV2, extraDriving?: DrawingDimension): DrawingConstraintAnalysis => {
-  const equations = [...[...Object.values(sketch.dimensions).filter(({ role }) => role === 'driving'), ...(extraDriving ? [{ ...extraDriving, role: 'driving' as const }] : [])].map((d) => constraintEquation(sketch, d)),
+  const equations = [...entityConstraintEquations(sketch),
+    ...[...Object.values(sketch.dimensions).filter(({ role }) => role === 'driving'), ...(extraDriving ? [{ ...extraDriving, role: 'driving' as const }] : [])].map((d) => constraintEquation(sketch, d)),
     ...Object.values(sketch.geometricConstraints ?? {}).flatMap((constraint) => geometricConstraintEquations(sketch, constraint))].filter((e): e is DrawingConstraintEquation => Boolean(e));
   const parent = new Map(Object.keys(sketch.points).map((id) => [id, id]));
   const find = (id: string): string => { const p = parent.get(id)!; if (p === id) return id; const root = find(p); parent.set(id, root); return root; };
-  // Curve coordinates and their authoritative scalar are one geometry
-  // component even before a constraint references that geometry.
-  for (const entity of Object.values(sketch.entities as unknown as Record<string, DrawingEntity>)) if (entity.type === 'arc'
-    && parent.has(entity.startPointId) && parent.has(entity.endPointId)) parent.set(find(entity.endPointId), find(entity.startPointId));
+  // Only coordinates coupled by the representation form an implicit component.
+  // Future entity equations connect their own variables through `equations`.
+  for (const entity of Object.values(sketch.entities as unknown as Record<string, DrawingEntity>)) {
+    const ids = drawingEntityImplicitComponentPointIds(entity).filter((id) => parent.has(id));
+    for (const id of ids.slice(1)) parent.set(find(id), find(ids[0]));
+  }
   for (const equation of equations) { const keys = equation.pointKeys.filter((key) => key !== DRAWING_ORIGIN_CONSTRAINT_KEY); for (const key of keys.slice(1)) parent.set(find(key), find(keys[0])); }
   const groups = new Map<string, string[]>(); for (const id of Object.keys(sketch.points)) { const root = find(id); groups.set(root, [...(groups.get(root) ?? []), id]); }
   const components = [...groups.values()].map((pointIds): DrawingConstraintComponentAnalysis => {
     const pointSet = new Set(pointIds), componentEquations = equations.filter((e) => e.pointKeys.some((key) => pointSet.has(key)));
-    const geometryScalars = Object.values(sketch.entities as unknown as Record<string, DrawingEntity>).flatMap((entity) => entity.type === 'arc'
-      && pointSet.has(entity.startPointId) && pointSet.has(entity.endPointId) ? [arcBulgeSolverVariable(entity.id)]
-      : entity.type === 'circle' && pointSet.has(entity.centerPointId) ? [circularRadiusSolverVariable(entity.id)] : []);
+    const geometryScalars = Object.values(sketch.entities as unknown as Record<string, DrawingEntity>).flatMap((entity) =>
+      drawingEntityDefiningPointIds(entity).some((id) => pointSet.has(id))
+        ? drawingEntitySolverVariables(entity).filter((variable) => variable.kind === 'entity-scalar') : []);
     const scalarVariables = [...new Map([...geometryScalars, ...componentEquations.flatMap((e) => e.scalarVariables ?? [])].map((variable) => [drawingSolverVariableKey(variable), variable])).values()];
     const rows = componentEquations.map((e) => constraintJacobianRow(sketch, e, pointIds, scalarVariables)).filter((r): r is number[] => Boolean(r));
     const constraintRank = matrixRank(rows), variableCount = pointIds.length * 2 + scalarVariables.length;
-    return { pointIds: pointSet, scalarVariables, dimensionIds: [...new Set(componentEquations.flatMap(({ dimension }) => dimension ? [dimension.id] : []))], geometricConstraintIds: [...new Set(componentEquations.flatMap(({ geometricConstraint }) => geometricConstraint ? [geometricConstraint.id] : []))], variableCount, constraintRank, degreesOfFreedom: variableCount - constraintRank };
+    return { pointIds: pointSet, scalarVariables, entityEquationIds: [...new Set(componentEquations.flatMap(({ entityEquation }) => entityEquation ? [entityEquation.id] : []))], dimensionIds: [...new Set(componentEquations.flatMap(({ dimension }) => dimension ? [dimension.id] : []))], geometricConstraintIds: [...new Set(componentEquations.flatMap(({ geometricConstraint }) => geometricConstraint ? [geometricConstraint.id] : []))], variableCount, constraintRank, degreesOfFreedom: variableCount - constraintRank };
   });
   return { components, componentByPointId: new Map(components.flatMap((component) => [...component.pointIds].map((id) => [id, component] as const))), componentByVariableKey: new Map(components.flatMap((component) => component.scalarVariables.map((variable) => [drawingSolverVariableKey(variable), component] as const))) };
 };
@@ -481,10 +504,10 @@ export const dimensionIncreasesConstraintRank = (sketch: DrawingSketchV2, candid
 
 /** Reuses the canonical constraint Jacobian/rank calculation for a candidate's local variables. */
 export const drawingConstraintDegreesOfFreedomForPoints = (sketch: DrawingSketchV2, pointIds: readonly string[], excludedDimensionId?: string): number => {
-  const equations = Object.values(sketch.dimensions)
+  const equations = [...entityConstraintEquations(sketch), ...Object.values(sketch.dimensions)
     .filter(({ id, role }) => role === 'driving' && id !== excludedDimensionId)
     .map((dimension) => constraintEquation(sketch, dimension))
-    .filter((equation): equation is DrawingConstraintEquation => Boolean(equation));
+    .filter((equation): equation is DrawingConstraintEquation => Boolean(equation))];
   equations.push(...Object.values(sketch.geometricConstraints ?? {}).flatMap((constraint) => geometricConstraintEquations(sketch, constraint)));
   const rows = equations.map((equation) => constraintJacobianRow(sketch, equation, pointIds)).filter((row): row is number[] => Boolean(row));
   return pointIds.length * 2 - matrixRank(rows);

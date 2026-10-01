@@ -33,7 +33,7 @@ import { resolveDrawingCurveProximity, resolveDrawingPointerOwner, type DrawingP
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
 import { deleteGeometricConstraint, deriveMidpointMarkerPresentation, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
 import { deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
-import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, getDrawingConstraintApplicability, initialConstraintsPanelPosition, toggleDrawingGeometrySelection, type DrawingSelectionRef } from './drawingConstraintsTool.js';
+import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, drawingSelectionKey, getDrawingConstraintApplicability, initialConstraintsPanelPosition, toggleDrawingGeometrySelection, type DrawingSelectionRef } from './drawingConstraintsTool.js';
 import { deriveDrawingInferencePresentations, type DrawingInferencePresentation } from './drawingInferencePresentation.js';
 import { createDrawingDirectionDiagnosticRecorder } from './drawingDirectionDiagnostic.js';
 import { applyDrawingBoxSelection, drawingSelectionMode, normalizeDrawingSelectionRect, selectDrawingEntitiesInRect } from './drawingBoxSelection.js';
@@ -154,11 +154,7 @@ export const shouldRouteArcBodyPointer = (
 ) => Boolean(explicitArcCenterId || explicitArcId || (!explicitPointId && !hasHigherPriorityGeometryHit && arcHit));
 
 export const drawingGeometrySelectionClass = (selection: readonly DrawingSelectionRef[], target: DrawingSelectionRef) =>
-  selection.some((ref) => ref.kind === target.kind && (ref.kind === 'line'
-    ? ref.lineId === (target as Extract<DrawingSelectionRef, { kind: 'line' }>).lineId
-    : ref.kind === 'circle' ? ref.circleId === (target as Extract<DrawingSelectionRef, { kind: 'circle' }>).circleId
-    : ref.kind === 'arc' ? ref.arcId === (target as Extract<DrawingSelectionRef, { kind: 'arc' }>).arcId
-    : ref.pointId === (target as Extract<DrawingSelectionRef, { kind: 'point' }>).pointId)) ? ' is-geometry-selected' : '';
+  selection.some((ref) => drawingSelectionKey(ref) === drawingSelectionKey(target)) ? ' is-geometry-selected' : '';
 
 /** The selection and drag policy used by the production root pointer route. */
 export const routeDrawingGeometryPointerSelection = (selection: readonly DrawingSelectionRef[], target: DrawingSelectionRef, ctrlKey: boolean, constraintsOpen: boolean) => {
@@ -1399,6 +1395,9 @@ export function DrawingWorkspace({
               ) : null)}
               {activeSketch && selectedGeometry.flatMap((ref) => ref.kind === 'point' && activeSketch.points[ref.pointId]
                 ? [<circle key={ref.pointId} className="drawing-geometry-point-selected" cx={activeSketch.points[ref.pointId].x} cy={activeSketch.points[ref.pointId].y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} />] : [])}
+              {activeSketch && selectedGeometry.flatMap((ref) => ref.kind === 'semanticPoint'
+                ? (() => { const point = resolveDrawingPointReference(activeSketch, ref.reference); return point
+                  ? [<circle key={drawingSelectionKey(ref)} className="drawing-geometry-point-selected" cx={point.x} cy={point.y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} />] : []; })() : [])}
               {activeTool === 'select' && geometryPreselection?.kind === 'point' && activeSketch && (() => { const p = geometryPreselection.pointId ? activeSketch.points[geometryPreselection.pointId] : geometryPreselection.reference ? resolveDrawingPointReference(activeSketch, geometryPreselection.reference) : resolveDrawingPointReference(activeSketch, { kind: 'point', entityId: geometryPreselection.lineId, point: geometryPreselection.point }); const size = DRAWING_POINT_HOVER_MARKER_SIZE_PX / pixelsPerMm; return p ? <rect className="drawing-geometry-point-preselection" x={p.x - size / 2} y={p.y - size / 2} width={size} height={size} /> : null; })()}
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'point' && activeSketch && (() => { const p = resolveDrawingPointReference(activeSketch, preselectionReference(dimensionPreselection)); return p ? <circle className="drawing-dimension-point-preselection" cx={p.x} cy={p.y} r={DRAWING_INTERACTION_POINT_RADIUS_PX / pixelsPerMm} /> : null; })()}
               {activeTool === 'dimension' && dimensionPreselection?.kind === 'origin' && <circle className="drawing-dimension-point-preselection drawing-origin-preselection" cx={0} cy={0} r={6 / pixelsPerMm} />}
