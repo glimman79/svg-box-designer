@@ -600,6 +600,23 @@ mask that interval. Clean-as-you-go and time-bounded shim metadata apply through
 This was documentation-only. All stages initially remained **NOT STARTED**; no production
 or test code, Drawing behavior, solver behavior, or Arc runtime representation changed.
 
+### 11.21 Common Circular Support foundation accepted
+
+Stage 1 established a representation-neutral Circular Support resolver with center,
+radius, explicit persistent-or-derived center identity, shared support-circle geometry,
+neutral radial equation math, and circular-radius solver capability. Circle now uses
+that foundation for resolution, circular sizing, and radial Point-on-Curve solving.
+Current Arc deliberately remains endpoint + endpoint + bulge, with its center and radius
+derived through the same support boundary; no target Arc persistence or parallel runtime
+was introduced.
+
+The merged implementation and regression/build suite passed automated validation.
+Mikael then accepted it in the real browser after verifying Circle creation, center
+sharing, center/body manipulation, and Ø Dimension behavior, together with current-Arc
+creation, center/body and exact opposite-pivot endpoint manipulation, and R Dimension
+behavior. Stage 1 is therefore **ACCEPTED**; Stage 2 remains **NOT STARTED**, and the
+locked target Arc migration remains future work.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics
