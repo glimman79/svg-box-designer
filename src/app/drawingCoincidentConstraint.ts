@@ -34,8 +34,7 @@ export const createPointToDerivedPointCoincidentConstraint = (sketch: DrawingSke
   const derived = first.kind === 'derivedPoint' ? first : second.kind === 'derivedPoint' ? second : null;
   if (!point || !derived || !sketch.points[point.pointId] || derived.role !== 'center') return null;
   const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes.js').DrawingEntity>)[derived.entityId];
-  if (entity?.type !== 'arc' || entity.startPointId === entity.endPointId || !Number.isFinite(entity.bulge)
-    || Math.abs(entity.bulge) <= DRAWING_MODEL_SPACE_TOLERANCE || !resolveDrawingPointReference(sketch, derived)) return null;
+  if (entity?.type !== 'arc' || !resolveDrawingPointReference(sketch, derived)) return null;
   const duplicate = Object.values(sketch.geometricConstraints ?? {}).some((constraint) => constraint.kind === 'COINCIDENT'
     && constraint.variant === 'point-derived-point' && constraint.references[0].pointId === point.pointId
     && constraint.references[1].entityId === derived.entityId && constraint.references[1].role === derived.role);

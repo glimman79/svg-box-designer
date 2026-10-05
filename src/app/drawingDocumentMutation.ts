@@ -7,10 +7,10 @@ import type { DrawingArcDraft, AcceptedArcEndpoint } from './drawingArcTool.js';
 export const appendArcToActiveSketch = (document: DrawingDocumentV2, draft: DrawingArcDraft,
   createPointId: () => string = () => `point-${crypto.randomUUID()}`): DrawingDocumentV2 => {
   const sketch = document.sketches[document.activeSketchId];
-  if (!sketch || sketch.entities[draft.id] || !Number.isFinite(draft.bulge) || Math.abs(draft.bulge) <= 1e-9) return document;
-  const startPointId = draft.start.pointId ?? createPointId(), endPointId = draft.end.pointId ?? createPointId();
+  if (!sketch || sketch.entities[draft.id] || !Number.isFinite(draft.radius) || draft.radius <= 1e-9) return document;
+  const startPointId = draft.start.pointId ?? createPointId(), endPointId = draft.end.pointId ?? createPointId(), centerPointId = createPointId();
   if (startPointId === endPointId) return document;
-  const arc = { id: draft.id, type: 'arc' as const, startPointId, endPointId, bulge: draft.bulge };
+  const arc = { id: draft.id, type: 'arc' as const, centerPointId, radius: draft.radius, startPointId, endPointId, orientation: draft.orientation };
   const constraints: DrawingGeometricConstraint[] = [];
   const addEndpointSemantics = (accepted: AcceptedArcEndpoint, pointId: string) => {
     if (accepted.midpointLineId && sketch.entities[accepted.midpointLineId]?.type === 'line') constraints.push({ id: `midpoint:${pointId}:${accepted.midpointLineId}`, kind: 'MIDPOINT', references: [{ kind: 'sketchPoint', pointId }, { kind: 'entity', entityId: accepted.midpointLineId }] });
@@ -28,6 +28,7 @@ export const appendArcToActiveSketch = (document: DrawingDocumentV2, draft: Draw
   if (draft.formPointId && sketch.points[draft.formPointId] && draft.formPointId !== startPointId && draft.formPointId !== endPointId) constraints.push({ id: `coincident:${draft.formPointId}:curve:${draft.id}`, kind: 'COINCIDENT', variant: 'point-curve', references: [{ kind: 'sketchPoint', pointId: draft.formPointId }, { kind: 'entity', entityId: draft.id }] });
   return { ...document, sketches: { ...document.sketches, [sketch.id]: { ...sketch,
     points: { ...sketch.points,
+      [centerPointId]: { id: centerPointId, ...draft.center },
       ...(sketch.points[startPointId] ? {} : { [startPointId]: { id: startPointId, ...draft.start.point } }),
       ...(sketch.points[endPointId] ? {} : { [endPointId]: { id: endPointId, ...draft.end.point } }) },
     entities: { ...sketch.entities, [draft.id]: arc } as unknown as typeof sketch.entities, entityOrder: [...sketch.entityOrder, draft.id],

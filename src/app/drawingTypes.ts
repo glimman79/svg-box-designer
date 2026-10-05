@@ -1,4 +1,4 @@
-import { resolveArcFromBulge } from './drawingArcGeometry.js';
+import { migrateLegacyArc } from './drawingArcGeometry.js';
 
 export type WorkspaceId = 'drawing' | 'puzzle' | 'construction';
 
@@ -30,10 +30,11 @@ export type DrawingCircleEntity = Readonly<{
 export type DrawingArcEntity = Readonly<{
   id: string;
   type: 'arc';
+  centerPointId: string;
+  radius: number;
   startPointId: string;
   endPointId: string;
-  /** tan(signed sweep / 4); the sole persistent curvature authority. */
-  bulge: number;
+  orientation: 'CCW' | 'CW';
 }>;
 export type DrawingLineEntityV1 = Readonly<{ id: string; type: 'line'; start: DrawingPoint; end: DrawingPoint }>;
 
@@ -43,6 +44,11 @@ export type ResolvedDrawingCircle = DrawingCircleEntity & Readonly<{ center: Dra
 export type ResolvedDrawingArc = DrawingArcEntity & Readonly<{
   start: DrawingPoint; end: DrawingPoint; center: DrawingPoint; radius: number;
   startAngle: number; signedSweep: number; endAngle: number;
+}>;
+
+/** Historical schema-v2 Arc accepted only by the restore migration boundary. */
+export type LegacyDrawingArcEntity = Readonly<{
+  id: string; type: 'arc'; startPointId: string; endPointId: string; bulge: number;
 }>;
 
 export type DrawingEntity = DrawingLineEntity | DrawingCircleEntity | DrawingArcEntity;
@@ -211,14 +217,24 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
   if (document.schemaVersion === 2) return {
     ...document,
     sketches: Object.fromEntries(Object.entries(document.sketches).map(([id, sourceSketch]) => {
-      const legacySketch = sourceSketch as unknown as Omit<DrawingSketchV2, 'entities' | 'points'> & { points?: Record<string, DrawingSketchPoint>; entities: Record<string, DrawingEntity | DrawingLineEntityV1> };
+      const legacySketch = sourceSketch as unknown as Omit<DrawingSketchV2, 'entities' | 'points'> & { points?: Record<string, DrawingSketchPoint>; entities: Record<string, DrawingEntity | LegacyDrawingArcEntity | DrawingLineEntityV1> };
       const points: Record<string, DrawingSketchPoint> = { ...(legacySketch.points ?? {}) };
       const entities = Object.fromEntries(Object.entries(legacySketch.entities).flatMap(([entityId, entity]): readonly (readonly [string, DrawingEntity])[] => {
         if (entity.type === 'circle') return Number.isFinite(entity.radius) && entity.radius > DRAWING_MODEL_SPACE_TOLERANCE
           && Boolean(points[entity.centerPointId]) ? [[entityId, entity] as const] : [];
-        if (entity.type === 'arc') return Number.isFinite(entity.bulge) && Math.abs(entity.bulge) > DRAWING_MODEL_SPACE_TOLERANCE
-          && Boolean(points[entity.startPointId]) && Boolean(points[entity.endPointId]) && entity.startPointId !== entity.endPointId
-          ? [[entityId, entity] as const] : [];
+        if (entity.type === 'arc') {
+          if ('bulge' in entity) {
+            const migrated = migrateLegacyArc(entity, points[entity.startPointId], points[entity.endPointId]);
+            if (!migrated) return [];
+            const centerPointId = `legacy:${entity.id}:center`;
+            points[centerPointId] ??= { id: centerPointId, ...migrated.center };
+            return [[entityId, { id: entity.id, type: 'arc', centerPointId, radius: migrated.radius,
+              startPointId: entity.startPointId, endPointId: entity.endPointId, orientation: migrated.orientation }]];
+          }
+          return Number.isFinite(entity.radius) && entity.radius > DRAWING_MODEL_SPACE_TOLERANCE
+            && Boolean(points[entity.centerPointId]) && Boolean(points[entity.startPointId]) && Boolean(points[entity.endPointId])
+            && entity.startPointId !== entity.endPointId ? [[entityId, entity]] : [];
+        }
         if ('startPointId' in entity) return [[entityId, entity] as const];
         // Legacy documents contain no authoritative connectivity metadata. Each endpoint
         // therefore receives a deterministic, independent identity; equal coordinates are not merged.
@@ -231,9 +247,17 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
         geometricConstraints: legacySketch.geometricConstraints ?? {},
         geometricConstraintOrder: legacySketch.geometricConstraintOrder ?? [],
       } as DrawingSketchV2;
+      const persistentReference = (reference: DrawingPointReference): DrawingPointReference => {
+        if (reference.kind !== 'derivedPoint' || reference.role !== 'center') return reference;
+        const entity = entities[reference.entityId];
+        return entity?.type === 'arc' ? { kind: 'sketchPoint', pointId: entity.centerPointId } : reference;
+      };
       // D2.5a3 migration: legacy schema-v2 dimensions without a role become driving.
       // An explicitly persisted reference role is retained and is never reclassified here.
-      const dimensions = Object.fromEntries(Object.entries(sketch.dimensions).filter(([, dimension]) => {
+      const normalizedDimensions = Object.fromEntries(Object.entries(sketch.dimensions).map(([key, dimension]) => [key,
+        { ...dimension, references: (dimension.references as readonly DrawingGeometryReference[]).map((reference) =>
+          reference.kind === 'entity' ? reference : persistentReference(reference)) } as unknown as DrawingDimension]));
+      const dimensions = Object.fromEntries(Object.entries(normalizedDimensions).filter(([, dimension]) => {
         if (!Number.isFinite(dimension.value) || dimension.value < 0) return false;
         if (dimension.kind === 'CIRCULAR_SIZE') {
           const reference = dimension.references.length === 1 ? dimension.references[0] : undefined, entity = reference?.kind === 'entity' ? (sketch.entities as unknown as Record<string, DrawingEntity>)[reference.entityId] : null;
@@ -241,14 +265,21 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
             && dimension.placement.kind === 'radial' && Number.isFinite(dimension.placement.anchor.x) && Number.isFinite(dimension.placement.anchor.y));
         }
         return dimension.references.every((reference) => reference.kind === 'datum' ? reference.datum === 'ORIGIN' : reference.kind === 'sketchPoint' ? Boolean(sketch.points[reference.pointId]) : reference.kind === 'derivedPoint'
-          ? (() => { const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[reference.entityId]; return reference.role === 'center' && entity?.type === 'arc' && Boolean(resolveArcFromBulge(entity, points[entity.startPointId], points[entity.endPointId])); })()
+          ? false
           : Boolean(sketch.entities[reference.entityId]));
       }).map(([dimensionId, dimension]) => [
           dimensionId,
           { ...dimension, role: (dimension.role === 'reference' ? 'reference' : 'driving') as DrawingDimensionRole },
         ]));
+      const normalizedConstraints = Object.fromEntries(Object.entries(sketch.geometricConstraints).map(([key, constraint]) => {
+        if (constraint.kind === 'COINCIDENT' && constraint.variant === 'point-derived-point') {
+          const reference = persistentReference(constraint.references[1]);
+          if (reference.kind === 'sketchPoint') return [key, { ...constraint, variant: 'point-point', references: [constraint.references[0], reference] } as DrawingGeometricConstraint];
+        }
+        return [key, constraint];
+      }));
       const acceptedAxisLines = new Set<string>(), acceptedPairs = new Set<string>();
-      const geometricConstraints = Object.fromEntries(Object.entries(sketch.geometricConstraints).filter(([, constraint]) => {
+      const geometricConstraints = Object.fromEntries(Object.entries(normalizedConstraints).filter(([, constraint]) => {
         if (constraint.kind === 'MIDPOINT') {
           if (constraint.references.length !== 2 || constraint.references[0].kind !== 'sketchPoint' || constraint.references[1].kind !== 'entity') return false;
           const pointId = constraint.references[0].pointId, line = sketch.entities[constraint.references[1].entityId];
@@ -270,8 +301,7 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
             if (second.kind !== 'entity' || !['circle', 'arc'].includes((sketch.entities as unknown as Record<string, DrawingEntity>)[second.entityId]?.type ?? '')) return false;
           } else if (legacyVariant === 'point-derived-point') {
             const entity = second.kind === 'derivedPoint' ? (sketch.entities as unknown as Record<string, DrawingEntity>)[second.entityId] : null;
-            if (second.kind !== 'derivedPoint' || second.role !== 'center' || entity?.type !== 'arc'
-              || !resolveArcFromBulge(entity, points[entity.startPointId], points[entity.endPointId])) return false;
+            if (second.kind !== 'derivedPoint' || second.role !== 'center' || entity?.type !== 'arc') return false;
           } else if (second.kind !== 'sketchPoint' || !sketch.points[second.pointId] || constraint.references[0].pointId === second.pointId) return false;
           const key = legacyVariant === 'point-linear-support'
             ? `COINCIDENT:${constraint.references[0].pointId}:support:${(second as DrawingEntityReference).entityId}`

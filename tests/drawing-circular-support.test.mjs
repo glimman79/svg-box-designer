@@ -9,12 +9,13 @@ const sketch = () => ({
   id: 'sketch', name: 'Sketch',
   points: {
     center: { id: 'center', x: 4, y: -3 },
+    arcCenter: { id: 'arcCenter', x: 5, y: 0 },
     start: { id: 'start', x: 0, y: 0 },
     end: { id: 'end', x: 10, y: 0 },
   },
   entities: {
     circle: { id: 'circle', type: 'circle', centerPointId: 'center', radius: 7 },
-    arc: { id: 'arc', type: 'arc', startPointId: 'start', endPointId: 'end', bulge: 0.5 },
+    arc: { id: 'arc', type: 'arc', centerPointId: 'arcCenter', radius: 5, startPointId: 'start', endPointId: 'end', orientation: 'CCW' },
   },
   entityOrder: ['circle', 'arc'], dimensions: {}, dimensionOrder: [],
   geometricConstraints: {}, geometricConstraintOrder: [],
@@ -29,14 +30,12 @@ test('Circle resolves through Circular Support with persistent center identity a
   assert.deepEqual(resolveCircle(source, source.entities.circle), support.entity);
 });
 
-test('current Arc exposes the same mathematical support without persistent target-Arc state', () => {
+test('target Arc exposes Circular Support with persistent center and radius', () => {
   const source = sketch(), support = resolveCircularSupport(source, source.entities.arc);
   assert.ok(support);
   assert.equal(support.entity.type, 'arc');
-  assert.equal(support.entity.bulge, 0.5);
-  assert.deepEqual(support.centerIdentity, { kind: 'derived', entityId: 'arc', role: 'center' });
-  assert.equal('centerPointId' in source.entities.arc, false);
-  assert.equal('radius' in source.entities.arc, false);
+  assert.equal(support.entity.radius, 5);
+  assert.deepEqual(support.centerIdentity, { kind: 'persistent', pointId: 'arcCenter' });
 });
 
 test('shared support projection and radial equation are representation-neutral', () => {
@@ -45,12 +44,13 @@ test('shared support projection and radial equation are representation-neutral',
   assert.equal(circularSupportResidual({ x: 2, y: 8 }, support), 0);
 });
 
-test('circular radius solver variable preserves Circle scalar authority', () => {
+test('circular radius solver variable preserves shared Circle/Arc scalar authority', () => {
   const source = sketch(), variable = circularRadiusSolverVariable('circle');
   assert.deepEqual(variable, { kind: 'entity-scalar', entityId: 'circle', scalar: 'circular-radius' });
   const candidate = applyDrawingSolverVector(source, [variable], [11]);
   assert.ok(candidate);
   assert.equal(candidate.entities.circle.radius, 11);
   assert.equal(candidate.points.center, source.points.center);
-  assert.equal(candidate.entities.arc.bulge, 0.5);
+  const arcCandidate = applyDrawingSolverVector(source, [circularRadiusSolverVariable('arc')], [6]);
+  assert.equal(arcCandidate.entities.arc.radius, 6);
 });

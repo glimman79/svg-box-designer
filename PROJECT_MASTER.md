@@ -358,19 +358,16 @@ Shared topology and point-point Coincidence remain the accepted Circle behavior.
 
 #### Current Arc implementation
 
-**IMPLEMENTED CURRENT STATE — not the target representation.** The runtime and serialized
-Arc remains `DrawingArcEntity { id, type: 'arc', startPointId, endPointId, bulge }`, with
-`bulge = tan(signedSweep / 4)`. P1/P2 are persistent semantic `SketchPoint`s. Center,
-radius, start/end angles, signed sweep, P3, and the support Circle are derived. Bulge is
-currently curvature/sweep authority and remains relevant for legacy migration and possible
-import/export compatibility. Existing semantic-center Dimensions, inference,
-manipulation, and narrow persistent-point ↔ derived-point Coincidence use this model.
-Ordinary center selection currently collapses to Arc entity selection; this and complete
-manual center Coincidence remain known implementation gaps.
+**IMPLEMENTED STAGE 3 STATE.** Runtime and new persistence use `DrawingArcEntity {
+centerPointId, radius, startPointId, endPointId, orientation }`. Center and endpoints are
+persistent semantic `SketchPoint`s; angles and signed sweep are derived. Bulge remains
+only as legacy restore input. Center selection, inference, topology, Dimensions, and
+Coincidence use the persistent center identity. Arc own-grip manipulation is explicitly
+deferred to Stage 4 rather than routed through the legacy representation.
 
 #### Locked target Circle/Arc architecture
 
-**LOCKED ARCHITECTURE DECISION — IMPLEMENTATION AND MIGRATION PENDING.** Circle and Arc
+**LOCKED ARCHITECTURE DECISION — IMPLEMENTED IN STAGE 3.** Circle and Arc
 must share a common semantic and mathematical **Circular Support** concept:
 
 ```text
@@ -565,3 +562,7 @@ Puzzle has a reserved, disabled workspace selector only. It has no current docum
 - The Constraints panel intentionally displays disabled future choices alongside implemented ones.
 - Box v1.2 remains the locked release baseline; post-v1.2 Drawing features are implemented without a new declared product release.
 - Detailed reports under `docs/` include historical hypotheses and diagnostic evidence. Consult `docs/README.md` before treating one as a current specification.
+
+## Implemented Stage 3 Arc runtime
+
+The canonical Arc is now `DrawingArcEntity { centerPointId, radius, startPointId, endPointId, orientation }`. All three referenced points are persistent `SketchPoint`s. Circle and Arc resolve Circular Support from a persistent center plus the common circular-radius scalar. Arc direction is persistent `CW | CCW`; sweep, major/minor classification, angles, and SVG flags are derived. Two entity-owned radial equations couple center, endpoints, and radius and produce five geometric DOF from seven continuous variables. Historical endpoint-plus-bulge records are migration input only and are converted once at restore. Arc own-grip center, body/radius, and endpoint manipulation is temporarily unavailable until Stage 4; ordinary shared-point and solver propagation through the persistent Arc center remains part of Stage 3.

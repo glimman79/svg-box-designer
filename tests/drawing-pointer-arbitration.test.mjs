@@ -8,12 +8,12 @@ const make = () => {
   const document = createDrawingDocumentV2(), sketch = document.sketches[document.activeSketchId];
   Object.assign(sketch.points, {
     a: { id: 'a', x: 0, y: 0 }, b: { id: 'b', x: 10, y: 0 },
-    center: { id: 'center', x: 30, y: 0 }, s: { id: 's', x: 50, y: 0 }, e: { id: 'e', x: 60, y: 0 },
+    center: { id: 'center', x: 30, y: 0 }, o: { id: 'o', x: 55, y: 3.75 }, s: { id: 's', x: 50, y: 0 }, e: { id: 'e', x: 60, y: 0 },
   });
   Object.assign(sketch.entities, {
     line: { id: 'line', type: 'line', startPointId: 'a', endPointId: 'b' },
     circle: { id: 'circle', type: 'circle', centerPointId: 'center', radius: 10 },
-    arc: { id: 'arc', type: 'arc', startPointId: 's', endPointId: 'e', bulge: 0.5 },
+    arc: { id: 'arc', type: 'arc', centerPointId: 'o', radius: 6.25, startPointId: 's', endPointId: 'e', orientation: 'CCW' },
   });
   sketch.entityOrder = ['line', 'circle', 'arc'];
   return document;
@@ -28,23 +28,25 @@ for (const [name, candidate, pointer, expectedKind] of [
   ['Line endpoint beneath dimension', point('a'), { x: 0, y: 0 }, 'point'],
   ['Circle body beneath diameter', curve('circle'), { x: 40, y: 0 }, 'entity-scalar'],
   ['Circle proximity candidate', curve('circle'), { x: 42, y: 0 }, 'entity-scalar'],
-  ['Arc P1 beneath dimension', point('s'), { x: 50, y: 0 }, 'arc-endpoint'],
-  ['Arc P2 beneath dimension', point('e'), { x: 60, y: 0 }, 'arc-endpoint'],
-  ['Arc body beneath radius leader', curve('arc'), { x: 55, y: -2.5 }, 'arc-radius'],
-  ['Arc proximity candidate', curve('arc'), { x: 55, y: -4 }, 'arc-radius'],
+  ['Arc P1 beneath dimension', point('s'), { x: 50, y: 0 }, 'point'],
+  ['Arc P2 beneath dimension', point('e'), { x: 60, y: 0 }, 'point'],
   ['Line body beneath dimension', line, { x: 5, y: 0 }, 'line'],
 ]) test(name, () => {
   const owner = resolveDrawingPointerOwner(make(), pointer, candidate, overlay);
   assert.equal(owner.kind, 'geometry'); assert.equal(owner.target.kind, expectedKind);
 });
 
-test('derived Arc center routes to existing center target without persistent topology', () => {
+test('persistent Arc center routes as an ordinary point', () => {
   const document = make(), before = Object.keys(document.sketches[document.activeSketchId].points);
-  const candidate = point(undefined, { kind: 'derivedPoint', entityId: 'arc', role: 'center' });
+  const candidate = point('o');
   const owner = resolveDrawingPointerOwner(document, { x: 55, y: 3.75 }, candidate, overlay);
-  assert.equal(owner.kind, 'geometry'); assert.equal(owner.target.kind, 'arc-center');
-  assert.deepEqual(owner.selection, { kind: 'semanticPoint', reference: { kind: 'derivedPoint', entityId: 'arc', role: 'center' } });
+  assert.equal(owner.kind, 'geometry'); assert.deepEqual(owner.target, { kind: 'point', pointId: 'o' });
+  assert.deepEqual(owner.selection, { kind: 'point', pointId: 'o' });
   assert.deepEqual(Object.keys(document.sketches[document.activeSketchId].points), before);
+});
+
+test('deferred Arc body manipulation does not outrank a dimension through stale geometry', () => {
+  assert.equal(resolveDrawingPointerOwner(make(), { x: 55, y: -2.5 }, curve('arc'), overlay).kind, 'dimension');
 });
 
 test('persistent semantic point identity survives an empty line id', () => {

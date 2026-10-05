@@ -1,6 +1,6 @@
 import type { DrawingAngleSector, DrawingDimension, DrawingDimensionKind, DrawingDimensionRole, DrawingDocumentV2, DrawingEntityReference, DrawingGeometryReference, DrawingLineEntity, DrawingPoint, DrawingPointReference, DrawingSketchV2, ResolvedDrawingLine } from './drawingTypes';
 import { pointIdForLineEndpoint, removeLineAndOrphans, resolveArc, resolveLine } from './drawingTopology.js';
-import { arcBulgeSolverVariable, pointSolverVariables, type DrawingSolverVariable } from './drawingSolverVariables.js';
+import { pointSolverVariables, type DrawingSolverVariable } from './drawingSolverVariables.js';
 import { dimensionIncreasesConstraintRank } from './drawingConstraintAnalysis.js';
 import { candidateForSector, createLineAngleBasis, selectLineAngleCandidate } from './drawingLineAngle.js';
 import { defaultCircularSizePlacementAnchor, measureCircularDimension, resolveCircularSize } from './drawingCircularSize.js';
@@ -58,8 +58,7 @@ export const drawingPointReferenceDependencies = (sketch: DrawingSketchV2, refer
   if (pointId) return pointSolverVariables(pointId);
   if (reference.kind !== 'derivedPoint') return [];
   const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[reference.entityId];
-  return entity?.type === 'arc' && resolveArc(sketch, entity)
-    ? [...pointSolverVariables(entity.startPointId), ...pointSolverVariables(entity.endPointId), arcBulgeSolverVariable(entity.id)] : [];
+  return entity?.type === 'arc' && resolveArc(sketch, entity) ? pointSolverVariables(entity.centerPointId) : [];
 };
 export const sketchPointIdFromReference = (sketch: DrawingSketchV2, reference: DrawingPointReference): string | null => {
   if (reference.kind === 'sketchPoint') return sketch.points[reference.pointId] ? reference.pointId : null;

@@ -61,7 +61,7 @@ export const resolveDrawingPointerOwner = (
     })();
     if (pointId) {
       const arcId = resolveArcEndpointOwner(document, pointId, selectedEntityIds);
-      const target = arcId ? createArcEndpointDragTarget(document, arcId, pointId) : { kind: 'point' as const, pointId };
+      const target = (arcId ? createArcEndpointDragTarget(document, arcId, pointId) : null) ?? { kind: 'point' as const, pointId };
       if (target) return { kind: 'geometry', selection: { kind: 'point', pointId }, target };
     }
   }
@@ -81,8 +81,8 @@ export const resolveDrawingPointerOwner = (
   }
 
   if (evidence.explicitArcCenterId) {
-    const target = createArcCenterDragTarget(document, evidence.explicitArcCenterId);
-    if (target) return { kind: 'geometry', selection: { kind: 'semanticPoint', reference: { kind: 'derivedPoint', entityId: evidence.explicitArcCenterId, role: 'center' } }, target };
+    const arc = (sketch?.entities as unknown as Record<string, DrawingEntity> | undefined)?.[evidence.explicitArcCenterId];
+    if (arc?.type === 'arc' && sketch?.points[arc.centerPointId]) return { kind: 'geometry', selection: { kind: 'point', pointId: arc.centerPointId }, target: { kind: 'point', pointId: arc.centerPointId } };
   }
   return evidence.dimensionId
     ? { kind: 'dimension', dimensionId: evidence.dimensionId, surface: evidence.dimensionSurface ?? 'line' }

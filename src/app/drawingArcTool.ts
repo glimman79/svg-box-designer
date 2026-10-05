@@ -15,7 +15,8 @@ export type ArcToolInteraction = Readonly<{
 }>;
 export const EMPTY_ARC_INTERACTION: ArcToolInteraction = { start: null, end: null, preview: null, form: null };
 export type DrawingArcDraft = Readonly<{
-  id: string; type: 'arc'; start: AcceptedArcEndpoint; end: AcceptedArcEndpoint; bulge: number; formPointId: string | null;
+  id: string; type: 'arc'; start: AcceptedArcEndpoint; end: AcceptedArcEndpoint; center: DrawingPoint; radius: number;
+  orientation: 'CW' | 'CCW'; formPointId: string | null;
 }>;
 
 export const updateArcPreview = (state: ArcToolInteraction, point: DrawingPoint): ArcToolInteraction =>
@@ -40,5 +41,5 @@ export const commitArcForm = (state: ArcToolInteraction, form: DrawingPoint, id:
   const geometry = deriveArcThroughThreePoints(state.start.point, state.end.point, form, id);
   if (!geometry) return { interaction: { ...state, form } as ArcToolInteraction, entity: null } as const;
   return { interaction: EMPTY_ARC_INTERACTION, entity: { id, type: 'arc', start: state.start, end: state.end,
-    bulge: geometry.bulge, formPointId } satisfies DrawingArcDraft } as const;
+    center: geometry.center, radius: geometry.radius, orientation: geometry.orientation, formPointId } satisfies DrawingArcDraft } as const;
 };

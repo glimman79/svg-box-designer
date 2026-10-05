@@ -42,27 +42,19 @@ assert.match(markup, /class="drawing-sketch-point-hit drawing-interactive-hit" d
 assert.equal((markup.match(/data-sketch-line-id=/g) ?? []).length, 2, 'each rendered Line exposes its exact semantic identity to the root pointer route');
 
 const arcDocument = structuredClone(document), arcSketch = arcDocument.sketches.s;
-arcSketch.entities = { arc: { id: 'arc', type: 'arc', startPointId: 'shared', endPointId: 'p2', bulge: 0.5 } };
+arcSketch.points.arcCenter = { id: 'arcCenter', x: 50, y: 0 };
+arcSketch.entities = { arc: { id: 'arc', type: 'arc', centerPointId: 'arcCenter', radius: 50, startPointId: 'shared', endPointId: 'p2', orientation: 'CCW' } };
 arcSketch.entityOrder = ['arc'];
 const arcMarkup = renderToStaticMarkup(React.createElement(DrawingWorkspace, {
   document: arcDocument, setDocument() {}, viewBox: { x: -400, y: -300, width: 800, height: 600 }, setViewBox() {},
   constraintsPanelOpen: false, setConstraintsPanelOpen() {},
 }));
-for (const pointId of ['shared', 'p2']) assert.match(arcMarkup, new RegExp(`data-sketch-point-id="${pointId}"`));
+for (const pointId of ['shared', 'p2', 'arcCenter']) assert.match(arcMarkup, new RegExp(`data-sketch-point-id="${pointId}"`));
 for (const [draggedPointId, pivotPointId, delta] of [['shared', 'p2', { x: -4, y: 3 }], ['p2', 'shared', { x: 4, y: 3 }]]) {
   assert.equal(shouldRouteArcBodyPointer(undefined, undefined, draggedPointId, false, 'arc'), false,
     'an explicit persistent Point wins even when the same pointer qualifies for Arc proximity');
   const target = createArcEndpointDragTarget(arcDocument, 'arc', draggedPointId);
-  assert.deepEqual({ kind: target.kind, entityId: target.entityId, draggedPointId: target.draggedPointId, pivotPointId: target.pivotPointId },
-    { kind: 'arc-endpoint', entityId: 'arc', draggedPointId, pivotPointId });
-  assert.notDeepEqual(target, { kind: 'entity-scalar', entityId: 'arc', scalar: 'arc-bulge' });
-  const candidate = solveDrawingDragCandidate(arcDocument, target, delta);
-  assert.deepEqual(arcSketch.points[pivotPointId], candidate.sketches.s.points[pivotPointId]);
-  assert.notDeepEqual(arcSketch.points[draggedPointId], candidate.sketches.s.points[draggedPointId]);
-  assert.notEqual(candidate.sketches.s.entities.arc.bulge, arcSketch.entities.arc.bulge);
-  const transaction = transactDrawingDocument(EMPTY_DRAWING_HISTORY, arcDocument, () => candidate);
-  assert.equal(transaction.history.undo.length, 1);
-  assert.deepEqual(undoDrawingDocument(transaction.history, transaction.document).document, arcDocument);
+  assert.equal(target, null, 'Arc endpoint Direct Manipulation is explicitly deferred to Stage 4');
 }
 assert.equal(shouldRouteCircleBodyPointer(undefined, 'shared', false, 'circle'), false,
   'an explicit persistent Point also wins over Circle proximity');

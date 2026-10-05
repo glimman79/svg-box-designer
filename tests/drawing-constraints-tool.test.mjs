@@ -14,11 +14,11 @@ const add = (document, draft) => appendEntityToActiveSketch(document, draft);
 const enabled = (document, selection) => getDrawingConstraintApplicability(selection, document).filter((item) => item.enabled).map((item) => item.kind);
 const withCurves = () => {
   const document = createDrawingDocumentV2(), sketch = document.sketches[document.activeSketchId];
-  sketch.points = { c1: { id: 'c1', x: 2, y: 3 }, c2: { id: 'c2', x: 20, y: 3 }, a: { id: 'a', x: -5, y: 0 }, b: { id: 'b', x: 5, y: 0 } };
+  sketch.points = { c1: { id: 'c1', x: 2, y: 3 }, c2: { id: 'c2', x: 20, y: 3 }, a: { id: 'a', x: -5, y: 0 }, b: { id: 'b', x: 5, y: 0 }, o: { id: 'o', x: 0, y: 0 } };
   sketch.entities = {
     circle1: { id: 'circle1', type: 'circle', centerPointId: 'c1', radius: 5 },
     circle2: { id: 'circle2', type: 'circle', centerPointId: 'c2', radius: 3 },
-    arc: { id: 'arc', type: 'arc', startPointId: 'a', endPointId: 'b', bulge: 1 },
+    arc: { id: 'arc', type: 'arc', centerPointId: 'o', radius: 5, startPointId: 'a', endPointId: 'b', orientation: 'CCW' },
   };
   sketch.entityOrder = ['circle1', 'circle2', 'arc'];
   return document;

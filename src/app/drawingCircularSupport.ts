@@ -1,4 +1,4 @@
-import { resolveArcFromBulge } from './drawingArcGeometry.js';
+import { resolveDrawingArc } from './drawingArcGeometry.js';
 import {
   DRAWING_MODEL_SPACE_TOLERANCE,
   type DrawingArcEntity,
@@ -14,16 +14,13 @@ export type ResolvedCircularEntity = ResolvedDrawingCircle | ResolvedDrawingArc;
 
 /**
  * Representation-neutral mathematical support shared by circular geometry.
- * A Circle's center identity is persistent; the current endpoint-plus-bulge
- * Arc deliberately exposes only a derived center until the atomic Arc cutover.
+ * Circle and Arc both expose their persistent center identity.
  */
 export type ResolvedCircularSupport = Readonly<{
   entity: ResolvedCircularEntity;
   center: DrawingPoint;
   radius: number;
-  centerIdentity:
-    | Readonly<{ kind: 'persistent'; pointId: string }>
-    | Readonly<{ kind: 'derived'; entityId: string; role: 'center' }>;
+  centerIdentity: Readonly<{ kind: 'persistent'; pointId: string }>;
 }>;
 
 /** Resolves an entity to its authoritative support Circle without adding state. */
@@ -43,11 +40,11 @@ export const resolveCircularSupport = (
     };
   }
 
-  const resolved = resolveArcFromBulge(entity, sketch.points[entity.startPointId], sketch.points[entity.endPointId]);
+  const resolved = resolveDrawingArc(entity, sketch.points[entity.centerPointId], sketch.points[entity.startPointId], sketch.points[entity.endPointId]);
   return resolved ? {
     entity: resolved,
     center: resolved.center,
     radius: resolved.radius,
-    centerIdentity: { kind: 'derived', entityId: entity.id, role: 'center' },
+    centerIdentity: { kind: 'persistent', pointId: entity.centerPointId },
   } : null;
 };

@@ -1,5 +1,5 @@
 import type { DrawingArcEntity, DrawingDimension, DrawingDocumentV2, DrawingLineEntity, DrawingPoint, DrawingPointReference, DrawingSketchPoint, DrawingSketchV2, ResolvedDrawingArc, ResolvedDrawingCircle, ResolvedDrawingLine } from './drawingTypes';
-import { resolveArcFromBulge } from './drawingArcGeometry.js';
+import { resolveDrawingArc } from './drawingArcGeometry.js';
 import { resolveCircularSupport } from './drawingCircularSupport.js';
 import { drawingEntityDefiningPointIds } from './drawingEntityDefinition.js';
 
@@ -16,8 +16,8 @@ export const resolveCircle = (sketch: DrawingSketchV2, circle: import('./drawing
   return support?.entity.type === 'circle' ? support.entity : null;
 };
 export const resolveArc = (sketch: DrawingSketchV2, arc: DrawingArcEntity): ResolvedDrawingArc | null => {
-  const start = resolveSketchPoint(sketch, arc.startPointId), end = resolveSketchPoint(sketch, arc.endPointId);
-  return start && end ? resolveArcFromBulge(arc, start, end) : null;
+  const center = resolveSketchPoint(sketch, arc.centerPointId), start = resolveSketchPoint(sketch, arc.startPointId), end = resolveSketchPoint(sketch, arc.endPointId);
+  return center && start && end ? resolveDrawingArc(arc, center, start, end) : null;
 };
 
 /** A resolved semantic point available to geometry-authoring inference. */
@@ -32,8 +32,8 @@ export type DrawingAuthoringPoint = Readonly<{
 
 /**
  * Collects authoring references by semantic identity. Persistent SketchPoints
- * are shared regardless of how many entities own them; derived Arc centers
- * retain their distinct DrawingPointReference identity even at equal coordinates.
+ * are shared regardless of how many entities own them. Arc centers use the
+ * same persistent identity as every other defining point.
  */
 export const collectDrawingAuthoringPoints = (sketch: DrawingSketchV2): DrawingAuthoringPoint[] => {
   const points = new Map<string, DrawingAuthoringPoint>();
@@ -53,13 +53,6 @@ export const collectDrawingAuthoringPoints = (sketch: DrawingSketchV2): DrawingA
     if (!entity) continue;
     for (const pointId of drawingEntityDefiningPointIds(entity))
       addPersistent(pointId, entity.id, entity.type === 'line' ? entity.id : undefined);
-    if (entity.type === 'arc') {
-      const arc = resolveArc(sketch, entity);
-      if (arc) points.set(`derivedPoint:${entity.id}:center`, {
-        id: `${entity.id}:center`, reference: { kind: 'derivedPoint', entityId: entity.id, role: 'center' },
-        point: arc.center, entityId: entity.id, incidentLineIds: [],
-      });
-    }
   }
   return [...points.values()];
 };
@@ -125,8 +118,7 @@ export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTop
         continue;
       }
       if (entity.type === 'arc') {
-        const start = sketch.points[entity.startPointId], end = sketch.points[entity.endPointId];
-        if (!start || !end || entity.startPointId === entity.endPointId || !resolveArcFromBulge(entity, start, end)) errors.push(`Malformed Arc: ${entity.id}`);
+        if (!resolveArc(sketch, entity)) errors.push(`Malformed Arc: ${entity.id}`);
         continue;
       }
       if (!sketch.points[entity.startPointId] || !sketch.points[entity.endPointId]) errors.push(`Line references missing point: ${entity.id}`);
