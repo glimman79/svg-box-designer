@@ -6,22 +6,22 @@ import { drawingSelectionKey, toggleDrawingGeometrySelection } from '../.test-bu
 
 const sketch = {
   id: 's', name: 'S',
-  points: { a: { id: 'a', x: 0, y: 0 }, b: { id: 'b', x: 8, y: 0 }, c: { id: 'c', x: 2, y: 3 } },
+  points: { a: { id: 'a', x: 0, y: 0 }, b: { id: 'b', x: 8, y: 0 }, c: { id: 'c', x: 2, y: 3 }, o: { id: 'o', x: 4, y: 0 } },
   entities: {
     line: { id: 'line', type: 'line', startPointId: 'a', endPointId: 'b' },
     circle: { id: 'circle', type: 'circle', centerPointId: 'c', radius: 4 },
-    arc: { id: 'arc', type: 'arc', startPointId: 'a', endPointId: 'b', bulge: 0.5 },
+    arc: { id: 'arc', type: 'arc', centerPointId: 'o', radius: 4, startPointId: 'a', endPointId: 'b', orientation: 'CCW' },
   },
   entityOrder: ['line', 'circle', 'arc'], dimensions: {}, dimensionOrder: [], geometricConstraints: {}, geometricConstraintOrder: [],
 };
 
-test('entity definitions enumerate persistent points and current canonical variables', () => {
+test('entity definitions enumerate target Arc persistent points and variables', () => {
   assert.deepEqual(drawingEntityDefiningPointIds(sketch.entities.line), ['a', 'b']);
   assert.deepEqual(drawingEntityDefiningPointIds(sketch.entities.circle), ['c']);
-  assert.deepEqual(drawingEntityDefiningPointIds(sketch.entities.arc), ['a', 'b']);
+  assert.deepEqual(drawingEntityDefiningPointIds(sketch.entities.arc), ['o', 'a', 'b']);
   assert.equal(drawingEntitySolverVariables(sketch.entities.circle).length, 3);
-  assert.equal(drawingEntitySolverVariables(sketch.entities.arc).length, 5);
-  assert.deepEqual(drawingEntityEquations(sketch, sketch.entities.arc), [], 'current bulge Arc has no target radial equations');
+  assert.equal(drawingEntitySolverVariables(sketch.entities.arc).length, 7);
+  assert.equal(drawingEntityEquations(sketch, sketch.entities.arc).length, 2);
 });
 
 test('entity equations have a separate deterministic rank path', () => {
@@ -38,17 +38,17 @@ test('entity equations have a separate deterministic rank path', () => {
   assert.equal('kind' in equation, false, 'intrinsic equations are not user Constraints');
 });
 
-test('components retain current Circle and bulge Arc DOF', () => {
+test('components derive target Arc five DOF from seven variables and two equations', () => {
   const analysis = analyzeDrawingConstraints(sketch);
   const circle = analysis.componentByPointId.get('c');
-  const arc = analysis.componentByPointId.get('a');
+  const arc = analysis.componentByPointId.get('o');
   assert.deepEqual({ variables: circle.variableCount, rank: circle.constraintRank, dof: circle.degreesOfFreedom }, { variables: 3, rank: 0, dof: 3 });
-  assert.deepEqual({ variables: arc.variableCount, rank: arc.constraintRank, dof: arc.degreesOfFreedom }, { variables: 5, rank: 0, dof: 5 });
-  assert.deepEqual(arc.entityEquationIds, []);
+  assert.deepEqual({ variables: arc.variableCount, rank: arc.constraintRank, dof: arc.degreesOfFreedom }, { variables: 7, rank: 2, dof: 5 });
+  assert.deepEqual(arc.entityEquationIds, ['entity:arc:radial:start', 'entity:arc:radial:end']);
 });
 
 test('semantic point selection does not collapse into its owning entity', () => {
-  const center = { kind: 'semanticPoint', reference: { kind: 'derivedPoint', entityId: 'arc', role: 'center' } };
+  const center = { kind: 'point', pointId: 'o' };
   assert.notEqual(drawingSelectionKey(center), drawingSelectionKey({ kind: 'arc', arcId: 'arc' }));
   assert.deepEqual(toggleDrawingGeometrySelection([{ kind: 'arc', arcId: 'arc' }], center), [{ kind: 'arc', arcId: 'arc' }, center]);
 });

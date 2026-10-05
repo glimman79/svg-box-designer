@@ -171,3 +171,10 @@
 ## V1.1
 
 - Expanded SVG import/panel containment, Panel Manager, TB and S workflows, generated geometry, manufacturing compensation, preview, and export.
+
+## Drawing — Stage 3 Arc representation cutover (in progress)
+
+- Replaced canonical Arc endpoint-plus-bulge state with persistent center, radius, endpoints, and CW/CCW orientation; finite geometry now resolves directly from that state.
+- Added deterministic restore-boundary migration for legacy bulge Arcs, including stable persistent center points and legacy derived-center reference normalization.
+- Added seven target Arc solver variables, two entity-owned radial equations, generic defining-point topology, and five-DOF rank coverage.
+- Temporarily disabled Arc center, body/radius, and endpoint own-grip Direct Manipulation for Stage 4 rather than retaining the obsolete bulge runtime.

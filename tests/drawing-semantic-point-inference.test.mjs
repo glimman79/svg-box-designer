@@ -13,14 +13,15 @@ const sketch = {
     lineEnd: { id: 'lineEnd', x: -10, y: -10 }, center: { id: 'center', x: 5, y: 0 },
     circleOnly: { id: 'circleOnly', x: 30, y: 40 }, arcOnlyStart: { id: 'arcOnlyStart', x: 50, y: 40 },
     arcOnlyEnd: { id: 'arcOnlyEnd', x: 60, y: 40 },
+    arcOnlyCenter: { id: 'arcOnlyCenter', x: 55, y: 40 },
   },
   entities: {
     line: { id: 'line', type: 'line', startPointId: 'lineEnd', endPointId: 'shared' },
-    arc: { id: 'arc', type: 'arc', startPointId: 'shared', endPointId: 'arcEnd', bulge: 1 },
+    arc: { id: 'arc', type: 'arc', centerPointId: 'center', radius: 5, startPointId: 'shared', endPointId: 'arcEnd', orientation: 'CCW' },
     circleShared: { id: 'circleShared', type: 'circle', centerPointId: 'shared', radius: 2 },
     circleCoincident: { id: 'circleCoincident', type: 'circle', centerPointId: 'center', radius: 1 },
     circleOnly: { id: 'circleOnly', type: 'circle', centerPointId: 'circleOnly', radius: 3 },
-    arcOnly: { id: 'arcOnly', type: 'arc', startPointId: 'arcOnlyStart', endPointId: 'arcOnlyEnd', bulge: 1 },
+    arcOnly: { id: 'arcOnly', type: 'arc', centerPointId: 'arcOnlyCenter', radius: 5, startPointId: 'arcOnlyStart', endPointId: 'arcOnlyEnd', orientation: 'CCW' },
   },
   entityOrder: ['line', 'arc', 'circleShared', 'circleCoincident', 'circleOnly', 'arcOnly'], dimensions: {}, dimensionOrder: [],
   geometricConstraints: {}, geometricConstraintOrder: [],
@@ -34,16 +35,15 @@ const snap = (rawPoint, values, previousSnap = null, ctrlOverride = false) => re
   rawPoint, candidates: values, previousSnap, ctrlOverride,
 });
 
-test('persistent semantic points deduplicate by SketchPoint identity while derived centers remain distinct', () => {
+test('persistent semantic points deduplicate Arc centers by SketchPoint identity', () => {
   assert.equal(semantic.filter(({ persistentPointId }) => persistentPointId === 'shared').length, 1);
   const shared = semantic.find(({ persistentPointId }) => persistentPointId === 'shared');
   assert.deepEqual(shared.reference, { kind: 'sketchPoint', pointId: 'shared' });
   assert.deepEqual(shared.incidentLineIds, ['line']);
-  const center = semantic.find(({ id }) => id === 'arc:center');
-  assert.deepEqual(center.reference, { kind: 'derivedPoint', entityId: 'arc', role: 'center' });
+  const center = semantic.find(({ id }) => id === 'center');
+  assert.deepEqual(center.reference, { kind: 'sketchPoint', pointId: 'center' });
   assert.deepEqual(center.point, { x: 5, y: 0 });
-  assert.equal(semantic.filter(({ point }) => point.x === 5 && point.y === 0).length, 2,
-    'coordinate equality does not merge a derived center with a persistent center');
+  assert.equal(semantic.filter(({ point }) => point.x === 5 && point.y === 0).length, 1);
 });
 
 test('Arc endpoints and Circle centers retain exact persistent acquisition and gain X/Y alignment', () => {
@@ -61,21 +61,20 @@ test('Arc endpoints and Circle centers retain exact persistent acquisition and g
     'persistent point retains within 9 px');
 });
 
-test('derived Arc centers supply exact semantic acquisition and retain alignment channels', () => {
+test('persistent Arc centers supply exact semantic acquisition and retain alignment channels', () => {
   const nearX = candidates({ x: 5 + 4.9, y: 100 });
   const nearY = candidates({ x: 100, y: 4.9 });
-  assert.ok(nearX.alignmentsX.some(({ referenceId }) => referenceId === 'arc:center'));
-  assert.ok(nearY.alignmentsY.some(({ referenceId }) => referenceId === 'arc:center'));
+  assert.ok(nearX.alignmentsX.some(({ referenceId }) => referenceId === 'center'));
+  assert.ok(nearY.alignmentsY.some(({ referenceId }) => referenceId === 'center'));
   const exactCandidates = candidates({ x: 5, y: 0 });
-  const centerCandidate = exactCandidates.endpoints.find(({ reference }) => reference.kind === 'derivedPoint' && reference.entityId === 'arc');
-  assert.deepEqual(centerCandidate.reference, { kind: 'derivedPoint', entityId: 'arc', role: 'center' });
-  assert.equal(centerCandidate.pointId, undefined);
+  const centerCandidate = exactCandidates.endpoints.find(({ pointId }) => pointId === 'center');
+  assert.deepEqual(centerCandidate.reference, { kind: 'sketchPoint', pointId: 'center' });
   const acquired = snap({ x: 55, y: 46.9 }, candidates({ x: 55, y: 46.9 }));
-  assert.deepEqual(acquired.reference, { kind: 'derivedPoint', entityId: 'arcOnly', role: 'center' });
+  assert.deepEqual(acquired.reference, { kind: 'sketchPoint', pointId: 'arcOnlyCenter' });
   assert.deepEqual(snap({ x: 55, y: 48.9 }, candidates({ x: 55, y: 48.9 }), acquired).reference, acquired.reference);
-  assert.notEqual(snap({ x: 55, y: 49.1 }, candidates({ x: 55, y: 49.1 }), acquired).reference?.entityId, 'arcOnly');
+  assert.notEqual(snap({ x: 55, y: 49.1 }, candidates({ x: 55, y: 49.1 }), acquired).pointId, 'arcOnlyCenter');
   assert.equal(snap({ x: 5, y: 0 }, exactCandidates, null, true).active, false, 'Ctrl bypasses derived exact acquisition');
-  assert.equal(Object.keys(sketch.points).length, 7, 'collection creates no Arc-center SketchPoint');
+  assert.equal(Object.keys(sketch.points).length, 8, 'collection creates no additional Arc-center SketchPoint');
   assert.equal(Object.values(sketch.entities).filter(({ type }) => type === 'circle').length, 3,
     'collection persists no support Circle');
 });

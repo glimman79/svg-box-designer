@@ -4,7 +4,7 @@ SVG Box Designer is a browser-based React application for drawing semantic 2D sk
 
 ## Application areas
 
-- **2D Drawing** provides an SVG CAD-style canvas with Dimension and Constraint workflows, shared `SketchPoint` topology, click and directional Window/Crossing multi-selection for Lines, Circles, and finite Arcs, snapping and geometric inference, Direct Manipulation, and Drawing Undo/Redo. `Line` authors one independent straight segment from P1 to P2 and completes; `Profile` authors continuing/chained connected straight segments. Both workflows store each segment as the same ordinary Line entity. Browser-accepted Circle Stage 1 authors true Circle geometry from a persistent center point and scalar radius. Browser-accepted Arc Stage 1 provides Start → End → Form/Radius Point authoring and distinct center, body/radius, and endpoint Direct Manipulation over the current endpoint-plus-bulge persistence. Arc's required behavior and target representation are locked: Circle and Arc will share Circular Support, while target Arc persists center/radius, P1/P2, and CW/CCW orientation. That migration is pending; current production still uses endpoint-plus-bulge with derived center/radius, and center-selection ownership plus the resulting manual Coincidence workflow remain outstanding. Both curve types must reuse common Drawing foundations wherever mathematically possible. Authoring Ctrl temporarily bypasses automatic acquisition/inference. Full Circles support diameter (Ø) Dimensions, Arcs support radius (R) Dimensions, and the Constraints panel exposes one Radius / Diameter operation backed by those existing circular Dimensions. Ordinary Dimensions can use supported persistent or derived curve semantic points. Concentricity and Tangency remain planned and unimplemented.
+- **2D Drawing** provides a constraint-aware SVG CAD canvas. Line/Profile use shared persistent `SketchPoint` topology; Circle persists `centerPointId + radius`; Arc now canonically persists `centerPointId + radius + startPointId + endPointId + orientation`. Arc authoring remains Start → End → Form Point, with the form point discarded after deriving the circumcircle and directed branch. Legacy endpoint-plus-bulge documents migrate at restore into the single target runtime representation. Circle and Arc share Circular Support and circular-radius solver infrastructure; Circle dimensions present diameter Ø while Arc dimensions present radius R. Arc own-grip Direct Manipulation is temporarily disabled until Stage 4 rather than retaining the obsolete bulge runtime.
 - **Box / Construction** imports or starts an SVG document, identifies panels and selectable straight edges, and applies Panel Manager, TB (Top/Bottom finger-joint), W (Wall), and S (Slot) workflows. Generated geometry is composed, reconciled, manufacturing-compensated for clearances and kerf, previewed, and exported as SVG.
 - **Puzzle** is reserved in the workspace selector but is **not implemented**.
 
@@ -12,15 +12,9 @@ The Drawing and imported/construction document models are currently separate. Se
 
 The locked Arc contract—including three-point creation, endpoint-pivot semantics, and
 the shared Circle/Arc foundation—is authoritative in
-[PROJECT_MASTER.md](PROJECT_MASTER.md#locked-target-circlearc-architecture); the target Arc representation is now a locked architecture decision, while its
-implementation/migration, Concentricity, and finite-Arc Tangency remain pending and
-unimplemented. The authoritative Stage 0–6 migration status and process policy are in
+[PROJECT_MASTER.md](PROJECT_MASTER.md#locked-target-circlearc-architecture); the target Arc representation and migration are implemented in Stage 3, while Concentricity, finite-Arc Tangency, and target-Arc own-grip Direct Manipulation remain pending. The authoritative Stage 0–6 migration status and process policy are in
 [ROADMAP.md](ROADMAP.md#circlearc-implementation-stages-and-status); all migration stages
-after the characterization safety-net stage remain separately tracked. Stages 0 and 1
-are **ACCEPTED**; Stage 1's shared Circular Support and radius foundation does not
-implement the target Arc representation. Stage 2 implementation is in progress and
-awaiting merge/browser acceptance; Stages 3–6 are
-**NOT STARTED**.
+after the characterization safety-net stage remain separately tracked. Stages 0, 1, and 2 are **ACCEPTED**. Stage 3 is **IN PROGRESS**; Stages 4–6 are **NOT STARTED**.
 
 Repository collaboration follows the permanent rule in
 [REGLER_FOR_CHATT_MED_CHATGPT.md](REGLER_FOR_CHATT_MED_CHATGPT.md#permanent-regel-för-repositoryåtkomst):

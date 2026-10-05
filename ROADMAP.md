@@ -483,24 +483,24 @@ checked only at **ACCEPTED**.
     Arc P1 → P2 → P3 creation, center and body/radius drag, each endpoint drag with the
     opposite endpoint as the exact stationary pivot, and Radius Dimension with the R
     presentation.
-- [ ] **Stage 2 — Topology, semantic point & solver readiness** — **IN PROGRESS**
-  - **Status:** IN PROGRESS — implementation prepared; merge and browser acceptance pending.
+- [x] **Stage 2 — Topology, semantic point & solver readiness** — **ACCEPTED**
+  - **Status:** ACCEPTED — merged and browser-verified.
   - **Scope:** Prepare generic entity-defining point/equation enumeration, solver
     component/rank/DOF support, topology/cleanup, and semantic point/selection foundations.
     Endpoint-plus-bulge remains the sole Arc runtime authority; there is no target Arc
     storage in this stage.
   - **Baseline:** `35ca8dbd17f8f41889d0c2b3efaf27b8259b091b` (`Accept Circular
     Support Stage 1 (#603)`).
-  - **PR:** Not assigned.
-  - **Merged commit:** Not assigned.
+  - **PR:** #604 (`Prepare Drawing topology and solver foundations`).
+  - **Merged commit:** `3a9d94709480191a83454f253a02f1b77c31ca72`.
   - **Known temporary regressions:** None known. Current Arc remains endpoint + endpoint
     + bulge and retains `arc-bulge`; no target Arc state or radial equations are present.
   - **Automated evidence:** Entity-definition, topology, semantic-selection,
     component/rank/DOF, Stage 0/1 regression, TypeScript, and production-build checks are
     recorded in the implementation PR.
-  - **Acceptance:** Merge and Mikael's real-browser verification are pending.
-- [ ] **Stage 3 — Atomic Arc representation/solver cutover** — **NOT STARTED**
-  - **Status:** NOT STARTED.
+  - **Acceptance:** Merged and browser-verified by Mikael.
+- [ ] **Stage 3 — Atomic Arc representation/solver cutover** — **IN PROGRESS**
+  - **Status:** IN PROGRESS — implementation prepared; merge, automated acceptance, and browser acceptance pending.
   - **Scope:** Atomically change canonical runtime Arc from P1 + P2 + bulge to Center +
     Radius + P1 + P2 + Orientation. Include the target entity and resolver, persistent
     center/radius/orientation, authoring commit, solver variables and intrinsic radial
@@ -513,11 +513,15 @@ checked only at **ACCEPTED**.
     runtime center identity. These verified current symbols describe the target cleanup
     contract, not current implementation status. Legacy bulge conversion may remain only
     at an explicit migration/import/export boundary where required.
-  - **Baseline:** Not assigned.
+  - **Baseline:** `3a9d94709480191a83454f253a02f1b77c31ca72` (`Use intrinsic equations across DOF analysis (#604)`).
   - **PR:** Not assigned.
   - **Merged commit:** Not assigned.
-  - **Known temporary regressions:** None — implementation not started.
-  - **Acceptance:** Not started.
+  - **Known temporary regressions:**
+    - **Behavior:** Arc center, body/radius, P1, and P2 own-grip Direct Manipulation are unavailable.
+      **Reason:** Stage 4 owns manipulation on persistent Center + Radius + P1 + P2 + Orientation.
+      **Introduced:** Stage 3. **Restored:** Stage 4.
+      **Why old path cannot safely remain:** It depends on bulge solver authority and a derived center.
+  - **Acceptance:** Pending merge, automated acceptance, and Mikael's real-browser verification.
 - [ ] **Stage 4 — Direct Manipulation on target Arc architecture** — **NOT STARTED**
   - **Status:** NOT STARTED.
   - **Scope:** Restore the accepted center, body/radius, P1, and P2 manipulation directly

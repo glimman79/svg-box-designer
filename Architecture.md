@@ -22,23 +22,18 @@ solver variables through one entity-definition boundary. Topology cleanup, seman
 authoring-point discovery, component construction, and rank/DOF analysis consume that
 boundary rather than independently redispatching Line, Circle, and Arc fields.
 Entity-owned intrinsic equations have a separate runtime type and rank path from
-user-created Constraints and Dimensions; current Line, Circle, and endpoint-plus-bulge
-Arc require no intrinsic equations. Selection likewise distinguishes persistent point
-identity, derived semantic-point identity, and entity-body identity. The current Arc
-center remains derived, while current Arc runtime authority remains
-`startPointId + endPointId + bulge` until the Stage 3 cutover.
+user-created Constraints and Dimensions. Target Arc owns two radial equations. Selection
+uses the Arc center's persistent point identity rather than a derived center identity.
 
 Circle persistence is `centerPointId` plus a radius scalar; its center is a real shared
-SketchPoint and authoring P2 is not persistent. Current Arc persistence is
-`DrawingArcEntity { id, type: 'arc', startPointId, endPointId, bulge }`, where bulge is
-`tan(signedSweep / 4)` and is the current curvature/signed-sweep authority. Arc center,
-radius, start/end angles, signed sweep, authoring P3/form point, and support Circle are
-derived. This is the current serialized/runtime representation, not the locked target
-architecture. The Arc authoring P1-to-P2
+SketchPoint and authoring P2 is not persistent. Arc persistence is
+`DrawingArcEntity { id, type: 'arc', centerPointId, radius, startPointId, endPointId, orientation }`.
+Angles and signed sweep remain derived. Historical endpoint-plus-bulge records exist only
+at the restore migration boundary. The Arc authoring P1-to-P2
 reference line and P3 support Circle are transient presentation only—not entity
 geometry, topology, History, or export geometry.
 
-**LOCKED TARGET ARCHITECTURE — NOT YET IMPLEMENTED.** Circle and Arc share a
+**IMPLEMENTED TARGET ARCHITECTURE.** Circle and Arc share a
 Circular Support concept: semantic center, radius, and resolved support Circle. Arc adds
 persistent P1/P2 and `orientation: CW | CCW`, with center as a persistent first-class
 `SketchPoint`. This locks semantic/mathematical structure, not a particular TypeScript
@@ -66,11 +61,11 @@ Conceptually, Tier 0 contains persistent hard geometric Constraints, driving Dim
 and exact transient grip-semantic equations. Tier 1 expresses pointer/geometric intent
 within the feasible semantic manifold. Continuity, least-change, and other non-semantic
 tie-breaking are lower priority. Canonical mobility is likewise per variable: Circle
-center X/Y plus radius, and Arc P1 X/Y, P2 X/Y plus bulge, allowing partial and fully
+center X/Y plus radius, and Arc center X/Y, P1 X/Y, P2 X/Y plus radius, allowing partial and fully
 constrained visual states to be distinguished.
 
 Ordinary Dimensions share the existing system for the Circle persistent center, Arc
-persistent endpoints, and Arc derived semantic center. Circular-size Dimensions are
+persistent endpoints, and Arc persistent center. Circular-size Dimensions are
 also shared solver entities: a full Circle produces diameter (Ø), while an Arc produces
 radius (R), with no Stage 1 user chooser. The implemented Constraints-panel Radius /
 Diameter operation creates these same `CIRCULAR_SIZE` Dimensions; there is no separate
@@ -127,3 +122,7 @@ SVG import or empty BoxDocument
 `mixed` is the production panel-composition policy. `single-tool` and `legacy` remain explicit rollback/diagnostic compatibility modes; they are not preferred architecture for new work. The build-time selector is `VITE_PANEL_COMPOSITION_AUTHORITY_MODE`.
 
 For the complete current contracts—including TB/W/S status, Drawing architecture, and cross-cutting transaction rules—use [PROJECT_MASTER.md](PROJECT_MASTER.md).
+
+## Stage 3 canonical Arc runtime
+
+Arc runtime and new persistence use `centerPointId + radius + startPointId + endPointId + orientation`. Center and endpoints are persistent `SketchPoint` identities; orientation is the discrete CW/CCW branch authority. The finite resolver derives angles, directed sweep, SVG flags, bounds samples, and length directly from this state. Arc owns two intrinsic radial equations and exposes seven continuous variables, yielding five geometric DOF. Endpoint-plus-bulge data is accepted only by the centralized restore migration boundary. Arc own-grip Direct Manipulation is explicitly deferred to Stage 4; no bulge fallback remains.

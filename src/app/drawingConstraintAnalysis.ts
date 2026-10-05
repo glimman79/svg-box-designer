@@ -1,7 +1,7 @@
-import { pointIdForLineEndpoint } from './drawingTopology.js';
+import { pointIdForLineEndpoint, resolveArc } from './drawingTopology.js';
 import type { DrawingDimension, DrawingEntity, DrawingGeometricConstraint, DrawingPoint, DrawingPointReference, DrawingSketchV2 } from './drawingTypes.js';
-import { angleIsOnDrawingArc, finiteArcConstraintResidual, resolveArcFromBulge } from './drawingArcGeometry.js';
-import { arcBulgeSolverVariable, circularRadiusSolverVariable, drawingSolverVariableKey, readDrawingSolverVariable, writeDrawingSolverVariable, type DrawingSolverVariable } from './drawingSolverVariables.js';
+import { angleIsOnDrawingArc } from './drawingArcGeometry.js';
+import { circularRadiusSolverVariable, drawingSolverVariableKey, readDrawingSolverVariable, writeDrawingSolverVariable, type DrawingSolverVariable } from './drawingSolverVariables.js';
 import { drawingPointReferenceDependencies, measureDimension, measurePointToLine, resolveDimensionLineReference, resolveDrawingPointReference } from './drawingDimension.js';
 import { collectDrawingEntityEquations, drawingEntityDefiningPointIds, drawingEntityImplicitComponentPointIds, drawingEntitySolverVariables, type DrawingEntityEquation } from './drawingEntityDefinition.js';
 
@@ -31,7 +31,7 @@ export const constraintEquation = (sketch: DrawingSketchV2, dimension: DrawingDi
   if (dimension.kind === 'CIRCULAR_SIZE') {
     const entity = (sketch.entities as unknown as Record<string, DrawingEntity>)[dimension.references[0].entityId];
     if (entity?.type === 'circle' && dimension.mode === 'diameter' && sketch.points[entity.centerPointId]) return { dimension, pointKeys: [entity.centerPointId], scalarVariables: [circularRadiusSolverVariable(entity.id)] };
-    if (entity?.type === 'arc' && dimension.mode === 'radius' && sketch.points[entity.startPointId] && sketch.points[entity.endPointId]) return { dimension, pointKeys: [entity.startPointId, entity.endPointId], scalarVariables: [arcBulgeSolverVariable(entity.id)] };
+    if (entity?.type === 'arc' && dimension.mode === 'radius' && resolveArc(sketch, entity)) return { dimension, pointKeys: [entity.centerPointId], scalarVariables: [circularRadiusSolverVariable(entity.id)] };
     return null;
   }
   if (dimension.kind === 'LINE_TO_LINE_ANGLE') {
@@ -78,8 +78,8 @@ export const geometricConstraintEquation = (sketch: DrawingSketchV2, geometricCo
       const curve = (sketch.entities as unknown as Record<string, import('./drawingTypes.js').DrawingEntity>)[geometricConstraint.references[1].entityId];
       return curve?.type === 'circle' && sketch.points[pointId] && sketch.points[curve.centerPointId]
         ? { geometricConstraint, pointKeys: [pointId, curve.centerPointId], scalarVariables: [circularRadiusSolverVariable(curve.id)] }
-        : curve?.type === 'arc' && sketch.points[pointId] && sketch.points[curve.startPointId] && sketch.points[curve.endPointId]
-          ? { geometricConstraint, pointKeys: [pointId, curve.startPointId, curve.endPointId], scalarVariables: [arcBulgeSolverVariable(curve.id)] } : null;
+        : curve?.type === 'arc' && sketch.points[pointId] && resolveArc(sketch, curve)
+          ? { geometricConstraint, pointKeys: [pointId, curve.centerPointId], scalarVariables: [circularRadiusSolverVariable(curve.id)] } : null;
     }
     if (geometricConstraint.variant === 'point-derived-point') {
       const pointId = geometricConstraint.references[0].pointId, reference = geometricConstraint.references[1];
@@ -265,11 +265,13 @@ export const analyzeDrawingEntityMobility = (sketch: DrawingSketchV2, entityId: 
   }
   if (entity.type !== 'arc') return analyzeDrawingPointMobility(sketch, [entity.startPointId, entity.endPointId]);
   return analyzeDrawingVariableMobility(sketch, [
+    { kind: 'point-axis', pointId: entity.centerPointId, axis: 'x' },
+    { kind: 'point-axis', pointId: entity.centerPointId, axis: 'y' },
     { kind: 'point-axis', pointId: entity.startPointId, axis: 'x' },
     { kind: 'point-axis', pointId: entity.startPointId, axis: 'y' },
     { kind: 'point-axis', pointId: entity.endPointId, axis: 'x' },
     { kind: 'point-axis', pointId: entity.endPointId, axis: 'y' },
-    arcBulgeSolverVariable(entity.id),
+    circularRadiusSolverVariable(entity.id),
   ]);
 };
 
@@ -312,22 +314,17 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
         if (scalarIndex >= 0) row[pointOrder.length * 2 + scalarIndex] = -1;
         return row;
       }
-      if (curve?.type === 'arc' && b) {
-        const arc = resolveArcFromBulge(curve, coordinate(sketch, a), coordinate(sketch, b));
+      if (curve?.type === 'arc' && a) {
+        const arc = resolveArc(sketch, curve);
         const point = coordinate(sketch, p); if (!arc) return null;
         const angle = Math.atan2(point.y - arc.center.y, point.x - arc.center.x);
         if (!angleIsOnDrawingArc(angle, arc.startAngle, arc.signedSweep)) return null;
-        const keys = [p, a, b], coordinates = keys.flatMap((key) => { const q = coordinate(sketch, key); return [q.x, q.y]; });
-        const value = (v: number[]) => { const resolved = resolveArcFromBulge(curve, { x: v[2], y: v[3] }, { x: v[4], y: v[5] }); return resolved ? Math.hypot(v[0] - resolved.center.x, v[1] - resolved.center.y) - resolved.radius : NaN; };
-        coordinates.forEach((coordinateValue, index) => { const h = 1e-6 * Math.max(1, Math.abs(coordinateValue)); const plus = [...coordinates], minus = [...coordinates]; plus[index] += h; minus[index] -= h; const gradient = (value(plus) - value(minus)) / (2 * h); set(keys[Math.floor(index / 2)], index % 2 === 0 ? gradient : 0, index % 2 ? gradient : 0); });
-        const scalarIndex = scalarOrder.findIndex((variable) => drawingSolverVariableKey(variable) === drawingSolverVariableKey(arcBulgeSolverVariable(curve.id)));
-        if (scalarIndex >= 0) {
-          const h = 1e-6 * Math.max(1, Math.abs(curve.bulge));
-          const plus = finiteArcConstraintResidual(point, { ...curve, bulge: curve.bulge + h }, coordinate(sketch, a), coordinate(sketch, b));
-          const minus = finiteArcConstraintResidual(point, { ...curve, bulge: curve.bulge - h }, coordinate(sketch, a), coordinate(sketch, b));
-          if (plus === null || minus === null) return null;
-          row[pointOrder.length * 2 + scalarIndex] = (plus - minus) / (2 * h);
-        }
+        const center = coordinate(sketch, a), length = Math.hypot(point.x - center.x, point.y - center.y);
+        if (length <= DRAWING_CONSTRAINT_RANK_TOLERANCE.absolute) return null;
+        const gx = (point.x - center.x) / length, gy = (point.y - center.y) / length;
+        set(p, gx, gy); set(a, -gx, -gy);
+        const scalarIndex = scalarOrder.findIndex((variable) => drawingSolverVariableKey(variable) === drawingSolverVariableKey(circularRadiusSolverVariable(curve.id)));
+        if (scalarIndex >= 0) row[pointOrder.length * 2 + scalarIndex] = -1;
         return row;
       }
       return null;
@@ -345,12 +342,12 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
         const pointIndex = variable.kind === 'point-axis' ? pointOrder.indexOf(variable.pointId) * 2 + (variable.axis === 'x' ? 0 : 1) : -1;
         const scalarIndex = scalarOrder.findIndex((item) => drawingSolverVariableKey(item) === drawingSolverVariableKey(variable));
         const entity = variable.kind === 'entity-scalar' ? (sketch.entities as unknown as Record<string, DrawingEntity>)[variable.entityId] : null;
-        const value = variable.kind === 'point-axis' ? sketch.points[variable.pointId]?.[variable.axis] : entity?.type === 'arc' ? entity.bulge : NaN;
+        const value = variable.kind === 'point-axis' ? sketch.points[variable.pointId]?.[variable.axis] : entity?.type === 'arc' ? entity.radius : NaN;
         if (!Number.isFinite(value)) return null;
         const h = 1e-6 * Math.max(1, Math.abs(value));
         const candidate = (next: number): DrawingSketchV2 => variable.kind === 'point-axis'
           ? { ...sketch, points: { ...sketch.points, [variable.pointId]: { ...sketch.points[variable.pointId], [variable.axis]: next } } }
-          : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, bulge: next } } as DrawingSketchV2['entities'] };
+          : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, radius: next } } as DrawingSketchV2['entities'] };
         const derivative = (measure(candidate(value + h)) - measure(candidate(value - h))) / (2 * h);
         if (!Number.isFinite(derivative)) return null;
         if (pointIndex >= 0) row[pointIndex] = derivative;
@@ -390,12 +387,12 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
       const pointIndex = variable.kind === 'point-axis' ? pointOrder.indexOf(variable.pointId) * 2 + (variable.axis === 'x' ? 0 : 1) : -1;
       const scalarIndex = scalarOrder.findIndex((item) => drawingSolverVariableKey(item) === drawingSolverVariableKey(variable));
       const entity = variable.kind === 'entity-scalar' ? (sketch.entities as unknown as Record<string, DrawingEntity>)[variable.entityId] : null;
-      const value = variable.kind === 'point-axis' ? sketch.points[variable.pointId]?.[variable.axis] : entity?.type === 'arc' ? entity.bulge : entity?.type === 'circle' ? entity.radius : NaN;
+      const value = variable.kind === 'point-axis' ? sketch.points[variable.pointId]?.[variable.axis] : entity?.type === 'arc' || entity?.type === 'circle' ? entity.radius : NaN;
       if (!Number.isFinite(value)) return null;
       const h = 1e-6 * Math.max(1, Math.abs(value));
       const candidate = (next: number): DrawingSketchV2 => variable.kind === 'point-axis'
         ? { ...sketch, points: { ...sketch.points, [variable.pointId]: { ...sketch.points[variable.pointId], [variable.axis]: next } } }
-        : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, [variable.scalar === 'arc-bulge' ? 'bulge' : 'radius']: next } } as DrawingSketchV2['entities'] };
+        : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, radius: next } } as DrawingSketchV2['entities'] };
       const derivative = (measure(candidate(value + h)) - measure(candidate(value - h))) / (2 * h);
       if (!Number.isFinite(derivative)) return null;
       if (pointIndex >= 0) row[pointIndex] = derivative; else if (scalarIndex >= 0) row[pointOrder.length * 2 + scalarIndex] = derivative;
@@ -407,18 +404,18 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
     const measure = (candidate: DrawingSketchV2) => {
       const current = (candidate.entities as unknown as Record<string, DrawingEntity>)[dimension.references[0].entityId];
       if (current?.type === 'circle') return 2 * current.radius;
-      if (current?.type === 'arc') return resolveArcFromBulge(current, candidate.points[current.startPointId], candidate.points[current.endPointId])?.radius ?? NaN;
+      if (current?.type === 'arc') return current.radius;
       return NaN;
     };
     const variables = [...equation.pointKeys.flatMap((pointId) => ([{ kind: 'point-axis', pointId, axis: 'x' }, { kind: 'point-axis', pointId, axis: 'y' }] as DrawingSolverVariable[])), ...(equation.scalarVariables ?? [])];
     for (const variable of variables) {
       const scalarIndex = scalarOrder.findIndex((item) => drawingSolverVariableKey(item) === drawingSolverVariableKey(variable));
       const pointIndex = variable.kind === 'point-axis' ? pointOrder.indexOf(variable.pointId) * 2 + (variable.axis === 'x' ? 0 : 1) : -1;
-      const value = variable.kind === 'point-axis' ? sketch.points[variable.pointId]?.[variable.axis] : entity?.type === 'circle' ? entity.radius : entity?.type === 'arc' ? entity.bulge : NaN;
+      const value = variable.kind === 'point-axis' ? sketch.points[variable.pointId]?.[variable.axis] : entity?.type === 'circle' || entity?.type === 'arc' ? entity.radius : NaN;
       if (!Number.isFinite(value)) return null;
       const h = 1e-6 * Math.max(1, Math.abs(value));
-      const plus = variable.kind === 'point-axis' ? { ...sketch, points: { ...sketch.points, [variable.pointId]: { ...sketch.points[variable.pointId], [variable.axis]: value + h } } } : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, [variable.scalar === 'circular-radius' ? 'radius' : 'bulge']: value + h } } as DrawingSketchV2['entities'] };
-      const minus = variable.kind === 'point-axis' ? { ...sketch, points: { ...sketch.points, [variable.pointId]: { ...sketch.points[variable.pointId], [variable.axis]: value - h } } } : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, [variable.scalar === 'circular-radius' ? 'radius' : 'bulge']: value - h } } as DrawingSketchV2['entities'] };
+      const plus = variable.kind === 'point-axis' ? { ...sketch, points: { ...sketch.points, [variable.pointId]: { ...sketch.points[variable.pointId], [variable.axis]: value + h } } } : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, radius: value + h } } as DrawingSketchV2['entities'] };
+      const minus = variable.kind === 'point-axis' ? { ...sketch, points: { ...sketch.points, [variable.pointId]: { ...sketch.points[variable.pointId], [variable.axis]: value - h } } } : { ...sketch, entities: { ...sketch.entities, [variable.entityId]: { ...entity!, radius: value - h } } as DrawingSketchV2['entities'] };
       const derivative = (measure(plus) - measure(minus)) / (2 * h);
       if (pointIndex >= 0) row[pointIndex] = derivative;
       else if (scalarIndex >= 0) row[pointOrder.length * 2 + scalarIndex] = derivative;

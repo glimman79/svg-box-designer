@@ -1,8 +1,9 @@
 import type { DrawingDimension, DrawingDocumentV2, DrawingGeometricConstraint, DrawingPoint, DrawingSketchV2 } from './drawingTypes';
 import { analyzeDrawingConstraints, constraintEquation, constraintPointKey, drawingConstraintDegreesOfFreedomForPoints, DRAWING_ORIGIN_CONSTRAINT_KEY, geometricConstraintEquation, geometricConstraintEquations, lineToLineAngleAndGradient, lineToLineDistanceAndGradient, parallelAndGradient, perpendicularAndGradient, pointOnLinearSupportAndGradient, pointToLineDistanceAndGradient } from './drawingConstraintAnalysis.js';
 import { measureDimension, measureLineToLineDistance, measurePointToLine, resolveDimensionLineReference, resolveDrawingPointReference } from './drawingDimension.js';
-import { angleIsOnDrawingArc, resolveArcFromBulge } from './drawingArcGeometry.js';
-import { applyDrawingSolverVector, arcBulgeSolverVariable, circularRadiusSolverVariable, deduplicateDrawingSolverVariables, drawingSolverVariableKey, flattenDrawingSolverVariables, pointSolverVariables, type DrawingSolverVariable } from './drawingSolverVariables.js';
+import { angleIsOnDrawingArc } from './drawingArcGeometry.js';
+import { applyDrawingSolverVector, circularRadiusSolverVariable, deduplicateDrawingSolverVariables, drawingSolverVariableKey, flattenDrawingSolverVariables, pointSolverVariables, type DrawingSolverVariable } from './drawingSolverVariables.js';
+import { resolveArc } from './drawingTopology.js';
 import { measureCircularDimension } from './drawingCircularSize.js';
 import { circularSupportResidual } from './drawingCircularGeometry.js';
 
@@ -58,11 +59,11 @@ const evaluateSystem = (sketch: DrawingSketchV2, component: ComponentState, vari
         jacobian.push(row); continue;
       }
       if (equation.geometricConstraint.variant === 'point-curve') {
-        const [pKey, centerKey, endKey] = equation.pointKeys;
+        const [pKey, centerKey] = equation.pointKeys;
         const circle = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[equation.geometricConstraint.references[1].entityId];
         if (circle?.type === 'arc') {
-          const keys = [pKey, centerKey, endKey], coordinates = keys.flatMap((key) => { const p = coordinate(sketch, values, index, key); return [p.x, p.y]; });
-          const fn = (v: number[]) => { const arc = resolveArcFromBulge(circle, { x: v[2], y: v[3] }, { x: v[4], y: v[5] }); if (!arc) return NaN; const angle = Math.atan2(v[1] - arc.center.y, v[0] - arc.center.x); return angleIsOnDrawingArc(angle, arc.startAngle, arc.signedSweep) ? Math.hypot(v[0] - arc.center.x, v[1] - arc.center.y) - arc.radius : Math.min(Math.hypot(v[0] - v[2], v[1] - v[3]), Math.hypot(v[0] - v[4], v[1] - v[5])); };
+          const keys = [pKey, centerKey], coordinates = keys.flatMap((key) => { const p = coordinate(sketch, values, index, key); return [p.x, p.y]; });
+          const fn = (v: number[]) => Math.hypot(v[0] - v[2], v[1] - v[3]) - circle.radius;
           const residual = fn(coordinates); if (!Number.isFinite(residual)) return null; residuals.push(residual);
           coordinates.forEach((value, j) => { const h = 1e-6 * Math.max(1, Math.abs(value)); const plus = [...coordinates], minus = [...coordinates]; plus[j] += h; minus[j] -= h; const gradient = (fn(plus) - fn(minus)) / (2 * h), i = index.get(keys[Math.floor(j / 2)]); if (i !== undefined) row[i * 2 + j % 2] += gradient; });
           jacobian.push(row); continue;
@@ -164,8 +165,7 @@ const solveVariableComponent = (
   const initialValues = flattenDrawingSolverVariables(sketch, variables);
   if (!initialValues) return null;
   let values: number[] = initialValues;
-  const scales = values.map((value, index) => variables[index].kind === 'entity-scalar' && variables[index].scalar === 'arc-bulge'
-    ? Math.max(.1, Math.abs(value)) : Math.max(1, Math.abs(value)));
+  const scales = values.map((value) => Math.max(1, Math.abs(value)));
   const residualsAt = (candidateValues: readonly number[]) => {
     const candidate = applyDrawingSolverVector(sketch, variables, candidateValues);
     if (!candidate) return null;
@@ -410,8 +410,8 @@ export const solveDrawingGeometricIntent = (
     ...component.geometricConstraintIds.flatMap((id) => { const constraint = sketch.geometricConstraints[id]; return constraint ? geometricConstraintEquations(sketch, constraint).map((equation) => ({ ...equation, target: 0 })) : []; }),
   ].filter((equation): equation is Equation => Boolean(equation)) : [] };
   if (component && state.equations.length < component.dimensionIds.length + component.geometricConstraintIds.length) return null;
-  const scales = variables.map((variable) => variable.kind === 'entity-scalar' && variable.scalar === 'arc-bulge' ? Math.max(.1, Math.abs(initial[variables.indexOf(variable)])) : 1);
-  const scalarMm = variables.map((variable) => variable.kind === 'entity-scalar' && variable.scalar === 'arc-bulge' ? intent.modelScale : 1);
+  const scales = variables.map((variable) => 1);
+  const scalarMm = variables.map((variable) => 1);
   const evaluate = (values: readonly number[]) => {
     const candidate = applyDrawingSolverVector(sketch, variables, values); if (!candidate) return null;
     const hard = evaluateSystem(candidate, state, [], [])?.residuals ?? [];
@@ -679,7 +679,7 @@ const measurement = (sketch: DrawingSketchV2, dimension: DrawingDimension): numb
 export const verifyDrawingDrivingDimensions = (sketch: DrawingSketchV2, ids: readonly string[]): readonly number[] | null => { const residuals = ids.map((id) => { const d = sketch.dimensions[id], value = d?.role === 'driving' ? measurement(sketch, d) : null; return d && value !== null ? Math.abs(value - d.value) : Infinity; }); return residuals.every((v) => Number.isFinite(v) && v <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? residuals : null; };
 export const verifyDrawingConstraints = (sketch: DrawingSketchV2, dimensionIds: readonly string[], geometricConstraintIds: readonly string[]): readonly number[] | null => {
   const dimensions = verifyDrawingDrivingDimensions(sketch, dimensionIds); if (!dimensions) return null;
-  const geometric = geometricConstraintIds.map((id) => { const constraint = (sketch.geometricConstraints ?? {})[id], equation = constraint && geometricConstraintEquation(sketch, constraint); if (!equation) return Infinity; if (constraint.kind === 'MIDPOINT') { const [p, a, b] = equation.pointKeys; return Math.max(Math.abs(sketch.points[p].x - (sketch.points[a].x + sketch.points[b].x) / 2), Math.abs(sketch.points[p].y - (sketch.points[a].y + sketch.points[b].y) / 2)); } if (constraint.kind === 'COINCIDENT') { const [a, b, c] = equation.pointKeys; if (constraint.variant === 'point-linear-support') return Math.abs(pointOnLinearSupportAndGradient(sketch.points[a], sketch.points[b], sketch.points[c])?.residual ?? Infinity); if (constraint.variant === 'point-curve') { const curve = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[constraint.references[1].entityId]; if (curve?.type === 'circle') return Math.abs(Math.hypot(sketch.points[a].x - sketch.points[b].x, sketch.points[a].y - sketch.points[b].y) - curve.radius); if (curve?.type === 'arc') { const arc = resolveArcFromBulge(curve, sketch.points[b], sketch.points[c]); if (!arc) return Infinity; const point = sketch.points[a], angle = Math.atan2(point.y - arc.center.y, point.x - arc.center.x); return angleIsOnDrawingArc(angle, arc.startAngle, arc.signedSweep) ? Math.abs(Math.hypot(point.x - arc.center.x, point.y - arc.center.y) - arc.radius) : Infinity; } return Infinity; } if (constraint.variant === 'point-derived-point') { const point = sketch.points[a], derived = resolveDrawingPointReference(sketch, constraint.references[1]); return point && derived ? Math.max(Math.abs(point.x - derived.x), Math.abs(point.y - derived.y)) : Infinity; } return Math.max(Math.abs(sketch.points[a].x - sketch.points[b].x), Math.abs(sketch.points[a].y - sketch.points[b].y)); } if (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL') { const [a, b] = equation.pointKeys; return Math.abs(constraint.kind === 'HORIZONTAL' ? sketch.points[b].y - sketch.points[a].y : sketch.points[b].x - sketch.points[a].x); } const [a0, a1, b0, b1] = equation.pointKeys; return Math.abs((constraint.kind === 'PARALLEL' ? parallelAndGradient : perpendicularAndGradient)(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1])?.residual ?? Infinity); });
+  const geometric = geometricConstraintIds.map((id) => { const constraint = (sketch.geometricConstraints ?? {})[id], equation = constraint && geometricConstraintEquation(sketch, constraint); if (!equation) return Infinity; if (constraint.kind === 'MIDPOINT') { const [p, a, b] = equation.pointKeys; return Math.max(Math.abs(sketch.points[p].x - (sketch.points[a].x + sketch.points[b].x) / 2), Math.abs(sketch.points[p].y - (sketch.points[a].y + sketch.points[b].y) / 2)); } if (constraint.kind === 'COINCIDENT') { const [a, b, c] = equation.pointKeys; if (constraint.variant === 'point-linear-support') return Math.abs(pointOnLinearSupportAndGradient(sketch.points[a], sketch.points[b], sketch.points[c])?.residual ?? Infinity); if (constraint.variant === 'point-curve') { const curve = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[constraint.references[1].entityId]; if (curve?.type === 'circle') return Math.abs(Math.hypot(sketch.points[a].x - sketch.points[b].x, sketch.points[a].y - sketch.points[b].y) - curve.radius); if (curve?.type === 'arc') { const arc = resolveArc(sketch, curve); if (!arc) return Infinity; const point = sketch.points[a], angle = Math.atan2(point.y - arc.center.y, point.x - arc.center.x); return angleIsOnDrawingArc(angle, arc.startAngle, arc.signedSweep) ? Math.abs(Math.hypot(point.x - arc.center.x, point.y - arc.center.y) - arc.radius) : Infinity; } return Infinity; } if (constraint.variant === 'point-derived-point') { const point = sketch.points[a], derived = resolveDrawingPointReference(sketch, constraint.references[1]); return point && derived ? Math.max(Math.abs(point.x - derived.x), Math.abs(point.y - derived.y)) : Infinity; } return Math.max(Math.abs(sketch.points[a].x - sketch.points[b].x), Math.abs(sketch.points[a].y - sketch.points[b].y)); } if (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL') { const [a, b] = equation.pointKeys; return Math.abs(constraint.kind === 'HORIZONTAL' ? sketch.points[b].y - sketch.points[a].y : sketch.points[b].x - sketch.points[a].x); } const [a0, a1, b0, b1] = equation.pointKeys; return Math.abs((constraint.kind === 'PARALLEL' ? parallelAndGradient : perpendicularAndGradient)(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1])?.residual ?? Infinity); });
   return geometric.every((value) => Number.isFinite(value) && value <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? [...dimensions, ...geometric] : null;
 };
 
@@ -907,8 +907,18 @@ export const solveDrawingDimensionEdit = ({ document, dimensionId, targetValue }
     const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[edited.references[0].entityId];
     if (!entity || entity.type === 'circle' && edited.mode !== 'diameter' || entity.type === 'arc' && edited.mode !== 'radius') return fail('MISSING_REFERENCE');
     const dimensions = { ...sketch.dimensions, [dimensionId]: { ...edited, value: targetValue } };
-    const base = { ...sketch, dimensions };
-    const scalar = entity.type === 'circle' ? circularRadiusSolverVariable(entity.id) : arcBulgeSolverVariable(entity.id);
+    const requestedRadius = entity.type === 'circle' && edited.mode === 'diameter' ? targetValue / 2 : targetValue;
+    const radialSeedPoints = entity.type === 'arc' ? (() => {
+      const center = sketch.points[entity.centerPointId], start = sketch.points[entity.startPointId], end = sketch.points[entity.endPointId];
+      if (!center || !start || !end || entity.radius <= DRAWING_CONSTRAINT_TOLERANCE_MM) return sketch.points;
+      const scale = requestedRadius / entity.radius;
+      return { ...sketch.points,
+        [start.id]: { ...start, x: center.x + (start.x - center.x) * scale, y: center.y + (start.y - center.y) * scale },
+        [end.id]: { ...end, x: center.x + (end.x - center.x) * scale, y: center.y + (end.y - center.y) * scale } };
+    })() : sketch.points;
+    const base = { ...sketch, points: radialSeedPoints, dimensions,
+      entities: { ...sketch.entities, [entity.id]: { ...entity, radius: requestedRadius } } as DrawingSketchV2['entities'] };
+    const scalar = circularRadiusSolverVariable(entity.id);
     const analysis = analyzeDrawingConstraints(base), component = analysis.componentByVariableKey.get(drawingSolverVariableKey(scalar));
     let candidate: DrawingSketchV2 | null = null;
     if (component) {

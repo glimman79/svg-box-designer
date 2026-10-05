@@ -1,4 +1,4 @@
-import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingArcEntity, type DrawingPoint, type ResolvedDrawingArc } from './drawingTypes.js';
+import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingArcEntity, type DrawingPoint, type LegacyDrawingArcEntity, type ResolvedDrawingArc } from './drawingTypes.js';
 import { circularSupportResidual, projectPointToCircularSupport } from './drawingCircularGeometry.js';
 
 const TAU = Math.PI * 2;
@@ -11,7 +11,7 @@ export const angleIsOnDrawingArc = (angle: number, startAngle: number, signedSwe
   return directed <= Math.abs(signedSweep) + tolerance;
 };
 
-export const resolveArcFromBulge = (entity: DrawingArcEntity, start: DrawingPoint, end: DrawingPoint): ResolvedDrawingArc | null => {
+export const migrateLegacyArc = (entity: LegacyDrawingArcEntity, start: DrawingPoint, end: DrawingPoint) => {
   const { bulge } = entity;
   const dx = end.x - start.x, dy = end.y - start.y, chord = Math.hypot(dx, dy);
   if (![start.x, start.y, end.x, end.y, bulge].every(Number.isFinite)
@@ -21,7 +21,22 @@ export const resolveArcFromBulge = (entity: DrawingArcEntity, start: DrawingPoin
   const radius = chord * (1 + bulge * bulge) / (4 * Math.abs(bulge));
   const startAngle = Math.atan2(start.y - center.y, start.x - center.x), signedSweep = 4 * Math.atan(bulge);
   if (![center.x, center.y, radius, startAngle, signedSweep].every(Number.isFinite) || radius <= DRAWING_MODEL_SPACE_TOLERANCE) return null;
-  return { ...entity, start: { ...start }, end: { ...end }, center, radius, startAngle, signedSweep, endAngle: startAngle + signedSweep };
+  return { center, radius, orientation: (signedSweep > 0 ? 'CCW' : 'CW') as DrawingArcEntity['orientation'], signedSweep };
+};
+
+/** Canonical finite directed-Arc resolver. Orientation, never shortest-path logic, owns the branch. */
+export const resolveDrawingArc = (entity: DrawingArcEntity, center: DrawingPoint, start: DrawingPoint, end: DrawingPoint): ResolvedDrawingArc | null => {
+  if (![center?.x, center?.y, start?.x, start?.y, end?.x, end?.y, entity.radius].every(Number.isFinite)
+    || entity.radius <= DRAWING_MODEL_SPACE_TOLERANCE || !['CW', 'CCW'].includes(entity.orientation)
+    || Math.hypot(start.x - end.x, start.y - end.y) <= DRAWING_MODEL_SPACE_TOLERANCE) return null;
+  const radialTolerance = Math.max(1e-7, entity.radius * 1e-7);
+  if (Math.abs(Math.hypot(start.x - center.x, start.y - center.y) - entity.radius) > radialTolerance
+    || Math.abs(Math.hypot(end.x - center.x, end.y - center.y) - entity.radius) > radialTolerance) return null;
+  const startAngle = Math.atan2(start.y - center.y, start.x - center.x), endBase = Math.atan2(end.y - center.y, end.x - center.x);
+  const magnitude = entity.orientation === 'CCW' ? normalizedPositive(endBase - startAngle) : normalizedPositive(startAngle - endBase);
+  if (magnitude <= 1e-12 || magnitude >= TAU - 1e-12) return null;
+  const signedSweep = entity.orientation === 'CCW' ? magnitude : -magnitude;
+  return { ...entity, center: { ...center }, start: { ...start }, end: { ...end }, startAngle, signedSweep, endAngle: startAngle + signedSweep };
 };
 
 /** Endpoint-first exact circumcircle construction. The selected directed arc contains form. */
@@ -45,8 +60,9 @@ export const deriveArcThroughThreePoints = (start: DrawingPoint, end: DrawingPoi
   const endAngle = Math.atan2(end.y - center.y, end.x - center.x), formAngle = Math.atan2(form.y - center.y, form.x - center.x);
   const ccwSweep = normalizedPositive(endAngle - startAngle), formCcw = normalizedPositive(formAngle - startAngle);
   const signedSweep = formCcw <= ccwSweep + 1e-10 ? ccwSweep : ccwSweep - TAU;
-  const bulge = Math.tan(signedSweep / 4);
-  return resolveArcFromBulge({ id, type: 'arc', startPointId, endPointId, bulge }, start, end);
+  const radius = Math.hypot(start.x - center.x, start.y - center.y);
+  return resolveDrawingArc({ id, type: 'arc', centerPointId: 'preview:center', radius, startPointId, endPointId,
+    orientation: signedSweep >= 0 ? 'CCW' : 'CW' }, center, start, end);
 };
 
 export const projectPointToArc = (point: DrawingPoint, arc: ResolvedDrawingArc): DrawingPoint => {
@@ -64,8 +80,8 @@ export const distanceToArc = (point: DrawingPoint, arc: ResolvedDrawingArc): num
 /** Signed equation used by the shared constraint solver. Outside the directed
  * finite domain it deliberately becomes endpoint distance, never support-circle
  * distance. */
-export const finiteArcConstraintResidual = (point: DrawingPoint, entity: DrawingArcEntity, start: DrawingPoint, end: DrawingPoint): number | null => {
-  const arc = resolveArcFromBulge(entity, start, end);
+export const finiteArcConstraintResidual = (point: DrawingPoint, entity: DrawingArcEntity, center: DrawingPoint, start: DrawingPoint, end: DrawingPoint): number | null => {
+  const arc = resolveDrawingArc(entity, center, start, end);
   if (!arc) return null;
   const angle = Math.atan2(point.y - arc.center.y, point.x - arc.center.x);
   return angleIsOnDrawingArc(angle, arc.startAngle, arc.signedSweep)

@@ -1,6 +1,5 @@
 import type { DrawingEntity, DrawingSketchV2 } from './drawingTypes.js';
 import {
-  arcBulgeSolverVariable,
   circularRadiusSolverVariable,
   pointSolverVariables,
   type DrawingSolverVariable,
@@ -9,22 +8,20 @@ import {
 /** Persistent SketchPoint identities which form an entity's canonical geometry. */
 export const drawingEntityDefiningPointIds = (entity: DrawingEntity): readonly string[] => entity.type === 'circle'
   ? [entity.centerPointId]
-  : [entity.startPointId, entity.endPointId];
+  : entity.type === 'arc' ? [entity.centerPointId, entity.startPointId, entity.endPointId]
+    : [entity.startPointId, entity.endPointId];
 
 /** Canonical continuous coordinates owned or referenced by an entity. */
 export const drawingEntitySolverVariables = (entity: DrawingEntity): readonly DrawingSolverVariable[] => [
   ...drawingEntityDefiningPointIds(entity).flatMap(pointSolverVariables),
-  ...(entity.type === 'circle' ? [circularRadiusSolverVariable(entity.id)]
-    : entity.type === 'arc' ? [arcBulgeSolverVariable(entity.id)] : []),
+  ...(['circle', 'arc'].includes(entity.type) ? [circularRadiusSolverVariable(entity.id)] : []),
 ];
 
 /**
- * Defining coordinates coupled by the current representation even without a
- * separate equation. The bulge Arc is the only current case; Stage 3 removes
- * this representation-specific coupling when radial equations provide it.
+ * No representation-specific implicit point coupling remains; entity-owned
+ * equations provide all target Arc connectivity.
  */
-export const drawingEntityImplicitComponentPointIds = (entity: DrawingEntity): readonly string[] =>
-  entity.type === 'arc' ? drawingEntityDefiningPointIds(entity) : [];
+export const drawingEntityImplicitComponentPointIds = (_entity: DrawingEntity): readonly string[] => [];
 
 /**
  * An equation imposed by an entity's representation, rather than by a user
@@ -39,11 +36,23 @@ export type DrawingEntityEquation = Readonly<{
 }>;
 
 /**
- * Current Line, Circle and endpoint-plus-bulge Arc coordinates are independent,
- * so they own no intrinsic equations. Stage 3 can add target Arc radial
- * equations here without changing topology, component discovery, or rank input.
+ * Target Arcs own their two radial equations here so topology, component
+ * discovery, solver projection and rank analysis share one authority.
  */
-export const drawingEntityEquations = (_sketch: DrawingSketchV2, _entity: DrawingEntity): readonly DrawingEntityEquation[] => [];
+export const drawingEntityEquations = (sketch: DrawingSketchV2, entity: DrawingEntity): readonly DrawingEntityEquation[] => {
+  if (entity.type !== 'arc') return [];
+  const variables = drawingEntitySolverVariables(entity);
+  const radial = (pointId: string, role: string): DrawingEntityEquation => ({
+    id: `entity:${entity.id}:radial:${role}`, entityId: entity.id, variables,
+    residual: (candidate) => {
+      const current = (candidate.entities as unknown as Record<string, DrawingEntity>)[entity.id];
+      if (current?.type !== 'arc') return null;
+      const center = candidate.points[current.centerPointId], point = candidate.points[pointId];
+      return center && point ? Math.hypot(point.x - center.x, point.y - center.y) - current.radius : null;
+    },
+  });
+  return [radial(entity.startPointId, 'start'), radial(entity.endPointId, 'end')];
+};
 
 export const collectDrawingEntityEquations = (sketch: DrawingSketchV2): readonly DrawingEntityEquation[] =>
   Object.values(sketch.entities as unknown as Record<string, DrawingEntity>)

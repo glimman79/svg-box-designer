@@ -653,16 +653,12 @@ export function DrawingWorkspace({
     const clientLines = resolvedLines.map((line) => ({ id: line.id, start: toClient(line.start), end: toClient(line.end) }));
     const origin = activeTool === 'dimension' ? toClient(DRAWING_ORIGIN) : undefined;
     const eligiblePointIds = new Set(Object.values(activeSketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>).flatMap((entity) => entity.type === 'circle'
-      ? [entity.centerPointId] : [entity.startPointId, entity.endPointId]));
+      ? [entity.centerPointId] : entity.type === 'arc' ? [entity.centerPointId, entity.startPointId, entity.endPointId] : [entity.startPointId, entity.endPointId]));
     const semanticPoints: Extract<DimensionPreselection, { kind: 'point' }>[] = [...eligiblePointIds].flatMap((pointId) => {
       const modelPoint = activeSketch.points[pointId]; if (!modelPoint) return [];
       const clientPoint = toClient(modelPoint), distancePx = Math.hypot(client.x - clientPoint.x, client.y - clientPoint.y);
       return distancePx <= 9 ? [{ kind: 'point' as const, reference: { kind: 'sketchPoint' as const, pointId }, pointId, lineId: '', point: 'start' as const, clientPoint, distancePx }] : [];
     });
-    for (const entity of Object.values(activeSketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)) if (entity.type === 'arc') {
-      const reference = { kind: 'derivedPoint' as const, entityId: entity.id, role: 'center' as const }, center = resolveDrawingPointReference(activeSketch, reference);
-      if (center) { const clientPoint = toClient(center), distancePx = Math.hypot(client.x - clientPoint.x, client.y - clientPoint.y); if (distancePx <= 9) semanticPoints.push({ kind: 'point', reference, lineId: '', point: 'start', clientPoint, distancePx }); }
-    }
     semanticPoints.sort((a, b) => a.distancePx - b.distancePx || JSON.stringify(a.reference).localeCompare(JSON.stringify(b.reference)));
     const originCandidate = origin && Math.hypot(client.x - origin.x, client.y - origin.y) <= 9
       ? { kind: 'origin' as const, clientPoint: origin, distancePx: Math.hypot(client.x - origin.x, client.y - origin.y) } : null;
@@ -1369,8 +1365,6 @@ export function DrawingWorkspace({
                 data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'arc', arcId: entity.id })}
                 className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'arc', arcId: entity.id }))}${dimensionPreselection?.kind === 'curve' && dimensionPreselection.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'curve' && geometryPreselection.entityId === entity.id ? ' is-geometry-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'arc', arcId: entity.id })}${activeArcDragId === entity.id ? ' is-geometry-dragging' : ''}`}
                 d={drawingArcPath(entity)} fill="none" vectorEffect="non-scaling-stroke" />)}
-              {resolvedArcs.map((entity) => <circle key={`center:${entity.id}`} className="drawing-circular-center drawing-entity-defining-point"
-                cx={entity.center.x} cy={entity.center.y} r={2.5 / pixelsPerMm} pointerEvents="none" aria-hidden="true" />)}
               {activeArcSupportDragId && resolvedArcs.flatMap((entity) => entity.id === activeArcSupportDragId
                 ? [<circle key={`support:${entity.id}`} className="drawing-authoring-reference" cx={entity.center.x} cy={entity.center.y} r={entity.radius}
                   fill="none" vectorEffect="non-scaling-stroke" pointerEvents="none" aria-hidden="true" />] : [])}
@@ -1380,9 +1374,6 @@ export function DrawingWorkspace({
                 return point && !overridden ? [<circle key={pointId} className="drawing-entity-defining-point"
                   data-entity-defining-point-id={pointId} cx={point.x} cy={point.y} r={2.5 / pixelsPerMm} />] : [];
               })}
-              {activeTool === 'select' && resolvedArcs.map((entity) => <circle key={`center-hit:${entity.id}`}
-                className="drawing-arc-center-hit drawing-interactive-hit" data-sketch-arc-center-id={entity.id}
-                cx={entity.center.x} cy={entity.center.y} r={DRAWING_SKETCH_POINT_HIT_RADIUS_PX / pixelsPerMm} />)}
               {activeTool === 'select' && activeSketch && Object.values(activeSketch.points).map((point) => (
                 <circle key={point.id} className="drawing-sketch-point-hit drawing-interactive-hit" data-sketch-point-id={point.id}
                   cx={point.x} cy={point.y} r={DRAWING_SKETCH_POINT_HIT_RADIUS_PX / pixelsPerMm}
