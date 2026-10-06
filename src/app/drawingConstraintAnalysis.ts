@@ -228,11 +228,15 @@ const analyzeDrawingVariableMobility = (
 ): DrawingPointMobilityAnalysis => {
   const pointOrder = Object.keys(sketch.points), scalarOrder = canonicalScalarVariables(sketch);
   const variableCount = pointOrder.length * 2 + scalarOrder.length;
-  const equations = [...entityConstraintEquations(sketch), ...Object.values(sketch.dimensions)
+  const entityEquations = entityConstraintEquations(sketch);
+  const equations = [...entityEquations, ...Object.values(sketch.dimensions)
     .filter(({ role }) => role === 'driving')
     .map((dimension) => constraintEquation(sketch, dimension))
     .filter((equation): equation is DrawingConstraintEquation => Boolean(equation))];
   equations.push(...Object.values(sketch.geometricConstraints ?? {}).flatMap((constraint) => geometricConstraintEquations(sketch, constraint)));
+  const entityRows = entityEquations
+    .map((equation) => constraintJacobianRow(sketch, equation, pointOrder, scalarOrder))
+    .filter((row): row is number[] => Boolean(row));
   const constraintRows = equations
     .map((equation) => constraintJacobianRow(sketch, equation, pointOrder, scalarOrder))
     .filter((row): row is number[] => Boolean(row));
@@ -244,9 +248,12 @@ const analyzeDrawingVariableMobility = (
       if (index < 0 || index >= variableCount) return [];
       const row = Array(variableCount).fill(0); row[index] = 1; return [row];
     });
-  const constraintRank = matrixRank(constraintRows);
+  const entityRank = matrixRank(entityRows), constraintRank = matrixRank(constraintRows);
   return {
-    unconstrainedDegreesOfFreedom: extractionRows.length,
+    // Entity-owned equations define the natural geometry manifold.  Measure
+    // selected motion on that manifold before user-authored restrictions are
+    // included, rather than treating every canonical coordinate as free.
+    unconstrainedDegreesOfFreedom: matrixRank([...entityRows, ...extractionRows]) - entityRank,
     degreesOfFreedom: matrixRank([...constraintRows, ...extractionRows]) - constraintRank,
   };
 };
