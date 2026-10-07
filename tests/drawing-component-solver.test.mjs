@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
-import { solveDrawingDimensionEdit, verifyDrawingDrivingDimensions } from '../.test-build/drawing-component-solver/drawingConstraintSolver.js';
+import { solveDrawingDimensionEdit, solveDrawingVariableTargets, solveDrawingConstrainedVariableIntent, solveDrawingGeometricIntent, solveDrawingComponentDrag, verifyDrawingConstraints, verifyDrawingDrivingDimensions, DRAWING_CONSTRAINT_TOLERANCE_MM } from '../.test-build/drawing-component-solver/drawingConstraintSolver.js';
 import { displayedDimensionMeasurement } from '../.test-build/drawing-component-solver/drawingDimension.js';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-component-solver/drawingHistory.js';
+import { collectDrawingEntityEquations, drawingEntitySolverVariables } from '../.test-build/drawing-component-solver/drawingEntityDefinition.js';
+import { flattenDrawingSolverVariables } from '../.test-build/drawing-component-solver/drawingSolverVariables.js';
 import { resolveLine } from '../.test-build/drawing-component-solver/drawingTopology.js';
 
 const point = (id, x, y) => ({ id, x, y });
@@ -78,6 +80,40 @@ const documentWith = (points, dimensions, entities = {}) => ({
   assert.equal(result.reason, 'UNSATISFIABLE_DIMENSION_SET');
   assert.equal(JSON.stringify(before), snapshot, 'failed solve mutates neither geometry nor target');
   assert.equal(EMPTY_DRAWING_HISTORY.undo.length, 0, 'rejection creates zero History actions');
+}
+
+
+// The current intrinsic-equation fixture is an Arc, but assertions consume
+// generic equation/variable authority and cover every shared solver entry.
+{
+  const sketch = { ...documentWith({ c: point('c', 0, 0), a: point('a', 5, 0), b: point('b', 0, 5) }, [], {
+    curve: { id: 'curve', type: 'arc', centerPointId: 'c', startPointId: 'a', endPointId: 'b', radius: 5, orientation: 'CCW' },
+  }).sketches.s, geometricConstraints: {}, geometricConstraintOrder: [] };
+  const variables = drawingEntitySolverVariables(sketch.entities.curve);
+  const targets = ['x', 'y'].map((axis, i) => ({ variable: { kind: 'point-axis', pointId: 'c', axis }, value: [2, 3][i] }));
+  const invalid = { ...sketch, points: { ...sketch.points, c: point('c', 2, 3) } };
+  assert.equal(verifyDrawingConstraints(invalid, [], []), null, 'empty user authority cannot accept invalid intrinsic geometry');
+  const allInvalidTargets = variables.map((variable, i) => ({ variable, value: flattenDrawingSolverVariables(invalid, variables)[i] }));
+  assert.equal(solveDrawingVariableTargets(sketch, allInvalidTargets), null, 'infeasible exact pose cannot use the empty-user-equation early return');
+  const primaryResiduals = candidate => [candidate.points.c.x - 2, candidate.points.c.y - 3];
+  for (const [name, candidate] of [
+    ['exact projection', solveDrawingVariableTargets(sketch, targets)],
+    ['constrained intent', solveDrawingConstrainedVariableIntent(sketch, targets.map(target => ({ ...target, priority: 1 })))],
+    ['geometric intent', solveDrawingGeometricIntent(sketch, { seedVariable: targets[0].variable, primaryResiduals, modelScale: 5 })],
+    ['exact geometric intent', solveDrawingGeometricIntent(sketch, { seedVariable: targets[0].variable, exactVariableTargets: targets, primaryResiduals, modelScale: 5 })],
+    ['infeasible exact fallback', solveDrawingGeometricIntent(sketch, { seedVariable: targets[0].variable, exactVariableTargets: allInvalidTargets, primaryResiduals, modelScale: 5 })],
+    ['point component drag', solveDrawingComponentDrag(sketch, { c: { x: 2, y: 3 } })],
+  ]) {
+    assert.ok(candidate, name);
+    assert.ok(verifyDrawingConstraints(candidate, [], []), name);
+    assert.ok(Math.hypot(...primaryResiduals(candidate)) < Math.hypot(...primaryResiduals(sketch)), `${name} propagates intent`);
+    for (const equation of collectDrawingEntityEquations(candidate)) {
+      assert.ok(Math.abs(equation.residual(candidate)) <= DRAWING_CONSTRAINT_TOLERANCE_MM, `${name}: ${equation.id}`);
+    }
+  }
+  const moved = solveDrawingVariableTargets(sketch, targets);
+  assert.deepEqual(moved.points.c, point('c', 2, 3), 'feasible exact primary targets remain exact');
+  assert.deepEqual(sketch.points.c, point('c', 0, 0), 'projection does not mutate its input');
 }
 
 console.log('drawing component solver tests passed');

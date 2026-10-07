@@ -7,7 +7,9 @@ import { migrateDrawingDocument } from '../.test-build/drawing-arc/drawingTypes.
 import { analyzeDrawingConstraints } from '../.test-build/drawing-arc/drawingConstraintAnalysis.js';
 import { drawingEntityEquations, drawingEntitySolverVariables } from '../.test-build/drawing-arc/drawingEntityDefinition.js';
 import { circularRadiusSolverVariable, readDrawingSolverVariable, writeDrawingSolverVariable } from '../.test-build/drawing-arc/drawingSolverVariables.js';
-import { resolveArc, validateDrawingTopology } from '../.test-build/drawing-arc/drawingTopology.js';
+import { solveDrawingDragCandidate } from '../.test-build/drawing-arc/drawingDirectManipulation.js';
+import { solveDrawingVariableTargets, DRAWING_CONSTRAINT_TOLERANCE_MM } from '../.test-build/drawing-arc/drawingConstraintSolver.js';
+import { resolveArc, resolveLine, validateDrawingTopology } from '../.test-build/drawing-arc/drawingTopology.js';
 
 const accepted = (point, pointId = null) => ({ point, pointId, midpointLineId: null, lineBodyId: null, curveId: null, derivedPointReference: null });
 const emptyDocument = () => ({ schemaVersion: 2, unit: 'mm', activeSketchId: 's', sketchOrder: ['s'], sketches: { s: { id: 's', name: 'S', points: {}, entities: {}, entityOrder: [], dimensions: {}, dimensionOrder: [], geometricConstraints: {}, geometricConstraintOrder: [] } } });
@@ -62,8 +64,32 @@ test('target Arc exposes seven variables, two intrinsic equations and five DOF',
 
 test('persistent center shares ordinary point topology and solver movement immediately', () => {
   const sketch={...emptyDocument().sketches.s,points:{o:{id:'o',x:0,y:0},a:{id:'a',x:5,y:0},b:{id:'b',x:0,y:5},q:{id:'q',x:-4,y:0}},entities:{arc:{id:'arc',type:'arc',centerPointId:'o',radius:5,startPointId:'a',endPointId:'b',orientation:'CCW'},line:{id:'line',type:'line',startPointId:'q',endPointId:'o'}},entityOrder:['arc','line']};
-  const moved={...sketch,points:{...sketch.points,o:{...sketch.points.o,x:2,y:3},a:{...sketch.points.a,x:7,y:3},b:{...sketch.points.b,x:2,y:8}}};
+  const moved = solveDrawingVariableTargets(sketch, ['x', 'y'].map((axis, i) => ({ variable: { kind: 'point-axis', pointId: sketch.entities.line.endPointId, axis }, value: [2, 3][i] })));
+  assert.ok(moved, 'shared Line endpoint targets must project through canonical hard geometry');
+  for (const equation of drawingEntityEquations(moved, moved.entities.arc)) assert.ok(Math.abs(equation.residual(moved)) <= DRAWING_CONSTRAINT_TOLERANCE_MM);
+  assert.deepEqual(resolveLine(moved, moved.entities.line).end, { x: moved.points.o.x, y: moved.points.o.y });
+  assert.equal(moved.entities.arc.orientation, sketch.entities.arc.orientation);
+  const dragDocument = { ...emptyDocument(), sketches: { s: sketch } };
+  const dragged = solveDrawingDragCandidate(dragDocument, { kind: 'point', pointId: sketch.entities.line.endPointId }, { x: 2, y: 3 });
+  assert.ok(dragged, 'ordinary Line endpoint manipulation propagates through the shared center');
+  const dragSketch = dragged.sketches.s;
+  assert.ok(resolveArc(dragSketch, dragSketch.entities.arc));
+  assert.deepEqual(dragSketch.points.o, { id: 'o', x: 2, y: 3 });
+  for (const equation of drawingEntityEquations(dragSketch, dragSketch.entities.arc)) assert.ok(Math.abs(equation.residual(dragSketch)) <= DRAWING_CONSTRAINT_TOLERANCE_MM);
+
   const arc=resolveArc(moved,moved.entities.arc); assert.ok(arc); assert.deepEqual({x:arc.center.x,y:arc.center.y},{x:2,y:3});
   assert.equal(moved.entities.line.endPointId,moved.entities.arc.centerPointId);
   assert.ok(analyzeDrawingConstraints(sketch).componentByPointId.get('o').pointIds.has('a'));
+  // A driving radius and an ordinary Line relation remain hard alongside
+  // intrinsic geometry, even though the raw center target is off-manifold.
+  const dimension = { id: 'radius', kind: 'CIRCULAR_SIZE', mode: 'radius', role: 'driving', references: [{ kind: 'entity', entityId: 'arc' }], value: 5, placement: { kind: 'radial', anchor: { x: 6, y: 6 } } };
+  const horizontal = { id: 'horizontal', kind: 'HORIZONTAL', references: [{ kind: 'entity', entityId: 'line' }] };
+  const constrained = { ...sketch, dimensions: { radius: dimension }, dimensionOrder: ['radius'], geometricConstraints: { horizontal }, geometricConstraintOrder: ['horizontal'] };
+  const projected = solveDrawingVariableTargets(constrained, ['x', 'y'].map((axis, i) => ({ variable: { kind: 'point-axis', pointId: 'o', axis }, value: [2, 3][i] })));
+  assert.ok(projected);
+  assert.ok(resolveArc(projected, projected.entities.arc));
+  close(projected.entities.arc.radius, 5, DRAWING_CONSTRAINT_TOLERANCE_MM);
+  close(projected.points.q.y, 3, DRAWING_CONSTRAINT_TOLERANCE_MM);
+  for (const equation of drawingEntityEquations(projected, projected.entities.arc)) assert.ok(Math.abs(equation.residual(projected)) <= DRAWING_CONSTRAINT_TOLERANCE_MM);
+
 });
