@@ -76,7 +76,9 @@ const datumDimension=(id,kind,value,pointId)=>({id,kind,value,role:'driving',ref
   assert.ok(solveDrawingDragCandidate(solved,{kind:'line',lineId:'ef'},{x:7,y:3}),'unrelated stale equation cannot poison free geometry');
   assert.ok(solveDrawingDragCandidate(solved,{kind:'line',lineId:'ab'},{x:2,y:4}),'whole constrained Line translates after edit');
   const endpoint=solveDrawingDragCandidate(solved,{kind:'point',pointId:'b'},{x:5,y:20}); assert.ok(endpoint,'endpoint violation is solver-projected');
-  assert.ok(Math.abs(length(endpoint,'a','b')-120)<1e-7); assert.deepEqual(sketch(endpoint).points.a,sketch(solved).points.a);
+  assert.ok(Math.abs(length(endpoint,'a','b')-120)<1e-7);
+  assert.deepEqual(sketch(endpoint).points.b,{id:'b',x:125,y:20},'relative length permits an exactly feasible endpoint target');
+  assert.notDeepEqual(sketch(endpoint).points.a,sketch(solved).points.a,'the opposite endpoint may move instead of defining an absolute frame');
 }
 
 // Stable shared point identity pulls in a neighboring Line's equation; references never do.
@@ -84,7 +86,8 @@ const datumDimension=(id,kind,value,pointId)=>({id,kind,value,role:'driving',ref
   const document = make([dimension('left-h','HORIZONTAL_DISTANCE',50,'left'),dimension('display','ALIGNED_DISTANCE',1,'right','reference')]);
   assert.deepEqual(collectAffectedDrivingDimensions(document,new Set(['p2'])).map(d=>d.id),['left-h']);
   const projected=solveDrawingDragCandidate(document,{kind:'point',pointId:'p2'},{x:1,y:7}); assert.ok(projected);
-  assert.ok(Math.abs(sketch(projected).points.p2.x-50)<1e-7); assert.equal(sketch(projected).points.p2.y,107);
+  assert.deepEqual(sketch(projected).points.p2,{id:'p2',x:51,y:107});
+  assert.ok(Math.abs((sketch(projected).points.p2.x-sketch(projected).points.p1.x)-50)<1e-7);
   assert.ok(solveDrawingDragCandidate(document,{kind:'line',lineId:'ef'},{x:1,y:1}));
 }
 
@@ -102,15 +105,17 @@ for (const [dimensions, end, target] of [
   assert.ok(solveDrawingDragCandidate(solved,{kind:'line',lineId:'ef'},{x:-3,y:2}));
 }
 
-// A--B--C: a direct B drag uses AB's rotational DOF with A held, while a BC
-// Line drag transiently prefers translating the indirectly affected AB.
+// A--B--C: a direct B drag reaches the feasible pointer and lets A use the
+// remaining length-preserving freedom, while a BC Line drag transiently
+// prefers translating the indirectly affected AB.
 {
   const chain=make([dimension('ab-length','ALIGNED_DISTANCE',50,'left')]);
   const cDrag=solveDrawingDragCandidate(chain,{kind:'point',pointId:'p3'},{x:13,y:-8}); assert.ok(cDrag);
   assert.deepEqual(sketch(cDrag).points.p3,{id:'p3',x:113,y:92});
   assert.deepEqual(sketch(cDrag).points.p1,sketch(chain).points.p1); assert.deepEqual(sketch(cDrag).points.p2,sketch(chain).points.p2);
   const bDrag=solveDrawingDragCandidate(chain,{kind:'point',pointId:'p2'},{x:-10,y:20}); assert.ok(bDrag);
-  assert.ok(Math.abs(length(bDrag,'p1','p2')-50)<1e-7); assert.deepEqual(sketch(bDrag).points.p1,sketch(chain).points.p1);
+  assert.ok(Math.abs(length(bDrag,'p1','p2')-50)<1e-7); assert.deepEqual(sketch(bDrag).points.p2,{id:'p2',x:40,y:120});
+  assert.notDeepEqual(sketch(bDrag).points.p1,sketch(chain).points.p1);
   const bcDrag=solveDrawingDragCandidate(chain,{kind:'line',lineId:'right'},{x:10,y:20}); assert.ok(bcDrag);
   assert.ok(Math.abs(length(bcDrag,'p1','p2')-50)<1e-7);
   assert.deepEqual(sketch(bcDrag).points.p1,{id:'p1',x:10,y:120});
