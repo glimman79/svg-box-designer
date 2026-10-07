@@ -141,12 +141,12 @@ for (const point of [horizontalMidpoint.start, horizontalMidpoint.center, horizo
 }
 const workspaceSource = readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const stylesSource = readFileSync('src/styles.css', 'utf8');
-assert.match(workspaceSource, /deriveDrawingInferencePresentations\(drawingSnap, activeSketch, pixelsPerMm, drawingTransform, overlayTransform, profileInteraction\)/,
+assert.match(workspaceSource, /deriveDrawingInferencePresentations\(drawingSnap, activeSketch, pixelsPerMm, drawingTransform, overlayTransform, segmentInteraction\)/,
   'workspace derives shared presentation during render directly from the accepted snap and current transforms');
 assert.doesNotMatch(workspaceSource, /setInferencePresentations|useState<readonly DrawingInferencePresentation/,
   'workspace has no independently synchronized transient inference presentation state');
 assert.doesNotMatch(workspaceSource, /midpointPreview/, 'CadCursorPresentation and JSX have no Midpoint-specific storage path');
-assert.match(workspaceSource, /<DrawingInferenceOverlay presentations=\{inferencePresentations\} \/>[\s\S]*activeTool === 'profile' && profileCursor/,
+assert.match(workspaceSource, /<DrawingInferenceOverlay presentations=\{inferencePresentations\} \/>[\s\S]*segmentCursor && \(/,
   'shared inference overlay is mounted before, and independently from, the cursor-only branch');
 assert.match(stylesSource, /\.drawing-midpoint-inference-preview\s*\{[^}]*stroke:\s*var\(--drawing-inference\);[^}]*pointer-events:\s*none;/s,
   'transient Midpoint presentation uses the inference token and cannot intercept input');
@@ -178,7 +178,8 @@ const reference = { id: 'reference', start: { x: 0, y: 0 }, end: { x: 30, y: 15 
 const authoringStart = { x: 5, y: 20 };
 const rawPointer = { x: 25, y: 31 };
 const candidates = collectDrawingInferenceCandidates(rawPointer, [reference], transform, undefined, authoringStart, null);
-const snap = resolveDrawingSnap({ rawPoint: rawPointer, candidates, previousSnap: null, ctrlOverride: false });
+const snap = resolveDrawingSnap({ rawPoint: rawPointer, candidates, previousSnap: null, ctrlOverride: false,
+  activeLineStart: authoringStart });
 assert.equal(snap.type, 'parallel', 'production candidate acquisition accepts Parallel');
 const resolved = resolveLineEffectivePoint({ ...EMPTY_PROFILE_INTERACTION, start: authoringStart }, rawPointer, snap);
 assert.equal(resolved.interaction.parallelLineId, 'reference', 'production preview retains the inferred reference Line');

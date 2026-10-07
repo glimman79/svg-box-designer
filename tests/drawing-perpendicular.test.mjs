@@ -142,7 +142,8 @@ test('restarted Line inference keeps H/V intent, exact geometry, and shared endp
 
 test('delayed workspace commit captures click-time inference instead of later hover state', () => {
   const workspace = readFileSync(new URL('../src/app/DrawingWorkspace.tsx', import.meta.url), 'utf8');
-  assert.match(workspace, /commitSegmentPlacement\('profile', effectivePoint, endpointPointId, placement\.interaction, lineBodyId\)/);
+  assert.match(workspace, /scheduleDrawingProfileCommit[\s\S]*?commitSegmentPlacement\('profile', effectivePoint, endpointPointId, placement\.interaction,[\s\S]*?\);\s*\}\);/,
+    'the delayed callback commits the immutable click-time placement interaction even as optional point-reference arguments evolve');
   assert.match(workspace, /automaticAxisConstraintKind\(acceptedInteraction\)/);
   assert.doesNotMatch(workspace, /automaticAxisConstraintKind\(profileInteractionRef\.current\)/);
   assert.match(workspace, /setDrawingSnap\(null\);\s*drawingSnapRef\.current = null;\s*transactDocument/, 'successful segment boundary clears state and ref hysteresis before append');
