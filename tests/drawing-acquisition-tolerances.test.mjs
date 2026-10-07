@@ -61,7 +61,7 @@ test('production position target tolerances use the Stage 1 values', () => {
 });
 
 const endpoint = (screenDistance) => ({ type: 'endpoint', pointId: 'endpoint-point', entityId: 'endpoint-line', endpoint: 'start',
-  candidatePoint: { x: 0, y: 0 }, screenDistance });
+  reference: { kind: 'sketchPoint', pointId: 'endpoint-point' }, candidatePoint: { x: 0, y: 0 }, screenDistance });
 const midpoint = (screenDistance) => ({ type: 'midpoint', entityId: 'midpoint-line', stableKey: 'midpoint-line:midpoint',
   candidatePoint: { x: 10, y: 0 }, screenDistance });
 const line = (screenDistance) => ({ type: 'line', entityId: 'line', candidatePoint: { x: 20, y: 0 },
