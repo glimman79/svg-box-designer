@@ -370,6 +370,10 @@ export type DrawingGeometricIntent = Readonly<{
   variables?: readonly DrawingSolverVariable[];
   /** Candidate-evaluated model-space pointer residuals (normally x and y). */
   primaryResiduals: (candidate: DrawingSketchV2) => readonly number[] | null;
+  /** Canonical variables which represent an exact primary pose when the hard
+   * equation component can satisfy them. Infeasible poses fall through to the
+   * normal lexicographic primary solve. */
+  exactVariableTargets?: readonly Readonly<{ variable: DrawingSolverVariable; value: number }>[];
   /** Equality rows defining the interaction's semantic motion subspace. */
   semanticResiduals?: (candidate: DrawingSketchV2) => readonly number[] | null;
   /** Lower-priority, interaction-specific free-case residuals. */
@@ -396,6 +400,10 @@ export const solveDrawingGeometricIntent = (
   sketch: DrawingSketchV2,
   intent: DrawingGeometricIntent,
 ): DrawingSketchV2 | null => {
+  if (intent.exactVariableTargets?.length) {
+    const exact = solveDrawingVariableTargets(sketch, intent.exactVariableTargets);
+    if (exact) return exact;
+  }
   const analysis = analyzeDrawingConstraints(sketch);
   const component = intent.seedVariable.kind === 'point-axis'
     ? analysis.componentByPointId.get(intent.seedVariable.pointId)

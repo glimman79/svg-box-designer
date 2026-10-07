@@ -167,6 +167,11 @@ assert.ok(dragged && verifyDrawingDrivingDimensions(dragged.sketches.s, ['angle-
 // projected around the old coordinates of all other Angle participants.
 const relationalDrag = solveDrawingDragCandidate(transaction.document, { kind: 'point', pointId: 'aa' }, { x: 5, y: 8 });
 assert.ok(relationalDrag && verifyDrawingDrivingDimensions(relationalDrag.sketches.s, ['angle-1']));
+assert.deepEqual(
+  solveDrawingDragCandidate(transaction.document, { kind: 'point', pointId: 'aa' }, { x: 5, y: 8 }),
+  relationalDrag,
+  'pointer-exact underconstrained solutions are deterministic',
+);
 assert.ok(Math.hypot(relationalDrag.sketches.s.points.aa.x + 5, relationalDrag.sketches.s.points.aa.y - 8) < 1e-7, 'direct Angle endpoint reaches its compatible pointer target');
 assert.ok(['ab', 'ba', 'bb'].some((id) => Math.hypot(
   relationalDrag.sketches.s.points[id].x - transaction.document.sketches.s.points[id].x,

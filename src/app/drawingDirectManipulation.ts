@@ -170,17 +170,24 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
     if (!point) return null;
     const requested = { x: point.x + delta.x, y: point.y + delta.y };
     const component = analyzeDrawingConstraints(sketch).componentByPointId.get(target.pointId);
-    const dimensionOnlyStays = component && !component.geometricConstraintIds.length
+    const dimensionOnlyContinuation = component && !component.geometricConstraintIds.length
       ? [...component.pointIds].filter((pointId) => pointId !== target.pointId)
       : [];
     const solved = solveDrawingGeometricIntent(sketch, {
       seedVariable: pointSolverVariables(target.pointId)[0],
       modelScale: Math.max(1, Math.hypot(delta.x, delta.y)),
+      exactVariableTargets: [
+        { variable: { kind: 'point-axis', pointId: target.pointId, axis: 'x' }, value: requested.x },
+        { variable: { kind: 'point-axis', pointId: target.pointId, axis: 'y' }, value: requested.y },
+      ],
       primaryResiduals: (candidate) => {
         const candidatePoint = candidate.points[target.pointId];
         return candidatePoint ? [candidatePoint.x - requested.x, candidatePoint.y - requested.y] : null;
       },
-      semanticResiduals: dimensionOnlyStays.length ? (candidate) => dimensionOnlyStays.flatMap((pointId) => {
+      // Preserve the useful #593 continuation policy without turning a
+      // relative Dimension into an absolute stationary frame. These stays
+      // select a stable pose only after the pointer optimum has been found.
+      secondaryResiduals: dimensionOnlyContinuation.length ? (candidate) => dimensionOnlyContinuation.flatMap((pointId) => {
         const before = sketch.points[pointId], after = candidate.points[pointId];
         return before && after ? [after.x - before.x, after.y - before.y] : [];
       }) : undefined,
