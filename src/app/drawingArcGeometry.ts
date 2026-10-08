@@ -2,10 +2,13 @@ import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingArcEntity, type DrawingPoint
 import { circularSupportResidual, projectPointToCircularSupport } from './drawingCircularGeometry.js';
 
 const TAU = Math.PI * 2;
-const normalizedPositive = (angle: number) => ((angle % TAU) + TAU) % TAU;
+const normalizedPositive = (angle: number) => {
+  const remainder = angle % TAU;
+  return remainder < 0 ? remainder + TAU : remainder;
+};
 
 /** True when angle belongs to the directed, finite start+sweep interval. */
-export const angleIsOnDrawingArc = (angle: number, startAngle: number, signedSweep: number, tolerance = 1e-10): boolean => {
+export const angleIsOnDrawingArc = (angle: number, startAngle: number, signedSweep: number, tolerance = 0): boolean => {
   if (![angle, startAngle, signedSweep].every(Number.isFinite) || Math.abs(signedSweep) > TAU + tolerance) return false;
   const directed = signedSweep >= 0 ? normalizedPositive(angle - startAngle) : normalizedPositive(startAngle - angle);
   return directed <= Math.abs(signedSweep) + tolerance;
@@ -80,9 +83,21 @@ export const deriveArcThroughThreePoints = (start: DrawingPoint, end: DrawingPoi
     orientation: cross > 0 ? 'CW' : 'CCW' }, center, start, end);
 };
 
+/** Finite interval membership in the same local vector frame as the resolver.
+ * No angular widening: proximity/constraint callers retain their existing
+ * spatial tolerances after projection to the actual finite geometry. */
+export const pointIsOnDrawingArc = (point: DrawingPoint, arc: ResolvedDrawingArc): boolean => {
+  if (![point.x, point.y].every(Number.isFinite)) return false;
+  const sx = (arc.start.x - arc.center.x) / arc.radius, sy = (arc.start.y - arc.center.y) / arc.radius;
+  const px = (point.x - arc.center.x) / arc.radius, py = (point.y - arc.center.y) / arc.radius;
+  const relative = Math.atan2(sx * py - sy * px, sx * px + sy * py);
+  const directed = arc.orientation === 'CCW' ? relative : -relative;
+  return normalizedPositive(directed) <= Math.abs(arc.signedSweep);
+};
+
 export const projectPointToArc = (point: DrawingPoint, arc: ResolvedDrawingArc): DrawingPoint => {
   const radial = projectPointToCircularSupport(point, arc);
-  if (angleIsOnDrawingArc(Math.atan2(radial.y - arc.center.y, radial.x - arc.center.x), arc.startAngle, arc.signedSweep)) return radial;
+  if (pointIsOnDrawingArc(point, arc)) return radial;
   const ds = Math.hypot(point.x - arc.start.x, point.y - arc.start.y), de = Math.hypot(point.x - arc.end.x, point.y - arc.end.y);
   return ds <= de ? arc.start : arc.end;
 };
@@ -98,8 +113,7 @@ export const distanceToArc = (point: DrawingPoint, arc: ResolvedDrawingArc): num
 export const finiteArcConstraintResidual = (point: DrawingPoint, entity: DrawingArcEntity, center: DrawingPoint, start: DrawingPoint, end: DrawingPoint): number | null => {
   const arc = resolveDrawingArc(entity, center, start, end);
   if (!arc) return null;
-  const angle = Math.atan2(point.y - arc.center.y, point.x - arc.center.x);
-  return angleIsOnDrawingArc(angle, arc.startAngle, arc.signedSweep)
+  return pointIsOnDrawingArc(point, arc)
     ? circularSupportResidual(point, arc)
     : Math.min(Math.hypot(point.x - start.x, point.y - start.y), Math.hypot(point.x - end.x, point.y - end.y));
 };

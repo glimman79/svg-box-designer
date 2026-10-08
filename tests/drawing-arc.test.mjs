@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { angleIsOnDrawingArc, deriveArcThroughThreePoints, drawingArcPath, migrateLegacyArc, resolveDrawingArc } from '../.test-build/drawing-arc/drawingArcGeometry.js';
+import { angleIsOnDrawingArc, pointIsOnDrawingArc, distanceToArc, projectPointToArc, finiteArcConstraintResidual, deriveArcThroughThreePoints, drawingArcPath, migrateLegacyArc, resolveDrawingArc } from '../.test-build/drawing-arc/drawingArcGeometry.js';
 import { commitArcForm, EMPTY_ARC_INTERACTION, acceptArcEndpoint, updateArcPreview, resolveArcPreview } from '../.test-build/drawing-arc/drawingArcTool.js';
 import { appendArcToActiveSketch } from '../.test-build/drawing-arc/drawingDocumentMutation.js';
 import { migrateDrawingDocument } from '../.test-build/drawing-arc/drawingTypes.js';
@@ -8,7 +8,7 @@ import { analyzeDrawingConstraints } from '../.test-build/drawing-arc/drawingCon
 import { drawingEntityEquations, drawingEntitySolverVariables } from '../.test-build/drawing-arc/drawingEntityDefinition.js';
 import { circularRadiusSolverVariable, readDrawingSolverVariable, writeDrawingSolverVariable } from '../.test-build/drawing-arc/drawingSolverVariables.js';
 import { solveDrawingDragCandidate } from '../.test-build/drawing-arc/drawingDirectManipulation.js';
-import { solveDrawingVariableTargets, DRAWING_CONSTRAINT_TOLERANCE_MM } from '../.test-build/drawing-arc/drawingConstraintSolver.js';
+import { solveDrawingVariableTargets, verifyDrawingConstraints, DRAWING_CONSTRAINT_TOLERANCE_MM } from '../.test-build/drawing-arc/drawingConstraintSolver.js';
 import { resolveArc, resolveLine, validateDrawingTopology } from '../.test-build/drawing-arc/drawingTopology.js';
 
 const accepted = (point, pointId = null) => ({ point, pointId, midpointLineId: null, lineBodyId: null, curveId: null, derivedPointReference: null });
@@ -205,4 +205,33 @@ test('numerical derivative handles positive-domain boundaries and refuses missin
   assert.equal(drawingNumericalDerivative(1,1,[0,0],()=>[0]),null);
   assert.equal(drawingNumericalDerivative(1,1,[0],()=>null),null);
   const large=1e9;const result=drawingNumericalDerivative(large,5,[0],next=>[next-large]);close(result[0],1,1e-12);
+});
+
+
+test('finite Arc membership never converts fixed angular slack into spatial endpoint overshoot', () => {
+  for(const radius of [2e-9,1e-6,1,5,1e6,1e12]) for(const orientation of ['CW','CCW']) {
+    const sign=orientation==='CCW'?1:-1, center={x:0,y:0},start={x:radius,y:0},end={x:0,y:sign*radius};
+    const entity={id:'arc',type:'arc',centerPointId:'o',radius,startPointId:'a',endPointId:'b',orientation};
+    const arc=resolveDrawingArc(entity,center,start,end);assert.ok(arc);
+    for(const endpoint of [start,end]){assert.equal(pointIsOnDrawingArc(endpoint,arc),true);assert.equal(distanceToArc(endpoint,arc),0);}
+    for(const theta of [-sign*5e-11, sign*(Math.PI/2+5e-11)]){
+      const p={x:radius*Math.cos(theta),y:radius*Math.sin(theta)};
+      assert.equal(angleIsOnDrawingArc(theta,arc.startAngle,arc.signedSweep),false);
+      assert.equal(pointIsOnDrawingArc(p,arc),false);
+      const endpoint=theta*sign<0?start:end;
+      assert.deepEqual(projectPointToArc(p,arc),endpoint);
+      const expected=Math.hypot(p.x-endpoint.x,p.y-endpoint.y);
+      close(distanceToArc(p,arc),expected,Math.max(1e-20,expected*1e-12));
+      assert.equal(finiteArcConstraintResidual(p,entity,center,start,end),expected);
+      if(radius===1e12){assert.ok(expected>49);const sketch={...emptyDocument().sketches.s,points:{o:{id:'o',...center},a:{id:'a',...start},b:{id:'b',...end},p:{id:'p',...p}},entities:{arc:entity},entityOrder:['arc'],geometricConstraints:{on:{id:'on',kind:'COINCIDENT',variant:'point-curve',references:[{kind:'sketchPoint',pointId:'p'},{kind:'entity',entityId:'arc'}]}},geometricConstraintOrder:['on']};assert.equal(verifyDrawingConstraints(sketch,[],['on']),null);}
+    }
+  }
+});
+
+test('membership preserves both endpoints and interior on rotated small and near-full directed Arcs', () => {
+  for(const orientation of ['CW','CCW'])for(const sweep of [1e-14,1e-8,Math.PI,2*Math.PI-1e-8])for(const rotation of [0,.7,2.3]){
+    const sign=orientation==='CCW'?1:-1,point=t=>({x:5*Math.cos(rotation+sign*t),y:5*Math.sin(rotation+sign*t)});
+    const start=point(0),end=point(sweep),arc=resolveDrawingArc({id:'arc',type:'arc',centerPointId:'o',radius:5,startPointId:'a',endPointId:'b',orientation},{x:0,y:0},start,end);assert.ok(arc);
+    assert.equal(pointIsOnDrawingArc(start,arc),true);assert.equal(pointIsOnDrawingArc(end,arc),true);assert.equal(pointIsOnDrawingArc(point(sweep/2),arc),true);
+  }
 });

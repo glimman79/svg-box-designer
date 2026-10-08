@@ -1,5 +1,5 @@
 import type { DrawingPoint, ResolvedDrawingArc, ResolvedDrawingCircle, ResolvedDrawingLine } from './drawingTypes.js';
-import { angleIsOnDrawingArc } from './drawingArcGeometry.js';
+import { angleIsOnDrawingArc, pointIsOnDrawingArc } from './drawingArcGeometry.js';
 import type { DrawingSelectionRef } from './drawingConstraintsTool.js';
 
 export type DrawingSelectionMode = 'window' | 'crossing';
@@ -75,7 +75,7 @@ export const drawingArcQualifiesForRect = (arc: ResolvedDrawingArc, rect: Drawin
     if (delta >= -SELECTION_EPSILON) { const root = Math.sqrt(Math.max(0, delta)); candidates.push({ x: arc.center.x - root, y }, { x: arc.center.x + root, y }); }
   }
   return candidates.some((point) => insideInclusive(point, rect)
-    && angleIsOnDrawingArc(Math.atan2(point.y - arc.center.y, point.x - arc.center.x), arc.startAngle, arc.signedSweep));
+    && pointIsOnDrawingArc(point, arc));
 };
 
 /** Input order is retained, so callers can pass active-sketch entityOrder resolution. */

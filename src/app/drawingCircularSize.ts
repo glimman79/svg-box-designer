@@ -1,3 +1,4 @@
+import { projectPointToArc } from './drawingArcGeometry.js';
 import type { DrawingDimension, DrawingEntity, DrawingPoint, DrawingSketchV2, ResolvedDrawingArc, ResolvedDrawingCircle } from './drawingTypes.js';
 import { resolveCircularSupport } from './drawingCircularSupport.js';
 
@@ -27,17 +28,8 @@ export const measureCircularDimension = (sketch: DrawingSketchV2, dimension: Dra
 
 export const circularAttachment = (resolved: ResolvedCircularSize, anchor: DrawingPoint): DrawingPoint => {
   const center = resolved.entity.center;
-  let angle = Math.atan2(anchor.y - center.y, anchor.x - center.x);
-  if (resolved.entity.type === 'arc') {
-    const start = resolved.entity.startAngle, sweep = resolved.entity.signedSweep;
-    const normalize = (value: number) => ((value % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-    const progress = sweep > 0 ? normalize(angle - start) : normalize(start - angle);
-    if (progress > Math.abs(sweep)) {
-      const end = start + sweep;
-      const angularDistance = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
-      angle = angularDistance(angle, start) <= angularDistance(angle, end) ? start : end;
-    }
-  }
+  if (resolved.entity.type === 'arc') return projectPointToArc(anchor, resolved.entity);
+  const angle = Math.atan2(anchor.y - center.y, anchor.x - center.x);
   return { x: center.x + Math.cos(angle) * resolved.radius, y: center.y + Math.sin(angle) * resolved.radius };
 };
 
