@@ -121,3 +121,50 @@ test('three-point construction retains semicircles and small/near-full branches 
   }
   for (const offset of [0,1e9,-1e9]) assert.equal(deriveArcThroughThreePoints({x:offset,y:offset},{x:offset+10,y:offset},{x:offset+5,y:offset+1e-10}),null);
 });
+
+test('restore preserves distinct Point-on-Curve identities, deduplicates true duplicates, and retains rank/topology', () => {
+  const base = emptyDocument().sketches.s;
+  const points = {o:{id:'o',x:0,y:0},a:{id:'a',x:5,y:0},b:{id:'b',x:0,y:5},p:{id:'p',x:3,y:4},c:{id:'c',x:1,y:1}};
+  const entities = {arc:{id:'arc',type:'arc',centerPointId:'o',radius:5,startPointId:'a',endPointId:'b',orientation:'CCW'},circle:{id:'circle',type:'circle',centerPointId:'c',radius:Math.sqrt(13)}};
+  const relation = (id,curve) => ({id,kind:'COINCIDENT',variant:'point-curve',references:[{kind:'sketchPoint',pointId:'p'},{kind:'entity',entityId:curve}]});
+  for (const order of [['arc','circle'],['circle','arc']]) {
+    const sketch = {...base,points,entities,entityOrder:['arc','circle'],geometricConstraints:Object.fromEntries(order.map(id=>[id,relation(id,id)])),geometricConstraintOrder:order};
+    const document={...emptyDocument(),sketches:{s:sketch}};
+    const restored=migrateDrawingDocument(JSON.parse(JSON.stringify(document))).sketches.s;
+    assert.deepEqual(restored,sketch); assert.equal(analyzeDrawingConstraints(restored).componentByPointId.get('p').degreesOfFreedom, analyzeDrawingConstraints(sketch).componentByPointId.get('p').degreesOfFreedom);
+    const duplicate={...restored,geometricConstraints:{...restored.geometricConstraints,duplicate:relation('duplicate','arc')},geometricConstraintOrder:[...order,'duplicate']};
+    const deduplicated=migrateDrawingDocument({...document,sketches:{s:duplicate}});
+    assert.equal(Object.keys(deduplicated.sketches.s.geometricConstraints).length,2);
+    assert.deepEqual(migrateDrawingDocument(deduplicated),deduplicated);
+    assert.deepEqual(validateDrawingTopology(deduplicated),validateDrawingTopology(document));
+  }
+});
+
+test('restore omits invalid Arcs and their dependent references without throwing or changing valid geometry', () => {
+  const points={o:{id:'o',x:0,y:0},a:{id:'a',x:5,y:0},b:{id:'b',x:0,y:5}};
+  const valid={id:'arc',type:'arc',centerPointId:'o',radius:5,startPointId:'a',endPointId:'b',orientation:'CCW'};
+  for (const patch of [{orientation:'invalid'},{radius:-5},{centerPointId:'missing'},{endPointId:'a'},{radius:10},{endPointId:'missing'},{bulge:1,endPointId:'missing'}]) {
+    const sketch={...emptyDocument().sketches.s,points,entities:{arc:{...valid,...patch}},entityOrder:['arc'],dimensions:{r:{id:'r',kind:'CIRCULAR_SIZE',mode:'radius',value:5,role:'driving',references:[{kind:'entity',entityId:'arc'}],placement:{kind:'radial',anchor:{x:6,y:6}}}},dimensionOrder:['r'],geometricConstraints:{p:{id:'p',kind:'COINCIDENT',variant:'point-curve',references:[{kind:'sketchPoint',pointId:'a'},{kind:'entity',entityId:'arc'}]}},geometricConstraintOrder:['p']};
+    const restored=migrateDrawingDocument({...emptyDocument(),sketches:{s:sketch}});
+    assert.deepEqual(restored.sketches.s.entities,{});assert.deepEqual(restored.sketches.s.entityOrder,[]);
+    assert.deepEqual(restored.sketches.s.dimensions,{});assert.deepEqual(restored.sketches.s.geometricConstraints,{});
+    assert.deepEqual(restored.sketches.s.points,points);assert.deepEqual(migrateDrawingDocument(restored),restored);
+  }
+});
+
+test('legacy center allocation avoids unrelated identities and migrates center references deterministically', () => {
+  const base=emptyDocument().sketches.s;
+  const points={a:{id:'a',x:5,y:0},b:{id:'b',x:0,y:5},p:{id:'p',x:1,y:1},'legacy:arc:center':{id:'legacy:arc:center',x:100,y:200},'legacy:arc:center:1':{id:'legacy:arc:center:1',x:300,y:400}};
+  const legacy={id:'arc',type:'arc',startPointId:'a',endPointId:'b',bulge:1};
+  const constraint={id:'center',kind:'COINCIDENT',variant:'point-derived-point',references:[{kind:'sketchPoint',pointId:'p'},{kind:'derivedPoint',entityId:'arc',role:'center'}]};
+  for(const order of [['arc','other'],['other','arc']]){
+    const sketch={...base,points,entities:Object.fromEntries(order.map(id=>[id,{...legacy,id}])),entityOrder:order,geometricConstraints:{center:constraint},geometricConstraintOrder:['center']};
+    const document=migrateDrawingDocument({...emptyDocument(),sketches:{s:sketch}}),restored=document.sketches.s;
+    assert.equal(restored.entities.arc.centerPointId,'legacy:arc:center:2');
+    assert.deepEqual(restored.points['legacy:arc:center'],points['legacy:arc:center']);
+    assert.equal(restored.geometricConstraints.center.variant,'point-point');
+    assert.ok(restored.geometricConstraints.center.references.some(r=>r.pointId==='legacy:arc:center:2'));
+    assert.ok(resolveArc(restored,restored.entities.arc));assert.ok(resolveArc(restored,restored.entities.other));
+    assert.deepEqual(migrateDrawingDocument(document),document);
+  }
+});

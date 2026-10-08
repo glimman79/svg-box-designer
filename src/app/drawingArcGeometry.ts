@@ -11,7 +11,8 @@ export const angleIsOnDrawingArc = (angle: number, startAngle: number, signedSwe
   return directed <= Math.abs(signedSweep) + tolerance;
 };
 
-export const migrateLegacyArc = (entity: LegacyDrawingArcEntity, start: DrawingPoint, end: DrawingPoint) => {
+export const migrateLegacyArc = (entity: LegacyDrawingArcEntity, start: DrawingPoint | undefined, end: DrawingPoint | undefined) => {
+  if (!start || !end) return null;
   const { bulge } = entity;
   const dx = end.x - start.x, dy = end.y - start.y, chord = Math.hypot(dx, dy);
   if (![start.x, start.y, end.x, end.y, bulge].every(Number.isFinite)
