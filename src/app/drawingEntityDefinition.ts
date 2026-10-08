@@ -1,4 +1,5 @@
-import type { DrawingEntity, DrawingSketchV2 } from './drawingTypes.js';
+import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingEntity, type DrawingSketchV2 } from './drawingTypes.js';
+import { resolveDrawingArc } from './drawingArcGeometry.js';
 import {
   circularRadiusSolverVariable,
   pointSolverVariables,
@@ -57,3 +58,24 @@ export const drawingEntityEquations = (sketch: DrawingSketchV2, entity: DrawingE
 export const collectDrawingEntityEquations = (sketch: DrawingSketchV2): readonly DrawingEntityEquation[] =>
   Object.values(sketch.entities as unknown as Record<string, DrawingEntity>)
     .flatMap((entity) => drawingEntityEquations(sketch, entity));
+
+/**
+ * Entity-domain authority is distinct from intrinsic equations: zero radial
+ * residuals alone do not define a finite Arc. Delegate to the same resolver
+ * used for rendering/topology, without constraining transient equation trials.
+ */
+export const drawingEntityDomainIsValid = (sketch: DrawingSketchV2, entity: DrawingEntity): boolean => {
+  const points = drawingEntityDefiningPointIds(entity).map((id) => sketch.points[id]);
+  if (!points.every((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y))) return false;
+  if (entity.type === 'arc') return resolveDrawingArc(entity, points[0], points[1], points[2]) !== null;
+  if (entity.type === 'circle') return Number.isFinite(entity.radius) && entity.radius > DRAWING_MODEL_SPACE_TOLERANCE;
+  return entity.startPointId !== entity.endPointId;
+};
+
+/** Scope by persistent geometry, never by whether a trial pose resolves. */
+export const drawingEntityDomainsAreValid = (sketch: DrawingSketchV2, pointIds?: readonly string[]): boolean => {
+  const points = pointIds && new Set(pointIds);
+  return Object.values(sketch.entities as unknown as Record<string, DrawingEntity>)
+    .filter((entity) => !points || drawingEntityDefiningPointIds(entity).some((id) => points.has(id)))
+    .every((entity) => drawingEntityDomainIsValid(sketch, entity));
+};

@@ -6,7 +6,7 @@ import { applyDrawingSolverVector, circularRadiusSolverVariable, deduplicateDraw
 import { resolveArc } from './drawingTopology.js';
 import { measureCircularDimension } from './drawingCircularSize.js';
 import { circularSupportResidual } from './drawingCircularGeometry.js';
-import { collectDrawingEntityEquations } from './drawingEntityDefinition.js';
+import { collectDrawingEntityEquations, drawingEntityDomainsAreValid } from './drawingEntityDefinition.js';
 
 export const DRAWING_CONSTRAINT_TOLERANCE_MM = 1e-7;
 export const DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS = 80;
@@ -330,7 +330,7 @@ export const solveDrawingComponentDrag = (
     working = { ...working, points };
     if (!verifyDrawingConstraints(working, analyzed!.dimensionIds, analyzed!.geometricConstraintIds, [...analyzed!.pointIds])) return null;
   }
-  return working;
+  return verifyDrawingConstraints(working, [], [], targetIds) ? working : null;
 };
 
 /** Shared direct-target projection entry point for authoritative solver
@@ -433,6 +433,7 @@ export const solveDrawingGeometricIntent = (
   const pointIds = component ? [...component.pointIds] : intent.seedVariable.kind === 'point-axis' ? [intent.seedVariable.pointId] : [];
   const scalarVariables = component?.scalarVariables ?? (intent.seedVariable.kind === 'entity-scalar' ? [intent.seedVariable] : []);
   const variables = deduplicateDrawingSolverVariables([...pointIds.flatMap(pointSolverVariables), ...scalarVariables, ...(intent.variables ?? [])]);
+  const domainPointIds = [...new Set(variables.flatMap((variable) => variable.kind === 'point-axis' ? [variable.pointId] : []))];
   const initial = flattenDrawingSolverVariables(sketch, variables);
   if (!initial || !variables.length || !Number.isFinite(intent.modelScale) || intent.modelScale <= 0) return null;
   const state: ComponentState = { pointIds, equations: component ? [
@@ -510,7 +511,7 @@ export const solveDrawingGeometricIntent = (
     if (!seedValues) continue;
     const projectedValues = projectSemanticSubspace(seedValues);
     const evaluation = projectedValues && evaluate(projectedValues);
-    if (!evaluation || evaluation.hard.some((value) => Math.abs(value) > DRAWING_CONSTRAINT_TOLERANCE_MM)
+    if (!evaluation || !drawingEntityDomainsAreValid(evaluation.candidate, domainPointIds) || evaluation.hard.some((value) => Math.abs(value) > DRAWING_CONSTRAINT_TOLERANCE_MM)
       || evaluation.semantic.some((value) => Math.abs(value) > DRAWING_CONSTRAINT_TOLERANCE_MM)) continue;
     const pointerError = norm(evaluation.primary), bestPointerError = norm(best.primary);
     const equivalent = Math.abs(pointerError - bestPointerError) <= Math.max(INTERACTION_SCORE_EPSILON, intent.modelScale * 1e-8);
@@ -556,7 +557,7 @@ export const solveDrawingGeometricIntent = (
         }
         const tierLimit = (group: Exclude<Objective, 'least'>) => norm(best[group])
           + Math.max(ITERATION_CONVERGENCE_MM, norm(best[group]) * INTERACTION_EQUIVALENCE_RELATIVE);
-        if (trial.hard.every((v) => Math.abs(v) <= DRAWING_CONSTRAINT_TOLERANCE_MM)
+        if (drawingEntityDomainsAreValid(trial.candidate, domainPointIds) && trial.hard.every((v) => Math.abs(v) <= DRAWING_CONSTRAINT_TOLERANCE_MM)
           && norm(trial.semantic) <= norm(data.current.semantic) + Math.max(DRAWING_CONSTRAINT_TOLERANCE_MM, intent.modelScale * 1e-5)
           && norm(trial[objective]) < oldScore - INTERACTION_SCORE_EPSILON
           && preserved.every((group) => norm(trial[group]) <= tierLimit(group))) {
@@ -568,7 +569,7 @@ export const solveDrawingGeometricIntent = (
   };
   optimizeTier('primary', []);
   const primaryOptimum = norm(best.primary);
-  if (initialPrimaryError > INTERACTION_RANK_DAMPING && primaryOptimum >= initialPrimaryError - Math.max(ITERATION_CONVERGENCE_MM, initialPrimaryError * INTERACTION_IMPROVEMENT_RELATIVE)) return sketch;
+  if (initialPrimaryError > INTERACTION_RANK_DAMPING && primaryOptimum >= initialPrimaryError - Math.max(ITERATION_CONVERGENCE_MM, initialPrimaryError * INTERACTION_IMPROVEMENT_RELATIVE)) return verifyDrawingConstraints(sketch, component?.dimensionIds ?? [], component?.geometricConstraintIds ?? [], domainPointIds) ? sketch : null;
   optimizeTier('secondary', ['primary']);
   // Re-linearize the two leading tiers at their joint nonlinear pose.
   // This does not change their order; it removes start-pose linearization
@@ -586,14 +587,14 @@ export const solveDrawingGeometricIntent = (
   const snapped = applyDrawingSolverVector(sketch, variables, snappedValues) ?? best.candidate;
   const noOpOr = (candidate: DrawingSketchV2) => {
     const candidateValues = flattenDrawingSolverVariables(candidate, variables);
-    return verifyDrawingConstraints(sketch, component?.dimensionIds ?? [], component?.geometricConstraintIds ?? [], pointIds) && candidateValues?.every((value, index) => Math.abs(value - initial[index]) <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? sketch : candidate;
+    return verifyDrawingConstraints(sketch, component?.dimensionIds ?? [], component?.geometricConstraintIds ?? [], domainPointIds) && candidateValues?.every((value, index) => Math.abs(value - initial[index]) <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? sketch : candidate;
   };
   const snappedPrimary = intent.primaryResiduals(snapped);
-  if (verifyDrawingConstraints(snapped, component?.dimensionIds ?? [], component?.geometricConstraintIds ?? [], pointIds)
+  if (verifyDrawingConstraints(snapped, component?.dimensionIds ?? [], component?.geometricConstraintIds ?? [], domainPointIds)
     && (intent.semanticResiduals?.(snapped) ?? []).every((value) => Math.abs(value) <= DRAWING_CONSTRAINT_TOLERANCE_MM)
     && snappedPrimary && (initialPrimaryError <= INTERACTION_RANK_DAMPING || norm(snappedPrimary) < initialPrimaryError - Math.max(ITERATION_CONVERGENCE_MM, initialPrimaryError * INTERACTION_IMPROVEMENT_RELATIVE))) return noOpOr(snapped);
   const bestPrimary = intent.primaryResiduals(best.candidate);
-  if (verifyDrawingConstraints(best.candidate, component?.dimensionIds ?? [], component?.geometricConstraintIds ?? [], pointIds)
+  if (verifyDrawingConstraints(best.candidate, component?.dimensionIds ?? [], component?.geometricConstraintIds ?? [], domainPointIds)
     && (intent.semanticResiduals?.(best.candidate) ?? []).every((value) => Math.abs(value) <= DRAWING_CONSTRAINT_TOLERANCE_MM)
     && bestPrimary && (initialPrimaryError <= INTERACTION_RANK_DAMPING || norm(bestPrimary) < initialPrimaryError - Math.max(ITERATION_CONVERGENCE_MM, initialPrimaryError * INTERACTION_IMPROVEMENT_RELATIVE))) return noOpOr(best.candidate);
   // Finish nonlinear equality convergence independently of soft convergence.
@@ -602,9 +603,9 @@ export const solveDrawingGeometricIntent = (
   const constrainedComponent = component;
   const projected = solveVariableComponent(snapped, state, variables)?.sketch;
   const projectedPrimary = projected && intent.primaryResiduals(projected);
-  return projected && projectedPrimary && constrainedComponent && verifyDrawingConstraints(projected, constrainedComponent.dimensionIds, constrainedComponent.geometricConstraintIds, [...constrainedComponent.pointIds])
+  return projected && projectedPrimary && constrainedComponent && verifyDrawingConstraints(projected, constrainedComponent.dimensionIds, constrainedComponent.geometricConstraintIds, domainPointIds)
     && (intent.semanticResiduals?.(projected) ?? []).every((value) => Math.abs(value) <= DRAWING_CONSTRAINT_TOLERANCE_MM)
-    && (initialPrimaryError <= INTERACTION_RANK_DAMPING || norm(projectedPrimary) < initialPrimaryError - Math.max(ITERATION_CONVERGENCE_MM, initialPrimaryError * INTERACTION_IMPROVEMENT_RELATIVE)) ? noOpOr(projected) : verifyDrawingConstraints(sketch, component?.dimensionIds ?? [], component?.geometricConstraintIds ?? [], pointIds) ? sketch : null;
+    && (initialPrimaryError <= INTERACTION_RANK_DAMPING || norm(projectedPrimary) < initialPrimaryError - Math.max(ITERATION_CONVERGENCE_MM, initialPrimaryError * INTERACTION_IMPROVEMENT_RELATIVE)) ? noOpOr(projected) : verifyDrawingConstraints(sketch, component?.dimensionIds ?? [], component?.geometricConstraintIds ?? [], domainPointIds) ? sketch : null;
 };
 
 /**
@@ -709,6 +710,7 @@ export const minimizeDrawingVariableObjective = (
 const measurement = (sketch: DrawingSketchV2, dimension: DrawingDimension): number | null => { if (dimension.kind === 'CIRCULAR_SIZE') return measureCircularDimension(sketch, dimension); if (dimension.kind === 'LINE_TO_LINE_ANGLE') { const equation = constraintEquation(sketch, dimension); if (!equation) return null; const [a0, a1, b0, b1] = equation.pointKeys, sector = dimension.angleSector; return lineToLineAngleAndGradient(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1], sector.sideA * sector.sideB as -1 | 1)?.angleDegrees ?? null; } if (dimension.kind === 'POINT_TO_LINE_DISTANCE') { const p = resolveDrawingPointReference(sketch, dimension.references[0]), l = resolveDimensionLineReference(sketch, dimension.references[1]); return p && l ? measurePointToLine(p, l) : null; } if (dimension.kind === 'LINE_TO_LINE_DISTANCE') { const a = resolveDimensionLineReference(sketch, dimension.references[0]), b = resolveDimensionLineReference(sketch, dimension.references[1]); return a && b ? measureLineToLineDistance(a, b) : null; } const a = resolveDrawingPointReference(sketch, dimension.references[0]), b = resolveDrawingPointReference(sketch, dimension.references[1]); return a && b ? measureDimension(dimension.kind, a, b) : null; };
 export const verifyDrawingDrivingDimensions = (sketch: DrawingSketchV2, ids: readonly string[]): readonly number[] | null => { const residuals = ids.map((id) => { const d = sketch.dimensions[id], value = d?.role === 'driving' ? measurement(sketch, d) : null; return d && value !== null ? Math.abs(value - d.value) : Infinity; }); return residuals.every((v) => Number.isFinite(v) && v <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? residuals : null; };
 export const verifyDrawingConstraints = (sketch: DrawingSketchV2, dimensionIds: readonly string[], geometricConstraintIds: readonly string[], pointIds?: readonly string[]): readonly number[] | null => {
+  if (!drawingEntityDomainsAreValid(sketch, pointIds)) return null;
   const intrinsic = entityEquationsForPoints(sketch, pointIds).map((equation) => equation.residual(sketch));
   if (!intrinsic.every((value) => value !== null && Number.isFinite(value) && Math.abs(value) <= DRAWING_CONSTRAINT_TOLERANCE_MM)) return null;
   const dimensions = verifyDrawingDrivingDimensions(sketch, dimensionIds); if (!dimensions) return null;
@@ -952,10 +954,10 @@ export const solveDrawingDimensionEdit = ({ document, dimensionId, targetValue }
     const base = { ...sketch, points: radialSeedPoints, dimensions,
       entities: { ...sketch.entities, [entity.id]: { ...entity, radius: requestedRadius } } as DrawingSketchV2['entities'] };
     const scalar = circularRadiusSolverVariable(entity.id);
-    const analysis = analyzeDrawingConstraints(base), component = analysis.componentByVariableKey.get(drawingSolverVariableKey(scalar));
+    const analysis = analyzeDrawingConstraints(sketch), component = analysis.componentByVariableKey.get(drawingSolverVariableKey(scalar));
     let candidate: DrawingSketchV2 | null = null;
     if (component) {
-      const state: ComponentState = { pointIds: [...component.pointIds], equations: [...component.dimensionIds.map((id) => { const dimension = base.dimensions[id], equation = dimension && constraintEquation(base, dimension); return equation ? { ...equation, target: dimension.value } : null; }), ...component.geometricConstraintIds.flatMap((id) => { const constraint = base.geometricConstraints[id]; return constraint ? geometricConstraintEquations(base, constraint).map((equation) => ({ ...equation, target: 0 })) : []; })].filter((item): item is Equation => Boolean(item)) };
+      const state: ComponentState = { pointIds: [...component.pointIds], equations: [...component.dimensionIds.map((id) => { const dimension = base.dimensions[id], equation = dimension && constraintEquation(sketch, dimension); return equation ? { ...equation, target: dimension.value } : null; }), ...component.geometricConstraintIds.flatMap((id) => { const constraint = base.geometricConstraints[id]; return constraint ? geometricConstraintEquations(sketch, constraint).map((equation) => ({ ...equation, target: 0 })) : []; })].filter((item): item is Equation => Boolean(item)) };
       const variables = deduplicateDrawingSolverVariables([...state.pointIds.flatMap(pointSolverVariables), ...component.scalarVariables]);
       candidate = solveVariableComponent(base, state, variables)?.sketch ?? null;
     }

@@ -28,13 +28,26 @@ export const migrateLegacyArc = (entity: LegacyDrawingArcEntity, start: DrawingP
 export const resolveDrawingArc = (entity: DrawingArcEntity, center: DrawingPoint, start: DrawingPoint, end: DrawingPoint): ResolvedDrawingArc | null => {
   if (![center?.x, center?.y, start?.x, start?.y, end?.x, end?.y, entity.radius].every(Number.isFinite)
     || entity.radius <= DRAWING_MODEL_SPACE_TOLERANCE || !['CW', 'CCW'].includes(entity.orientation)
-    || Math.hypot(start.x - end.x, start.y - end.y) <= DRAWING_MODEL_SPACE_TOLERANCE) return null;
+    || start.x === end.x && start.y === end.y) return null;
+  // Eight machine epsilons at the geometry's coordinate scale allow for
+  // coordinate/vector subtraction and cross/dot roundoff. This
+  // is a representability guard, not a model-space or radial-equation cutoff.
+  const coordinateScale = Math.max(entity.radius, ...[center, start, end].flatMap((point) => [Math.abs(point.x), Math.abs(point.y)]));
+  if (Math.hypot(start.x - end.x, start.y - end.y) <= 8 * Number.EPSILON * coordinateScale) return null;
   const radialTolerance = Math.max(1e-7, entity.radius * 1e-7);
   if (Math.abs(Math.hypot(start.x - center.x, start.y - center.y) - entity.radius) > radialTolerance
     || Math.abs(Math.hypot(end.x - center.x, end.y - center.y) - entity.radius) > radialTolerance) return null;
-  const startAngle = Math.atan2(start.y - center.y, start.x - center.x), endBase = Math.atan2(end.y - center.y, end.x - center.x);
-  const magnitude = entity.orientation === 'CCW' ? normalizedPositive(endBase - startAngle) : normalizedPositive(startAngle - endBase);
-  if (magnitude <= 1e-12 || magnitude >= TAU - 1e-12) return null;
+  const sx = (start.x - center.x) / entity.radius, sy = (start.y - center.y) / entity.radius;
+  const ex = (end.x - center.x) / entity.radius, ey = (end.y - center.y) / entity.radius;
+  const startAngle = Math.atan2(sy, sx);
+  // atan2(cross, dot) avoids cancellation from subtracting absolute angles
+  // and from adding/subtracting TAU for a small positive sweep.
+  const relative = Math.atan2(sx * ey - sy * ex, sx * ex + sy * ey);
+  const directed = entity.orientation === 'CCW' ? relative : -relative;
+  const magnitude = directed > 0 ? directed : TAU + directed;
+  // Distinct radial-tolerance poses can still have the same direction. A sweep
+  // rounded to zero/full TAU has no representable finite directed extent.
+  if (!(magnitude > 0 && magnitude < TAU)) return null;
   const signedSweep = entity.orientation === 'CCW' ? magnitude : -magnitude;
   return { ...entity, center: { ...center }, start: { ...start }, end: { ...end }, startAngle, signedSweep, endAngle: startAngle + signedSweep };
 };

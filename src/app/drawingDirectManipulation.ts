@@ -1,4 +1,4 @@
-import { DRAWING_CONSTRAINT_TOLERANCE_MM, solveDrawingComponentDrag, solveDrawingGeometricIntent } from './drawingConstraintSolver.js';
+import { DRAWING_CONSTRAINT_TOLERANCE_MM, solveDrawingComponentDrag, solveDrawingGeometricIntent, verifyDrawingConstraints } from './drawingConstraintSolver.js';
 import { analyzeDrawingConstraints } from './drawingConstraintAnalysis.js';
 import { circularRadiusSolverVariable, pointSolverVariables } from './drawingSolverVariables.js';
 import { displayedDimensionMeasurement, drawingPointReferenceDependencies, measureDimension, resolveDrawingPointReference, sketchPointIdFromReference } from './drawingDimension.js';
@@ -194,7 +194,10 @@ export const solveDrawingDragCandidate = (document: DrawingDocumentV2, target: D
     });
     if (solved && (!component || !component.dimensionIds.length && !component.geometricConstraintIds.length)) {
       const exact = { ...solved, points: { ...solved.points, [target.pointId]: { ...solved.points[target.pointId], ...requested } } };
-      return { ...document, sketches: { ...document.sketches, [sketch.id]: exact } };
+      // Polishing pointer coordinates is another candidate, subject to the
+      // same intrinsic equations and entity domains as the shared solver.
+      if (verifyDrawingConstraints(exact, [], [], component ? [...component.pointIds] : [target.pointId]))
+        return { ...document, sketches: { ...document.sketches, [sketch.id]: exact } };
     }
     return solved === sketch ? document : solved ? { ...document, sketches: { ...document.sketches, [sketch.id]: solved } } : null;
   }
