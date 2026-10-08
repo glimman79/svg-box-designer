@@ -30,7 +30,7 @@ export const resolveCircularSupport = (
 ): ResolvedCircularSupport | null => {
   if (entity.type === 'circle') {
     const center = sketch.points[entity.centerPointId];
-    if (!center || !Number.isFinite(entity.radius) || entity.radius <= DRAWING_MODEL_SPACE_TOLERANCE) return null;
+    if (!center || !Number.isFinite(center.x) || !Number.isFinite(center.y) || !Number.isFinite(entity.radius) || entity.radius <= DRAWING_MODEL_SPACE_TOLERANCE) return null;
     const resolved: ResolvedDrawingCircle = { ...entity, center: { x: center.x, y: center.y } };
     return {
       entity: resolved,

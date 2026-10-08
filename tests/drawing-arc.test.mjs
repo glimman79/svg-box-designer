@@ -235,3 +235,12 @@ test('membership preserves both endpoints and interior on rotated small and near
     assert.equal(pointIsOnDrawingArc(start,arc),true);assert.equal(pointIsOnDrawingArc(end,arc),true);assert.equal(pointIsOnDrawingArc(point(sweep/2),arc),true);
   }
 });
+
+test('Circle restore and Circular Support reject nonfinite center coordinates consistently with entity domains', async () => {
+  const {resolveCircularSupport}=await import('../.test-build/drawing-arc/drawingCircularSupport.js');
+  for(const coordinate of [NaN,Infinity,-Infinity]){
+    const sketch={...emptyDocument().sketches.s,points:{o:{id:'o',x:coordinate,y:0}},entities:{circle:{id:'circle',type:'circle',centerPointId:'o',radius:5}},entityOrder:['circle']};
+    assert.equal(resolveCircularSupport(sketch,sketch.entities.circle),null);
+    assert.deepEqual(migrateDrawingDocument({...emptyDocument(),sketches:{s:sketch}}).sketches.s.entities,{});
+  }
+});

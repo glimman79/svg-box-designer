@@ -232,7 +232,7 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
       }
       const entities = Object.fromEntries(Object.entries(legacySketch.entities).flatMap(([entityId, entity]): readonly (readonly [string, DrawingEntity])[] => {
         if (entity.type === 'circle') return Number.isFinite(entity.radius) && entity.radius > DRAWING_MODEL_SPACE_TOLERANCE
-          && Boolean(points[entity.centerPointId]) ? [[entityId, entity] as const] : [];
+          && Number.isFinite(points[entity.centerPointId]?.x) && Number.isFinite(points[entity.centerPointId]?.y) ? [[entityId, entity] as const] : [];
         if (entity.type === 'arc') {
           if ('bulge' in entity) {
             const migrated = migrateLegacyArc(entity, points[entity.startPointId], points[entity.endPointId]);
