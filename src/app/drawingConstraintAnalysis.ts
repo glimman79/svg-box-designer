@@ -1,3 +1,4 @@
+import { drawingNumericalDerivative, drawingVariableLengthScale } from './drawingNumericalDerivative.js';
 import { pointIdForLineEndpoint, resolveArc } from './drawingTopology.js';
 import type { DrawingDimension, DrawingEntity, DrawingGeometricConstraint, DrawingPoint, DrawingPointReference, DrawingSketchV2 } from './drawingTypes.js';
 import { angleIsOnDrawingArc } from './drawingArcGeometry.js';
@@ -289,11 +290,15 @@ export const constraintJacobianRow = (sketch: DrawingSketchV2, equation: Drawing
     const variables = equation.entityEquation.variables;
     for (const variable of variables) {
       const value = readDrawingSolverVariable(sketch, variable); if (value === null) return null;
-      const h = 1e-6 * Math.max(1, Math.abs(value));
-      const plus = writeDrawingSolverVariable(sketch, variable, value + h), minus = writeDrawingSolverVariable(sketch, variable, value - h);
-      const pv = plus && equation.entityEquation.residual(plus), mv = minus && equation.entityEquation.residual(minus);
-      if (pv === null || mv === null) return null;
-      const derivative = (pv - mv) / (2 * h);
+      const current = equation.entityEquation.residual(sketch);
+      if (current === null || !Number.isFinite(current)) throw new Error(`Cannot evaluate intrinsic equation ${equation.entityEquation.id}`);
+      const gradient = drawingNumericalDerivative(value, drawingVariableLengthScale(sketch, variable), [current], next => {
+        const candidate = writeDrawingSolverVariable(sketch, variable, next);
+        const residual = candidate && equation.entityEquation!.residual(candidate);
+        return residual === null ? null : [residual];
+      });
+      if (!gradient) throw new Error(`Cannot differentiate intrinsic equation ${equation.entityEquation.id}`);
+      const derivative = gradient[0];
       const index = variable.kind === 'point-axis' ? pointOrder.indexOf(variable.pointId) * 2 + (variable.axis === 'x' ? 0 : 1)
         : pointOrder.length * 2 + scalarOrder.findIndex((item) => drawingSolverVariableKey(item) === drawingSolverVariableKey(variable));
       if (index >= 0) row[index] = derivative;

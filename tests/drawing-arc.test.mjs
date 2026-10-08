@@ -168,3 +168,41 @@ test('legacy center allocation avoids unrelated identities and migrates center r
     assert.deepEqual(migrateDrawingDocument(document),document);
   }
 });
+
+test('generic intrinsic rank remains two across radius scales with free, partial and locked mobility', () => {
+  for (const radius of [2e-9,1e-6,2e-6,1,5,1e6]) {
+    const sketch={...emptyDocument().sketches.s,points:{o:{id:'o',x:0,y:0},a:{id:'a',x:radius,y:0},b:{id:'b',x:0,y:radius}},entities:{arc:{id:'arc',type:'arc',centerPointId:'o',radius,startPointId:'a',endPointId:'b',orientation:'CCW'}},entityOrder:['arc']};
+    const free=analyzeDrawingConstraints(sketch).componentByPointId.get('o');assert.equal(free.constraintRank,2);assert.equal(free.degreesOfFreedom,5);
+    const r={id:'r',kind:'CIRCULAR_SIZE',mode:'radius',role:'driving',references:[{kind:'entity',entityId:'arc'}],value:radius,placement:{kind:'radial',anchor:{x:radius,y:radius}}};
+    const partial={...sketch,dimensions:{r},dimensionOrder:['r']};assert.equal(analyzeDrawingConstraints(partial).componentByPointId.get('o').degreesOfFreedom,4);
+    const axes=Object.fromEntries(['a','b'].flatMap(pointId=>['x','y'].map(axis=>{const id=pointId+axis;return [id,{id,kind:axis==='x'?'HORIZONTAL_DISTANCE':'VERTICAL_DISTANCE',role:'driving',references:[{kind:'datum',datum:'ORIGIN'},{kind:'sketchPoint',pointId}],value:sketch.points[pointId][axis],placement:{kind:'linear',offset:1}}]})));
+    const locked={...partial,dimensions:{...axes,r},dimensionOrder:[...Object.keys(axes),'r']};assert.equal(analyzeDrawingConstraints(locked).componentByPointId.get('o').degreesOfFreedom,0);
+  }
+});
+
+test('world translation does not reject exact feasible shared-center targets with driving radius and partial DOF', () => {
+  for (const offset of [0,1e6,1e9,-1e9]) for (const orientation of ['CW','CCW']) for (const constrained of [false,true]) {
+    const points={o:{id:'o',x:offset,y:offset},a:{id:'a',x:offset+5,y:offset},b:{id:'b',x:offset,y:offset+5},q:{id:'q',x:offset-4,y:offset}};
+    const entities={arc:{id:'arc',type:'arc',centerPointId:'o',radius:5,startPointId:'a',endPointId:'b',orientation},line:{id:'line',type:'line',startPointId:'q',endPointId:'o'}};
+    let sketch={...emptyDocument().sketches.s,points,entities,entityOrder:['arc','line']};
+    if(constrained)sketch={...sketch,dimensions:{r:{id:'r',kind:'CIRCULAR_SIZE',mode:'radius',role:'driving',references:[{kind:'entity',entityId:'arc'}],value:5,placement:{kind:'radial',anchor:{x:offset+6,y:offset+6}}}},dimensionOrder:['r'],geometricConstraints:{h:{id:'h',kind:'HORIZONTAL',references:[{kind:'entity',entityId:'line'}]}},geometricConstraintOrder:['h']};
+    const targets=['x','y'].map((axis,i)=>({variable:{kind:'point-axis',pointId:'o',axis},value:offset+[2,3][i]}));
+    const solved=solveDrawingVariableTargets(sketch,targets);assert.ok(solved);assert.equal(solved.points.o.x,offset+2);assert.equal(solved.points.o.y,offset+3);assert.ok(resolveArc(solved,solved.entities.arc));
+    const moved=solveDrawingDragCandidate({...emptyDocument(),sketches:{s:sketch}},{kind:'point',pointId:'o'},{x:2,y:3});assert.ok(moved);
+    const result=moved.sketches.s;assert.equal(result.points.o.x,offset+2);assert.equal(result.points.o.y,offset+3);
+    assert.ok(resolveArc(result,result.entities.arc));assert.equal(result.entities.line.endPointId,result.entities.arc.centerPointId);
+    for(const e of drawingEntityEquations(result,result.entities.arc))assert.ok(Math.abs(e.residual(result))<=DRAWING_CONSTRAINT_TOLERANCE_MM);
+    if(constrained){close(result.entities.arc.radius,5,DRAWING_CONSTRAINT_TOLERANCE_MM);close(result.points.q.y,result.points.o.y,DRAWING_CONSTRAINT_TOLERANCE_MM);}
+    const all=drawingEntitySolverVariables(entities.arc).map(variable=>({variable,value:readDrawingSolverVariable(result,variable)}));assert.ok(solveDrawingVariableTargets(sketch,all),'already feasible exact pose is preserved');
+  }
+});
+
+test('numerical derivative handles positive-domain boundaries and refuses missing equation rows', async () => {
+  const {drawingNumericalDerivative}=await import('../.test-build/drawing-arc/drawingNumericalDerivative.js');
+  const value=1.0000000001e-9;
+  const derivative=drawingNumericalDerivative(value,1,[value],next=>next>1e-9?[next]:null);
+  assert.ok(derivative);close(derivative[0],1,1e-12);
+  assert.equal(drawingNumericalDerivative(1,1,[0,0],()=>[0]),null);
+  assert.equal(drawingNumericalDerivative(1,1,[0],()=>null),null);
+  const large=1e9;const result=drawingNumericalDerivative(large,5,[0],next=>[next-large]);close(result[0],1,1e-12);
+});
