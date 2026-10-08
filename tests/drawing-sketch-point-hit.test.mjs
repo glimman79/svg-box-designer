@@ -92,7 +92,7 @@ assert.match(source, /closest<SVGCircleElement>\('\[data-sketch-point-id\]'\)\?\
 assert.match(source, /resolveDrawingPointerOwner\(documentRef\.current, startModel, semantic, evidence, selectedEntityIds\)/, 'DOM and semantic evidence enter one deterministic owner resolver');
 assert.match(source, /routeDrawingGeometryPointerSelection\(selectedGeometry, owner\.selection, event\.ctrlKey, constraintsPanelOpen\)/, 'the resolved owner uses the shared production selection route');
 assert.doesNotMatch(source, /event\.shiftKey/, 'Shift is not a semantic geometry multi-selection modifier');
-assert.match(source, /if \(route\.beginDrag\) \{[\s\S]*setGeometryDrag/, 'only an ordinary replacing Select click may begin direct manipulation');
+assert.match(source, /if \(route\.beginDrag && owner\.target\) \{[\s\S]*setGeometryDrag/, 'only an ordinary replacing Select click may begin direct manipulation');
 const emptyMissStart = source.indexOf("if (owner.kind === 'empty')");
 const emptyMissBranch = source.slice(emptyMissStart, source.indexOf('setDimensionDrag(null)', emptyMissStart));
 assert.match(emptyMissBranch, /setBoxSelection\(session\)/, 'an empty Select miss defers click clearing until the potential box gesture resolves');

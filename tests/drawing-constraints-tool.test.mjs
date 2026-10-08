@@ -39,7 +39,7 @@ test('semantic selection toggle supports ordered mixed selections without a size
 test('Select and Constraints route to the shared toggle without stealing authoring or starting drags', () => {
   assert.match(workspaceSource, /routeDrawingGeometryPointerSelection\(selectedGeometry, owner\.selection, event\.ctrlKey, constraintsPanelOpen\)/);
   assert.match(workspaceSource, /setSelectedGeometry\(route\.selection\)/);
-  assert.match(workspaceSource, /if \(route\.beginDrag\) \{[\s\S]*setGeometryDrag/);
+  assert.match(workspaceSource, /if \(route\.beginDrag && owner\.target\) \{[\s\S]*setGeometryDrag/);
   assert.match(workspaceSource, /if \(!event\.ctrlKey\) \{[\s\S]*?setSelectedGeometry\(\[\]\)[\s\S]*?setSelectedDimensionId\(null\)[\s\S]*?setSelectedGeometricConstraintId\(null\)[\s\S]*?\}/, 'an empty-canvas click clears every selection authority while Constraints stays active');
   assert.doesNotMatch(workspaceSource, /event\.shiftKey/, 'Shift follows the ordinary Select path');
 });
