@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { angleIsOnDrawingArc, deriveArcThroughThreePoints, drawingArcPath, migrateLegacyArc, resolveDrawingArc } from '../.test-build/drawing-arc/drawingArcGeometry.js';
-import { commitArcForm, EMPTY_ARC_INTERACTION, acceptArcEndpoint } from '../.test-build/drawing-arc/drawingArcTool.js';
+import { commitArcForm, EMPTY_ARC_INTERACTION, acceptArcEndpoint, updateArcPreview, resolveArcPreview } from '../.test-build/drawing-arc/drawingArcTool.js';
 import { appendArcToActiveSketch } from '../.test-build/drawing-arc/drawingDocumentMutation.js';
 import { migrateDrawingDocument } from '../.test-build/drawing-arc/drawingTypes.js';
 import { analyzeDrawingConstraints } from '../.test-build/drawing-arc/drawingConstraintAnalysis.js';
@@ -92,4 +92,32 @@ test('persistent center shares ordinary point topology and solver movement immed
   close(projected.points.q.y, 3, DRAWING_CONSTRAINT_TOLERANCE_MM);
   for (const equation of drawingEntityEquations(projected, projected.entities.arc)) assert.ok(Math.abs(equation.residual(projected)) <= DRAWING_CONSTRAINT_TOLERANCE_MM);
 
+});
+
+
+test('three-point preview and production commit are invariant under translations, rotation and reflection', () => {
+  for (const offset of [0, 1e9, -1e9]) for (const rotation of [0, .7, 2.3]) for (const reflection of [1, -1]) {
+    const transform = (x, y) => ({ x: offset + x * Math.cos(rotation) - reflection * y * Math.sin(rotation), y: -offset + x * Math.sin(rotation) + reflection * y * Math.cos(rotation) });
+    const start = transform(5, 0), end = transform(0, 5), form = transform(-5, 0);
+    let state = acceptArcEndpoint(EMPTY_ARC_INTERACTION, accepted(start));
+    state = acceptArcEndpoint(state, accepted(end));
+    const preview = resolveArcPreview(updateArcPreview(state, form));
+    const result = commitArcForm(state, form, 'arc'); assert.ok(preview && result.entity);
+    const document = appendArcToActiveSketch(emptyDocument(), result.entity, (() => { let n=0; return () => `p${++n}`; })());
+    const sketch = document.sketches.s, arc = resolveArc(sketch, sketch.entities.arc); assert.ok(arc);
+    close(arc.center.x, offset, 5e-7); close(arc.center.y, -offset, 5e-7); close(arc.radius, 5, 5e-7);
+    assert.equal(arc.orientation, reflection === 1 ? 'CW' : 'CCW'); close(arc.signedSweep, -reflection * 3 * Math.PI / 2, 1e-7);
+    assert.deepEqual({x:arc.center.x,y:arc.center.y}, preview.center);
+    assert.ok(angleIsOnDrawingArc(Math.atan2(form.y-arc.center.y, form.x-arc.center.x), arc.startAngle, arc.signedSweep));
+    assert.equal(Object.keys(sketch.points).length, 3, 'P3 is not stored');
+  }
+});
+
+test('three-point construction retains semicircles and small/near-full branches and rejects near-collinearity', () => {
+  for (const sweep of [1e-6, Math.PI/2, Math.PI, 3*Math.PI/2, 2*Math.PI-1e-6]) for (const sign of [1,-1]) {
+    const point = t => ({x:5*Math.cos(sign*t),y:5*Math.sin(sign*t)});
+    const arc = deriveArcThroughThreePoints(point(0),point(sweep),point(sweep/2)); assert.ok(arc);
+    close(arc.signedSweep, sign*sweep, 1e-7);
+  }
+  for (const offset of [0,1e9,-1e9]) assert.equal(deriveArcThroughThreePoints({x:offset,y:offset},{x:offset+10,y:offset},{x:offset+5,y:offset+1e-10}),null);
 });

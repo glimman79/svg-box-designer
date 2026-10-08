@@ -62,20 +62,21 @@ export const deriveArcThroughThreePoints = (start: DrawingPoint, end: DrawingPoi
   // Dimensionless sine conditioning prevents huge, unstable near-collinear circles.
   if (chord <= DRAWING_MODEL_SPACE_TOLERANCE || formScale <= DRAWING_MODEL_SPACE_TOLERANCE
     || Math.abs(cross) <= 1e-9 * chord * formScale) return null;
-  const a2 = start.x * start.x + start.y * start.y, b2 = end.x * end.x + end.y * end.y, p2 = form.x * form.x + form.y * form.y;
-  const determinant = 2 * (start.x * (end.y - form.y) + end.x * (form.y - start.y) + form.x * (start.y - end.y));
-  if (!Number.isFinite(determinant) || Math.abs(determinant) <= Number.EPSILON * formScale * formScale * 16) return null;
+  // Solve in a translated, uniformly scaled frame. Squaring absolute world
+  // coordinates loses the small circumcircle in their cancellation.
+  const bx = abx / formScale, by = aby / formScale;
+  const px = apx / formScale, py = apy / formScale;
+  const determinant = 2 * (bx * py - by * px);
+  const b2 = bx * bx + by * by, p2 = px * px + py * py;
   const center = {
-    x: (a2 * (end.y - form.y) + b2 * (form.y - start.y) + p2 * (start.y - end.y)) / determinant,
-    y: (a2 * (form.x - end.x) + b2 * (start.x - form.x) + p2 * (end.x - start.x)) / determinant,
+    x: start.x + formScale * (b2 * py - p2 * by) / determinant,
+    y: start.y + formScale * (bx * p2 - px * b2) / determinant,
   };
-  const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
-  const endAngle = Math.atan2(end.y - center.y, end.x - center.x), formAngle = Math.atan2(form.y - center.y, form.x - center.x);
-  const ccwSweep = normalizedPositive(endAngle - startAngle), formCcw = normalizedPositive(formAngle - startAngle);
-  const signedSweep = formCcw <= ccwSweep + 1e-10 ? ccwSweep : ccwSweep - TAU;
   const radius = Math.hypot(start.x - center.x, start.y - center.y);
+  // The chord/form cross sign chooses the branch containing P3 without
+  // subtracting absolute angles or erasing small representable sweeps.
   return resolveDrawingArc({ id, type: 'arc', centerPointId: 'preview:center', radius, startPointId, endPointId,
-    orientation: signedSweep >= 0 ? 'CCW' : 'CW' }, center, start, end);
+    orientation: cross > 0 ? 'CW' : 'CCW' }, center, start, end);
 };
 
 export const projectPointToArc = (point: DrawingPoint, arc: ResolvedDrawingArc): DrawingPoint => {
