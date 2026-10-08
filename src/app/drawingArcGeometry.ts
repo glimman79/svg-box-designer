@@ -97,7 +97,7 @@ export const pointIsOnDrawingArc = (point: DrawingPoint, arc: ResolvedDrawingArc
 
 export const projectPointToArc = (point: DrawingPoint, arc: ResolvedDrawingArc): DrawingPoint => {
   const radial = projectPointToCircularSupport(point, arc);
-  if (pointIsOnDrawingArc(point, arc)) return radial;
+  if (pointIsOnDrawingArc(point, arc) && pointIsOnDrawingArc(radial, arc)) return radial;
   const ds = Math.hypot(point.x - arc.start.x, point.y - arc.start.y), de = Math.hypot(point.x - arc.end.x, point.y - arc.end.y);
   return ds <= de ? arc.start : arc.end;
 };

@@ -238,9 +238,11 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
             const migrated = migrateLegacyArc(entity, points[entity.startPointId], points[entity.endPointId]);
             if (!migrated) return [];
             const centerPointId = legacyCenters.get(entity.id)!;
+            const canonical: DrawingArcEntity = { id: entity.id, type: 'arc', centerPointId, radius: migrated.radius,
+              startPointId: entity.startPointId, endPointId: entity.endPointId, orientation: migrated.orientation };
+            if (!resolveDrawingArc(canonical, migrated.center, points[entity.startPointId], points[entity.endPointId])) return [];
             points[centerPointId] = { id: centerPointId, ...migrated.center };
-            return [[entityId, { id: entity.id, type: 'arc', centerPointId, radius: migrated.radius,
-              startPointId: entity.startPointId, endPointId: entity.endPointId, orientation: migrated.orientation }]];
+            return [[entityId, canonical]];
           }
           return resolveDrawingArc(entity, points[entity.centerPointId], points[entity.startPointId], points[entity.endPointId])
             ? [[entityId, entity]] : [];

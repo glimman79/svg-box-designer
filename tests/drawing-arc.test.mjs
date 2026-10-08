@@ -244,3 +244,14 @@ test('Circle restore and Circular Support reject nonfinite center coordinates co
     assert.deepEqual(migrateDrawingDocument({...emptyDocument(),sketches:{s:sketch}}).sketches.s.entities,{});
   }
 });
+
+test('undefined support-circle projection direction never returns a point outside a rotated finite Arc', () => {
+  for(const orientation of ['CW','CCW']){
+    const sign=orientation==='CCW'?1:-1, point=t=>({x:5*Math.cos(t),y:5*Math.sin(t)});
+    const arc=resolveDrawingArc({id:'arc',type:'arc',centerPointId:'o',radius:5,startPointId:'a',endPointId:'b',orientation},{x:0,y:0},point(Math.PI),point(Math.PI+sign*Math.PI/2));assert.ok(arc);
+    for(const query of [{x:0,y:0}, {x:-1e-12,y:sign*-1e-12}]){
+      const projected=projectPointToArc(query,arc);
+      assert.equal(pointIsOnDrawingArc(projected,arc),true);assert.ok(Number.isFinite(distanceToArc(query,arc)));
+    }
+  }
+});
