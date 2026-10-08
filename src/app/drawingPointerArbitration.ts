@@ -1,3 +1,4 @@
+import { resolveArc } from './drawingTopology.js';
 import { createArcCenterDragTarget, createArcEndpointDragTarget, createArcRadiusDragTarget, createCircleRadiusDragTarget, createLineBodyDragTarget, resolveArcEndpointOwner, type DrawingGeometryTarget } from './drawingDirectManipulation.js';
 import type { DimensionPreselection } from './drawingDimension.js';
 import type { DrawingSelectionRef } from './drawingConstraintsTool.js';
@@ -14,7 +15,7 @@ export type DrawingPointerEvidence = Readonly<{
 }>;
 
 export type DrawingPointerOwner =
-  | Readonly<{ kind: 'geometry'; selection: DrawingSelectionRef; target: DrawingGeometryTarget }>
+  | Readonly<{ kind: 'geometry'; selection: DrawingSelectionRef; target: DrawingGeometryTarget | null }>
   | Readonly<{ kind: 'dimension'; dimensionId: string; surface: 'line' | 'value' }>
   | Readonly<{ kind: 'empty' }>;
 
@@ -73,7 +74,7 @@ export const resolveDrawingPointerOwner = (
   const target = entity?.type === 'line' ? createLineBodyDragTarget(document, entity.id, pointer)
     : entity?.type === 'circle' ? createCircleRadiusDragTarget(document, entity.id, pointer)
     : entity?.type === 'arc' ? createArcRadiusDragTarget(document, entity.id, pointer) : null;
-  if (target) {
+  if (entity && (target || entity.type === 'arc' && sketch && resolveArc(sketch, entity))) {
     const selection: DrawingSelectionRef = entity!.type === 'line' ? { kind: 'line', lineId: entity!.id }
       : entity!.type === 'circle' ? { kind: 'circle', circleId: entity!.id }
       : { kind: 'arc', arcId: entity!.id };

@@ -1,3 +1,4 @@
+import { routeDrawingGeometryPointerSelection } from './drawingGeometrySelection.js';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes';
 import { applyResolvedProfileClick } from './drawingProfileTool';
@@ -33,7 +34,7 @@ import { resolveDrawingCurveProximity, resolveDrawingPointerOwner, type DrawingP
 import { geometryConstraintVisualClass, getGeometryConstraintVisualState } from './drawingGeometryVisualState.js';
 import { deleteGeometricConstraint, deriveMidpointMarkerPresentation, deriveParallelMarkers, deriveRightAngleMarkers, GEOMETRIC_CONSTRAINT_MARKER_SIZE_PX } from './drawingParallelMarker.js';
 import { deriveCoincidentMarkers, deriveSelectedCoincidentReferenceMarker, POINT_CONSTRAINT_MARKER_HIT_RADIUS_PX, POINT_CONSTRAINT_MARKER_SIZE_PX } from './drawingCoincidentConstraint.js';
-import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, drawingSelectionKey, getDrawingConstraintApplicability, initialConstraintsPanelPosition, toggleDrawingGeometrySelection, type DrawingSelectionRef } from './drawingConstraintsTool.js';
+import { applyDrawingConstraint, clampConstraintsPanelPosition, constraintsPanelDragPosition, constraintsPanelGrabOffset, DRAWING_CONSTRAINT_CATALOG, drawingSelectionKey, getDrawingConstraintApplicability, initialConstraintsPanelPosition, type DrawingSelectionRef } from './drawingConstraintsTool.js';
 import { deriveDrawingInferencePresentations, type DrawingInferencePresentation } from './drawingInferencePresentation.js';
 import { createDrawingDirectionDiagnosticRecorder } from './drawingDirectionDiagnostic.js';
 import { applyDrawingBoxSelection, drawingSelectionMode, normalizeDrawingSelectionRect, selectDrawingEntitiesInRect } from './drawingBoxSelection.js';
@@ -156,11 +157,7 @@ export const shouldRouteArcBodyPointer = (
 export const drawingGeometrySelectionClass = (selection: readonly DrawingSelectionRef[], target: DrawingSelectionRef) =>
   selection.some((ref) => drawingSelectionKey(ref) === drawingSelectionKey(target)) ? ' is-geometry-selected' : '';
 
-/** The selection and drag policy used by the production root pointer route. */
-export const routeDrawingGeometryPointerSelection = (selection: readonly DrawingSelectionRef[], target: DrawingSelectionRef, ctrlKey: boolean, constraintsOpen: boolean) => {
-  const toggle = ctrlKey || constraintsOpen;
-  return { selection: toggle ? toggleDrawingGeometrySelection(selection, target) : [target], beginDrag: !toggle } as const;
-};
+export { routeDrawingGeometryPointerSelection } from './drawingGeometrySelection.js';
 
 export function DrawingWorkspace({
   document,
@@ -778,7 +775,7 @@ export function DrawingWorkspace({
       const route = routeDrawingGeometryPointerSelection(selectedGeometry, owner.selection, event.ctrlKey, constraintsPanelOpen);
       setSelectedGeometry(route.selection);
       setSelectedDimensionId(null); setSelectedGeometricConstraintId(null);
-      if (route.beginDrag) {
+      if (route.beginDrag && owner.target) {
         event.currentTarget.setPointerCapture(event.pointerId);
         const session: GeometryDragSession = { pointerId: event.pointerId, target: owner.target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false };
         geometryDragRef.current = session; setGeometryDrag(session);

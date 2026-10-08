@@ -45,8 +45,15 @@ test('persistent Arc center routes as an ordinary point', () => {
   assert.deepEqual(Object.keys(document.sketches[document.activeSketchId].points), before);
 });
 
-test('deferred Arc body manipulation does not outrank a dimension through stale geometry', () => {
-  assert.equal(resolveDrawingPointerOwner(make(), { x: 55, y: -2.5 }, curve('arc'), overlay).kind, 'dimension');
+test('Arc body owns selection beneath annotation corridors without requiring a drag target', () => {
+  for (const evidence of [{}, overlay, {explicitArcId:'arc'}]) {
+    const owner=resolveDrawingPointerOwner(make(),{x:55,y:-2.5},curve('arc'),evidence);
+    assert.equal(owner.kind,'geometry');assert.deepEqual(owner.selection,{kind:'arc',arcId:'arc'});assert.equal(owner.target,null);
+  }
+  const owner=resolveDrawingPointerOwner(make(),{x:55,y:-2.5},curve('arc'),{dimensionId:'dimension',dimensionSurface:'value'});
+  assert.equal(owner.kind,'dimension','explicit value UI retains priority');
+  const source=fs.readFileSync(new URL('../src/app/DrawingWorkspace.tsx',import.meta.url),'utf8');
+  assert.match(source,/if \(route\.beginDrag && owner\.target\)/,'selection-only hits cannot start manipulation');
 });
 
 test('persistent semantic point identity survives an empty line id', () => {
@@ -75,4 +82,24 @@ test('production root owns dimension pointerdown and retains selection after no-
   assert.doesNotMatch(source, /className="drawing-dimension-(?:hit|value-hit)[^>]*onPointerDown=/);
   assert.match(source, /resolveDrawingPointerOwner[\s\S]*owner\.kind === 'dimension'[\s\S]*beginDimensionAnnotationDrag/);
   assert.doesNotMatch(source, /if \(session\.exceeded\) setSelectedGeometry\(\[\]\)/);
+});
+
+test('Arc click and Ctrl-click use the production selection policy while empty canvas and box selection remain independent', async () => {
+  const {routeDrawingGeometryPointerSelection}=await import('../.test-build/drawing-pointer-arbitration/drawingGeometrySelection.js');
+  const {selectDrawingEntitiesInRect,applyDrawingBoxSelection}=await import('../.test-build/drawing-pointer-arbitration/drawingBoxSelection.js');
+  const {resolveArc}=await import('../.test-build/drawing-pointer-arbitration/drawingTopology.js');
+  const document=make(),sketch=document.sketches[document.activeSketchId],owner=resolveDrawingPointerOwner(document,{x:55,y:-2.5},curve('arc'),{});
+  assert.equal(owner.kind,'geometry');assert.equal(owner.target,null);
+  const selected=routeDrawingGeometryPointerSelection([],owner.selection,false,false);
+  assert.deepEqual(selected.selection,[{kind:'arc',arcId:'arc'}]);
+  assert.equal(selected.beginDrag && owner.target!==null,false);
+  const removed=routeDrawingGeometryPointerSelection(selected.selection,owner.selection,true,false);assert.deepEqual(removed.selection,[]);assert.equal(removed.beginDrag,false);
+  assert.deepEqual(routeDrawingGeometryPointerSelection([],owner.selection,true,false).selection,selected.selection);
+  assert.equal(resolveDrawingPointerOwner(document,{x:100,y:100},null,{}).kind,'empty');
+  const resolved=resolveArc(sketch,sketch.entities.arc),rect={minX:40,maxX:70,minY:-10,maxY:15};
+  for(const mode of ['window','crossing']){
+    const qualifying=selectDrawingEntitiesInRect([resolved],rect,mode);assert.deepEqual(qualifying,selected.selection);
+    assert.deepEqual(applyDrawingBoxSelection([],qualifying,false),selected.selection);
+    assert.deepEqual(applyDrawingBoxSelection(selected.selection,qualifying,true),[]);
+  }
 });
