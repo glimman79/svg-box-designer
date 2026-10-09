@@ -76,7 +76,7 @@ activate Dimensions
 | Length | **IMPLEMENTED** | Selecting a Line supports an aligned Line-length dimension with live placement preview, dimension graphics, and a displayed measured value. |
 | Angle | **IMPLEMENTED** | Line-to-Line angle uses live placement preview, an angle arc with arrows, applicable support extensions, and a displayed measured value. |
 | Circular size | **IMPLEMENTED / BROWSER-VERIFIED AND ACCEPTED** | Selecting a full Circle creates a diameter (Ø) Dimension; selecting an Arc creates a radius (R) Dimension. Geometry type decides the form in Stage 1, with no R/Ø chooser. These are persistent Dimensions with shared solving, value editing, and placement interaction—not Radius/Diameter Constraints. |
-| Curve semantic points | **IMPLEMENTED / BROWSER-VERIFIED AND ACCEPTED** | Ordinary Dimensions can use a Circle’s persistent center, an Arc’s persistent P1/P2 endpoints, and an Arc’s derived semantic center; origin remains the fixed datum where supported. |
+| Curve semantic points | **IMPLEMENTED / BROWSER-VERIFIED AND ACCEPTED** | Ordinary Dimensions can use a Circle’s persistent center, an Arc’s persistent P1/P2 endpoints, and an Arc’s persistent semantic center; origin remains the fixed datum where supported. |
 
 Distance, Length, and Angle in this table describe currently implemented **Dimension**
 functionality. Their integration into the Constraints selection, applicability, and
@@ -349,23 +349,21 @@ must not be read as batch delete.
 | Quick Trim | **DESIGN REQUIRED** | Quickly trim geometry at relevant intersections or boundaries. | Exact interaction remains open. |
 | Rectangle | **DESIGN REQUIRED** | Add a Rectangle family with **four variants**. | The four variants have not been specified and will be defined later. |
 | Circle — Center + Radius | **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED / DOCUMENTED** | P1 establishes or reuses a persistent center `SketchPoint`; pointer movement shows a visible live semantic Circle preview; P2 is a radius-defining authoring control and commits the Circle with one authoritative scalar radius. Persistence, History, semantic center selection, snap/inference, constraints, Dimensions, exact box selection, and both center and body/radius Direct Manipulation are integrated. | Circle is true semantic geometry, not persistent tessellation. P2 is not a persistent radius point. Direct authoring onto the center reuses `centerPointId`; manual Coincidence between a separate endpoint and center preserves both identities and stores `COINCIDENT` / `point-point`. |
-| Arc — standalone three-point | **IMPLEMENTED AND VERIFIED FOUNDATION; ARCHITECTURE LOCKED; MIGRATION PENDING; KNOWN GAP** | The browser-accepted Stage 1 behavior includes Start → End → Form Point authoring, finite-Arc selection and Window/Crossing, Point-on-Arc foundations, topology, deletion, History, persistence, shared presentation, circular Radius Dimension, and center/body/endpoint Direct Manipulation. The locked product and target-architecture contracts below govern remaining work. | Current persistence remains two endpoint `SketchPoint` references plus bulge, with center/radius/angles/P3 derived. The locked target instead uses persistent center/radius plus P1/P2 and orientation; it is not implemented. Center semantic selection ownership and the resulting manual Arc-center Coincidence workflow remain current gaps. |
+| Arc — standalone three-point | **STAGE 3 ACCEPTED; STAGE 4 NOT STARTED / READY TO IMPLEMENT** | P1 → P2 → P3 authoring, finite geometry, topology, Dimensions, Constraints, and center/endpoint snap use the canonical Stage 3 model. | Persistent center/radius/P1/P2/orientation replaces the historical bulge runtime. Arc own-grip Direct Manipulation is deferred to Stage 4; acceptance evidence and its endpoint-drag discrepancy are recorded below. |
 | Circle — older three-point full-Circle item | **DESIGN REQUIRED / UNRESOLVED** | The prior roadmap separately proposed a three-point-defined full Circle. The newly decided standalone three-point Arc does not silently cancel that older item. | Its continued product need, authoring order, and priority require a future explicit decision; it must not be confused with the Arc workflow. |
 
 
 ### Near-term circular-geometry sequence
 
 Circle's current foundation and Radius / Diameter integration are accepted and documented.
-Arc Stage 1 behavior remains accepted under the current endpoint-plus-bulge implementation.
-The Arc representation decision is now **LOCKED**, while implementation and migration are
-**PENDING**.
+Stage 3 is **ACCEPTED — user approved 2026-10-09**. Stage 4 is **NOT STARTED / READY TO IMPLEMENT**. Historical Arc Stage 1 acceptance remains historical evidence.
 
-**CURRENT IMPLEMENTATION.** `DrawingArcEntity` stores `startPointId`, `endPointId`, and
-`bulge = tan(signedSweep / 4)`. P1/P2 are persistent `SketchPoint`s; center, radius,
-angles, signed sweep, P3, and support Circle are derived. Bulge remains runtime authority
-until migration and remains relevant to legacy import/export compatibility.
+**CURRENT IMPLEMENTATION.** `DrawingArcEntity` stores `centerPointId`, scalar `radius`,
+`startPointId`, `endPointId`, and `orientation`. Center and endpoints are persistent
+`SketchPoint`s; angles, sweep, P3, and support Circle geometry are derived. Legacy bulge
+records are converted only at the restore boundary.
 
-**LOCKED TARGET ARCHITECTURE — NOT YET IMPLEMENTED.** Circle and Arc share one semantic
+**LOCKED TARGET ARCHITECTURE — IMPLEMENTED IN STAGE 3.** Circle and Arc share one semantic
 and mathematical **Circular Support** foundation: semantic center, radius, and resolved
 support Circle. Circle uses it directly. Arc adds persistent `startPointId`, `endPointId`,
 and `orientation: CW | CCW`; its center is a persistent first-class `SketchPoint` through
@@ -421,8 +419,9 @@ must not assume every future semantic point has a `pointId`.
 
 #### Circle/Arc implementation stages and status
 
-The target architecture above is **LOCKED**; the implementation migration is **NOT
-STARTED**. The stages below track the route to that target and do not reopen its
+The target architecture above is **LOCKED**; the canonical representation and restore
+migration are implemented and accepted in Stage 3. Stages 4–6 remain separate work.
+The stages below track the route to that target and do not reopen its
 representation. The architecture-lock documentation PR is not Stage 0.
 
 Repository state plus the authority documents are the source of truth between separate
@@ -499,8 +498,8 @@ checked only at **ACCEPTED**.
     component/rank/DOF, Stage 0/1 regression, TypeScript, and production-build checks are
     recorded in the implementation PR.
   - **Acceptance:** Merged and browser-verified by Mikael.
-- [ ] **Stage 3 — Atomic Arc representation/solver cutover** — **IN PROGRESS**
-  - **Status:** IN PROGRESS — implementation prepared; merge, automated acceptance, and browser acceptance pending.
+- [x] **Stage 3 — Atomic Arc representation/solver cutover** — **ACCEPTED**
+  - **Status:** ACCEPTED — user approved 2026-10-09.
   - **Scope:** Atomically change canonical runtime Arc from P1 + P2 + bulge to Center +
     Radius + P1 + P2 + Orientation. Include the target entity and resolver, persistent
     center/radius/orientation, authoring commit, solver variables and intrinsic radial
@@ -510,29 +509,59 @@ checked only at **ACCEPTED**.
   - **Cleanup contract:** Canonical production must no longer use
     `DrawingArcEntity.bulge`, `arc-bulge`, `arcBulgeSolverVariable`, runtime
     `resolveArcFromBulge`, bulge sign as orientation authority, or a derived Arc center as
-    runtime center identity. These verified current symbols describe the target cleanup
-    contract, not current implementation status. Legacy bulge conversion may remain only
+    runtime center identity. These obsolete symbols describe the completed cutover cleanup
+    contract; none may regain canonical authority. Legacy bulge conversion may remain only
     at an explicit migration/import/export boundary where required.
   - **Baseline:** `3a9d94709480191a83454f253a02f1b77c31ca72` (`Use intrinsic equations across DOF analysis (#604)`).
-  - **PR:** Not assigned.
-  - **Merged commit:** Not assigned.
+  - **PRs:** #605 (canonical cutover), #606–#611 (readiness fixes and stabilization).
+  - **Accepted main / merged stabilization commit:** `efc436cca13e4c74717510742d3d97bdfff556fb`.
   - **Known temporary regressions:**
     - **Behavior:** Arc center, body/radius, P1, and P2 own-grip Direct Manipulation are unavailable.
       **Reason:** Stage 4 owns manipulation on persistent Center + Radius + P1 + P2 + Orientation.
       **Introduced:** Stage 3. **Restored:** Stage 4.
       **Why old path cannot safely remain:** It depends on bulge solver authority and a derived center.
-  - **Acceptance:** Pending merge, automated acceptance, and Mikael's real-browser verification.
-- [ ] **Stage 4 — Direct Manipulation on target Arc architecture** — **NOT STARTED**
-  - **Status:** NOT STARTED.
+  - **Acceptance:** Mikael explicitly approved Stage 3 on 2026-10-09, reporting correct
+    P1 → P2 → P3 creation, P1/P2 drag with opposite-endpoint pivot, working Dimensions
+    and Constraints, and Line snap to center/P1/P2. The supplied Stage 3.6 report records
+    24/24 Arc tests PASS, 16/16 Chromium scenarios PASS, 52/66 regression scripts PASS
+    with the same 14 previously known failures, and D1–D7, P1, R4 PASS. No new blocking
+    Stage 3 regression was identified. This documentation task did not rerun those checks.
+  - **Evidence discrepancy:** The accepted-main own-grip factories and regression test
+    still disable Arc center/body/endpoint grips. The reported endpoint-pivot browser
+    behavior is retained as user evidence, not proof that those factories are enabled.
+    Stage 4 must reconcile the exact interaction path and verify target-native endpoint drag.
+  - **Open risks:** R1–R3 remain open; their detailed definitions were not supplied and
+    are not present in this repository. Do not infer closure from acceptance or invent
+    their contents. R5, actual Drawing Save/Reload, is NOT IMPLEMENTED and outside
+    Stage 3; restore migration/serialization tests do not establish a user-facing save flow.
+- [ ] **Stage 4 — Direct Manipulation on target Arc architecture** — **NOT STARTED / READY TO IMPLEMENT**
+  - **Status:** NOT STARTED / READY TO IMPLEMENT; no implementation in this documentation task.
   - **Scope:** Restore the accepted center, body/radius, P1, and P2 manipulation directly
     on Center + Radius + P1 + P2 + Orientation, including exact opposite-endpoint pivot,
     fixed-radius behavior, whole-directed-Arc continuation, orientation preservation,
     drag-start-absolute/event-rate-independent behavior, and constrained manipulation.
+  - **Locked body/radius drag:** Direct dragging on the Arc body continuously changes
+    scalar radius about an exact fixed persistent center. Free motion scales both
+    endpoint vectors, preserving directions, sweep, and orientation; constrained motion
+    respects intrinsic equations, shared topology, and persistent hard constraints.
+  - **Locked center drag:** Center/P1/P2 move by the same translation. Free motion
+    preserves radius, sweep, orientation, and form. Shared identities and constraints
+    remain authoritative; constraints restrict the translation rather than redefine the grip.
+  - **Locked endpoint drag:** Each endpoint retains the opposite endpoint as an exact
+    pivot, with no regression in the locked continuation and fixed-radius contracts.
+  - **Acceptance requirements:** Verify all three grip meanings in the real browser,
+    free and constrained; correct preview/commit, Escape/cancel, Undo/Redo, pointer
+    priority, zoom, coordinate offsets, and Circle/Line regressions. Require drag-start-
+    absolute, event-rate-independent and reversible results, exact pivots, valid finite
+    domain, fixed-radius `2R` projection, orientation and topology preservation. Reconcile
+    the Stage 3 endpoint evidence discrepancy and carry R1–R3 forward as open.
   - **Hard contract:** Do not reintroduce `bulge`, `arc-bulge`, derived Arc-center
     authority, target-to-old-runtime conversion for manipulation, or a permanent old/new
     dual path. Real browser verification of Direct Manipulation is required for
     **ACCEPTED** status.
-  - **Baseline:** Not assigned.
+  - **Preparation reference:** Accepted Stage 3 main `efc436cca13e4c74717510742d3d97bdfff556fb`.
+  - **Implementation baseline:** Verify current main again after this documentation PR
+    is merged; this reference does not authorize use of an obsolete checkout.
   - **PR:** Not assigned.
   - **Merged commit:** Not assigned.
   - **Known temporary regressions:** None — implementation not started.
@@ -555,8 +584,8 @@ checked only at **ACCEPTED**.
   - **Status:** NOT STARTED.
   - **Scope:** Complete full regression and browser acceptance, legacy restore, target
     save/reload, Circle and Arc regression, final cleanup audit, and documentation sync.
-    Only after accepted implementation may documentation stop calling the migration
-    pending.
+    Remaining migration work stays pending until accepted; the canonical representation
+    and restore migration already accepted in Stage 3 remain accepted.
   - **Baseline:** Not assigned.
   - **PR:** Not assigned.
   - **Merged commit:** Not assigned.
@@ -658,7 +687,9 @@ P1 support endpoint placement. After P2, the live finite-Arc preview includes it
 underlying support Circle. These helpers and P3 are presentation/authoring state only,
 not persistent entities, topology, History, selection, or export geometry.
 
-Arc Stage 1 is accepted with three distinct Direct Manipulation meanings. Center drag
+Historically, Arc Stage 1 was accepted with three distinct Direct Manipulation meanings.
+The following describes that historical bulge implementation, not current Stage 3 grip
+availability; Stage 4 must restore these meanings on the canonical target model. Center drag
 translates both endpoints and preserves form/bulge. Body/radius drag holds the derived
 drag-start center and endpoint angles fixed in the free case, moves both endpoint
 SketchPoints radially, and preserves bulge/signed sweep. Endpoint drag moves the chosen

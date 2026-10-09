@@ -13,7 +13,7 @@ semantic geometry / semantic relation
   -> geometry-specific SVG primitive or role-specific glyph
 ```
 
-Thus a Line renders as `<line>`, true semantic Circle geometry as `<circle>`, and true finite Arc geometry as `<path>`, while Points, Dimensions, and Constraints use their own glyphs/primitives and consume global roles wherever semantics are shared. Entity-specific mobility derives the global geometry constraint visual state; temporary selection or inference paint does not change that underlying state. Entity-defining persistent points such as Circle centers, and the currently derived Arc-center presentation, receive semantic roles rather than duplicate entity-owned geometry or persisted presentation state. Transient and persistent forms may share relation/layout derivation while retaining distinct paint. Line, Profile, Circle, and Arc share the Drawing authoring, selection, topology, History, deletion, and presentation foundations where applicable. The normative roles, values, and precedence are owned by [PROJECT_MASTER.md](PROJECT_MASTER.md#49-normative-drawing-presentation-standard), not duplicated here.
+Thus a Line renders as `<line>`, true semantic Circle geometry as `<circle>`, and true finite Arc geometry as `<path>`, while Points, Dimensions, and Constraints use their own glyphs/primitives and consume global roles wherever semantics are shared. Entity-specific mobility derives the global geometry constraint visual state; temporary selection or inference paint does not change that underlying state. Entity-defining persistent points such as Circle and Arc persistent centers receive semantic roles rather than duplicate entity-owned geometry or persisted presentation state. Transient and persistent forms may share relation/layout derivation while retaining distinct paint. Line, Profile, Circle, and Arc share the Drawing authoring, selection, topology, History, deletion, and presentation foundations where applicable. The normative roles, values, and precedence are owned by [PROJECT_MASTER.md](PROJECT_MASTER.md#49-normative-drawing-presentation-standard), not duplicated here.
 
 Persistent `SketchPoint`s are discovered globally as positional snap candidates regardless of which geometry references them, so shared topology is reused rather than duplicated. Point-on-Curve is likewise a global semantic relationship represented by `COINCIDENT` / `point-curve`, not a Circle- or Arc-owned constraint system. Circle Stage 1 and Arc Stage 1 reuse this foundation, including Point-on-Arc semantics.
 
@@ -51,9 +51,10 @@ A grip defines the semantic subspace of an interaction: persistent Constraints a
 driving Dimensions restrict motion inside it but do not redefine the grip. Exact grip
 invariants enter as transient semantic equations rather than weighted preferences.
 Circle center drag moves the persistent center with unchanged free-case radius; Circle
-body drag varies radius about an exact fixed-center pivot. Arc center drag is rigid
+body drag varies radius about an exact fixed-center pivot. The following Arc grip semantics are Stage 4 requirements; own-grip factories remain
+disabled on accepted Stage 3 main. Arc center drag is rigid
 translation subject to persistent hard equations; Arc body/radius drag keeps the
-free-case derived center stationary while radius and endpoints change consistently; Arc
+persistent center exactly stationary while radius and endpoints change consistently; Arc
 endpoint drag keeps the opposite endpoint as an exact transient fixed pivot throughout
 full feasible branch continuation.
 
@@ -78,8 +79,8 @@ testing, Direct Manipulation, snap, inference, topology, Dimensions, presentatio
 History, transactions, serialization, and deletion are shared concerns. Geometry-specific
 math does not create separate mini-CAD systems.
 
-The Arc representation decision is now **LOCKED**, while implementation and migration
-are pending. Target body/radius drag fixes center and preserves endpoint directions;
+The Arc representation is **LOCKED**, implemented, and Stage 3 **ACCEPTED — user
+approved 2026-10-09**. Stage 4 is **NOT STARTED / READY TO IMPLEMENT**. Target body/radius drag fixes center and preserves endpoint directions;
 center drag is rigid translation; endpoint drag fixes the opposite endpoint. Endpoint
 continuation prioritizes exact feasibility, pointer intent, representation-independent
 whole-directed-Arc least change, then a neutral tie-break. Mouse-down geometry plus total
@@ -89,8 +90,7 @@ limit and projects an outside pointer to an orientation-preserving semicircle.
 Arc center selection must select the center semantic point. The shared reference system
 must nevertheless support both persistent and derived/dependent semantic-point identity.
 Concentricity remains a common center relation across Circle/Arc pairs; Tangency shares
-support-circle math plus finite directed-Arc contact validation. Both features and the
-Arc representation migration remain unimplemented. Full normative details are in
+support-circle math plus finite directed-Arc contact validation. Both Constraint features remain unimplemented; Arc representation migration is implemented. Full normative details are in
 [PROJECT_MASTER.md](PROJECT_MASTER.md#locked-target-circlearc-architecture).
 
 ## Pipeline
@@ -123,6 +123,6 @@ SVG import or empty BoxDocument
 
 For the complete current contracts—including TB/W/S status, Drawing architecture, and cross-cutting transaction rules—use [PROJECT_MASTER.md](PROJECT_MASTER.md).
 
-## Stage 3 canonical Arc runtime
+## Accepted Stage 3 canonical Arc runtime
 
 Arc runtime and new persistence use `centerPointId + radius + startPointId + endPointId + orientation`. Center and endpoints are persistent `SketchPoint` identities; orientation is the discrete CW/CCW branch authority. The finite resolver derives angles, directed sweep, SVG flags, bounds samples, and length directly from this state. Arc owns two intrinsic radial equations and exposes seven continuous variables, yielding five geometric DOF. Endpoint-plus-bulge data is accepted only by the centralized restore migration boundary. Arc own-grip Direct Manipulation is explicitly deferred to Stage 4; no bulge fallback remains.

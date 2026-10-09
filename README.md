@@ -14,12 +14,20 @@ The locked Arc contract—including three-point creation, endpoint-pivot semanti
 the shared Circle/Arc foundation—is authoritative in
 [PROJECT_MASTER.md](PROJECT_MASTER.md#locked-target-circlearc-architecture); the target Arc representation and migration are implemented in Stage 3, while Concentricity, finite-Arc Tangency, and target-Arc own-grip Direct Manipulation remain pending. The authoritative Stage 0–6 migration status and process policy are in
 [ROADMAP.md](ROADMAP.md#circlearc-implementation-stages-and-status); all migration stages
-after the characterization safety-net stage remain separately tracked. Stages 0, 1, and 2 are **ACCEPTED**. Stage 3 is **IN PROGRESS**; Stages 4–6 are **NOT STARTED**.
+after the characterization safety-net stage remain separately tracked. Stages 0–3 are **ACCEPTED**; Stage 3 was user approved 2026-10-09. Stage 4 is
+**NOT STARTED / READY TO IMPLEMENT**; Stages 5–6 are **NOT STARTED**. Stage 4 restores
+body radius drag about a fixed center, whole-Arc center translation, and exact endpoint
+pivots, with browser acceptance of constraints, cancellation, History, and Circle/Line
+regressions. Open risks R1–R3 and the endpoint-drag evidence discrepancy remain recorded
+in the Roadmap. Actual Drawing Save/Reload (R5) is not implemented and is outside Stage 3.
 
 Repository collaboration follows the permanent rule in
 [REGLER_FOR_CHATT_MED_CHATGPT.md](REGLER_FOR_CHATT_MED_CHATGPT.md#permanent-regel-för-repositoryåtkomst):
 **ChatGPT Chat is read-only; Codex is the sole authorized change executor, subject to
 Mikael Glimvert's explicit task/scope approval and separate approval before merge.**
+ChatGPT is the read-only architecture reviewer; authorized Codex work may create a PR,
+and only the user decides merge. HIGH reasoning effort is recommended for solver,
+topology, Constraints, and Direct Manipulation. IMPLEMENTED is not the same as ACCEPTED.
 
 ## Technology
 
