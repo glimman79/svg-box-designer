@@ -385,11 +385,15 @@ export type DrawingGeometricIntent = Readonly<{
   seedVariable: DrawingSolverVariable;
   /** Additional canonical variables owned by the same transient interaction. */
   variables?: readonly DrawingSolverVariable[];
+  /** Drag-start coordinates which are exact grip invariants. These columns
+   * are excluded from optimization, including branch-seed projection. */
+  fixedVariables?: readonly DrawingSolverVariable[];
   /** Candidate-evaluated model-space pointer residuals (normally x and y). */
   primaryResiduals: (candidate: DrawingSketchV2) => readonly number[] | null;
   /** Canonical variables which represent an exact primary pose when the hard
    * equation component can satisfy them. Infeasible poses fall through to the
-   * normal lexicographic primary solve. */
+   * normal lexicographic primary solve. A geometric continuation objective
+   * still runs below attainable exact coordinates. */
   exactVariableTargets?: readonly Readonly<{ variable: DrawingSolverVariable; value: number }>[];
   /** Equality rows defining the interaction's semantic motion subspace. */
   semanticResiduals?: (candidate: DrawingSketchV2) => readonly number[] | null;
@@ -417,9 +421,17 @@ export const solveDrawingGeometricIntent = (
   sketch: DrawingSketchV2,
   intent: DrawingGeometricIntent,
 ): DrawingSketchV2 | null => {
+  let exactPrimaryPose: DrawingSketchV2 | null = null;
   if (intent.exactVariableTargets?.length) {
     const exact = solveDrawingVariableTargets(sketch, intent.exactVariableTargets);
-    if (exact && (intent.semanticResiduals?.(exact) ?? []).every((value) => Number.isFinite(value) && Math.abs(value) <= DRAWING_CONSTRAINT_TOLERANCE_MM)) return exact;
+    if (exact && (intent.fixedVariables ?? []).every(variable => readDrawingSolverVariable(exact, variable) === readDrawingSolverVariable(sketch, variable))
+      && (intent.semanticResiduals?.(exact) ?? []).every((value) => Number.isFinite(value) && Math.abs(value) <= DRAWING_CONSTRAINT_TOLERANCE_MM)) {
+      if (!intent.geometricResiduals) return exact;
+      // An attainable primary pose must still admit geometric continuation.
+      // Hold its pointer coordinates exactly while optimizing lower tiers;
+      // the drag-start sketch remains the canonical stay reference.
+      exactPrimaryPose = exact;
+    }
   }
   const analysis = analyzeDrawingConstraints(sketch);
   const component = intent.seedVariable.kind === 'point-axis'
@@ -427,8 +439,15 @@ export const solveDrawingGeometricIntent = (
     : analysis.componentByVariableKey.get(drawingSolverVariableKey(intent.seedVariable));
   const pointIds = component ? [...component.pointIds] : intent.seedVariable.kind === 'point-axis' ? [intent.seedVariable.pointId] : [];
   const scalarVariables = component?.scalarVariables ?? (intent.seedVariable.kind === 'entity-scalar' ? [intent.seedVariable] : []);
-  const variables = deduplicateDrawingSolverVariables([...pointIds.flatMap(pointSolverVariables), ...scalarVariables, ...(intent.variables ?? [])]);
-  const domainPointIds = [...new Set(variables.flatMap((variable) => variable.kind === 'point-axis' ? [variable.pointId] : []))];
+  const allVariables = deduplicateDrawingSolverVariables([...pointIds.flatMap(pointSolverVariables), ...scalarVariables, ...(intent.variables ?? [])]);
+  const fixedKeys = new Set((intent.fixedVariables ?? []).map(drawingSolverVariableKey));
+  if (exactPrimaryPose) intent.exactVariableTargets?.forEach(({ variable }) => fixedKeys.add(drawingSolverVariableKey(variable)));
+  const variables = allVariables.filter(variable => !fixedKeys.has(drawingSolverVariableKey(variable)));
+  const domainPointIds = [...new Set(allVariables.flatMap((variable) => variable.kind === 'point-axis' ? [variable.pointId] : []))];
+  if (!variables.length) {
+    const candidate = exactPrimaryPose ?? sketch;
+    return verifyDrawingConstraints(candidate, component?.dimensionIds ?? [], component?.geometricConstraintIds ?? [], domainPointIds) ? candidate : null;
+  }
   const initial = flattenDrawingSolverVariables(sketch, variables);
   if (!initial || !variables.length || !Number.isFinite(intent.modelScale) || intent.modelScale <= 0) return null;
   const state: ComponentState = { pointIds, equations: component ? [
@@ -439,7 +458,7 @@ export const solveDrawingGeometricIntent = (
   const lengthScales = variables.map(variable => drawingVariableLengthScale(sketch, variable));
   const scalarMm = variables.map((variable) => 1);
   const evaluate = (values: readonly number[]) => {
-    const candidate = applyDrawingSolverVector(sketch, variables, values); if (!candidate) return null;
+    const candidate = applyDrawingSolverVector(exactPrimaryPose ?? sketch, variables, values); if (!candidate) return null;
     const system = evaluateSystem(candidate, state, [], []); if (!system) return null;
     const hard = system.residuals;
     const semantic = intent.semanticResiduals?.(candidate) ?? [], primary = intent.primaryResiduals(candidate), secondary = intent.secondaryResiduals?.(candidate) ?? [], geometric = intent.geometricResiduals?.(candidate) ?? [];
@@ -447,9 +466,12 @@ export const solveDrawingGeometricIntent = (
     const least = values.map((value, index) => (value - initial[index]) * scalarMm[index] / intent.modelScale);
     return { candidate, hard, semantic: [...semantic], primary: [...primary], secondary: [...secondary], geometric: [...geometric], least };
   };
-  let values = [...initial]; const initialEvaluation = evaluate(values); if (!initialEvaluation) return null;
+  const startingValues = exactPrimaryPose ? flattenDrawingSolverVariables(exactPrimaryPose, variables) : [...initial];
+  if (!startingValues) return null;
+  let values: number[] = startingValues;
+  const initialEvaluation = evaluate(values); if (!initialEvaluation) return null;
   let best: NonNullable<ReturnType<typeof evaluate>> = initialEvaluation;
-  const initialPrimaryError = norm(best.primary);
+  const initialPrimaryError = norm(intent.primaryResiduals(sketch) ?? best.primary);
   type Objective = 'primary' | 'secondary' | 'geometric' | 'least';
   const jacobianAt = (at: readonly number[], groups: readonly (keyof Pick<NonNullable<ReturnType<typeof evaluate>>, 'hard' | 'semantic' | Objective>)[]) => {
     const current = evaluate(at); if (!current) return null;
@@ -576,10 +598,11 @@ export const solveDrawingGeometricIntent = (
   optimizeTier('least', ['primary', 'secondary', 'geometric']);
   const snappedValues = [...values];
   for (let index = 0; index < snappedValues.length; index += 1) if (Math.abs(snappedValues[index] - initial[index]) <= DRAWING_CONSTRAINT_TOLERANCE_MM) snappedValues[index] = initial[index];
-  const snapped = applyDrawingSolverVector(sketch, variables, snappedValues) ?? best.candidate;
+  const snapped = applyDrawingSolverVector(exactPrimaryPose ?? sketch, variables, snappedValues) ?? best.candidate;
   const noOpOr = (candidate: DrawingSketchV2) => {
-    const candidateValues = flattenDrawingSolverVariables(candidate, variables);
-    return verifyDrawingConstraints(sketch, component?.dimensionIds ?? [], component?.geometricConstraintIds ?? [], domainPointIds) && candidateValues?.every((value, index) => Math.abs(value - initial[index]) <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? sketch : candidate;
+    const candidateValues = flattenDrawingSolverVariables(candidate, allVariables);
+    const originalValues = flattenDrawingSolverVariables(sketch, allVariables);
+    return verifyDrawingConstraints(sketch, component?.dimensionIds ?? [], component?.geometricConstraintIds ?? [], domainPointIds) && originalValues && candidateValues?.every((value, index) => Math.abs(value - originalValues[index]) <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? sketch : candidate;
   };
   const snappedPrimary = intent.primaryResiduals(snapped);
   if (verifyDrawingConstraints(snapped, component?.dimensionIds ?? [], component?.geometricConstraintIds ?? [], domainPointIds)

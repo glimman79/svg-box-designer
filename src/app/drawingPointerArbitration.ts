@@ -61,8 +61,15 @@ export const resolveDrawingPointerOwner = (
       return line?.type === 'line' ? line[pointCandidate.endpoint === 'end' ? 'endPointId' : 'startPointId'] : undefined;
     })();
     if (pointId) {
+      const sketch = document.sketches[document.activeSketchId];
+      const centers = Object.values((sketch?.entities ?? {}) as unknown as Record<string, DrawingEntity>).filter((entity): entity is Extract<DrawingEntity, { type: 'arc' }> =>
+        entity.type === 'arc' && entity.centerPointId === pointId);
+      const selectedCenters = centers.filter(entity => selectedEntityIds.includes(entity.id));
+      const centerId = selectedCenters.length === 1 ? selectedCenters[0].id
+        : centers.length === 1 && selectedEntityIds.length === 0 ? centers[0].id : null;
       const arcId = resolveArcEndpointOwner(document, pointId, selectedEntityIds);
-      const target = (arcId ? createArcEndpointDragTarget(document, arcId, pointId) : null) ?? { kind: 'point' as const, pointId };
+      const target = (centerId ? createArcCenterDragTarget(document, centerId) : null)
+        ?? (arcId ? createArcEndpointDragTarget(document, arcId, pointId) : null) ?? { kind: 'point' as const, pointId };
       if (target) return { kind: 'geometry', selection: { kind: 'point', pointId }, target };
     }
   }
@@ -83,7 +90,7 @@ export const resolveDrawingPointerOwner = (
 
   if (evidence.explicitArcCenterId) {
     const arc = (sketch?.entities as unknown as Record<string, DrawingEntity> | undefined)?.[evidence.explicitArcCenterId];
-    if (arc?.type === 'arc' && sketch?.points[arc.centerPointId]) return { kind: 'geometry', selection: { kind: 'point', pointId: arc.centerPointId }, target: { kind: 'point', pointId: arc.centerPointId } };
+    if (arc?.type === 'arc' && sketch?.points[arc.centerPointId]) return { kind: 'geometry', selection: { kind: 'point', pointId: arc.centerPointId }, target: createArcCenterDragTarget(document, arc.id) ?? { kind: 'point', pointId: arc.centerPointId } };
   }
   return evidence.dimensionId
     ? { kind: 'dimension', dimensionId: evidence.dimensionId, surface: evidence.dimensionSurface ?? 'line' }
