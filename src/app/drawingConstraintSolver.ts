@@ -1,9 +1,9 @@
+import { drawingNumericalDerivative, drawingVariableLengthScale } from './drawingNumericalDerivative.js';
 import type { DrawingDimension, DrawingDocumentV2, DrawingGeometricConstraint, DrawingPoint, DrawingSketchV2 } from './drawingTypes';
 import { analyzeDrawingConstraints, constraintEquation, constraintPointKey, drawingConstraintDegreesOfFreedomForPoints, DRAWING_ORIGIN_CONSTRAINT_KEY, geometricConstraintEquation, geometricConstraintEquations, lineToLineAngleAndGradient, lineToLineDistanceAndGradient, parallelAndGradient, perpendicularAndGradient, pointOnLinearSupportAndGradient, pointToLineDistanceAndGradient } from './drawingConstraintAnalysis.js';
 import { measureDimension, measureLineToLineDistance, measurePointToLine, resolveDimensionLineReference, resolveDrawingPointReference } from './drawingDimension.js';
-import { angleIsOnDrawingArc } from './drawingArcGeometry.js';
+import { finiteArcConstraintResidual } from './drawingArcGeometry.js';
 import { applyDrawingSolverVector, circularRadiusSolverVariable, deduplicateDrawingSolverVariables, drawingSolverVariableKey, flattenDrawingSolverVariables, pointSolverVariables, readDrawingSolverVariable, type DrawingSolverVariable } from './drawingSolverVariables.js';
-import { resolveArc } from './drawingTopology.js';
 import { measureCircularDimension } from './drawingCircularSize.js';
 import { circularSupportResidual } from './drawingCircularGeometry.js';
 import { collectDrawingEntityEquations, drawingEntityDomainsAreValid } from './drawingEntityDefinition.js';
@@ -152,11 +152,14 @@ const evaluateSystem = (sketch: DrawingSketchV2, component: ComponentState, vari
     if (residual === null || !Number.isFinite(residual)) return null;
     const row = Array(variableIds.length * 2).fill(0);
     for (let column = 0; column < row.length; column += 1) {
-      const h = 1e-6 * Math.max(1, Math.abs(values[column])), plus = [...values], minus = [...values];
-      plus[column] += h; minus[column] -= h;
-      const p = equation.residual(entityCandidate(plus)), m = equation.residual(entityCandidate(minus));
-      if (p === null || m === null || !Number.isFinite(p) || !Number.isFinite(m)) return null;
-      row[column] = (p - m) / (2 * h);
+      const variable = pointSolverVariables(variableIds[Math.floor(column / 2)])[column % 2];
+      const gradient = drawingNumericalDerivative(values[column], drawingVariableLengthScale(sketch, variable), [residual], next => {
+        const trial = [...values]; trial[column] = next;
+        const result = equation.residual(entityCandidate(trial));
+        return result === null ? null : [result];
+      });
+      if (!gradient) return null;
+      row[column] = gradient[0];
     }
     residuals.push(residual); jacobian.push(row);
   }
@@ -170,12 +173,11 @@ type ComponentSolve = Readonly<{ values: readonly number[]; residuals: readonly 
  * Shared nonlinear component kernel.  Its columns are canonical
  * DrawingSolverVariables rather than an implicit pair of columns per Point.
  * Residuals are deliberately evaluated from the reconstructed candidate
- * sketch, so a Point-on-Curve equation observes candidate radii and bulges.
+ * sketch, so a Point-on-Curve equation observes candidate circular radii.
  *
- * Columns are scaled into roughly unit solver coordinates. Coordinates and
- * radii use model-unit magnitude; dimensionless bulge uses its own magnitude.
- * This only conditions the finite-difference Jacobian and damping--it does not
- * weaken hard equations or introduce a geometry-specific objective.
+ * Point coordinates and circular radii share model-length units. Damping uses
+ * those units, never absolute world position. Derivative steps follow local
+ * geometry with an independent representability floor.
  */
 const solveVariableComponent = (
   sketch: DrawingSketchV2,
@@ -187,7 +189,7 @@ const solveVariableComponent = (
   const initialValues = flattenDrawingSolverVariables(sketch, variables);
   if (!initialValues) return null;
   let values: number[] = initialValues;
-  const scales = values.map((value) => Math.max(1, Math.abs(value)));
+  const lengthScales = variables.map(variable => drawingVariableLengthScale(sketch, variable));
   const residualsAt = (candidateValues: readonly number[]) => {
     const candidate = applyDrawingSolverVector(sketch, variables, candidateValues);
     if (!candidate) return null;
@@ -202,19 +204,12 @@ const solveVariableComponent = (
     if (iteration === DRAWING_COMPONENT_SOLVER_MAX_ITERATIONS || !values.length) break;
     const jacobian = current.residuals.map(() => Array(values.length).fill(0));
     for (let column = 0; column < values.length; column += 1) {
-      const step = 1e-6 * scales[column], plusValues = [...values], minusValues = [...values];
-      plusValues[column] += step; minusValues[column] -= step;
-      const plus = residualsAt(plusValues), minus = residualsAt(minusValues);
-      if (!plus && !minus) return null;
-      for (let row = 0; row < jacobian.length; row += 1) {
-        // Derivatives are with respect to the normalized column (actual value
-        // divided by scale), which keeps bulge and drawing-unit columns
-        // comparable. One-sided differences keep valid scalar boundaries safe.
-        jacobian[row][column] = plus && minus
-          ? (plus.residuals[row] - minus.residuals[row]) / (2e-6)
-          : plus ? (plus.residuals[row] - current.residuals[row]) / 1e-6
-            : (current.residuals[row] - minus!.residuals[row]) / 1e-6;
-      }
+      const gradient = drawingNumericalDerivative(values[column], lengthScales[column], current.residuals, next => {
+        const trial = [...values]; trial[column] = next;
+        return residualsAt(trial)?.residuals ?? null;
+      });
+      if (!gradient) return null;
+      for (let row = 0; row < jacobian.length; row += 1) jacobian[row][column] = gradient[row];
     }
     const n = values.length, normal = Array.from({ length: n }, () => Array(n).fill(0)), rhs = Array(n).fill(0);
     for (let row = 0; row < current.residuals.length; row += 1) for (let i = 0; i < n; i += 1) {
@@ -222,9 +217,9 @@ const solveVariableComponent = (
       for (let j = 0; j < n; j += 1) normal[i][j] += jacobian[row][i] * jacobian[row][j];
     }
     for (let i = 0; i < n; i += 1) normal[i][i] += damping * (movementWeights?.get(drawingSolverVariableKey(variables[i])) ?? 1);
-    const normalizedDelta = solveLinear(normal, rhs);
-    if (!normalizedDelta?.every(Number.isFinite)) break;
-    const candidateValues: number[] = values.map((value, index) => value + normalizedDelta[index] * scales[index]), next = residualsAt(candidateValues);
+    const delta = solveLinear(normal, rhs);
+    if (!delta?.every(Number.isFinite)) break;
+    const candidateValues: number[] = values.map((value, index) => value + delta[index]), next = residualsAt(candidateValues);
     if (next && norm(next.residuals) < norm(current.residuals)) { values = candidateValues; damping = Math.max(1e-12, damping * .25); }
     else damping = Math.min(1e12, damping * 10);
   }
@@ -441,7 +436,7 @@ export const solveDrawingGeometricIntent = (
     ...component.geometricConstraintIds.flatMap((id) => { const constraint = sketch.geometricConstraints[id]; return constraint ? geometricConstraintEquations(sketch, constraint).map((equation) => ({ ...equation, target: 0 })) : []; }),
   ].filter((equation): equation is Equation => Boolean(equation)) : [] };
   if (component && state.equations.length < component.dimensionIds.length + component.geometricConstraintIds.length) return null;
-  const scales = variables.map((variable) => 1);
+  const lengthScales = variables.map(variable => drawingVariableLengthScale(sketch, variable));
   const scalarMm = variables.map((variable) => 1);
   const evaluate = (values: readonly number[]) => {
     const candidate = applyDrawingSolverVector(sketch, variables, values); if (!candidate) return null;
@@ -460,16 +455,13 @@ export const solveDrawingGeometricIntent = (
     const current = evaluate(at); if (!current) return null;
     const rows = groups.flatMap((group) => current[group]), jacobian = rows.map(() => Array(variables.length).fill(0));
     for (let column = 0; column < variables.length; column += 1) {
-      const step = 1e-6 * scales[column], plus = [...at], minus = [...at]; plus[column] += step; minus[column] -= step;
-      const a = evaluate(plus), b = evaluate(minus);
-      if (!a && !b) continue;
-      const ar = a ? groups.flatMap((group) => a[group]) : null, br = b ? groups.flatMap((group) => b[group]) : null;
-      for (let row = 0; row < rows.length; row += 1) {
-        const central = ar && br ? (ar[row] - br[row]) / (2e-6) : NaN;
-        const forward = ar ? (ar[row] - rows[row]) / 1e-6 : NaN;
-        jacobian[row][column] = Number.isFinite(central) && (Math.abs(central) > 1e-12 || !Number.isFinite(forward) || Math.abs(forward) <= 1e-12)
-          ? central : Number.isFinite(forward) ? forward : (rows[row] - br![row]) / 1e-6;
-      }
+      const gradient = drawingNumericalDerivative(at[column], lengthScales[column], rows, next => {
+        const trial = [...at]; trial[column] = next;
+        const sample = evaluate(trial);
+        return sample ? groups.flatMap(group => sample[group]) : null;
+      }, true);
+      if (!gradient) return null;
+      for (let row = 0; row < rows.length; row += 1) jacobian[row][column] = gradient[row];
     }
     return { current, rows, jacobian };
   };
@@ -489,7 +481,7 @@ export const solveDrawingGeometricIntent = (
       const step = solveLinear(matrix, rhs); if (!step?.every(Number.isFinite)) return null;
       const oldScore = norm(data.rows); let accepted = false;
       for (let reduction = 0; reduction < INTERACTION_LINE_SEARCH_STEPS; reduction += 1) {
-        const alpha = 2 ** -reduction, trial = projected.map((value, index) => value + alpha * step[index] * scales[index]);
+        const alpha = 2 ** -reduction, trial = projected.map((value, index) => value + alpha * step[index]);
         const evaluation = evaluate(trial);
         if (evaluation && norm([...evaluation.hard, ...evaluation.semantic]) < oldScore) {
           projected = trial; accepted = true; break;
@@ -548,7 +540,7 @@ export const solveDrawingGeometricIntent = (
       const step = solveLinear(matrix, rhs); if (!step?.every(Number.isFinite) || norm(step.slice(0, n)) < 1e-22) break;
       const oldScore = norm(data.current[objective]); let accepted = false;
       for (let reduction = 0; reduction < INTERACTION_LINE_SEARCH_STEPS; reduction += 1) {
-        const alpha = 2 ** -reduction, trialValues = values.map((value, index) => value + alpha * step[index] * scales[index]);
+        const alpha = 2 ** -reduction, trialValues = values.map((value, index) => value + alpha * step[index]);
         let trial = evaluate(trialValues); if (!trial) continue;
         if ([...trial.hard, ...trial.semantic].some((v) => Math.abs(v) > DRAWING_CONSTRAINT_TOLERANCE_MM)) {
           const correctedValues = projectSemanticSubspace(trialValues);
@@ -714,7 +706,7 @@ export const verifyDrawingConstraints = (sketch: DrawingSketchV2, dimensionIds: 
   const intrinsic = entityEquationsForPoints(sketch, pointIds).map((equation) => equation.residual(sketch));
   if (!intrinsic.every((value) => value !== null && Number.isFinite(value) && Math.abs(value) <= DRAWING_CONSTRAINT_TOLERANCE_MM)) return null;
   const dimensions = verifyDrawingDrivingDimensions(sketch, dimensionIds); if (!dimensions) return null;
-  const geometric = geometricConstraintIds.map((id) => { const constraint = (sketch.geometricConstraints ?? {})[id], equation = constraint && geometricConstraintEquation(sketch, constraint); if (!equation) return Infinity; if (constraint.kind === 'MIDPOINT') { const [p, a, b] = equation.pointKeys; return Math.max(Math.abs(sketch.points[p].x - (sketch.points[a].x + sketch.points[b].x) / 2), Math.abs(sketch.points[p].y - (sketch.points[a].y + sketch.points[b].y) / 2)); } if (constraint.kind === 'COINCIDENT') { const [a, b, c] = equation.pointKeys; if (constraint.variant === 'point-linear-support') return Math.abs(pointOnLinearSupportAndGradient(sketch.points[a], sketch.points[b], sketch.points[c])?.residual ?? Infinity); if (constraint.variant === 'point-curve') { const curve = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[constraint.references[1].entityId]; if (curve?.type === 'circle') return Math.abs(Math.hypot(sketch.points[a].x - sketch.points[b].x, sketch.points[a].y - sketch.points[b].y) - curve.radius); if (curve?.type === 'arc') { const arc = resolveArc(sketch, curve); if (!arc) return Infinity; const point = sketch.points[a], angle = Math.atan2(point.y - arc.center.y, point.x - arc.center.x); return angleIsOnDrawingArc(angle, arc.startAngle, arc.signedSweep) ? Math.abs(Math.hypot(point.x - arc.center.x, point.y - arc.center.y) - arc.radius) : Infinity; } return Infinity; } if (constraint.variant === 'point-derived-point') { const point = sketch.points[a], derived = resolveDrawingPointReference(sketch, constraint.references[1]); return point && derived ? Math.max(Math.abs(point.x - derived.x), Math.abs(point.y - derived.y)) : Infinity; } return Math.max(Math.abs(sketch.points[a].x - sketch.points[b].x), Math.abs(sketch.points[a].y - sketch.points[b].y)); } if (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL') { const [a, b] = equation.pointKeys; return Math.abs(constraint.kind === 'HORIZONTAL' ? sketch.points[b].y - sketch.points[a].y : sketch.points[b].x - sketch.points[a].x); } const [a0, a1, b0, b1] = equation.pointKeys; return Math.abs((constraint.kind === 'PARALLEL' ? parallelAndGradient : perpendicularAndGradient)(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1])?.residual ?? Infinity); });
+  const geometric = geometricConstraintIds.map((id) => { const constraint = (sketch.geometricConstraints ?? {})[id], equation = constraint && geometricConstraintEquation(sketch, constraint); if (!equation) return Infinity; if (constraint.kind === 'MIDPOINT') { const [p, a, b] = equation.pointKeys; return Math.max(Math.abs(sketch.points[p].x - (sketch.points[a].x + sketch.points[b].x) / 2), Math.abs(sketch.points[p].y - (sketch.points[a].y + sketch.points[b].y) / 2)); } if (constraint.kind === 'COINCIDENT') { const [a, b, c] = equation.pointKeys; if (constraint.variant === 'point-linear-support') return Math.abs(pointOnLinearSupportAndGradient(sketch.points[a], sketch.points[b], sketch.points[c])?.residual ?? Infinity); if (constraint.variant === 'point-curve') { const curve = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[constraint.references[1].entityId]; if (curve?.type === 'circle') return Math.abs(Math.hypot(sketch.points[a].x - sketch.points[b].x, sketch.points[a].y - sketch.points[b].y) - curve.radius); if (curve?.type === 'arc') return Math.abs(finiteArcConstraintResidual(sketch.points[a], curve, sketch.points[curve.centerPointId], sketch.points[curve.startPointId], sketch.points[curve.endPointId]) ?? Infinity); return Infinity; } if (constraint.variant === 'point-derived-point') { const point = sketch.points[a], derived = resolveDrawingPointReference(sketch, constraint.references[1]); return point && derived ? Math.max(Math.abs(point.x - derived.x), Math.abs(point.y - derived.y)) : Infinity; } return Math.max(Math.abs(sketch.points[a].x - sketch.points[b].x), Math.abs(sketch.points[a].y - sketch.points[b].y)); } if (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL') { const [a, b] = equation.pointKeys; return Math.abs(constraint.kind === 'HORIZONTAL' ? sketch.points[b].y - sketch.points[a].y : sketch.points[b].x - sketch.points[a].x); } const [a0, a1, b0, b1] = equation.pointKeys; return Math.abs((constraint.kind === 'PARALLEL' ? parallelAndGradient : perpendicularAndGradient)(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1])?.residual ?? Infinity); });
   return geometric.every((value) => Number.isFinite(value) && value <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? [...dimensions, ...geometric] : null;
 };
 

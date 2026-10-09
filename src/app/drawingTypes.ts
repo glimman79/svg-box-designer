@@ -1,4 +1,4 @@
-import { migrateLegacyArc } from './drawingArcGeometry.js';
+import { migrateLegacyArc, resolveDrawingArc } from './drawingArcGeometry.js';
 
 export type WorkspaceId = 'drawing' | 'puzzle' | 'construction';
 
@@ -219,21 +219,33 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
     sketches: Object.fromEntries(Object.entries(document.sketches).map(([id, sourceSketch]) => {
       const legacySketch = sourceSketch as unknown as Omit<DrawingSketchV2, 'entities' | 'points'> & { points?: Record<string, DrawingSketchPoint>; entities: Record<string, DrawingEntity | LegacyDrawingArcEntity | DrawingLineEntityV1> };
       const points: Record<string, DrawingSketchPoint> = { ...(legacySketch.points ?? {}) };
+      // Reserve every existing identity before deterministic, order-independent
+      // migration. Never reuse an unrelated point merely because its ID matches.
+      const reservedPointIds = new Set([...Object.keys(points), ...Object.values(points).map(point => point.id)]);
+      const legacyCenters = new Map<string, string>();
+      for (const entity of Object.values(legacySketch.entities).sort((a, b) => a.id.localeCompare(b.id))) {
+        if (entity.type !== 'arc' || !('bulge' in entity)) continue;
+        const base = `legacy:${entity.id}:center`;
+        let allocated = base, suffix = 1;
+        while (reservedPointIds.has(allocated)) allocated = `${base}:${suffix++}`;
+        reservedPointIds.add(allocated); legacyCenters.set(entity.id, allocated);
+      }
       const entities = Object.fromEntries(Object.entries(legacySketch.entities).flatMap(([entityId, entity]): readonly (readonly [string, DrawingEntity])[] => {
         if (entity.type === 'circle') return Number.isFinite(entity.radius) && entity.radius > DRAWING_MODEL_SPACE_TOLERANCE
-          && Boolean(points[entity.centerPointId]) ? [[entityId, entity] as const] : [];
+          && Number.isFinite(points[entity.centerPointId]?.x) && Number.isFinite(points[entity.centerPointId]?.y) ? [[entityId, entity] as const] : [];
         if (entity.type === 'arc') {
           if ('bulge' in entity) {
             const migrated = migrateLegacyArc(entity, points[entity.startPointId], points[entity.endPointId]);
             if (!migrated) return [];
-            const centerPointId = `legacy:${entity.id}:center`;
-            points[centerPointId] ??= { id: centerPointId, ...migrated.center };
-            return [[entityId, { id: entity.id, type: 'arc', centerPointId, radius: migrated.radius,
-              startPointId: entity.startPointId, endPointId: entity.endPointId, orientation: migrated.orientation }]];
+            const centerPointId = legacyCenters.get(entity.id)!;
+            const canonical: DrawingArcEntity = { id: entity.id, type: 'arc', centerPointId, radius: migrated.radius,
+              startPointId: entity.startPointId, endPointId: entity.endPointId, orientation: migrated.orientation };
+            if (!resolveDrawingArc(canonical, migrated.center, points[entity.startPointId], points[entity.endPointId])) return [];
+            points[centerPointId] = { id: centerPointId, ...migrated.center };
+            return [[entityId, canonical]];
           }
-          return Number.isFinite(entity.radius) && entity.radius > DRAWING_MODEL_SPACE_TOLERANCE
-            && Boolean(points[entity.centerPointId]) && Boolean(points[entity.startPointId]) && Boolean(points[entity.endPointId])
-            && entity.startPointId !== entity.endPointId ? [[entityId, entity]] : [];
+          return resolveDrawingArc(entity, points[entity.centerPointId], points[entity.startPointId], points[entity.endPointId])
+            ? [[entityId, entity]] : [];
         }
         if ('startPointId' in entity) return [[entityId, entity] as const];
         // Legacy documents contain no authoritative connectivity metadata. Each endpoint
@@ -305,6 +317,8 @@ export const migrateDrawingDocument = (document: DrawingDocument): DrawingDocume
           } else if (second.kind !== 'sketchPoint' || !sketch.points[second.pointId] || constraint.references[0].pointId === second.pointId) return false;
           const key = legacyVariant === 'point-linear-support'
             ? `COINCIDENT:${constraint.references[0].pointId}:support:${(second as DrawingEntityReference).entityId}`
+            : legacyVariant === 'point-curve'
+              ? `COINCIDENT:${constraint.references[0].pointId}:curve:${(second as DrawingEntityReference).entityId}`
             : legacyVariant === 'point-derived-point'
               ? `COINCIDENT:${constraint.references[0].pointId}:derivedPoint:${(second as DrawingDerivedPointReference).entityId}:center`
             : `COINCIDENT:${[constraint.references[0].pointId, (second as { pointId: string }).pointId].sort().join(':')}`;
