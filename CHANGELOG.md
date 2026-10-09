@@ -133,7 +133,7 @@
 
 # Changelog
 
-## Drawing — Stage 2 topology and solver readiness (in progress)
+## Drawing — Stage 2 topology and solver readiness (accepted)
 
 - Added one entity-definition boundary for persistent defining points, canonical solver
   variables, and entity-owned intrinsic equations, with topology and component/rank/DOF
@@ -142,7 +142,7 @@
   retained the current Circle three-DOF and endpoint-plus-bulge Arc five-DOF models.
 - Added semantic-point selection identity so a derived Arc-center hit no longer collapses
   into Arc-body selection while retaining the existing center Direct Manipulation target.
-- Stage 2 is awaiting merge and browser acceptance; target Arc state remains unimplemented.
+- Stage 2 was subsequently merged and browser-accepted; target Arc state was not part of that stage.
 
 ## Drawing — common Circular Support foundation (Stage 1 accepted)
 
@@ -172,9 +172,16 @@
 
 - Expanded SVG import/panel containment, Panel Manager, TB and S workflows, generated geometry, manufacturing compensation, preview, and export.
 
-## Drawing — Stage 3 Arc representation cutover (in progress)
+## Drawing — Stage 3 Arc representation cutover (accepted 2026-10-09)
 
 - Replaced canonical Arc endpoint-plus-bulge state with persistent center, radius, endpoints, and CW/CCW orientation; finite geometry now resolves directly from that state.
 - Added deterministic restore-boundary migration for legacy bulge Arcs, including stable persistent center points and legacy derived-center reference normalization.
 - Added seven target Arc solver variables, two entity-owned radial equations, generic defining-point topology, and five-DOF rank coverage.
 - Temporarily disabled Arc center, body/radius, and endpoint own-grip Direct Manipulation for Stage 4 rather than retaining the obsolete bulge runtime.
+
+- Recorded Mikael's explicit Stage 3 approval on 2026-10-09 and the supplied Stage 3.6
+  evidence: 24/24 Arc tests, 16/16 Chromium scenarios, 52/66 regression scripts with
+  the same 14 known failures, and D1–D7, P1, R4 PASS; no new blocking regression reported.
+- Synchronized canonical architecture and acceptance status across the central documents.
+  Kept R1–R3 open and R5 Drawing Save/Reload unimplemented/outside Stage 3; preserved
+  the endpoint-drag evidence discrepancy for Stage 4 verification. No code changed.

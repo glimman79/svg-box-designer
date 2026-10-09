@@ -617,6 +617,41 @@ creation, center/body and exact opposite-pivot endpoint manipulation, and R Dime
 behavior. Stage 1 is therefore **ACCEPTED**; Stage 2 remains **NOT STARTED**, and the
 locked target Arc migration remains future work.
 
+### 11.22 Stage 3 accepted and Stage 4 preparation (2026-10-09)
+
+The canonical Arc cutover replaced endpoint-plus-bulge runtime authority with persistent
+centerPointId, scalar radius, startPointId, endPointId, and CW/CCW orientation. Two
+intrinsic radial equations provide five geometric DOF from seven continuous variables;
+legacy data migrates at restore. Accepted main is
+`efc436cca13e4c74717510742d3d97bdfff556fb` (stabilization PR #611).
+
+Mikael explicitly approved Stage 3 on 2026-10-09, reporting correct P1 → P2 → P3 authoring,
+P1/P2 dragging with the opposite endpoint as pivot, working Dimensions and Constraints,
+and Line snap to Arc center/P1/P2. The supplied Stage 3.6 verification reports 24/24 Arc
+tests PASS, 16/16 Chromium scenarios PASS, 52/66 regression scripts PASS with the same
+14 previously known failures, and D1–D7, P1, R4 PASS. No new blocking Stage 3 regression
+was identified. These are supplied acceptance evidence, not checks rerun by this
+subsequent documentation task.
+
+The accepted-main factories nevertheless disable Arc own-grip center, body, and endpoint
+dragging. This differs from the reported endpoint behavior; both facts are preserved.
+Stage 4 must reconcile the browser interaction path and prove target-native endpoint
+pivot behavior. R1–R3 remain open (definitions unavailable here). R5, actual Drawing
+Save/Reload, remains unimplemented and outside Stage 3; restore tests are not that feature.
+
+Stage 4 is NOT STARTED / READY TO IMPLEMENT. Its requirements are direct body radius
+drag about a fixed center, rigid center/P1/P2 translation preserving free-case form, and
+exact opposite-endpoint pivot dragging. Shared topology, constraints, exact feasibility,
+finite domain, orientation, whole-Arc continuation, and drag-start-absolute behavior
+remain locked. Preview/commit, Escape/cancel, Undo/Redo, pointer priority, zoom, offsets,
+and Circle/Line regressions require browser acceptance. This preparation implemented
+none of Stage 4. Stages 0–2 remain ACCEPTED and Stages 5–6 NOT STARTED.
+
+HIGH reasoning effort is recommended for solver/topology/Constraints/Direct Manipulation.
+ChatGPT remains the read-only architecture reviewer; scoped authorized Codex work may
+create PRs, and only Mikael separately approves merge. Merged implementation alone is
+not acceptance. Earlier historical stage descriptions remain evidence of their time.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics
