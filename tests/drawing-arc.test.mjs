@@ -255,3 +255,101 @@ test('undefined support-circle projection direction never returns a point outsid
     }
   }
 });
+
+// Keep finite interval membership, endpoint distance and solver tolerance separate.
+const endpointConstraintSketch = (radius, orientation, center, start, end, query) => ({
+  ...emptyDocument().sketches.s,
+  points: Object.fromEntries(Object.entries({ o: center, a: start, b: end, p: query }).map(([id, point]) => [id, { id, ...point }])),
+  entities: { arc: { id: 'arc', type: 'arc', centerPointId: 'o', radius, startPointId: 'a', endPointId: 'b', orientation } },
+  entityOrder: ['arc'],
+  geometricConstraints: { on: { id: 'on', kind: 'COINCIDENT', variant: 'point-curve', references: [{ kind: 'sketchPoint', pointId: 'p' }, { kind: 'entity', entityId: 'arc' }] } },
+  geometricConstraintOrder: ['on'],
+});
+
+for (const orientation of ['CCW', 'CW']) for (const endpointName of ['start', 'end']) {
+  test(`Point-on-Arc honors spatial tolerance at ${orientation} ${endpointName} endpoint`, () => {
+    const sign = orientation === 'CCW' ? 1 : -1, radius = 5;
+    const center = { x: 0, y: 0 }, start = { x: radius, y: 0 }, end = { x: 0, y: sign * radius };
+    const endpoint = endpointName === 'start' ? start : end;
+    const make = query => endpointConstraintSketch(radius, orientation, center, start, end, query);
+    const exact = make(endpoint), arc = resolveArc(exact, exact.entities.arc);
+    assert.ok(arc);
+    assert.equal(pointIsOnDrawingArc(endpoint, arc), true);
+    assert.equal(finiteArcConstraintResidual(endpoint, exact.entities.arc, center, start, end), 0);
+    assert.deepEqual(verifyDrawingConstraints(exact, [], ['on']), [0]);
+
+    for (const delta of [1e-10, 1e-8, 4e-8]) {
+      const theta = endpointName === 'start' ? -sign * delta : sign * (Math.PI / 2 + delta);
+      const query = { x: radius * Math.cos(theta), y: radius * Math.sin(theta) }, sketch = make(query);
+      const residual = finiteArcConstraintResidual(query, sketch.entities.arc, center, start, end);
+      // Independent circle chord length, not an expectation from the projection helper.
+      const expected = 2 * radius * Math.sin(delta / 2);
+      assert.equal(pointIsOnDrawingArc(query, arc), false);
+      assert.ok(Number.isFinite(residual) && residual > 0);
+      close(residual, expected, 2e-15);
+      close(distanceToArc(query, arc), expected, 2e-15);
+      assert.deepEqual(projectPointToArc(query, arc), arc[endpointName]);
+      if (expected < DRAWING_CONSTRAINT_TOLERANCE_MM) {
+        const verified = verifyDrawingConstraints(sketch, [], ['on']);
+        assert.ok(verified, `endpoint distance ${expected} mm must pass the existing spatial tolerance`);
+        close(verified[0], expected, 2e-15);
+        // Freeze the complete candidate: acceptance cannot be explained by moving the Arc.
+        const variables = [...drawingEntitySolverVariables(sketch.entities.arc), ...['x', 'y'].map(axis => ({ kind: 'point-axis', pointId: 'p', axis }))];
+        const solved = solveDrawingVariableTargets(sketch, variables.map(variable => ({ variable, value: readDrawingSolverVariable(sketch, variable) })));
+        assert.deepEqual(solved, sketch);
+        assert.equal(resolveArc(solved, solved.entities.arc).signedSweep, arc.signedSweep);
+      } else {
+        assert.equal(verifyDrawingConstraints(sketch, [], ['on']), null);
+      }
+    }
+  });
+}
+
+test('D7: radius-1e12 quarter Arc rejects the independently expected 50 mm overshoot', () => {
+  const radius = 1e12, theta = Math.PI / 2 + 5e-11;
+  const center = { x: 0, y: 0 }, start = { x: radius, y: 0 }, end = { x: 0, y: radius };
+  const query = { x: radius * Math.cos(theta), y: radius * Math.sin(theta) };
+  const sketch = endpointConstraintSketch(radius, 'CCW', center, start, end, query), arc = resolveArc(sketch, sketch.entities.arc);
+  assert.ok(arc);
+  assert.equal(pointIsOnDrawingArc(query, arc), false);
+  close(distanceToArc(query, arc), 50, 1e-3);
+  close(finiteArcConstraintResidual(query, sketch.entities.arc, center, start, end), 50, 1e-3);
+  assert.deepEqual(projectPointToArc(query, arc), arc.end);
+  assert.equal(verifyDrawingConstraints(sketch, [], ['on']), null);
+});
+
+test('endpoint residual tolerance covers small radii, small/near-full sweeps, offsets and roundoff', () => {
+  for (const radius of [2e-9, 1e-6, 5, 1e6]) for (const orientation of ['CCW', 'CW'])
+    for (const sweep of [1e-8, Math.PI / 2, 2 * Math.PI - 1e-8]) for (const offset of [0, -10, 10]) for (const rotation of [0, .7]) {
+      const sign = orientation === 'CCW' ? 1 : -1, center = { x: offset * radius, y: -offset * radius };
+      const point = t => ({ x: center.x + radius * Math.cos(rotation + sign * t), y: center.y + radius * Math.sin(rotation + sign * t) });
+      const start = point(0), end = point(sweep);
+      // Stay in the actual gap even for a near-full Arc, and below the spatial tolerance.
+      const delta = Math.min(5e-10 / radius, sweep / 4, (2 * Math.PI - sweep) / 4);
+      const roundoff = 16 * Number.EPSILON * Math.max(radius, Math.abs(center.x), Math.abs(center.y));
+      for (const [t, endpoint] of [[0, start], [sweep, end], [-delta, start], [sweep + delta, end]]) {
+        const query = t === 0 ? start : t === sweep ? end : point(t);
+        const sketch = endpointConstraintSketch(radius, orientation, center, start, end, query), arc = resolveArc(sketch, sketch.entities.arc);
+        assert.ok(arc, `${radius}, ${orientation}, ${sweep}, ${offset}, ${rotation}`);
+        const residual = finiteArcConstraintResidual(query, sketch.entities.arc, center, start, end);
+        assert.ok(Number.isFinite(residual));
+        const expected = t === 0 || t === sweep ? 0 : 2 * radius * Math.sin(delta / 2);
+        close(Math.abs(residual), expected, Math.max(1e-25, roundoff));
+        close(distanceToArc(query, arc), expected, Math.max(1e-25, roundoff));
+        assert.ok(verifyDrawingConstraints(sketch, [], ['on']), `valid domain and residual within tolerance: R=${radius}, sweep=${sweep}, t=${t}`);
+        if (t === 0 || t === sweep) assert.equal(pointIsOnDrawingArc(endpoint, arc), true);
+      }
+    }
+});
+
+test('endpoint tolerance cannot admit invalid canonical Arc domains or radial defining equations', () => {
+  const center = { x: 0, y: 0 }, start = { x: 5, y: 0 }, end = { x: 0, y: 5 };
+  const valid = endpointConstraintSketch(5, 'CCW', center, start, end, { x: -5e-10, y: 5 });
+  for (const patch of [{ orientation: 'invalid' }, { radius: 0 }, { endPointId: 'a' }, { radius: 5 + 2e-7 }]) {
+    const sketch = { ...valid, entities: { arc: { ...valid.entities.arc, ...patch } } };
+    assert.equal(verifyDrawingConstraints(sketch, [], ['on']), null);
+  }
+  const collapsed = { ...valid, points: { ...valid.points, b: { ...valid.points.a, id: 'b' } } };
+  const targets = drawingEntitySolverVariables(collapsed.entities.arc).map(variable => ({ variable, value: readDrawingSolverVariable(collapsed, variable) }));
+  assert.equal(solveDrawingVariableTargets(collapsed, targets), null);
+});
