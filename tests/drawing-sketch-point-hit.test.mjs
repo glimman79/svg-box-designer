@@ -54,7 +54,13 @@ for (const [draggedPointId, pivotPointId, delta] of [['shared', 'p2', { x: -4, y
   assert.equal(shouldRouteArcBodyPointer(undefined, undefined, draggedPointId, false, 'arc'), false,
     'an explicit persistent Point wins even when the same pointer qualifies for Arc proximity');
   const target = createArcEndpointDragTarget(arcDocument, 'arc', draggedPointId);
-  assert.equal(target, null, 'Arc endpoint Direct Manipulation is explicitly deferred to Stage 4');
+  assert.deepEqual(target, { kind: 'arc-endpoint', entityId: 'arc', draggedPointId, pivotPointId });
+  const candidate = solveDrawingDragCandidate(arcDocument, target, delta);
+  assert.ok(candidate, 'the rendered persistent endpoint owns target-native manipulation');
+  assert.deepEqual(candidate.sketches.s.points[pivotPointId], arcSketch.points[pivotPointId], 'opposite pivot is exact');
+  const tx = transactDrawingDocument(EMPTY_DRAWING_HISTORY, arcDocument, () => candidate);
+  assert.equal(tx.history.undo.length, 1);
+  assert.deepEqual(undoDrawingDocument(tx.history, tx.document).document, arcDocument);
 }
 assert.equal(shouldRouteCircleBodyPointer(undefined, 'shared', false, 'circle'), false,
   'an explicit persistent Point also wins over Circle proximity');
