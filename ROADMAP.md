@@ -576,7 +576,7 @@ checked only at **ACCEPTED**.
   - **Open risks (user-supplied definitions):** R1 absolute tolerance at very small radii;
     R2 retain-last-valid at invalid final drag position; R3 differing model/Circle size
     thresholds; R5 actual Drawing Save/Reload absent and outside Stage 4. Policies unchanged.
-  - **PR:** Not assigned.
+  - **PR:** [#613](https://github.com/glimman79/svg-box-designer/pull/613) — draft, open; do not merge.
   - **Merged commit:** Not assigned.
   - **Known temporary regressions:** No new regression observed in Stage 4 verification;
     the same 14 pre-existing Drawing/d2/CAD script failures remain open.
