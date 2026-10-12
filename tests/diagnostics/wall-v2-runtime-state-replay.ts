@@ -6,6 +6,8 @@ import { assembleGeneratedGeometryDiagnostics } from '../../src/app/generatedGeo
 import { selectGeneratedGeometryAuthority } from '../../src/app/generatedGeometryAuthority';
 import { packageComposedPanelGeometry } from '../../src/app/generatedGeometryDualRun';
 import type { GeneratedGeometryItem } from '../../src/app/generatedGeometryTypes';
+import { buildFinalGeometry } from '../../src/app/finalGeometry';
+import { processManufacturingGeometry } from '../../src/app/manufacturingCompensation';
 import { buildGeneratedSGeometryItems } from '../../src/app/sGeometry';
 import { buildGeneratedTBGeometryItems } from '../../src/app/tbGeometry';
 import { buildGeneratedWGeometryItems } from '../../src/app/wallGeometry';
@@ -33,20 +35,71 @@ const execute = (label: string, items: GeneratedGeometryItem[]) => {
   const diagnostics = assembleGeneratedGeometryDiagnostics(authored.svgModel, items);
   let packaged: ReadonlyArray<GeneratedGeometryItem> = items;
   let packagingError: string | null = null;
-  try {
-    for (const panel of diagnostics.panelDiagnostics) {
+  const packaging: Array<Record<string, unknown>> = [];
+  for (const panel of diagnostics.panelDiagnostics) {
+    try {
       const candidate = diagnostics.panelCandidates.find((item) => item.panelId === panel.panelId);
-      if (candidate && !panel.status.startsWith('BLOCKED_')) packaged = packageComposedPanelGeometry(packaged, candidate, panel.replacementOperationIds);
+      if (candidate && !panel.status.startsWith('BLOCKED_')) {
+        const inputIds = packaged.map((item) => item.id);
+        packaged = packageComposedPanelGeometry(packaged, candidate, panel.replacementOperationIds);
+        packaging.push({ panelId: panel.panelId, ok: true, inputIds, outputIds: packaged.map((item) => item.id) });
+      }
+    } catch (error) {
+      packagingError = error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error);
+      packaging.push({ panelId: panel.panelId, ok: false, error: packagingError });
+      break;
     }
-  } catch (error) { packagingError = error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error); }
+  }
+  let finalGeometry: ReturnType<typeof buildFinalGeometry> | null = null;
+  let finalGeometryError: string | null = null;
+  try { finalGeometry = buildFinalGeometry(authored.svgModel, packaged); }
+  catch (error) { finalGeometryError = error instanceof Error ? error.message : String(error); }
+  let manufacturing: ReturnType<typeof processManufacturingGeometry> | null = null;
+  let manufacturingError: string | null = null;
+  if (finalGeometry) {
+    try { manufacturing = processManufacturingGeometry(finalGeometry, 0, 0, 0, [], 0); }
+    catch (error) { manufacturingError = error instanceof Error ? error.message : String(error); }
+  }
   const downstreamExceptions = probeGeometryDownstreamExceptions(authored.svgModel, items);
   const authority = selectGeneratedGeometryAuthority(authored.svgModel, items, capture.authorityContext.mode as any);
-  console.log(JSON.stringify({ label, itemCount: items.length, packagingError, downstreamExceptions,
+  console.log(JSON.stringify({ label, itemCount: items.length,
+    projectItems: items.map((item) => ({ id: item.id, kind: item.kind, panelId: item.behaviour.replacesPanelId,
+      toolType: item.toolType, operationId: item.operationId, status: item.id.startsWith('composed:panel:') ? 'composed' : 'raw' })),
+    assembly: diagnostics.panelDiagnostics.map((panel) => ({ ...panel,
+      candidate: diagnostics.panelCandidates.find((candidate) => candidate.panelId === panel.panelId) ?? null })),
+    packaging, packagingError,
+    finalGeometry: finalGeometry && { diagnostics: finalGeometry.diagnostics }, finalGeometryError,
+    manufacturing: manufacturing && { contourCount: manufacturing.contours.length }, manufacturingError,
+    downstreamPredicate: { noFinalGeometryErrors: finalGeometry
+      ? !finalGeometry.diagnostics.some((entry) => entry.severity === 'error') : false,
+    manufacturingHasContours: (manufacturing?.contours.length ?? 0) > 0 }, downstreamExceptions,
     authority: { ok: authority.ok, decisions: authority.decisions, panelCompositionModel: authority.panelCompositionModel } }, null, 2));
 };
 const regenerated = generate(false);
 const captured = capture.applyInput.combinedGeneratedItems;
-console.log(`RAW_COMPARISON=${serializeGeometryRuntimeDebugState(regenerated) === serializeGeometryRuntimeDebugState(captured) ? 'EXACT_MATCH' : 'DIFFERS'}`);
+const regeneratedJson = serializeGeometryRuntimeDebugState(regenerated);
+const capturedJson = serializeGeometryRuntimeDebugState(captured);
+const firstDifference = (left: unknown, right: unknown, at = '$'): string | null => {
+  if (Object.is(left, right)) return null;
+  if (typeof left !== typeof right || left === null || right === null || typeof left !== 'object') {
+    return `${at}: regenerated=${JSON.stringify(left)} captured=${JSON.stringify(right)}`;
+  }
+  const leftRecord = left as Record<string, unknown>; const rightRecord = right as Record<string, unknown>;
+  for (const key of [...new Set([...Object.keys(leftRecord), ...Object.keys(rightRecord)])].sort()) {
+    if (!(key in leftRecord)) return `${at}.${key}: missing from regenerated`;
+    if (!(key in rightRecord)) return `${at}.${key}: missing from capture`;
+    const difference = firstDifference(leftRecord[key], rightRecord[key], `${at}.${key}`);
+    if (difference) return difference;
+  }
+  return null;
+};
+const exact = regeneratedJson === capturedJson;
+console.log(`RAW_COMPARISON=${exact ? 'EXACT_MATCH' : 'DIFFERS'}`);
+if (!exact) {
+  console.log(`FIRST_RAW_DIFFERENCE=${firstDifference(regenerated, captured)}`);
+  process.exitCode = 1;
+  throw new Error('Captured raw Apply input differs from regenerated input; downstream replay intentionally stopped.');
+}
 execute('A_REGENERATE_TB_PLUS_W', regenerated);
 execute('B_RAW_REPLAY_TB_PLUS_W', captured);
 execute('A_REGENERATE_W_ONLY', generate(true));
