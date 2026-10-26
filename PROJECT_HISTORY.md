@@ -652,6 +652,19 @@ ChatGPT remains the read-only architecture reviewer; scoped authorized Codex wor
 create PRs, and only Mikael separately approves merge. Merged implementation alone is
 not acceptance. Earlier historical stage descriptions remain evidence of their time.
 
+### 11.23 Stage 4 merged; Coincidence follow-up pending acceptance
+
+PR #613 restored canonical Arc grips and merged as
+`830221e55a2216e57a728976c530d716ae7b923c`. Stage 4 remains NOT ACCEPTED.
+The subsequent 4.2 investigation reproduced a first-drag Coincidence break in Chromium
+and traced it to geometric-intent component selection: the Line's start component
+was included while the other endpoint's Coincidence component could be omitted.
+The generic fix collects every addressed component; it preserves independent point
+identities, point-on-curve sliding, and Arc grip semantics.
+[Detailed evidence and remaining issues](docs/DRAWING_COINCIDENCE_DRAG_4_2.md) distinguish
+automated checks from pending manual acceptance. Tangential-drag empty Undo steps
+remain tracked; Stage 5/6 are not implemented.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics

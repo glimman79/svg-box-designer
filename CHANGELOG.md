@@ -1,5 +1,14 @@
 # Unreleased
 
+## Drawing — Stage 4.2 Coincidence drag follow-up (pending review/acceptance)
+
+- Collect all hard-equation components addressed by a geometric intent so Coincidence
+  at either Line endpoint participates from the first preview through History commit.
+- Preserve separate point identities, point-on-curve sliding, Arc grips and driving Radius.
+- Add numerical and Chromium regressions; see [verification](docs/DRAWING_COINCIDENCE_DRAG_4_2.md).
+- PR #613 is merged, but Stage 4 remains NOT ACCEPTED. Tangential Arc drag empty
+  Undo steps remain open; no Stage 5/6 work is included.
+
 ## Documentation — Circle/Arc implementation staging locked
 
 - Added authoritative Stage 0–6 scope and status tracking before implementation; every

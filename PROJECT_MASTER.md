@@ -44,7 +44,7 @@ A shared, versioned cross-workspace `ProjectDocument`, cross-workspace reference
 
 The current workspace implements Select, Profile, Line, Circle, Arc, Dimension, a floating Constraints tool, Direct Manipulation, snapping/inference, solver-backed constraints, and bounded Drawing Undo/Redo. Profile and standalone Line are browser-verified and accepted as separate authoring workflows: Profile authors continuing/chained connected straight segments, while Line accepts P1 and P2, creates exactly one straight segment, and completes without chaining from P2. Normal Line activation returns to Select after completion; persistent Line activation remains active but resets completely so the next click defines a fresh independent P1.
 
-Both workflows reuse the neutral straight-segment foundation rather than duplicating snapping, inference, constraints, topology, presentation, or mutation behavior. Circle Stage 1 is **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED / DOCUMENTED**. Arc Stage 1 user-visible behavior was browser-accepted. Its canonical representation and restore migration are implemented and Stage 3 is ACCEPTED — user approved 2026-10-09; Stage 4 is NOT STARTED / READY TO IMPLEMENT. A persistent Circle references one persistent center `SketchPoint` through `centerPointId` and owns one scalar radius; it remains true Circle geometry rather than persistent tessellation. An Arc references a persistent center and two persistent endpoint SketchPoints, owns scalar radius and CW/CCW orientation, and derives angles, sweep, authoring P3, and support Circle geometry. Circle and Arc participate in persistence, History, selection, hit testing, deletion/topology cleanup, directional box selection, and shared Drawing presentation. Every committed segment remains an ordinary `DrawingLineEntity` with persistent `type: 'line'`; neither Profile nor Line introduces a separate geometry type or authoring-origin metadata. Consequently topology, selection, Direct Manipulation, Constraints, Dimensions, and History operate on the committed geometry without distinguishing which straight-segment authoring workflow created it. Menu visibility does not prove implementation of other prospective geometry tools.
+Both workflows reuse the neutral straight-segment foundation rather than duplicating snapping, inference, constraints, topology, presentation, or mutation behavior. Circle Stage 1 is **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED / DOCUMENTED**. Arc Stage 1 user-visible behavior was browser-accepted. Its canonical representation and restore migration are implemented and Stage 3 is ACCEPTED — user approved 2026-10-09; Stage 4 is MERGED / NOT ACCEPTED (PR #613); Coincidence follow-up and user acceptance remain pending. A persistent Circle references one persistent center `SketchPoint` through `centerPointId` and owns one scalar radius; it remains true Circle geometry rather than persistent tessellation. An Arc references a persistent center and two persistent endpoint SketchPoints, owns scalar radius and CW/CCW orientation, and derives angles, sweep, authoring P3, and support Circle geometry. Circle and Arc participate in persistence, History, selection, hit testing, deletion/topology cleanup, directional box selection, and shared Drawing presentation. Every committed segment remains an ordinary `DrawingLineEntity` with persistent `type: 'line'`; neither Profile nor Line introduces a separate geometry type or authoring-origin metadata. Consequently topology, selection, Direct Manipulation, Constraints, Dimensions, and History operate on the committed geometry without distinguishing which straight-segment authoring workflow created it. Menu visibility does not prove implementation of other prospective geometry tools.
 
 `drawingLineSegmentSupport.ts` owns neutral straight-segment support, while `drawingProfileTool.ts` owns the chained Profile lifecycle and `drawingLineTool.ts` owns the standalone Line lifecycle. Generic document mutation remains in `drawingDocumentMutation.ts`. The delayed commit/double-click boundary in `drawingProfileCommitBoundary.ts` remains Profile-specific. Shared cursor, preview, and inference presentation consume neutral segment interaction state rather than treating Profile as their owner.
 
@@ -185,8 +185,8 @@ The committed document snapshot is made visible to candidate collection in the s
 Left mouse authors/selects, right-drag pans, the wheel zooms, and Esc exits the applicable interaction. Drawing transactions group semantic user actions for Undo/Redo. A completed standalone Line is one transaction containing its accepted geometry, topology, and automatic semantics; persistent Line activation produces one transaction per completed independent Line. UI-only panel state does not create document History. Deleting geometry cleans dependent dimensions/constraints through model operations.
 
 Circle uses the shared constrained Direct Manipulation architecture. Arc own-grip
-manipulation is deferred to Stage 4; the following Arc semantics are locked restoration
-requirements, not a claim that the accepted-main grip factories are enabled. A grip defines the semantic subspace of its interaction;
+manipulation was restored by Stage 4 PR #613 (merged, NOT ACCEPTED); the following
+Arc semantics are implemented and still await user acceptance. A grip defines the semantic subspace of its interaction;
 persistent Constraints and driving Dimensions restrict motion within that subspace and
 do not redefine the grip. Exact grip invariants are transient semantic equations, not
 weighted preferences.
@@ -364,8 +364,8 @@ Shared topology and point-point Coincidence remain the accepted Circle behavior.
 centerPointId, radius, startPointId, endPointId, orientation }`. Center and endpoints are
 persistent semantic `SketchPoint`s; angles and signed sweep are derived. Bulge remains
 only as legacy restore input. Center selection, inference, topology, Dimensions, and
-Coincidence use the persistent center identity. Arc own-grip manipulation is explicitly
-deferred to Stage 4 rather than routed through the legacy representation.
+Coincidence use the persistent center identity. Arc own-grip manipulation was restored by Stage 4 PR #613 (merged, NOT ACCEPTED)
+on this representation; no legacy runtime path was reintroduced.
 
 #### Locked target Circle/Arc architecture
 
@@ -427,7 +427,7 @@ current convention, `bulge > 0` maps to CCW and `bulge < 0` maps to CW. This map
 
 The locked architecture and its implementation status are independent: architecture is
 **LOCKED**. Stages 0–3 are **ACCEPTED**; Stage 3 was user approved 2026-10-09.
-Stage 4 is **NOT STARTED / READY TO IMPLEMENT**; Stages 5–6 are **NOT STARTED**.
+Stage 4 is **MERGED / NOT ACCEPTED**; Stages 5–6 are **NOT STARTED**.
 Canonical Arc representation and restore migration are implemented. The authoritative Stage 0–6 scope, status metadata, and migration
 policies are maintained in
 [ROADMAP.md](ROADMAP.md#circlearc-implementation-stages-and-status). Repository state and
@@ -565,7 +565,7 @@ Puzzle has a reserved, disabled workspace selector only. It has no current docum
 
 ## Implemented Stage 3 Arc runtime
 
-The canonical Arc is now `DrawingArcEntity { centerPointId, radius, startPointId, endPointId, orientation }`. All three referenced points are persistent `SketchPoint`s. Circle and Arc resolve Circular Support from a persistent center plus the common circular-radius scalar. Arc direction is persistent `CW | CCW`; sweep, major/minor classification, angles, and SVG flags are derived. Two entity-owned radial equations couple center, endpoints, and radius and produce five geometric DOF from seven continuous variables. Historical endpoint-plus-bulge records are migration input only and are converted once at restore. Arc own-grip center, body/radius, and endpoint manipulation is temporarily unavailable until Stage 4; ordinary shared-point and solver propagation through the persistent Arc center remains part of Stage 3.
+The canonical Arc is now `DrawingArcEntity { centerPointId, radius, startPointId, endPointId, orientation }`. All three referenced points are persistent `SketchPoint`s. Circle and Arc resolve Circular Support from a persistent center plus the common circular-radius scalar. Arc direction is persistent `CW | CCW`; sweep, major/minor classification, angles, and SVG flags are derived. Two entity-owned radial equations couple center, endpoints, and radius and produce five geometric DOF from seven continuous variables. Historical endpoint-plus-bulge records are migration input only and are converted once at restore. Arc own-grip center, body/radius, and endpoint manipulation was restored by Stage 4 PR #613 (merged, NOT ACCEPTED); ordinary shared-point and solver propagation through the persistent Arc center remains part of Stage 3.
 
 ### Acceptance evidence and remaining limitations (2026-10-09)
 
@@ -589,3 +589,14 @@ feasibility, continuation, and drag-start-absolute contracts above remain author
 HIGH reasoning effort is recommended for solver, topology, Constraints, and Direct
 Manipulation work. ChatGPT remains the read-only architecture reviewer; Codex may create
 a scoped PR after explicit authorization. Only Mikael decides merge, by separate approval.
+
+### Stage 4.2 Coincidence drag follow-up (pending acceptance)
+
+Transient geometric intent may couple several otherwise independent hard-equation
+components. The shared solver must collect all components addressed by the seed and
+additional intent variables before assembling variables, equations, and verification.
+A Line has no intrinsic equation joining its endpoints; using only its start component
+can omit Coincidence at its other end. This changes neither persistent topology nor
+point-point / point-curve semantics. Arc grip behavior and driving Radius authority
+remain unchanged. See [4.2 evidence](docs/DRAWING_COINCIDENCE_DRAG_4_2.md). The known
+tangential Arc body drag empty Undo-step issue remains open.

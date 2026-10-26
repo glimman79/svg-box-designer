@@ -434,11 +434,28 @@ export const solveDrawingGeometricIntent = (
     }
   }
   const analysis = analyzeDrawingConstraints(sketch);
-  const component = intent.seedVariable.kind === 'point-axis'
-    ? analysis.componentByPointId.get(intent.seedVariable.pointId)
-    : analysis.componentByVariableKey.get(drawingSolverVariableKey(intent.seedVariable));
-  const pointIds = component ? [...component.pointIds] : intent.seedVariable.kind === 'point-axis' ? [intent.seedVariable.pointId] : [];
-  const scalarVariables = component?.scalarVariables ?? (intent.seedVariable.kind === 'entity-scalar' ? [intent.seedVariable] : []);
+  // An interaction can address multiple independent hard-equation components
+  // (e.g. the two endpoints of a free Line). Close over every addressed
+  // variable before assembling equations, optimization columns and validation.
+  // The transient intent couples these components; it does not change topology.
+  const addressedVariables = deduplicateDrawingSolverVariables([
+    intent.seedVariable, ...(intent.variables ?? []), ...(intent.fixedVariables ?? []),
+    ...(intent.exactVariableTargets ?? []).map(({ variable }) => variable),
+  ]);
+  const components = [...new Set(addressedVariables.flatMap(variable => {
+    const component = variable.kind === 'point-axis'
+      ? analysis.componentByPointId.get(variable.pointId)
+      : analysis.componentByVariableKey.get(drawingSolverVariableKey(variable));
+    return component ? [component] : [];
+  }))];
+  const component = components.length ? {
+    pointIds: new Set(components.flatMap(component => [...component.pointIds])),
+    scalarVariables: deduplicateDrawingSolverVariables(components.flatMap(component => component.scalarVariables)),
+    dimensionIds: [...new Set(components.flatMap(component => component.dimensionIds))],
+    geometricConstraintIds: [...new Set(components.flatMap(component => component.geometricConstraintIds))],
+  } : undefined;
+  const pointIds = [...new Set([...(component?.pointIds ?? []), ...addressedVariables.flatMap(variable => variable.kind === 'point-axis' ? [variable.pointId] : [])])];
+  const scalarVariables = deduplicateDrawingSolverVariables([...(component?.scalarVariables ?? []), ...addressedVariables.filter(variable => variable.kind === 'entity-scalar')]);
   const allVariables = deduplicateDrawingSolverVariables([...pointIds.flatMap(pointSolverVariables), ...scalarVariables, ...(intent.variables ?? [])]);
   const fixedKeys = new Set((intent.fixedVariables ?? []).map(drawingSolverVariableKey));
   if (exactPrimaryPose) intent.exactVariableTargets?.forEach(({ variable }) => fixedKeys.add(drawingSolverVariableKey(variable)));
