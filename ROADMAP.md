@@ -349,14 +349,14 @@ must not be read as batch delete.
 | Quick Trim | **DESIGN REQUIRED** | Quickly trim geometry at relevant intersections or boundaries. | Exact interaction remains open. |
 | Rectangle | **DESIGN REQUIRED** | Add a Rectangle family with **four variants**. | The four variants have not been specified and will be defined later. |
 | Circle — Center + Radius | **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED / DOCUMENTED** | P1 establishes or reuses a persistent center `SketchPoint`; pointer movement shows a visible live semantic Circle preview; P2 is a radius-defining authoring control and commits the Circle with one authoritative scalar radius. Persistence, History, semantic center selection, snap/inference, constraints, Dimensions, exact box selection, and both center and body/radius Direct Manipulation are integrated. | Circle is true semantic geometry, not persistent tessellation. P2 is not a persistent radius point. Direct authoring onto the center reuses `centerPointId`; manual Coincidence between a separate endpoint and center preserves both identities and stores `COINCIDENT` / `point-point`. |
-| Arc — standalone three-point | **STAGE 3 ACCEPTED; STAGE 4 NOT STARTED / READY TO IMPLEMENT** | P1 → P2 → P3 authoring, finite geometry, topology, Dimensions, Constraints, and center/endpoint snap use the canonical Stage 3 model. | Persistent center/radius/P1/P2/orientation replaces the historical bulge runtime. Arc own-grip Direct Manipulation is deferred to Stage 4; acceptance evidence and its endpoint-drag discrepancy are recorded below. |
+| Arc — standalone three-point | **STAGE 3 ACCEPTED; STAGE 4 IN PROGRESS** | P1 → P2 → P3 authoring, finite geometry, topology, Dimensions, Constraints, and center/endpoint snap use the canonical Stage 3 model. | Persistent center/radius/P1/P2/orientation replaces the historical bulge runtime. Arc own-grip Direct Manipulation is deferred to Stage 4; acceptance evidence and its endpoint-drag discrepancy are recorded below. |
 | Circle — older three-point full-Circle item | **DESIGN REQUIRED / UNRESOLVED** | The prior roadmap separately proposed a three-point-defined full Circle. The newly decided standalone three-point Arc does not silently cancel that older item. | Its continued product need, authoring order, and priority require a future explicit decision; it must not be confused with the Arc workflow. |
 
 
 ### Near-term circular-geometry sequence
 
 Circle's current foundation and Radius / Diameter integration are accepted and documented.
-Stage 3 is **ACCEPTED — user approved 2026-10-09**. Stage 4 is **NOT STARTED / READY TO IMPLEMENT**. Historical Arc Stage 1 acceptance remains historical evidence.
+Stage 3 is **ACCEPTED — user approved 2026-10-09**. Stage 4 is **IN PROGRESS** (implementation branch; not merged or accepted). Historical Arc Stage 1 acceptance remains historical evidence.
 
 **CURRENT IMPLEMENTATION.** `DrawingArcEntity` stores `centerPointId`, scalar `radius`,
 `startPointId`, `endPointId`, and `orientation`. Center and endpoints are persistent
@@ -534,8 +534,8 @@ checked only at **ACCEPTED**.
     are not present in this repository. Do not infer closure from acceptance or invent
     their contents. R5, actual Drawing Save/Reload, is NOT IMPLEMENTED and outside
     Stage 3; restore migration/serialization tests do not establish a user-facing save flow.
-- [ ] **Stage 4 — Direct Manipulation on target Arc architecture** — **NOT STARTED / READY TO IMPLEMENT**
-  - **Status:** NOT STARTED / READY TO IMPLEMENT; no implementation in this documentation task.
+- [ ] **Stage 4 — Direct Manipulation on target Arc architecture** — **IN PROGRESS**
+  - **Status:** IN PROGRESS — implementation and regression verification on a separate branch; not merged or user-accepted.
   - **Scope:** Restore the accepted center, body/radius, P1, and P2 manipulation directly
     on Center + Radius + P1 + P2 + Orientation, including exact opposite-endpoint pivot,
     fixed-radius behavior, whole-directed-Arc continuation, orientation preservation,
@@ -560,12 +560,28 @@ checked only at **ACCEPTED**.
     dual path. Real browser verification of Direct Manipulation is required for
     **ACCEPTED** status.
   - **Preparation reference:** Accepted Stage 3 main `efc436cca13e4c74717510742d3d97bdfff556fb`.
-  - **Implementation baseline:** Verify current main again after this documentation PR
-    is merged; this reference does not authorize use of an obsolete checkout.
-  - **PR:** Not assigned.
+  - **Implementation baseline:** `fd69796550f7acafc02519aa876c1f501e2e3f76` (PR #612),
+    verified against GitHub main and a clean, complete local Git checkout before edits.
+  - **Branch:** `codex/4-1-canonical-arc-direct-manipulation`.
+  - **Interaction-path finding:** Stage 3 returned null from Arc own-grip factories;
+    pointer arbitration fell back to ordinary SketchPoint movement for endpoints/center.
+    Body hits selected the Arc with no drag target. Stage 4 restores explicit canonical
+    grip ownership while keeping ambiguous Arc ownership or selected-Line contexts ordinary.
+    Chromium also exposed a stale render-state pointermove after capture loss; the
+    shared handler now reads the live drag session so cancellation cannot be reversed.
+  - **Branch verification:** 33 targeted Arc regression cases PASS; 66 Drawing/d2/CAD
+    scripts produce 52 PASS / the same 14 baseline FAIL; TypeScript and production
+    build PASS; 21 real Chromium interaction scenarios PASS. Extreme radius/coordinate
+    offsets are covered by numerical regression tests, not Chromium (NOT VERIFIED there).
+  - **Open risks (user-supplied definitions):** R1 absolute tolerance at very small radii;
+    R2 retain-last-valid at invalid final drag position; R3 differing model/Circle size
+    thresholds; R5 actual Drawing Save/Reload absent and outside Stage 4. Policies unchanged.
+  - **PR:** [#613](https://github.com/glimman79/svg-box-designer/pull/613) — draft, open; do not merge.
   - **Merged commit:** Not assigned.
-  - **Known temporary regressions:** None — implementation not started.
-  - **Acceptance:** Not started.
+  - **Known temporary regressions:** No new regression observed in Stage 4 verification;
+    the same 14 pre-existing Drawing/d2/CAD script failures remain open.
+  - **Acceptance:** Pending merge and Mikael's real-browser review; automated Chromium
+    verification does not establish user acceptance.
 - [ ] **Stage 5 — Semantic cleanup & compatibility isolation** — **NOT STARTED**
   - **Status:** NOT STARTED.
   - **Scope:** Perform the final repository-wide audit for obsolete Arc helpers, runtime

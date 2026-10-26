@@ -28,27 +28,27 @@ for (const [name, candidate, pointer, expectedKind] of [
   ['Line endpoint beneath dimension', point('a'), { x: 0, y: 0 }, 'point'],
   ['Circle body beneath diameter', curve('circle'), { x: 40, y: 0 }, 'entity-scalar'],
   ['Circle proximity candidate', curve('circle'), { x: 42, y: 0 }, 'entity-scalar'],
-  ['Arc P1 beneath dimension', point('s'), { x: 50, y: 0 }, 'point'],
-  ['Arc P2 beneath dimension', point('e'), { x: 60, y: 0 }, 'point'],
+  ['Arc P1 beneath dimension', point('s'), { x: 50, y: 0 }, 'arc-endpoint'],
+  ['Arc P2 beneath dimension', point('e'), { x: 60, y: 0 }, 'arc-endpoint'],
   ['Line body beneath dimension', line, { x: 5, y: 0 }, 'line'],
 ]) test(name, () => {
   const owner = resolveDrawingPointerOwner(make(), pointer, candidate, overlay);
   assert.equal(owner.kind, 'geometry'); assert.equal(owner.target.kind, expectedKind);
 });
 
-test('persistent Arc center routes as an ordinary point', () => {
+test('persistent Arc center selects the point and owns rigid translation', () => {
   const document = make(), before = Object.keys(document.sketches[document.activeSketchId].points);
   const candidate = point('o');
   const owner = resolveDrawingPointerOwner(document, { x: 55, y: 3.75 }, candidate, overlay);
-  assert.equal(owner.kind, 'geometry'); assert.deepEqual(owner.target, { kind: 'point', pointId: 'o' });
+  assert.equal(owner.kind, 'geometry'); assert.deepEqual(owner.target, { kind: 'arc-center', entityId: 'arc' });
   assert.deepEqual(owner.selection, { kind: 'point', pointId: 'o' });
   assert.deepEqual(Object.keys(document.sketches[document.activeSketchId].points), before);
 });
 
-test('Arc body owns selection beneath annotation corridors without requiring a drag target', () => {
+test('Arc body owns radius manipulation beneath annotation corridors', () => {
   for (const evidence of [{}, overlay, {explicitArcId:'arc'}]) {
     const owner=resolveDrawingPointerOwner(make(),{x:55,y:-2.5},curve('arc'),evidence);
-    assert.equal(owner.kind,'geometry');assert.deepEqual(owner.selection,{kind:'arc',arcId:'arc'});assert.equal(owner.target,null);
+    assert.equal(owner.kind,'geometry');assert.deepEqual(owner.selection,{kind:'arc',arcId:'arc'});assert.equal(owner.target.kind,'arc-radius');
   }
   const owner=resolveDrawingPointerOwner(make(),{x:55,y:-2.5},curve('arc'),{dimensionId:'dimension',dimensionSurface:'value'});
   assert.equal(owner.kind,'dimension','explicit value UI retains priority');
@@ -89,10 +89,10 @@ test('Arc click and Ctrl-click use the production selection policy while empty c
   const {selectDrawingEntitiesInRect,applyDrawingBoxSelection}=await import('../.test-build/drawing-pointer-arbitration/drawingBoxSelection.js');
   const {resolveArc}=await import('../.test-build/drawing-pointer-arbitration/drawingTopology.js');
   const document=make(),sketch=document.sketches[document.activeSketchId],owner=resolveDrawingPointerOwner(document,{x:55,y:-2.5},curve('arc'),{});
-  assert.equal(owner.kind,'geometry');assert.equal(owner.target,null);
+  assert.equal(owner.kind,'geometry');assert.equal(owner.target.kind,'arc-radius');
   const selected=routeDrawingGeometryPointerSelection([],owner.selection,false,false);
   assert.deepEqual(selected.selection,[{kind:'arc',arcId:'arc'}]);
-  assert.equal(selected.beginDrag && owner.target!==null,false);
+  assert.equal(selected.beginDrag && owner.target!==null,true);
   const removed=routeDrawingGeometryPointerSelection(selected.selection,owner.selection,true,false);assert.deepEqual(removed.selection,[]);assert.equal(removed.beginDrag,false);
   assert.deepEqual(routeDrawingGeometryPointerSelection([],owner.selection,true,false).selection,selected.selection);
   assert.equal(resolveDrawingPointerOwner(document,{x:100,y:100},null,{}).kind,'empty');
@@ -102,4 +102,21 @@ test('Arc click and Ctrl-click use the production selection policy while empty c
     assert.deepEqual(applyDrawingBoxSelection([],qualifying,false),selected.selection);
     assert.deepEqual(applyDrawingBoxSelection(selected.selection,qualifying,true),[]);
   }
+});
+
+
+test('selected Line and ambiguous Arc points keep ordinary SketchPoint manipulation',()=>{
+ const d=make(),s=d.sketches[d.activeSketchId];
+ s.entities.attached={id:'attached',type:'line',startPointId:'s',endPointId:'a'};s.entityOrder.push('attached');
+ let owner=resolveDrawingPointerOwner(d,{x:50,y:0},point('s'),overlay,['attached']);
+ assert.deepEqual(owner.target,{kind:'point',pointId:'s'});
+ s.entities.other={...s.entities.arc,id:'other'};s.entityOrder.push('other');
+ owner=resolveDrawingPointerOwner(d,{x:50,y:0},point('s'),overlay);
+ assert.deepEqual(owner.target,{kind:'point',pointId:'s'});
+ owner=resolveDrawingPointerOwner(d,{x:50,y:0},point('s'),overlay,['arc']);
+ assert.equal(owner.target.kind,'arc-endpoint');assert.equal(owner.target.entityId,'arc');
+ owner=resolveDrawingPointerOwner(d,{x:55,y:3.75},point('o'),overlay);
+ assert.deepEqual(owner.target,{kind:'point',pointId:'o'});
+ owner=resolveDrawingPointerOwner(d,{x:55,y:3.75},point('o'),overlay,['arc']);
+ assert.deepEqual(owner.target,{kind:'arc-center',entityId:'arc'});
 });

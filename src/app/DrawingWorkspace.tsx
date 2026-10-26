@@ -970,6 +970,9 @@ export function DrawingWorkspace({
       const next = { ...session, currentClient: { x: event.clientX, y: event.clientY }, currentModel: point, exceeded };
       boxSelectionRef.current = next; setBoxSelection(next); return;
     }
+    // Capture loss/cancellation can precede this move in the same browser
+    // event batch. Read the live session so stale render state cannot revive it.
+    const geometryDrag = geometryDragRef.current;
     if (geometryDrag?.pointerId === event.pointerId) {
       const matrix = svgRef.current?.getScreenCTM();
       const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
