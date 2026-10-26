@@ -4,7 +4,7 @@ SVG Box Designer is a browser-based React application for drawing semantic 2D sk
 
 ## Application areas
 
-- **2D Drawing** provides a constraint-aware SVG CAD canvas. Line/Profile use shared persistent `SketchPoint` topology; Circle persists `centerPointId + radius`; Arc now canonically persists `centerPointId + radius + startPointId + endPointId + orientation`. Arc authoring remains Start → End → Form Point, with the form point discarded after deriving the circumcircle and directed branch. Legacy endpoint-plus-bulge documents migrate at restore into the single target runtime representation. Circle and Arc share Circular Support and circular-radius solver infrastructure; Circle dimensions present diameter Ø while Arc dimensions present radius R. Arc own-grip Direct Manipulation is temporarily disabled until Stage 4 rather than retaining the obsolete bulge runtime.
+- **2D Drawing** provides a constraint-aware SVG CAD canvas. Line/Profile use shared persistent `SketchPoint` topology; Circle persists `centerPointId + radius`; Arc now canonically persists `centerPointId + radius + startPointId + endPointId + orientation`. Arc authoring remains Start → End → Form Point, with the form point discarded after deriving the circumcircle and directed branch. Legacy endpoint-plus-bulge documents migrate at restore into the single target runtime representation. Circle and Arc share Circular Support and circular-radius solver infrastructure; Circle dimensions present diameter Ø while Arc dimensions present radius R. Arc own-grip Direct Manipulation was restored by merged Stage 4 PR #613; Stage 4 is NOT ACCEPTED pending the Coincidence follow-up and user review.
 - **Box / Construction** imports or starts an SVG document, identifies panels and selectable straight edges, and applies Panel Manager, TB (Top/Bottom finger-joint), W (Wall), and S (Slot) workflows. Generated geometry is composed, reconciled, manufacturing-compensated for clearances and kerf, previewed, and exported as SVG.
 - **Puzzle** is reserved in the workspace selector but is **not implemented**.
 
@@ -12,10 +12,10 @@ The Drawing and imported/construction document models are currently separate. Se
 
 The locked Arc contract—including three-point creation, endpoint-pivot semantics, and
 the shared Circle/Arc foundation—is authoritative in
-[PROJECT_MASTER.md](PROJECT_MASTER.md#locked-target-circlearc-architecture); the target Arc representation and migration are implemented in Stage 3, while Concentricity, finite-Arc Tangency, and target-Arc own-grip Direct Manipulation remain pending. The authoritative Stage 0–6 migration status and process policy are in
+[PROJECT_MASTER.md](PROJECT_MASTER.md#locked-target-circlearc-architecture); the target Arc representation and migration are implemented in Stage 3, while Concentricity and finite-Arc Tangency remain pending. The authoritative Stage 0–6 migration status and process policy are in
 [ROADMAP.md](ROADMAP.md#circlearc-implementation-stages-and-status); all migration stages
 after the characterization safety-net stage remain separately tracked. Stages 0–3 are **ACCEPTED**; Stage 3 was user approved 2026-10-09. Stage 4 is
-**NOT STARTED / READY TO IMPLEMENT**; Stages 5–6 are **NOT STARTED**. Stage 4 restores
+**MERGED / NOT ACCEPTED**; Stages 5–6 are **NOT STARTED**. Stage 4 restores
 body radius drag about a fixed center, whole-Arc center translation, and exact endpoint
 pivots, with browser acceptance of constraints, cancellation, History, and Circle/Line
 regressions. Open risks R1–R3 and the endpoint-drag evidence discrepancy remain recorded
