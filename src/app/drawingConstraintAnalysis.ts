@@ -4,7 +4,7 @@ import type { DrawingDimension, DrawingEntity, DrawingGeometricConstraint, Drawi
 import { pointIsOnDrawingArc } from './drawingArcGeometry.js';
 import { circularRadiusSolverVariable, drawingSolverVariableKey, readDrawingSolverVariable, writeDrawingSolverVariable, type DrawingSolverVariable } from './drawingSolverVariables.js';
 import { drawingPointReferenceDependencies, measureDimension, measurePointToLine, resolveDimensionLineReference, resolveDrawingPointReference } from './drawingDimension.js';
-import { collectDrawingEntityEquations, drawingEntityDefiningPointIds, drawingEntityImplicitComponentPointIds, drawingEntitySolverVariables, type DrawingEntityEquation } from './drawingEntityDefinition.js';
+import { collectDrawingEntityEquations, drawingEntityDefiningPointIds, drawingEntitySolverVariables, type DrawingEntityEquation } from './drawingEntityDefinition.js';
 
 export const DRAWING_CONSTRAINT_RANK_TOLERANCE = Object.freeze({ absolute: 1e-10, relative: 1e-9 });
 export const DRAWING_ORIGIN_CONSTRAINT_KEY = 'datum:ORIGIN';
@@ -465,12 +465,6 @@ export const analyzeDrawingConstraints = (sketch: DrawingSketchV2, extraDriving?
     ...Object.values(sketch.geometricConstraints ?? {}).flatMap((constraint) => geometricConstraintEquations(sketch, constraint))].filter((e): e is DrawingConstraintEquation => Boolean(e));
   const parent = new Map(Object.keys(sketch.points).map((id) => [id, id]));
   const find = (id: string): string => { const p = parent.get(id)!; if (p === id) return id; const root = find(p); parent.set(id, root); return root; };
-  // Only coordinates coupled by the representation form an implicit component.
-  // Future entity equations connect their own variables through `equations`.
-  for (const entity of Object.values(sketch.entities as unknown as Record<string, DrawingEntity>)) {
-    const ids = drawingEntityImplicitComponentPointIds(entity).filter((id) => parent.has(id));
-    for (const id of ids.slice(1)) parent.set(find(id), find(ids[0]));
-  }
   for (const equation of equations) { const keys = equation.pointKeys.filter((key) => key !== DRAWING_ORIGIN_CONSTRAINT_KEY); for (const key of keys.slice(1)) parent.set(find(key), find(keys[0])); }
   const groups = new Map<string, string[]>(); for (const id of Object.keys(sketch.points)) { const root = find(id); groups.set(root, [...(groups.get(root) ?? []), id]); }
   const components = [...groups.values()].map((pointIds): DrawingConstraintComponentAnalysis => {

@@ -19,12 +19,6 @@ export const drawingEntitySolverVariables = (entity: DrawingEntity): readonly Dr
 ];
 
 /**
- * No representation-specific implicit point coupling remains; entity-owned
- * equations provide all target Arc connectivity.
- */
-export const drawingEntityImplicitComponentPointIds = (_entity: DrawingEntity): readonly string[] => [];
-
-/**
  * An equation imposed by an entity's representation, rather than by a user
  * Constraint or Dimension. It is runtime geometry and is never persisted in
  * either user-authored collection.
