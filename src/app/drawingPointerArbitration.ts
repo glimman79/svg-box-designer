@@ -8,7 +8,6 @@ export type DrawingPointerEvidence = Readonly<{
   explicitPointId?: string;
   explicitLineId?: string;
   explicitCircleId?: string;
-  explicitArcCenterId?: string;
   explicitArcId?: string;
   dimensionId?: string;
   dimensionSurface?: 'line' | 'value';
@@ -88,10 +87,6 @@ export const resolveDrawingPointerOwner = (
     return { kind: 'geometry', selection, target };
   }
 
-  if (evidence.explicitArcCenterId) {
-    const arc = (sketch?.entities as unknown as Record<string, DrawingEntity> | undefined)?.[evidence.explicitArcCenterId];
-    if (arc?.type === 'arc' && sketch?.points[arc.centerPointId]) return { kind: 'geometry', selection: { kind: 'point', pointId: arc.centerPointId }, target: createArcCenterDragTarget(document, arc.id) ?? { kind: 'point', pointId: arc.centerPointId } };
-  }
   return evidence.dimensionId
     ? { kind: 'dimension', dimensionId: evidence.dimensionId, surface: evidence.dimensionSurface ?? 'line' }
     : { kind: 'empty' };
