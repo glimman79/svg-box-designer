@@ -51,7 +51,7 @@ A grip defines the semantic subspace of an interaction: persistent Constraints a
 driving Dimensions restrict motion inside it but do not redefine the grip. Exact grip
 invariants enter as transient semantic equations rather than weighted preferences.
 Circle center drag moves the persistent center with unchanged free-case radius; Circle
-body drag varies radius about an exact fixed-center pivot. Stage 4 restored the following Arc grip semantics in merged PR #613; user acceptance remains pending. Arc center drag is rigid
+body drag varies radius about an exact fixed-center pivot. Stage 4 restored the following Arc grip semantics in merged PR #613; Mikael has accepted Stage 4, including 4.2 Coincidence and 4.3 performance, after manual browser tests. Arc center drag is rigid
 translation subject to persistent hard equations; Arc body/radius drag keeps the
 persistent center exactly stationary while radius and endpoints change consistently; Arc
 endpoint drag keeps the opposite endpoint as an exact transient fixed pivot throughout
@@ -79,7 +79,7 @@ History, transactions, serialization, and deletion are shared concerns. Geometry
 math does not create separate mini-CAD systems.
 
 The Arc representation is **LOCKED**, implemented, and Stage 3 **ACCEPTED — user
-approved 2026-10-09**. Stage 4 is **MERGED / NOT ACCEPTED**. Target body/radius drag fixes center and preserves endpoint directions;
+approved 2026-10-09**. Stage 4 is **ACCEPTED**. Target body/radius drag fixes center and preserves endpoint directions;
 center drag is rigid translation; endpoint drag fixes the opposite endpoint. Endpoint
 continuation prioritizes exact feasibility, pointer intent, representation-independent
 whole-directed-Arc least change, then a neutral tie-break. Mouse-down geometry plus total
@@ -124,9 +124,11 @@ For the complete current contracts—including TB/W/S status, Drawing architectu
 
 ## Accepted Stage 3 canonical Arc runtime
 
-Arc runtime and new persistence use `centerPointId + radius + startPointId + endPointId + orientation`. Center and endpoints are persistent `SketchPoint` identities; orientation is the discrete CW/CCW branch authority. The finite resolver derives angles, directed sweep, SVG flags, bounds samples, and length directly from this state. Arc owns two intrinsic radial equations and exposes seven continuous variables, yielding five geometric DOF. Endpoint-plus-bulge data is accepted only by the centralized restore migration boundary. Arc own-grip Direct Manipulation was restored by merged Stage 4 PR #613 (not accepted); no bulge fallback remains.
+Arc runtime and new persistence use `centerPointId + radius + startPointId + endPointId + orientation`. Center and endpoints are persistent `SketchPoint` identities; orientation is the discrete CW/CCW branch authority. The finite resolver derives angles, directed sweep, SVG flags, bounds samples, and length directly from this state. Arc owns two intrinsic radial equations and exposes seven continuous variables, yielding five geometric DOF. Endpoint-plus-bulge data is accepted only by the centralized restore migration boundary. Arc own-grip Direct Manipulation was restored by merged Stage 4 PR #613 (accepted); no bulge fallback remains.
 
 Geometric-intent solving collects the complete equation components of every addressed
 variable, including both endpoints of a Line. A transient grip can couple components
 without introducing permanent topology or constraints. See
 [Stage 4.2 root cause](docs/DRAWING_COINCIDENCE_DRAG_4_2.md).
+
+Stage 4.3 performance (including 4.3B) is ACCEPTED after Mikael’s manual browser tests. Nonlinear trial projection preserves completed transient objective residual vectors alongside hard and semantic equations; continuation seeds still project only hard and semantic equations. This retains the shared hierarchy and tolerances without persistent extra Constraints or another Arc runtime. See [measurements and limitations](docs/DRAWING_NONLINEAR_SOLVER_4_3B.md). Stages 5–6 remain NOT STARTED.

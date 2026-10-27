@@ -1,5 +1,18 @@
 # Stage 4.2 — Coincidence drag component closure
 
+## Current acceptance status
+
+**ACCEPTED** — Mikael confirms Stage 4, including 4.2 Coincidence and 4.3
+performance, after manual browser tests on main `4135cd2d8e13a8fb21902a672367438c8b7657f1`.
+This supersedes the pending-acceptance status at report creation. The original
+investigation, measurements, validation and proposed manual checklist below are
+preserved as historical evidence; no new per-scenario results or timings are inferred.
+R1–R3, R5, the 14 baseline failures and the empty Undo-step issue remain open.
+Stages 5–6 remain **NOT STARTED**.
+
+## Original implementation report (historical)
+
+
 Status: fix prepared for review; Stage 4 is MERGED / NOT ACCEPTED. No merge or
 acceptance is authorized by this report. Stages 5/6 remain NOT STARTED.
 

@@ -1,5 +1,18 @@
 # Stage 4.3B — Nonlinear tier-preserving projection
 
+## Current acceptance status
+
+**ACCEPTED** — Mikael confirms Stage 4, including 4.2 Coincidence and 4.3
+performance, after manual browser tests on main `4135cd2d8e13a8fb21902a672367438c8b7657f1`.
+This supersedes the pending-acceptance status at report creation. The original
+investigation, measurements, validation and proposed manual checklist below are
+preserved as historical evidence; no new per-scenario results or timings are inferred.
+R1–R3, R5, the 14 baseline failures and the empty Undo-step issue remain open.
+Stages 5–6 remain **NOT STARTED**.
+
+## Original implementation report (historical)
+
+
 Status: prepared for review; Stage 4, 4.2 and 4.3 are NOT ACCEPTED. No merge is
 included. Stages 5/6 and the tangential Arc drag empty Undo-step issue are unchanged.
 
