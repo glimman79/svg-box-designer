@@ -586,6 +586,10 @@ checked only at **ACCEPTED**.
     components of every addressed variable, including the other endpoint of a Line.
     Separate point-point identities and point-curve sliding DOF remain distinct.
     See [root cause and verification](docs/DRAWING_COINCIDENCE_DRAG_4_2.md).
+  - **4.3B correction (pending review, not accepted):** Nonlinear projection retains
+    completed transient objective residual vectors, preserving the hierarchy while
+    reducing connected Line–Arc solver work. Component closure and tolerances are
+    unchanged. See [experiment, measurements and checks](docs/DRAWING_NONLINEAR_SOLVER_4_3B.md).
   - **Still tracked:** Tangential Arc body drag can create an empty Undo step.
     This separately tracked issue is not fixed by 4.2;
     driving Radius continues to lock the body radius. Stages 5/6 remain out of scope.
