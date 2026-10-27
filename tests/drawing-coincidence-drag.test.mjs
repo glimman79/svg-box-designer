@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createLineBodyDragTarget, solveDrawingDragCandidate } from '../.test-build/drawing-coincidence-drag/drawingDirectManipulation.js';
-import { verifyDrawingConstraints } from '../.test-build/drawing-coincidence-drag/drawingConstraintSolver.js';
+import { solveDrawingGeometricIntent, verifyDrawingConstraints } from '../.test-build/drawing-coincidence-drag/drawingConstraintSolver.js';
 import { analyzeDrawingConstraints } from '../.test-build/drawing-coincidence-drag/drawingConstraintAnalysis.js';
 import { applyDrawingConstraint, getDrawingConstraintApplicability } from '../.test-build/drawing-coincidence-drag/drawingConstraintsTool.js';
 import { EMPTY_DRAWING_HISTORY, transactDrawingDocument, undoDrawingDocument, redoDrawingDocument } from '../.test-build/drawing-coincidence-drag/drawingHistory.js';
@@ -73,3 +73,65 @@ for(const type of ['arc','circle','line'])test(`${type} point-curve has one more
  const freedom=d=>analyzeDrawingConstraints(d.sketches.s).components.reduce((n,c)=>n+c.degreesOfFreedom,0);
  assert.equal(freedom(make(type,'point-curve')),freedom(make(type,'point-point'))+1);
 });
+
+// Count objective evaluations instead of wall time: this guards against the
+// nonlinear projection/rejection explosion independently of the test hardware.
+for (const variant of ['shared', 'point-point', 'point-curve']) for (const end of ['start', 'end']) {
+ test(`nonlinear retraction retains completed Line tiers: ${variant}, ${end}`, () => {
+  const d = make('arc', variant, end), snapshot = structuredClone(d), s = d.sketches.s;
+  const line = s.entities.line, a = s.points[line.startPointId], b = s.points[line.endPointId], start = body(d);
+  let evaluations = 0;
+  const axis = (pointId, axis) => ({ kind: 'point-axis', pointId, axis });
+  const solved = solveDrawingGeometricIntent(s, {
+   seedVariable: axis(line.startPointId, 'x'),
+   variables: [axis(line.startPointId, 'y'), axis(line.endPointId, 'x'), axis(line.endPointId, 'y')],
+   modelScale: Math.hypot(b.x - a.x, b.y - a.y),
+   primaryResiduals: candidate => {
+    evaluations += 1;
+    const p = candidate.points[line.startPointId], q = candidate.points[line.endPointId];
+    // The final constant residual cannot reach zero. Retraction must preserve
+    // an attained residual, rather than turn every completed objective into zero.
+    return [(p.x + q.x) / 2 - start.x - 12, (p.y + q.y) / 2 - start.y - 9, 1];
+   },
+   secondaryResiduals: candidate => {
+    const p = candidate.points[line.startPointId], q = candidate.points[line.endPointId];
+    return [q.x - p.x - (b.x - a.x), q.y - p.y - (b.y - a.y)];
+   },
+   geometricResiduals: candidate => [candidate.entities.support.radius - 120],
+  });
+  assert.ok(solved);
+  assert.ok(verifyDrawingConstraints(solved, s.dimensionOrder, s.geometricConstraintOrder));
+  const p = solved.points[line.startPointId], q = solved.points[line.endPointId];
+  close((p.x + q.x) / 2, start.x + 12); close((p.y + q.y) / 2, start.y + 9);
+  close(q.x - p.x, b.x - a.x); close(q.y - p.y, b.y - a.y);
+  close(solved.entities.support.radius, 120); // geometric tier outranks canonical stay
+  assert.ok(evaluations < 5000, `bounded solver work: ${evaluations} objective evaluations`);
+  assert.deepEqual(d, snapshot);
+ });
+}
+
+for (const end of ['start', 'end']) for (const driving of ['radius', 'length', 'second Arc']) {
+ test(`Line ${end} nonlinear hierarchy with ${driving}`, () => {
+  const d = make('arc', 'shared', end), s = d.sketches.s, l = s.entities.line;
+  const a = s.points[l.startPointId], b = s.points[l.endPointId];
+  if (driving === 'second Arc') {
+   s.points.t = { id: 't', x: 120, y: 40 }; s.points.u = { id: 'u', x: 220, y: 40 };
+   s.entities.support2 = { id: 'support2', type: 'arc', centerPointId: 't', radius: 100, startPointId: 'u', endPointId: 'q', orientation: 'CCW' };
+   s.entityOrder.push('support2');
+  } else {
+   s.dimensions.d = driving === 'radius'
+    ? { id: 'd', kind: 'CIRCULAR_SIZE', role: 'driving', mode: 'radius', references: [{ kind: 'entity', entityId: 'support' }], value: 100, placement: { kind: 'radial', anchor: { x: 150, y: 150 } } }
+    : { id: 'd', kind: 'ALIGNED_DISTANCE', role: 'driving', references: [{ kind: 'sketchPoint', pointId: l.startPointId }, { kind: 'sketchPoint', pointId: l.endPointId }], value: Math.hypot(b.x - a.x, b.y - a.y), placement: { kind: 'linear', offset: 10 } };
+   s.dimensionOrder.push('d');
+  }
+  const snapshot = structuredClone(d), start = body(d), target = createLineBodyDragTarget(d, 'line', start);
+  for (const delta of [{ x: 12, y: 9 }, { x: -8, y: 15 }, { x: 1, y: -3 }]) {
+   const preview = solveDrawingDragCandidate(d, target, delta, start); valid(preview);
+   const moved = preview.sketches.s, p = moved.points[l.startPointId], q = moved.points[l.endPointId];
+   close((p.x + q.x) / 2, start.x + delta.x); close((p.y + q.y) / 2, start.y + delta.y);
+   close(q.x - p.x, b.x - a.x); close(q.y - p.y, b.y - a.y);
+   if (driving === 'radius') close(moved.entities.support.radius, 100);
+  }
+  assert.deepEqual(d, snapshot);
+ });
+}

@@ -1,5 +1,13 @@
 # Unreleased
 
+## Drawing — Stage 4.3B nonlinear solver correction (pending review/acceptance)
+
+- Nonlinear trial projection now retains completed objective residual vectors,
+  matching the existing hierarchical step and avoiding repeated rejected corrections.
+- Preserve Stage 4.2 component closure, hard verification, tolerances and Arc semantics.
+- Add hierarchy/work-count and connected-drag regressions; see
+  [experiment and validation](docs/DRAWING_NONLINEAR_SOLVER_4_3B.md). Stage 4/4.3 remain NOT ACCEPTED.
+
 ## Drawing — Stage 4.2 Coincidence drag follow-up (pending review/acceptance)
 
 - Collect all hard-equation components addressed by a geometric intent so Coincidence
