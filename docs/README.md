@@ -33,6 +33,8 @@ These documents analyze a bounded subsystem. Some contain implementation-era bas
 
 These capture a failure, experiment, validation, or runtime trace. They are intentionally preserved rather than rewritten as current architecture.
 
+- `DRAWING_COINCIDENCE_DRAG_4_2.md` — Stage 4.2 Coincidence evidence; accepted after manual browser tests, with original report preserved.
+- `DRAWING_NONLINEAR_SOLVER_4_3B.md` — Stage 4.3 performance evidence and limitations; accepted after manual browser tests, with original measurements preserved.
 - `DRAWING_INFERENCE_STEP_1_REGRESSION_REPORT.md`
 - `EDGE_CAD_POPUP_DEEP_RESEARCH_REPORT.md`
 - `LINE_CHAIN_RUNTIME_CAPTURE.md`

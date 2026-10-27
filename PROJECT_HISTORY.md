@@ -665,6 +665,23 @@ identities, point-on-curve sliding, and Arc grip semantics.
 automated checks from pending manual acceptance. Tangential-drag empty Undo steps
 remain tracked; Stage 5/6 are not implemented.
 
+### 11.24 Stage 4 accepted after manual browser tests
+
+Mikael confirms Stage 4 acceptance, including Stage 4.2 Coincidence and Stage 4.3
+performance, on verified main `4135cd2d8e13a8fb21902a672367438c8b7657f1`. The earlier
+pending-acceptance entries describe their historical checkpoints. PR #613 restored
+canonical grips; #614 closed all addressed hard-equation components; #615 preserved
+completed objective tiers during nonlinear trial projection, reducing repeated rejected
+corrections without changing tolerances or Arc semantics. Detailed numerical and
+Chromium evidence remains in the two Stage 4 reports; acceptance comes from Mikael’s
+manual tests, not those automated checks. No detailed new manual test matrix or timing
+measurements were supplied with this acceptance.
+
+R1–R3, absent Drawing Save/Reload (R5), the same 14 baseline script failures and
+tangential Arc body drag empty Undo steps remain open. Performance evidence does not
+guarantee every browser update below 16 ms or large-sketch performance. Stage 5 and
+Stage 6 remain **NOT STARTED**; this documentation sync does not complete Stage 6.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics

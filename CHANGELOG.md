@@ -1,20 +1,25 @@
 # Unreleased
 
-## Drawing — Stage 4.3B nonlinear solver correction (pending review/acceptance)
+## Documentation — Stage 4 acceptance
+
+- Record Mikael’s manual-test acceptance of Stage 4, 4.2 Coincidence and 4.3 performance on main `4135cd2d8e13a8fb21902a672367438c8b7657f1`.
+- Preserve historical evidence, architecture decisions, open R1–R3/R5, 14 baseline failures and the empty Undo-step issue. Stages 5–6 remain NOT STARTED. Documentation only.
+
+## Drawing — Stage 4.3B nonlinear solver correction (accepted after manual browser tests)
 
 - Nonlinear trial projection now retains completed objective residual vectors,
   matching the existing hierarchical step and avoiding repeated rejected corrections.
 - Preserve Stage 4.2 component closure, hard verification, tolerances and Arc semantics.
 - Add hierarchy/work-count and connected-drag regressions; see
-  [experiment and validation](docs/DRAWING_NONLINEAR_SOLVER_4_3B.md). Stage 4/4.3 remain NOT ACCEPTED.
+  [experiment and validation](docs/DRAWING_NONLINEAR_SOLVER_4_3B.md). Stage 4/4.3 are ACCEPTED after Mikael’s manual browser tests.
 
-## Drawing — Stage 4.2 Coincidence drag follow-up (pending review/acceptance)
+## Drawing — Stage 4.2 Coincidence drag follow-up (accepted after manual browser tests)
 
 - Collect all hard-equation components addressed by a geometric intent so Coincidence
   at either Line endpoint participates from the first preview through History commit.
 - Preserve separate point identities, point-on-curve sliding, Arc grips and driving Radius.
 - Add numerical and Chromium regressions; see [verification](docs/DRAWING_COINCIDENCE_DRAG_4_2.md).
-- PR #613 is merged, but Stage 4 remains NOT ACCEPTED. Tangential Arc drag empty
+- Stage 4, including 4.2 Coincidence, is ACCEPTED after Mikael’s manual browser tests. Tangential Arc drag empty
   Undo steps remain open; no Stage 5/6 work is included.
 
 ## Documentation — Circle/Arc implementation staging locked
