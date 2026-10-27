@@ -16,8 +16,6 @@ export type DrawingGeometricConstraintMarker = Readonly<{
   uy?: number;
 }>;
 
-/** Compatibility type retained for existing marker consumers. */
-export type DrawingParallelMarker = DrawingGeometricConstraintMarker;
 export type DrawingMidpointMarkerPresentation = Readonly<{
   center: Readonly<{ x: number; y: number }>;
   squareCenter: Readonly<{ x: number; y: number }>;

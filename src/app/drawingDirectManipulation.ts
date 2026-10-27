@@ -14,7 +14,7 @@ export type DrawingGeometryTarget =
   | Readonly<{ kind: 'point'; pointId: string }>
   | Readonly<{ kind: 'line'; lineId: string; segmentParameter?: number; grabOffset?: DrawingPoint }>
   | Readonly<{ kind: 'arc-endpoint'; entityId: string; draggedPointId: string; pivotPointId: string }>
-  | Readonly<{ kind: 'arc-radius'; entityId: string; sweepParameter: number; radialDirection: DrawingPoint; grabOffset: DrawingPoint }>
+  | Readonly<{ kind: 'arc-radius'; entityId: string; radialDirection: DrawingPoint; grabOffset: DrawingPoint }>
   | Readonly<{ kind: 'arc-center'; entityId: string }>
   | Readonly<{ kind: 'entity-scalar'; entityId: string; scalar: 'circular-radius'; radialDirection: DrawingPoint; grabOffset: DrawingPoint }>;
 
@@ -70,10 +70,7 @@ export const createArcRadiusDragTarget = (document: DrawingDocumentV2, arcId: st
   if (!arc || !Number.isFinite(pointer.x) || !Number.isFinite(pointer.y)) return null;
   const resolved = projectPointToArc(pointer, arc);
   const radialDirection = { x: (resolved.x - arc.center.x) / arc.radius, y: (resolved.y - arc.center.y) / arc.radius };
-  const angle = Math.atan2(radialDirection.y, radialDirection.x);
-  const progress = arc.signedSweep > 0 ? angle - arc.startAngle : arc.startAngle - angle;
-  const sweepParameter = Math.max(0, Math.min(1, ((progress % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI)) / Math.abs(arc.signedSweep)));
-  return { kind: 'arc-radius', entityId: arcId, sweepParameter, radialDirection,
+  return { kind: 'arc-radius', entityId: arcId, radialDirection,
     grabOffset: { x: pointer.x - resolved.x, y: pointer.y - resolved.y } };
 };
 

@@ -77,12 +77,6 @@ export const deriveEntityDefiningPointIds = (sketch: DrawingSketchV2): ReadonlyS
     .flatMap(drawingEntityDefiningPointIds),
 );
 
-export const updateSketchPoint = (sketch: DrawingSketchV2, id: string, point: DrawingPoint): DrawingSketchV2 => {
-  const current = sketch.points[id];
-  if (!current || current.x === point.x && current.y === point.y) return sketch;
-  return { ...sketch, points: { ...sketch.points, [id]: { id, ...point } } };
-};
-
 export const removeEntityAndOrphans = (sketch: DrawingSketchV2, entityId: string): DrawingSketchV2 => {
   if (!sketch.entities[entityId]) return sketch;
   const entities = { ...sketch.entities } as unknown as Record<string, import('./drawingTypes').DrawingEntity>; delete entities[entityId];
