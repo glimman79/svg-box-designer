@@ -120,3 +120,99 @@ test('selected Line and ambiguous Arc points keep ordinary SketchPoint manipulat
  owner=resolveDrawingPointerOwner(d,{x:55,y:3.75},point('o'),overlay,['arc']);
  assert.deepEqual(owner.target,{kind:'arc-center',entityId:'arc'});
 });
+
+for (const [entityId, bodyEvidence, pointer, targetKind] of [
+  ['circle', { explicitCircleId: 'circle' }, { x: 40, y: 0 }, 'entity-scalar'],
+  ['arc', { explicitArcId: 'arc' }, { x: 55, y: -2.5 }, 'arc-radius'],
+]) {
+  test(`${entityId} body resolves from DOM or proximity evidence without a point hit`, () => {
+    for (const [semantic, evidence] of [[null, bodyEvidence], [curve(entityId), {}], [curve(entityId), overlay]]) {
+      const owner = resolveDrawingPointerOwner(make(), pointer, semantic, evidence);
+      assert.equal(owner.kind, 'geometry');
+      assert.deepEqual(owner.selection, entityId === 'circle' ? { kind: 'circle', circleId: entityId } : { kind: 'arc', arcId: entityId });
+      assert.equal(owner.target.kind, targetKind);
+      assert.equal(owner.target.entityId, entityId);
+    }
+  });
+
+  test(`${entityId} body evidence yields to explicit and semantic persistent points`, () => {
+    const document = make();
+    const pointIds = entityId === 'circle' ? ['center', 'a'] : ['o', 's', 'e', 'a'];
+    for (const pointId of pointIds) {
+      const expectedKind = pointId === 'o' ? 'arc-center' : ['s', 'e'].includes(pointId) ? 'arc-endpoint' : 'point';
+      for (const [semantic, evidence] of [
+        [curve(entityId), { ...bodyEvidence, explicitPointId: pointId }],
+        [point(pointId), bodyEvidence],
+        [point(pointId), overlay],
+      ]) {
+        const owner = resolveDrawingPointerOwner(document, document.sketches[document.activeSketchId].points[pointId], semantic, evidence);
+        assert.equal(owner.kind, 'geometry');
+        assert.deepEqual(owner.selection, { kind: 'point', pointId });
+        assert.equal(owner.target.kind, expectedKind);
+      }
+    }
+    assert.deepEqual(resolveDrawingPointerOwner(document, pointer, point(pointIds[0]), {
+      ...bodyEvidence, ...overlay, explicitPointId: pointIds[0], dimensionSurface: 'value',
+    }), { kind: 'dimension', dimensionId: 'dimension', surface: 'value' });
+  });
+}
+
+test('explicit point identity disambiguates an Arc center overlapping a distinct Line endpoint', () => {
+  const document = make(), sketch = document.sketches[document.activeSketchId];
+  sketch.points.a = { ...sketch.points.o, id: 'a' };
+  for (const [explicitPointId, semanticId, expected] of [
+    ['o', 'a', { kind: 'arc-center', entityId: 'arc' }],
+    ['a', 'o', { kind: 'point', pointId: 'a' }],
+  ]) {
+    const owner = resolveDrawingPointerOwner(document, sketch.points.o, point(semanticId), {
+      explicitPointId, explicitArcId: 'arc', explicitLineId: 'line', ...overlay,
+    }, ['arc']);
+    assert.deepEqual(owner.selection, { kind: 'point', pointId: explicitPointId });
+    assert.deepEqual(owner.target, expected);
+  }
+});
+
+test('shared persistent Arc center retains selected-owner and ambiguous-owner policy', () => {
+  const document = make(), sketch = document.sketches[document.activeSketchId];
+  sketch.entities.line.startPointId = 'o';
+  sketch.entities.circle.centerPointId = 'o';
+  const resolve = selected => resolveDrawingPointerOwner(document, sketch.points.o, curve('circle'), {
+    explicitPointId: 'o', explicitLineId: 'line', explicitCircleId: 'circle',
+  }, selected);
+  for (const selected of [[], ['arc']]) assert.deepEqual(resolve(selected).target, { kind: 'arc-center', entityId: 'arc' });
+  for (const selected of [['line'], ['circle']]) assert.deepEqual(resolve(selected).target, { kind: 'point', pointId: 'o' });
+  sketch.entities.other = { ...sketch.entities.arc, id: 'other' };
+  sketch.entityOrder.push('other');
+  for (const selected of [[], ['arc', 'other']]) assert.deepEqual(resolve(selected).target, { kind: 'point', pointId: 'o' });
+  for (const entityId of ['arc', 'other']) {
+    assert.deepEqual(resolve([entityId]).target, { kind: 'arc-center', entityId });
+    assert.deepEqual(resolve([entityId]).selection, { kind: 'point', pointId: 'o' });
+  }
+});
+
+test('shared Arc/Line endpoint keeps the selected grip when bodies also qualify', () => {
+  const document = make(), sketch = document.sketches[document.activeSketchId];
+  sketch.entities.line.startPointId = 's';
+  for (const [selected, expected] of [
+    [[], { kind: 'arc-endpoint', entityId: 'arc', draggedPointId: 's', pivotPointId: 'e' }],
+    [['arc'], { kind: 'arc-endpoint', entityId: 'arc', draggedPointId: 's', pivotPointId: 'e' }],
+    [['line'], { kind: 'point', pointId: 's' }],
+  ]) {
+    const owner = resolveDrawingPointerOwner(document, sketch.points.s, curve('arc'), {
+      explicitPointId: 's', explicitLineId: 'line', explicitArcId: 'arc',
+    }, selected);
+    assert.deepEqual(owner.selection, { kind: 'point', pointId: 's' });
+    assert.deepEqual(owner.target, expected);
+  }
+});
+
+test('multiple body candidates retain explicit geometry precedence and stable proximity ties', () => {
+  const document = make();
+  const owner = evidence => resolveDrawingPointerOwner(document, { x: 40, y: 0 }, curve('arc'), evidence);
+  assert.deepEqual(owner({ explicitCircleId: 'circle', explicitArcId: 'arc' }).selection, { kind: 'circle', circleId: 'circle' });
+  assert.deepEqual(owner({ explicitLineId: 'line', explicitCircleId: 'circle', explicitArcId: 'arc' }).selection, { kind: 'line', lineId: 'line' });
+  for (const candidates of [
+    [{ entityId: 'circle', distancePx: 4 }, { entityId: 'arc', distancePx: 4 }],
+    [{ entityId: 'arc', distancePx: 4 }, { entityId: 'circle', distancePx: 4 }],
+  ]) assert.deepEqual(resolveDrawingCurveProximity(candidates), { kind: 'curve', entityId: 'arc', distancePx: 4 });
+});

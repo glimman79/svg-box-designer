@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { DrawingWorkspace, DRAWING_INTERACTION_POINT_RADIUS_PX, DRAWING_LINE_HOVER_MARKER_SIZE_PX, DRAWING_POINT_HOVER_MARKER_SIZE_PX, DRAWING_SKETCH_POINT_HIT_RADIUS_PX, drawingGeometrySelectionClass, routeDrawingGeometryPointerSelection, shouldRouteArcBodyPointer, shouldRouteCircleBodyPointer } from '../.test-build/drawing-sketch-point-hit/DrawingWorkspace.js';
-import { createArcEndpointDragTarget, solveDrawingDragCandidate } from '../.test-build/drawing-sketch-point-hit/drawingDirectManipulation.js';
-import { EMPTY_DRAWING_HISTORY, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-sketch-point-hit/drawingHistory.js';
+import { DrawingWorkspace, DRAWING_INTERACTION_POINT_RADIUS_PX, DRAWING_LINE_HOVER_MARKER_SIZE_PX, DRAWING_POINT_HOVER_MARKER_SIZE_PX, DRAWING_SKETCH_POINT_HIT_RADIUS_PX, drawingGeometrySelectionClass, routeDrawingGeometryPointerSelection } from '../.test-build/drawing-sketch-point-hit/DrawingWorkspace.js';
+import { solveDrawingDragCandidate } from '../.test-build/drawing-sketch-point-hit/drawingDirectManipulation.js';
+import { EMPTY_DRAWING_HISTORY, transactDrawingDocument, undoDrawingDocument, redoDrawingDocument } from '../.test-build/drawing-sketch-point-hit/drawingHistory.js';
+
+import { resolveDrawingPointerOwner } from '../.test-build/drawing-sketch-point-hit/drawingPointerArbitration.js';
 
 const points = {
   shared: { id: 'shared', x: 0, y: 0 },
@@ -51,9 +53,11 @@ const arcMarkup = renderToStaticMarkup(React.createElement(DrawingWorkspace, {
 }));
 for (const pointId of ['shared', 'p2', 'arcCenter']) assert.match(arcMarkup, new RegExp(`data-sketch-point-id="${pointId}"`));
 for (const [draggedPointId, pivotPointId, delta] of [['shared', 'p2', { x: -4, y: 3 }], ['p2', 'shared', { x: 4, y: 3 }]]) {
-  assert.equal(shouldRouteArcBodyPointer(undefined, undefined, draggedPointId, false, 'arc'), false,
-    'an explicit persistent Point wins even when the same pointer qualifies for Arc proximity');
-  const target = createArcEndpointDragTarget(arcDocument, 'arc', draggedPointId);
+  const owner = resolveDrawingPointerOwner(arcDocument, arcSketch.points[draggedPointId],
+    { kind: 'curve', entityId: 'arc', distancePx: 0 }, { explicitPointId: draggedPointId, explicitArcId: 'arc' });
+  assert.deepEqual(owner.selection, { kind: 'point', pointId: draggedPointId },
+    'an explicit persistent Point wins even when the same pointer qualifies for the Arc body');
+  const target = owner.target;
   assert.deepEqual(target, { kind: 'arc-endpoint', entityId: 'arc', draggedPointId, pivotPointId });
   const candidate = solveDrawingDragCandidate(arcDocument, target, delta);
   assert.ok(candidate, 'the rendered persistent endpoint owns target-native manipulation');
@@ -62,14 +66,52 @@ for (const [draggedPointId, pivotPointId, delta] of [['shared', 'p2', { x: -4, y
   assert.equal(tx.history.undo.length, 1);
   assert.deepEqual(undoDrawingDocument(tx.history, tx.document).document, arcDocument);
 }
-assert.equal(shouldRouteCircleBodyPointer(undefined, 'shared', false, 'circle'), false,
-  'an explicit persistent Point also wins over Circle proximity');
-assert.equal(shouldRouteArcBodyPointer(undefined, 'arc', 'shared', false, 'arc'), true,
-  'an explicit Arc path remains authoritative over incidental Point proximity');
-assert.equal(shouldRouteCircleBodyPointer('circle', 'shared', false, 'circle'), true,
-  'an explicit Circle path remains authoritative over incidental Point proximity');
-assert.equal(shouldRouteArcBodyPointer('arc', undefined, 'shared', false, 'arc'), true,
-  'the dedicated Arc center control remains authoritative');
+// Use the persistent ID emitted by the real workspace render to acquire the
+// center grip, then exercise selection, preview, commit and History together.
+assert.equal((arcMarkup.match(/data-sketch-point-id="arcCenter"/g) ?? []).length, 1);
+assert.doesNotMatch(arcMarkup, /data-sketch-arc-center-id=/);
+const centerId = arcMarkup.match(/data-sketch-point-id="(arcCenter)"/)[1];
+const centerOwner = resolveDrawingPointerOwner(arcDocument, arcSketch.points[centerId], null, { explicitPointId: centerId });
+assert.deepEqual(centerOwner.selection, { kind: 'point', pointId: centerId });
+assert.deepEqual(centerOwner.target, { kind: 'arc-center', entityId: 'arc' });
+for (const ctrlKey of [false, true]) {
+  const route = routeDrawingGeometryPointerSelection([], centerOwner.selection, ctrlKey, false);
+  assert.deepEqual(route.selection, [centerOwner.selection]);
+  assert.equal(route.beginDrag, !ctrlKey, 'Ctrl selects the center without beginning a drag');
+}
+const beforeCenterDrag = structuredClone(arcDocument), delta = { x: 12, y: -9 };
+const centerPreview = solveDrawingDragCandidate(arcDocument, centerOwner.target, delta);
+assert.ok(centerPreview);
+for (const pointId of ['arcCenter', 'shared', 'p2']) {
+  assert.deepEqual(centerPreview.sketches.s.points[pointId], {
+    ...arcSketch.points[pointId], x: arcSketch.points[pointId].x + delta.x, y: arcSketch.points[pointId].y + delta.y,
+  }, 'center grip rigidly translates all three persistent Arc points');
+}
+assert.deepEqual(centerPreview.sketches.s.entities.arc, arcSketch.entities.arc, 'radius, orientation and point IDs remain unchanged');
+assert.deepEqual(arcDocument, beforeCenterDrag, 'preview leaves the drag-start document intact for cancellation');
+const centerCommit = transactDrawingDocument(EMPTY_DRAWING_HISTORY, arcDocument, () => centerPreview);
+assert.equal(centerCommit.history.undo.length, 1);
+assert.deepEqual(centerCommit.document, centerPreview);
+const centerUndo = undoDrawingDocument(centerCommit.history, centerCommit.document);
+assert.deepEqual(centerUndo.document, arcDocument);
+assert.deepEqual(redoDrawingDocument(centerUndo.history, centerUndo.document).document, centerPreview);
+
+const circleDocument = structuredClone(document);
+circleDocument.sketches.s.entities.circle = { id: 'circle', type: 'circle', centerPointId: 'shared', radius: 50 };
+circleDocument.sketches.s.entityOrder.push('circle');
+for (const evidence of [{ explicitPointId: 'shared' }, { explicitPointId: 'shared', explicitCircleId: 'circle' }]) {
+  const owner = resolveDrawingPointerOwner(circleDocument, points.shared, { kind: 'curve', entityId: 'circle', distancePx: 0 }, evidence);
+  assert.deepEqual(owner.selection, { kind: 'point', pointId: 'shared' }, 'Circle body competition preserves persistent center selection');
+  assert.deepEqual(owner.target, { kind: 'point', pointId: 'shared' });
+}
+for (const [bodyDocument, pointer, evidence, expectedSelection, targetKind] of [
+  [arcDocument, { x: 50, y: -50 }, { explicitArcId: 'arc' }, { kind: 'arc', arcId: 'arc' }, 'arc-radius'],
+  [circleDocument, { x: 50, y: 0 }, { explicitCircleId: 'circle' }, { kind: 'circle', circleId: 'circle' }, 'entity-scalar'],
+]) {
+  const owner = resolveDrawingPointerOwner(bodyDocument, pointer, null, evidence);
+  assert.deepEqual(owner.selection, expectedSelection, 'an explicit curve body routes when no point competes');
+  assert.equal(owner.target.kind, targetKind);
+}
 
 let selection = routeDrawingGeometryPointerSelection([], { kind: 'line', lineId: 'a' }, false, false);
 assert.deepEqual(selection.selection, [{ kind: 'line', lineId: 'a' }]); assert.equal(selection.beginDrag, true);

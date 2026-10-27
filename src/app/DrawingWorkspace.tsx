@@ -139,21 +139,6 @@ export const DRAWING_LINE_HOVER_MARKER_SIZE_PX = 3;
 export const DRAWING_POINT_HOVER_MARKER_SIZE_PX = 5;
 export const DRAWING_CURVE_HIT_TOLERANCE_PX = 7;
 
-export const shouldRouteCircleBodyPointer = (
-  explicitCircleId: string | undefined,
-  explicitPointId: string | undefined,
-  hasHigherPriorityGeometryHit: boolean,
-  circleHit: string | undefined,
-) => Boolean(explicitCircleId || (!explicitPointId && !hasHigherPriorityGeometryHit && circleHit));
-
-export const shouldRouteArcBodyPointer = (
-  explicitArcCenterId: string | undefined,
-  explicitArcId: string | undefined,
-  explicitPointId: string | undefined,
-  hasHigherPriorityGeometryHit: boolean,
-  arcHit: string | undefined,
-) => Boolean(explicitArcCenterId || explicitArcId || (!explicitPointId && !hasHigherPriorityGeometryHit && arcHit));
-
 export const drawingGeometrySelectionClass = (selection: readonly DrawingSelectionRef[], target: DrawingSelectionRef) =>
   selection.some((ref) => drawingSelectionKey(ref) === drawingSelectionKey(target)) ? ' is-geometry-selected' : '';
 
@@ -745,7 +730,6 @@ export function DrawingWorkspace({
         explicitPointId: element.closest<SVGCircleElement>('[data-sketch-point-id]')?.dataset.sketchPointId,
         explicitLineId: element.closest<SVGLineElement>('[data-sketch-line-id]')?.dataset.sketchLineId,
         explicitCircleId: element.closest<SVGCircleElement>('[data-sketch-circle-id]')?.dataset.sketchCircleId,
-        explicitArcCenterId: element.closest<SVGCircleElement>('[data-sketch-arc-center-id]')?.dataset.sketchArcCenterId,
         explicitArcId: element.closest<SVGPathElement>('[data-sketch-arc-id]')?.dataset.sketchArcId,
         dimensionId: dimensionElement?.dataset.dimensionId,
         dimensionSurface: dimensionElement?.dataset.dimensionSurface as 'line' | 'value' | undefined,
@@ -1054,7 +1038,6 @@ export function DrawingWorkspace({
         explicitPointId: element.closest<SVGCircleElement>('[data-sketch-point-id]')?.dataset.sketchPointId,
         explicitLineId: element.closest<SVGLineElement>('[data-sketch-line-id]')?.dataset.sketchLineId,
         explicitCircleId: element.closest<SVGCircleElement>('[data-sketch-circle-id]')?.dataset.sketchCircleId,
-        explicitArcCenterId: element.closest<SVGCircleElement>('[data-sketch-arc-center-id]')?.dataset.sketchArcCenterId,
         explicitArcId: element.closest<SVGPathElement>('[data-sketch-arc-id]')?.dataset.sketchArcId,
         dimensionId: dimensionElement?.dataset.dimensionId,
         dimensionSurface: dimensionElement?.dataset.dimensionSurface as 'line' | 'value' | undefined,
