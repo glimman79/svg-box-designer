@@ -28,8 +28,10 @@ uses the Arc center's persistent point identity rather than a derived center ide
 Circle persistence is `centerPointId` plus a radius scalar; its center is a real shared
 SketchPoint and authoring P2 is not persistent. Arc persistence is
 `DrawingArcEntity { id, type: 'arc', centerPointId, radius, startPointId, endPointId, orientation }`.
-Angles and signed sweep remain derived. Historical endpoint-plus-bulge records exist only
-at the restore migration boundary. The Arc authoring P1-to-P2
+Angles and signed sweep remain derived. Restore validates canonical Arc records;
+obsolete endpoint-plus-bulge records and alternate derived-center references are rejected
+after Stage 5.3A. Independent Line migration and generic semantic-point discovery remain.
+The Arc authoring P1-to-P2
 reference line and P3 support Circle are transient presentation only—not entity
 geometry, topology, History, or export geometry.
 
@@ -37,8 +39,9 @@ geometry, topology, History, or export geometry.
 Circular Support concept: semantic center, radius, and resolved support Circle. Arc adds
 persistent P1/P2 and `orientation: CW | CCW`, with center as a persistent first-class
 `SketchPoint`. This locks semantic/mathematical structure, not a particular TypeScript
-interface. Sweep, classification, angles, SVG flags, and length are derived; bulge is
-legacy/migration data rather than target runtime authority.
+interface. Sweep, classification, angles, SVG flags, and length are derived. Bulge and
+derived Arc-center identity belong only to historical implementations, not current restore
+or runtime authority.
 
 Arc authoring remains P1 start → P2 end → P3 form/curvature. P1/P2 retain persistent
 identity; P3 calculates center/radius/orientation but is not defining storage. The target's
@@ -87,9 +90,10 @@ pointer delta remains normative. Fixed-radius endpoint drag respects the `2R` ch
 limit and projects an outside pointer to an orientation-preserving semicircle.
 
 Arc center selection must select the center semantic point. The shared reference system
-must nevertheless support both persistent and derived/dependent semantic-point identity.
+retains generic semantic-point discovery and selection; future dependent points remain
+an extensibility requirement, not a current alternate Arc-center identity.
 Concentricity remains a common center relation across Circle/Arc pairs; Tangency shares
-support-circle math plus finite directed-Arc contact validation. Both Constraint features remain unimplemented; Arc representation migration is implemented. Full normative details are in
+support-circle math plus finite directed-Arc contact validation. Both Constraint features remain unimplemented; canonical Arc storage is implemented. Full normative details are in
 [PROJECT_MASTER.md](PROJECT_MASTER.md#locked-target-circlearc-architecture).
 
 ## Pipeline
@@ -124,11 +128,11 @@ For the complete current contracts—including TB/W/S status, Drawing architectu
 
 ## Accepted Stage 3 canonical Arc runtime
 
-Arc runtime and new persistence use `centerPointId + radius + startPointId + endPointId + orientation`. Center and endpoints are persistent `SketchPoint` identities; orientation is the discrete CW/CCW branch authority. The finite resolver derives angles, directed sweep, SVG flags, bounds samples, and length directly from this state. Arc owns two intrinsic radial equations and exposes seven continuous variables, yielding five geometric DOF. Endpoint-plus-bulge data is accepted only by the centralized restore migration boundary. Arc own-grip Direct Manipulation was restored by merged Stage 4 PR #613 (accepted); no bulge fallback remains.
+Arc runtime and new persistence use `centerPointId + radius + startPointId + endPointId + orientation`. Center and endpoints are persistent `SketchPoint` identities; orientation is the discrete CW/CCW branch authority. The finite resolver derives angles, directed sweep, SVG flags, bounds samples, and length directly from this state. Arc owns two intrinsic radial equations and exposes seven continuous variables, yielding five geometric DOF. Stage 5.3A removed obsolete Arc restore conversion and derived-center reference paths; canonical validation and independent Line migration remain. Arc own-grip Direct Manipulation was restored by merged Stage 4 PR #613 (accepted); no bulge fallback remains.
 
 Geometric-intent solving collects the complete equation components of every addressed
 variable, including both endpoints of a Line. A transient grip can couple components
 without introducing permanent topology or constraints. See
 [Stage 4.2 root cause](docs/DRAWING_COINCIDENCE_DRAG_4_2.md).
 
-Stage 4.3 performance (including 4.3B) is ACCEPTED after Mikael’s manual browser tests. Nonlinear trial projection preserves completed transient objective residual vectors alongside hard and semantic equations; continuation seeds still project only hard and semantic equations. This retains the shared hierarchy and tolerances without persistent extra Constraints or another Arc runtime. See [measurements and limitations](docs/DRAWING_NONLINEAR_SOLVER_4_3B.md). Stages 5–6 remain NOT STARTED.
+Stage 4.3 performance (including 4.3B) is ACCEPTED after Mikael’s manual browser tests. Nonlinear trial projection preserves completed transient objective residual vectors alongside hard and semantic equations; continuation seeds still project only hard and semantic equations. This retains the shared hierarchy and tolerances without persistent extra Constraints or another Arc runtime. See [measurements and limitations](docs/DRAWING_NONLINEAR_SOLVER_4_3B.md). Stage 5 is partially accepted: 5.1, 5.2, 5.3A, and audit-only 5.3B are ACCEPTED; 5.4 and Stage 6 remain NOT STARTED. [Roadmap](ROADMAP.md#circlearc-implementation-stages-and-status) owns detailed stage tracking.

@@ -682,6 +682,31 @@ tangential Arc body drag empty Undo steps remain open. Performance evidence does
 guarantee every browser update below 16 ms or large-sketch performance. Stage 5 and
 Stage 6 remain **NOT STARTED**; this documentation sync does not complete Stage 6.
 
+### 11.25 Stage 5 semantic cleanup and obsolete Arc compatibility removal
+
+Following accepted Stage 4, Stage 5.1 removed verified unused helpers, an empty
+component-coupling hook, unused Arc drag metadata, and a marker compatibility alias
+(PR #617, merged `85525162dcd11f41758f8ad753c727c9a87c7510`). Stage 5.2 removed unused
+body-routing helpers and the obsolete Arc-center DOM route while preserving persistent
+point ownership and canonical grips (PR #618, merged
+`1ed88e97999699aee6db71844519030bf37c6c9d`).
+
+Stage 5.3A then removed obsolete derived Arc-center reference types, Coincidence and
+solver/authoring paths, and legacy bulge-Arc conversion (PR #619, merged
+`8b8f9fade47c15bfeade70471c002f87813a42e5`). The pre-launch compatibility decision
+intentionally rejects obsolete Arc formats rather than migrating or rebinding them.
+This supersedes the restore contract introduced in Stage 3 without changing canonical
+center/radius/P1/P2/orientation, two intrinsic radial equations, or five Arc DOF.
+Current point-based Dimension producers use persistent IDs; generic semantic-point
+discovery/selection, independent Line migration, and annotation/projection geometry remain.
+
+The user's subsequent Stage 5 documentation/workflow brief confirms 5.1, 5.2, and
+5.3A **ACCEPTED**, plus 5.3B **ACCEPTED** as an audit-only task with no code changes
+or PR. No additional audit findings or browser results are claimed here.
+Earlier reports and PR bodies record their original pre-acceptance state. Stage 5.4
+is **NOT STARTED**, Stage 5 as a whole remains open, and Stage 6 is **NOT STARTED**.
+Existing open risks and failures are not closed by these acceptance statements.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics
