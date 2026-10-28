@@ -15,12 +15,15 @@ the shared Circle/Arc foundation—is authoritative in
 [PROJECT_MASTER.md](PROJECT_MASTER.md#locked-target-circlearc-architecture); the canonical Arc representation is implemented, while Concentricity and finite-Arc Tangency remain pending. The authoritative Stage 0–6 migration status and process policy are in
 [ROADMAP.md](ROADMAP.md#circlearc-implementation-stages-and-status); all migration stages
 after the characterization safety-net stage remain separately tracked. Stages 0–3 are **ACCEPTED**; Stage 3 was user approved 2026-10-09. Stage 4 is
-**ACCEPTED**. Stage 5 is partially accepted: 5.1, 5.2, 5.3A, and audit-only 5.3B are
-**ACCEPTED**; 5.4 and Stage 6 are **NOT STARTED**. Stage 4 restores
+**ACCEPTED**. Stage 5 is **ACCEPTED / COMPLETE**: 5.1, 5.2, 5.3A, audit-only 5.3B,
+and 5.4 are **ACCEPTED**. Stage 6 remains **NOT STARTED**. Stage 4 restores
 body radius drag about a fixed center, whole-Arc center translation, and exact endpoint
 pivots, with browser acceptance of constraints, cancellation, History, and Circle/Line
 regressions. Open risks R1–R3 and the historical endpoint-drag evidence discrepancy and its resolution remain recorded
-in the Roadmap. Actual Drawing Save/Reload (R5) is not implemented and is outside Stage 3.
+in the Roadmap. The seven unchanged Drawing/CAD test failures and tangential Arc body
+drag empty-Undo issue remain open; Stage 5 completion does not resolve all CAD defects.
+Actual Drawing Save/Reload (R5) is not implemented and is outside Stage 3;
+document restore/normalization coverage does not establish that user-facing capability.
 
 Repository collaboration follows the permanent rule in
 [REGLER_FOR_CHATT_MED_CHATGPT.md](REGLER_FOR_CHATT_MED_CHATGPT.md#permanent-regel-för-repositoryåtkomst):

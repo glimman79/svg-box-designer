@@ -663,7 +663,8 @@ The generic fix collects every addressed component; it preserves independent poi
 identities, point-on-curve sliding, and Arc grip semantics.
 [Detailed evidence and remaining issues](docs/DRAWING_COINCIDENCE_DRAG_4_2.md) distinguish
 automated checks from pending manual acceptance. Tangential-drag empty Undo steps
-remain tracked; Stage 5/6 are not implemented.
+remain tracked; Stage 5/6 were not implemented at that checkpoint (Stage 5 completion
+is recorded in §11.25 below).
 
 ### 11.24 Stage 4 accepted after manual browser tests
 
@@ -680,7 +681,8 @@ measurements were supplied with this acceptance.
 R1–R3, absent Drawing Save/Reload (R5), the same 14 baseline script failures and
 tangential Arc body drag empty Undo steps remain open. Performance evidence does not
 guarantee every browser update below 16 ms or large-sketch performance. Stage 5 and
-Stage 6 remain **NOT STARTED**; this documentation sync does not complete Stage 6.
+Stage 6 were **NOT STARTED** at that checkpoint; later Stage 5 completion is recorded
+below. That documentation sync did not complete Stage 6.
 
 ### 11.25 Stage 5 semantic cleanup and obsolete Arc compatibility removal
 
@@ -700,12 +702,41 @@ center/radius/P1/P2/orientation, two intrinsic radial equations, or five Arc DOF
 Current point-based Dimension producers use persistent IDs; generic semantic-point
 discovery/selection, independent Line migration, and annotation/projection geometry remain.
 
-The user's subsequent Stage 5 documentation/workflow brief confirms 5.1, 5.2, and
-5.3A **ACCEPTED**, plus 5.3B **ACCEPTED** as an audit-only task with no code changes
-or PR. No additional audit findings or browser results are claimed here.
-Earlier reports and PR bodies record their original pre-acceptance state. Stage 5.4
-is **NOT STARTED**, Stage 5 as a whole remains open, and Stage 6 is **NOT STARTED**.
-Existing open risks and failures are not closed by these acceptance statements.
+The user's Stage 5 documentation/workflow brief confirmed 5.1, 5.2, and 5.3A
+**ACCEPTED**, plus 5.3B **ACCEPTED — audit only**. That scoped audit found no further
+justified obsolete Arc-specific legacy infrastructure; it required no code changes,
+implementation commit, or PR. PR #620 then synchronized the accepted substages and
+workflow rules, merged as `153ccdc3184ec30183baef63206c7c7577428593`.
+
+Stage 5.4 followed in [PR #621](https://github.com/glimman79/svg-box-designer/pull/621),
+merged as `5d7f53d2b355e7d00fcf4d6e01446fa13068c9aa`. It removed
+`solveDrawingConstrainedVariableIntent`, `DrawingVariableIntent`,
+`minimizeDrawingVariableObjective`, and `DrawingSoftVariableObjective`, with their
+test-only calls and no compatibility wrappers. The active geometric-intent solver,
+component/variable solving, hierarchy, hard verification, tolerances, continuation,
+canonical Circle/Arc model, shared topology, and persistent point identities were preserved.
+
+#621 records TypeScript/build PASS, 49/56 Drawing/CAD scripts PASS with the same seven
+failures on baseline and implementation, and Chromium Arc 23/23 and Coincidence 10/10
+PASS on both. These are prior implementation results, not tests rerun by this sync.
+The user's final Stage 5 brief confirms successful manual browser testing after merge
+and Stage 5.4 **ACCEPTED**. Earlier reports and PR bodies retain their original
+pre-acceptance checkpoints.
+
+The final documentation audit therefore records **Stage 5 — ACCEPTED / COMPLETE**,
+with all five substages accepted. **Stage 6 — NOT STARTED** remains the next separate
+regression/acceptance stage; this documentation PR does not begin it. Its existing
+Save/Reload scope question remains in the Roadmap rather than becoming a new decision.
+
+The seven failures remain unresolved: `drawing-primary-mousedown`,
+`drawing-box-selection`, `drawing-alignment-snap`, `drawing-angular-reference`,
+`drawing-line-authority`, `drawing-live-direction-coexistence`, and
+`drawing-endpoint-direction-inference`. Earlier broader 14-script results also included
+d2 scripts; no fixes to those historical failures are claimed. Tangential Arc body drag
+empty Undo steps and R1–R3 remain open; R5 Drawing Save/Reload remains unimplemented.
+Existing restore/normalization and independent Line migration coverage do not establish
+a user-facing Save/Reload capability. Stage 5 acceptance does not resolve unrelated
+defects or automatically assign their implementation to Stage 6.
 
 ## 12. Superseded or Temporary Material
 

@@ -135,4 +135,13 @@ variable, including both endpoints of a Line. A transient grip can couple compon
 without introducing permanent topology or constraints. See
 [Stage 4.2 root cause](docs/DRAWING_COINCIDENCE_DRAG_4_2.md).
 
-Stage 4.3 performance (including 4.3B) is ACCEPTED after Mikael’s manual browser tests. Nonlinear trial projection preserves completed transient objective residual vectors alongside hard and semantic equations; continuation seeds still project only hard and semantic equations. This retains the shared hierarchy and tolerances without persistent extra Constraints or another Arc runtime. See [measurements and limitations](docs/DRAWING_NONLINEAR_SOLVER_4_3B.md). Stage 5 is partially accepted: 5.1, 5.2, 5.3A, and audit-only 5.3B are ACCEPTED; 5.4 and Stage 6 remain NOT STARTED. [Roadmap](ROADMAP.md#circlearc-implementation-stages-and-status) owns detailed stage tracking.
+Stage 4.3 performance (including 4.3B) is ACCEPTED after Mikael’s manual browser tests. Nonlinear trial projection preserves completed transient objective residual vectors alongside hard and semantic equations; continuation seeds still project only hard and semantic equations. This retains the shared hierarchy and tolerances without persistent extra Constraints or another Arc runtime. See [measurements and limitations](docs/DRAWING_NONLINEAR_SOLVER_4_3B.md).
+
+Stage 5 is **ACCEPTED / COMPLETE**: 5.1, 5.2, 5.3A, audit-only 5.3B, and 5.4 are
+ACCEPTED. Stage 5.4 (#621) retired `solveDrawingConstrainedVariableIntent`,
+`DrawingVariableIntent`, `minimizeDrawingVariableObjective`, and
+`DrawingSoftVariableObjective`, with no compatibility wrappers. Active geometric-intent
+and component solving, hierarchy, hard verification, tolerances, continuation, intrinsic
+equations, and canonical Circle/Arc storage are preserved. Stage 6 remains **NOT STARTED**.
+The [Roadmap](ROADMAP.md#circlearc-implementation-stages-and-status) owns stage evidence,
+known unresolved failures and risks, and the existing final regression/acceptance scope.

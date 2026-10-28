@@ -3,6 +3,23 @@
 Entries record completed changes at their respective checkpoints. Current architecture
 and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
 
+## Drawing — Stage 5.4 solver cleanup and Stage 5 acceptance
+
+- Stage 5.4 (ACCEPTED, [#621](https://github.com/glimman79/svg-box-designer/pull/621),
+  merged `5d7f53d2b355e7d00fcf4d6e01446fa13068c9aa`): removed
+  `solveDrawingConstrainedVariableIntent`, `DrawingVariableIntent`,
+  `minimizeDrawingVariableObjective`, and `DrawingSoftVariableObjective`, plus test-only
+  calls, without compatibility wrappers. Active solving, canonical Circle/Arc state,
+  shared topology, solver hierarchy, and verification behavior remain unchanged.
+- Recorded the user's successful manual browser testing after #621 and acceptance of
+  Stage 5.4; Stage 5 is **ACCEPTED / COMPLETE**. Synchronized the six central documents.
+  Stage 6 remains **NOT STARTED**; no new user-visible feature or measured performance
+  improvement is claimed by this cleanup.
+- Carried forward the seven unchanged Drawing/CAD script failures listed in the
+  [Roadmap](ROADMAP.md#circlearc-implementation-stages-and-status), tangential Arc body
+  drag empty Undo steps, open R1–R3, and unimplemented R5. Restore/normalization coverage
+  is not user-facing Drawing Save/Reload; unrelated fixes are not authorized by acceptance.
+
 ## Documentation — architecture synchronization and Codex workflow
 
 - Synchronized central documentation with accepted Stage 5 substages and canonical Arc restore behavior.
@@ -14,7 +31,7 @@ and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
 - Stage 5.1 (ACCEPTED, #617): removed verified unused Drawing helpers and Arc drag metadata.
 - Stage 5.2 (ACCEPTED, #618): removed obsolete pointer compatibility routes while retaining persistent-point ownership.
 - Stage 5.3A (ACCEPTED, #619): removed derived Arc-center references and obsolete bulge-Arc migration; canonical validation, persistent point IDs, and independent Line migration remain.
-- Stage 5.3B (ACCEPTED): audit only, no code changes or PR. Stage 5.4 and Stage 6 remain NOT STARTED; Stage 5 is not complete.
+- Stage 5.3B (ACCEPTED — audit only): found no further justified obsolete Arc-specific legacy infrastructure within its defined scope; no code changes, implementation commit, or PR. Stage 5.4 was subsequently accepted and Stage 5 completed as recorded above; Stage 6 remains NOT STARTED.
 
 ## Documentation — Stage 4 acceptance
 

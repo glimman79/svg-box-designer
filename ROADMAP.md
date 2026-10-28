@@ -349,14 +349,14 @@ must not be read as batch delete.
 | Quick Trim | **DESIGN REQUIRED** | Quickly trim geometry at relevant intersections or boundaries. | Exact interaction remains open. |
 | Rectangle | **DESIGN REQUIRED** | Add a Rectangle family with **four variants**. | The four variants have not been specified and will be defined later. |
 | Circle — Center + Radius | **IMPLEMENTED / MERGED / BROWSER-VERIFIED / ACCEPTED / DOCUMENTED** | P1 establishes or reuses a persistent center `SketchPoint`; pointer movement shows a visible live semantic Circle preview; P2 is a radius-defining authoring control and commits the Circle with one authoritative scalar radius. Persistence, History, semantic center selection, snap/inference, constraints, Dimensions, exact box selection, and both center and body/radius Direct Manipulation are integrated. | Circle is true semantic geometry, not persistent tessellation. P2 is not a persistent radius point. Direct authoring onto the center reuses `centerPointId`; manual Coincidence between a separate endpoint and center preserves both identities and stores `COINCIDENT` / `point-point`. |
-| Arc — standalone three-point | **STAGES 3–4 ACCEPTED; STAGE 5 PARTIALLY ACCEPTED** | P1 → P2 → P3 authoring, finite geometry, topology, Dimensions, Constraints, and center/endpoint snap use the canonical Stage 3 model. | Persistent center/radius/P1/P2/orientation replaces the historical bulge runtime. Arc own-grip Direct Manipulation is restored by merged PR #613, accepted after manual browser tests; the historical endpoint-drag discrepancy and its interaction-path resolution are recorded below. |
+| Arc — standalone three-point | **STAGES 3–5 ACCEPTED; STAGE 6 NOT STARTED** | P1 → P2 → P3 authoring, finite geometry, topology, Dimensions, Constraints, and center/endpoint snap use the canonical Stage 3 model. | Persistent center/radius/P1/P2/orientation replaces the historical bulge runtime. Arc own-grip Direct Manipulation is restored by merged PR #613, accepted after manual browser tests; the historical endpoint-drag discrepancy and its interaction-path resolution are recorded below. |
 | Circle — older three-point full-Circle item | **DESIGN REQUIRED / UNRESOLVED** | The prior roadmap separately proposed a three-point-defined full Circle. The newly decided standalone three-point Arc does not silently cancel that older item. | Its continued product need, authoring order, and priority require a future explicit decision; it must not be confused with the Arc workflow. |
 
 
 ### Near-term circular-geometry sequence
 
 Circle's current foundation and Radius / Diameter integration are accepted and documented.
-Stage 3 is **ACCEPTED — user approved 2026-10-09**. Stage 4 is **ACCEPTED** (including 4.2 Coincidence and 4.3 performance; manually browser-tested by Mikael). Stage 5.1, 5.2, 5.3A, and audit-only 5.3B are **ACCEPTED**; Stage 5.4 is **NOT STARTED**. Stage 5 as a whole is not complete. Historical Arc Stage 1 acceptance remains historical evidence.
+Stage 3 is **ACCEPTED — user approved 2026-10-09**. Stage 4 is **ACCEPTED** (including 4.2 Coincidence and 4.3 performance; manually browser-tested by Mikael). Stage 5 is **ACCEPTED / COMPLETE**, including 5.1, 5.2, 5.3A, audit-only 5.3B, and 5.4. Stage 6 is **NOT STARTED**. Historical Arc Stage 1 acceptance remains historical evidence.
 
 **CURRENT IMPLEMENTATION.** `DrawingArcEntity` stores `centerPointId`, scalar `radius`,
 `startPointId`, `endPointId`, and `orientation`. Center and endpoints are persistent
@@ -423,8 +423,8 @@ must not assume every future semantic point has a `pointId`.
 
 The target architecture above is **LOCKED**. Stage 3 implemented the canonical
 representation and a then-supported restore migration; Stage 5.3A subsequently removed
-obsolete Arc compatibility. Stages 0–4 are **ACCEPTED**. Stage 5 is **IN PROGRESS**
-with 5.1, 5.2, 5.3A, and audit-only 5.3B **ACCEPTED**; 5.4 and Stage 6 are **NOT STARTED**.
+obsolete Arc compatibility. Stages 0–4 are **ACCEPTED**. Stage 5 is **ACCEPTED / COMPLETE**
+with 5.1, 5.2, 5.3A, audit-only 5.3B, and 5.4 **ACCEPTED**. Stage 6 is **NOT STARTED**.
 The stages below track the route to that target and do not reopen its
 representation. The architecture-lock documentation PR is not Stage 0.
 Stages 0–4 retain their historical checkpoint descriptions; their then-current Arc
@@ -598,9 +598,8 @@ checked only at **ACCEPTED**.
   - **Still tracked:** Tangential Arc body drag can create an empty Undo step.
     This separately tracked issue is not fixed by 4.2;
     driving Radius continues to lock the body radius. Stage 5/6 work was outside Stage 4.
-- [ ] **Stage 5 — Semantic cleanup & compatibility isolation** — **IN PROGRESS / PARTIALLY ACCEPTED**
-  - **Status:** 5.1, 5.2, 5.3A, and 5.3B ACCEPTED; 5.4 NOT STARTED. The parent
-    stage remains open until its remaining scope is completed and accepted.
+- [x] **Stage 5 — Semantic cleanup & compatibility isolation** — **ACCEPTED / COMPLETE**
+  - **Status:** 5.1, 5.2, 5.3A, audit-only 5.3B, and 5.4 ACCEPTED.
   - **Scope:** Audit/remove obsolete Arc helpers, compatibility aliases, pointer paths,
     alternate derived-center references, stale bulge assumptions, and duplicate/dead
     paths after caller migration. Preserve legitimate generic semantic-point discovery,
@@ -613,19 +612,32 @@ checked only at **ACCEPTED**.
     | 5.1 | **ACCEPTED** — removed verified unused helpers, an empty component hook, unused Arc drag metadata, and a marker alias. | `c01c5fa4392fff8bb58787112033a6cdadabd04c` | [#617](https://github.com/glimman79/svg-box-designer/pull/617) / `85525162dcd11f41758f8ad753c727c9a87c7510` |
     | 5.2 | **ACCEPTED** — removed unused body-routing helpers and obsolete Arc-center DOM routing; persistent-point pointer ownership remains. | `85525162dcd11f41758f8ad753c727c9a87c7510` | [#618](https://github.com/glimman79/svg-box-designer/pull/618) / `1ed88e97999699aee6db71844519030bf37c6c9d` |
     | 5.3A | **ACCEPTED** — removed alternate derived Arc-center references, their Coincidence/solver/authoring paths, and obsolete bulge-Arc restore conversion; current point-based Dimension producers use persistent IDs. | `1ed88e97999699aee6db71844519030bf37c6c9d` | [#619](https://github.com/glimman79/svg-box-designer/pull/619) / `8b8f9fade47c15bfeade70471c002f87813a42e5` |
-    | 5.3B | **ACCEPTED** — completed audit only; no code changes or PR. | Accepted 5.3A main above | No implementation commit or PR |
-    | 5.4 | **NOT STARTED** — remaining consolidation, subject to its authorized task scope. | Not assigned | Not assigned |
+    | 5.3B | **ACCEPTED — audit only** — no further justified obsolete Arc-specific legacy infrastructure found within the defined audit scope; no code changes or PR. | Accepted 5.3A main above | No implementation commit or PR |
+    | 5.4 | **ACCEPTED** — retired obsolete solver APIs and their test-only calls, without compatibility wrappers; active solving and canonical architecture preserved. | `153ccdc3184ec30183baef63206c7c7577428593` | [#621](https://github.com/glimman79/svg-box-designer/pull/621) / `5d7f53d2b355e7d00fcf4d6e01446fa13068c9aa` |
 
-  - **Acceptance source:** The user's documentation/workflow brief confirms acceptance
-    of 5.1, 5.2, 5.3A, and audit-only 5.3B. Earlier PR descriptions preserve their
-    pre-acceptance checkpoints; this sync does not claim new browser or solver results.
+  - **Acceptance source:** The user's final Stage 5 brief confirms all substages accepted
+    and successful manual browser testing after #621 merged. The merged implementations
+    and accepted 5.3B audit support Stage 5 closure. Earlier PR descriptions preserve
+    their pre-acceptance checkpoints; this sync claims no new browser or solver results.
+  - **5.4 evidence:** Removed `solveDrawingConstrainedVariableIntent`, `DrawingVariableIntent`,
+    `minimizeDrawingVariableObjective`, and `DrawingSoftVariableObjective`. #621 records
+    unchanged surviving solver statements, TypeScript/build PASS, 49/56 Drawing/CAD
+    scripts PASS with the same seven failures, and Chromium Arc 23/23 and Coincidence
+    10/10 PASS on baseline and implementation. These are prior PR results, not reruns.
   - **Current compatibility boundary:** Old bulge Arc records and derived-center
     references are unsupported and rejected, not migrated. `migrateDrawingDocument`
     remains for initialization, canonical validation/normalization, and independent
     Line migration. Generic semantic-point infrastructure remains; future dependent
     points do not justify restoring obsolete Arc-center identity.
-  - **Remaining:** Stage 5.4 and parent-stage acceptance. No closure is claimed for
-    existing R1–R3, R5, baseline failures, or tangential-drag empty Undo steps.
+  - **Known unresolved issues:** The seven Drawing/CAD failures predate 5.4 and remain
+    unchanged after #621: `drawing-primary-mousedown`, `drawing-box-selection`,
+    `drawing-alignment-snap`, `drawing-angular-reference`, `drawing-line-authority`,
+    `drawing-live-direction-coexistence`, and `drawing-endpoint-direction-inference`.
+    Earlier 14-script results also included the separately selected d2 scripts; Stage 5
+    acceptance claims no fixes to those historical failures. R1–R3 remain open; R5
+    remains unimplemented, and tangential Arc body drag can still create empty Undo steps.
+    Stage 5 completion does not resolve all Drawing/CAD defects or assign unrelated fixes
+    to Stage 6.
 - [ ] **Stage 6 — Final acceptance & documentation sync** — **NOT STARTED**
   - **Status:** NOT STARTED.
   - **Scope:** Complete full regression and browser acceptance, current-format restore
@@ -633,6 +645,14 @@ checked only at **ACCEPTED**.
     final cleanup audit, and documentation sync. Stage 3's canonical representation remains
     accepted; its historical obsolete-Arc migration was removed in accepted Stage 5.3A.
     This documentation sync does not complete Stage 6 or reinstate old Arc-format support.
+  - **Starting point:** Completed Stage 5 canonical Circle/Arc architecture, with the
+    unresolved issues above carried forward. Applicable regression/acceptance covers
+    Constraints and Dimensions, Direct Manipulation, persistent point identity, Undo/Redo,
+    supported migration/restore, browser behavior, and architecture/documentation consistency.
+  - **Open scope question:** What does the existing "target save/reload" acceptance item
+    require while user-facing Drawing Save/Reload (R5) is unimplemented? Existing restore
+    and normalization coverage is not that capability. Clarify during separately authorized
+    Stage 6 planning; this handoff authorizes neither R5 nor unrelated defect fixes.
   - **Baseline:** Not assigned.
   - **PR:** Not assigned.
   - **Merged commit:** Not assigned.
