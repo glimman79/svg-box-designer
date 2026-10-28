@@ -1,5 +1,5 @@
 import type { DrawingAngleSector, DrawingDimension, DrawingDimensionKind, DrawingDimensionRole, DrawingDocumentV2, DrawingEntityReference, DrawingGeometryReference, DrawingLineEntity, DrawingPoint, DrawingPointReference, DrawingSketchV2, ResolvedDrawingLine } from './drawingTypes';
-import { pointIdForLineEndpoint, removeLineAndOrphans, resolveArc, resolveLine } from './drawingTopology.js';
+import { pointIdForLineEndpoint, removeLineAndOrphans, resolveLine } from './drawingTopology.js';
 import { pointSolverVariables, type DrawingSolverVariable } from './drawingSolverVariables.js';
 import { dimensionIncreasesConstraintRank } from './drawingConstraintAnalysis.js';
 import { candidateForSector, createLineAngleBasis, selectLineAngleCandidate } from './drawingLineAngle.js';
@@ -36,16 +36,11 @@ export type DimensionToolState =
   | Readonly<{ phase: 'placementPreview'; dimension: DrawingDimension; cursor: DrawingPoint }>;
 
 export const lineDimensionReferences = (line: DrawingLineEntity): readonly [DrawingPointReference, DrawingPointReference] => ([
-  { kind: 'point', entityId: line.id, point: 'start' }, { kind: 'point', entityId: line.id, point: 'end' },
+  { kind: 'sketchPoint', pointId: line.startPointId }, { kind: 'sketchPoint', pointId: line.endPointId },
 ]);
 export const resolveDrawingPointReference = (sketch: DrawingSketchV2, reference: DrawingGeometryReference): DrawingPoint | null => {
   if (reference.kind === 'datum') return reference.datum === 'ORIGIN' ? { x: 0, y: 0 } : null;
   if (reference.kind === 'sketchPoint') { const point = sketch.points[reference.pointId]; return point ? { x: point.x, y: point.y } : null; }
-  if (reference.kind === 'derivedPoint') {
-    const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[reference.entityId];
-    const arc = reference.role === 'center' && entity?.type === 'arc' ? resolveArc(sketch, entity) : null;
-    return arc ? arc.center : null;
-  }
   if (reference.kind !== 'point') return null;
   const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[reference.entityId];
   if (entity?.type !== 'line') return null;
@@ -55,10 +50,7 @@ export const resolveDrawingPointReference = (sketch: DrawingSketchV2, reference:
 export const drawingPointReferenceDependencies = (sketch: DrawingSketchV2, reference: DrawingPointReference): readonly DrawingSolverVariable[] => {
   if (reference.kind === 'datum') return [];
   const pointId = sketchPointIdFromReference(sketch, reference);
-  if (pointId) return pointSolverVariables(pointId);
-  if (reference.kind !== 'derivedPoint') return [];
-  const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[reference.entityId];
-  return entity?.type === 'arc' && resolveArc(sketch, entity) ? pointSolverVariables(entity.centerPointId) : [];
+  return pointId ? pointSolverVariables(pointId) : [];
 };
 export const sketchPointIdFromReference = (sketch: DrawingSketchV2, reference: DrawingPointReference): string | null => {
   if (reference.kind === 'sketchPoint') return sketch.points[reference.pointId] ? reference.pointId : null;
@@ -253,7 +245,7 @@ export const parseLinearDimension = (input: string): number | null => {
   return Number.isFinite(value) && value >= 0 ? value : null;
 };
 
-export const semanticGeometryReferenceKey = (reference: DrawingGeometryReference): string => reference.kind === 'datum' ? `datum:${reference.datum}` : reference.kind === 'sketchPoint' ? `point:${reference.pointId}` : reference.kind === 'derivedPoint' ? `derived:${reference.entityId}:${reference.role}` : reference.kind === 'entity' ? `entity:${reference.entityId}` : `legacy:${reference.entityId}:${reference.point}`;
+export const semanticGeometryReferenceKey = (reference: DrawingGeometryReference): string => reference.kind === 'datum' ? `datum:${reference.datum}` : reference.kind === 'sketchPoint' ? `point:${reference.pointId}` : reference.kind === 'entity' ? `entity:${reference.entityId}` : `legacy:${reference.entityId}:${reference.point}`;
 export const canonicalDimensionReferencePairKey = (input: DrawingDimension | readonly DrawingGeometryReference[]): string => {
   if (Array.isArray(input)) return input.map(semanticGeometryReferenceKey).sort().join('|');
   const dimension = input as DrawingDimension;

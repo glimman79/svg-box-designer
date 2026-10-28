@@ -108,7 +108,7 @@ export const filterDrawingInferenceCandidatesForAuthoring = (
   applicability: 'segment' | 'arc-endpoint' | 'circle-p1' | 'circle-p2',
 ): DrawingInferenceCandidates => applicability === 'segment' || applicability === 'arc-endpoint' ? candidates : {
   ...candidates,
-  endpoints: applicability === 'circle-p1' ? candidates.endpoints.filter(({ reference }) => reference.kind !== 'derivedPoint') : [],
+  endpoints: applicability === 'circle-p1' ? candidates.endpoints : [],
   midpoints: applicability === 'circle-p1' ? candidates.midpoints : [],
   lines: applicability === 'circle-p1' ? candidates.lines : [],
   alignmentsX: applicability === 'circle-p1' ? candidates.alignmentsX : [],

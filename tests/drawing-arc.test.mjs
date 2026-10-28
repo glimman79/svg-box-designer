@@ -1,17 +1,21 @@
 import test from 'node:test';
+import { readFileSync, readdirSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { angleIsOnDrawingArc, pointIsOnDrawingArc, distanceToArc, projectPointToArc, finiteArcConstraintResidual, deriveArcThroughThreePoints, drawingArcPath, migrateLegacyArc, resolveDrawingArc } from '../.test-build/drawing-arc/drawingArcGeometry.js';
+import { angleIsOnDrawingArc, pointIsOnDrawingArc, distanceToArc, projectPointToArc, finiteArcConstraintResidual, deriveArcThroughThreePoints, drawingArcPath, resolveDrawingArc } from '../.test-build/drawing-arc/drawingArcGeometry.js';
 import { commitArcForm, EMPTY_ARC_INTERACTION, acceptArcEndpoint, updateArcPreview, resolveArcPreview } from '../.test-build/drawing-arc/drawingArcTool.js';
 import { appendArcToActiveSketch } from '../.test-build/drawing-arc/drawingDocumentMutation.js';
+import { appendDimension, classifyNewDimensionRole, createPointToLineDimension, createPointToPointDimension, deleteEntityWithDependentDimensions, displayedDimensionMeasurement, drawingPointReferenceDependencies, resolveDrawingPointReference } from '../.test-build/drawing-arc/drawingDimension.js';
+import { createCoincidentConstraint } from '../.test-build/drawing-arc/drawingCoincidentConstraint.js';
+import { EMPTY_DRAWING_HISTORY, transactDrawingDocument, undoDrawingDocument, redoDrawingDocument } from '../.test-build/drawing-arc/drawingHistory.js';
 import { migrateDrawingDocument } from '../.test-build/drawing-arc/drawingTypes.js';
 import { analyzeDrawingConstraints } from '../.test-build/drawing-arc/drawingConstraintAnalysis.js';
 import { drawingEntityEquations, drawingEntitySolverVariables } from '../.test-build/drawing-arc/drawingEntityDefinition.js';
-import { circularRadiusSolverVariable, readDrawingSolverVariable, writeDrawingSolverVariable } from '../.test-build/drawing-arc/drawingSolverVariables.js';
+import { pointSolverVariables, circularRadiusSolverVariable, readDrawingSolverVariable, writeDrawingSolverVariable } from '../.test-build/drawing-arc/drawingSolverVariables.js';
 import { solveDrawingDragCandidate } from '../.test-build/drawing-arc/drawingDirectManipulation.js';
-import { solveDrawingVariableTargets, verifyDrawingConstraints, DRAWING_CONSTRAINT_TOLERANCE_MM } from '../.test-build/drawing-arc/drawingConstraintSolver.js';
-import { resolveArc, resolveLine, validateDrawingTopology } from '../.test-build/drawing-arc/drawingTopology.js';
+import { solveDrawingDimensionEdit, solveDrawingVariableTargets, verifyDrawingConstraints, DRAWING_CONSTRAINT_TOLERANCE_MM } from '../.test-build/drawing-arc/drawingConstraintSolver.js';
+import { collectDrawingAuthoringPoints, resolveArc, resolveLine, validateDrawingTopology } from '../.test-build/drawing-arc/drawingTopology.js';
 
-const accepted = (point, pointId = null) => ({ point, pointId, midpointLineId: null, lineBodyId: null, curveId: null, derivedPointReference: null });
+const accepted = (point, pointId = null) => ({ point, pointId, midpointLineId: null, lineBodyId: null, curveId: null });
 const emptyDocument = () => ({ schemaVersion: 2, unit: 'mm', activeSketchId: 's', sketchOrder: ['s'], sketches: { s: { id: 's', name: 'S', points: {}, entities: {}, entityOrder: [], dimensions: {}, dimensionOrder: [], geometricConstraints: {}, geometricConstraintOrder: [] } } });
 const close = (a, b, eps = 1e-8) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
 
@@ -39,19 +43,19 @@ test('authoring commit persists center/radius/endpoints/orientation without P3 o
   assert.equal(validateDrawingTopology(doc).ok, true);
 });
 
-test('legacy boundary migration is deterministic and geometrically equivalent for both signs', () => {
+test('obsolete bulge Arc records are rejected without allocating a replacement center', () => {
   for (const bulge of [.5, 2, -.5, -2, 1, -1]) {
-    const start={id:'a',x:0,y:0}, end={id:'b',x:10,y:0};
-    const expected=migrateLegacyArc({id:'arc',type:'arc',startPointId:'a',endPointId:'b',bulge},start,end); assert.ok(expected);
-    const legacy={...emptyDocument(),sketches:{s:{...emptyDocument().sketches.s,points:{a:start,b:end},entities:{arc:{id:'arc',type:'arc',startPointId:'a',endPointId:'b',bulge}},entityOrder:['arc']}}};
-    const first=migrateDrawingDocument(legacy), second=migrateDrawingDocument(first), arc=first.sketches.s.entities.arc;
-    assert.equal(arc.orientation,bulge>0?'CCW':'CW'); assert.equal(arc.centerPointId,'legacy:arc:center');
-    assert.equal(Object.keys(second.sketches.s.points).length,3);
-    const resolved=resolveArc(first.sketches.s,arc); assert.ok(resolved);
-    close(resolved.center.x,expected.center.x); close(resolved.center.y,expected.center.y); close(resolved.radius,expected.radius); close(resolved.signedSweep,expected.signedSweep);
-    for (const t of [.2,.5,.8]) { close(resolved.center.x+resolved.radius*Math.cos(resolved.startAngle+resolved.signedSweep*t), expected.center.x+expected.radius*Math.cos(resolved.startAngle+expected.signedSweep*t)); }
+    const points = { a: { id: 'a', x: 0, y: 0 }, b: { id: 'b', x: 10, y: 0 } };
+    const legacy = { ...emptyDocument(), sketches: { s: { ...emptyDocument().sketches.s, points,
+      entities: { arc: { id: 'arc', type: 'arc', startPointId: 'a', endPointId: 'b', bulge } }, entityOrder: ['arc'] } } };
+    const restored = migrateDrawingDocument(legacy);
+    assert.deepEqual(restored.sketches.s.entities, {});
+    assert.deepEqual(restored.sketches.s.entityOrder, []);
+    assert.deepEqual(restored.sketches.s.points, points, 'no synthetic center or coordinate-based identity reuse');
+    assert.deepEqual(migrateDrawingDocument(restored), restored);
   }
 });
+
 
 test('target Arc exposes seven variables, two intrinsic equations and five DOF', () => {
   const sketch={...emptyDocument().sketches.s,points:{o:{id:'o',x:0,y:0},a:{id:'a',x:5,y:0},b:{id:'b',x:0,y:5}},entities:{arc:{id:'arc',type:'arc',centerPointId:'o',radius:5,startPointId:'a',endPointId:'b',orientation:'CCW'}},entityOrder:['arc']};
@@ -152,22 +156,26 @@ test('restore omits invalid Arcs and their dependent references without throwing
   }
 });
 
-test('legacy center allocation avoids unrelated identities and migrates center references deterministically', () => {
-  const base=emptyDocument().sketches.s;
-  const points={a:{id:'a',x:5,y:0},b:{id:'b',x:0,y:5},p:{id:'p',x:1,y:1},'legacy:arc:center':{id:'legacy:arc:center',x:100,y:200},'legacy:arc:center:1':{id:'legacy:arc:center:1',x:300,y:400}};
-  const legacy={id:'arc',type:'arc',startPointId:'a',endPointId:'b',bulge:1};
-  const constraint={id:'center',kind:'COINCIDENT',variant:'point-derived-point',references:[{kind:'sketchPoint',pointId:'p'},{kind:'derivedPoint',entityId:'arc',role:'center'}]};
-  for(const order of [['arc','other'],['other','arc']]){
-    const sketch={...base,points,entities:Object.fromEntries(order.map(id=>[id,{...legacy,id}])),entityOrder:order,geometricConstraints:{center:constraint},geometricConstraintOrder:['center']};
-    const document=migrateDrawingDocument({...emptyDocument(),sketches:{s:sketch}}),restored=document.sketches.s;
-    assert.equal(restored.entities.arc.centerPointId,'legacy:arc:center:2');
-    assert.deepEqual(restored.points['legacy:arc:center'],points['legacy:arc:center']);
-    assert.equal(restored.geometricConstraints.center.variant,'point-point');
-    assert.ok(restored.geometricConstraints.center.references.some(r=>r.pointId==='legacy:arc:center:2'));
-    assert.ok(resolveArc(restored,restored.entities.arc));assert.ok(resolveArc(restored,restored.entities.other));
-    assert.deepEqual(migrateDrawingDocument(document),document);
-  }
+test('obsolete center references are rejected rather than transferred to the persistent center', () => {
+  const document = canonicalArcDocument(), sketch = document.sketches.s;
+  const reference = { kind: 'derivedPoint', entityId: 'arc', role: 'center' };
+  const dimension = { id: 'obsolete', kind: 'ALIGNED_DISTANCE', role: 'driving', value: 5,
+    references: [{ kind: 'datum', datum: 'ORIGIN' }, reference], placement: { kind: 'linear', offset: 1 } };
+  const constraint = { id: 'obsolete', kind: 'COINCIDENT', variant: 'point-derived-point',
+    references: [{ kind: 'sketchPoint', pointId: 'p' }, reference] };
+  const invalid = { ...document, sketches: { s: { ...sketch, dimensions: { obsolete: dimension }, dimensionOrder: ['obsolete'],
+    geometricConstraints: { obsolete: constraint }, geometricConstraintOrder: ['obsolete'] } } };
+  assert.equal(resolveDrawingPointReference(sketch, reference), null);
+  assert.equal(validateDrawingTopology(invalid).ok, false);
+  assert.equal(appendDimension(document, dimension), document);
+  const restored = migrateDrawingDocument(invalid);
+  assert.deepEqual(restored.sketches.s.dimensions, {});
+  assert.deepEqual(restored.sketches.s.geometricConstraints, {});
+  assert.deepEqual(restored.sketches.s.points, sketch.points);
+  assert.deepEqual(restored.sketches.s.entities, sketch.entities);
+  assert.deepEqual(migrateDrawingDocument(restored), restored);
 });
+
 
 test('generic intrinsic rank remains two across radius scales with free, partial and locked mobility', () => {
   for (const radius of [2e-9,1e-6,2e-6,1,5,1e6]) {
@@ -352,4 +360,114 @@ test('endpoint tolerance cannot admit invalid canonical Arc domains or radial de
   const collapsed = { ...valid, points: { ...valid.points, b: { ...valid.points.a, id: 'b' } } };
   const targets = drawingEntitySolverVariables(collapsed.entities.arc).map(variable => ({ variable, value: readDrawingSolverVariable(collapsed, variable) }));
   assert.equal(solveDrawingVariableTargets(collapsed, targets), null);
+});
+
+// Stage 5.3A: exercise only current persistent identities across public boundaries.
+function canonicalArcDocument(shared = false) {
+  const document = emptyDocument();
+  const points = { o: { id: 'o', x: 3, y: 4 }, a: { id: 'a', x: 8, y: 4 }, b: { id: 'b', x: 3, y: 9 },
+    p: { id: 'p', x: 3, y: 4 }, q: { id: 'q', x: -2, y: 4 },
+    u: { id: 'u', x: -20, y: -10 }, v: { id: 'v', x: 20, y: -10 } };
+  const entities = { arc: { id: 'arc', type: 'arc', centerPointId: 'o', radius: 5, startPointId: 'a', endPointId: 'b', orientation: 'CCW' },
+    line: { id: 'line', type: 'line', startPointId: 'p', endPointId: 'q' },
+    support: { id: 'support', type: 'line', startPointId: 'u', endPointId: 'v' },
+    ...(shared ? { circle: { id: 'circle', type: 'circle', centerPointId: 'o', radius: 2 } } : {}) };
+  return { ...document, sketches: { s: { ...document.sketches.s, points, entities, entityOrder: Object.keys(entities) } } };
+}
+
+const assertCanonical = document => {
+  assert.equal(validateDrawingTopology(document).ok, true);
+  assert.doesNotMatch(JSON.stringify(document), /derivedPoint|point-derived-point|"bulge"/);
+  assert.deepEqual(migrateDrawingDocument(JSON.parse(JSON.stringify(document))), document);
+};
+
+test('persistent Arc center Dimensions edit through the canonical solver and retain rank and reference classification', () => {
+  for (const kind of ['ALIGNED_DISTANCE', 'HORIZONTAL_DISTANCE', 'VERTICAL_DISTANCE', 'POINT_TO_LINE_DISTANCE']) {
+    const document = canonicalArcDocument(), sketch = document.sketches.s;
+    const pointReference = { kind: 'sketchPoint', pointId: 'o' };
+    const dimension = kind === 'POINT_TO_LINE_DISTANCE'
+      ? createPointToLineDimension(pointReference, { kind: 'entity', entityId: 'support' }, sketch.points.o,
+        resolveLine(sketch, sketch.entities.support), 'point', { x: 10, y: 0 }, 'center')
+      : createPointToPointDimension([{ kind: 'datum', datum: 'ORIGIN' }, pointReference], { x: 0, y: 0 }, sketch.points.o,
+        kind, { x: 10, y: 0 }, 'center');
+    assert.ok(dimension);
+    assert.deepEqual(drawingPointReferenceDependencies(sketch, pointReference), pointSolverVariables('o'));
+    const placed = appendDimension(document, dimension), active = placed.sketches.s;
+    assert.equal(active.dimensions.center.role, 'driving');
+    const component = analyzeDrawingConstraints(active).componentByPointId.get('o');
+    assert.equal(component.constraintRank, 3);
+    assert.equal(classifyNewDimensionRole(active, { ...dimension, id: 'duplicate' }).reason, 'duplicate');
+    const reference = { ...dimension, id: 'reference', role: 'reference', value: 999 };
+    const annotated = { ...placed, sketches: { s: { ...active, dimensions: { ...active.dimensions, reference }, dimensionOrder: ['center', 'reference'] } } };
+    assert.equal(analyzeDrawingConstraints(annotated.sketches.s).componentByPointId.get('o').constraintRank, component.constraintRank);
+    const target = dimension.value + 2, edited = solveDrawingDimensionEdit({ document: annotated, dimensionId: 'center', targetValue: target });
+    assert.equal(edited.ok, true, edited.message);
+    const result = edited.document.sketches.s;
+    close(displayedDimensionMeasurement(result, result.dimensions.reference), target, 1e-6);
+    assert.equal(result.entities.arc.centerPointId, 'o');
+    assertCanonical(edited.document);
+  }
+});
+
+test('Arc deletion removes exclusive points and keeps shared center identities and relations through Undo/Redo', () => {
+  for (const shared of [false, true]) {
+    let document = canonicalArcDocument(shared), sketch = document.sketches.s;
+    const centerDimension = createPointToPointDimension([{ kind: 'datum', datum: 'ORIGIN' }, { kind: 'sketchPoint', pointId: 'o' }],
+      { x: 0, y: 0 }, sketch.points.o, 'ALIGNED_DISTANCE', { x: 10, y: 10 }, 'center');
+    const endpointDimension = createPointToPointDimension([{ kind: 'datum', datum: 'ORIGIN' }, { kind: 'sketchPoint', pointId: 'a' }],
+      { x: 0, y: 0 }, sketch.points.a, 'ALIGNED_DISTANCE', { x: 10, y: 10 }, 'endpoint');
+    const coincidence = createCoincidentConstraint(sketch, 'o', 'p');
+    assert.ok(coincidence, 'equal coordinates retain two distinct identities joined by Coincidence');
+    const radius = { id: 'radius', kind: 'CIRCULAR_SIZE', mode: 'radius', role: 'driving', value: 5,
+      references: [{ kind: 'entity', entityId: 'arc' }], placement: { kind: 'radial', anchor: { x: 10, y: 10 } } };
+    document = { ...document, sketches: { s: { ...sketch,
+      dimensions: { center: centerDimension, endpoint: endpointDimension, radius }, dimensionOrder: ['center', 'endpoint', 'radius'],
+      geometricConstraints: { [coincidence.id]: coincidence }, geometricConstraintOrder: [coincidence.id] } } };
+    assertCanonical(document);
+    const transaction = transactDrawingDocument(EMPTY_DRAWING_HISTORY, document, doc => deleteEntityWithDependentDimensions(doc, 'arc'));
+    const remaining = transaction.document.sketches.s;
+    assert.equal(Boolean(remaining.points.o), shared);
+    assert.equal(Boolean(remaining.dimensions.center), shared);
+    assert.equal(Boolean(remaining.geometricConstraints[coincidence.id]), shared);
+    assert.equal(remaining.points.a, undefined); assert.equal(remaining.points.b, undefined);
+    assert.equal(remaining.dimensions.endpoint, undefined); assert.equal(remaining.dimensions.radius, undefined);
+    assert.deepEqual(remaining.entities.line, sketch.entities.line, 'overlapping point p and its Line survive');
+    assert.deepEqual(remaining.points.p, sketch.points.p);
+    assertCanonical(transaction.document);
+    const undone = undoDrawingDocument(transaction.history, transaction.document);
+    assert.deepEqual(undone.document, document); assertCanonical(undone.document);
+    const redone = redoDrawingDocument(undone.history, undone.document);
+    assert.deepEqual(redone.document, transaction.document); assertCanonical(redone.document);
+    const noOp = transactDrawingDocument(redone.history, redone.document, doc => deleteEntityWithDependentDimensions(doc, 'arc'));
+    assert.equal(noOp.changed, false); assert.equal(noOp.history, redone.history);
+  }
+});
+
+test('current authoring and History produce only canonical Arc center references', () => {
+  const created = transactDrawingDocument(EMPTY_DRAWING_HISTORY, emptyDocument(), document => {
+    let state = acceptArcEndpoint(EMPTY_ARC_INTERACTION, accepted({ x: 5, y: 0 }));
+    state = acceptArcEndpoint(state, accepted({ x: 0, y: 5 }));
+    return appendArcToActiveSketch(document, commitArcForm(state, { x: -5, y: 0 }, 'arc').entity,
+      (() => { let n = 0; return () => `created-${++n}`; })());
+  });
+  const sketch = created.document.sketches.s, center = sketch.entities.arc.centerPointId;
+  const candidates = collectDrawingAuthoringPoints(sketch);
+  const candidate = candidates.find(point => point.persistentPointId === center);
+  assert.deepEqual(candidate.reference, { kind: 'sketchPoint', pointId: center });
+  const moved = solveDrawingDragCandidate(created.document, { kind: 'arc-center', entityId: 'arc' }, { x: 2, y: 3 });
+  assert.ok(moved); assertCanonical(moved); assertCanonical(created.document);
+  const committed = transactDrawingDocument(created.history, created.document, () => moved);
+  assertCanonical(committed.document);
+  const undone = undoDrawingDocument(committed.history, committed.document);
+  assert.deepEqual(undone.document, created.document); assertCanonical(undone.document);
+  assert.deepEqual(redoDrawingDocument(undone.history, undone.document).document, moved);
+});
+
+test('active source has no obsolete Arc-center reference types, producers or dispatch', () => {
+  const directory = new URL('../src/app/', import.meta.url);
+  for (const file of readdirSync(directory).filter(file => /\.tsx?$/.test(file))) {
+    assert.doesNotMatch(readFileSync(new URL(file, directory), 'utf8'),
+      /derivedPoint|point-derived-point|DrawingDerivedPointReference|DrawingPointToDerivedPointCoincidentConstraint|migrateLegacyArc|LegacyDrawingArcEntity/,
+      file);
+  }
 });

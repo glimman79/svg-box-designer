@@ -121,7 +121,7 @@ export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTop
     for (const dimension of Object.values(sketch.dimensions) as DrawingDimension[]) for (const reference of dimension.references) {
       if (reference.kind === 'datum') { if (reference.datum !== 'ORIGIN') errors.push(`Unsupported datum reference: ${dimension.id}`); continue; }
       if (reference.kind === 'sketchPoint') { if (!sketch.points[reference.pointId]) errors.push(`Dimension reference cannot resolve: ${dimension.id}`); continue; }
-      if (reference.kind === 'derivedPoint') { const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[reference.entityId]; if (reference.role !== 'center' || entity?.type !== 'arc' || !resolveArc(sketch, entity)) errors.push(`Dimension reference cannot resolve: ${dimension.id}`); continue; }
+      if (reference.kind !== 'entity' && reference.kind !== 'point') { errors.push(`Unsupported Dimension reference: ${dimension.id}`); continue; }
       const line = sketch.entities[reference.entityId]; if (!line || reference.kind === 'point' && (line.type !== 'line' || !sketch.points[pointIdForLineEndpoint(line, reference.point)])) errors.push(`Dimension reference cannot resolve: ${dimension.id}`);
     }
     for (const constraint of Object.values(sketch.geometricConstraints ?? {})) {
@@ -132,6 +132,7 @@ export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTop
         continue;
       }
       if (constraint.kind === 'COINCIDENT') {
+        if (!['point-point', 'point-linear-support', 'point-curve'].includes(constraint.variant)) { errors.push(`Unsupported Coincident variant: ${constraint.id}`); continue; }
         if (constraint.variant === 'point-linear-support') {
           const [point, edge] = constraint.references;
           const line = sketch.entities[edge.entityId], a = line?.type === 'line' && sketch.points[line.startPointId], b = line?.type === 'line' && sketch.points[line.endPointId];
@@ -143,13 +144,6 @@ export const validateDrawingTopology = (document: DrawingDocumentV2): DrawingTop
         if (constraint.variant === 'point-curve') {
           const [point, curve] = constraint.references, circle = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[curve.entityId];
           if (!sketch.points[point.pointId] || !circle || !['circle', 'arc'].includes(circle.type)) errors.push(`Geometric constraint reference cannot resolve: ${constraint.id}`);
-          continue;
-        }
-        if (constraint.variant === 'point-derived-point') {
-          const [point, derived] = constraint.references, entity = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[derived.entityId];
-          const key = `${point.pointId}\0derivedPoint\0${derived.entityId}\0${derived.role}`;
-          if (!sketch.points[point.pointId] || derived.role !== 'center' || entity?.type !== 'arc' || !resolveArc(sketch, entity)) errors.push(`Geometric constraint reference cannot resolve: ${constraint.id}`);
-          else if (coincidentPairs.has(key)) errors.push(`Duplicate Coincident constraint: ${constraint.id}`); else coincidentPairs.add(key);
           continue;
         }
         const [a, b] = constraint.references;

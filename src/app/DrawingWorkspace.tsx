@@ -120,7 +120,6 @@ type DrawingPlacementResolution = Readonly<{
   spatialSnap: DrawingSnap;
   interaction: LineSegmentInteractionState;
   position: Readonly<{ kind: 'endpoint'; point: DrawingPoint; pointId: string; entityId: string; endpoint: 'start' | 'end' }>
-    | Readonly<{ kind: 'derived-point'; point: DrawingPoint; reference: import('./drawingTypes').DrawingDerivedPointReference }>
     | Readonly<{ kind: 'midpoint'; point: DrawingPoint; entityId: string }>
     | Readonly<{ kind: 'line-body'; point: DrawingPoint; entityId: string; segmentParameter: number }>
     | Readonly<{ kind: 'curve'; point: DrawingPoint; entityId: string }>
@@ -579,8 +578,6 @@ export function DrawingWorkspace({
         ? { kind: 'curve', point: circleCurve.point, entityId: circleCurve.curveId }
       : snap.type === 'endpoint' && endpointPointId
         ? { kind: 'endpoint', point: snap.effectivePoint, pointId: endpointPointId, entityId: snap.entityId, endpoint: snap.endpoint }
-        : snap.type === 'endpoint' && snap.reference.kind === 'derivedPoint'
-          ? { kind: 'derived-point', point: snap.effectivePoint, reference: snap.reference }
         : snap.type === 'midpoint'
           ? { kind: 'midpoint', point: placementPoint, entityId: snap.entityId }
         : snap.type === 'line'
@@ -593,8 +590,7 @@ export function DrawingWorkspace({
 
   const commitSegmentPlacement = (tool: 'line' | 'profile', point: DrawingPoint, reusedPointId: string | null,
     acceptedInteraction: LineSegmentInteractionState, acceptedLineBodyId = acceptedInteraction.lineBodyId,
-    acceptedMidpointLineId = acceptedInteraction.midpointLineId,
-    acceptedDerivedPointReference: import('./drawingTypes').DrawingDerivedPointReference | null = null) => {
+    acceptedMidpointLineId = acceptedInteraction.midpointLineId) => {
     const pointId = reusedPointId ?? `point-${Date.now().toString(36)}-${++pointSequence.current}`;
     // The delayed click transaction must consume the inference accepted at the
     // click, not mutable hover state observed during the delay.
@@ -604,8 +600,8 @@ export function DrawingWorkspace({
     const acceptedParallelLineId = acceptedConstraintKind ? null : selectedSemantics.parallelLineId;
     const createId = () => `line-${Date.now().toString(36)}-${++entitySequence.current}`;
     const result = tool === 'profile'
-      ? applyResolvedProfileClick(acceptedInteraction, point, createId, pointId, acceptedLineBodyId, acceptedMidpointLineId, acceptedDerivedPointReference)
-      : applyResolvedLineClick(acceptedInteraction, point, createId, pointId, acceptedLineBodyId, acceptedMidpointLineId, acceptedDerivedPointReference);
+      ? applyResolvedProfileClick(acceptedInteraction, point, createId, pointId, acceptedLineBodyId, acceptedMidpointLineId)
+      : applyResolvedLineClick(acceptedInteraction, point, createId, pointId, acceptedLineBodyId, acceptedMidpointLineId);
     setSegmentInteraction(result.interaction);
     segmentInteractionRef.current = result.interaction;
     if (result.entity) {
@@ -618,9 +614,7 @@ export function DrawingWorkspace({
         acceptedInteraction.startLineId || acceptedLineBodyId
           ? { startLineId: acceptedInteraction.startLineId ?? undefined, endLineId: acceptedLineBodyId ?? undefined } : null,
         acceptedInteraction.startMidpointLineId || acceptedMidpointLineId
-          ? { startLineId: acceptedInteraction.startMidpointLineId ?? undefined, endLineId: acceptedMidpointLineId ?? undefined } : null,
-        acceptedInteraction.startDerivedPointReference || acceptedDerivedPointReference
-          ? { startPointId: acceptedInteraction.startDerivedPointReference ?? undefined, endPointId: acceptedDerivedPointReference ?? undefined } : null));
+          ? { startLineId: acceptedInteraction.startMidpointLineId ?? undefined, endLineId: acceptedMidpointLineId ?? undefined } : null));
       if (tool === 'line') {
         setCadCursor(null);
         setToolLifecycle((current) => finishDrawingConstruction(current));
@@ -879,8 +873,7 @@ export function DrawingWorkspace({
       scheduleDrawingProfileCommit(pendingProfileClickRef, window, () => {
         if (placement.position.kind === 'midpoint') commitSegmentPlacement('profile', effectivePoint, endpointPointId, placement.interaction,
           undefined, placement.position.entityId);
-        else commitSegmentPlacement('profile', effectivePoint, endpointPointId, placement.interaction, lineBodyId, undefined,
-          placement.position.kind === 'derived-point' ? placement.position.reference : null);
+        else commitSegmentPlacement('profile', effectivePoint, endpointPointId, placement.interaction, lineBodyId, undefined);
       });
       return;
     }
@@ -891,8 +884,7 @@ export function DrawingWorkspace({
       const lineBodyId = placement.position.kind === 'line-body' ? placement.position.entityId : null;
       commitSegmentPlacement('line', placement.position.point, endpointPointId, placement.interaction,
         placement.position.kind === 'midpoint' ? undefined : lineBodyId,
-        placement.position.kind === 'midpoint' ? placement.position.entityId : undefined,
-        placement.position.kind === 'derived-point' ? placement.position.reference : null);
+        placement.position.kind === 'midpoint' ? placement.position.entityId : undefined);
       return;
     }
     if (activeTool === 'circle') {
@@ -922,8 +914,7 @@ export function DrawingWorkspace({
         pointId: placement.position.kind === 'endpoint' ? placement.position.pointId : null,
         midpointLineId: placement.position.kind === 'midpoint' ? placement.position.entityId : null,
         lineBodyId: placement.position.kind === 'line-body' ? placement.position.entityId : null,
-        curveId: placement.position.kind === 'curve' ? placement.position.entityId : null,
-        derivedPointReference: placement.position.kind === 'derived-point' ? placement.position.reference : null };
+        curveId: placement.position.kind === 'curve' ? placement.position.entityId : null };
       if (!arcInteraction.start || !arcInteraction.end) {
         const next = acceptArcEndpoint(arcInteraction, accepted); setArcInteraction(next); arcInteractionRef.current = next;
       } else {

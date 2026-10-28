@@ -3,13 +3,13 @@ import { appendDimension, availableLineDimensionKinds, chooseLineDimensionKind, 
 import { createDrawingDocumentV1, createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/drawing-dimension/drawingTypes.js';
 import { appendEntityToActiveSketch } from '../.test-build/drawing-dimension/drawingProfileTool.js';
 
-const line = { id: 'line-17', type: 'line', start: { x: 0, y: 0 }, end: { x: 100, y: 50 } };
+const line = { id: 'line-17', type: 'line', startPointId: 'foundation-point-1', endPointId: 'foundation-point-2', start: { x: 0, y: 0 }, end: { x: 100, y: 50 } };
 assert.equal(measureDimension('ALIGNED_DISTANCE', line.start, line.end), Math.hypot(100, 50));
 assert.equal(measureDimension('HORIZONTAL_DISTANCE', line.start, line.end), 100);
 assert.equal(measureDimension('VERTICAL_DISTANCE', line.start, line.end), 50);
 const dimension = createLineDimension(line, 'ALIGNED_DISTANCE', { x: 40, y: 80 }, 'dimension-stable');
 assert.equal(dimension.id, 'dimension-stable');
-assert.deepEqual(dimension.references, [{ kind: 'point', entityId: 'line-17', point: 'start' }, { kind: 'point', entityId: 'line-17', point: 'end' }]);
+assert.deepEqual(dimension.references, [{ kind: 'sketchPoint', pointId: line.startPointId }, { kind: 'sketchPoint', pointId: line.endPointId }]);
 assert.equal('x' in dimension.references[0], false);
 assert.deepEqual(availableLineDimensionKinds({ ...line, end: { x: 100, y: 0 } }), ['ALIGNED_DISTANCE']);
 assert.deepEqual(availableLineDimensionKinds({ ...line, end: { x: 0, y: 100 } }), ['ALIGNED_DISTANCE']);

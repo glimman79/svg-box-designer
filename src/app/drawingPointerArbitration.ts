@@ -50,10 +50,6 @@ export const resolveDrawingPointerOwner = (
       ? { pointId: semantic.pointId, reference: semantic.reference, lineId: semantic.lineId, endpoint: semantic.point }
       : null;
   if (pointCandidate) {
-    if (pointCandidate.reference?.kind === 'derivedPoint' && pointCandidate.reference.role === 'center') {
-      const target = createArcCenterDragTarget(document, pointCandidate.reference.entityId);
-      if (target) return { kind: 'geometry', selection: { kind: 'semanticPoint', reference: pointCandidate.reference }, target };
-    }
     const pointId = pointCandidate.pointId ?? (() => {
       const sketch = document.sketches[document.activeSketchId];
       const line = sketch?.entities[pointCandidate.lineId ?? ''];

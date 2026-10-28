@@ -22,7 +22,7 @@ captureDimensionPointer(resolvedDimensionValueTarget, 23);
 assert.deepEqual(capturedPointers, [{ target: resolvedDimensionValueTarget, pointerId: 23 }],
   'the already-resolved Dimension value element, rather than the root SVG event owner, receives pointer capture');
 
-const line = { id: 'line-1', type: 'line', start: { x: 10, y: 20 }, end: { x: 110, y: 30 } };
+const line = { id: 'line-1', type: 'line', startPointId: 'p0', endPointId: 'p1', start: { x: 10, y: 20 }, end: { x: 110, y: 30 } };
 const clientLines = [{ id: line.id, start: line.start, end: line.end }];
 assert.deepEqual(resolveDimensionPreselection(clientLines, { x: 11, y: 20 })?.point, 'start');
 assert.deepEqual(resolveDimensionPreselection(clientLines, { x: 109, y: 30 })?.point, 'end');
