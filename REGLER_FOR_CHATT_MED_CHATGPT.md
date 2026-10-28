@@ -114,7 +114,7 @@ Analys och implementation ska hållas isär tills användaren uttryckligen välj
 
 ## 5. Codex- och GitHub-arbetsflöde
 
-Ny utveckling ska normalt börja från senast accepterade och mergade GitHub-`main`:
+Varje implementationsuppgift ska börja från senast accepterade och mergade GitHub-`main`:
 
 > accepterad main → ny branch/session → implementation → tester → commit → PR → användargranskning → merge → webbläsarverifiering → acceptans
 
@@ -124,17 +124,116 @@ verifiering samt presentera ändringarna för granskning. Merge kräver ett sepa
 uttryckligt godkännande från Mikael Glimvert. ChatGPT Chat förblir skrivskyddad genom
 hela arbetsflödet.
 
-Innan ChatGPT skapar en ny Codex-prompt för implementation eller dokumentation ska ChatGPT kontrollera den faktiskt accepterade `main`-branchen direkt mot GitHub, fastställa dess exakta aktuella commit-SHA och ange denna SHA i prompten som obligatorisk baseline.
+### 5.1 Två faser med en obligatorisk implementationsgrind
 
-Innan Codex ändrar repositoryt ska Codex kontrollera lokal `HEAD` och jämföra den med den verifierade GitHub-`main`-SHA som anges i prompten. Codex får fortsätta endast om de är identiska. Vid avvikelse ska Codex stoppa före implementation, inte arbeta vidare från checkouten och rapportera faktisk `HEAD`, förväntad SHA, aktuell branch, om en remote finns och om den förväntade commiten finns lokalt.
+**Fas 1 — Miljöförberedelse:** Codex får inspektera miljön, begära stödd
+nätverksbehörighet, läsa GitHub, hämta `main` och förbereda en ren, isolerad checkout.
+Detta tillåter inte ändring av applikationskällkod eller andra versionshanterade filer.
+Ett inaktuellt initialt `HEAD` blockerar implementation, men blockerar inte säker
+miljöförberedelse. ChatGPT Chats permanenta skrivskydd gäller även under förberedelsen;
+lokala Git-förberedelser utförs av Codex.
 
-Codex behöver inte själv verifiera hostad GitHub-`main` när ChatGPT har gjort det omedelbart innan prompten skapades. Saknad Git-remote, saknad lokal `main` eller blockerad GitHub-/nätverksåtkomst är därför inte i sig ett baseline-fel: om lokal `HEAD` är identisk med den exakta verifierade SHA som ChatGPT angav är baselinen verifierad och Codex får fortsätta. Processen förhindrar arbete från inaktuella eller okända snapshots utan att skapa falska varningar när den redan verifierade checkouten är korrekt.
+**Fas 2 — Auktoriserad implementation:** Codex får börja ändra repositoryfiler först
+när användaren uttryckligen har godkänt uppgiften/omfattningen och den isolerade
+checkoutens `HEAD` är exakt den verifierade baseline-SHA:n med rent arbetsträd.
+Dokumentation, tester och konfiguration omfattas också av denna grind. Inget
+förberedelsesteg innebär utökat ändrings- eller mergetillstånd.
 
-Efter att en PR har mergats är utvecklingsbranchen/sessionen avslutad. Nästa arbete ska normalt börja om från senaste accepterade `main`, inte fortsätta obegränsat på en gammal branch.
+### 5.2 Fastställ baseline och förbered checkout
 
-ChatGPT ska inspektera det faktiska repositoryt när aktuell implementation spelar roll. Antaganden om filstruktur, funktionalitet, arkitektur, implementationsstatus, tester eller minnen från äldre samtal får inte ersätta sådan kontroll.
+1. **Fastställ GitHub-sanningen.** Innan ChatGPT skriver en implementations- eller
+   dokumentationsprompt ska ChatGPT läsa accepterad, mergad `main` direkt från GitHub
+   och ange exakt fullständig commit-SHA i prompten. Codex kan också verifiera `main`
+   via GitHub-connectorn eller `git ls-remote --heads <verifierad-remote> main`.
+   Ett lokalt `main` eller `origin/main` är inte i sig ett färskt GitHub-bevis.
+   Dokumentera SHA, källa och när kontrollen gjordes; merge ensam bevisar inte
+   användaracceptans. Om GitHub visar en annan SHA än promptens obligatoriska baseline,
+   stoppa implementation och redovisa båda. Klarlägg vilken senaste accepterade SHA
+   som gäller innan redigering; byt inte tyst baseline och använd inte den äldre.
+2. **Inventera utan att skriva över.** Upptäck tillgängliga checkouter på nytt i varje
+   session. Läs reglerna och kontrollera `git rev-parse HEAD`,
+   `git branch --show-current`, `git status --porcelain=v1 --untracked-files=all`,
+   `git remote -v`, `git worktree list` och om baseline-commiten finns lokalt.
+   Kontrollera att remote verkligen avser rätt repository. Saknade tidigare kataloger
+   är ett förberedelsebehov, inte tillstånd att använda en gammal snapshot.
+3. **Hämta vid behov.** Om den verifierade commiten saknas, använd stödd
+   nätverksbehörighet enligt 5.3 och hämta GitHub-`main` från rätt remote. Kontrollera
+   att hämtad `main` motsvarar den verifierade SHA:n; en ändring under förberedelsen
+   måste klarläggas före implementation. Om ingen användbar checkout finns, klona
+   rätt repository till en ny ledig katalog. Återskapa aldrig saknat underlag från
+   chattminne eller lösryckta filer.
+4. **Isolera från exakt commit.** Återanvänd bara en förberedd checkout om dess SHA,
+   arbetsträd och branch är kontrollerade för denna uppgift. Skapa annars exempelvis
+   `git worktree add -b <ny-uppgiftsbranch> <ny-ledig-katalog> <verifierad-SHA>`
+   från ett användbart repository, eller skapa motsvarande ny branch i en separat
+   klon. Utgå från den exakta SHA:n, inte från en tidigare utvecklingsbranch.
+   Bevara befintliga brancher samt allt committat och ocommittat/ospårat arbete.
+   Använd inte destruktiv reset, clean, branchradering eller överskrivning för att få
+   ett rent utgångsläge. En upptagen katalog eller branch kräver ett nytt ledigt namn.
+5. **Verifiera grinden i arbetscheckouten.** Direkt före första redigeringen ska
+   `git rev-parse HEAD` vara identisk med verifierad SHA,
+   `git status --porcelain=v1 --untracked-files=all` ge tomt resultat och aktuell
+   branch vara den isolerade uppgiftsbranchen. Rapportera baseline, branch och renhet
+   samt koppla arbetet till användarens uttryckliga uppgiftsgodkännande. Vid fel:
+   stoppa implementation, rapportera faktisk/förväntad SHA, branch, arbetsträd,
+   remote och om commiten finns; fortsätt endast säker förberedelse tills grinden
+   uppfylls. Efter första ändringen är uppgiftsdiffen väntad, inte ett baseline-fel.
 
-Om Codex rapporterar en sådan miljöbegränsning ska ChatGPT nämna den utan att felaktigt underkänna en baseline som verifierats genom identiska SHA-värden.
+Sökvägar, branchnamn och SHA i exemplen är uppgiftsspecifika värden. Ingen tillfällig
+workspace-katalog eller tidigare etapps commit är en permanent baseline. När `main`
+avancerar gäller samma process med den nya accepterade SHA:n.
+
+### 5.3 Nätverksbehörighet och verkligt otillgänglig GitHub
+
+Den diagnostiserade miljön hade en fungerande proxy `http://proxy:8080`.
+Exekveringssandboxen saknade nätverksbehörighet; Git fungerade när kommandot kördes med
+`additional_permissions.network.enabled=true`. I miljöer som stöder denna form används
+den med kommandots stödda behörighetsläge, exempelvis
+`sandbox_permissions: "with_additional_permissions"`. Detta är ett observerat
+miljöbeteende, inte ett universellt Codex-API eller en behörighet som garanteras bestå
+över sessioner. Använd alltid den aktiva miljöns stödda mekanism för att begära
+nätverksåtkomst när Git behöver den.
+
+Behåll konfigurerad proxy, CA/TLS-verifiering och säkerhetskontroller. Ett misslyckat
+sandboxat Git-kommando bevisar inte proxyfel. Läs det konkreta felet och kontrollera
+miljöns nätverkspolicy/behörighet; om miljön medger det, kör om samma Git-operation med
+stödd nätverksbehörighet. Att den då lyckas skiljer sandboxbegränsningen från ett faktiskt
+proxyfel. Om den fortfarande misslyckas, skilj mellan destinationspolicy, DNS/proxy,
+TLS, autentisering och repositoryåtkomst utifrån felbevis. Rapportera felet utan
+hemligheter. Stäng inte av proxyn, kringgå inte sandboxen och ändra inte global
+proxykonfiguration som standardlösning. En bekräftad proxykonfigurationsavvikelse
+hanteras separat inom godkänd omfattning.
+
+Om GitHub verkligen inte kan nås kan den SHA som ChatGPT verifierade direkt på GitHub
+omedelbart före uppgiftsprompten fortfarande vara giltigt baseline-bevis. Codex behöver
+inte upprepa samma kontroll om detta färska bevis finns, lokal `HEAD` är exakt samma
+SHA och inget nyare motstridigt underlag finns. Saknad remote/lokal `main` eller blockerad
+Git-åtkomst underkänner då inte en i övrigt verifierad baseline; isolering, rent
+arbetsträd och uppgiftsgodkännande krävs fortfarande. Detta är inte tillstånd att
+använda en gammal prompts SHA för en ny uppgift. Om färskt GitHub-bevis saknas, commiten
+saknas lokalt eller SHA-värdena avviker: stoppa implementation och rapportera vad som
+saknas. Be om återställd stödd åtkomst eller färskt verifierbart baseline-underlag;
+gissa inte och börja inte från den tillgängliga gamla checkouten.
+
+### 5.4 Granskning, merge och nästa uppgift
+
+Efter verifiering ska Codex granska hela diffen, kontrollera godkänd omfattning och
+rapportera ändrade filer, kontroller, begränsningar, baseline, branch, commit och PR.
+Kontrollera GitHub-`main` igen före PR när åtkomst finns. Om den har avancerat, redovisa
+det och klarlägg behovet av ny baseline/verifiering innan leverans; flytta inte branchens
+bas tyst eller skriv över arbete. Om kontrollen inte går att göra ska begränsningen
+framgå utan påstående om ny verifiering.
+
+Att skapa en PR ger inte tillstånd att merga. Endast Mikael Glimverts separata,
+uttryckliga godkännande tillåter merge. ChatGPT Chat granskar den faktiska GitHub-diffen
+skrivskyddat. Efter merge är utvecklingsbranchen avslutad som arbetsbas. Nästa uppgift
+ska åter fastställa senaste accepterade `main` och börja på en ny isolerad branch från
+dess exakta SHA, även om den gamla sessionen eller checkouten fortfarande finns.
+
+ChatGPT ska inspektera det faktiska repositoryt när aktuell implementation spelar roll.
+Antaganden om struktur, arkitektur, funktionalitet, status, tester eller äldre samtal
+ersätter inte den kontrollen. Miljöbegränsningar ska rapporteras sakligt utan att
+felaktigt underkänna en baseline som verifierats genom identiska SHA-värden.
 
 ## 6. Kritisk granskning av Codex-rapporter
 

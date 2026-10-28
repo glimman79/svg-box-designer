@@ -1,9 +1,25 @@
 # Unreleased
 
+Entries record completed changes at their respective checkpoints. Current architecture
+and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
+
+## Documentation — architecture synchronization and Codex workflow
+
+- Synchronized central documentation with accepted Stage 5 substages and canonical Arc restore behavior.
+- Defined separate environment-preparation and authorized-implementation phases, with exact-SHA/clean-checkout checks, supported network permission, work preservation, and a fresh branch from accepted main for each task.
+- Preserved ChatGPT Chat read-only access, explicit Codex scope approval, and separate user merge approval.
+
+## Drawing — Stage 5 accepted cleanup substages
+
+- Stage 5.1 (ACCEPTED, #617): removed verified unused Drawing helpers and Arc drag metadata.
+- Stage 5.2 (ACCEPTED, #618): removed obsolete pointer compatibility routes while retaining persistent-point ownership.
+- Stage 5.3A (ACCEPTED, #619): removed derived Arc-center references and obsolete bulge-Arc migration; canonical validation, persistent point IDs, and independent Line migration remain.
+- Stage 5.3B (ACCEPTED): audit only, no code changes or PR. Stage 5.4 and Stage 6 remain NOT STARTED; Stage 5 is not complete.
+
 ## Documentation — Stage 4 acceptance
 
 - Record Mikael’s manual-test acceptance of Stage 4, 4.2 Coincidence and 4.3 performance on main `4135cd2d8e13a8fb21902a672367438c8b7657f1`.
-- Preserve historical evidence, architecture decisions, open R1–R3/R5, 14 baseline failures and the empty Undo-step issue. Stages 5–6 remain NOT STARTED. Documentation only.
+- Preserve historical evidence, architecture decisions, open R1–R3/R5, 14 baseline failures and the empty Undo-step issue. Stages 5–6 were NOT STARTED at that checkpoint (later Stage 5 acceptance is recorded above). Documentation only.
 
 ## Drawing — Stage 4.3B nonlinear solver correction (accepted after manual browser tests)
 
