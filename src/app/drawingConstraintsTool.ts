@@ -5,9 +5,9 @@ import { appendCircularSizeDimensions, createDimensionId } from './drawingDimens
 import type { DrawingDocumentV2, DrawingGeometricConstraint, DrawingPointReference, DrawingSketchV2 } from './drawingTypes.js';
 
 export type DrawingSelectionRef = Readonly<{ kind: 'line'; lineId: string }> | Readonly<{ kind: 'circle'; circleId: string }> | Readonly<{ kind: 'arc'; arcId: string }> | Readonly<{ kind: 'point'; pointId: string }>
-  | Readonly<{ kind: 'semanticPoint'; reference: Extract<DrawingPointReference, { kind: 'sketchPoint' | 'derivedPoint' }> }>;
+  | Readonly<{ kind: 'semanticPoint'; reference: Extract<DrawingPointReference, { kind: 'sketchPoint' }> }>;
 export const drawingSelectionKey = (ref: DrawingSelectionRef) => ref.kind === 'line' ? `line:${ref.lineId}` : ref.kind === 'circle' ? `circle:${ref.circleId}` : ref.kind === 'arc' ? `arc:${ref.arcId}` : ref.kind === 'point' ? `point:${ref.pointId}`
-  : ref.reference.kind === 'sketchPoint' ? `semanticPoint:sketchPoint:${ref.reference.pointId}` : `semanticPoint:derivedPoint:${ref.reference.entityId}:${ref.reference.role}`;
+  : `semanticPoint:sketchPoint:${ref.reference.pointId}`;
 
 /** Toggles exactly one stable semantic target while preserving the order of every other selection. */
 export const toggleDrawingGeometrySelection = (selection: readonly DrawingSelectionRef[], target: DrawingSelectionRef): readonly DrawingSelectionRef[] => {

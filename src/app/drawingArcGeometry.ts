@@ -1,4 +1,4 @@
-import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingArcEntity, type DrawingPoint, type LegacyDrawingArcEntity, type ResolvedDrawingArc } from './drawingTypes.js';
+import { DRAWING_MODEL_SPACE_TOLERANCE, type DrawingArcEntity, type DrawingPoint, type ResolvedDrawingArc } from './drawingTypes.js';
 import { circularSupportResidual, projectPointToCircularSupport } from './drawingCircularGeometry.js';
 
 const TAU = Math.PI * 2;
@@ -12,20 +12,6 @@ export const angleIsOnDrawingArc = (angle: number, startAngle: number, signedSwe
   if (![angle, startAngle, signedSweep].every(Number.isFinite) || Math.abs(signedSweep) > TAU + tolerance) return false;
   const directed = signedSweep >= 0 ? normalizedPositive(angle - startAngle) : normalizedPositive(startAngle - angle);
   return directed <= Math.abs(signedSweep) + tolerance;
-};
-
-export const migrateLegacyArc = (entity: LegacyDrawingArcEntity, start: DrawingPoint | undefined, end: DrawingPoint | undefined) => {
-  if (!start || !end) return null;
-  const { bulge } = entity;
-  const dx = end.x - start.x, dy = end.y - start.y, chord = Math.hypot(dx, dy);
-  if (![start.x, start.y, end.x, end.y, bulge].every(Number.isFinite)
-    || chord <= DRAWING_MODEL_SPACE_TOLERANCE || Math.abs(bulge) <= DRAWING_MODEL_SPACE_TOLERANCE) return null;
-  const offset = chord * (1 - bulge * bulge) / (4 * bulge);
-  const center = { x: (start.x + end.x) / 2 - dy / chord * offset, y: (start.y + end.y) / 2 + dx / chord * offset };
-  const radius = chord * (1 + bulge * bulge) / (4 * Math.abs(bulge));
-  const startAngle = Math.atan2(start.y - center.y, start.x - center.x), signedSweep = 4 * Math.atan(bulge);
-  if (![center.x, center.y, radius, startAngle, signedSweep].every(Number.isFinite) || radius <= DRAWING_MODEL_SPACE_TOLERANCE) return null;
-  return { center, radius, orientation: (signedSweep > 0 ? 'CCW' : 'CW') as DrawingArcEntity['orientation'], signedSweep };
 };
 
 /** Canonical finite directed-Arc resolver. Orientation, never shortest-path logic, owns the branch. */

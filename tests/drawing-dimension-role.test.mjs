@@ -7,7 +7,7 @@ import {
 import { createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/drawing-dimension-role/drawingTypes.js';
 import { appendEntityToActiveSketch } from '../.test-build/drawing-dimension-role/drawingProfileTool.js';
 
-const line = { id: 'line-role', type: 'line', start: { x: 0, y: 0 }, end: { x: 42.602, y: 102.85 } };
+const line = { id: 'line-role', type: 'line', startPointId: 'role-point-1', endPointId: 'role-point-2', start: { x: 0, y: 0 }, end: { x: 42.602, y: 102.85 } };
 const makeDocument = () => {
   const document = createDrawingDocumentV2();
   return appendEntityToActiveSketch(document, line, (() => { let n = 0; return () => `role-point-${++n}`; })());
@@ -36,7 +36,9 @@ const reversed = [...first.references].reverse();
 assert.equal(canonicalDimensionReferencePairKey(first.references), canonicalDimensionReferencePairKey(reversed));
 assert.equal(classifyNewDimensionRole(document.sketches['sketch-1'], { ...make('HORIZONTAL_DISTANCE', 'duplicate'), references: reversed }).reason, 'duplicate');
 assert.strictEqual(appendDimension(document, make('HORIZONTAL_DISTANCE', 'duplicate')), document, 'exact duplicate is prevented');
-const coordinateCopy = make('ALIGNED_DISTANCE', 'other', { ...line, id: 'other-line' });
+const sharedPointCopy = make('ALIGNED_DISTANCE', 'shared', { ...line, id: 'shared-line' });
+assert.equal(canonicalDimensionReferencePairKey(first.references), canonicalDimensionReferencePairKey(sharedPointCopy.references), 'shared point IDs define one Dimension pair across entity owners');
+const coordinateCopy = make('ALIGNED_DISTANCE', 'other', { ...line, id: 'other-line', startPointId: 'other-start', endPointId: 'other-end' });
 assert.notEqual(canonicalDimensionReferencePairKey(first.references), canonicalDimensionReferencePairKey(coordinateCopy.references), 'coordinates do not define identity');
 const reference = { ...document.sketches['sketch-1'].dimensions.aligned, value: 9999 };
 assert.equal(displayedDimensionMeasurement(document.sketches['sketch-1'], reference), Math.hypot(42.602, 102.85));

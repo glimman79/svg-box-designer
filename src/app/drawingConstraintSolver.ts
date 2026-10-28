@@ -79,24 +79,6 @@ const evaluateSystem = (sketch: DrawingSketchV2, component: ComponentState, vari
         for (const [key, sign] of [[pKey, 1], [centerKey, -1]] as const) { const i = index.get(key); if (i !== undefined) { row[i * 2] += sign * dx / distance; row[i * 2 + 1] += sign * dy / distance; } }
         jacobian.push(row); continue;
       }
-      if (equation.geometricConstraint.variant === 'point-derived-point') {
-        const pointId = equation.geometricConstraint.references[0].pointId, reference = equation.geometricConstraint.references[1];
-        const axis = equation.coordinateAxis ?? 'x';
-        const measure = (next: readonly number[]) => {
-          const points = { ...sketch.points };
-          for (const key of equation.pointKeys) points[key] = { ...points[key], ...coordinate(sketch, next, index, key) };
-          const candidate = { ...sketch, points }, point = points[pointId], derived = resolveDrawingPointReference(candidate, reference);
-          return point && derived ? point[axis] - derived[axis] : NaN;
-        };
-        const residual = measure(values); if (!Number.isFinite(residual)) return null; residuals.push(residual);
-        for (const key of equation.pointKeys) for (const coordinateAxis of [0, 1] as const) {
-          const i = index.get(key); if (i === undefined) continue;
-          const offset = i * 2 + coordinateAxis, h = 1e-6 * Math.max(1, Math.abs(values[offset]));
-          const plus = [...values], minus = [...values]; plus[offset] += h; minus[offset] -= h;
-          row[offset] = (measure(plus) - measure(minus)) / (2 * h);
-        }
-        jacobian.push(row); continue;
-      }
       const [aKey, bKey] = equation.pointKeys, axis = equation.coordinateAxis === 'x' ? 0 : 1;
       const a = coordinate(sketch, values, index, aKey), b = coordinate(sketch, values, index, bKey);
       residuals.push(axis === 0 ? a.x - b.x : a.y - b.y);
@@ -111,13 +93,6 @@ const evaluateSystem = (sketch: DrawingSketchV2, component: ComponentState, vari
       const result = equation.geometricConstraint.kind === 'PARALLEL' ? parallelAndGradient(...points) : perpendicularAndGradient(...points);
       if (!result) return null;
       residuals.push(result.residual); [a0, a1, b0, b1].forEach((key, j) => { const i = index.get(key); if (i !== undefined) { row[i * 2] += result.gradient[j * 2]; row[i * 2 + 1] += result.gradient[j * 2 + 1]; } });
-    } else if (equation.dimension!.references.some((reference) => reference.kind === 'derivedPoint')) {
-      const dimension = equation.dimension!;
-      const measured = dimension.kind === 'POINT_TO_LINE_DISTANCE'
-        ? (() => { const p = resolveDrawingPointReference(sketch, dimension.references[0]), line = resolveDimensionLineReference(sketch, dimension.references[1]); return p && line ? measurePointToLine(p, line) : null; })()
-        : (() => { const refs = dimension.references as readonly [import('./drawingTypes').DrawingPointReference, import('./drawingTypes').DrawingPointReference]; const a = resolveDrawingPointReference(sketch, refs[0]), b = resolveDrawingPointReference(sketch, refs[1]); return a && b ? measureDimension(dimension.kind, a, b) : null; })();
-      if (measured === null) return null;
-      residuals.push(measured - equation.target);
     } else if (equation.dimension!.kind === 'LINE_TO_LINE_ANGLE') {
       const [a0, a1, b0, b1] = equation.pointKeys, sector = equation.dimension!.angleSector;
       const result = lineToLineAngleAndGradient(...([a0, a1, b0, b1].map((key) => coordinate(sketch, values, index, key)) as [DrawingPoint, DrawingPoint, DrawingPoint, DrawingPoint]), sector.sideA * sector.sideB as -1 | 1);
@@ -763,7 +738,7 @@ export const verifyDrawingConstraints = (sketch: DrawingSketchV2, dimensionIds: 
   const intrinsic = entityEquationsForPoints(sketch, pointIds).map((equation) => equation.residual(sketch));
   if (!intrinsic.every((value) => value !== null && Number.isFinite(value) && Math.abs(value) <= DRAWING_CONSTRAINT_TOLERANCE_MM)) return null;
   const dimensions = verifyDrawingDrivingDimensions(sketch, dimensionIds); if (!dimensions) return null;
-  const geometric = geometricConstraintIds.map((id) => { const constraint = (sketch.geometricConstraints ?? {})[id], equation = constraint && geometricConstraintEquation(sketch, constraint); if (!equation) return Infinity; if (constraint.kind === 'MIDPOINT') { const [p, a, b] = equation.pointKeys; return Math.max(Math.abs(sketch.points[p].x - (sketch.points[a].x + sketch.points[b].x) / 2), Math.abs(sketch.points[p].y - (sketch.points[a].y + sketch.points[b].y) / 2)); } if (constraint.kind === 'COINCIDENT') { const [a, b, c] = equation.pointKeys; if (constraint.variant === 'point-linear-support') return Math.abs(pointOnLinearSupportAndGradient(sketch.points[a], sketch.points[b], sketch.points[c])?.residual ?? Infinity); if (constraint.variant === 'point-curve') { const curve = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[constraint.references[1].entityId]; if (curve?.type === 'circle') return Math.abs(Math.hypot(sketch.points[a].x - sketch.points[b].x, sketch.points[a].y - sketch.points[b].y) - curve.radius); if (curve?.type === 'arc') return Math.abs(finiteArcConstraintResidual(sketch.points[a], curve, sketch.points[curve.centerPointId], sketch.points[curve.startPointId], sketch.points[curve.endPointId]) ?? Infinity); return Infinity; } if (constraint.variant === 'point-derived-point') { const point = sketch.points[a], derived = resolveDrawingPointReference(sketch, constraint.references[1]); return point && derived ? Math.max(Math.abs(point.x - derived.x), Math.abs(point.y - derived.y)) : Infinity; } return Math.max(Math.abs(sketch.points[a].x - sketch.points[b].x), Math.abs(sketch.points[a].y - sketch.points[b].y)); } if (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL') { const [a, b] = equation.pointKeys; return Math.abs(constraint.kind === 'HORIZONTAL' ? sketch.points[b].y - sketch.points[a].y : sketch.points[b].x - sketch.points[a].x); } const [a0, a1, b0, b1] = equation.pointKeys; return Math.abs((constraint.kind === 'PARALLEL' ? parallelAndGradient : perpendicularAndGradient)(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1])?.residual ?? Infinity); });
+  const geometric = geometricConstraintIds.map((id) => { const constraint = (sketch.geometricConstraints ?? {})[id], equation = constraint && geometricConstraintEquation(sketch, constraint); if (!equation) return Infinity; if (constraint.kind === 'MIDPOINT') { const [p, a, b] = equation.pointKeys; return Math.max(Math.abs(sketch.points[p].x - (sketch.points[a].x + sketch.points[b].x) / 2), Math.abs(sketch.points[p].y - (sketch.points[a].y + sketch.points[b].y) / 2)); } if (constraint.kind === 'COINCIDENT') { const [a, b, c] = equation.pointKeys; if (constraint.variant === 'point-linear-support') return Math.abs(pointOnLinearSupportAndGradient(sketch.points[a], sketch.points[b], sketch.points[c])?.residual ?? Infinity); if (constraint.variant === 'point-curve') { const curve = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[constraint.references[1].entityId]; if (curve?.type === 'circle') return Math.abs(Math.hypot(sketch.points[a].x - sketch.points[b].x, sketch.points[a].y - sketch.points[b].y) - curve.radius); if (curve?.type === 'arc') return Math.abs(finiteArcConstraintResidual(sketch.points[a], curve, sketch.points[curve.centerPointId], sketch.points[curve.startPointId], sketch.points[curve.endPointId]) ?? Infinity); return Infinity; } return Math.max(Math.abs(sketch.points[a].x - sketch.points[b].x), Math.abs(sketch.points[a].y - sketch.points[b].y)); } if (constraint.kind === 'HORIZONTAL' || constraint.kind === 'VERTICAL') { const [a, b] = equation.pointKeys; return Math.abs(constraint.kind === 'HORIZONTAL' ? sketch.points[b].y - sketch.points[a].y : sketch.points[b].x - sketch.points[a].x); } const [a0, a1, b0, b1] = equation.pointKeys; return Math.abs((constraint.kind === 'PARALLEL' ? parallelAndGradient : perpendicularAndGradient)(sketch.points[a0], sketch.points[a1], sketch.points[b0], sketch.points[b1])?.residual ?? Infinity); });
   return geometric.every((value) => Number.isFinite(value) && value <= DRAWING_CONSTRAINT_TOLERANCE_MM) ? [...dimensions, ...geometric] : null;
 };
 
@@ -1020,16 +995,6 @@ export const solveDrawingDimensionEdit = ({ document, dimensionId, targetValue }
   if (edited.kind === 'POINT_TO_LINE_DISTANCE') { const line = resolveDimensionLineReference(sketch, edited.references[1]); if (!line || measurePointToLine(resolveDrawingPointReference(sketch, edited.references[0])!, line) === null) return fail('UNSUPPORTED_DEGENERATE_GEOMETRY'); }
   else if (edited.kind !== 'LINE_TO_LINE_DISTANCE' && edited.kind !== 'LINE_TO_LINE_ANGLE') { const a = resolveDrawingPointReference(sketch, edited.references[0]), b = resolveDrawingPointReference(sketch, edited.references[1]); if (!a || !b) return fail('MISSING_REFERENCE'); const dx = b.x - a.x, dy = b.y - a.y; if (edited.kind === 'ALIGNED_DISTANCE' && (targetValue <= DRAWING_CONSTRAINT_TOLERANCE_MM || Math.hypot(dx, dy) <= DRAWING_CONSTRAINT_TOLERANCE_MM)) return fail('UNSUPPORTED_DEGENERATE_GEOMETRY'); if (edited.kind === 'HORIZONTAL_DISTANCE' && Math.abs(dx) <= DRAWING_CONSTRAINT_TOLERANCE_MM && targetValue > DRAWING_CONSTRAINT_TOLERANCE_MM) return fail('UNDERDETERMINED_ORIENTATION'); if (edited.kind === 'VERTICAL_DISTANCE' && Math.abs(dy) <= DRAWING_CONSTRAINT_TOLERANCE_MM && targetValue > DRAWING_CONSTRAINT_TOLERANCE_MM) return fail('UNDERDETERMINED_ORIENTATION'); }
   const component = componentForDimension(sketch, edited, targetValue); if (!component) return fail('MISSING_REFERENCE'); let preferred: readonly string[];
-  if (edited.references.some((reference) => reference.kind === 'derivedPoint')) {
-    const analysis = analyzeDrawingConstraints(sketch), seed = component.pointIds[0], analyzed = analysis.componentByPointId.get(seed);
-    if (!analyzed) return fail('MISSING_REFERENCE');
-    const variables = deduplicateDrawingSolverVariables([...component.pointIds.flatMap(pointSolverVariables), ...analyzed.scalarVariables]);
-    const result = solveVariableComponent(sketch, component, variables);
-    if (!result) return fail('UNSATISFIABLE_DIMENSION_SET');
-    const candidate = { ...result.sketch, dimensions: { ...result.sketch.dimensions, [dimensionId]: { ...edited, value: targetValue } } };
-    const residuals = verifyComponent(candidate, component); if (!residuals) return fail('SOLUTION_VERIFICATION_FAILED');
-    return { ok: true, document: { ...document, sketches: { ...document.sketches, [sketch.id]: candidate } }, diagnostics: { constraintCount: component.equations.length, residuals, iterations: result.iterations, pointIds: component.pointIds } };
-  }
   const movementIntent = edited.kind === 'POINT_TO_LINE_DISTANCE' ? resolvePointToLineMovementIntent(sketch, edited) : null;
   const finish = (candidate: DrawingSketchV2, iterations: number): DrawingDimensionSolveResult => ({ ok: true, document: { ...document, sketches: { ...document.sketches, [sketch.id]: candidate } }, diagnostics: { constraintCount: component.equations.length, residuals: verifyComponent(candidate, component)!, iterations, pointIds: component.pointIds } });
   if (movementIntent) for (const candidateIntent of [movementIntent.preferred, ...movementIntent.alternatives]) {
