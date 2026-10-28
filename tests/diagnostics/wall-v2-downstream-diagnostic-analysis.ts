@@ -1,3 +1,4 @@
+import { reconcileComposedPanelMetadata } from '../../src/app/composedPanelMetadataReconciliation';
 import { buildFinalGeometry } from '../../src/app/finalGeometry';
 import { processManufacturingGeometry } from '../../src/app/manufacturingCompensation';
 import { assembleGeneratedGeometryDiagnostics } from '../../src/app/generatedGeometryAssembly';
@@ -56,7 +57,11 @@ const run = (wallCount: number) => {
   const details = assembly.panelDiagnostics.filter((panel) => panel.replacementOperationIds.some((id) => id.startsWith('operation:W:'))).map((panel) => {
     const candidate = assembly.panelCandidates.find((value) => value.panelId === panel.panelId);
     let packaged: ReturnType<typeof packageComposedPanelGeometry> | null = null; let packagingError: string | null = null;
-    if (candidate) try { packaged = packageComposedPanelGeometry(raw, candidate, panel.replacementOperationIds); }
+    if (candidate) try {
+      const reconciliation = reconcileComposedPanelMetadata({ candidate, generatedGeometryItems: raw,
+        relationshipIndex: assembly.relationshipIndex });
+      packaged = packageComposedPanelGeometry(raw, candidate, panel.replacementOperationIds, reconciliation);
+    }
     catch (error) { packagingError = error instanceof Error ? error.message : String(error); }
     const final = packaged ? buildFinalGeometry(model, packaged) : null;
     return { panelId: panel.panelId, assemblyStatus: panel.status, composerDiagnostics: panel.diagnostics,

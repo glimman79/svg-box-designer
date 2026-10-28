@@ -1,3 +1,4 @@
+import { reconcileComposedPanelMetadata } from '../../src/app/composedPanelMetadataReconciliation';
 import { selectGeneratedGeometryAuthority } from '../../src/app/generatedGeometryAuthority';
 import { assembleGeneratedGeometryDiagnostics } from '../../src/app/generatedGeometryAssembly';
 import { packageComposedPanelGeometry } from '../../src/app/generatedGeometryDualRun';
@@ -80,7 +81,10 @@ const packagingEvidence = affected.map((panelId) => {
   const panel = assembly.panelDiagnostics.find((entry) => entry.panelId === panelId)!;
   const candidate = assembly.panelCandidates.find((entry) => entry.panelId === panelId)!;
   try {
-    packageComposedPanelGeometry(clean.raw, candidate, panel.replacementOperationIds);
+    const reconciliation = reconcileComposedPanelMetadata({ candidate, generatedGeometryItems: clean.raw,
+      relationshipIndex: assembly.relationshipIndex });
+    assert(reconciliation.ok, `Reconciliation failed for ${panelId}.`);
+    packageComposedPanelGeometry(clean.raw, candidate, panel.replacementOperationIds, reconciliation);
     return { panelId, exception: null };
   } catch (error) {
     return { panelId, exception: error instanceof Error ? error.message : String(error) };

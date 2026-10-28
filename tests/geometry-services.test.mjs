@@ -20,7 +20,9 @@ const load = (relativePath) => {
   const localRequire = (id) => id.startsWith('.')
     ? load(`${resolve(dirname(absolutePath), id).slice(root.length + 1)}.ts`)
     : require(id);
-  vm.runInNewContext(output, { require: localRequire, module: loadedModule, exports: loadedModule.exports, console, structuredClone }, { filename: relativePath });
+  // Execute production modules in the assertion realm so deep equality checks
+  // coordinate values rather than unrelated VM Array/Object prototypes.
+  vm.compileFunction(output, ['require', 'module', 'exports', 'console', 'structuredClone'], { filename: relativePath })(localRequire, loadedModule, loadedModule.exports, console, structuredClone);
   return loadedModule.exports;
 };
 
@@ -30,6 +32,13 @@ const { createManufacturingGeometry } = load('src/app/manufacturingGeometry.ts')
 const { DEFAULT_PROJECT_SETTINGS } = load('src/app/projectDefaults.ts');
 const { normalizeProjectSettings } = load('src/app/projectSettings.ts');
 const { buildFinalGeometry } = load('src/app/finalGeometry.ts');
+
+// Paths carry numeric geometry, not a promise about floating-point decimal spelling.
+// Keep command/closure checks and compare coordinates at the suite's existing six decimals.
+const assertPathEqual = (actual, expected, message) => {
+  const normalized = (path) => path.replace(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi, (value) => String(Number(Number(value).toFixed(6))));
+  assert.equal(normalized(actual), expected, message);
+};
 
 const outer = {
   id: 'outer', source: 'final-contour', finalSource: 'applied-panel', kind: 'OUTER',
@@ -57,8 +66,18 @@ const spyServices = {
   replace(target, replacement) { calls.push(['replace', target.id]); geometryServices.replace(target, replacement); },
 };
 
-applyProfileOffset(createManufacturingGeometry({ contours: [outer], diagnostics: [] }), 0.1, spyServices);
+const selectedOuter = { ...outer, compensationProfile: [true, true, true, true] };
+const selectedGeometry = createManufacturingGeometry({ contours: [selectedOuter], diagnostics: [], generatedProfiles: [], clearanceProjectionTraces: [] });
+applyProfileOffset(selectedGeometry, 0.1, spyServices);
 assert.deepEqual(calls, [['signedArea', 'outer'], ['compensateProfile', 'outer', 0.1, 'INWARD'], ['replace', 'outer']], 'Profile Offset delegates explicit material-removal semantics to Geometry Services');
+
+assert.deepEqual(selectedGeometry.finalContourList[0].points.map(({ x, y }) => ({ x: Number(x.toFixed(6)), y: Number(y.toFixed(6)) })), [{ x: -0.1, y: -0.1 }, { x: 10.1, y: -0.1 }, { x: 10.1, y: 10.1 }, { x: -0.1, y: 10.1 }], 'selected Profile Offset changes geometry through Geometry Services');
+assert.equal(selectedOuter.pathD, outer.pathD, 'manufacturing leaves design-intent geometry unchanged');
+calls.length = 0;
+const unselectedGeometry = createManufacturingGeometry({ contours: [outer], diagnostics: [], generatedProfiles: [], clearanceProjectionTraces: [] });
+applyProfileOffset(unselectedGeometry, 0.1, spyServices);
+assert.deepEqual(calls, [], 'an unselected contour invokes no offset service');
+assert.equal(unselectedGeometry.finalContourList[0].pathD, outer.pathD, 'an unselected contour stays fixed');
 
 calls.length = 0;
 applySlotClearance([slot], 0.1, spyServices);
@@ -69,7 +88,7 @@ compensateClassifiedContours([{ ...outer }], 0.2, spyServices);
 assert.deepEqual(calls, [['parallelProfile', 'outer', 0.1, 'OUTWARD']], 'kerf delegates its geometry operation to Geometry Services');
 
 const serviceOutput = geometryServices.parallelProfile(outer, 0.1, 'OUTWARD');
-assert.equal(serviceOutput.pathD, 'M -0.1 -0.1 L 10.1 -0.1 L 10.1 10.1 L -0.1 10.1 Z', 'Geometry Services preserves the established polygon offset output');
+assertPathEqual(serviceOutput.pathD, 'M -0.1 -0.1 L 10.1 -0.1 L 10.1 10.1 L -0.1 10.1 Z', 'Geometry Services preserves the established polygon offset output');
 assert.equal(geometryServices.orientation(outer), 'COUNTER_CLOCKWISE', 'Geometry Services owns orientation queries');
 assert.equal(geometryServices.signedArea(outer), 100, 'Geometry Services owns signed-area queries');
 
@@ -78,8 +97,8 @@ const selective = {
   points: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }],
   compensationProfile: [false, true, false, false],
 };
-assert.equal(geometryServices.compensateProfile(selective, -0.1, 'OUTWARD').pathD, 'M 0 0 L 10.1 0 L 10.1 10 L 0 10 Z', 'negative Profile Offset moves only the modified profile in the offset-increasing direction');
-assert.equal(geometryServices.compensateProfile(selective, 0.1, 'OUTWARD').pathD, 'M 0 0 L 9.9 0 L 9.9 10 L 0 10 Z', 'positive Profile Offset moves the modified profile in the opposite direction');
+assertPathEqual(geometryServices.compensateProfile(selective, -0.1, 'OUTWARD').pathD, 'M 0 0 L 10.1 0 L 10.1 10 L 0 10 Z', 'negative Profile Offset moves only the modified profile in the offset-increasing direction');
+assertPathEqual(geometryServices.compensateProfile(selective, 0.1, 'OUTWARD').pathD, 'M 0 0 L 9.9 0 L 9.9 10 L 0 10 Z', 'positive Profile Offset moves the modified profile in the opposite direction');
 assert.equal(geometryServices.compensateProfile(selective, -0.1, 'OUTWARD').points[2].y, 10, 'corner reconstruction reconnects the compensated profile to unchanged geometry');
 
 const profileOffsetSelective = (points, selected, value) => geometryServices.compensateProfile({
@@ -183,7 +202,8 @@ for (const amount of [0.9, -0.9]) {
     ...outer, points: canonicalTBB, pathD: undefined, compensationProfile: canonicalMask, segmentTapRoles: canonicalRoles,
   }, amount, 'INWARD');
   assert.ok(reconstructed, `canonical TB-B [6,7] reconstructs at ${amount > 0 ? '+' : ''}${amount.toFixed(2)} mm`);
-  const expectedX = amount > 0 ? 89.1 : 90.9;
+  // INWARD is the negative-distance removal direction; positive adds material.
+  const expectedX = 90 + amount;
   assert.ok(reconstructed.points.some((point, index, points) => point.x === expectedX
     && points[(index + 1) % points.length].x === expectedX
     && Math.abs(points[(index + 1) % points.length].y - point.y) === 60), 'selected boundary is one continuous displaced edge without its redundant anchor');
@@ -259,10 +279,10 @@ assert.deepEqual(profileOffsetSelective(horizontalTB, selectedTBProfiles, 0).poi
 assert.deepEqual(roundedPoints(horizontalPositive.points.map(({ x, y }, index) => ({ x: x + horizontalNegative.points[index].x - 2 * horizontalTB[index].x, y: y + horizontalNegative.points[index].y - 2 * horizontalTB[index].y }))), horizontalTB.map(() => ({ x: 0, y: 0 })), '+0.90 mm and -0.90 mm are coordinate-symmetric around the complete source profile');
 
 const signedSlot = { ...slot, compensationProfile: [true, true, true, true] };
-assert.equal(geometryServices.compensateProfile(signedSlot, -0.1, 'OUTWARD').pathD, 'M 1.9 1.9 L 4.1 1.9 L 4.1 4.1 L 1.9 4.1 Z', 'negative slot clearance increases slot clearance');
-assert.equal(geometryServices.compensateProfile(signedSlot, 0.1, 'OUTWARD').pathD, 'M 2.1 2.1 L 3.9 2.1 L 3.9 3.9 L 2.1 3.9 Z', 'positive slot clearance moves in the opposite direction');
-assert.equal(geometryServices.compensateProfile(signedSlot, -0.9, 'OUTWARD').pathD, 'M 1.1 1.1 L 4.9 1.1 L 4.9 4.9 L 1.1 4.9 Z', 'whole-slot signed compensation remains unchanged');
-assert.equal(compensateClassifiedContours([{ ...outer }], 0.3)[0].pathD, 'M -0.15 -0.15 L 10.15 -0.15 L 10.15 10.15 L -0.15 10.15 Z', 'kerf direction and half-width remain unchanged');
+assertPathEqual(geometryServices.compensateProfile(signedSlot, -0.1, 'OUTWARD').pathD, 'M 1.9 1.9 L 4.1 1.9 L 4.1 4.1 L 1.9 4.1 Z', 'negative slot clearance increases slot clearance');
+assertPathEqual(geometryServices.compensateProfile(signedSlot, 0.1, 'OUTWARD').pathD, 'M 2.1 2.1 L 3.9 2.1 L 3.9 3.9 L 2.1 3.9 Z', 'positive slot clearance moves in the opposite direction');
+assertPathEqual(geometryServices.compensateProfile(signedSlot, -0.9, 'OUTWARD').pathD, 'M 1.1 1.1 L 4.9 1.1 L 4.9 4.9 L 1.1 4.9 Z', 'whole-slot signed compensation remains unchanged');
+assertPathEqual(compensateClassifiedContours([{ ...outer }], 0.3)[0].pathD, 'M -0.15 -0.15 L 10.15 -0.15 L 10.15 10.15 L -0.15 10.15 Z', 'kerf direction and half-width remain unchanged');
 assert.deepEqual(DEFAULT_PROJECT_SETTINGS, { kerfMm: 0.15, profileOffsetMm: 0, slotClearanceMm: -0.10, selectedProfileOffsetIds: [], tapClearanceMm: -0.10 }, 'Tap Clearance defaults to -0.10 while every existing manufacturing default remains unchanged');
 const legacySettings = normalizeProjectSettings({ clearanceMm: 0.25, selectedClearanceProfileIds: ['profile-1'], kerfMm: 0.15, slotClearanceMm: -0.10 }).settings;
 const renamedSettings = normalizeProjectSettings({ profileOffsetMm: 0.25, selectedProfileOffsetIds: ['profile-1'], kerfMm: 0.15, slotClearanceMm: -0.10 }).settings;
