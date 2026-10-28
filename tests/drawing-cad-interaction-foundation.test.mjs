@@ -9,7 +9,7 @@ const inference = await import(pathToFileURL(path.join(root, 'drawingInference.j
 const lineTool = await import(pathToFileURL(path.join(root, 'drawingProfileTool.js')));
 const lifecycle = await import(pathToFileURL(path.join(root, 'drawingToolLifecycle.js')));
 const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
-const target = { id: 'target', type: 'line', start: { x: 10, y: 10 }, end: { x: 110, y: 10 } };
+const target = { id: 'target', type: 'line', startPointId: 'target-start', endPointId: 'target-end', start: { x: 10, y: 10 }, end: { x: 110, y: 10 } };
 const candidatesAt = (point) => inference.collectDrawingInferenceCandidates(point, [target], identity);
 const resolve = (rawPoint, candidates, previousSnap = null, ctrlOverride = false) => snap.resolveDrawingSnap({ rawPoint, candidates, previousSnap, ctrlOverride });
 
@@ -19,18 +19,20 @@ assert.equal(snap.DRAWING_LINE_SNAP_ACQUIRE_PX, 5);
 assert.equal(snap.DRAWING_LINE_SNAP_RELEASE_PX, 7);
 let endpoint = resolve({ x: 16.9, y: 10 }, candidatesAt({ x: 16.9, y: 10 }));
 assert.equal(endpoint.type, 'endpoint');
-assert.equal(endpoint.effectivePoint, target.start, 'endpoint snap uses exact stored model point');
+assert.deepEqual(endpoint.effectivePoint, target.start, 'endpoint coordinates equal the stored model values');
+assert.equal(endpoint.pointId, 'target-start', 'persistent SketchPoint identity is independent from coordinate objects');
+assert.deepEqual(endpoint.reference, { kind: 'sketchPoint', pointId: 'target-start' });
 endpoint = resolve({ x: 18.9, y: 10 }, candidatesAt({ x: 18.9, y: 10 }), endpoint);
 assert.equal(endpoint.type, 'endpoint', 'endpoint holds inside release tolerance');
 endpoint = resolve({ x: 10, y: 19.1 }, candidatesAt({ x: 10, y: 19.1 }), endpoint);
 assert.equal(endpoint.type, 'none', 'endpoint releases beyond release tolerance');
 
-let line = resolve({ x: 60, y: 14.9 }, candidatesAt({ x: 60, y: 14.9 }));
+let line = resolve({ x: 40, y: 14.9 }, candidatesAt({ x: 40, y: 14.9 }));
 assert.equal(line.type, 'line');
-assert.deepEqual(line.effectivePoint, { x: 60, y: 10 }, 'line snap uses exact finite-segment projection');
-line = resolve({ x: 60, y: 16.9 }, candidatesAt({ x: 60, y: 16.9 }), line);
+assert.deepEqual(line.effectivePoint, { x: 40, y: 10 }, 'line snap uses exact finite-segment projection');
+line = resolve({ x: 40, y: 16.9 }, candidatesAt({ x: 40, y: 16.9 }), line);
 assert.equal(line.type, 'line', 'line holds inside release tolerance');
-line = resolve({ x: 60, y: 17.1 }, candidatesAt({ x: 60, y: 17.1 }), line);
+line = resolve({ x: 40, y: 17.1 }, candidatesAt({ x: 40, y: 17.1 }), line);
 assert.equal(line.type, 'none', 'line releases beyond release tolerance');
 
 assert.equal(resolve({ x: 17, y: 10 }, candidatesAt({ x: 17, y: 10 })).type, 'endpoint', 'endpoint has priority over line');
@@ -39,27 +41,46 @@ assert.equal(resolve({ x: 16, y: 10 }, candidatesAt({ x: 16, y: 10 }), spatial, 
 assert.equal(resolve({ x: 16, y: 10 }, candidatesAt({ x: 16, y: 10 }), null, false).type, 'endpoint', 'release immediately reacquires without tool activation');
 const ctrlFree = resolve({ x: 19, y: 18 }, candidatesAt({ x: 19, y: 18 }), null, true);
 const angular = lineTool.resolveLinePreviewPoint({ x: 0, y: 0 }, ctrlFree.effectivePoint);
-assert.equal(angular.snapActive, true, 'Ctrl leaves Line-specific 22.5 degree inference available');
+assert.equal(angular.snapActive, true, 'the model-space angular helper alone does not consume Ctrl');
+const ctrlInteraction = lineTool.initializeProfileSegmentAt({ x: 0, y: 0 }, 'origin');
+const bypass = lineTool.resolveLineEffectivePoint(ctrlInteraction, ctrlFree.effectivePoint, ctrlFree, true);
+assert.deepEqual(bypass.effectivePoint, { x: 19, y: 18 }, 'production final Ctrl guard preserves raw placement');
+assert.equal(bypass.interaction.snappedAngleDegrees, null);
+assert.equal(lineTool.hasAngularPresentationTruth(bypass.interaction), false);
+assert.equal(lineTool.automaticAxisConstraintKind(bypass.interaction), null);
 
 assert.equal(lifecycle.nextDrawingTool('select', 'activate', 'profile'), 'profile');
 assert.equal(lifecycle.nextDrawingTool('profile', 'finish-construction'), 'profile');
 assert.equal(lifecycle.nextDrawingTool('profile', 'deactivate'), 'select');
-const interaction = lineTool.applyResolvedProfileClick(lineTool.EMPTY_PROFILE_INTERACTION, target.start, () => 'one').interaction;
-const committed = lineTool.applyResolvedProfileClick(interaction, { x: 60, y: 10 }, () => 'one');
-assert.deepEqual(committed.entity.end, { x: 60, y: 10 }, 'resolved spatial point commits without angular re-resolution');
+const interaction = lineTool.applyResolvedProfileClick(lineTool.EMPTY_PROFILE_INTERACTION, target.start, () => 'one', 'target-start').interaction;
+const committed = lineTool.applyResolvedProfileClick(interaction, { x: 40, y: 10 }, () => 'one', 'placed');
+assert.equal(committed.entity.startPointId, 'target-start');
+assert.equal(committed.entity.endPointId, 'placed');
+assert.deepEqual(committed.entity.end, { x: 40, y: 10 }, 'resolved spatial point commits without angular re-resolution');
 
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const css = fs.readFileSync('src/styles.css', 'utf8');
-const engine = fs.readFileSync('src/app/drawingSnapEngine.ts', 'utf8');
 assert.match(workspace, /aria-pressed=\{activeTool === 'profile'\}/, 'active styling derives from activeTool');
 assert.match(workspace, /useCadEscapeToolExit\(exitActiveTool\)/, 'one Escape uses the shared exit contract');
 assert.match(workspace, /onDoubleClick=\{\(\) => \{ if \(activeTool === 'profile'\) finishProfile\(\)/, 'canvas double-click finishes the current construction');
 assert.match(workspace, /resolveCadToolPointerActivation[\s\S]*?selectTool\(tool, resolution\.activationMode\)/, 'application-controlled pointer activation can explicitly request persistent mode');
-assert.doesNotMatch(workspace, /event\.target !== event\.currentTarget/, 'pan can start over child grid and geometry elements');
+const panSource = fs.readFileSync('src/app/cadInteraction.ts', 'utf8');
+assert.doesNotMatch(panSource, /event\.target !== event\.currentTarget/, 'shared pan does not reject child grid or geometry targets');
+assert.match(workspace, /const handlePointerDown[^]*?if \(panHandlers\.onPointerDown\(event\)\) return;/, 'pan owns routing before tool acquisition');
 const cadInteraction = fs.readFileSync('src/app/cadInteraction.ts', 'utf8');
 assert.match(cadInteraction, /releasePointerCapture/);
 assert.match(cadInteraction, /setPointerCapture/, 'shared pan capture has a symmetric release');
 assert.match(css, /\.drawing-label-overlay[^}]*pointer-events:\s*none/s, 'screen-space cursor overlay cannot intercept pan');
-assert.doesNotMatch(engine, /22\.5|angular|grid|midpoint|intersection|origin|constraint/i, 'global engine contains only endpoint/line spatial policy');
+// The global resolver now owns semantic Midpoint as well as Endpoint and Line.
+const midpoint = resolve({ x: 60, y: 10 }, candidatesAt({ x: 60, y: 10 }));
+assert.equal(midpoint.type, 'midpoint');
+assert.equal(midpoint.entityId, 'target');
+assert.deepEqual(midpoint.effectivePoint, { x: 60, y: 10 });
+assert.equal(midpoint.pointId, undefined, 'Midpoint does not invent persistent endpoint topology');
+const midpointCtrl = resolve({ x: 60, y: 10 }, candidatesAt({ x: 60, y: 10 }), midpoint, true);
+assert.equal(midpointCtrl.type, 'none');
+assert.equal(midpointCtrl.active, false);
+assert.match(workspace, /ctrlOverride: ctrlHeld/, 'workspace passes Ctrl to global acquisition');
+assert.match(workspace, /resolveLineEffectivePoint\(interaction, rawPoint, snap, ctrlHeld\)/, 'workspace passes Ctrl to the final effective-point guard');
 
 console.log('D2.3 CAD interaction foundation tests passed');

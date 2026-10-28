@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import vm from 'node:vm';
+import { stripTypeScriptTypes } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -61,7 +63,82 @@ assert.match(drawingSource, /drawing-label-overlay/);
 assert.match(drawingSource, /getVisibleAxisValues/);
 assert.match(drawingSource, /useCadWheelCapture\(svgRef,/);
 assert.match(fs.readFileSync('src/app/useCadWheelCapture.ts', 'utf8'), /event\.preventDefault\(\);/);
-assert.doesNotMatch(drawingSource, /if \(!event\.ctrlKey\)/);
+// The original D2.1 prohibition protected unconditional wheel zoom (#387).
+// Ctrl selection and Ctrl acquisition bypass have since become separate contracts.
+const wheelSource = fs.readFileSync('src/app/useCadWheelCapture.ts', 'utf8');
+const wheelHook = stripTypeScriptTypes(wheelSource.replace(/^import .*\n/m, '').replace('export function', 'function'));
+const wheelBody = drawingSource.match(/useCadWheelCapture\(svgRef, (\(event\) => \{[\s\S]*?)\n  \}\);/)?.[1];
+assert.ok(wheelBody, 'the actual Drawing wheel callback is required');
+const zoomResults = [];
+for (const ctrlKey of [false, true]) {
+  let wheel, cleanup, cancellations = 0, propagation = 0, updates = 0;
+  let view = { x: 0, y: 0, width: 800, height: 600 };
+  const svg = {
+    getBoundingClientRect: () => ({ left: 10, top: 20, width: 800, height: 600 }),
+    addEventListener: (type, fn, options) => { assert.equal(type, 'wheel'); assert.equal(options.passive, false); wheel = fn; },
+    removeEventListener: (type, fn) => { assert.equal(type, 'wheel'); assert.equal(fn, wheel); },
+  };
+  const context = vm.createContext({
+    useRef: (current) => ({ current }), useEffect: (effect) => { cleanup = effect(); },
+    svgRef: { current: svg }, zoomViewBoxAtPoint: drawingGrid.zoomViewBoxAtPoint,
+    setViewBox: (update) => { updates++; view = update(view); },
+  });
+  vm.runInContext(`${wheelHook}\nuseCadWheelCapture(svgRef, ${wheelBody}\n});`, context);
+  wheel({ ctrlKey, clientX: 210, clientY: 170, deltaY: -120,
+    preventDefault: () => cancellations++, stopPropagation: () => propagation++ });
+  assert.equal(cancellations, 1, 'wheel cancels browser defaults with either Ctrl state');
+  assert.equal(propagation, 1, 'wheel stays owned by the CAD viewport');
+  assert.equal(updates, 1, 'Ctrl cannot gate Drawing zoom');
+  assert.ok(view.width < 800);
+  assert.ok(Math.abs(view.x + view.width / 4 - 200) < 1e-10, 'pointer anchor is preserved');
+  zoomResults.push(view);
+  cleanup();
+}
+assert.deepEqual(zoomResults[0], zoomResults[1], 'Ctrl does not alter wheel zoom');
+
+// Both current !event.ctrlKey occurrences belong to Select box/click completion.
+const finishBoxSource = drawingSource.match(/const finishBoxSelection = [\s\S]*?\n  \};/)?.[0];
+assert.ok(finishBoxSource);
+for (const ctrlKey of [false, true]) {
+  let cleared = 0, ended = 0, selection = ['existing'];
+  const finish = vm.runInNewContext(stripTypeScriptTypes(`${finishBoxSource}\nfinishBoxSelection`), {
+    boxSelectionRef: { current: { pointerId: 7, exceeded: false } },
+    setSelectedGeometry: (value) => { selection = value; },
+    setSelectedDimensionId: () => cleared++, setSelectedGeometricConstraintId: () => cleared++,
+    endBoxSelection: () => ended++,
+  });
+  finish({ pointerId: 8, ctrlKey });
+  assert.equal(ended, 0, 'foreign pointer cannot finish selection');
+  finish({ pointerId: 7, ctrlKey });
+  assert.equal(selection.length, ctrlKey ? 1 : 0, 'Ctrl empty click preserves selection; ordinary empty click clears it');
+  assert.equal(cleared, ctrlKey ? 0 : 2);
+  assert.equal(ended, 1);
+}
+
+const boxSource = fs.readFileSync('src/app/drawingBoxSelection.ts', 'utf8');
+const applySource = boxSource.match(/export const applyDrawingBoxSelection = [\s\S]*?\n\};/)?.[0];
+assert.ok(applySource);
+const applySelection = vm.runInNewContext(stripTypeScriptTypes(applySource.replace('export ', '')) + '\napplyDrawingBoxSelection');
+for (const ctrlKey of [false, true]) {
+  let selection = [{ kind: 'line', lineId: 'existing' }], cleared = 0, ended = 0;
+  const qualifying = [{ kind: 'line', lineId: 'existing' }, { kind: 'line', lineId: 'new' }];
+  const finish = vm.runInNewContext(stripTypeScriptTypes(`${finishBoxSource}\nfinishBoxSelection`), {
+    boxSelectionRef: { current: { pointerId: 7, exceeded: true, originClient: { x: 0 }, currentClient: { x: 10 },
+      originModel: { x: 0, y: 0 }, currentModel: { x: 10, y: 10 } } },
+    documentRef: { current: { activeSketchId: 's', sketches: { s: { entityOrder: [] } } } },
+    normalizeDrawingSelectionRect: () => ({}), drawingSelectionMode: () => 'window',
+    resolveActiveSketchLines: () => [], selectDrawingEntitiesInRect: () => qualifying,
+    applyDrawingBoxSelection: applySelection,
+    setSelectedGeometry: (update) => { selection = update(selection); },
+    setSelectedDimensionId: () => cleared++, setSelectedGeometricConstraintId: () => cleared++,
+    endBoxSelection: () => ended++,
+  });
+  finish({ pointerId: 7, ctrlKey });
+  assert.deepEqual(Array.from(selection, ({ lineId }) => lineId), ctrlKey ? ['new'] : ['existing', 'new'],
+    'Select Ctrl toggles qualifying entities; ordinary completion replaces selection');
+  assert.equal(cleared, ctrlKey ? 0 : 2, 'Ctrl preserves independent Dimension/Constraint selection');
+  assert.equal(ended, 1);
+}
 
 const styles = fs.readFileSync('src/styles.css', 'utf8');
 assert.match(styles, /grid-template-columns: 62px minmax\(0, 1fr\)/, 'Tools uses a fixed layout column');

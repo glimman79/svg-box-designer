@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 
 const root = path.resolve('.test-build/drawing-line-snap');
 const lineTool = await import(pathToFileURL(path.join(root, 'drawingProfileTool.js')));
+const support = await import(pathToFileURL(path.join(root, 'drawingLineSegmentSupport.js')));
 const types = await import(pathToFileURL(path.join(root, 'drawingTypes.js')));
 const transform = await import(pathToFileURL(path.join(root, 'drawingTransform.js')));
 const epsilon = 1e-10;
@@ -13,10 +14,11 @@ const pointAt = (angle, distance = 17.3) => ({ x: 2.125 + distance * Math.cos(ra
 const start = { x: 2.125, y: -4.75 };
 const close = (actual, expected, message) => assert.ok(Math.abs(actual - expected) < epsilon, `${message}: ${actual} != ${expected}`);
 
-assert.equal(lineTool.LINE_ANGULAR_SNAP_INCREMENT_DEGREES, 22.5);
-assert.equal(lineTool.LINE_ANGULAR_SNAP_TOLERANCE_DEGREES, 3);
+assert.equal(support.LINE_ANGULAR_SNAP_INCREMENT_DEGREES, 22.5);
+assert.equal(support.LINE_ANGULAR_SNAP_TOLERANCE_DEGREES, 3.1);
+assert.equal(lineTool.resolveLinePreviewPoint, support.resolveLinePreviewPoint, 'Profile consumes neutral segment angular authority');
 
-for (const angle of [0, 22.5, 45, 67.5, 90, 135, 180, 225, 270, 315, 337.5]) {
+for (const angle of Array.from({ length: 16 }, (_, index) => index * 22.5)) {
   const resolved = lineTool.resolveLinePreviewPoint(start, pointAt(angle + 1));
   assert.equal(resolved.snapActive, true, `${angle} degree candidate snaps`);
   assert.equal(resolved.snappedAngleDegrees, angle);
@@ -34,8 +36,9 @@ close(vertical.effectivePreviewPoint.x, start.x, '90 degrees has zero dx');
 const diagonal = lineTool.resolveLinePreviewPoint(start, pointAt(46));
 close(Math.abs(diagonal.effectivePreviewPoint.x - start.x), Math.abs(diagonal.effectivePreviewPoint.y - start.y), '45 degrees has equal components');
 
-assert.equal(lineTool.resolveLinePreviewPoint(start, pointAt(3)).snapActive, true, 'tolerance boundary is inclusive');
-const outsidePoint = pointAt(3.0001);
+assert.equal(lineTool.resolveLinePreviewPoint(start, pointAt(3)).snapActive, true, 'original three-degree boundary remains in band');
+assert.equal(lineTool.resolveLinePreviewPoint(start, pointAt(3.0999)).snapActive, true, 'inside the current 3.1 degree window is acquired');
+const outsidePoint = pointAt(3.1001);
 const outside = lineTool.resolveLinePreviewPoint(start, outsidePoint);
 assert.equal(outside.snapActive, false, 'outside tolerance remains free-angle');
 assert.equal(outside.effectivePreviewPoint, outsidePoint, 'free-angle effective point is the raw object without rounding');
@@ -67,7 +70,7 @@ assert.equal(lineTool.hasAngularPresentationTruth(result.interaction), false, 'c
 const rawC = { x: result.entity.end.x + 8.375, y: result.entity.end.y + 0.2 };
 const second = lineTool.applyProfileClick(lineTool.updateProfilePreview(result.interaction, rawC), rawC, createId);
 close(second.entity.end.y, result.entity.end.y, 'chained BC commits exactly horizontal');
-let document = types.createDrawingDocumentV1();
+let document = types.createDrawingDocumentV2();
 document = lineTool.appendEntityToActiveSketch(document, result.entity);
 document = lineTool.appendEntityToActiveSketch(document, second.entity);
 assert.deepEqual(document.sketches[document.activeSketchId].entityOrder, ['snap-1', 'snap-2']);
@@ -79,6 +82,22 @@ const fractionalStart = { x: 1.2345, y: 6.7891 };
 const fractionalRaw = { x: 9.8765, y: 11.1113 };
 const fractional = lineTool.resolveLinePreviewPoint(fractionalStart, fractionalRaw);
 assert.equal(fractional.snapActive, false);
+const direction = { ...lineTool.EMPTY_PROFILE_INTERACTION, start, startPointId: 'start' };
+const freeSnap = { active: false, type: 'none', effectivePoint: raw };
+const placed = lineTool.resolveLineEffectivePoint(direction, raw, freeSnap);
+assert.equal(placed.interaction.snappedAngleDegrees, 45);
+assert.equal(lineTool.automaticAxisConstraintKind(placed.interaction), null, '22.5 degree family is presentation-only except H/V');
+for (const [angle, kind] of [[0, 'HORIZONTAL'], [90, 'VERTICAL'], [22.5, null], [67.5, null]]) {
+  const pointer = pointAt(angle + 1);
+  const result = lineTool.resolveLineEffectivePoint(direction, pointer, { ...freeSnap, effectivePoint: pointer });
+  assert.equal(result.interaction.snappedAngleDegrees, angle);
+  assert.equal(lineTool.automaticAxisConstraintKind(result.interaction), kind);
+  const ctrl = lineTool.resolveLineEffectivePoint(result.interaction, pointer, { ...freeSnap, effectivePoint: pointer }, true);
+  assert.deepEqual(ctrl.effectivePoint, pointer);
+  assert.equal(ctrl.interaction.snappedAngleDegrees, null);
+  assert.equal(lineTool.automaticAxisConstraintKind(ctrl.interaction), null);
+}
+
 assert.deepEqual(fractional.effectivePreviewPoint, fractionalRaw, 'no grid rounding is introduced');
 
 const ctm = { a: 3.5, b: 0, c: 0, d: 3.5, e: 121, f: -48 };
@@ -88,10 +107,10 @@ const css = fs.readFileSync('src/styles.css', 'utf8');
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 assert.match(css, /\.drawing-geometry-entity\s*{[^}]*stroke-width:\s*1\.8;/s, 'committed geometry keeps its non-scaling state-driven treatment');
 assert.match(css, /\.drawing-axis\s*{[^}]*stroke:\s*#64748b;[^}]*stroke-width:\s*1\.4;/s, 'axes remain structurally subordinate');
-assert.match(css, /--drawing-inference:\s*#38bdf8;[\s\S]*\.drawing-line-preview\s*{[^}]*stroke:\s*var\(--drawing-inference\);[^}]*stroke-width:\s*1\.25;[^}]*stroke-dasharray:\s*5 4;/s, 'normal preview uses the shared CAD-blue inference token and is dashed');
-assert.match(css, /\.drawing-line-preview\.is-angular-snapped\s*{[^}]*stroke-width:\s*1\.7;[^}]*stroke-dasharray:\s*none;/s, 'snapped preview remains in the inherited dark-blue family and becomes solid');
+assert.match(css, /--drawing-authoring-preview:\s*#38bdf8;[\s\S]*\.drawing-authoring-preview,[^{]*\{[^}]*stroke:\s*var\(--drawing-authoring-preview\);[^}]*stroke-width:\s*1\.25;[^}]*stroke-dasharray:\s*5 4;/s, 'shared authoring preview uses its CAD-blue semantic token and remains dashed');
+assert.match(css, /\.drawing-authoring-preview\.is-angular-snapped,[^{]*\{[^}]*stroke-width:\s*1\.7;[^}]*stroke-dasharray:\s*none;/s, 'angular authoring preview becomes solid');
 assert.match(workspace, /getScreenCTM\(\)/, 'accepted CTM pointer path remains present');
-assert.match(workspace, /drawing-line-preview\$\{hasAngularPresentationTruth\(profileInteraction\) \? ' is-angular-snapped' : ''\}/,
+assert.match(workspace, /drawing-authoring-preview\$\{hasAngularPresentationTruth\(segmentInteraction\) \? ' is-angular-snapped' : ''\}/,
   'validated angular relation truth selects its distinct line style');
 
 console.log('D2.2a line visibility and full-circle angular snap tests passed');
