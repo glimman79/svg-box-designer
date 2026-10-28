@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { solveDrawingDimensionEdit, solveDrawingVariableTargets, solveDrawingConstrainedVariableIntent, solveDrawingGeometricIntent, solveDrawingComponentDrag, verifyDrawingConstraints, verifyDrawingDrivingDimensions, DRAWING_CONSTRAINT_TOLERANCE_MM } from '../.test-build/drawing-component-solver/drawingConstraintSolver.js';
+import { solveDrawingDimensionEdit, solveDrawingVariableTargets, solveDrawingGeometricIntent, solveDrawingComponentDrag, verifyDrawingConstraints, verifyDrawingDrivingDimensions, DRAWING_CONSTRAINT_TOLERANCE_MM } from '../.test-build/drawing-component-solver/drawingConstraintSolver.js';
 import { displayedDimensionMeasurement } from '../.test-build/drawing-component-solver/drawingDimension.js';
 import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from '../.test-build/drawing-component-solver/drawingHistory.js';
 import { collectDrawingEntityEquations, drawingEntitySolverVariables } from '../.test-build/drawing-component-solver/drawingEntityDefinition.js';
@@ -98,7 +98,6 @@ const documentWith = (points, dimensions, entities = {}) => ({
   const primaryResiduals = candidate => [candidate.points.c.x - 2, candidate.points.c.y - 3];
   for (const [name, candidate] of [
     ['exact projection', solveDrawingVariableTargets(sketch, targets)],
-    ['constrained intent', solveDrawingConstrainedVariableIntent(sketch, targets.map(target => ({ ...target, priority: 1 })))],
     ['geometric intent', solveDrawingGeometricIntent(sketch, { seedVariable: targets[0].variable, primaryResiduals, modelScale: 5 })],
     ['exact geometric intent', solveDrawingGeometricIntent(sketch, { seedVariable: targets[0].variable, exactVariableTargets: targets, primaryResiduals, modelScale: 5 })],
     ['infeasible exact fallback', solveDrawingGeometricIntent(sketch, { seedVariable: targets[0].variable, exactVariableTargets: allInvalidTargets, primaryResiduals, modelScale: 5 })],

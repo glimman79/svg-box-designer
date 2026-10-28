@@ -4,7 +4,7 @@ import { createDrawingDocumentV2, migrateDrawingDocument } from '../.test-build/
 import { resolveArc, validateDrawingTopology } from '../.test-build/drawing-entity-domain/drawingTopology.js';
 import { collectDrawingEntityEquations, drawingEntityDomainsAreValid, drawingEntitySolverVariables } from '../.test-build/drawing-entity-domain/drawingEntityDefinition.js';
 import { flattenDrawingSolverVariables } from '../.test-build/drawing-entity-domain/drawingSolverVariables.js';
-import { solveDrawingVariableTargets, solveDrawingConstrainedVariableIntent, solveDrawingComponentDrag, solveDrawingGeometricIntent, solveDrawingDimensionEdit, minimizeDrawingVariableObjective, verifyDrawingConstraints, DRAWING_CONSTRAINT_TOLERANCE_MM } from '../.test-build/drawing-entity-domain/drawingConstraintSolver.js';
+import { solveDrawingVariableTargets, solveDrawingComponentDrag, solveDrawingGeometricIntent, solveDrawingDimensionEdit, verifyDrawingConstraints, DRAWING_CONSTRAINT_TOLERANCE_MM } from '../.test-build/drawing-entity-domain/drawingConstraintSolver.js';
 import { solveDrawingDragCandidate } from '../.test-build/drawing-entity-domain/drawingDirectManipulation.js';
 import { EMPTY_DRAWING_HISTORY, transactDrawingDocument, undoDrawingDocument, redoDrawingDocument } from '../.test-build/drawing-entity-domain/drawingHistory.js';
 
@@ -62,14 +62,11 @@ for (const orientation of ['CCW', 'CW']) {
     assert.equal(validateDrawingTopology(dragged).ok, true);
   });
 
-  test(`${orientation}: shared solver intent, continuation, objective and invalid no-op paths`, () => {
+  test(`${orientation}: geometric intent, continuation and invalid no-op paths`, () => {
     const sketch = active(fixture(orientation)), invalid = withEnd(sketch, 5, 0), targets = targetsFor('b', 5, 0);
     const primaryResiduals = candidate => [candidate.points.b.x - 5, candidate.points.b.y];
-    for (const candidate of [
-      solveDrawingConstrainedVariableIntent(sketch, targets.map(t => ({ ...t, priority: 1 }))),
-      solveDrawingGeometricIntent(sketch, { seedVariable: targets[0].variable, modelScale: 5, primaryResiduals, exactVariableTargets: exactPose(invalid), continuationSeeds: [invalid] }),
-      minimizeDrawingVariableObjective(sketch, { variable: targets[0].variable, coordinateRange: [0, 5], valueFromCoordinate: x => x, evaluate: candidate => primaryResiduals(candidate).reduce((s, x) => s + x * x, 0), exactTargets: [targets[1]], sampleCount: 5, refinementIterations: 2 }),
-    ]) if (candidate) assertValid(candidate, sketch);
+    const candidate = solveDrawingGeometricIntent(sketch, { seedVariable: targets[0].variable, modelScale: 5, primaryResiduals, exactVariableTargets: exactPose(invalid), continuationSeeds: [invalid] });
+    if (candidate) assertValid(candidate, sketch);
     assert.equal(solveDrawingGeometricIntent(invalid, { seedVariable: targets[0].variable, modelScale: 5, primaryResiduals: () => [0] }), null, 'zero-error fallback cannot return an invalid input');
     assert.equal(solveDrawingGeometricIntent(invalid, { seedVariable: targets[0].variable, modelScale: 5, primaryResiduals: () => [1] }), null, 'no-improvement early return is verified');
   });
