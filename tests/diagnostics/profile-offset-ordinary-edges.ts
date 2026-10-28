@@ -39,7 +39,7 @@ for (const clockwise of [true, false]) {
 const generatedId = 'generated-profile-legacy' as GeneratedProfileId;
 const precedenceFinal: FinalGeometry = {
   contours: [{ ...buildFinalGeometry(model([panel('panel-a')]), []).contours[0], segmentProfileIds: [generatedId, null, null, null], segmentSourceEdgeIds: [null, 'edge-1', 'edge-2', 'edge-3'] }],
-  diagnostics: [], generatedProfiles: [],
+  diagnostics: [], generatedProfiles: [], clearanceProjectionTraces: [],
 };
 const both = resolveProfileOffsetProfileSelection(createManufacturingGeometry(precedenceFinal), [generatedId, createOrdinaryProfileOffsetTargetId('panel-a', 'edge-1')]);
 assert.deepEqual(both.finalContourList[0].compensationProfile, [true, true, false, false], 'generated and ordinary targets union without overlapping ownership');

@@ -1,3 +1,4 @@
+import { reconcileComposedPanelMetadata } from '../../src/app/composedPanelMetadataReconciliation';
 import { buildFinalGeometry } from '../../src/app/finalGeometry';
 import { assembleGeneratedGeometryDiagnostics } from '../../src/app/generatedGeometryAssembly';
 import { selectGeneratedGeometryAuthority } from '../../src/app/generatedGeometryAuthority';
@@ -52,7 +53,10 @@ const run = (name: string, assignments: EdgeAssignmentRecord) => {
   const packaging = assembly.panelDiagnostics.map((panel) => {
     const candidate = assembly.panelCandidates.find((value) => value.panelId === panel.panelId);
     if (!candidate) return { panelId: panel.panelId, exception: null, candidate: false };
-    try { packageComposedPanelGeometry(raw, candidate, panel.replacementOperationIds); return { panelId: panel.panelId, exception: null, candidate: true }; }
+    try {
+      const reconciliation = reconcileComposedPanelMetadata({ candidate, generatedGeometryItems: raw,
+        relationshipIndex: assembly.relationshipIndex });
+      packageComposedPanelGeometry(raw, candidate, panel.replacementOperationIds, reconciliation); return { panelId: panel.panelId, exception: null, candidate: true }; }
     catch (error) { return { panelId: panel.panelId, exception: error instanceof Error ? error.message : String(error), candidate: true }; }
   });
   const authority = selectGeneratedGeometryAuthority(importedModel, raw, 'mixed', assembly);
@@ -78,6 +82,8 @@ try {
 assert(wallOnly.authority.ok, 'Imported-contract W-only baseline failed.');
 assert(mixed.authority.ok, 'Available imported-contract TB+W branch failed unexpectedly.');
 assert(reductions.every((value) => value.authority.ok), 'One-at-a-time TB reduction failed.');
+assert([wallOnly, mixed, ...reductions].every((value) => value.packaging.every((panel) => !panel.exception)),
+  'Reconciled imported-contract packaging failed.');
 assert(sameEdgeValidationError?.includes('W1 is incomplete'), 'Same-source-edge assignment overwrite did not fail closed during Apply validation.');
 assert(JSON.stringify(importedModel) === originalModel, 'Authoring/generation mutated imported topology.');
 const summarize = (value: ReturnType<typeof run>) => ({ name: value.name, ok: value.authority.ok,

@@ -1,3 +1,4 @@
+import { reconcileComposedPanelMetadata } from '../../src/app/composedPanelMetadataReconciliation';
 import { selectGeneratedGeometryAuthority } from '../../src/app/generatedGeometryAuthority';
 import { packageComposedPanelGeometry } from '../../src/app/generatedGeometryDualRun';
 import { assembleGeneratedGeometryDiagnostics } from '../../src/app/generatedGeometryAssembly';
@@ -29,7 +30,10 @@ const assembly=assembleGeneratedGeometryDiagnostics(f.model,instrumented);
 const candidate=assembly.panelCandidates.find(x=>x.panelId===f.ownerPanelId);
 const owners=assembly.panelDiagnostics.find(x=>x.panelId===f.ownerPanelId)?.replacementOperationIds;
 if(!candidate||!owners)throw new Error('metadata packaging fixture lacks a candidate');
-const packaged=(items:typeof instrumented)=>packageComposedPanelGeometry(items,candidate,owners)
+const reconciliation=reconcileComposedPanelMetadata({candidate,generatedGeometryItems:instrumented,relationshipIndex:assembly.relationshipIndex});
+if(!reconciliation.ok)throw new Error('metadata packaging fixture lacks successful reconciliation');
+// Reuse the validated projection map while deliberately perturbing carrier metadata below.
+const packaged=(items:typeof instrumented)=>packageComposedPanelGeometry(items,candidate,owners,reconciliation)
  .find(x=>x.id===`composed:panel:${f.ownerPanelId}`)?.sourceRelationships;
 if(JSON.stringify(packaged([...instrumented].reverse()))!==JSON.stringify(actualRelationships))throw new Error('carrier reversal changed sourceRelationships');
 const panelCarrierIndexes=instrumented.map((x,index)=>x.kind==='PANEL_PATH'&&x.behaviour.replacesPanelId===f.ownerPanelId?index:-1).filter(index=>index>=0);
