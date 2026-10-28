@@ -75,8 +75,12 @@ test('Parallel ray composes with a hard free-end Endpoint without replacing dire
   const result = evaluate({ scene: [A, target], start: points.p2, startPointId: 'p2', pointer: points.p3 });
   assert.equal(result.snap.type, 'endpoint');
   assert.equal(result.snap.channels.directionAuthority.referenceLineId, 'A');
-  assert.deepEqual(result.resolution.effectivePoint, points.p3);
+  assert.deepEqual(result.resolution.effectivePoint, { x: points.p3.x, y: points.p3.y });
+  assert.equal(result.snap.pointId, 'p3', 'Endpoint carries persistent topology separately from coordinates');
+  assert.deepEqual(result.snap.reference, { kind: 'sketchPoint', pointId: 'p3' });
   assert.equal(result.resolution.interaction.parallelLineId, 'A');
+  const click = lineTool.applyResolvedProfileClick(result.resolution.interaction, result.resolution.effectivePoint, () => 'C', result.snap.pointId);
+  assert.equal(click.entity.endPointId, 'p3', 'the coordinate-only result commits with separately acquired topology');
 });
 
 test('production handoff preserves acquired Parallel through Endpoint resolution and commit', () => {

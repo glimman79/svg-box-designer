@@ -8,6 +8,7 @@ const built = (name) => pathToFileURL(path.resolve(`.test-build/drawing-endpoint
 const inference = await import(built('drawingInference'));
 const snaps = await import(built('drawingSnapEngine'));
 const lineTool = await import(built('drawingProfileTool'));
+const { clientToModelPoint } = await import(built('drawingTransform'));
 const identity = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
 const bounds = { x: -500, y: -500, width: 1000, height: 1000 };
 const resolvedLine = (id, startPointId, endPointId, start, end) => ({ id, type: 'line', startPointId, endPointId, start, end });
@@ -15,9 +16,11 @@ const angled = resolvedLine('AB', 'A', 'B', { x: 0, y: 0 }, { x: 100, y: 50 });
 
 const pipeline = ({ pointer, scene, start = null, previousSnap = null, ctrl = false, transform = identity, axisDirectionActive = false, directionDegrees = null, startPointId = 'new-start' }) => {
   const candidates = inference.collectDrawingInferenceCandidates(pointer, scene, transform, bounds, start, directionDegrees, start ? startPointId : null);
-  const snap = snaps.resolveDrawingSnap({ rawPoint: pointer, candidates, previousSnap, ctrlOverride: ctrl, axisDirectionActive, activeLineStart: start });
+  const rawPoint = clientToModelPoint(pointer, transform);
+  assert.ok(rawPoint);
+  const snap = snaps.resolveDrawingSnap({ rawPoint, candidates, previousSnap, ctrlOverride: ctrl, axisDirectionActive, activeLineStart: start });
   const interaction = { ...lineTool.EMPTY_PROFILE_INTERACTION, start, startPointId: start ? startPointId : null };
-  return { candidates, snap, resolved: lineTool.resolveLineEffectivePoint(interaction, pointer, snap, ctrl) };
+  return { candidates, snap, resolved: lineTool.resolveLineEffectivePoint(interaction, rawPoint, snap, ctrl) };
 };
 const normal = (candidates, point = 'B', line = 'AB') => candidates.pointReferences.find(
   ({ constructionKey }) => constructionKey === `point-normal:${point}:${line}`,
@@ -82,11 +85,29 @@ test('direction remains free after point-reference start; ordinary Parallel rema
 
 test('support distance is stable in client space under anisotropic transforms', () => {
   const transform = { a: 1, b: 0, c: 0, d: 10, e: 10, f: 20 };
-  const screenNormal = { x: -55 / Math.sqrt(100.25), y: -2.75 / Math.sqrt(100.25) };
-  const pointer = { x: 110 - 200 + screenNormal.x, y: 520 + 4000 + screenNormal.y };
-  const result = pipeline({ pointer, scene: [angled], transform });
-  assert.equal(result.snap.type, 'point-reference');
-  assert.ok(Math.abs(result.snap.screenDistance - 5.5) < 1e-9);
+  // The transformed support direction is (-0.5, 10); this unit normal is
+  // perpendicular in client space, rather than in the anisotropic model space.
+  const screenNormal = { x: -10 / Math.sqrt(100.25), y: -0.5 / Math.sqrt(100.25) };
+  for (const distance of [4.9, 5.1]) {
+    const pointer = { x: 110 - 200 + distance * screenNormal.x, y: 520 + 4000 + distance * screenNormal.y };
+    const result = pipeline({ pointer, scene: [angled], transform });
+    const candidate = normal(result.candidates);
+    assert.ok(candidate, 'the semantic normal remains available on either side of capture');
+    assert.ok(Math.abs(candidate.screenDistance - distance) < 1e-9);
+    assert.equal(candidate.sourcePointId, 'B');
+    assert.equal(candidate.incidentLineId, 'AB');
+    if (distance < 5) {
+      assert.equal(result.snap.type, 'point-reference');
+      assert.ok(Math.abs(result.snap.screenDistance - distance) < 1e-9);
+      assert.equal(result.snap.sourcePointId, 'B');
+      assert.equal(result.snap.constructionKey, 'point-normal:B:AB');
+      assert.ok(Math.abs(result.snap.effectivePoint.x + 100) < 1e-9);
+      assert.ok(Math.abs(result.snap.effectivePoint.y - 450) < 1e-9);
+    } else {
+      assert.equal(result.snap.type, 'none');
+      assert.equal(result.snap.channels.pointReference, null, 'outside five CSS pixels does not acquire');
+    }
+  }
 });
 
 test('established direction makes X/Y and normal supports produce forward positional intersections', () => {
