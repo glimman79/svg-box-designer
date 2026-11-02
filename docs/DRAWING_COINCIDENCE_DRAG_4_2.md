@@ -7,8 +7,12 @@ performance, after manual browser tests on main `4135cd2d8e13a8fb21902a672367438
 This supersedes the pending-acceptance status at report creation. The original
 investigation, measurements, validation and proposed manual checklist below are
 preserved as historical evidence; no new per-scenario results or timings are inferred.
-R1–R3, R5, the 14 baseline failures and the empty Undo-step issue remain open.
-Stages 5–6 remain **NOT STARTED**.
+Later status: Stages 5 and 6 are **ACCEPTED**. Test-only maintenance in #623–#625
+supersedes the historical regression failures below; the final inventory reached
+136/136 PASS. R1–R3 remain open, Arc empty/blind Undo is a deferred accepted limitation,
+and Save/Reload (R5) verification/implementation is out of scope for Stage 6 acceptance.
+See the [current stage record](../ROADMAP.md#circlearc-implementation-stages-and-status)
+for the evidence and user browser acceptance; the original report below is unchanged.
 
 ## Original implementation report (historical)
 

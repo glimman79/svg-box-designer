@@ -436,7 +436,9 @@ is recorded in `PROJECT_HISTORY.md`; it is not current runtime architecture.
 The locked architecture and its implementation status are independent: architecture is
 **LOCKED**. Stages 0–3 are **ACCEPTED**; Stage 3 was user approved 2026-10-09.
 Stage 4 is **ACCEPTED**. Stage 5 is **ACCEPTED / COMPLETE**: 5.1,
-5.2, 5.3A, audit-only 5.3B, and 5.4 are **ACCEPTED**. Stage 6 is **NOT STARTED**.
+5.2, 5.3A, audit-only 5.3B, and 5.4 are **ACCEPTED**. Stage 6 is **ACCEPTED** following
+regression maintenance and user-confirmed browser testing; the Circular Support
+migration is closed, without declaring the entire application feature-complete.
 Canonical Arc representation remains implemented; obsolete Arc compatibility was removed
 in accepted Stage 5.3A. The authoritative Stage 0–6 scope, status metadata, and migration
 policies are maintained in
@@ -618,9 +620,9 @@ tangential Arc body drag empty Undo-step issue remains open.
 
 Stage 4, including 4.2 Coincidence and 4.3 performance (4.3B), is **ACCEPTED** after Mikael’s manual browser tests on verified main `4135cd2d8e13a8fb21902a672367438c8b7657f1`. This task records the user’s acceptance; it does not supply new timings or a detailed manual test matrix. The Stage 3 endpoint interaction discrepancy above is historical: Stage 4 identified ordinary SketchPoint fallback and restored explicit canonical grip ownership, as recorded in the Roadmap.
 
-Nonlinear trial projection preserves attained residual vectors of completed transient objective tiers while restoring hard and semantic equations. This preserves the shared hierarchy and reduces repeated rejected corrections without changing hard tolerances, component closure, Arc representation or grip semantics. See [performance evidence](docs/DRAWING_NONLINEAR_SOLVER_4_3B.md). The sampled browser point-curve tails still exceed 16 ms; acceptance is no universal frame-time guarantee. R1–R3, R5, the historical 14-script failures and tangential Arc body drag empty Undo steps are not closed by later cleanup. Current Stage 5 evidence and the seven unchanged Drawing/CAD failures are recorded below and in the Roadmap.
+Nonlinear trial projection preserves attained residual vectors of completed transient objective tiers while restoring hard and semantic equations. This preserves the shared hierarchy and reduces repeated rejected corrections without changing hard tolerances, component closure, Arc representation or grip semantics. See [performance evidence](docs/DRAWING_NONLINEAR_SOLVER_4_3B.md). The sampled browser point-curve tails still exceed 16 ms; acceptance is no universal frame-time guarantee. Stage 5 cleanup did not close R1–R3, R5, the historical 14-script failures or tangential Arc body drag empty Undo steps. Subsequent regression maintenance and current limitations are recorded below and in the Roadmap.
 
-### Stage 5 accepted cleanup and current limitations
+### Stage 5 accepted cleanup and historical limitations
 
 Stage 5 is **ACCEPTED / COMPLETE**: 5.1 (#617), 5.2 (#618), 5.3A (#619), audit-only
 5.3B (no implementation PR), and 5.4 (#621) are **ACCEPTED**. The scoped 5.3B audit
@@ -637,15 +639,44 @@ Circular Support, two intrinsic Arc radial equations/five DOF, and shared Constr
 topology are preserved. Canonical normalization and independent Line migration remain;
 obsolete bulge Arc conversion and derived-center identity remain unsupported.
 
-The seven Drawing/CAD script failures reproduced before and after #621 remain unresolved:
+At the Stage 5 checkpoint, seven Drawing/CAD script failures reproduced before and after #621 remained unresolved:
 `drawing-primary-mousedown`, `drawing-box-selection`, `drawing-alignment-snap`,
 `drawing-angular-reference`, `drawing-line-authority`, `drawing-live-direction-coexistence`,
 and `drawing-endpoint-direction-inference`. They are the Drawing/CAD subset of the
 earlier broader 14-script results, not evidence that the other historical failures were
-fixed. R1–R3, unimplemented R5, and tangential Arc body drag empty Undo steps remain open.
+fixed at that checkpoint. R1–R3, unimplemented R5, and tangential Arc body drag empty Undo steps were carried forward.
 Restore/normalization coverage does not establish user-facing Drawing Save/Reload.
 
-Stage 6 remains **NOT STARTED**, beginning from completed Stage 5. Its existing final
-regression/acceptance scope and Save/Reload scope question are tracked in the
-[Roadmap](ROADMAP.md#circlearc-implementation-stages-and-status); this acceptance does
-not authorize unrelated fixes or begin Stage 6 implementation.
+### Stage 6 final acceptance and current limitations
+
+**Stage 6: ACCEPTED** by the user on closure baseline
+`845da96dddc65b896c18682e089541ea7f9a4d5a` (merged #625). Stages 0–5 were previously
+accepted; the Circular Support migration is closed. The broader application's planned
+features remain governed by the Roadmap.
+
+Test-only regression maintenance in #623, #624 and #625 supersedes the unresolved-script
+checkpoint above: seven Drawing/CAD scripts were corrected, then seven d2 scripts,
+then ten remaining independently reproduced failing scripts across eleven test files.
+The final recorded #625 inventory is **136/136 PASS**, including **56/56 Drawing/CAD**
+and **12/12 d2**, with **production build PASS**. The original Stage 6 analysis's exact
+ten-script list was unavailable; #625 reproduced the ten failures on its verified
+baseline. These are prior results after maintenance, not a fresh rerun or evidence
+that all scripts passed throughout Stage 6. See [history](PROJECT_HISTORY.md#1126-stage-6-final-acceptance-and-regression-maintenance).
+
+The user performed and reported browser acceptance of Circle/Arc, Constraints,
+Dimensions, Direct Manipulation and Undo/Redo, with no observable functional problems.
+Codex did not independently execute that acceptance matrix; no individual browser
+case outcomes are inferred. The [Roadmap acceptance record](ROADMAP.md#circlearc-implementation-stages-and-status)
+owns the detailed evidence and final scope decisions.
+
+- **Arc empty/blind Undo — DEFERRED, accepted known limitation:** numerically negligible
+  or no-op Arc drags may create an invisible Undo step. The user observed no practical
+  problem during normal browser testing. This defect remains unfixed; no solver, drag,
+  History or Undo/Redo change is part of this closure.
+- **Save/Reload (R5) — OUT OF SCOPE, not required for Stage 6 acceptance:** verification
+  and implementation are explicitly deferred. User-facing Drawing Save/Reload remains
+  unimplemented; it has not been tested or accepted by this closure. Canonical restore
+  and normalization coverage does not establish Save/Reload.
+- **R1–R3 remain open for future assessment:** absolute tolerance at very small radii,
+  retain-last-valid behavior at invalid drag completion, and model/Circle minimum-radius
+  consistency. Their prior evidence/status and the Stage 4 performance limitations remain.

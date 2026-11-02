@@ -16,14 +16,22 @@ the shared Circle/Arc foundation—is authoritative in
 [ROADMAP.md](ROADMAP.md#circlearc-implementation-stages-and-status); all migration stages
 after the characterization safety-net stage remain separately tracked. Stages 0–3 are **ACCEPTED**; Stage 3 was user approved 2026-10-09. Stage 4 is
 **ACCEPTED**. Stage 5 is **ACCEPTED / COMPLETE**: 5.1, 5.2, 5.3A, audit-only 5.3B,
-and 5.4 are **ACCEPTED**. Stage 6 remains **NOT STARTED**. Stage 4 restores
+and 5.4 are **ACCEPTED**. Stage 6 is **ACCEPTED** following regression maintenance and
+user-confirmed Circle/Arc browser testing, including Constraints, Dimensions, Direct
+Manipulation and Undo/Redo. This closes the Circular Support migration, not the entire
+application's feature set. Stage 4 restores
 body radius drag about a fixed center, whole-Arc center translation, and exact endpoint
 pivots, with browser acceptance of constraints, cancellation, History, and Circle/Line
 regressions. Open risks R1–R3 and the historical endpoint-drag evidence discrepancy and its resolution remain recorded
-in the Roadmap. The seven unchanged Drawing/CAD test failures and tangential Arc body
-drag empty-Undo issue remain open; Stage 5 completion does not resolve all CAD defects.
-Actual Drawing Save/Reload (R5) is not implemented and is outside Stage 3;
-document restore/normalization coverage does not establish that user-facing capability.
+in the Roadmap. Test-only maintenance in #623–#625 reached a recorded **136/136** full
+regression inventory PASS, **56/56** Drawing/CAD PASS, **12/12** d2 PASS and production
+build PASS; these prior results were not rerun for this documentation closure. Browser
+acceptance was performed and reported by the user, not independently executed by Codex.
+Arc empty/blind Undo remains **DEFERRED — accepted known limitation**. Actual Drawing
+Save/Reload (R5) remains unimplemented; its verification and implementation are
+**OUT OF SCOPE — not required for Stage 6 acceptance**, and it has not been tested or
+accepted by this closure. Document restore/normalization coverage does not establish
+that user-facing capability. See the Roadmap for evidence and deferred/open risks.
 
 Repository collaboration follows the permanent rule in
 [REGLER_FOR_CHATT_MED_CHATGPT.md](REGLER_FOR_CHATT_MED_CHATGPT.md#permanent-regel-för-repositoryåtkomst):

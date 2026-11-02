@@ -142,6 +142,11 @@ ACCEPTED. Stage 5.4 (#621) retired `solveDrawingConstrainedVariableIntent`,
 `DrawingVariableIntent`, `minimizeDrawingVariableObjective`, and
 `DrawingSoftVariableObjective`, with no compatibility wrappers. Active geometric-intent
 and component solving, hierarchy, hard verification, tolerances, continuation, intrinsic
-equations, and canonical Circle/Arc storage are preserved. Stage 6 remains **NOT STARTED**.
+equations, and canonical Circle/Arc storage are preserved. Stage 6 is **ACCEPTED** after
+test-only regression maintenance (#623–#625) and user-confirmed Circle/Arc browser
+acceptance. All Circular Support migration stages 0–6 are accepted; this documentation
+closure changes no architecture or behavior and does not declare the application
+feature-complete.
 The [Roadmap](ROADMAP.md#circlearc-implementation-stages-and-status) owns stage evidence,
-known unresolved failures and risks, and the existing final regression/acceptance scope.
+open R1–R3 risks, the deferred Arc empty/blind Undo limitation, and the explicit exclusion
+of Save/Reload verification/implementation from Stage 6 acceptance.

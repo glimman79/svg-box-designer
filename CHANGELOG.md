@@ -3,6 +3,24 @@
 Entries record completed changes at their respective checkpoints. Current architecture
 and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
 
+## Documentation — Circular Support Stage 6 final acceptance
+
+- **Stage 6: ACCEPTED** by the user on baseline
+  `845da96dddc65b896c18682e089541ea7f9a4d5a` (merged #625); previously accepted
+  Stages 0–5 and Stage 6 now close the migration, not the broader application's feature set.
+- Recorded test-only maintenance: #623 corrected seven Drawing/CAD scripts (56/56 PASS),
+  #624 corrected seven d2 scripts (12/12 PASS), and #625 corrected ten independently
+  reproduced remaining failing scripts across eleven test files (136/136 full inventory,
+  56/56 Drawing/CAD, 12/12 d2 and production build PASS). The original analysis's exact
+  ten-script list was unavailable; the [history](PROJECT_HISTORY.md#1126-stage-6-final-acceptance-and-regression-maintenance)
+  preserves that evidence limitation and the earlier failure checkpoints.
+- Recorded user-confirmed browser PASS for Circle/Arc, Constraints, Dimensions,
+  Direct Manipulation and Undo/Redo, with no observable functional problems. No independent
+  Codex browser acceptance or fresh regression/build run is claimed by this closure.
+- Arc empty/blind Undo remains **DEFERRED — accepted known limitation**; Save/Reload
+  verification and implementation are **OUT OF SCOPE — not required for Stage 6 acceptance**,
+  not tested or accepted. R1–R3 remain open. Documentation only; no production behavior changed.
+
 ## Drawing — Stage 5.4 solver cleanup and Stage 5 acceptance
 
 - Stage 5.4 (ACCEPTED, [#621](https://github.com/glimman79/svg-box-designer/pull/621),
@@ -13,7 +31,7 @@ and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
   shared topology, solver hierarchy, and verification behavior remain unchanged.
 - Recorded the user's successful manual browser testing after #621 and acceptance of
   Stage 5.4; Stage 5 is **ACCEPTED / COMPLETE**. Synchronized the six central documents.
-  Stage 6 remains **NOT STARTED**; no new user-visible feature or measured performance
+  Stage 6 was **NOT STARTED** at that checkpoint; no new user-visible feature or measured performance
   improvement is claimed by this cleanup.
 - Carried forward the seven unchanged Drawing/CAD script failures listed in the
   [Roadmap](ROADMAP.md#circlearc-implementation-stages-and-status), tangential Arc body
@@ -31,7 +49,7 @@ and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
 - Stage 5.1 (ACCEPTED, #617): removed verified unused Drawing helpers and Arc drag metadata.
 - Stage 5.2 (ACCEPTED, #618): removed obsolete pointer compatibility routes while retaining persistent-point ownership.
 - Stage 5.3A (ACCEPTED, #619): removed derived Arc-center references and obsolete bulge-Arc migration; canonical validation, persistent point IDs, and independent Line migration remain.
-- Stage 5.3B (ACCEPTED — audit only): found no further justified obsolete Arc-specific legacy infrastructure within its defined scope; no code changes, implementation commit, or PR. Stage 5.4 was subsequently accepted and Stage 5 completed as recorded above; Stage 6 remains NOT STARTED.
+- Stage 5.3B (ACCEPTED — audit only): found no further justified obsolete Arc-specific legacy infrastructure within its defined scope; no code changes, implementation commit, or PR. Stage 5.4 was subsequently accepted and Stage 5 completed as recorded above; Stage 6 was NOT STARTED at that checkpoint.
 
 ## Documentation — Stage 4 acceptance
 
