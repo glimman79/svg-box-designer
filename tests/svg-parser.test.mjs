@@ -81,20 +81,6 @@ class TestXMLSerializer {
   }
 }
 
-const svgUtilsSource = readFileSync(resolve(root, 'src/svgUtils.ts'), 'utf8');
-const compiledSvgUtils = ts.transpileModule(svgUtilsSource, {
-  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-}).outputText;
-const svgUtilsModule = { exports: {} };
-vm.runInNewContext(compiledSvgUtils, {
-  module: svgUtilsModule,
-  exports: svgUtilsModule.exports,
-  console,
-  DOMParser: TestDOMParser,
-  XMLSerializer: TestXMLSerializer,
-}, { filename: 'svgUtils.cjs' });
-
-
 const contourModuleCache = new Map();
 const loadSrcModule = (relativePath) => {
   const absolutePath = resolve(root, relativePath);
@@ -107,7 +93,6 @@ const loadSrcModule = (relativePath) => {
   contourModuleCache.set(absolutePath, loadedModule);
   const baseDir = dirname(absolutePath);
   const localRequire = (id) => {
-    if (id === '../svgUtils') return svgUtilsModule.exports;
     if (id.startsWith('./') || id.startsWith('../')) {
       const resolvedPath = resolve(baseDir, id);
       if (resolvedPath.startsWith(resolve(root, 'src'))) {
@@ -116,9 +101,11 @@ const loadSrcModule = (relativePath) => {
     }
     return require(id);
   };
-  vm.runInNewContext(output, { require: localRequire, module: loadedModule, exports: loadedModule.exports, console }, { filename: `${relativePath}.cjs` });
+  vm.runInNewContext(output, { require: localRequire, module: loadedModule, exports: loadedModule.exports, console, structuredClone, DOMParser: TestDOMParser, XMLSerializer: TestXMLSerializer }, { filename: `${relativePath}.cjs` });
   return loadedModule.exports;
 };
+
+const svgUtilsModule = { exports: loadSrcModule('src/svgUtils.ts') };
 
 const { parseSvgDocument, applyAffineMatrixToPoint, formatImportDiagnosticMessage, multiplyAffineMatrices, parseMatrixTransform } = svgUtilsModule.exports;
 const { classifyImportedPanelContours } = loadSrcModule('src/app/contourClassification.ts');

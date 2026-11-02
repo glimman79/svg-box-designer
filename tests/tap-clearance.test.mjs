@@ -20,6 +20,17 @@ const load = (relativePath) => {
 
 const { applyTapClearance, processManufacturingGeometry } = load('src/app/manufacturingCompensation.ts');
 const { createManufacturingGeometry } = load('src/app/manufacturingGeometry.ts');
+const { createGeneratedProfile } = load('src/app/generatedProfiles.ts');
+const { resolveTapClearanceElementIds } = load('src/app/tapClearance.ts');
+
+const semanticProfile = (currentContour, tapSpecs, attachmentStart, attachmentEnd) => createGeneratedProfile({
+  toolType: 'TB', connectionId: 'connection', operationId: 'operation',
+  panelId: currentContour.panelId, sourceEdgeId: 'edge',
+  sourceEdgeStart: attachmentStart, sourceEdgeEnd: attachmentEnd, attachmentStart, attachmentEnd,
+  taps: tapSpecs.map(({ id, points, roles }) => ({ id, sourceOperationId: 'operation', panelId: currentContour.panelId,
+    sourceEdgeId: 'edge', points, segmentRoles: roles })),
+});
+const finalGeometry = (contours, generatedProfiles = []) => ({ contours, diagnostics: [], generatedProfiles, clearanceProjectionTraces: [] });
 
 const points = [
   { x: 0, y: 0 }, { x: 2, y: 0 }, { x: 2, y: -2 }, { x: 4, y: -2 }, { x: 4, y: 0 },
@@ -28,13 +39,26 @@ const points = [
 const tapOne = 'generated-tap:TB:operation:panel:edge:0';
 const tapTwo = 'generated-tap:TB:operation:panel:edge:1';
 const contour = {
-  id: 'generated-panel', source: 'final-contour', finalSource: 'applied-panel', kind: 'OUTER', geometryType: 'GENERATED_OUTER',
+  id: 'generated-panel', panelId: 'panel', source: 'final-contour', finalSource: 'applied-panel', kind: 'OUTER', geometryType: 'GENERATED_OUTER',
   points, pathD: `M ${points.map(({ x, y }) => `${x} ${y}`).join(' L ')} Z`, profileMaterialSide: 'GENERATED_MATING',
   compensationProfile: points.map(() => false),
   segmentTapIds: [null, tapOne, tapOne, tapOne, null, tapTwo, tapTwo, tapTwo, null, null, null, null],
   segmentTapRoles: [null, 'tap-side-start', 'tap-tip', 'tap-side-end', null, 'tap-side-start', 'tap-tip', 'tap-side-end', null, null, null, null],
 };
-const geometry = () => createManufacturingGeometry({ contours: [contour], diagnostics: [] });
+const profile = semanticProfile(contour, [
+  { id: tapOne, points: points.slice(1, 5), roles: ['tap-side-start', 'tap-tip', 'tap-side-end'] },
+  { id: tapTwo, points: points.slice(5, 9), roles: ['tap-side-start', 'tap-tip', 'tap-side-end'] },
+], points[0], points[9]);
+const geometry = () => createManufacturingGeometry(finalGeometry([contour], [profile]));
+assert.equal(resolveTapClearanceElementIds(profile).size, 4, 'both taps supply two eligible semantic walls');
+const noSemanticProfile = createManufacturingGeometry(finalGeometry([contour]));
+assert.equal(applyTapClearance(noSemanticProfile, -0.1).finalContourList[0].pathD, contour.pathD, 'legacy segment IDs and roles alone cannot grant eligibility');
+const contradictoryLegacy = { ...contour, segmentTapIds: points.map(() => null), segmentTapRoles: points.map(() => 'tap-tip') };
+assert.notEqual(applyTapClearance(createManufacturingGeometry(finalGeometry([contradictoryLegacy], [profile])), -0.1).finalContourList[0].pathD,
+  contour.pathD, 'semantic profiles retain authority when legacy segment roles disagree');
+const wrongPanel = { ...profile, panelId: 'another-panel' };
+assert.equal(applyTapClearance(createManufacturingGeometry(finalGeometry([contour], [wrongPanel])), -0.1).finalContourList[0].pathD,
+  contour.pathD, 'equal projected coordinates on another panel grant no eligibility');
 
 const allTaps = applyTapClearance(geometry(), -0.10).finalContourList[0];
 assert.notEqual(allTaps.pathD, contour.pathD, 'Tap Clearance changes generated male taps automatically');
@@ -52,9 +76,9 @@ for (const label of ['imported geometry', 'manually created geometry', 'tab-like
 }
 
 const slot = { ...contour, id: 'slot', kind: 'INNER', geometryType: 'GENERATED_SLOT', segmentTapIds: undefined, compensationProfile: points.map(() => true) };
-const finalGeometry = { contours: [contour, slot], diagnostics: [] };
-const zeroTapPipeline = processManufacturingGeometry(finalGeometry, 0.15, -0.10, 0, [], 0);
-const activeTapPipeline = processManufacturingGeometry(finalGeometry, 0.15, -0.10, 0, [], -0.10);
+const pipelineGeometry = finalGeometry([contour, slot], [profile]);
+const zeroTapPipeline = processManufacturingGeometry(pipelineGeometry, 0.15, -0.10, 0, [], 0);
+const activeTapPipeline = processManufacturingGeometry(pipelineGeometry, 0.15, -0.10, 0, [], -0.10);
 assert.notEqual(activeTapPipeline.finalContourList[0].pathD, zeroTapPipeline.finalContourList[0].pathD, '-0.10 affects every generated tap in the complete pipeline');
 assert.equal(activeTapPipeline.finalContourList[1].pathD, zeroTapPipeline.finalContourList[1].pathD, 'Slot Clearance output remains unchanged by Tap Clearance');
 assert.equal(activeTapPipeline.contours[1].pathD, zeroTapPipeline.contours[1].pathD, 'Kerf output for slot geometry remains unchanged by Tap Clearance');
@@ -67,7 +91,7 @@ const transform = (values, quarterTurns, reverse) => {
   const rotated = values.map((point) => {
     let { x, y } = point;
     for (let turn = 0; turn < quarterTurns; turn += 1) [x, y] = [-y, x];
-    return { x, y };
+    return { x: x === 0 ? 0 : x, y: y === 0 ? 0 : y };
   });
   return reverse ? [rotated[0], ...rotated.slice(1).reverse()] : rotated;
 };
@@ -93,15 +117,35 @@ for (const quarterTurns of [0, 1, 2, 3]) for (const reverse of [false, true]) fo
   const roleList = reverse ? reverseRoles : forwardRoles;
   const idList = roleList.map((role) => role ? cornerTapId : null);
   const fixture = { ...contour, id: cornerTapId, points: fixturePoints, pathD: `M ${fixturePoints.map(({ x, y }) => `${x} ${y}`).join(' L ')} Z`, compensationProfile: fixturePoints.map(() => false), segmentTapIds: idList, segmentTapRoles: roleList };
-  const result = applyTapClearance(createManufacturingGeometry({ contours: [fixture], diagnostics: [] }), clearance).finalContourList[0];
+  const tipIndex = roleList.indexOf('tap-tip');
+  const leadingIndex = (tipIndex + fixturePoints.length - 1) % fixturePoints.length;
+  const tapPoints = Array.from({ length: 4 }, (_, index) => fixturePoints[(leadingIndex + index) % fixturePoints.length]);
+  const cornerProfile = semanticProfile(fixture, [{ id: cornerTapId, points: tapPoints,
+    roles: [roleList[leadingIndex], roleList[tipIndex], roleList[(tipIndex + 1) % fixturePoints.length]] }],
+    tapPoints[0], tapPoints[3]);
+  assert.equal(resolveTapClearanceElementIds(cornerProfile).size, 1, 'one terminal boundary stays fixed while its fitting wall is eligible');
+  const result = applyTapClearance(createManufacturingGeometry(finalGeometry([fixture], [cornerProfile])), clearance).finalContourList[0];
   const label = `corner ${quarterTurns}, ${reverse ? 'clockwise/reversed' : 'counterclockwise'}, ${clearance}`;
   assert.deepEqual(bounds(result.points), bounds(fixturePoints), `${label}: exact bounding box invariant`);
-  assert.ok(result.points.some((point) => point.x === fixturePoints[0].x && point.y === fixturePoints[0].y), `${label}: original corner coordinate is fixed`);
+  // Numeric reconstruction may omit a redundant collinear attachment vertex
+  // (#303/#305). Both original terminal endpoints must remain on the boundary.
+  const onBoundary = (point) => result.points.some((start, index) => {
+    const end = result.points[(index + 1) % result.points.length];
+    return (end.x - start.x) * (point.y - start.y) === (end.y - start.y) * (point.x - start.x)
+      && point.x >= Math.min(start.x, end.x) && point.x <= Math.max(start.x, end.x)
+      && point.y >= Math.min(start.y, end.y) && point.y <= Math.max(start.y, end.y);
+  });
+  const boundaryIndex = roleList.findIndex((role) => role?.startsWith('source-boundary'));
+  assert.ok(onBoundary(fixturePoints[boundaryIndex]) && onBoundary(fixturePoints[(boundaryIndex + 1) % fixturePoints.length]),
+    `${label}: the original terminal boundary stays fixed`);
   assertSimpleClosed(result.points, label);
   if (clearance !== 0) assert.notEqual(result.pathD, fixture.pathD, `${label}: eligible internal tap wall is compensated`);
 }
 
 const terminalRoles = ['source-boundary-start', 'tap-tip', 'source-boundary-end', null, null, null, null];
 const terminalFixture = { ...contour, id: 'terminal-roles', points: cornerBase, pathD: `M ${cornerBase.map(({ x, y }) => `${x} ${y}`).join(' L ')} Z`, segmentTapIds: terminalRoles.map((role) => role ? tapOne : null), segmentTapRoles: terminalRoles };
-assert.equal(applyTapClearance(createManufacturingGeometry({ contours: [terminalFixture], diagnostics: [] }), -0.1).finalContourList[0].pathD, terminalFixture.pathD, 'explicit source-boundary roles are excluded even when they have GeneratedTapId ownership');
+const terminalProfile = semanticProfile(terminalFixture, [{ id: tapOne, points: cornerBase.slice(0, 4),
+  roles: terminalRoles.slice(0, 3) }], cornerBase[0], cornerBase[3]);
+assert.equal(resolveTapClearanceElementIds(terminalProfile).size, 0, 'terminal boundaries and tip provide no eligible wall');
+assert.equal(applyTapClearance(createManufacturingGeometry(finalGeometry([terminalFixture], [terminalProfile])), -0.1).finalContourList[0].pathD, terminalFixture.pathD, 'explicit source-boundary roles are excluded even when they have GeneratedTapId ownership');
 console.log('Tap Clearance regression tests passed.');

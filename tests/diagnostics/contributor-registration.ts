@@ -1,3 +1,4 @@
+import { reconcileComposedPanelMetadata } from '../../src/app/composedPanelMetadataReconciliation';
 import { selectGeneratedGeometryAuthority } from '../../src/app/generatedGeometryAuthority';
 import { buildFinalGeometry } from '../../src/app/finalGeometry';
 import { processManufacturingGeometry } from '../../src/app/manufacturingCompensation';
@@ -69,13 +70,16 @@ const semantic=(x:(typeof packaged)[number])=>JSON.stringify(x.generatedGeometry
 assert(packaged.every(x=>semantic(x)===semantic(packaged[0])),'three-carrier ordering changed packaged semantics');
 const candidate=triple.result.diagnostics.panelCandidates.find(x=>x.panelId===triple.f.ownerPanelId)!;
 const duplicateCarrier={...w[0],id:`${w[0].id}:duplicate-carrier`};
-const duplicate=packageComposedPanelGeometry([...triple.raw,duplicateCarrier],candidate,triple.result.decisions.find(x=>x.panelId===triple.f.ownerPanelId)!.relationshipOwners);
+const reconciliation=reconcileComposedPanelMetadata({candidate,generatedGeometryItems:triple.raw,
+  relationshipIndex:triple.result.diagnostics.relationshipIndex});
+assert(reconciliation.ok,'three-carrier fixture reconciliation failed');
+const duplicate=packageComposedPanelGeometry([...triple.raw,duplicateCarrier],candidate,triple.result.decisions.find(x=>x.panelId===triple.f.ownerPanelId)!.relationshipOwners,reconciliation);
 const composedDuplicate=duplicate.find(x=>x.id===`composed:panel:${triple.f.ownerPanelId}`)!;
 const profileIds=composedDuplicate.generatedProfiles?.map(x=>x.id)??[];
 assert(new Set(profileIds).size===profileIds.length&&profileIds.filter(x=>x===w[0].generatedProfiles![0].id).length===1,'identical duplicate metadata was not deduplicated');
 const changedProfile={...w[0].generatedProfiles![0],attachmentStart:{x:999,y:999}};
 const conflicting={...duplicateCarrier,generatedProfiles:[changedProfile]};
-let conflict='';try{packageComposedPanelGeometry([...triple.raw,conflicting],candidate,triple.result.decisions.find(x=>x.panelId===triple.f.ownerPanelId)!.relationshipOwners);}catch(error){conflict=error instanceof Error?error.message:String(error);}
+let conflict='';try{packageComposedPanelGeometry([...triple.raw,conflicting],candidate,triple.result.decisions.find(x=>x.panelId===triple.f.ownerPanelId)!.relationshipOwners,reconciliation);}catch(error){conflict=error instanceof Error?error.message:String(error);}
 assert(conflict.includes('Conflicting generated profile'),'conflicting stable metadata ID did not fail deterministically');
 console.log('PASS | three-carrier permutations/deduplication/conflicting stable ID');
 

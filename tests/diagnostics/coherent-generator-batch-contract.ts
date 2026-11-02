@@ -1,3 +1,4 @@
+import { reconcileComposedPanelMetadata } from '../../src/app/composedPanelMetadataReconciliation';
 import { buildFinalGeometry } from '../../src/app/finalGeometry';
 import { selectGeneratedGeometryAuthority } from '../../src/app/generatedGeometryAuthority';
 import { packageComposedPanelGeometry } from '../../src/app/generatedGeometryDualRun';
@@ -60,8 +61,19 @@ const tb1 = subset(tbAssignments, tbConnections, 'TB1'); const tb2 = subset(tbAs
 const malformedTb = [...buildGeneratedTBGeometryItems(model, tb1.assignments, tb1.connections, thickness), ...buildGeneratedTBGeometryItems(model, tb2.assignments, tb2.connections, thickness)];
 const badTb = selectGeneratedGeometryAuthority(model, malformedTb, 'single-tool'); assert(!badTb.ok && badTb.generatedGeometry.length === 0, 'partial TB batches were accepted');
 const tbCandidate = badTb.diagnostics.panelCandidates.find((x) => x.panelId === owner.panel.id); assert(tbCandidate, 'TB diagnostic candidate missing');
-let packagingRejected = false; try { packageComposedPanelGeometry(malformedTb, tbCandidate, badTb.decisions.find((x) => x.panelId === owner.panel.id)?.relationshipOwners ?? []); } catch { packagingRejected = true; }
-assert(packagingRejected, 'conflicting duplicate TB carrier did not reject packaging');
+// Use a valid candidate's reconciliation so a missing/invalid fourth argument cannot
+// masquerade as the duplicate-carrier rejection this regression protects.
+const validCandidate = tbAuthority.diagnostics.panelCandidates.find((x) => x.panelId === owner.panel.id);
+assert(validCandidate, 'coherent TB candidate missing');
+const reconciliation = reconcileComposedPanelMetadata({ candidate: validCandidate, generatedGeometryItems: tb,
+  relationshipIndex: tbAuthority.diagnostics.relationshipIndex });
+assert(reconciliation.ok, 'coherent TB reconciliation failed');
+let packagingError = '';
+try { packageComposedPanelGeometry(malformedTb, validCandidate,
+  tbAuthority.decisions.find((x) => x.panelId === owner.panel.id)!.relationshipOwners, reconciliation); }
+catch (error) { packagingError = error instanceof Error ? error.message : String(error); }
+const packagingRejected = packagingError === `Conflicting diagnostic packaging carrier ${tbCarrier.id} for ${owner.panel.id}.`;
+assert(packagingRejected, `conflicting duplicate TB carrier did not reject at carrier validation: ${packagingError}`);
 
 const s1 = subset(sAssignments, sConnections, 'S1'); const s2 = subset(sAssignments, sConnections, 'S2');
 const malformedS = [...buildGeneratedSGeometryItems(model, s1.assignments, s1.connections, thickness), ...buildGeneratedSGeometryItems(model, s2.assignments, s2.connections, thickness)];
