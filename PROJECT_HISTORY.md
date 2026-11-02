@@ -723,20 +723,63 @@ The user's final Stage 5 brief confirms successful manual browser testing after 
 and Stage 5.4 **ACCEPTED**. Earlier reports and PR bodies retain their original
 pre-acceptance checkpoints.
 
-The final documentation audit therefore records **Stage 5 — ACCEPTED / COMPLETE**,
-with all five substages accepted. **Stage 6 — NOT STARTED** remains the next separate
-regression/acceptance stage; this documentation PR does not begin it. Its existing
-Save/Reload scope question remains in the Roadmap rather than becoming a new decision.
+The Stage 5 documentation audit therefore recorded **Stage 5 — ACCEPTED / COMPLETE**,
+with all five substages accepted. **Stage 6 — NOT STARTED** was then the next separate
+regression/acceptance stage; that documentation PR did not begin it. The existing
+Save/Reload scope question was carried forward in the Roadmap without a new decision.
 
-The seven failures remain unresolved: `drawing-primary-mousedown`,
+At that checkpoint, seven failures remained unresolved: `drawing-primary-mousedown`,
 `drawing-box-selection`, `drawing-alignment-snap`, `drawing-angular-reference`,
 `drawing-line-authority`, `drawing-live-direction-coexistence`, and
 `drawing-endpoint-direction-inference`. Earlier broader 14-script results also included
-d2 scripts; no fixes to those historical failures are claimed. Tangential Arc body drag
+d2 scripts; no fixes to those historical failures were claimed at that checkpoint. Tangential Arc body drag
 empty Undo steps and R1–R3 remain open; R5 Drawing Save/Reload remains unimplemented.
 Existing restore/normalization and independent Line migration coverage do not establish
 a user-facing Save/Reload capability. Stage 5 acceptance does not resolve unrelated
 defects or automatically assign their implementation to Stage 6.
+
+### 11.26 Stage 6 final acceptance and regression maintenance
+
+Following accepted Stages 0–5, regression maintenance proceeded in three merged,
+test-only PRs. No production code changed:
+
+| PR | Maintenance and recorded result | Merged commit |
+| --- | --- | --- |
+| [#623](https://github.com/glimman79/svg-box-designer/pull/623) | Corrected seven originally failing Drawing/CAD scripts; Drawing/CAD reached 56/56 PASS. | `db1dd025f338d62b88b1faac31958daa4498652e` |
+| [#624](https://github.com/glimman79/svg-box-designer/pull/624) | Corrected seven originally failing d2 scripts; d2 reached 12/12 PASS. | `c2d6a008e2f0bac8448e1abca06f802a992e5515` |
+| [#625](https://github.com/glimman79/svg-box-designer/pull/625) | Corrected ten currently reproduced failing scripts across eleven test files; complete inventory 136/136 PASS, Drawing/CAD 56/56 PASS, d2 12/12 PASS, production build PASS. | `845da96dddc65b896c18682e089541ea7f9a4d5a` |
+
+The exact ten-script list from the original Stage 6 analysis was unavailable. #625
+independently reproduced ten failures on verified baseline
+`c2d6a008e2f0bac8448e1abca06f802a992e5515`; it does not establish identity with that
+unavailable original list. The 136/136 result is the final inventory after maintenance,
+not continuous success throughout Stage 6. Earlier failure counts remain historical
+evidence. These PR results were not rerun by the documentation closure.
+
+**Stage 6: ACCEPTED** by the user on verified closure baseline
+`845da96dddc65b896c18682e089541ea7f9a4d5a`. The user performed and reported browser
+testing of Circle and Arc, Constraints, Dimensions, Direct Manipulation and Undo/Redo,
+with no observable functional problems. Codex did not independently execute the browser
+acceptance matrix. No individual browser case outcomes, H01–H36 results, screenshots,
+logs or timings are inferred from the user's overall acceptance. The full acceptance
+evidence table is maintained in the [Roadmap](ROADMAP.md#circlearc-implementation-stages-and-status).
+
+The Arc empty/blind Undo edge case remains **DEFERRED — accepted known limitation**:
+a numerically negligible or no-op Arc drag may create an invisible Undo step. The user
+has not observed a practical problem during normal browser testing; the defect is not
+fixed. Save/Reload verification and implementation are explicitly deferred:
+**OUT OF SCOPE — not required for Stage 6 acceptance**. R5 remains unimplemented;
+Save/Reload is neither tested nor accepted by this closure, and restore/normalization
+coverage is not proof of that capability. This decision supersedes the Stage 5
+Save/Reload scope question without changing persistence.
+
+R1 (absolute tolerance at very small radii), R2 (retain-last-valid at invalid drag
+completion), and R3 (model/Circle minimum-radius consistency) retain their prior evidence
+and open status for future assessment. Prior performance limitations also remain.
+Stages 0–5 were previously accepted; Stage 6 closes the Circular Support migration,
+not the entire application's feature set. This formal closure changes documentation
+only; solver, geometry, Circle/Arc behavior, drag handling, History and Undo/Redo remain
+unchanged.
 
 ## 12. Superseded or Temporary Material
 
