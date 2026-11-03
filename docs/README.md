@@ -4,6 +4,16 @@ This directory contains specifications, architecture analyses, diagnostic eviden
 
 Root-level [`REGLER_FOR_CHATT_MED_CHATGPT.md`](../REGLER_FOR_CHATT_MED_CHATGPT.md) is the authority for collaboration and development workflow rules.
 
+## Approved future product requirements
+
+- [PRODUCT_ARCHITECTURE_VISION.md](PRODUCT_ARCHITECTURE_VISION.md) — explicitly designated
+  detailed authority for the connected product requirements approved on 2026-11-03:
+  optional 3D Modeling → Drawing → BOX or Puzzle, global project history, interactive
+  history navigation, native persistence and source dependencies. These are **future,
+  unimplemented requirements**, not historical proposals or current functionality.
+  [ROADMAP.md](../ROADMAP.md#4-connected-product-development) owns planning/status, and
+  [PROJECT_MASTER.md](../PROJECT_MASTER.md) remains current-architecture authority.
+
 ## Current documentation or specification
 
 These narrow contracts remain useful alongside the code. They do not replace the Project Master.
@@ -18,7 +28,10 @@ These narrow contracts remain useful alongside the code. They do not replace the
 
 These documents analyze a bounded subsystem. Some contain implementation-era baselines or recommendations that later work refined.
 
-- `DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md`
+- [DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md](DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md)
+  — historical Drawing design evidence. Its §16 recommendation for Drawing-owned
+  snapshot history is superseded as long-term direction by the approved global history
+  requirement; its original baseline observations and recommendations remain preserved.
 - `GENERATED_PROFILE_ARCHITECTURE_REPORT.md`
 - `GENERATED_PROFILE_SEMANTIC_COMPLETENESS_ANALYSIS.md`
 - `TAP_CLEARANCE_ARCHITECTURE_ANALYSIS.md`

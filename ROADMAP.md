@@ -6,6 +6,11 @@ work. See [PROJECT_MASTER.md](PROJECT_MASTER.md) for the current product and arc
 [PROJECT_HISTORY.md](PROJECT_HISTORY.md) for its evolution, and
 [CHANGELOG.md](CHANGELOG.md) for completed changes.
 
+The approved connected-product requirements are detailed in
+[Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md). They remain
+unimplemented; [section 4](#4-connected-product-development) proposes a development path
+without renumbering or reopening accepted Circle/Arc Stages 0–6.
+
 ## Status vocabulary
 
 | Status | Meaning |
@@ -845,6 +850,13 @@ Puzzle document, tool set, solver, or export pipeline. Puzzle is not the histori
 bending-pattern functionality and must not be conflated with P1, TB, S, Wall, or other
 Box / Construction tooling.
 
+In the approved connected workflow **3D Modeling → 2D Drawing → BOX or Puzzle**, BOX
+and Puzzle are parallel destinations. Drawing can be the starting module, and Puzzle
+does not require a BOX step. The capabilities and questions below retain their previous
+planned status; this decision does not choose algorithms, joint types, manufacturing
+settings or UI. Global history and source dependencies must follow the
+[new project requirements](docs/PRODUCT_ARCHITECTURE_VISION.md).
+
 ## Purpose and intended flow
 
 Puzzle will generate laser-cut jigsaw puzzles. Existing jigsaw generators may inform
@@ -935,7 +947,7 @@ the forward product concept is **P = Pattern**, with no P1 subtype.
 | J — Joint | **PLANNED / NOT YET IMPLEMENTED** | Join two straight edges that physically meet, using a user-selected joint type. |
 | P — Pattern | **PLANNED / NOT YET IMPLEMENTED** | Create repeated or structured panel geometry. The first defined use is a bending pattern; P means Pattern, not Bending. |
 | Angle-aware assembly variants | **DESIGN REQUIRED / FUTURE** | The product and architecture require later definition; no final behavior is specified here. |
-| Static 3D preview | **PLANNED** | A future static preview only. This roadmap does not imply a 3D solver, parametric assembly engine, animation, or automatic folding. |
+| Static 3D preview | **PLANNED** | Construction assembly presentation, distinct from the separately approved simple 3D Modeling module in section 4. Preview alone does not imply a 3D solver, parametric assembly engine, animation, or automatic folding. |
 
 ## B. Architecture and composition direction
 
@@ -1110,6 +1122,55 @@ contributions from the others.
 Angle-aware assembly variants remain **DESIGN REQUIRED / FUTURE**. Their final product
 behavior and architecture are intentionally not invented in this roadmap.
 
-A static 3D preview remains **PLANNED / NOT YET IMPLEMENTED**. This is limited to a
-future static preview and does not commit to a 3D solver, parametric assembly engine,
-animation system, or automatic folding system.
+A static 3D preview remains **PLANNED / NOT YET IMPLEMENTED** for Construction assembly
+presentation. Its preview-only scope does not limit the separate simple 3D Modeling
+module approved on 2026-11-03. The preview item does not commit to a 3D solver, parametric
+assembly engine, animation system, or automatic folding system.
+
+# 4. Connected product development
+
+**Approved product direction (2026-11-03); implementation NOT STARTED.** Detailed
+requirements and design questions are owned by
+[Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md). The target is optional
+**3D Modeling → 2D Drawing → BOX or Puzzle**, with direct Drawing entry and preservation
+of work between modules. BOX/Puzzle are parallel, not sequential. This extends the older
+shared `ProjectDocument` direction and supersedes independent workspace histories as the
+long-term recommendation; current code remains unchanged.
+
+The sequence below is a **proposed planning structure, not a mandated release schedule**.
+Lettered product stages are separate from the accepted Circle/Arc Stages 0–6 above.
+All are **PLANNED / NOT STARTED**, with technical design required; none is completed or
+begun by recording this vision.
+
+| Stage | Status | Scope and dependency |
+| --- | --- | --- |
+| A — Shared toolbar | **PLANNED / NOT STARTED** | Keep Open, Save, Export, Clear, Fit to screen, Undo, Redo consistently visible and ordered. Use explained disabled states until correct behavior exists; do not expose Construction-only Clear as project-wide or isolated history as global. Module tools remain contextual. |
+| B — Global project/history architecture design | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Define project-state ownership, history transactions, module-navigation entries, object/operation references, restoration and dependency boundaries. Define persistence needs before selecting a native format. Investigate user-reported Drawing history action coverage without claiming the deferred Arc issue fixed. |
+| C — Global history implementation | **PLANNED / NOT STARTED** | After B, migrate separate histories to one timeline across 3D/Drawing/BOX/Puzzle and module switches, within 10–30 steps with 30 as target. Restore active module and relevant project state. Integrate identifiable panel operations and double-click editing navigation, distinct from Undo/Redo and without automatically discarding later work. Preserve accepted CAD transactions and semantics. |
+| D — Native Save/Open | **PLANNED / NOT STARTED** | After B and the C transaction/restore boundary, serialize, validate and restore complete editable projects with schema metadata and source relationships. Open has Open Project and Import SVG; SVG always targets BOX. Save is distinct from module output Export. Explicitly decide history, viewport, selection and active-module persistence. |
+| E — Geometry transfer and dependencies | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Build on B–D ownership, history and persistence boundaries. Define Drawing→BOX/Puzzle contracts, stable identities/provenance, affected-work detection and controlled regeneration. Preserve unaffected downstream edits and report incompatible changes without silent loss. Dependency propagation is separate from chronological history. |
+| F — Simple 3D Modeling | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Extend B–E with editable profile/extrusion definitions, positioning/rotation and simple assemblies. Closed profiles form solids; open Lines/Arcs form surfaces or optionally thickened walls. Exploded View and Flatten to 2D are distinct. Kernel/topology/constraint/rendering and curved/developable flattening require design; no high-end freeform/loft/general CAD commitment. |
+| G — Puzzle | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Integrate Drawing geometry with a separate downstream module and project history, persistence and dependencies. Preserve section 2 commitments; algorithms, joint types, manufacturing settings and UI remain unselected. BOX is not a prerequisite. |
+
+Dependency evaluation against existing work: accepted Drawing/Circular Support and the
+Construction pipeline are foundations, not work to repeat. A may establish control
+visibility before B, but enabling global Clear/history/native operations depends on
+their designed and implemented semantics. D should accommodate future module data while
+restoring complete projects for supported modules; later modules extend the schema
+deliberately. E can begin with Drawing-first workflows before 3D exists, and transfer
+eligibility must account for Construction's supported source geometry. G depends on the
+shared foundations and Drawing transfer, not inherently on F; its placement after F is
+provisional. Existing Drawing tool, W/S, Joint, Pattern and static preview commitments
+remain in their sections; this sequence neither cancels them nor assigns release dates.
+
+Whole-project confirmed Clear must account for documents, generated geometry,
+dependencies, history and relevant settings. Fit must use relevant active-module geometry
+rather than Drawing's fixed view reset, with suitable future 3D fitting. Exact Clear,
+navigation/UI policies, history-panel edge cases, persistence choices, dependency
+algorithms and 3D/Puzzle design remain in the
+[unresolved-decision register](docs/PRODUCT_ARCHITECTURE_VISION.md#7-proposed-delivery-structure-and-unresolved-decisions).
+
+Drawing Undo/Redo not working as expected for all actions is an **OPEN USER-REPORTED
+ISSUE — investigation required**. This does not overwrite prior Stage 6 browser
+acceptance, fix the separately deferred Arc empty/blind Undo limitation, or reopen the
+closed Circle/Arc migration. R1–R3 and unimplemented R5 retain their recorded status.

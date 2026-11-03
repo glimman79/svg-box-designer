@@ -3,6 +3,21 @@
 Entries record completed changes at their respective checkpoints. Current architecture
 and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
 
+## Documentation — connected product architecture vision (2026-11-03)
+
+- Added [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) with the
+  documentation/source inventory, approved optional 3D Modeling → Drawing → BOX or Puzzle
+  workflow, simple extrusion scope and unresolved design decisions. BOX/Puzzle are parallel.
+- Recorded one future global project history including module switches (30-step design
+  target within 10–30), superseding separate-history recommendations; distinguished
+  double-click settings navigation and dependency propagation from chronological Undo/Redo.
+- Documented the global toolbar, BOX-targeted SVG import, whole-project confirmed Clear,
+  geometry-based Fit and native Save/Open requirements, separately from current behavior.
+- Added proposed A–G planning stages, all NOT STARTED, and retained the user-reported
+  Drawing Undo/Redo issue for investigation. Preserved historical reports, Puzzle plans,
+  accepted Circle/Arc Stages 0–6 and known deferred/open issues.
+- Documentation only; no application code, tests, behavior or acceptance results changed.
+
 ## Documentation — Circular Support Stage 6 final acceptance
 
 - **Stage 6: ACCEPTED** by the user on baseline
