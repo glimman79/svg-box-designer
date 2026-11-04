@@ -1,6 +1,73 @@
-# Box / Construction Pipeline Map
+# Application Architecture and Box / Construction Pipeline Map
 
-> **Status: current orientation document.** This file is a concise map of the Box / Construction geometry pipeline. [PROJECT_MASTER.md](PROJECT_MASTER.md) is the authority for current product architecture, including Drawing and Puzzle. Historical pipeline snapshots and investigations are indexed in [docs/README.md](docs/README.md).
+> **Status: current orientation and future-boundary map.** [PROJECT_MASTER.md](PROJECT_MASTER.md) is the authority for current architecture. [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) owns the detailed approved future requirements; its target is not implemented. Historical pipeline snapshots and investigations are indexed in [docs/README.md](docs/README.md).
+
+## Current application versus connected target
+
+The current application has separate Drawing and Construction documents owned in `App`,
+a conditionally mounted `DrawingWorkspace`, and a disabled Puzzle selector. There is no
+3D Modeling module, complete native project Save/Open, cross-module geometry-transfer
+contract or dependency/regeneration system. `DrawingDocumentV2`, Construction models and
+generated snapshots are foundations rather than a completed shared project format.
+
+Source inspection at main `958e19609023984d10707a60f4a10c66ce6e0bd8` confirms:
+
+- Drawing uses document snapshots capped at 100 Undo entries (`drawingHistory.ts`). Its
+  `historyRef` belongs to `DrawingWorkspace` and is lost on unmount during a workspace
+  switch; `App` retains the Drawing document. This is source evidence, not a browser test.
+- Construction snapshots are capped at 10 and owned in `App`; they remain mounted but
+  do not include Drawing or active workspace. Neither history is global.
+- Construction's single-click workflow-group History navigator and Drawing's explanatory
+  History panel are not an identifiable global operation timeline.
+- Import and SVG export serve Construction. Save is disabled; confirmed Construction
+  Clear does not clear Drawing. Construction Fit derives geometry bounds while Drawing
+  Fit resets a fixed view. Conditional toolbar groups are not the target global toolbar.
+
+**APPROVED FUTURE REQUIREMENTS — NOT IMPLEMENTED:**
+
+```text
+3D Modeling (optional, simple profile extrusion)
+  -> 2D Drawing (also independent authoring)
+       -> BOX / Construction
+       -> Puzzle
+```
+
+This is an optional connected workflow, not a linear wizard. BOX/Puzzle are parallel.
+Exploded View shows separated 3D components; Flatten to 2D generates planar geometry for
+Drawing. Curved-surface flattening/developability needs separate design. The 3D kernel,
+topology, constraints and rendering are unselected; high-end freeform/general CAD is
+outside initial scope. The earlier static Construction preview is a separate planned
+capability, not the limit of the new modeling direction.
+
+The future project boundary must distinguish authored 2D sources, 3D-derived geometry,
+and downstream manufacturing geometry, with stable references and provenance. Drawing
+transfer into BOX must respect the existing pipeline below. SVG import through Open
+always targets BOX, while native Open Project restores the whole editable project.
+
+Three separate responsibilities require technical design:
+
+| Responsibility | Approved target / open boundary |
+| --- | --- |
+| Global chronological history | One timeline for all modules and module switches, 30-step design target within 10–30; restore active module and relevant state consistently. Transactions, storage and other UI/navigation policies remain open. |
+| History-panel editing navigation | Double-click an identifiable operation to locate its module/object and open settings without automatically discarding subsequent work. Persistent references and missing/stale/non-editable operation handling require design. |
+| Source-to-derived dependencies | Detect affected geometry and regenerate under controlled rules, preserving unaffected downstream edits and handling incompatible changes explicitly. Graph/update/conflict algorithms are unselected; Undo/Redo alone cannot provide this. |
+
+Native persistence must retain editable module data, canonical geometry, Constraints,
+Dimensions, extrusion/assembly definitions, construction/manufacturing and Puzzle state,
+source relationships/provenance and schema metadata. Serialization of global history,
+active module, viewports and selection is undecided. SVG export is a separate output.
+The target toolbar is Open → Save → Export → Clear → Fit to screen → Undo → Redo;
+Clear is confirmed and project-wide, Fit uses active-module geometry, and Undo/Redo uses
+global history. See the [full contract](docs/PRODUCT_ARCHITECTURE_VISION.md#5-global-toolbar-contract)
+and [proposed staging](ROADMAP.md#4-connected-product-development).
+
+The earlier separate-history recommendation is superseded only as future direction;
+this documentation does not replace either existing history. The user-reported Drawing
+Undo/Redo action-coverage issue remains open for investigation, distinct from the
+accepted deferred Arc empty/blind Undo limitation. Accepted Circle/Arc models, solver,
+transactions, Direct Manipulation and Stage 0–6 evidence below remain intact. References
+to shared/global Drawing concerns below mean sharing within Drawing, not an already
+implemented cross-module project history.
 
 ## Drawing architecture
 

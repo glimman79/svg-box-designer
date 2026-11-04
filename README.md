@@ -10,6 +10,15 @@ SVG Box Designer is a browser-based React application for drawing semantic 2D sk
 
 The Drawing and imported/construction document models are currently separate. See [PROJECT_MASTER.md](PROJECT_MASTER.md) for current product scope, architectural authority, invariants, and known boundaries.
 
+**Approved future direction — not implemented:** an optional connected workflow of
+**3D Modeling → 2D Drawing → BOX or Puzzle**, with BOX/Puzzle as parallel destinations
+and Drawing also usable independently. Simple 3D Modeling will focus on profile
+extrusion; one global history (including module switches), native project Save/Open and
+traceable downstream updates remain future work. Current SVG import/export serves BOX,
+and native Save/Open is not available. See the
+[Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) and
+[proposed development stages](ROADMAP.md#4-connected-product-development).
+
 The locked Arc contract—including three-point creation, endpoint-pivot semantics, and
 the shared Circle/Arc foundation—is authoritative in
 [PROJECT_MASTER.md](PROJECT_MASTER.md#locked-target-circlearc-architecture); the canonical Arc representation is implemented, while Concentricity and finite-Arc Tangency remain pending. The authoritative Stage 0–6 migration status and process policy are in
@@ -109,7 +118,8 @@ svg-box-designer/
 - [PROJECT_MASTER.md](PROJECT_MASTER.md): how the application is designed now.
 - [PROJECT_HISTORY.md](PROJECT_HISTORY.md): why significant architectural changes occurred.
 - [ROADMAP.md](ROADMAP.md): what is planned next and which decisions remain open.
-- [Architecture.md](Architecture.md): quick map of the Box / Construction geometry pipeline.
+- [Architecture.md](Architecture.md): current/target boundaries and the Box / Construction geometry pipeline.
+- [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md): detailed approved future multi-module requirements, current-state inventory and open design questions.
 - [docs/README.md](docs/README.md): status and classification of detailed documents.
 - [CHANGELOG.md](CHANGELOG.md): release and unreleased change summary.
 - [REGLER_FOR_CHATT_MED_CHATGPT.md](REGLER_FOR_CHATT_MED_CHATGPT.md): collaboration and development workflow rules.

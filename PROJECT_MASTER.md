@@ -18,7 +18,9 @@ Status terms used here include **LOCKED PRODUCT REQUIREMENT**, **IMPLEMENTED AND
 VERIFIED**, **IMPLEMENTED BUT NOT YET VERIFIED**, **KNOWN GAP**, **LOCKED ARCHITECTURE DECISION**, **IMPLEMENTATION PENDING**,
 and **PLANNED FUTURE FEATURE**. Requirements and implementation
 status are independent. Historical proposals and diagnostics under `docs/` are not
-current authority.
+current authority. [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md)
+is explicitly designated as the detailed approved future-requirements document for
+the connected product; it does not describe implemented capabilities.
 
 ## 2. Product organization
 
@@ -30,6 +32,30 @@ SVG Box Designer is a React/TypeScript/Vite application with SVG-based presentat
 
 The accepted Box / Construction compatibility baseline is v1.2 (`package.json` version `1.2.0`). Later Drawing work does not rename that release.
 
+### 2.1 Approved future product direction
+
+**APPROVED FUTURE REQUIREMENTS — NOT IMPLEMENTED (2026-11-03).** The application is
+evolving toward **3D Modeling → 2D Drawing → BOX or Puzzle**, with BOX and Puzzle as
+parallel downstream modules. Drawing remains an independent starting point; projects
+need not use every module, and switching modules must preserve existing work. Simple
+3D Modeling is limited to extrusion-based geometry, separate from the earlier planned
+static Construction preview. Its kernel and detailed technical design remain open.
+
+The target has one global project history across all modules **and module switches**,
+within 10–30 steps with **30 as the design target**, superseding the recommendation for
+independent workspace histories. Double-clicking an identifiable history operation must
+open its module/object settings without automatically discarding later work; this is
+distinct from chronological Undo/Redo and from source-to-derived dependency propagation.
+
+The common toolbar order is **Open, Save, Export, Clear, Fit to screen, Undo, Redo**.
+Open offers Open Project and Import SVG; SVG import always targets BOX. Native Save/Open
+must restore the complete editable project and its source relationships; Export remains
+output-oriented. Clear requires confirmation and affects the whole project. These
+operations, global history, dependencies, 3D and Puzzle integration remain future work.
+The [vision](docs/PRODUCT_ARCHITECTURE_VISION.md) owns full requirements and unresolved
+choices; the [Roadmap](ROADMAP.md#4-connected-product-development) owns proposed staging.
+Accepted Circle/Arc Stages 0–6 remain closed and unchanged.
+
 ## 3. Document models and shared boundary
 
 Construction uses `SvgDocumentModel`, which preserves SVG root information, source edges, panels, contours, containment, dimensions, and diagnostics. Panel Manager adds panel identity/thickness authority needed by construction.
@@ -37,6 +63,14 @@ Construction uses `SvgDocumentModel`, which preserves SVG root information, sour
 Drawing owns a separate versioned `DrawingDocumentV2`. It contains ordered sketches, stable points and entities, dimensions, and geometric constraints. Drawing state is not currently embedded in a global project document.
 
 A shared, versioned cross-workspace `ProjectDocument`, cross-workspace references, and global History remain planned. Existing Drawing and construction models should be wrapped or migrated deliberately rather than implicitly conflated.
+
+Current histories remain separate: Drawing snapshots allow 100 Undo entries and live in
+the conditionally mounted `DrawingWorkspace`, so switching away/back loses that history
+according to source inspection, while its document remains in `App`. Construction
+snapshots are capped at 10 and remain in `App`; they omit Drawing and active workspace.
+Neither is the required global timeline. Native Save/Open is unimplemented; model
+validation and snapshots do not establish complete project persistence. History, active
+module, selection and viewport serialization policies require explicit future design.
 
 ## 4. 2D Drawing architecture
 
@@ -539,7 +573,7 @@ Implemented workflows are:
 - **W (Wall):** W-A/W-B authoring with per-panel TB role guidance and TB-equivalent physical generation; broader capability remains in the Roadmap;
 - **S (Slot):** paired roles, slot/tab geometry, offsets, and panel-thickness-derived depth/length behavior; broader capability remains in the Roadmap.
 
-**J = Joint** and **P = Pattern** are not implemented. Angle-aware assembly variants and a static 3D preview are also not current implemented product capabilities.
+**J = Joint** and **P = Pattern** are not implemented. Angle-aware assembly variants and a static 3D preview are also not current implemented product capabilities. The separately approved future 3D Modeling module does not change this current status.
 
 ### 5.2 Generated geometry, composition, and panel authority
 
@@ -559,6 +593,10 @@ Manufacturing transforms operate after Final Geometry. Slot/tap clearance is app
 
 Puzzle has a reserved, disabled workspace selector only. It has no current document, tools, solver, or export pipeline and must be described as planned.
 
+Its approved future role is parallel to BOX: Drawing figures/contours may feed Puzzle
+directly without passing through Construction. Existing Puzzle roadmap commitments
+remain planned; algorithms, joint types, manufacturing settings and UI require design.
+
 ## 7. Cross-cutting invariants
 
 - Stable IDs and explicit semantic references outrank coordinate coincidence or UI labels.
@@ -570,7 +608,11 @@ Puzzle has a reserved, disabled workspace selector only. It has no current docum
 
 ## 8. Current limitations and documentation boundaries
 
-- Puzzle and a shared global project document are planned.
+- 3D Modeling, Puzzle, a shared global project document, global history, native Save/Open
+  and cross-module transfer/dependencies remain unimplemented future work.
+- Drawing Undo/Redo action coverage is an open user-reported issue requiring investigation;
+  no cause or fix is established here. It is separate from the deferred Arc empty/blind
+  Undo limitation and does not rewrite the recorded Stage 6 acceptance.
 - Drawing supports accepted Profile, standalone Line, Circle Stage 1, and Arc Stage 1 workflows; it does not yet provide the full prospective CAD tool catalog.
 - The Constraints panel intentionally displays disabled future choices alongside implemented ones.
 - Box v1.2 remains the locked release baseline; post-v1.2 Drawing features are implemented without a new declared product release.

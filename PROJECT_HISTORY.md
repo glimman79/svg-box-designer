@@ -781,6 +781,60 @@ not the entire application's feature set. This formal closure changes documentat
 only; solver, geometry, Circle/Arc behavior, drag handling, History and Undo/Redo remain
 unchanged.
 
+### 11.27 Connected product architecture decision (2026-11-03)
+
+**APPROVED FUTURE DIRECTION — NOT IMPLEMENTED.** The user approved a connected product
+with the optional primary workflow **3D Modeling → 2D Drawing → BOX or Puzzle**. BOX
+and Puzzle are parallel destinations; users may start in Drawing and need not use all
+modules. The full decision is preserved in
+[Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md); the
+[Roadmap](ROADMAP.md#4-connected-product-development) records proposed A–G product stages,
+all NOT STARTED, separate from closed Circle/Arc Stages 0–6.
+
+Simple 3D Modeling is based on editable 2D profiles plus extrusion, including surfaces
+from open profiles and optional thickness for solids. It adds a separate module beyond
+the earlier static Construction-preview plan, without turning that preview into a
+completed modeler or selecting a kernel/topology/rendering architecture. Exploded View
+and Flatten to 2D are distinct; curved-surface flattening needs separate design.
+
+**Superseded recommendation:** retain separate Undo/Redo histories per workspace. The
+historical [Drawing Dimension analysis §16](docs/DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md#16-history--undo--redo)
+recommended Drawing-owned snapshots rather than extending Construction history. The
+user explicitly rejected independent histories as the long-term direction. The approved
+target is **one global project history**, including module switches, within 10–30 steps
+with **30 as the design target**. The original report remains historical evidence.
+
+Source inspection on freshly verified GitHub main
+`958e19609023984d10707a60f4a10c66ce6e0bd8` confirms separate Drawing snapshots (100 Undo
+entries; component-owned and lost on workspace unmount) and Construction snapshots (10;
+retained in `App`). Drawing's document remains in `App`; neither history restores a
+global project/active-module timeline. These are source findings, not new browser tests.
+The user also reports Drawing Undo/Redo action-coverage problems: open for investigation,
+not resolved and not a rewrite of earlier acceptance. The accepted deferred Arc
+empty/blind Undo issue remains separate and unfixed.
+
+The future global panel must support double-click navigation to the represented
+module/object settings without automatically discarding later work. This differs from
+chronological Undo/Redo and requires identifiable operations and persistent references.
+Cross-module dependencies separately support source corrections and controlled
+downstream regeneration; history alone cannot preserve downstream authoring after a
+source edit. Reference lifetime, stale/deleted objects and conflict rules remain open.
+
+The user approved a consistently ordered global toolbar: Open, Save, Export, Clear,
+Fit to screen, Undo, Redo. Open offers Open Project and Import SVG; SVG always targets
+BOX. Native Save/Open must preserve the editable multi-module project and relationships;
+Export remains a distinct output. Clear is confirmed and whole-project; Fit uses active
+geometry. Current conditional controls, Construction Clear/export, fixed Drawing Fit,
+disabled Save and model restore helpers do not already satisfy these requirements.
+Native format, history persistence, selection/viewport/active-module persistence,
+transactions, dependencies and detailed 3D/Puzzle design remain unresolved.
+
+This decision updates documentation only. It preserves existing Puzzle roadmap
+commitments, Construction authority/pipeline, canonical Circle/Arc geometry, Constraints,
+Dimensions, solver and manipulation semantics, transaction behavior, accepted Stages 0–6
+and their recorded tests/acceptance. It does not start application implementation or
+claim a fix, a new release, new regression results or new browser acceptance.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics
@@ -803,7 +857,7 @@ Central documentation was consolidated around `ROADMAP.md` as future-direction a
 
 ## 13. Current Development Position
 
-v1.2 remains the locked Box / Construction baseline. TB and rectangular W are accepted; current S is implemented but incomplete. Drawing is now substantially implemented post-v1.2. Current implementation truth is summarized in `PROJECT_MASTER.md` and code; future status and direction for Puzzle, Joint, Pattern, assembly angles, angle-aware variants, static 3D Preview, and a shared ProjectDocument are classified in `ROADMAP.md`.
+v1.2 remains the locked Box / Construction baseline. TB and rectangular W are accepted; current S is implemented but incomplete. Drawing is now substantially implemented post-v1.2. Current implementation truth is summarized in `PROJECT_MASTER.md` and code; future status and direction for Puzzle, Joint, Pattern, assembly angles, angle-aware variants, static 3D Preview, and a shared ProjectDocument are classified in `ROADMAP.md`. The 2026-11-03 decision in §11.27 extends that direction with simple 3D Modeling, global history, native project persistence and cross-module dependencies; none is implemented by this documentation update.
 
 PM.1 analyzed the source and designed the governance structure. PM.2 created `PROJECT_MASTER.md` and this history so future sessions can distinguish implemented, locked, planned, conceptual, debt, and historical material.
 
