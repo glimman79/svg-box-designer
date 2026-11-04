@@ -610,9 +610,11 @@ remain planned; algorithms, joint types, manufacturing settings and UI require d
 
 - 3D Modeling, Puzzle, a shared global project document, global history, native Save/Open
   and cross-module transfer/dependencies remain unimplemented future work.
-- Drawing Undo/Redo action coverage is an open user-reported issue requiring investigation;
-  no cause or fix is established here. It is separate from the deferred Arc empty/blind
-  Undo limitation and does not rewrite the recorded Stage 6 acceptance.
+- The user confirmed no current functional defect in Drawing Undo/Redo during their
+  testing; this does not establish exhaustive action coverage. Separate history ownership
+  and loss of Drawing history on workspace unmount (§3) are architectural limitations
+  for the future global history. The deferred Arc empty/blind Undo limitation and
+  recorded Stage 6 acceptance remain unchanged.
 - Drawing supports accepted Profile, standalone Line, Circle Stage 1, and Arc Stage 1 workflows; it does not yet provide the full prospective CAD tool catalog.
 - The Constraints panel intentionally displays disabled future choices alongside implemented ones.
 - Box v1.2 remains the locked release baseline; post-v1.2 Drawing features are implemented without a new declared product release.

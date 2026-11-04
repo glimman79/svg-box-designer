@@ -10,7 +10,8 @@ a conditionally mounted `DrawingWorkspace`, and a disabled Puzzle selector. Ther
 contract or dependency/regeneration system. `DrawingDocumentV2`, Construction models and
 generated snapshots are foundations rather than a completed shared project format.
 
-Source inspection at main `958e19609023984d10707a60f4a10c66ce6e0bd8` confirms:
+Source inspection rechecked on 2026-11-04 at main
+`8630f40d31c7c7e71cab3d7cce7ac6673648c4b9` confirms:
 
 - Drawing uses document snapshots capped at 100 Undo entries (`drawingHistory.ts`). Its
   `historyRef` belongs to `DrawingWorkspace` and is lost on unmount during a workspace
@@ -62,9 +63,11 @@ global history. See the [full contract](docs/PRODUCT_ARCHITECTURE_VISION.md#5-gl
 and [proposed staging](ROADMAP.md#4-connected-product-development).
 
 The earlier separate-history recommendation is superseded only as future direction;
-this documentation does not replace either existing history. The user-reported Drawing
-Undo/Redo action-coverage issue remains open for investigation, distinct from the
-accepted deferred Arc empty/blind Undo limitation. Accepted Circle/Arc models, solver,
+this documentation does not replace either existing history. No current functional
+defect was confirmed during the user's Drawing Undo/Redo testing; exhaustive action
+coverage is not established. Separate ownership and Drawing history loss on unmount
+are architectural limitations to address in global-history design. The accepted deferred
+Arc empty/blind Undo limitation remains unchanged. Accepted Circle/Arc models, solver,
 transactions, Direct Manipulation and Stage 0–6 evidence below remain intact. References
 to shared/global Drawing concerns below mean sharing within Drawing, not an already
 implemented cross-module project history.

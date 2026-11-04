@@ -19,6 +19,11 @@ The inventory and source inspection used GitHub `main`
 previously supplied baseline, not an assumption that it remained current. No new
 application tests or browser acceptance are claimed by this documentation update.
 
+**2026-11-04 clarification:** The history ownership observations below were rechecked
+against GitHub `main` `8630f40d31c7c7e71cab3d7cce7ac6673648c4b9` (merged PR #627).
+The earlier functional-issue classification is corrected below following the user's
+clarification; this source review does not establish exhaustive Undo/Redo verification.
+
 | Area | Existing evidence and current boundary | Future direction / consistency finding |
 | --- | --- | --- |
 | Modules | [Master §§2–3](../PROJECT_MASTER.md#2-product-organization), [README](../README.md#application-areas), and [App](../src/App.tsx): implemented Drawing and BOX; disabled Puzzle reservation. | The current two-workspace implementation remains accurate; the target adds 3D Modeling and makes BOX/Puzzle parallel downstream modules. |
@@ -44,11 +49,13 @@ Status distinctions apply throughout:
 - **Proposal / DESIGN REQUIRED** states a possible plan or unresolved technical design,
   not a selected implementation. All new capabilities below remain unimplemented.
 
-The user additionally reports that Drawing Undo/Redo does not work as expected for all
-actions. This is an **OPEN USER-REPORTED ISSUE — investigation required**, without a
-newly established cause or claimed fix. It does not erase the recorded Stage 6 browser
-acceptance. The known Arc empty/blind Undo issue remains separately **DEFERRED — accepted
-known limitation**; neither issue is resolved by documenting global history.
+The user clarified that no current functional defect was found or confirmed during
+their testing of Drawing Undo/Redo. This does not establish exhaustive action coverage.
+Separate history ownership and loss of Drawing history on workspace unmount are
+architectural limitations relative to the approved global project history, not evidence
+of a defect while working within Drawing. Existing Stage 6 browser acceptance remains
+intact. The known Arc empty/blind Undo issue remains separately **DEFERRED — accepted
+known limitation** and is not fixed or reclassified by this correction.
 
 ## 2. Connected modules and optional workflows
 
@@ -260,7 +267,7 @@ The following remain unresolved, rather than implicitly approved implementations
 | Dependencies | Representation, affected-work detection, regeneration, preservation of unaffected edits, incompatible changes and synchronization/conflict handling. |
 | 3D | Kernel, topology, constraint handling, rendering/camera, surface versus thickened-solid extrusion, assembly representation and supported flattening/developability. |
 | Puzzle | Generation, joint types, uniqueness validation, manufacturing settings and UI, subject to existing roadmap commitments. |
-| User-reported history issue | Investigate action coverage and reproduction separately from the accepted deferred Arc empty/blind Undo limitation. |
+| Existing history migration | Analyze separate history ownership and Drawing history lifetime for global-history migration; preserve existing working behavior and keep the accepted deferred Arc empty/blind Undo limitation separate. |
 
 No application functionality, migration, refactoring, test change or new acceptance
 result is part of this documentation decision.

@@ -813,6 +813,12 @@ The user also reports Drawing Undo/Redo action-coverage problems: open for inves
 not resolved and not a rewrite of earlier acceptance. The accepted deferred Arc
 empty/blind Undo issue remains separate and unfixed.
 
+> **Classification superseded — 2026-11-04:** The action-coverage issue classification
+> in the preceding paragraph was inaccurate. The user clarified that no current Drawing
+> Undo/Redo functional defect was found or confirmed during their testing. See
+> [§11.28](#1128-drawing-undoredo-classification-correction-2026-11-04).
+> The original record is retained; the separate deferred Arc limitation is unchanged.
+
 The future global panel must support double-click navigation to the represented
 module/object settings without automatically discarding later work. This differs from
 chronological Undo/Redo and requires identifiable operations and persistent references.
@@ -834,6 +840,28 @@ commitments, Construction authority/pipeline, canonical Circle/Arc geometry, Con
 Dimensions, solver and manipulation semantics, transaction behavior, accepted Stages 0–6
 and their recorded tests/acceptance. It does not start application implementation or
 claim a fix, a new release, new regression results or new browser acceptance.
+
+### 11.28 Drawing Undo/Redo classification correction (2026-11-04)
+
+PR #627 incorrectly classified Drawing Undo/Redo action coverage as an outstanding
+user-reported functional issue. Following the user's clarification, current authoritative
+documentation now states that no current functional defect was found or confirmed during
+their Drawing Undo/Redo testing. This is a classification correction, not a functional
+fix or a claim of exhaustive testing; §11.27 remains the original historical record.
+
+Source inspection was repeated at verified GitHub `main`
+`8630f40d31c7c7e71cab3d7cce7ac6673648c4b9` (merged #627). Drawing still uses snapshot
+history owned by `DrawingWorkspace`, lost when it unmounts during workspace switching;
+the Drawing document remains in `App`. Construction has separate history in `App`.
+Neither is a global project history. These are architectural limitations for Stage B
+analysis and migration while preserving existing working behavior, not evidence of a
+functional defect within Drawing.
+
+The accepted deferred Arc empty/blind Undo limitation is unchanged and unfixed. Accepted
+Circle/Arc Stages 0–6, their verification and acceptance records, the approved global
+history requirements and A–G stage structure/statuses remain intact. This correction
+changes documentation only; no application code, tests, configuration or functionality
+changed, and no new application test or browser verification is claimed.
 
 ## 12. Superseded or Temporary Material
 
