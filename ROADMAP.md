@@ -1145,7 +1145,7 @@ begun by recording this vision.
 | Stage | Status | Scope and dependency |
 | --- | --- | --- |
 | A — Shared toolbar | **PLANNED / NOT STARTED** | Keep Open, Save, Export, Clear, Fit to screen, Undo, Redo consistently visible and ordered. Use explained disabled states until correct behavior exists; do not expose Construction-only Clear as project-wide or isolated history as global. Module tools remain contextual. |
-| B — Global project/history architecture design | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Define project-state ownership, history transactions, module-navigation entries, object/operation references, restoration and dependency boundaries. Define persistence needs before selecting a native format. Investigate user-reported Drawing history action coverage without claiming the deferred Arc issue fixed. |
+| B — Global project/history architecture design | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Define project-state ownership, history transactions, module-navigation entries, object/operation references, restoration and dependency boundaries. Define persistence needs before selecting a native format. Analyze separate history ownership and Drawing history lifetime for migration, preserving existing working Undo/Redo behavior and the separate deferred Arc limitation. |
 | C — Global history implementation | **PLANNED / NOT STARTED** | After B, migrate separate histories to one timeline across 3D/Drawing/BOX/Puzzle and module switches, within 10–30 steps with 30 as target. Restore active module and relevant project state. Integrate identifiable panel operations and double-click editing navigation, distinct from Undo/Redo and without automatically discarding later work. Preserve accepted CAD transactions and semantics. |
 | D — Native Save/Open | **PLANNED / NOT STARTED** | After B and the C transaction/restore boundary, serialize, validate and restore complete editable projects with schema metadata and source relationships. Open has Open Project and Import SVG; SVG always targets BOX. Save is distinct from module output Export. Explicitly decide history, viewport, selection and active-module persistence. |
 | E — Geometry transfer and dependencies | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Build on B–D ownership, history and persistence boundaries. Define Drawing→BOX/Puzzle contracts, stable identities/provenance, affected-work detection and controlled regeneration. Preserve unaffected downstream edits and report incompatible changes without silent loss. Dependency propagation is separate from chronological history. |
@@ -1170,7 +1170,10 @@ navigation/UI policies, history-panel edge cases, persistence choices, dependenc
 algorithms and 3D/Puzzle design remain in the
 [unresolved-decision register](docs/PRODUCT_ARCHITECTURE_VISION.md#7-proposed-delivery-structure-and-unresolved-decisions).
 
-Drawing Undo/Redo not working as expected for all actions is an **OPEN USER-REPORTED
-ISSUE — investigation required**. This does not overwrite prior Stage 6 browser
-acceptance, fix the separately deferred Arc empty/blind Undo limitation, or reopen the
-closed Circle/Arc migration. R1–R3 and unimplemented R5 retain their recorded status.
+The user's 2026-11-04 clarification confirms no current functional defect found during
+their Drawing Undo/Redo testing, without establishing exhaustive action coverage.
+Separate histories and loss of Drawing history on workspace unmount are architectural
+limitations for Stage B to analyze against the global-history requirements. Preserve
+existing working behavior, prior Stage 6 browser acceptance and the separately deferred
+Arc empty/blind Undo limitation; the closed Circle/Arc migration is not reopened.
+R1–R3 and unimplemented R5 retain their recorded status.

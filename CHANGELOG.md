@@ -3,7 +3,24 @@
 Entries record completed changes at their respective checkpoints. Current architecture
 and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
 
+## Documentation — Drawing Undo/Redo classification correction (2026-11-04)
+
+- Corrected PR #627's inaccurate open functional-issue classification following the
+  user's clarification: no current defect was found or confirmed during their Drawing
+  Undo/Redo testing. Exhaustive action coverage is not claimed.
+- Retained separate Drawing/Construction history and Drawing history loss on unmount as
+  architectural limitations for future global history; Stage B focuses on architecture
+  and preservation of existing working behavior.
+- Preserved the original historical records with dated clarifications, accepted
+  Circle/Arc Stages 0–6, the deferred Arc empty/blind Undo limitation and all approved
+  global-history requirements and A–G statuses.
+- Documentation only; no application code, tests, configuration or functionality changed.
+  No new application test results or browser acceptance are claimed.
+
 ## Documentation — connected product architecture vision (2026-11-03)
+
+> **2026-11-04 clarification:** The Drawing Undo/Redo issue classification recorded
+> below is superseded by the correction above. The original entry is preserved as history.
 
 - Added [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) with the
   documentation/source inventory, approved optional 3D Modeling → Drawing → BOX or Puzzle
