@@ -28,6 +28,9 @@ These narrow contracts remain useful alongside the code. They do not replace the
 
 These documents analyze a bounded subsystem. Some contain implementation-era baselines or recommendations that later work refined.
 
+- [GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md)
+  — Stage B source-grounded project/history design proposal for review; not an approved
+  architecture decision or implementation, and not a change to roadmap status.
 - [DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md](DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md)
   — historical Drawing design evidence. Its §16 recommendation for Drawing-owned
   snapshot history is superseded as long-term direction by the approved global history
