@@ -3,7 +3,25 @@
 Entries record completed changes at their respective checkpoints. Current architecture
 and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
 
+## Documentation — Stage B global tape-recorder architecture revision (2026-11-09)
+
+- Revised existing PR #629: one completed state-changing user action, including all
+  asynchronous automatic consequences, is one logical Undo step; combined capacity
+  remains 30. Creation/deletion preserves identities; navigation creates no steps.
+- Explicitly superseded separate async source/regeneration transactions. Compared three
+  models; recommend one pending action, immutable staging/finalization of the same slot,
+  suspended Undo and resumable unfinished Redo, with serialized edit admission for review.
+- Defined Option A outcomes, out-of-order/stale job guards, bounded pending work,
+  Save/Export/Clear/Open interleavings and 18 final tape acceptance scenarios.
+- Preserved permanent parametric construction history and proposed C.2; C reserves the
+  async transaction protocol while the evaluator/scheduler/mapping/repair remain in E.
+- Documentation only; no source, tests, configuration, implementation, merge, new PR or
+  new application acceptance. Existing CAD evidence and all A–G status labels preserved.
+
 ## Documentation — Stage B permanent parametric history revision (2026-11-09)
+
+> Historical checkpoint. Any separate async source/result transaction recommendation
+> is superseded by the tape-recorder revision above; construction history remains valid.
 
 - Revised existing PR #629 for two separate systems: 30-transition global Undo/Redo
   and persistent editable construction operations/relationships. Repeated Line parameter

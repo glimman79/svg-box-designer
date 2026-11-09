@@ -171,10 +171,26 @@ For example:
 
 There are two reversible edits in this sequence; navigation adds none.
 
+**Approved tape-recorder behavior:** each completed state-changing user action creates
+one logical Undo step across the entire project. This includes creating a Line, Circle,
+Arc, sketch/profile or construction object; editing Dimensions, Constraints or BOX
+parameters; moving/rotating/resizing; deletion; repair; and suppression/unsuppression.
+One completed gesture/drag creates one step. Preserve accepted multi-click completion/
+cancellation semantics; intermediate previews and invalid/cancelled/no-op input add none.
+
+All automatic consequences belong to that same action, even when computed asynchronously:
+Drawing source edit + solver effects + compatible BOX regeneration + failed/blocked
+dependency diagnostics require **one Undo**, never a second step for late completion.
+Undo of creation removes the object; Redo restores its captured identity/relationships.
+Undo of deletion restores the original identity. Dimension Undo restores value and all
+solved geometry. The combined past/future tape retains at most 30 transitions;
+construction-operation definitions survive expiry of their creation transitions.
+
 Pointer movement, hover and similar incidental interactions must not create history
-steps. Navigation and project-editing history are architecturally distinct. Transaction
-granularity, exact restore/storage implementation and other UI preferences remain
-**DESIGN REQUIRED**; navigation is not an undecided undoable transaction type.
+steps. Navigation and project-editing history are architecturally distinct. Accepted
+tool boundaries remain authoritative; exact restore/storage, BOX field acceptance and
+interruption UI remain **DESIGN REQUIRED**. One-step automatic consequences, 30 positions
+and navigation exclusion are settled requirements.
 
 ### 3.1 Interactive history panel
 
@@ -254,12 +270,25 @@ states. Retained last-known-good artifacts must be visibly distinguished from va
 current geometry. Inspection identifies failure reasons and affected downstream operations;
 suppression/deletion must detect consequences and be Undoable.
 
-One controlled mutation boundary must commit operation state, geometry, dependency
-statuses and affected results consistently. Undo/Redo restores exact committed outcomes
-without generator replay. Synchronous partial success can be one transaction; async
-source+stale state and later accepted regeneration must be explicit transactions with
-stale-callback guards across Undo/Redo, Clear, Open and superseding edits. Navigation,
-mount effects and failed previews cannot create hidden history edits.
+One controlled mutation boundary must keep operation state, geometry, dependency
+statuses and affected results consistent. A valid source edit and **all** its automatic
+valid/failed consequences are one logical Undo action, regardless of timing. The prior
+proposal of a source/stale transaction plus a second regeneration transaction is
+**superseded**. Sealed Undo/Redo restores exact captured outcomes without generator replay.
+Navigation, mount effects and failed previews cannot create hidden history edits.
+
+**Technical recommendation for review, not implementation:** Stage B §11 compares three
+async models and recommends one pending logical action with serialized edit admission.
+It reserves one of the 30 positions, stages results off-store and seals the same slot
+once. Undo suspends it and rejects late callbacks; unfinished Redo restores the captured
+source/identities and resumes under a fresh attempt; sealed Redo restores the exact final
+result. While pending, further project-edit requests are visibly unaccepted, never
+queued or merged. Navigation remains available; completion never switches modules.
+Save waits for settlement or cancels, preserving editable failure records on successful
+Save; Export is blocked while pending and still validates the full scope after settlement.
+Clear/Open use session barriers. This conservative authoring wait, bounded job/retry
+budgets and evaluator determinism require architecture review; they are not additional
+approved restrictions or evidence of an implemented dependency engine.
 
 **Manufacturing safety:** stale, failed or otherwise unvalidated geometry cannot silently
 be valid laser/export output. Independent valid output requires explicit scope and full
@@ -327,7 +356,10 @@ boundaries rather than reopen accepted Circle/Arc stages.
 
 **Recommended implementation dependency plan, awaiting review:** B defines ownership,
 identity, persistent operations, transaction integration and dependency interfaces. C
-implements shared ownership and global Undo/Redo. A distinct **C.2 construction-history
+implements shared ownership/global Undo and reserves one pending action's admission,
+finalization, suspension/resumption, abandonment and lifecycle guards; synchronous edits
+seal immediately. The dependency evaluator/scheduler and feature mapping stay in E.
+A distinct **C.2 construction-history
 foundation** should implement operation maintenance/bindings and current-settings
 navigation before D's format freeze. D preserves the complete editable operation graph
 with fresh executable history on Open. E supplies tracking, controlled regeneration,
@@ -340,11 +372,11 @@ The following remain unresolved, rather than implicitly approved implementations
 | Design area | Questions requiring later decisions |
 | --- | --- |
 | Project ownership | Complete project-state boundary; wrapping/migration of existing models; module document ownership. |
-| Undo/Redo | Edit granularity; exact store/restore contracts and lifecycle gate/defaults. Navigation exclusion, 30 edits, permanent Clear and fresh Open history are settled. |
+| Undo/Redo | Exact store/restore and pending-action admission UX, lifecycle gate/defaults and remaining field/interruption boundaries. One action including automatic consequences, 30 positions, navigation exclusion, permanent Clear and fresh Open history are settled. |
 | Construction operations | Catalog/granularity, parameter bindings, output identity/mapping and legacy baseline migration; proposed C.2 and current-settings adapters. Permanent project ownership, persistence and independence from Undo capacity are settled. |
 | Persistence | Native format, operation/schema compatibility, validation/migration, Save completion and optional disk UI preferences. Operations/relationships must persist; Open never restores previous Undo/Redo snapshots. |
 | Geometry transfer | Source/derived ownership, supported transfer geometry, identity/provenance and compatibility with the existing straight-edge SVG importer. |
-| Dependencies | Scheduling/async acceptance, coherent evaluation units, mapping/repair and generated/authored ownership; suppress/delete UX and independent manufacturing scope validation. Option A and no silent invalid export are settled. |
+| Dependencies | Bounded scheduling, deterministic/versioned unfinished evaluation, coherent units, mapping/repair and generated/authored ownership; suppress/delete UX and manufacturing scope validation. Option A, one logical action across async consequences and no silent invalid export are settled. |
 | 3D | Kernel, topology, constraint handling, rendering/camera, surface versus thickened-solid extrusion, assembly representation and supported flattening/developability. |
 | Puzzle | Generation, joint types, uniqueness validation, manufacturing settings and UI, subject to existing roadmap commitments. |
 | Existing history migration | Analyze separate history ownership and Drawing history lifetime for global-history migration; preserve existing working behavior and keep the accepted deferred Arc empty/blind Undo limitation separate. |

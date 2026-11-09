@@ -13,7 +13,8 @@ The Drawing and imported/construction document models are currently separate. Se
 **Approved future direction — not implemented:** an optional connected workflow of
 **3D Modeling → 2D Drawing → BOX or Puzzle**, with BOX/Puzzle as parallel destinations
 and Drawing also usable independently. Simple 3D Modeling will focus on profile
-extrusion; global Undo/Redo of 30 committed edits and a **separate permanent parametric
+extrusion; global tape-recorder Undo/Redo of 30 completed state-changing actions and a
+**separate permanent parametric
 construction history** remain future work. Construction operations retain editable current
 parameters/relationships, survive Undo eviction and persist with native projects; repeated
 Line dimension edits update the same operation. Native Save/Open and traceable downstream
@@ -25,7 +26,12 @@ permanently resets the project, construction history and Undo/Redo. Successful O
 preserves saved operations/relationships while starting empty executable Undo/Redo.
 Approved Option A keeps valid source edits and compatible updates while preserving failed
 downstream operations for repair. Stale/unvalidated output cannot silently be valid laser
-export. Detailed architecture and the proposed C.2 foundation remain under review. See the
+export. One completed action includes every automatic consequence even when asynchronous;
+completion cannot create another Undo step. Creation/deletion restores exact identities.
+Stage B recommends one pending action that finalizes the same position, with further edit
+acceptance waiting, pending Undo/Redo guards, Save waiting/cancelling and pending Export
+blocked. That responsiveness tradeoff, detailed architecture and proposed C.2 remain
+under review; no Stage C/C.2/D/E implementation is included. See the
 [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) and
 [proposed development stages](ROADMAP.md#4-connected-product-development).
 

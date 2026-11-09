@@ -43,7 +43,12 @@ static Construction preview. Its kernel and detailed technical design remain ope
 
 **Revised product decisions (2026-11-09):** one global history retains **30 reversible
 committed project edits** across all modules, superseding independent workspace histories.
-Ordinary module switches create no steps, consume no capacity and preserve cursor/Redo.
+Each completed state-changing creation, edit, deletion or accepted gesture is one Undo
+action including all automatic solver/dependency consequences, even if asynchronous.
+Invalid/cancelled/no-op actions and intermediate previews create none. Undo/Redo restores
+exact object identities/relationships and solved geometry. The combined past/future tape
+has at most 30 transitions. Ordinary module switches create no steps, consume no capacity
+and preserve cursor/Redo.
 Undo/Redo reverse/restore the latest global edit and open its associated module regardless
 of the visible module. Double-click reveals the referenced object's current state/settings
 without rewind or history/Redo mutation; only a later committed edit branches after Undo.
@@ -63,7 +68,14 @@ replay. Stale/failed/unvalidated artifacts cannot silently become valid laser/ex
 output; independent export requires explicit validated scope. Detailed algorithms and
 UI remain design work. The
 [Stage B technical proposal](docs/GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md) is still
-under review; these decisions do not approve the complete architecture.
+under review; these decisions do not approve the complete architecture. Its former
+source/stale transaction plus second regeneration transaction is superseded. The current
+recommendation reserves one pending action, stages automatic results and seals the same
+tape position once. Pending Undo suspends; unfinished Redo resumes captured inputs;
+completed Redo restores the exact final frame. Further edits wait with explicit busy
+feedback; navigation remains available. Save waits/cancels, Export blocks pending output,
+and lifecycle/attempt guards reject obsolete results. This admission/latency tradeoff and
+bounded scheduling budgets require review, not implementation here.
 
 The common toolbar order is **Open, Save, Export, Clear, Fit to screen, Undo, Redo**.
 Open offers Open Project and Import SVG; SVG import always targets BOX. Native Save/Open
@@ -82,6 +94,8 @@ awaiting review: B contracts → C shared ownership/global Undo → distinct C.2
 construction-operation foundation → D complete native persistence → E dependency,
 regeneration, warning/error, repair and downstream management. C.2 is a proposed substage;
 all existing A–G statuses remain unchanged and no implementation is authorized here.
+C must reserve single-action admit/finalize/suspend/resume/abandon and lifecycle contracts
+without implementing E's evaluator, scheduler, verified feature mapping or repair engine.
 
 ## 3. Document models and shared boundary
 

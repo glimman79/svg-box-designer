@@ -32,11 +32,13 @@ These documents analyze a bounded subsystem. Some contain implementation-era bas
 
 - [GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md)
   — Stage B source-grounded project/history design proposal revised for approved product
-  decisions: 30 committed Undo edits, a distinct persistent editable operation model,
-  Option A partial regeneration/repair, exact snapshot consistency and manufacturing
-  validation gates. Supersedes the bounded-journal proposal as construction history;
-  proposes a distinct C.2 foundation before D/full E. Navigation, permanent Clear and
-  fresh Undo on Open remain. Detailed architecture remains under review; no implementation
+  decisions: a 30-action global Undo/Redo tape, one step per completed state-changing
+  action including all async automatic consequences, a distinct persistent operation
+  model, Option A and invalid-export gates. Compares three async models; recommends one
+  pending slot with immutable finalization, serialized admission and explicit pending
+  Undo/Redo/Save/Export/lifecycle contracts. Supersedes separate source/result Undo steps
+  and bounded-journal construction history; proposed C.2 remains under review before
+  D/full E. Navigation, permanent Clear and fresh Open tape remain. No implementation
   or roadmap-status change.
 - [DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md](DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md)
   — historical Drawing design evidence. Its §16 recommendation for Drawing-owned

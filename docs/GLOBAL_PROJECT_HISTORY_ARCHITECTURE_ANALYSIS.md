@@ -6,7 +6,9 @@ separately from technical recommendations; the complete Stage B architecture is 
 Repository: `glimman79/svg-box-designer`. Source baseline:
 `97469bd8274edae335254188dc8805f1141dc874`.
 Investigation date: 2026-11-05; product-decision revisions: 2026-11-09.
-This revision adds the approved permanent parametric construction history and Option A.
+This final revision adds the approved global tape-recorder behavior, including one
+logical Undo action for a source edit and all asynchronous automatic consequences. It
+retains the separate permanent parametric construction history and approved Option A.
 No application implementation, refactoring, test change,
 native persistence, dependency propagation, or roadmap-status change is included.
 This revision also synchronizes the narrowly affected architecture/roadmap requirements
@@ -57,11 +59,17 @@ construction-operation model. Ordinary module switching and history-panel double
 are navigation:
 neither creates a transition, moves the history cursor nor clears Redo. Undo/Redo restore
 the latest edit's complete before/after project and open that edit's associated module.
-Only a newly committed edit after Undo abandons Redo; navigation never does.
+Only a newly accepted, valid state-changing user action after Undo abandons Redo;
+navigation never does. One completed creation, deletion, edit or gesture consumes one
+position, including every automatic solver/dependency consequence. Async completion
+never adds another position. Recommend one pending logical action with serialized edit
+admission (§11): Undo suspends it, unfinished Redo resumes it, and sealed Redo restores
+its exact complete result. This pending architecture and its UI tradeoffs need review.
 
 **Approved product decisions (2026-11-09):** Clear is a permanent, project-wide session
 reset with Save and Clear / Clear Without Saving / Cancel; a failed or cancelled save
-leaves the project untouched. Native Open restores complete editable content into a fresh
+preserves the project and tape without clearing. Native Open restores complete editable
+content into a fresh
 Undo/Redo session. History snapshots are not restored from disk. Permanent construction
 operations and relationships persist with the editable native project. **Option A is
 approved:** keep a valid source edit, update compatible branches and retain failed or
@@ -127,6 +135,18 @@ The uploaded “Parametric History Architecture Revision” brief authorizes doc
 changes, commit and update of this existing PR only; no implementation or merge.
 Earlier revision evidence above describes earlier checkpoints, not the current head.
 
+### Tape-recorder revision evidence (2026-11-09)
+
+Fresh remote checks and GitHub PR metadata agree: existing open, unmerged PR #629 has
+head `84e62f3ec44f31cae6060076dbfd6023b9f9070a` on
+`docs/stage-b-global-project-history`, with base `main` and merge-base
+`97469bd8274edae335254188dc8805f1141dc874`. Remote main is unchanged at that SHA.
+The initial `work` checkout at main was clean. After fetching, the clean checkout at
+`/workspace/svg-box-designer` was switched to the exact existing PR head; worktree and
+remote checks found no unexpected changes. These are this revision's pre-edit checks;
+earlier checkpoints above remain historical evidence. The uploaded final architecture
+brief authorizes these documentation changes, commit and push to existing PR #629 only.
+
 ### Conflicts resolved by the current product decisions
 
 | Earlier document / recommendation | Conflict and scoped resolution |
@@ -136,6 +156,7 @@ Earlier revision evidence above describes earlier checkpoints, not the current h
 | Original Stage B D5; PR #627 Clear contract left recovery unresolved | Undoable Clear conflicts with the explicit permanent reset. Replaced with the three-outcome save workflow and async/session safeguards (§10). |
 | PR #627 persistence registers; original Stage B D5/D6 | Session-only execution history was only a proposal; serializing Undo remained open. Native Open must now start a fresh baseline, without prior snapshots. Descriptive journal persistence remains a separate open decision. |
 | Previous PR #629 §9 / D3 / D6 bounded session-journal proposal | **Superseded as construction history.** A journal of edits cannot supply persistent editable operation definitions. §9 now defines project-owned operations with no 30/100/250-entry quota; descriptive events are optional and separately scoped. |
+| Previous PR #629 §11 async source/stale commit plus later regeneration transaction | **Superseded by the approved tape-recorder requirement.** Two user-visible transitions for one originating action are prohibited. §§8/11 now reserve one pending position and finalize it once; no second transaction is hidden under a shared label. |
 | Previous PR #629 §11 incompatible-update choices | A downstream failure cannot implicitly reject a valid source edit. Approved Option A retains the edit, publishes compatible branches and preserves failed/blocked definitions for repair (§11). |
 | Project History §11.27 and the 2026-11-03 Changelog entry | Historical module-switch requirements and persistence questions are retained as dated evidence, explicitly marked superseded and linked to the new decision record. |
 
@@ -400,6 +421,11 @@ options; resource exhaustion must be explicit, never silent construction-history
 Preserve raw
 imported SVG once by immutable sharing; navigation allocates no reversible snapshots.
 
+The asynchronous recommendation adds one immutable pending seed and bounded detached
+staging/worker data while work is active (§11). Those bytes must be measured separately
+from the 30-position cap; a transition count is not a memory bound. Release staging on
+suspend/seal/abandon and account for retained dormant seed data within the tape budget.
+
 Profile representative large sketches and generated BOX projects before selecting patches,
 workers, indexing or a larger state library. A later measured patch optimization can sit
 behind the same restore contract, but changes neither canonical geometry nor retention
@@ -424,7 +450,8 @@ App / project session (lifetime exceeds every module view)
       optional future Modeling/Puzzle documents
       identity registry + ConstructionHistory (definitions, order, evaluation records)
       dependency records (schema reserved now, execution in Stage E)
-    HistoryService: 30 reversible transitions, cursor, per-transition metadata
+    HistoryService: at most 30 logical transitions, cursor, per-action metadata
+      at most one pending position; immutable seed/staging; sealed before/after frames
   UiSession: active module, selections, views, editors, gesture previews
   DerivedRuntime: reference indexes, solver/rank/DOF, bounds, FinalGeometry caches
   Module views: read selected state; submit accepted candidate transactions
@@ -559,32 +586,48 @@ interface TransactionMetadata {
   targets: readonly ObjectRef[];
   settingsRoute?: string;       // declarative capability key, never a callback
   summary: Readonly<Record<string, string | number | boolean>>;
-  causedByTransactionId?: string; // later accepted regeneration; not timeline position
+  // Automatic jobs carry this same transactionId; they cannot append transitions.
 }
 
-interface ReversibleTransition {
+interface SealedTransition {
+  state: 'sealed';
   metadata: TransactionMetadata;
   before: RestorableFrame;
-  after: RestorableFrame;
+  after: RestorableFrame; // complete terminal outcome; never replaced after sealing
 }
 
+interface PendingTransition {
+  state: 'pending';
+  metadata: TransactionMetadata; // same identity when sealed
+  before: RestorableFrame;
+  seed: RestorableFrame; // accepted source + explicit stale/blocked dependent states
+  evaluationInput: EvaluationInputDescriptor; // immutable inputs/versions/output IDs
+  // No incomplete after-frame is advertised as a sealed restorable result.
+}
+
+type ReversibleTransition = SealedTransition | PendingTransition;
+
 interface HistoryBuffer {
-  transitions: readonly ReversibleTransition[]; // at most 30 total
+  transitions: readonly ReversibleTransition[]; // at most 30, pending included
   cursor: number; // [0, transitions.length]; next Undo is cursor - 1
+  // At most one pending position, at the end; none can have a successor.
 }
 
 interface PreparedTransaction {
   baseSession: SessionToken;
   baseRevision: RevisionToken;
   before: RestorableFrame;
-  after: RestorableFrame;
   metadata: TransactionMetadata;
+  outcome: { state: 'sealed'; after: RestorableFrame }
+         | { state: 'pending'; seed: RestorableFrame;
+             evaluationInput: EvaluationInputDescriptor };
 }
 
 interface ProjectTransactionService {
   current(): { frame: RestorableFrame; session: SessionToken; revision: RevisionToken };
   prepare(request: EditRequest): PrepareResult;
-  commit(candidate: PreparedTransaction): CommitResult;
+  commit(candidate: PreparedTransaction): CommitResult; // sealed or pending acceptance
+  finalizePending(result: PreparedOutcome): FinalizeResult; // replace same slot, no append
   beginPreview(request: GestureRequest): PreviewToken;
   updatePreview(token: PreviewToken, candidate: ModuleCandidate): void;
   finishPreview(token: PreviewToken): CommitResult;
@@ -595,8 +638,12 @@ interface ProjectTransactionService {
 ```
 
 Request/result/token types above describe proposed boundaries, not a callable API.
-`PrepareResult`/`CommitResult` must distinguish committed, unchanged, cancelled, rejected
-and stale-base outcomes with structured diagnostics. Rejected source edits and failed
+`EvaluationInputDescriptor`, `PreparedOutcome` and `FinalizeResult` are conceptual
+contracts defined by §11, not Stage E implementations. Metadata is frozen per accepted
+user action; the associated module is not whichever module displays a later result.
+`PrepareResult`/`CommitResult` must distinguish sealed acceptance, pending acceptance,
+busy/not-accepted, unchanged, cancelled, rejected and stale-base outcomes with diagnostics.
+Rejected source edits and failed
 previews do not become entries. A valid source edit
 with downstream evaluation errors is a **committed** partial-regeneration outcome under
 Option A, not a rejected candidate (§11). Rejected/cancelled candidates do not consume
@@ -635,9 +682,12 @@ old pushUndoState and global commit for the same action.
 5. Verify baseSession and baseRevision still match. Reject old-session results outright;
    for a changed revision, reject or explicitly recompute under
    a separately specified intent policy; never splice an old candidate into new state.
-6. Atomically publish the candidate frame, updated buffer/cursor and transaction metadata.
-   Notify React subscribers only after the complete root is ready. A subscriber
-   cannot observe the new Dimension value with old solved coordinates or half a BOX Apply.
+6. If all automatic consequences are terminal, atomically append one sealed transition
+   and publish its complete outcome. Otherwise admit one pending transition under §11:
+   the immutable seed includes the fully solved source and explicit stale/blocked
+   dependent states. Notify subscribers atomically; never expose half a source solve,
+   half a composed BOX authority unit, or stale output labelled current. Finalization
+   replaces that pending slot once, without appending or advancing the cursor.
 
 The transaction owns automatic changes caused by the action. BOX's effect-driven
 automatic-property normalization must become explicit candidate derivation, with parity
@@ -665,19 +715,24 @@ the product's logical action remains **DECISION D4**. Do not silently reinterpre
 current callback granularity. Separate workflow actions and Apply stay distinct when
 they are distinct accepted user actions; a helper's internal setters are not entries.
 
-For future async generation/solver workers, prepare against a base revision and retain
-a token/affected-module set. Use §11's explicit source/stale and accepted-result
-transactions; reject stale results and prepare anew only under the reviewed scheduling
-policy. Undo/Redo, Open, Clear and superseding edits invalidate publication tokens.
-Unmount invalidates view-bound previews/requests; project-owned jobs do not depend on
-view lifetime. No result may publish merely because its module has remounted.
+For future asynchronous automatic consequences, use the single pending action and
+guarded finalization contract in §11. Jobs return data to that action's staging area;
+they cannot invoke ordinary commit or consume a second Undo position. Undo/Redo,
+Open/Clear and branch abandonment invalidate attempts. Unmount invalidates view-bound
+previews/requests; project-owned jobs outlive module views. Navigation neither changes
+the content revision nor invalidates a valid project job. No result may publish merely
+because a module has remounted. Stage C reserves these interfaces without implementing
+Stage E's evaluator or scheduler.
 
 ### Cursor, retention and branching
 
 For transitions T0…Tn-1 and cursor c:
 
 - Undo when c > 0 restores Tc-1.before; only on success set cursor to c-1.
-- Redo when c < n restores Tc.after; only on success set cursor to c+1.
+  If that slot is pending, suspend/invalidate its attempt as part of the same barrier.
+- Redo when c < n restores a sealed Tc.after; only on success set cursor to c+1.
+  For an unfinished Tc, restore its exact seed and resume the same logical action
+  under a fresh attempt (§11), moving the cursor once. Never replay its source solve.
 - A successful new transaction discards reversible transitions at indices c…n-1,
   appends the new one, and sets cursor to the end. Abandoned transition payloads are
   released. The restored current construction graph is authoritative: operations created
@@ -689,8 +744,13 @@ For transitions T0…Tn-1 and cursor c:
 - Rejected source edits, failed previews, equality/no-op results, pan/hover, ordinary module switches,
   selection and panel reveal do not truncate Redo or move the history cursor.
 
-Thirty counts committed project edits only, including editable settings, with past and
-future sharing the same retained sequence. Navigation consumes none of this capacity.
+Thirty counts accepted state-changing user actions, including editable settings, with
+past and future sharing one retained sequence. A pending accepted action already reserves
+one of those 30 positions; neither its jobs nor finalization add positions. Source
+acceptance is the branch/retention linearization point, even if automatic work remains.
+Eviction occurs then, not on completion; Undo does not recover an evicted position.
+Navigation consumes none of this capacity. At quiescence the tape contains the last
+30 completed actions; pending status never licenses a hidden 31st transition.
 Buffer overflow is an Undo retention boundary; current construction operations remain
 available/editable without being executable historical snapshots. A count cap is not a
 byte-memory guarantee (§6).
@@ -736,7 +796,9 @@ Open result, but different validation/error policies:
    Release capture, close stale editors and invalidate deferred callbacks/work tokens.
 2. Validate the target in-memory frame and identity/reference closure without normalizing
    or re-solving it into a different document. Include construction definitions, exact
-   artifacts and saved valid/warning/error/stale/blocked/suppressed states. Explicit broken
+   artifacts and saved valid/warning/error/stale/blocked/suppressed states. An unfinished
+   Redo restores its validated seed with visible pending state, not a nonexistent final
+   after-frame; restart rules are in §11. Explicit broken
    references in diagnostic records are not restore failures. Already validated snapshots
    are trusted session data; if they fail an invariant, report the failure and retain the old root
    and cursor rather than partially installing them.
@@ -1030,11 +1092,13 @@ transaction, old-session recovery stack or hidden snapshot is retained by global
 | Save and Clear | Save the complete current editable project through native Save. Reset only after confirmed save success for that exact committed revision/session. |
 | Clear Without Saving | After this explicit choice, reset the entire current in-memory project without writing, deleting or overwriting any existing saved project file. |
 | Cancel | Close the workflow; leave project, module states, identity data, construction history and Undo/Redo untouched. |
-| Save fails, permission is denied, destination picker is cancelled, or save is incomplete | Do not clear anything. Keep the current project and history available, with the save error/cancellation result. |
+| Save fails, permission is denied, destination picker is cancelled, or save is incomplete | Do not clear anything. Keep the current project and tape available, with the error/cancellation result. Automatic settlement of the same pending action may have completed while waiting (§11); no work or tape position is discarded. |
 
 **PROPOSAL.** Coordinate confirmation and saving through a lifecycle gate: pause new
-authoring/publication while the choice/save is pending, keep the committed root and
-history unchanged, and resume them on cancellation/failure. Do not flush a pending
+authoring and ordinary publication while the choice/save is pending. Suspend any pending
+automatic attempt while choosing; Save and Clear may resume only that existing logical
+action to settle its complete outcome before freezing the revision to save (§11).
+Cancel/failure releases the gate without clearing work or tape. Do not flush a pending
 accepted edit as an incidental consequence of pressing Clear. D4 must specify how an
 already pending accepted click is settled before entering the gate; if unsettled, defer
 Clear rather than silently discard accepted work. Revalidate session/revision at completion.
@@ -1185,24 +1249,166 @@ promise that today's importer supports Circle transfer.
 
 ### Asynchronous regeneration
 
-**REQUIREMENT.** Async publication must never create hidden project/history changes.
-**PROPOSAL:** first commit the valid source edit plus affected stale/pending states and
-preserved artifacts. Later accepted regeneration publishes a separately labelled normal
-transaction, with `causedByTransactionId`; it may contain mixed branch success/errors.
-Completion must not rewrite the earlier Undo frame or mutate the current root in place.
-The source and later regeneration are separately undoable; exact UX/automatic scheduling
-and acceptance policy remain unresolved (D9). A pending job is runtime work, not a persisted
-executable task; reopening preserves stale state but does not silently resume a generator.
+**REQUIREMENT — APPROVED TAPE-RECORDER BEHAVIOR.** One completed state-changing user
+action has one logical reversible transition, including automatic work computed later.
+The previous `84e62f3` recommendation of a source/stale transaction followed by a
+separately Undoable regeneration transaction is **SUPERSEDED**. Sharing a cause ID or
+label does not make two cursor movements one action. Async completion cannot append a
+transition, clear Redo, consume capacity or reactivate the initiating module.
 
-Use runtime session + non-rewinding revision/epoch + expected definition/input versions
-at the single publication gate. Undo/Redo, Clear, Open or superseding edits invalidate
-in-flight work; abort where possible and reject stale callbacks even when abort fails.
-Undoing an accepted async result restores its exact preceding stale/pending snapshot,
-but does not resurrect a runnable job or automatically redo the result. Any later scheduling
-is explicit under D9. Navigation, mount effects, failed previews and cache completion
-cannot author geometry, append operations or consume Undo steps. Publication ordering and
-batching of several results require review; no callback may splice old artifacts into
-a newer frame merely because one module appears unchanged.
+#### Alternatives and recommendation
+
+These alternatives concern asynchronous coordination within the selected snapshot
+hybrid (Alternative C in §6), not replacement of its exact restoration contract.
+
+| Alternative | One-action mechanism | Pending Undo/Redo and later edits | Tradeoff / recommendation |
+| --- | --- | --- | --- |
+| 1. Complete before final publication | Keep the entire candidate detached until every branch is terminal; append one final before/after pair. | Undo must cancel the visible in-progress intent before traversing older history. Retaining unfinished intent for Redo requires a provisional tape slot, converging on alternative 2. Later edits must wait or branch from speculative state. | Strong snapshot isolation; delayed visibility and ambiguous unfinished Redo unless explicitly modelled. Viable if pending intent is wholly unaccepted, but less useful for a valid source already accepted. |
+| 2. One pending logical action, serialized admission | Accept the validated source into one pending slot with immutable before/seed; collect results off-store; atomically seal that same slot once. | Undo suspends that slot; Redo resumes it from captured inputs. Block new project-edit acceptance until it seals or is undone; navigation remains available. | **RECOMMENDED for review.** Bounds complexity and incomplete work; preserves exact sealed frames and single-step behavior. Costs authoring latency while pending. |
+| 3. Concurrent actions with immutable versioned evaluation graph | Give every action its own immutable input node and resolved outcome; publish a rebuilt coherent suffix only after required nodes settle. Never patch shared historical roots. | Several accepted edits can overlap, but Undo/Redo must address every unresolved node; successors cannot safely use missing predecessor outcomes without explicit dependency/rebase rules. | Potentially more responsive. Requires bounded admission, deterministic per-action evaluation, cancellation, dependency-aware suffix rebuild and resource accounting; reject naive last-result-wins/coalescing that loses accepted edits. Defer unless alternative 2's measured latency is unacceptable. |
+
+The recommendation deliberately serializes **accepted project edits**, including edits
+to unrelated modules. It does not silently merge rapid dimension edits, enlarge the
+30-step capacity or introduce a queue of accepted but invisible actions. Busy controls
+explain the pending action and offer Undo; module navigation, inspection and view changes
+remain usable. A request at the busy gate is **not accepted**, is not saved, changes no
+project/history state and is not automatically replayed. The user resubmits after
+settlement. This responsiveness tradeoff is a technical/UI recommendation awaiting
+architecture review, not an additional approved product restriction. If review requires
+multiple edits to be accepted concurrently, design alternative 3 before implementation;
+do not claim that the serialized model already supports them.
+
+Place the busy gate before a tool accepts a placement or field value. Never accept a
+click and then drop it as busy, or change a multi-click tool's completion/cancellation
+meaning. D4 must review waiting feedback and accepted-click ownership, including Profile
+continuation. If serialized admission cannot preserve those accepted semantics, choose
+alternative 3 before implementation rather than redefine the tool to fit this proposal.
+
+#### Immutable state and publication contract
+
+1. **Admit once.** Validate a completed user intent through the existing source solver/
+   mutation contract. Invalid, cancelled or no-op input creates no slot and preserves
+   Redo. Allocate one transaction ID plus all source object/operation lifetimes once.
+   A valid state-changing source is accepted exactly once: capture before-frame B;
+   truncate the old executable future; append pending slot T; advance the cursor once;
+   enforce the combined 30-position limit. With no automatic work, seal synchronously.
+2. **Capture seed.** Immutable seed S contains the accepted source, its full solver
+   effects, operation definitions/bindings and affected-closure stale/blocked diagnostics.
+   Preserved BOX artifacts remain stored authority but are visibly last-known-good,
+   never current validated output. The displayed project is S with a runtime pending
+   overlay. It is a coherent repairable state, not a final after-frame.
+3. **Stage only.** Freeze inputs, definition/content versions, generator version,
+   deterministic evaluation settings and qualified output identity mapping in T's
+   descriptor. Workers read immutable inputs and return isolated candidate data.
+   Stage results by dependency/evaluation unit; callback order has no semantic authority.
+   Recommend showing progress/diagnostics while keeping partial generated geometry
+   detached until the full outcome seals. Unrelated valid state remains visible.
+4. **Settle Option A.** Each affected coherent unit becomes valid/warning, error,
+   blocked or suppressed. Combine successes and preserved failed definitions/refs into
+   a complete candidate F, with terminal diagnostics and `pending: false`. Required
+   consumers of a failed unit become blocked. A source solve cannot be weakened, and
+   a coupled solver/composition unit cannot be split into arbitrary partial successes.
+   Reject malformed worker output as a unit failure; construct diagnostics against the
+   validated seed while preserving verified siblings. Never seal a corrupt combined root
+   or retry validation forever to conceal an invalid result.
+5. **Seal once.** Validate F against the captured input closure and stored-authority
+   rules. At the guarded publication gate, replace T's immutable pending record with a
+   new sealed record `(same metadata, B, F)` and publish F atomically. Cursor, position,
+   capacity and transaction identity are unchanged. Increment the runtime publication
+   revision; update dirty/save state for F, but emit no second user action.
+6. **Freeze forever.** B, S, staged roots and F are never mutated in place. No successor
+   is admitted before sealing, so no later before-frame points at an incomplete outcome.
+   For consecutive sealed actions, `T[i+1].before === T[i].after` by content authority.
+   Once sealed, T's after-frame can never be amended by a late callback. There is no
+   ordinary regeneration commit entry point; only user intent can append a position.
+
+The descriptor contains data/version refs, never live closures, Promise/worker handles
+or replayable source pointer events. Runtime jobs live outside ProjectDocument and are
+not saved. A pending record may move into Redo, but there is at most **one** unresolved
+record in the entire retained tape, at its end; it cannot have accepted successors.
+
+#### State machine and linearization points
+
+`applied` means the slot is before the cursor; `undone` means it is in the Redo future.
+Every state change below is serialized through the one project coordinator.
+
+| State / event | Atomic result | History effect |
+| --- | --- | --- |
+| Ready + valid changed source | Admit pending-applied T with before B and seed S; start one evaluation attempt | Append once; truncate prior Redo; evict oldest if necessary; advance cursor once |
+| Pending-applied + job result | Validate token and stage detached result | None |
+| Pending-applied + all units terminal | Seal T and install F | Same slot/cursor; no append |
+| Pending-applied + Undo | Invalidate attempt, discard staging, restore B; T becomes pending-undone; activate T's source module | Cursor moves back once; do not also undo a preceding action |
+| Pending-undone + further Undo | Restore preceding sealed before-frame | Usual one-step traversal; dormant T stays in Redo |
+| Pending-undone + Redo reaches T | Install the exact S, activate source module, allocate fresh attempt and resume automatic work | Cursor moves forward once; same T, no source solve or new IDs |
+| Sealed-applied + Undo / sealed-undone + Redo | Restore exact B / F including IDs, statuses and artifacts | One cursor move; no evaluator needed |
+| Pending-applied + new edit request | Report busy/not-accepted; keep current action and inputs | No append, queue, coalescing or branch mutation |
+| Pending-undone + new valid changed source | Abandon the old Redo suffix including T and all attempt descriptors, then admit the new action | Normal branch truncation on acceptance; invalid/no-op requests preserve T |
+| Any state + permitted Clear / successful Open | Invalidate attempts before replacing project and emptying tape | New runtime session/baseline; no reversible lifecycle action |
+
+Undo racing completion has one winner at the gate: either F seals first and Undo
+restores B from the sealed action, or Undo suspends first and completion is rejected.
+Both paths perform exactly one Undo. After an unfinished Undo, no final F exists yet;
+Redo promises the same accepted source S and immutable evaluation inputs, then computes
+the still-unfinished consequences. It cannot promise an unseen result was captured.
+Once F exists, every subsequent Redo restores that exact F, including failures, without
+recomputation. Output IDs must be reserved or derived from T's captured stable output
+keys; resuming may not allocate new operation/entity lifetimes. Stage E must specify
+determinism, version availability and resource-failure diagnostics; an unavailable
+evaluator settles as an explicit error/blocked outcome while preserving the source.
+
+#### Jobs, ordering, revisions and bounded failure handling
+
+An attempt token identifies `(sessionToken, transactionId, attemptId, baseRevision,
+input/definition versions, evaluationUnitId, unitGeneration)`. Accept a result only
+while that exact attempt is active, T is pending-applied at the tip, the current root
+is S, versions match, and no lifecycle gate has revoked publication. `projectId` or the
+Undo cursor alone is insufficient. Undo and unfinished Redo advance the non-rewinding
+runtime revision/attempt ID even though persistent content identities are restored.
+Module switching does not advance that content revision; UI requests have separate tokens.
+
+Persistent projectId, module document IDs, operation/entity incarnations and definition/
+input versions remain captured content authority. Undo restores those versions; it
+never rewinds runtime concurrency tokens. Native Open preserves saved persistent IDs
+while replacing the runtime session; Clear creates the defined empty-project identity.
+
+Several jobs may overlap **within T** for independent branches. Consumers run only
+after their required producer units settle. Stage by unit/version, ignore duplicates,
+reject obsolete unit generations and assemble F by dependency order, never arrival
+order. Duplicate or late completion after seal is inert. No overlapping accepted action
+T2 exists while T1 is pending. A rapid 30→50 request is accepted as T1; a 50→70 request
+while pending is visibly unaccepted. Once T1 seals, accepting 70 produces T2 with
+`T2.before = T1.after`; Undo visits 50 then 30. No latest-value-wins replacement loses
+T1. Undo T1 then accept 70 instead creates a branch from 30 and abandons T1's Redo.
+
+Abort workers on suspension/abandonment/reset where possible; token rejection remains
+mandatory if abort fails. Bound active worker count, staged bytes, per-unit retries
+and elapsed evaluation time. Physical obsolete workers still count against the worker
+budget; new attempts wait visibly for a slot or settle with an explicit resource error,
+never spawn unbounded replacements. A watchdog/worker crash turns unfinished units into
+error diagnostics and consumers into blocked states, then seals the same T under
+Option A. Exact budgets need measurement/review (D9/D10). No infinite pending state,
+silent source rollback or unbounded queue is an acceptable implementation. User-requested
+Repair/Retry after a sealed failure is a distinct completed state-changing action;
+automatic bounded retries before sealing remain inside T. A no-op retry adds no step.
+
+#### Navigation, persistence, Clear/Open and export while pending
+
+| Interleaving | Recommended contract / visible, saved and exportable state |
+| --- | --- |
+| Switch modules while pending | Allowed; show source S, explicit dependent stale/blocked state and progress wherever relevant. Preserve T/cursor/Redo. Completion installs F in the background without switching modules; only Undo/Redo activates the original action's module. |
+| Save while pending-applied | Defer actual serialization with visible waiting/cancel state until T seals; never report S or the older B as the requested final save. At readiness capture immutable F and its exact session/revision, then serialize editable content/statuses/artifacts. One outstanding save intent suffices; no job/Undo payload is persisted. |
+| Undo/reset or content change while Save is waiting | Cancel the waiting save intent with an explicit result; do not silently save a different action/project. If Undo wins before finalization, Save must be requested again for the restored state. |
+| Save after seal | Save exact captured F; Option A's error/blocked definitions and last-known-good markers are legal editable content. Later edits may proceed for ordinary Save, but completion marks only that captured revision saved; newer content remains dirty. Save and Clear uses the stricter frozen lifecycle gate. |
+| Save while unfinished T is undone | Current project is the coherent restored sealed frame B (or an earlier frame); save that content only. Dormant T's seed/descriptor/Redo future are not current project data and are never serialized. |
+| Clear dialog while pending | Freeze new authoring/history traversal and ordinary publication, suspend the attempt and preserve T/S. Cancel restores the same logical state with a fresh attempt; no new tape position. Clear Without Saving crosses the session barrier immediately. Save and Clear resumes only T under the lifecycle gate, waits for F, freezes that exact revision, and resets only after verified native-write success. Save failure/cancellation keeps the project/tape; it may have advanced coherently from S to F while waiting, but it is never cleared. |
+| Native Open while pending | Parse/validate incoming data detached. Until success, preserve current content/tape; a failed/cancelled Open cannot discard T. At successful publication invalidate the old attempt/session and replace project/tape atomically, even for the same projectId. Old results cannot populate the loaded baseline. |
+| Export while pending-applied | Block the entire requested export with an explicit pending reason under this conservative recommendation. Do not use stale last-known-good output or silently export B. After seal, enforce full closure/composition/manufacturing validation; saved failure records do not authorize laser output. |
+
+Waiting Save captures the intended T/session; finalization checks that intent before
+serialization. A completed Save of F does not clear history. Open restores definitions,
+identities, stored authority and repairable statuses into empty executable Undo/Redo;
+it does not resume runtime jobs. Export of explicitly independent valid scopes remains
+an optional later reviewed policy (D12); pending export is blocked by this proposal.
 
 ### Suppression, deletion and downstream repair
 
@@ -1247,9 +1453,13 @@ never export diagnostic overlays or substitute stale geometry automatically.
 
 ### What Stage B reserves, and what Stage E implements
 
-B defines serializable operation/ref/evaluation contracts, atomic mixed-outcome frames,
-generated-versus-authored ownership, invalidation/publication guards and manufacturing
-gates. C supplies shared mutation/restore; C.2 supplies persistent operation maintenance;
+B defines serializable operation/ref/evaluation contracts, one logical action across
+asynchronous consequences, atomic mixed-outcome frames, ownership, publication guards
+and manufacturing gates. C must reserve begin/admit, stage/finalize, suspend/resume and
+abandon hooks with a single pending slot, fresh attempt tokens, serialized edit/lifecycle
+gates and synchronous zero-job sealing. It can validate that protocol with fake delayed
+outcomes in a later authorized scope; no dependency evaluator/scheduler belongs in C.
+C supplies shared mutation/restore; C.2 supplies persistent operation maintenance;
 D persists those relationships and repairable states. E later implements affected-work
 tracking, scheduler, controlled regeneration, warning/error propagation, verified mappings,
 reference repair and dependent management. Feature matching, cycle handling, merge/rebase
@@ -1308,6 +1518,9 @@ or stage-status change is authorized now.
 
 Review the detailed Stage B ownership/history interfaces while preserving the approved
 foundation; decide remaining interaction policies D4 and technical lifecycle details in D5 below.
+Review D9's single pending-slot/admission protocol before C, while reserving Stage E's
+actual evaluator/scheduler design for its own scope. A busy gate must preserve accepted
+tool completion/cancellation semantics; it is not permission to discard accepted clicks.
 D1/D2 and the fundamental Clear/Open policy are settled product requirements; do not
 reopen them as approval prerequisites. Confirm the complete module capture inventory,
 transaction granularity, restoration/identity contracts and the parity test matrix.
@@ -1327,7 +1540,7 @@ and full Stage E, without requiring E's scheduler, cross-module transfer or repa
 | --- | --- | --- |
 | C preparation — characterization | Approved Stage B contract; inventory current Drawing/BOX action boundaries, accepted-click behavior, contextual restore and failure cases with meaningful tests | Existing behavior recorded without asserting a new defect. No misleading global UI; revert this isolated test/analysis slice if assumptions prove wrong. |
 | C ownership foundation | Wrap current documents in complete project/module structures and introduce one lifetime-above-views owner; preserve existing domain IDs and APIs through narrow adapters | Switch away/back retains documents and intended views; no changes to solver/generator results. Existing histories may temporarily remain separately labelled during internal migration, not presented as global. |
-| C transaction core | Pure snapshot transition/cursor/prepare/restore service, 30-step combined retention, revision/epoch and identity registry | Invariant/property tests for atomicity, branching, retention and failed restore; not exposed as partially functioning global history. |
+| C transaction core | Snapshot transition/cursor/prepare/restore service, 30-position combined retention, identity registry and one pending-action protocol: admit/finalize/suspend/resume/abandon, attempt guards, busy and lifecycle gates; current synchronous actions seal immediately | Prove one-step finalization, pending Undo/Redo, abandoned-result rejection and retention with synthetic delayed outcomes once authorized. No Stage E engine or misleading partially global UI. |
 | C Drawing adapter | Consume unchanged mutation/solver results; preserve same-event placement and gesture-preview boundaries; replace local execution ownership | Segment/Dimension/Constraint/Circle/Arc/delete parity passes through real store adapter; no second Drawing history execution path. |
 | C BOX adapter | Consolidate all authoring/settings/source/PM/Apply paths and automatic derivations into candidate transactions; retain applied result/authority and context | Source/assignments/settings/generated output restore together; mixed authority/compensation/export parity; agreed input/Apply failure semantics. No unrelated geometry rewrite. |
 | C integrated cutover | Both supported modules migrated; selectors/panel use UI navigation, shortcuts/toolbar edits use one history service, restore explicitly activates the affected edit's module | Global cross-module scenarios pass, including unmounted target; remove old stacks/controller registration as execution authority. Enable truthful global controls only at this boundary. |
@@ -1335,7 +1548,7 @@ and full Stage E, without requiring E's scheduler, cross-module transfer or repa
 | C.2 panel navigation | Current-operation settings/capability adapters; no event-log dependency | Old operation double-click shows current settings without rewind/Redo loss; deleted/recreated/unmounted targets explicit. Failure/repair/dependent actions activate only as E capabilities become available. |
 | C/D session lifecycle | Shared epoch/publication gate and approved Clear/Open behavior; native Save completion contract before Save and Clear is enabled | Non-reversible project-wide Clear with three outcomes; failed/cancelled save preserves work; successful Open creates a fresh baseline; stale callbacks cannot publish across sessions. |
 | D native persistence | C transaction/restore + C.2 supported operation model/identities; versioned relationship/evaluation boundary; approved format/compatibility/preferences | Complete editable geometry, operations, dependencies, suppressed/broken states and authority artifacts round-trip; empty executable Undo on Open; failed-Open preservation. Save is distinct from Export. |
-| E dependencies | C + C.2 + D relationship persistence; separately designed evaluators/ownership units | Implement tracking/regeneration, Option A partial success, warning/error propagation, repair and downstream management. Preserve valid source edits/unaffected work; exact mixed-outcome Undo; manufacturing gate. |
+| E dependencies | C's pending-action contract + C.2 real operation definitions + D relationship persistence; separately designed evaluators, scheduler, coherent units and verified feature mapping | Stage all automatic outcomes under the originating action; seal one mixed-outcome transition. Implement Option A, diagnostics/repair and manufacturing gates; no regeneration-only automatic Undo step. |
 | F/G extension | Extend slots/adapters/validators/metadata with separately designed Modeling/Puzzle semantics | Optional modules, direct Drawing/BOX starts and parallel BOX/Puzzle stay valid; accepted CAD foundation is reused. |
 
 During ownership preparation, any temporary adapter must state purpose, required callers,
@@ -1409,8 +1622,34 @@ These are future acceptance criteria, **not executed application tests**.
 | 10 | Native Save and reopen, including suppressed/failed operations | Complete editable operations/order/refs/statuses and geometry survive; executable Undo/Redo empty. No automatic generator replay. |
 | 11 | Clear whole project | Save and Clear / Clear Without Saving / Cancel; clear operations and all modules/history only on permitted outcome. Save failure/cancel preserves everything; Undo cannot cross reset. |
 | 12 | Export with stale/error downstream manufacturing geometry | Requested invalid scope is blocked with reasons; no stale artifact silently exported. Independent output requires explicit scope and full validation under reviewed D12 policy. |
-| 13 | Navigate, preview, mount, or complete stale background work | No phantom operation or Undo entry; failed previews leave Redo intact. Async source edit records stale/pending; later accepted result is explicit, labelled and guarded; stale callbacks after Undo/Clear/Open/superseding edit cannot publish. |
+| 13 | Navigate, preview, mount, or complete stale background work | No phantom operation or Undo entry; failed previews leave Redo intact. Async work stages/finalizes the originating action's same slot; callbacks from suspended/abandoned actions or old sessions cannot publish. |
 | 14 | Existing accepted Drawing and BOX flows | Preserve Profile/Line distinction, solver/Dimension/Constraint semantics, canonical Circle/Arc, accepted-click and grip behavior, BOX applied/composition authority and compensation/export until explicitly migrated; no new pass/fix claimed here. |
+
+### Final tape-recorder acceptance scenarios
+
+All are future acceptance criteria, not executed tests. These supplement the operation
+matrix above; pending behavior follows the recommendation, not an implemented feature.
+
+| # | Scenario | Required observable result |
+| --- | --- | --- |
+| 1 | Complete Line, Circle and Arc creation | Three actions, one per completed creation; Undo removes each in reverse order and Redo restores exact IDs/relationships. Multi-click previews/cancel add none. |
+| 2 | Delete an object | One action; Undo restores original entity/operation identities, refs and authored state; Redo restores deletion. |
+| 3 | Change a Line dimension | One action restores the prior value and every solved coordinate/constraint consequence together. |
+| 4 | Drawing dimension automatically updates BOX | Source, solved Drawing, compatible BOX results and all statuses seal one logical action; one Undo restores the entire before-frame. |
+| 5 | Switch modules before automatic completion | Completion seals the same position, creates no step and leaves the selected module visible. |
+| 6 | Undo while regeneration is pending | One cursor move restores B and suspends T; late/uncancellable callbacks cannot restore any part of S/F. Undo racing seal has exactly one winner. |
+| 7 | Redo unfinished or completed action | Unfinished: same seed/IDs/inputs, fresh attempt, visible pending, no source re-solve. Completed: exact captured F, no computation; mixed failures round-trip. |
+| 8 | Request 30→50→70 rapidly while T1 is pending | 50 is accepted as T1; 70 is visibly busy/not-accepted, never queued/coalesced. Reaccept 70 after T1 seals as T2; Undo visits 50 then 30. Undo T1 then accept 70 abandons T1 instead; no stale publication. |
+| 9 | Option A mixed branch failure | Keep source S′, valid B′, C definition/refs with error, D blocked and unrelated U. All belong to one action; exact Undo/Redo; failed artifacts are not valid output. |
+| 10 | Repeated module switches after Undo | Zero actions, no cursor/capacity change; Redo payload/availability stays intact. |
+| 11 | Undo a BOX action while viewing Drawing | One Undo opens BOX and restores its before-frame, without a navigation step. |
+| 12 | Undo then commit a new creation | New accepted creation discards the previous executable future, including dormant pending descriptors; invalid/cancelled/no-op attempts preserve Redo. |
+| 13 | More than 30 accepted actions | At most 30 combined positions including pending; expired creation transitions do not remove current editable construction operations. |
+| 14 | Native Save/Open | Operations/parameters/refs/artifacts/statuses persist; successful Open starts empty Undo/Redo with fresh runtime session. Pending Save waits or cancels; no executable jobs/tape saved. |
+| 15 | Clear with pending work | Approved three outcomes; verified Save precedes Save and Clear; failure/cancel never clears. Permanent reset empties project/tape; no late result crosses session barrier. |
+| 16 | Export pending/stale/failed geometry | Pending export visibly blocked; after seal, invalid requested closure remains blocked. No stale or unvalidated laser geometry silently exported. |
+| 17 | Overlapping branch jobs complete out of order | Unit/version guards and dependency-order assembly yield one F; duplicate and obsolete results do nothing, including after module switches. |
+| 18 | Worker crash, timeout, repeated Undo/Redo, waiting Save interrupted | Bounded workers/retries/staging; terminal error/blocked outcome retains source in one slot. No infinite pending queue; old attempt/save intents cannot publish or clear newer content. |
 
 Use property-based/random operation sequences where they exercise invariants rather
 than mirror implementation: immutability, identity non-reuse, cursor laws and reference
@@ -1439,6 +1678,7 @@ below still require review; approval does not authorize implementation or merge.
 | --- | --- |
 | D1 — resolved | Ordinary module switching is UI navigation, never an Undo step, and preserves cursor, all 30 edit slots and Redo. Undo/Redo restore the latest edit and open its associated module. |
 | D2 — resolved | History double-click reveals current object/settings by stable identity, without rewind, history commit or Redo mutation. A later accepted edit is a normal transaction. No reveal override or reversible navigation stack is needed. |
+| Tape recorder — resolved | One completed state-changing user action, including every automatic synchronous/asynchronous consequence, is one logical transition. Creation/deletion restore exact identities; gestures commit once; invalid/cancelled/no-op input adds none. No second regeneration step. |
 | Clear/Open boundary — resolved | Clear permanently resets all current project/module/history state after the three-outcome save workflow; never Undoable. Successful native Open restores editable state as a fresh baseline without old Undo/Redo snapshots. |
 
 ### Prioritized unresolved decisions and recommendations
@@ -1452,7 +1692,7 @@ P2 is optional/deferred. Priority does not authorize work. Existing IDs remain t
 | P0 / D3 (revised) | Operation catalog/granularity and parameter authority; previous bounded-journal recommendation superseded | Distinct C.2; one operation per accepted standalone Line; repeated edits update it. Review Profile grouping, sketch containers, Dimension/Constraint visibility and BOX PM/Apply grouping. Bind canonical records instead of duplicating editable values. | C.2 scope/release |
 | P0 / D11 (new) | Legacy geometry bootstrap, output identity across regeneration, operation/schema compatibility | Honest baseline/import definitions; preserve IDs; qualified lifetimes and verified mappings. Do not infer full chronology or heal refs by label/coordinates. Define which baseline objects are editable. | C.2 migration and D format freeze |
 | P0 / D4 | Logical edit/interruption boundaries, BOX field sessions and pending accepted Profile clicks | Preserve accepted CAD actions; specify exactly-once settlement/cancellation before navigation/restore/lifecycle gate; no hidden edits. | C adapters/cutover |
-| P0 / D9 | Dependency scheduling/async acceptance and batching, generated/authored overlay ownership, indivisible evaluation units and cycles | Sync mixed outcomes in one frame; async source+stale then explicit accepted result transaction; acyclic derivations initially, solver components coherent. Option A is settled; algorithms remain open. | E design/implementation |
+| P0 / D9 (revised) | Pending-action admission UX, evaluator determinism/version retention, scheduling/budgets, coherent units, cycles and generated/authored ownership | Review §11's one pending slot and serialized admission; source + all outcomes seal once. No two-step async alternative remains permissible. C reserves the protocol; E implements bounded scheduler/evaluators/mapping/repair. | C protocol approval; E engine design |
 | P0 / D12 (new) | Manufacturing scope independence, warning eligibility and partial-export UX | Block invalid requested scope by default. Permit explicit unaffected scope only after full closure/composition/manufacturing validation and review; disclose exclusions. | E export enablement |
 | P1 / D13 (new) | Suppress/delete dependent-impact UX; optional cascade, detach/copy/bake semantics | Preserve dependent definitions, block required consumers, no silent cascade. Review optional-input behavior and explicit dependent actions; retain accepted Drawing deletion until migration is authorized. | E downstream-management release |
 | P1 / D5 | Lifecycle cancellation barrier, empty-project defaults and initial visible module | New runtime session on Clear/Open; publication guards; choose UI defaults without restoring old geometry. Fundamental Clear/Open policy is settled. | C/D lifecycle enablement |
@@ -1539,7 +1779,7 @@ Historical validation of the preceding `9a685aa` revision (not rerun counts for 
 - **PASS:** repository-wide requirement search; old module-switch and undoable-Clear
   policies remain only as explicitly superseded historical/conflict descriptions.
 
-Validation of this permanent-history revision:
+Historical validation of the preceding permanent-history revision (`84e62f3`):
 
 - **PASS:** nine Markdown files changed from `9a685aa`; ten Markdown files in the whole
   PR against verified main. No application source, tests or configuration changed.
@@ -1563,7 +1803,44 @@ Markdown/lint script is defined in package.json. Focused scratch tooling is outs
 repository; application tests, production build and new browser acceptance were not run
 or claimed for these documentation changes.
 
+### Tape-recorder revision validation (2026-11-09)
+
+- **PASS:** exactly nine Markdown files changed from reviewed head `84e62f3`; the
+  complete PR remains ten Markdown files against main. No application source, tests,
+  configuration or Stage C/C.2/D/E implementation changed.
+- **PASS:** 120 local links including 48 anchor targets; 53 baseline-pinned source
+  links including 49 line ranges and one single-line target resolve. All 53 tables,
+  balanced fences, 17 analysis sections, the 14 retained operation scenarios and
+  18 final tape-recorder scenarios pass structural checks.
+- **PASS:** byte comparisons preserve current ownership/implementation analysis,
+  permanent-operation model, CAD risk evidence, original source/test references,
+  Master CAD sections, Architecture Drawing/pipeline sections, README acceptance record,
+  Vision inventory/module evidence, pre-A–G roadmap evidence, older Project History
+  records and the unchanged historical Dimension report. All seven A–G labels/statuses
+  remain identical. Historical two-transaction text remains only with supersession notices.
+- **PASS:** repository-wide authority search, whitespace checks and complete revision
+  diff review. Source contracts for Drawing snapshots/Dimension solve and BOX stored
+  resolved-authority restoration were reread without claiming new runtime acceptance.
+
+Scratch revision/validation tools remain in `/workspace/work`, outside the repository.
+No application tests, production build or browser acceptance were run or claimed for
+this documentation-only revision. Pending-action/evaluator guarantees are proposed
+contracts for later validation, not measured implementation results.
+
 ## 17. Final recommendation
+
+Retain the snapshot hybrid and recommend **alternative 2: one pending logical action,
+serialized edit admission and immutable finalization of the same tape position** (§11).
+Source validation/acceptance reserves one of 30 positions; all automatic results stage
+under its transaction ID; finalization changes no cursor/count. Pending Undo suspends
+the attempt, unfinished Redo resumes captured inputs, and sealed Redo restores exact
+results. No late callback or automatic module activation creates another action.
+
+The authoring wait, interrupted Save behavior, evaluator determinism/version retention
+and measured timeout/worker/memory budgets require review. Concurrent accepted editing
+requires the more complex alternative 3, not an unbounded queue or merging of accepted
+actions. These tradeoffs do not reopen the approved one-action/30-transition behavior.
+
 
 Retain **Alternative C: immutable complete project frames + transaction metadata**,
 and add project-owned **permanent editable construction operations** as distinct current

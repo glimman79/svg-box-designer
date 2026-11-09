@@ -49,7 +49,7 @@ The separate history systems and dependency boundary require technical design:
 
 | Responsibility | Approved target / open boundary |
 | --- | --- |
-| Global chronological history | One timeline of 30 reversible committed project edits across modules. Ordinary switches are UI navigation and preserve cursor/Redo without consuming capacity. Undo/Redo restore the full affected project state and open the edit's associated module; never restore an obsolete captured tab. Detailed store/transaction design remains proposed. |
+| Global chronological history | Tape-recorder Undo/Redo: one completed state-changing user action, including all automatic solver/dependency consequences, is one logical transition; combined past/future capacity is 30. Creation/deletion restores original identities; previews/invalid/cancelled/no-op actions add none. Ordinary switches are UI navigation and preserve cursor/Redo without consuming capacity. Undo/Redo restore the full affected project state and open the edit's associated module; never restore an obsolete captured tab. Detailed store/transaction design remains proposed. |
 | Permanent parametric construction history / panel | Project-owned editable operation definitions, stable identities, current parameters, input/output refs and relationships persist without Undo/journal quotas. Repeated Line dimension edits update the same operation and add normal Undo transactions. Double-click reveals current settings without rewind/Redo mutation. Operation-to-entity mapping, grouping and migration remain proposed. |
 | Source-to-derived dependencies | Approved Option A keeps valid source edits, updates compatible branches and preserves failed/blocked definitions/refs and unaffected authored work for repair/removal. Explicit diagnostic states and no guessed refs/silent deletion. Exact mixed outcomes restore without replay; algorithms/repair UI remain unselected. |
 
@@ -70,10 +70,17 @@ Clear/Open invalidate pending old-session callbacks. Fit uses active-module geom
 Undo/Redo uses global edit history. These product decisions were revised 2026-11-09;
 the complete [Stage B design](docs/GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md) remains
 under review. B defines operation/identity/transaction/dependency contracts; C supplies
-shared ownership/global Undo, a proposed separate C.2 supplies persistent operation
+shared ownership/global Undo with reserved pending-action admit/finalize/suspend/resume/
+abandon and lifecycle interfaces; a proposed separate C.2 supplies persistent operation
 maintenance before D Save/Open, and E supplies the full dependency/repair engine. C
 must not absorb all of E. The former bounded session-journal recommendation is superseded
-as construction history. See the [full contract](docs/PRODUCT_ARCHITECTURE_VISION.md#5-global-toolbar-contract)
+as construction history. The former two-transaction source/regeneration recommendation
+is also superseded: the current async recommendation stages one pending logical action
+and seals that same slot. Pending Undo suspends, unfinished Redo resumes captured inputs,
+and sealed Redo restores the exact result. New edits wait with visible busy feedback;
+navigation remains usable. Save waits/cancels and pending Export blocks. This latency
+tradeoff and worker budgets require review in Stage B §11, not application changes.
+See the [full contract](docs/PRODUCT_ARCHITECTURE_VISION.md#5-global-toolbar-contract)
 and [proposed staging](ROADMAP.md#4-connected-product-development).
 
 The earlier separate-history recommendation is superseded only as future direction;

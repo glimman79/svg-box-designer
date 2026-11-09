@@ -907,6 +907,9 @@ source, tests, configuration or Stage C implementation changed.
 
 ### 11.30 Stage B permanent parametric construction-history revision (2026-11-09)
 
+> Historical checkpoint: its separate async source/result transaction recommendation
+> below is **superseded by §11.31**. Permanent construction history and Option A remain.
+
 **APPROVED FUTURE REQUIREMENTS — NOT IMPLEMENTED.** Existing PR #629 continues from
 reviewed head `9a685aaf4cbfc9bb39f698ccceda7e68225f09cc`, with remote main freshly
 verified at `97469bd8274edae335254188dc8805f1141dc874`. The new uploaded requirements
@@ -938,6 +941,47 @@ Documentation only. No source, tests, configuration, Stage C/E implementation, m
 replacement PR. Existing A–G statuses, Circle/Arc Stages 0–6, Drawing tool/solver semantics,
 BOX stored authority/pipeline, regression evidence and deferred/open issues are preserved.
 Stop for user/ChatGPT architecture review after updating existing PR #629.
+
+### 11.31 Stage B global Undo/Redo tape-recorder revision (2026-11-09)
+
+**APPROVED FUTURE BEHAVIOR; TECHNICAL PROPOSAL FOR REVIEW — NOT IMPLEMENTED.** Continue
+existing open PR #629 from reviewed head `84e62f3ec44f31cae6060076dbfd6023b9f9070a`;
+fresh remote main/base/merge-base is `97469bd8274edae335254188dc8805f1141dc874`.
+Branch `docs/stage-b-global-project-history` and clean working tree were verified before
+editing. The final uploaded brief authorizes documentation and push to this PR only.
+
+- One completed state-changing user action creates one tape transition, including
+  creation, editing, deletion and **all** automatic solver/dependency effects even if
+  asynchronous. One gesture is one action; previews/invalid/cancelled/no-op input add
+  none. Undo/Redo restores exact identities and coherent geometry/statuses. Combined
+  past/future capacity remains 30; navigation is free and preserves Redo.
+- The prior source/stale commit followed by a separately Undoable regeneration commit
+  is explicitly **superseded**, not relabelled. Stage B compares completion-before-
+  publication, a pending logical action, and concurrent immutable evaluation graphs.
+- **Recommended, awaiting review:** one pending tape position with serialized edit
+  admission; detached staging and one immutable finalization. Pending Undo suspends
+  and invalidates attempts; unfinished Redo resumes captured source/inputs/IDs; sealed
+  Redo restores exact outcomes. Completion never adds a step or switches modules.
+  Further edit requests are visibly unaccepted while busy, not silently queued/merged.
+  This authoring-latency tradeoff needs review; concurrent accepted editing requires
+  the more complex alternative, not an implicit change to the 30-action requirement.
+- Option A keeps valid source edits, compatible results and failed/blocked definitions,
+  refs/diagnostics and unrelated authored work in the same action. Pending Save waits
+  or cancels; settled failed records can be saved for repair. Pending Export blocks;
+  settled export requires full manufacturing validation. Clear/Open invalidate old work.
+- C reserves admit/finalize/suspend/resume/abandon and lifecycle guards with immediate
+  sealing for synchronous edits. Proposed C.2 provides real persistent operation
+  definitions/bindings/identities. D saves current editable state, never executable tape
+  or jobs. E alone supplies evaluator/scheduler, feature mapping and reference repair.
+- Added final tape-recorder acceptance cases covering pending interleavings, rapid
+  requests, module switching, out-of-order jobs, retention, Save/Open/Clear and export.
+  Remaining review issues include admission UX, determinism/version retention and
+  measured time/worker/memory budgets; approved behavior is not reopened.
+
+Documentation only: no application code, tests, configuration or C/C.2/D/E implementation.
+Existing CAD/acceptance evidence, separate permanent construction history, A–G statuses,
+Circle/Arc closure, Drawing semantics and BOX stored authority remain unchanged. Push
+to existing PR #629 and stop for architecture review; no new PR or merge.
 
 ## 12. Superseded or Temporary Material
 
