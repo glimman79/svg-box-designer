@@ -41,17 +41,26 @@ need not use every module, and switching modules must preserve existing work. Si
 3D Modeling is limited to extrusion-based geometry, separate from the earlier planned
 static Construction preview. Its kernel and detailed technical design remain open.
 
-The target has one global project history across all modules **and module switches**,
-within 10–30 steps with **30 as the design target**, superseding the recommendation for
-independent workspace histories. Double-clicking an identifiable history operation must
-open its module/object settings without automatically discarding later work; this is
-distinct from chronological Undo/Redo and from source-to-derived dependency propagation.
+**Revised product decisions (2026-11-09):** one global history retains **30 reversible
+committed project edits** across all modules, superseding independent workspace histories.
+Ordinary module switches create no steps, consume no capacity and preserve cursor/Redo.
+Undo/Redo reverse/restore the latest global edit and open its associated module regardless
+of the visible module. Double-click reveals the referenced object's current state/settings
+without rewind or history/Redo mutation; only a later committed edit branches after Undo.
+Source-to-derived dependency propagation remains separate. The
+[Stage B technical proposal](docs/GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md) is still
+under review; these decisions do not approve the complete architecture.
 
 The common toolbar order is **Open, Save, Export, Clear, Fit to screen, Undo, Redo**.
 Open offers Open Project and Import SVG; SVG import always targets BOX. Native Save/Open
 must restore the complete editable project and its source relationships; Export remains
-output-oriented. Clear requires confirmation and affects the whole project. These
-operations, global history, dependencies, 3D and Puzzle integration remain future work.
+output-oriented. Clear offers Save and Clear / Clear Without Saving / Cancel and
+permanently resets the whole project, all module states and Undo/Redo; it is not Undoable.
+Save must succeed before Save and Clear; failed/cancelled saves preserve work. Clearing
+itself never deletes or overwrites saved files. Open starts a fresh history baseline from
+the loaded editable project, without old snapshots; stale async work cannot cross either
+session boundary. These operations, global history, dependencies, 3D and Puzzle integration
+remain future work.
 The [vision](docs/PRODUCT_ARCHITECTURE_VISION.md) owns full requirements and unresolved
 choices; the [Roadmap](ROADMAP.md#4-connected-product-development) owns proposed staging.
 Accepted Circle/Arc Stages 0–6 remain closed and unchanged.
@@ -69,8 +78,9 @@ the conditionally mounted `DrawingWorkspace`, so switching away/back loses that 
 according to source inspection, while its document remains in `App`. Construction
 snapshots are capped at 10 and remain in `App`; they omit Drawing and active workspace.
 Neither is the required global timeline. Native Save/Open is unimplemented; model
-validation and snapshots do not establish complete project persistence. History, active
-module, selection and viewport serialization policies require explicit future design.
+validation and snapshots do not establish complete project persistence. Descriptive
+journal, active-module, selection and viewport serialization remain open; previous
+Undo/Redo snapshots are not restored by native Open.
 
 ## 4. 2D Drawing architecture
 

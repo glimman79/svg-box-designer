@@ -3,6 +3,20 @@
 Entries record completed changes at their respective checkpoints. Current architecture
 and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
 
+## Documentation — Stage B history architecture revision (2026-11-09)
+
+- Revised PR #629's hybrid snapshot proposal throughout: 30 committed project edits,
+  UI-owned module navigation preserving Redo, edit-associated Undo/Redo activation and
+  current-object history-panel navigation without rewind.
+- Replaced the proposed reversible Clear with the approved permanent whole-project
+  Save and Clear / Clear Without Saving / Cancel workflow, verified-save gating and
+  stale-session safeguards. Native Open establishes a fresh history baseline.
+- Synchronized affected requirements from #627 and marked historical decisions
+  superseded. Journal retention/serialization and detailed architecture remain under
+  review; accepted CAD records and roadmap statuses are unchanged.
+- Documentation only; no application implementation, tests, configuration, Stage C
+  work or new browser acceptance. No merge performed.
+
 ## Documentation — Drawing Undo/Redo classification correction (2026-11-04)
 
 - Corrected PR #627's inaccurate open functional-issue classification following the
@@ -20,7 +34,10 @@ and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
 ## Documentation — connected product architecture vision (2026-11-03)
 
 > **2026-11-04 clarification:** The Drawing Undo/Redo issue classification recorded
-> below is superseded by the correction above. The original entry is preserved as history.
+> below is superseded by the correction above. **2026-11-09:** module-switch entries,
+> the 10–30 target range and unresolved Clear/execution-history persistence policy are
+> superseded by the Stage B revision above and Project History §11.29. The original
+> entry is preserved as history.
 
 - Added [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) with the
   documentation/source inventory, approved optional 3D Modeling → Drawing → BOX or Puzzle

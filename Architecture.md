@@ -49,17 +49,24 @@ Three separate responsibilities require technical design:
 
 | Responsibility | Approved target / open boundary |
 | --- | --- |
-| Global chronological history | One timeline for all modules and module switches, 30-step design target within 10–30; restore active module and relevant state consistently. Transactions, storage and other UI/navigation policies remain open. |
-| History-panel editing navigation | Double-click an identifiable operation to locate its module/object and open settings without automatically discarding subsequent work. Persistent references and missing/stale/non-editable operation handling require design. |
+| Global chronological history | One timeline of 30 reversible committed project edits across modules. Ordinary switches are UI navigation and preserve cursor/Redo without consuming capacity. Undo/Redo restore the full affected project state and open the edit's associated module; never restore an obsolete captured tab. Detailed store/transaction design remains proposed. |
+| History-panel editing navigation | Double-click locates/selects/reveals the object's current state and settings by stable identity; no rewind, Undo step or Redo mutation. A subsequent accepted edit is a normal transaction. Identity lifetimes, unmounted/unavailable targets and expired snapshots are covered in the Stage B proposal; journal retention remains open. |
 | Source-to-derived dependencies | Detect affected geometry and regenerate under controlled rules, preserving unaffected downstream edits and handling incompatible changes explicitly. Graph/update/conflict algorithms are unselected; Undo/Redo alone cannot provide this. |
 
 Native persistence must retain editable module data, canonical geometry, Constraints,
 Dimensions, extrusion/assembly definitions, construction/manufacturing and Puzzle state,
-source relationships/provenance and schema metadata. Serialization of global history,
-active module, viewports and selection is undecided. SVG export is a separate output.
+source relationships/provenance and schema metadata. Native Open establishes the loaded
+project as a fresh baseline with empty Undo/Redo and no prior snapshots. Descriptive
+journal, active-module, viewport and selection serialization remain undecided. SVG
+export is a separate output.
 The target toolbar is Open → Save → Export → Clear → Fit to screen → Undo → Redo;
-Clear is confirmed and project-wide, Fit uses active-module geometry, and Undo/Redo uses
-global history. See the [full contract](docs/PRODUCT_ARCHITECTURE_VISION.md#5-global-toolbar-contract)
+Clear is a permanent project-wide session reset with Save and Clear / Clear Without
+Saving / Cancel. Reset only after successful Save for the save choice; failure/cancellation
+leaves work/history untouched. Clearing itself never deletes or overwrites saved files.
+Clear/Open invalidate pending old-session callbacks. Fit uses active-module geometry;
+Undo/Redo uses global edit history. These product decisions were revised 2026-11-09;
+the complete [Stage B design](docs/GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md) remains
+under review. See the [full contract](docs/PRODUCT_ARCHITECTURE_VISION.md#5-global-toolbar-contract)
 and [proposed staging](ROADMAP.md#4-connected-product-development).
 
 The earlier separate-history recommendation is superseded only as future direction;

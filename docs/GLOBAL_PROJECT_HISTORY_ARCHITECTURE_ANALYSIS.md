@@ -1,12 +1,15 @@
 # Global Project & History Architecture Analysis — Stage B
 
-**Status: ANALYSIS / PROPOSAL FOR REVIEW. No architecture decision is approved by this report.**
+**Status: REVISED ANALYSIS / PROPOSAL FOR REVIEW. Approved product decisions are identified
+separately from technical recommendations; the complete Stage B architecture is not approved.**
 
 Repository: `glimman79/svg-box-designer`. Source baseline:
 `97469bd8274edae335254188dc8805f1141dc874`.
-Investigation date: 2026-11-05. No application implementation, refactoring, test change,
+Investigation date: 2026-11-05; product-decision revision: 2026-11-09.
+No application implementation, refactoring, test change,
 native persistence, dependency propagation, or roadmap-status change is included.
-The requested deliverable and its discoverability link are the only repository changes.
+This revision also synchronizes the narrowly affected architecture/roadmap requirements
+and records which earlier decisions it supersedes (§2).
 
 ## 1. Executive summary
 
@@ -41,17 +44,23 @@ The proposal makes four responsibilities explicit:
 
 | Responsibility | Proposed owner and behavior |
 | --- | --- |
-| Undo/Redo execution | Project transaction core restores verified before/after frames and module context; no solver replay. |
+| Undo/Redo execution | Project transaction core restores verified before/after frames and activates the affected edit's module from metadata; no solver replay. |
 | History-panel navigation | Reference resolver plus UI navigation locate current objects/settings without moving the Undo cursor or pruning Redo. |
 | Object selection/settings | Per-module UI adapters select existing semantic objects and show current settings; missing targets remain missing. |
 | Dependency propagation | Future Stage E plans affected updates/conflicts and commits their outcomes through the same transaction core. |
 
-Keep **30 reversible transitions** (including ordinary module switches), independent of
-longer-lived, lightweight panel metadata. Separate retention is recommended, but its
-exact quota and persistence need approval. Also obtain decisions on history-panel module
-reveal versus normal module switching, Clear/recovery, interrupted interactions, and
-disk persistence of history/navigation/view preferences. No native file extension or
-final container format is selected here.
+Keep **30 reversible committed project-editing transitions**, independent of lightweight
+panel metadata. Ordinary module switching and history-panel double-click are navigation:
+neither creates a transition, moves the history cursor nor clears Redo. Undo/Redo restore
+the latest edit's complete before/after project and open that edit's associated module.
+Only a newly committed edit after Undo abandons Redo; navigation never does.
+
+**Approved product decisions (2026-11-09):** Clear is a permanent, project-wide session
+reset with Save and Clear / Clear Without Saving / Cancel; a failed or cancelled save
+leaves the project untouched. Native Open restores complete editable content into a fresh
+Undo/Redo session. History snapshots are not restored from disk. Journal retention and
+serialization, UI preferences, interruption details and technical design still require
+review. No native file extension or final container format is selected here.
 
 Classification used throughout:
 
@@ -81,13 +90,35 @@ GitHub PR records were read through the connected GitHub tools:
 | [#627](https://github.com/glimman79/svg-box-designer/pull/627) — product architecture vision | `merged: true`, closed; merged 2026-11-04 13:43:57 UTC | `8630f40d31c7c7e71cab3d7cce7ac6673648c4b9` | Yes; `git merge-base --is-ancestor` succeeds. |
 | [#628](https://github.com/glimman79/svg-box-designer/pull/628) — Drawing Undo/Redo correction | `merged: true`, closed; merged 2026-11-04 14:09:09 UTC | `97469bd8274edae335254188dc8805f1141dc874` | Yes; this is the verified main HEAD. |
 
-Original checkout: `/workspace/svg-box-designer`, branch `work`, clean at that SHA.
+Original investigation evidence (2026-11-05): checkout `/workspace/svg-box-designer`,
+branch `work`, clean at that SHA.
 New isolated worktree: `/workspace/work/svg-box-designer-stage-b`.
 New branch: `docs/stage-b-global-project-history`.
 Immediately before the first document edit, `HEAD` matched the verified SHA,
 `git status --porcelain=v1 --untracked-files=all` was empty, and the task branch was
-confirmed. The user's uploaded brief explicitly authorizes this document, an optional
-index link, and a documentation-only PR; it does not authorize implementation or merge.
+confirmed. That original brief authorized the analysis and index link only.
+
+Revision evidence (2026-11-09): existing PR #629 is open on
+`docs/stage-b-global-project-history`, head
+`c79ed1a33b7fef46aa9cf3e662e2cc27383562a3`. The clean task checkout at
+`/workspace/svg-box-designer` was switched to that exact fetched head. Fresh
+`git ls-remote --heads origin main docs/stage-b-global-project-history` confirmed the
+PR head and unchanged main `97469bd8274edae335254188dc8805f1141dc874` before editing.
+The current uploaded task authorizes revisions on this existing branch plus tightly
+scoped consistency updates, commit and PR delivery; no application work or merge.
+
+### Conflicts resolved by the current product decisions
+
+| Earlier document / recommendation | Conflict and scoped resolution |
+| --- | --- |
+| PR #627 vision §3, Project Master §2.1, Architecture target table, Roadmap B/C, README, historical Dimension notice | Required module switches in history and a 10–30 range with 30 as target. Current requirement is exactly 30 reversible committed edits; ordinary navigation is separate, preserves Redo and costs no steps. Updated current requirements and examples. |
+| Original Stage B §§7–8 and D1/D2 | Active module embedded in every frame, reversible switches and a special reveal override could consume history, prune Redo or restore an obsolete module. Replaced with UI-owned navigation and edit-associated restore metadata. |
+| Original Stage B D5; PR #627 Clear contract left recovery unresolved | Undoable Clear conflicts with the explicit permanent reset. Replaced with the three-outcome save workflow and async/session safeguards (§10). |
+| PR #627 persistence registers; original Stage B D5/D6 | Session-only execution history was only a proposal; serializing Undo remained open. Native Open must now start a fresh baseline, without prior snapshots. Descriptive journal persistence remains a separate open decision. |
+| Project History §11.27 and the 2026-11-03 Changelog entry | Historical module-switch requirements and persistence questions are retained as dated evidence, explicitly marked superseded and linked to the new decision record. |
+
+These are explicit product changes, not approval of all Stage B interfaces. Unrelated
+requirements, pipeline/CAD evidence and A–G status labels are preserved.
 
 ### Authorities and status constraints
 
@@ -130,10 +161,10 @@ not transact, migrate documents, or record navigation.
 
 | State category | Current owner, update and lifetime | Persistent project? **PROPOSAL** | Global Undo/Redo? **PROPOSAL** | Transient/session boundary |
 | --- | --- | --- | --- | --- |
-| Active workspace | `App.activeWorkspace`, `useState`; selector calls `setActiveWorkspace(selectWorkspace(...))`; survives switches | Disk preference undecided | Yes, module context is mandatory | Effective panel-reveal focus is discussed in §8. |
+| Active workspace | `App.activeWorkspace`, `useState`; selector calls `setActiveWorkspace(selectWorkspace(...))`; survives switches | Optional disk preference, undecided | No navigation steps; excluded from editable snapshots | UiSession owns active module; Undo/Redo explicitly open the affected edit's module (§8). |
 | Drawing document | `App.drawingDocument`; `DrawingWorkspace.setDocument` after immutable model transaction; survives unmount | Yes, full `DrawingDocumentV2` | Yes, whole coherent document changes | Never infer it from rendered SVG. |
 | Drawing sketches, active sketch, entity/point/order maps, Dimensions and Constraints | Inside `DrawingDocumentV2`; model helpers replace paths; survive switches with document (`S05`) | Yes; retain current activeSketchId initially | Yes as document data | Future multi-sketch navigation policy may separate active-sketch preference deliberately. |
-| Drawing Undo/Redo | `DrawingWorkspace.historyRef`, empty on mount; historyRevision rerenders capabilities; lost on unmount | Session-only recommended | Replace ownership with one project buffer | Never keep a second execution authority after cutover. |
+| Drawing Undo/Redo | `DrawingWorkspace.historyRef`, empty on mount; historyRevision rerenders capabilities; lost on unmount | Session-only execution history; fresh baseline on native Open | Replace ownership with one project buffer | Never keep a second execution authority after cutover. |
 | Drawing viewBox | `App.drawingViewBox`; passed `setViewBox`, pan/wheel/Fit; survives unmount | Optional saved view preference | No by default | Session view; Fit currently resets `initialDrawingViewBox`, not bounds-based fit. |
 | Drawing selection | Local `selectedGeometry`, selected Dimension/Constraint IDs; updates via selection handlers; reset on unmount and explicitly cleared by Undo/Redo | Optional preference; omit by default | No independent selection steps | Validate retained selection against restored document. |
 | Drawing tool lifecycle and drafts | Local toolLifecycle, segment/Circle/Arc interactions, Dimension acquisition/editor text; recreated on mount | No | No preview/draft steps | `App.drawingActiveTool` is a toolbar mirror via custom event, not canonical tool state. |
@@ -282,7 +313,7 @@ Those tests/build/browser cases were **not rerun for this analysis**.
 | FACT / accepted working behavior | PR #628 says no current Drawing Undo/Redo functional defect was confirmed during user testing. | Preserve behavior; do not resurrect #627's superseded issue classification. |
 | LIMITATION | Two owners, limits 100 and 10, incomplete module coverage. | Neither can become global merely by routing the same buttons differently. |
 | LIMITATION | Drawing history disappears on conditional unmount; App retains its document. | History ownership must outlive module views. This is source-derived, not a fresh browser reproduction. |
-| LIMITATION | No history entry for module switching; no project-level atomic restore. | Required global navigation/content history needs a new orchestration boundary. |
+| LIMITATION | No project-level atomic restore or global edit routing. | Module switching correctly needs no history entry; cross-module Undo/Redo still needs one project orchestration boundary that opens the affected edit's module. |
 | LIMITATION | BOX snapshot omits source model; source replacement resets history. | Full project restoration requires additional state, not just an enlarged stack limit. |
 | LIMITATION | Current panels are workflow navigation/explanatory text, with no global operation identity. | Metadata and object-resolution design are required independently of Undo storage. |
 | LIMITATION | No native Save/Open or cross-module dependency graph. | Existing schema/restore helpers are prerequisites, not implemented end-to-end features. |
@@ -300,20 +331,20 @@ history panel. The comparison assumes equal CAD-validation requirements.
 | --- | --- | --- | --- |
 | Implementation complexity | Moderate ownership work; low execution logic; metadata must be added for the panel. | High: commands, inverse payloads, ordering, versioning and replay contracts for all current mutation paths. | Moderate: A's restore core plus explicit transaction/result/metadata contract; no inverse CAD logic initially. |
 | Existing code compatibility | Strong for Drawing; BOX needs complete source and consolidated capture. | Weak initial fit: solver and generators return complete outcomes, not inverse operations. | Strong: consume existing outcomes; annotate them at user-action boundaries. |
-| Memory | Deep copies cost O(30 × project size); immutable roots can share unchanged data. | Small for simple moves/navigation; deletion, solving and generation may require large inverse payloads. | Similar to A with equivalent structural sharing, plus metadata. Hybrid is not inherently smaller. |
+| Memory | Deep copies cost O(30 × project size); immutable roots can share unchanged data. | Small for simple edits; deletion, solving and generation may require large inverse payloads. | Similar to A with equivalent structural sharing, plus metadata. Hybrid is not inherently smaller. |
 | Large Drawing performance | Root replacement is cheap; map/array copying and validation remain; deep-cloning whole project per move is unacceptable. | Small command logs but recomputation/replay can be expensive; inverse payload capture may still copy affected components. | Reuse immutable module/sketch roots; preview separately; profile at commit, no generic whole-project diff per pointermove. |
 | Undo/Redo reliability | High for validated complete frames; restore exact results. | Depends on complete inverses; a dimensional value change has no unique inverse geometry solve. | Same exact restoration as A with semantic validation boundaries and operation context. |
 | Drag handling | Before/after snapshots, one commit at finish. | Explicit begin/update/end, one command carrying sufficient inverse. | Same gesture boundary with preview token, immutable result and one semantic entry. |
 | Solver integration | Store target and full solved result together; do not re-solve Undo. | Replaying pointer/value intent may choose another branch; robust commands must retain exact solved before/after data. | Store existing solver outcome; metadata explains intent without making intent the restoration authority. |
 | Cross-module atomic operations | One complete root includes every touched module. | Composite command needs rollback/prepare for partial failures. | One prepared candidate root plus touched-module/causal metadata; future dependency outcomes included. |
-| Module navigation | Same frame type can contain module context; identical document root costs little. | Tiny reversible navigation command. | Same transaction envelope, discriminated module-switch kind; reuse document root. |
-| Save/Open compatibility | Current document serializes independently; optional snapshots need history schema. | Durable replay needs command schema, solver/generator compatibility, checkpoints and assets. | Persist current authored state independently; optional metadata is simpler than mandatory replay. |
+| Module navigation | UI state separate from frames; edit metadata chooses restore module. | UI navigation separate from reversible commands. | Same UI route for selector/panel; no navigation transaction or branch change. |
+| Save/Open compatibility | Serialize current document; Open establishes a fresh baseline without snapshots. | Durable replay would need command schema, solver/generator compatibility, checkpoints and assets; not required. | Persist complete current authored state; Open starts fresh execution history, with journal serialization decided separately. |
 | Future dependencies | Store links/status and derived artifacts atomically; graph still needed. | Events can express causes but do not solve dependency mapping/conflicts. | Semantic cause IDs help panel/provenance; dependency graph remains separate authority. |
 | History panel | Bare snapshots are insufficient; adding labels/references moves toward C. | Natural semantic operation labels, but current-object navigation still needs identity registry. | Entry metadata is first-class, independent of snapshot lifetime. |
 | Testing | Root/restore completeness, immutability, retention and module parity. | All of A plus inverse laws, command schema upgrades, replay determinism and partial failure. | A plus metadata/references/navigation/retention and atomic transaction-failure tests. |
 | Migration risk | Large capture omission risk, especially BOX; low solver intrusion. | Broad mutation rewrite and nondeterministic replay risk; inverse completeness is difficult to audit. | More orchestration than bare A, but permits incremental model-preserving adapters and rollback. |
 
-**PROPOSAL: choose C.** It follows the existing successful candidate-document behavior
+**Retained recommendation: C.** It follows the existing successful candidate-document behavior
 and the BOX stored-authority restore contract, while supplying the metadata required by
 the approved panel. A is a useful execution foundation, but a bare unlabelled snapshot
 buffer cannot satisfy navigation/reference requirements. Once A gains durable operation
@@ -339,7 +370,7 @@ Retain at most 30 transition pairs sharing roots, not 30 Undo plus another indep
 30 Redo transitions. Traversal moves a cursor within that one retained sequence. Release
 evicted roots, preview candidates, cache entries and abandoned Redo payloads; journal
 metadata must not hold closures or hidden references that pin documents. Preserve raw
-imported SVG once by immutable sharing; do not copy it for navigation-only steps.
+imported SVG once by immutable sharing; navigation allocates no reversible snapshots.
 
 Profile representative large sketches and generated BOX projects before selecting patches,
 workers, indexing or a larger state library. A later measured patch optimization can sit
@@ -351,7 +382,7 @@ semantics without review.
 ### Ownership and boundaries
 
 **PROPOSAL.** One project store, created above conditional module views, owns editable
-documents, identity/provenance data, committed history context and the global history
+documents, identity/provenance data, semantic edit metadata and the global history
 service. Modules may unmount freely; only UI adapters are tied to their mount lifecycle.
 No module retains an independent authoritative copy of a document or history buffer.
 
@@ -364,7 +395,7 @@ App / project session (lifetime exceeds every module view)
       optional future Modeling/Puzzle documents
       identity registry + future dependency records
     HistoryService: 30 reversible transitions, cursor, operation metadata journal
-  UiSession: effective focus, selections, views, editors, gesture previews
+  UiSession: active module, selections, views, editors, gesture previews
   DerivedRuntime: reference indexes, solver/rank/DOF, bounds, FinalGeometry caches
   Module views: read selected state; submit accepted candidate transactions
   Future persistence adapter: validated editable document <-> native file
@@ -376,6 +407,7 @@ App / project session (lifetime exceeds every module view)
 // PROPOSED Stage C boundary. Existing imported domain types keep their semantics.
 type ModuleId = 'modeling3d' | 'drawing' | 'box' | 'puzzle';
 type DocumentId = string;
+type SessionToken = string; // new runtime lifetime on Clear/Open, even for same projectId
 type RevisionToken = number; // runtime concurrency token; never rewound by Undo
 
 interface ModuleSlot<T> {
@@ -412,7 +444,6 @@ interface ProjectDocument {
 
 interface RestorableFrame {
   document: ProjectDocument;
-  activeModule: ModuleId; // REQUIRED in-session Undo/Redo context
   boxContext?: BoxAuthoringContext; // PROPOSED parity for assignment/display IDs
 }
 ```
@@ -430,8 +461,11 @@ Preserve BOX source content, authored relationships, original edge identity, app
 geometry and composition model. Keep applied versus draft authoring state distinct so
 history can restore the existing pending-Apply workflow without silently applying it.
 
-`RestorableFrame` is a history boundary, not a final disk envelope. The active module
-must be restored in-session even if the user later decides not to save it to disk.
+`RestorableFrame` is a history boundary, not a final disk envelope. Active module is
+excluded: snapshots describe editable state, not whichever tab happened to be visible
+at capture. Each edit's metadata carries its associated module for both Undo and Redo.
+Even if a legacy capture or optional disk UI preference contains an active-module field,
+history restoration must ignore it and activate the affected edit's module explicitly.
 BOX authoring context is initially retained for parity; moving it to a best-effort
 restoration hint requires explicit characterization. Generic selection is not promoted
 into document authority merely because old BOX snapshots contain context IDs.
@@ -440,9 +474,10 @@ into document authority merely because old BOX snapshots contain context IDs.
 
 **PROPOSAL.** `UiSession` owns per-module view/camera, validated selection, inspector
 state, hover, current tool, text drafts, capture handles, pending navigation requests
-and gesture previews. Views may be retained across unmount without becoming history.
+and gesture previews, including the single active-module value. Views may be retained
+across unmount without becoming history.
 Do not store React callbacks, DOM nodes, Maps of solver functions or timer handles in
-ProjectDocument. Active-module frame context is the deliberate navigation exception.
+ProjectDocument. There is no reversible active-module or panel-reveal override.
 
 `DerivedRuntime` caches by document/module identity plus content-root identity or stable
 content revision. A separate monotonic session revision/restore epoch invalidates stale
@@ -472,11 +507,11 @@ one synchronous publication path and a pure, independently testable transition c
 
 ### Transaction representation and ownership
 
-**PROPOSAL.** Use the same discriminated transaction envelope for geometry-changing
-and navigation-only operations. They share ordering, identity, capacity, cursor, branch
-and restoration rules; their payload and validation differ. Navigation reuses the
-unchanged document root and only changes module context. It must not invoke the solver
-or duplicate generated geometry.
+**PROPOSAL.** Transactions represent committed project edits only: geometry, Constraints,
+Dimensions, BOX settings/results and future module/dependency edits. Module selection,
+object reveal and editor opening use a separate UI navigation service with no access to
+history commit/branch mutation. Clear and Open use a session lifecycle boundary (§10),
+not reversible transactions. Navigation must not invoke the solver or duplicate geometry.
 
 ```ts
 // All names below are PROPOSED. Payloads restore results; metadata explains them.
@@ -486,9 +521,9 @@ interface OperationMetadata {
   branchId: string;
   sequence: number;             // monotonic order; timestamps are informational
   timestamp: string;
-  kind: 'document-edit' | 'module-switch' | 'project-clear';
+  kind: 'document-edit';        // navigation/Clear/Open are not reversible edits
   label: string;                // stable human meaning, not executable text
-  module: ModuleId;             // originating/represented module
+  module: ModuleId;             // associated edit module; activate on Undo AND Redo
   touchedModules: readonly ModuleId[];
   targets: readonly ObjectRef[];
   settingsRoute?: string;       // declarative capability key, never a callback
@@ -508,6 +543,7 @@ interface HistoryBuffer {
 }
 
 interface PreparedTransaction {
+  baseSession: SessionToken;
   baseRevision: RevisionToken;
   before: RestorableFrame;
   after: RestorableFrame;
@@ -515,7 +551,7 @@ interface PreparedTransaction {
 }
 
 interface ProjectTransactionService {
-  current(): { frame: RestorableFrame; revision: RevisionToken };
+  current(): { frame: RestorableFrame; session: SessionToken; revision: RevisionToken };
   prepare(request: OperationRequest): PrepareResult;
   commit(candidate: PreparedTransaction): CommitResult;
   beginPreview(request: GestureRequest): PreviewToken;
@@ -544,7 +580,7 @@ old pushUndoState and global commit for the same action.
 
 **PROPOSAL.** One successful logical operation follows this protocol:
 
-1. Read the authoritative committed root and monotonic base revision synchronously.
+1. Read the authoritative committed root, runtime session and monotonic base revision synchronously.
    Capture accepted user intent, IDs and module context once.
 2. Resolve references against that root. Run current module mutation/solver/generation
    functions into an isolated candidate. Collect all solver-changed points/entities,
@@ -557,7 +593,8 @@ old pushUndoState and global commit for the same action.
    Drawing results are unchanged; placement/setting equality may use domain-specific
    comparisons. Ignore generated timestamps/cache bookkeeping. Any new Arc no-op rule
    requires separate assessment; global history is not authorization to resolve it.
-5. Verify baseRevision still matches. If not, reject or explicitly recompute under
+5. Verify baseSession and baseRevision still match. Reject old-session results outright;
+   for a changed revision, reject or explicitly recompute under
    a separately specified intent policy; never splice an old candidate into new state.
 6. Atomically publish the candidate frame, updated buffer/cursor and committed journal
    metadata. Notify React subscribers only after the complete root is ready. A subscriber
@@ -607,65 +644,45 @@ For transitions T0…Tn-1 and cursor c:
 - Evict oldest payloads until at most 30 transitions remain, adjusting cursor and
   retaining the earliest reachable frame. A chain of 30 transitions has 31 endpoints,
   shared by references; it is not a 30-snapshot/29-Undo off-by-one contract.
-- Failed operations, equality/no-op results, pan/hover and panel reveal do not truncate
-  Redo. Normal module switches are successful transactions and therefore do truncate
-  an existing Redo future under the proposed conventional branch rule.
+- Failed operations, equality/no-op results, pan/hover, ordinary module switches,
+  selection and panel reveal do not truncate Redo or move the history cursor.
 
-Thirty includes navigation entries, as required by their participation in global
-history. It does not promise 30 geometry edits in addition to arbitrary switches.
+Thirty counts committed project edits only, including editable settings, with past and
+future sharing the same retained sequence. Navigation consumes none of this capacity.
 Buffer overflow is a visible retention boundary; older panel entries are not thereby
 deleted or made executable. A count cap is not a byte-memory guarantee (§6).
+Clear and successful Open end the execution-history session; the new empty/loaded
+project is the baseline with zero transitions. Save alone does not reset history.
 
 ### Module switching and history-panel reveal
 
-**REQUIREMENT.** Ordinary module switching belongs to global chronological history.
-**PROPOSAL (D1).** Record every actual supported module change individually, even with
-no intervening edit; do not coalesce consecutive switches. Without a panel-reveal
-override, clicking the already active module is a no-op. Do not create Modeling/Puzzle
-switches until those modules exist.
+**REQUIREMENT (approved 2026-11-09).** Switching among Drawing, BOX, Modeling or Puzzle
+is navigation only. It changes UiSession.activeModule, consumes none of the 30 edits,
+does not move the history cursor, and preserves all Redo transitions. History-panel
+double-click follows the same navigation contract, with an optional current-object
+selection/settings request (§9). Neither route needs an undoable navigation transaction.
 
-| Sequence | Proposed Undo/Redo behavior |
+**PROPOSAL.** One navigation service handles supported module activation and mount-ready
+requests. There is one visible active module, with no hidden chronological active module
+or reveal override. An already-active module is a UI no-op. Unsupported modules are
+reported unavailable. Navigation may coordinate a pending interaction under D4, but any
+separately accepted edit has its own normal transaction; the navigation itself cannot
+commit a snapshot or prune Redo.
+
+Each committed edit records `metadata.module`, normally the initiating authoring module,
+plus `touchedModules` for every changed module. Multi-module adapters must declare that
+associated module explicitly. Both Undo and Redo activate the edit's associated module
+after restoring its complete project outcome, even if that module is currently unmounted.
+The before-frame's previously visible module has no authority over this choice.
+
+| Sequence | Required Undo/Redo behavior |
 | --- | --- |
-| Edit Drawing, switch BOX, edit BOX | Undo BOX edit leaves BOX active; next Undo restores Drawing before switch; next Undo restores pre-edit Drawing. Redo reverses the sequence exactly. |
-| Drawing → BOX → Drawing without edits | Two navigation transitions sharing the same document root; Undo visits BOX then Drawing. |
-| Switch with no project geometry at all | Still one real module-switch transition; geometry remains empty. |
-| Undo while another module is displayed | Operate on the next global transition, never search for a local edit. Restore that transition's required module context and full consistent state. |
-| Undo then use normal module selector | A real switch is a new reversible transaction and clears the Redo future; this must be explained/tested, not hidden. |
-| Undo/Redo restores a module | Internal restore activation does not generate another switch entry. |
-
-The panel's approved navigation contract creates a policy tension: a normal new
-undoable module switch would clear Redo, but locating an old entry must preserve later
-work. **PROPOSAL / DECISION D2:** explicitly distinguish `switchModule()` from
-`revealHistoryTarget()`.
-
-`revealHistoryTarget()` is a non-reversible UI focus/navigation request. It keeps the
-committed RestorableFrame, buffer and cursor untouched, including the existing Redo
-future. `UiSession.revealedModule` temporarily determines the visible module; otherwise
-the visible module comes from the committed frame. Both routes are deliberate navigation
-behaviors, not two document owners. A lightweight navigation record may reference the
-originating operation, but must not masquerade as an undoable edit in the operation list.
-
-On Undo/Redo, clear the reveal override and restore the transition's module context.
-On a subsequent accepted edit after reveal, create a normal new global transition:
-before is the committed chronological frame; after contains the edit and the revealed
-module as active. This edit branches normally. Undo of that edit returns to the prior
-chronological module, which may differ from the module just revealed. That consequence
-must be explicitly approved and covered by interaction tests.
-
-While a reveal override is active, a normal selector request is evaluated against the
-committed chronological context: selecting that context's module dismisses the reveal;
-selecting another supported module records an ordinary switch and clears the override.
-An already-visible revealed module can therefore be explicitly made chronological.
-These reveal-dismissal/selector rules also require D2 approval; they must not be left
-to conditional component mounting or incidental root-equality checks.
-
-This is a proposed exception for history-panel reveal, not a silent weakening of ordinary
-switch history. If the user requires **every** visible module activation, including
-panel reveal, to be individually reversible while preserving an existing Redo future,
-a conventional single-cursor linear buffer is insufficient without an additional
-navigation branch/stack policy. That is more complex and needs an explicit decision.
-Another option is to preserve documents but allow panel reveal to clear Redo; it is
-not recommended because it loses available future work merely by inspection.
+| Create Circle in Drawing → switch BOX → change material thickness → switch Drawing | Exactly two edits. First Undo opens BOX and immediately restores previous thickness; second Undo opens Drawing and removes Circle. Redo opens Drawing to restore Circle, then BOX to restore thickness. |
+| Drawing → BOX → Drawing without edits, including an empty project | No transitions, no cursor/capacity change; any existing Redo remains available. |
+| Undo while another module is displayed | Reverse the latest committed global edit immediately and open its associated module; do not first undo navigation or search for a local edit. |
+| Undo → selector navigation or panel double-click → Redo | Cursor/Redo payloads unchanged by navigation. Redo restores the next edit and opens its associated module. |
+| Undo → navigation → newly committed edit | Only the new edit discards the abandoned Redo branch. Its before-frame is the current editable project; Undo restores that state and opens this new edit's module. |
+| Undo/Redo activates a module | Internal activation is UI navigation and creates no additional entry. |
 
 ### Restoration barrier
 
@@ -678,8 +695,9 @@ Open result, but different validation/error policies:
    or re-solving it into a different document. Already validated snapshots are trusted
    session data; if they fail an invariant, report the failure and retain the old root
    and cursor rather than partially installing them.
-3. Publish the exact target document, required module context and buffer cursor together;
-   increment the runtime epoch/revision and clear any reveal override.
+3. Publish the exact target document and buffer cursor with a UI activation request for
+   the affected transition's `metadata.module`; increment the runtime epoch/revision.
+   Never restore a captured active tab. No navigation entry is created.
 4. Invalidate derived indexes/caches. Restore BOX's stored applied output/composition model
    rather than selecting composition authority again. Derived views may rebuild lazily.
 5. Validate UI context/selection; clear stale refs, preserve the current documented
@@ -745,7 +763,7 @@ one identity mapping at migration; do not regenerate it on every mount.
 | Feature split, merged, or incompatible | Mark ambiguous/incompatible; do not choose one replacement or overwrite settings silently. Stage E defines supported mappings. |
 | Module not mounted | Resolve against project data, publish pending UI request, mount view, revalidate against current revision, then select/open. A superseded request cannot act later. |
 | Module unavailable in current application version | Keep summary and explicit unavailable status; do not route to BOX as a fallback. |
-| Operation has no object/settings (e.g. switch/Clear) | Navigate to module/context where meaningful; display metadata; do not fabricate an editor. |
+| Edit has no surviving object/settings target | Navigate to its available module/context and display metadata; do not fabricate an editor. Navigation and Clear do not create edit entries. |
 | Snapshot evicted after 30 transitions | Retained metadata may still locate current object/settings. Mark not undoable; no reconstruction promise. |
 
 A Dimension or Constraint target should select the current semantic record, not a
@@ -782,8 +800,23 @@ pruned. Small tombstones for retained entry targets may expire when no journal, 
 relationship or retained payload needs them. A deleted-object summary can remain useful
 without keeping an entire deleted model alive.
 
-Double-click is navigation only. Moving an Undo cursor, selecting/opening settings,
-and propagating a later accepted edit are distinct commands with distinct tests.
+**REQUIREMENT.** Double-click is navigation only: it never rewinds a snapshot, creates
+an Undo step, changes the cursor or clears/mutates Redo. Resolve the current project
+identity and object lifetime, then select/reveal its current geometry and open current
+controls. If a selected object is offscreen, use the module's reveal/view behavior without
+changing editable state. Revalidate any deferred mount-ready request before applying it.
+
+Example: a Line currently measures 30 mm. Double-clicking its older entry opens Drawing
+and selects that same current 30 mm Line. Accepting a length change to 50 mm commits one
+normal global edit whose before-state is 30 mm. Undo restores 30 mm; Redo restores 50 mm.
+If Constraints move neighboring geometry, both snapshots include the complete solved
+project outcome. A rejected/cancelled editor leaves Redo intact; a newly committed edit
+after Undo abandons Redo in the usual way, regardless of how the object was reached.
+
+Snapshot expiration alone never disables current-object navigation while metadata and
+a resolvable target survive. Journal pruning can remove that entry; no permanent journal
+availability is approved. Moving the Undo cursor, selecting/opening settings, and
+propagating a later accepted edit remain distinct responsibilities with distinct tests.
 
 ## 10. Native Save/Open architectural prerequisites
 
@@ -810,21 +843,22 @@ regenerate applied output under a newer policy. An explicit later regenerate ope
 may update it with review and history. Draft settings that differ from applied output
 must remain distinguishable, rather than opening the project as though Apply occurred.
 
-### Persistence choices requiring approval
+### Confirmed history boundary and remaining persistence choices
 
-| Item | Reasonable options | Recommendation (**PROPOSAL**, not approved) |
+| Item | Approved boundary or remaining options | Status / recommendation |
 | --- | --- | --- |
-| Undo/Redo execution buffer | Session-only; serialize exact retained frames; or versioned commands/checkpoints | Session-only for initial D. It reduces file size and avoids historical solver/generator replay compatibility. Saving current data must never depend on keeping Undo. |
+| Undo/Redo execution buffer — **approved** | Open starts a fresh session; prior snapshots are not restored | Open restores editable state as a new baseline with empty Undo/Redo. Do not serialize executable snapshots as native history; Save itself leaves the current session's history intact. |
 | Panel metadata | Session-only; bounded persistent summaries; complete persistent journal | Session-only initially, with optional versioned bounded summaries if durable chronology is desired. Metadata persistence does not imply executable historical state. |
-| Active module | Restore last saved supported module; or default module on Open | Save as optional navigation preference; validate availability. In-session Undo restoration remains mandatory regardless of this disk decision. |
+| Active module | Restore last saved supported module; or default module on Open | Save as optional navigation preference; validate availability. Undo/Redo activation comes from the affected edit's metadata, never this preference. |
 | Selection | Omit; or save qualified semantic refs | Omit by default; if retained, validate and clear missing refs, never guess by position. |
 | Viewport / 3D camera | Omit; optional per-module preferences; always save | Optional preferences, outside Undo; invalid/missing views fall back to geometry-based Fit once implemented. No 3D camera schema is selected here. |
 | Native container | Plain structured text; manifest plus assets in archive; other versioned container | Choose after asset/size/validation spike. Do not invent extension or approve a format in Stage B. |
 
-If full Undo is requested later, serialize both cursor-side futures and past transitions,
-retained roots/assets and operation schema; validate every restored frame and namespace.
-Do not revive component closures or replay historical solver calls. This materially
-expands Stage D and is a separate decision, not a hidden benefit of a JSON serializer.
+The execution-history boundary is settled: native Open does not restore old Undo/Redo
+snapshots, including when reopening the same project ID. Descriptive journal serialization
+is **D6**, not implied by complete editable Save. If later approved, imported summaries
+must be explicitly outside the new executable timeline; validate their qualified identities
+and never treat a saved operation ID as a recoverable snapshot or replay instruction.
 
 ### Proposed load protocol
 
@@ -842,11 +876,18 @@ expands Stage D and is a separate decision, not a hidden benefit of a JSON seria
    must match a valid recorded source/generator contract or remain explicitly stale/blocked.
    Verification may reject a malformed project; it must not silently solve it into a new
    shape or drop geometry because a helper filtered invalid records.
-5. Only after all required validation succeeds, publish the new project atomically,
-   invalidate old async/UI work and begin the approved new history session. A failed Open
-   leaves current editable work and buffer intact. Unsaved-work confirmation belongs to D.
+5. Only after validation and any required unsaved-work handling succeed, use a session
+   barrier to invalidate old async/UI work, allocate a new runtime session token and
+   publish the loaded project atomically with empty Undo/Redo. The loaded project is
+   the new baseline; do not append an Open transition or import executable snapshots.
+   A failed/cancelled Open leaves current editable work and buffer intact. Exact Open
+   unsaved-work prompting remains a Stage D decision, separate from approved Clear UX.
 6. Rebuild transient indexes/derived presentation and apply validated optional navigation
    preferences. User sees any explicit compatibility/recovery diagnostics.
+
+The recommended session journal starts empty on Open. If journal serialization is later
+approved, loaded summaries must follow D6 and remain separate from the empty execution
+buffer. Do not silently carry another runtime session's journal into the loaded project.
 
 Optional absent module data is valid. Missing data required by a present dependency or
 enabled module feature is an error, not a reason to create an empty replacement silently.
@@ -856,11 +897,67 @@ strict rejection for unsupported required data and lossless opaque preservation 
 where the container/schema can guarantee it. Recovery must be an explicit product mode,
 not partial load followed by Save that destroys unsupported content (**D7**).
 
-Treat project Clear and native Open as distinct operations. Recommend Open starts a new
-session rather than Undo crossing into another project ID, but that boundary needs
-approval alongside Clear. SVG Import always targets BOX, regardless of active module;
-its replace/confirm/navigation/history policy is unresolved. It must preserve unrelated
-module documents and respect links into replaced BOX data once dependencies exist.
+Clear and successful native Open are distinct, non-reversible session boundaries;
+Undo cannot cross either boundary. Runtime session tokens must change even when opening
+the same saved projectId. SVG Import always targets BOX, regardless of active module;
+its replace/confirm/navigation/history policy remains unresolved. It must preserve
+unrelated module documents and respect links into replaced BOX data once dependencies exist.
+
+### Clear: permanent reset with save-before-clear workflow
+
+**REQUIREMENT (approved).** Clear affects the entire project and is not Undoable. Always
+offer **Save and Clear**, **Clear Without Saving**, and **Cancel**, explaining that the
+current project and its Undo/Redo will be cleared permanently. No reversible Clear
+transaction, old-session recovery stack or hidden snapshot is retained by global history.
+
+| Outcome | Required result |
+| --- | --- |
+| Save and Clear | Save the complete current editable project through native Save. Reset only after confirmed save success for that exact committed revision/session. |
+| Clear Without Saving | After this explicit choice, reset the entire current in-memory project without writing, deleting or overwriting any existing saved project file. |
+| Cancel | Close the workflow; leave project, module states, identity data, journal and Undo/Redo untouched. |
+| Save fails, permission is denied, destination picker is cancelled, or save is incomplete | Do not clear anything. Keep the current project and history available, with the save error/cancellation result. |
+
+**PROPOSAL.** Coordinate confirmation and saving through a lifecycle gate: pause new
+authoring/publication while the choice/save is pending, keep the committed root and
+history unchanged, and resume them on cancellation/failure. Do not flush a pending
+accepted edit as an incidental consequence of pressing Clear. D4 must specify how an
+already pending accepted click is settled before entering the gate; if unsettled, defer
+Clear rather than silently discard accepted work. Revalidate session/revision at completion.
+
+A successful save means complete editable content and required assets/dependencies from
+the gated revision were serialized and validated and the persistence adapter reported
+completion of the destination write/close. Starting serialization, opening a picker,
+or starting a browser download is not proof of a completed file write. A first save
+must request a native destination/name (Save As); cancelling it cancels Save and Clear.
+An already-saved project may use its valid writable destination through the ordinary
+explicit Save choice. Clearing itself must never delete or overwrite that file.
+Stage D must choose an adapter that can establish completion; if the platform cannot
+observe write success, it must define a reviewed completion/acknowledgment contract
+before enabling Save and Clear, never infer success from initiating a download (**D7**).
+If native Save is unavailable, Save and Clear cannot proceed; explain that status while
+retaining Clear Without Saving and Cancel. Export is not a successful native Save.
+
+At a permitted reset, atomically invalidate the old session and replace all project
+documents/module authoring states, geometry, Constraints, solver outcomes, BOX source,
+assignments/results, dependency/identity data and relevant editable settings with the
+defined clean empty project/defaults. Empty Undo/Redo and the current-session journal;
+clear selection, editors, drafts, mount requests and old-project runtime caches. Create a
+new session identity/baseline, with no reversible transition. Generic application
+preferences may remain outside project state; the initial visible module/default UI
+choice is **D5**, not a restored old project snapshot. No cleared geometry/settings may
+reappear merely by visiting an unmounted module.
+
+**PROPOSAL: shared Clear/Open async safeguard.** Use tokens qualified by runtime session
+identity plus non-rewinding revision/epoch, not projectId or restored snapshot revision
+alone. Cancel/abort pending workers, imports, saves with follow-up effects, timers,
+debounced settings, Profile clicks, queued module requests and dependency jobs where
+possible. Release pointer captures/subscriptions and discard previews. Invalidate all
+old tokens before new-session publication; every eventual callback must verify its
+session and revision at the single publication gate. An abort alone is insufficient:
+uncancellable or already queued completions must be rejected. A stale save completion
+cannot clear a different current project, and old callbacks cannot repopulate a cleared
+project or affect a newly opened one. A failed/cancelled Clear save does not cross the
+session boundary or consume history.
 
 ## 11. Cross-module dependency prerequisites
 
@@ -914,7 +1011,7 @@ matching, topology repair, flattening, meshing or conflict algorithms.
 Prefer an acyclic explicit derivation graph initially, with validation against cycles;
 whether feedback links are allowed is a later product/algorithm decision. Dependency
 source versions are content versions, not the global Undo cursor or timestamps. A module
-switch must not invalidate geometry merely because it created a history entry.
+switch creates no history entry and must not invalidate geometry or dependency status.
 
 ### Atomic consequences and preservation of user work
 
@@ -976,7 +1073,7 @@ migration hazards, not claims that all corresponding defects currently exist.
 | Cross-session/recreated ID selects wrong object | edge-N/panel-N and labels may repeat | Document scope + incarnation registry; new creation gets new token, Undo resurrection gets old token. |
 | Async stale result survives Undo/Open | Future workers and current delayed click callbacks | Non-rewinding base revision/epoch, token invalidation and compare-before-publish. |
 | Metadata pins full history | Closures/root references can outlive buffer eviction | Metadata serialization/size contract and heap-retention checks; current provenance remains separately owned. |
-| Changed UI falsely advertises global behavior | Current shared HistoryControls still uses local owners | Do not enable a global-history label until all supported modules and switch paths use one execution authority. |
+| Changed UI falsely advertises global behavior | Current shared HistoryControls still uses local owners | Do not enable a global-history label until all supported modules use one edit execution authority and switch paths preserve it without recording navigation. |
 
 Existing R1–R3, deferred Arc empty/blind Undo, unimplemented R5 and Stage 4 performance
 limitations retain their authoritative status. A migrated test passing does not silently
@@ -992,11 +1089,13 @@ source/test/configuration changes now.
 
 ### Minimum before Stage C may safely begin
 
-Approve or revise the Stage B ownership/history recommendation and decide the blocking
-policies D1, D2, D4 and D5 below. Confirm the complete module capture inventory,
+Review the detailed Stage B ownership/history interfaces while preserving the approved
+foundation; decide remaining interaction policies D4 and technical lifecycle details in D5 below.
+D1/D2 and the fundamental Clear/Open policy are settled product requirements; do not
+reopen them as approval prerequisites. Confirm the complete module capture inventory,
 transaction granularity, restoration/identity contracts and the parity test matrix.
-Choose the initial session-history/persistence boundary so Stage D does not require
-replacing the project model. Approve a separate implementation scope with a freshly
+Preserve the approved session-only execution history and fresh Clear/Open baselines
+so Stage D does not require replacing the project model. Approve a separate implementation scope with a freshly
 verified main baseline. **No Stage B production implementation is necessary or permitted
 to manufacture approval of this report.**
 
@@ -1012,9 +1111,10 @@ are resolved, even if the underlying project owner lands earlier.
 | C transaction core | Pure snapshot transition/cursor/prepare/restore service, 30-step combined retention, revision/epoch and identity registry | Invariant/property tests for atomicity, branching, retention and failed restore; not exposed as partially functioning global history. |
 | C Drawing adapter | Consume unchanged mutation/solver results; preserve same-event placement and gesture-preview boundaries; replace local execution ownership | Segment/Dimension/Constraint/Circle/Arc/delete parity passes through real store adapter; no second Drawing history execution path. |
 | C BOX adapter | Consolidate all authoring/settings/source/PM/Apply paths and automatic derivations into candidate transactions; retain applied result/authority and context | Source/assignments/settings/generated output restore together; mixed authority/compensation/export parity; agreed input/Apply failure semantics. No unrelated geometry rewrite. |
-| C integrated cutover | Both supported modules migrated; normal switches, restore activation, shortcuts and toolbar route to one service | Global cross-module scenarios pass, including unmounted target; remove old stacks/controller registration as execution authority. Enable truthful global controls only at this boundary. |
+| C integrated cutover | Both supported modules migrated; selectors/panel use UI navigation, shortcuts/toolbar edits use one history service, restore explicitly activates the affected edit's module | Global cross-module scenarios pass, including unmounted target; remove old stacks/controller registration as execution authority. Enable truthful global controls only at this boundary. |
 | C panel integration | Durable metadata/references and reviewed reveal/retention policy | Double-click locates current settings without rewind/Redo loss; stale/deleted/recreated/unmounted cases work; evicted entries clearly non-executable. |
-| D native persistence | Versioned project boundary + C transaction/restore; approved format/compatibility/preferences | Detached validation/migration, editable round trip and failed-Open preservation; Save separate from manufacturing Export. |
+| C/D session lifecycle | Shared epoch/publication gate and approved Clear/Open behavior; native Save completion contract before Save and Clear is enabled | Non-reversible project-wide Clear with three outcomes; failed/cancelled save preserves work; successful Open creates a fresh baseline; stale callbacks cannot publish across sessions. |
+| D native persistence | Versioned project boundary + C transaction/restore; approved format/compatibility/preferences | Detached validation/migration, complete editable round trip, empty history on Open and failed-Open preservation; Save separate from manufacturing Export. |
 | E dependencies | Shared owner/identity/history + D relationship persistence | Controlled Drawing-first transfers and regeneration; affected-work/conflict tests; source and consequences round-trip without silent edit loss. |
 | F/G extension | Extend slots/adapters/validators/metadata with separately designed Modeling/Puzzle semantics | Optional modules, direct Drawing/BOX starts and parallel BOX/Puzzle stay valid; accepted CAD foundation is reused. |
 
@@ -1047,9 +1147,9 @@ Do not weaken behavioral assertions merely to pass a refactor.
 | Layer | Required future cases and observable result |
 | --- | --- |
 | Pure history algebra | Successful commits/Undo/Redo round-trip exact frames and identities; validate zero, one, 30 and 31+ transitions; total past+future payloads ≤30; correct earliest reachable frame; no cursor movement on failed restore. |
-| Branches | Undo then new edit discards only executable future; failed/no-op/cancelled actions preserve Redo; ordinary switch branches according to D1; reveal preserves cursor and Redo according to D2. |
-| Global sequence | Start BOX, switch Drawing, create Line/Circle/Arc, switch BOX, author/apply TB/W/S/settings. Undo/Redo each step across modules, including an unmounted Drawing view. No local-history fallback. |
-| Navigation-only | Switch repeatedly without edits, switch on an empty project, request unsupported/current module, restore-initiated activation. Entries/counts/module and unchanged geometry match the reviewed policy. |
+| Branches | Undo then new committed edit discards executable future; failed/no-op/cancelled actions, ordinary switches and panel reveal preserve cursor/Redo; assert payload identities, counts and availability unchanged after navigation. |
+| Global sequence | Circle in Drawing → BOX thickness edit → Drawing → Undo opens BOX and restores thickness immediately → Undo opens Drawing and removes Circle; Redo restores both in edit order. Add TB/W/S/Apply and unmounted modules; navigation contributes zero steps. |
+| Navigation-only | Repeated switches, empty project, unsupported/current module and restore activation: no entries/cursor changes/Redo loss. Ignore obsolete active-module fields in snapshots; both Undo and Redo open the affected edit's module. |
 | Drawing semantics | One Profile segment/standalone Line/Circle/Arc creation; automatic constraints/topology included; stable center/endpoints; Constraints/Dimensions/deletion and shared points restored together. |
 | Solver/DOF | Target values plus complete solved component; two intrinsic Arc equations; canonical domains/branch; driving versus reference Dimensions; residual/rank/DOF parity before and after Undo/Redo. |
 | Direct Manipulation | Mouse-down absolute geometry; one entry after many moves; fixed pivots and constrained propagation; invalid trial retention; cancel/Escape/lost capture/threshold; repeat/stale pointer-up; accepted R2/deferred no-op status preserved. |
@@ -1058,9 +1158,11 @@ Do not weaken behavioral assertions merely to pass a refactor.
 | BOX failure/derivation | Failed validation/authority/generation causes no partial root/history in target design; automatic TB/S updates included once; no post-restore mutation from effects; draft-versus-applied state preserved. |
 | Manufacturing/export | Same source/applied result/settings produce equivalent FinalGeometry, metadata lineage, slots/taps, clearances then kerf and clean output. Before-Apply export behavior remains correctly distinguished. |
 | Panel identities | Existing, deleted, Undo-resurrected, recreated same-label object, migrated ID, regenerated/split/ambiguous feature, missing settings, unavailable/unmounted module, cross-project ref, and evicted payload. Navigation uses current data only. |
+| Panel subsequent edit | Older Line entry reveals current 30 mm Line; accept 50 mm as one edit, Undo 30 mm, Redo 50 mm, including all constraint-driven neighbor changes. After Undo, panel navigation preserves Redo until a new edit actually commits. |
+| Clear lifecycle | All three choices; first-save destination cancellation, failed/partial save and denied permission leave project/history untouched; successful Save and Clear resets only the saved revision; Clear Without Saving writes no file; reset removes all module states/history; Undo cannot recover it. Late workers/timers/mount/save callbacks cannot repopulate or clear the new session. |
 | Panel retention | Evict reversible payload while retaining metadata; prune old summaries without losing current dependency links or labels for retained Undo actions; no document retention through metadata/closures. |
 | Restore/lifecycle | Invalidate pending async/timer tokens, no duplicate keyboard handlers, editor input owns text undo, no state from unmounted callbacks; selection/context validity and mount-ready request cancellation. |
-| Persistence D | Current and supported migrated formats; empty/independent modules; canonical geometry/relationships/settings/artifacts; malformed keys/orders/refs/numbers, unsupported required module/version, missing assets, failed Open leaves project intact. Selected history/view policies round-trip exactly. |
+| Persistence D | Current and supported migrated formats; empty/independent modules; canonical geometry/relationships/settings/artifacts; malformed keys/orders/refs/numbers, unsupported required module/version, missing assets, failed Open leaves project intact. Successful Open of the same or another project always creates empty Undo/Redo at the loaded baseline and rejects old-session async results; approved optional journal/view policies remain independent. |
 | Dependencies E | Compatible source update preserves unaffected downstream edits; incompatible change is explicit/blocked; stale async generation rejected; source plus resolved consequences/status restore together; Drawing→Puzzle works without BOX. |
 | Scale | Representative entity/constraint/annotation counts, large imported SVG/generated projects, 30 transitions and larger journal; measure prepare/validate/restore latency, preview rate, heap and released references. Agree numerical budgets from measured baselines. |
 
@@ -1082,28 +1184,30 @@ permanent. This report adds no tests and makes no application-pass claim.
 
 ## 15. Open decisions requiring user approval
 
-All recommendations below remain proposals. Approval of one row must not implicitly
-approve unrelated implementation or change the authoritative roadmap.
+Approved product requirements are not open design options. Technical recommendations
+below still require review; approval does not authorize implementation or merge.
+
+### Settled product decisions
+
+| ID | Approved contract |
+| --- | --- |
+| D1 — resolved | Ordinary module switching is UI navigation, never an Undo step, and preserves cursor, all 30 edit slots and Redo. Undo/Redo restore the latest edit and open its associated module. |
+| D2 — resolved | History double-click reveals current object/settings by stable identity, without rewind, history commit or Redo mutation. A later accepted edit is a normal transaction. No reveal override or reversible navigation stack is needed. |
+| Clear/Open boundary — resolved | Clear permanently resets all current project/module/history state after the three-outcome save workflow; never Undoable. Successful native Open restores editable state as a fresh baseline without old Undo/Redo snapshots. |
+
+### Remaining design decisions
 
 | ID | Decision and options | Recommendation and consequence | Needed before |
 | --- | --- | --- | --- |
-| D0 | Architecture selection: A, B, or C; existing-stack store versus new library | C: complete immutable project frames + semantic metadata, one synchronous project owner, no new library initially. Preserves existing solved/generated outcomes. | C implementation authorization |
-| D1 | Consecutive normal switches and branching: individual versus coalesced; whether switches after Undo discard Redo | Individual actual switches, each counts toward 30; conventional new-action branch clearing. Already-active module is no-op. Product must accept that switches consume geometry-history capacity. | C switch implementation |
-| D2 | Panel reveal versus chronological switching: transient focus preserving Redo; or additional reversible navigation model | Transient reveal override, no Undo cursor/payload change; next real edit branches, Undo returns prior chronological context. If every reveal must itself be reversible, design a richer policy first. | C panel/navigation integration |
-| D3 | Metadata retention/abandoned branches: shared 30, independent bounded session journal, or persistent log | Independent bounded session journal; retain labels for all executable transitions; choose count/byte quota, older-entry indicator and abandoned-entry visibility explicitly. | C panel release |
-| D4 | Logical action boundaries and interruption: property edit sessions, BOX Apply/PM behavior, accepted pending Profile click, active drag/editor on switch/Undo | Keep current Drawing accepted-action semantics; settle accepted pending clicks exactly once, cancel unaccepted previews explicitly; review BOX field-edit/Apply boundaries before changing them. No incidental unmount policy. | Adapter implementation and integrated cutover |
-| D5 | Confirmed whole-project Clear/recovery: undoable complete clear or new empty-session boundary; native Open boundary | Prefer one undoable whole-project Clear preserving prior work within retention; new Open session for a different project. Approval needed because current Construction Clear resets its stacks, and required global Clear must account for all module/dependency/history state. | C/D Clear/Open enablement |
-| D6 | Persist Undo, metadata, active module, selection and views/camera | Initially session-only Undo/journal, optional saved active-module/views, omit selection. Alternatives and costs in §10; no disk policy is already approved. | D format/behavior finalization; earlier if C panel promises durability |
-| D7 | Container/extension, unknown modules, recovery/migration support | Select after asset/scale spike; strict unsupported-required-data rejection, optional lossless opaque preservation only with a contract. Explicit recovery into a separate project, never silent loss. | D implementation |
-| D8 | SVG Import replacement/confirmation and project-history behavior | Keep BOX destination; preserve unrelated documents, treat supported replacement as a complete transaction if approved, validate dependent links. Confirmation/navigation details remain open. | C source replacement / D Open menu |
-| D9 | Dependency update timing, generated-versus-authored ownership, conflicts and cycle policy | Prepare controlled atomic updates or source+explicit stale status; preserve unaffected edits, block ambiguous remapping, initially prefer acyclic derivations. Algorithms and UI require separate design. | E implementation |
-| D10 | Performance budgets and future optimization | Measure current representative cases; agree latency/memory budgets, then consider patches/selectors/workers/library. Do not promise large-document performance from snapshot counts alone. | C scale acceptance |
-
-D5's recommended undoable Clear would remove all module content/dependencies and reset
-relevant settings in the after-frame, while retaining only the approved recovery payload
-and journal record. It does not literally erase the entire recovery history. If the user
-instead chooses irreversible Clear/history purge, confirmation must state that explicitly
-and D5 must change before implementation. No Clear policy is silently approved here.
+| D0 | Detailed architecture/store host and contracts | Retain recommended C: immutable complete project snapshots + semantic metadata, one synchronous owner, no new library initially. Core product foundation is preserved; detailed interfaces/store host and the complete Stage B architecture remain unapproved. | C implementation authorization |
+| D3 | Descriptive journal retention and abandoned-entry presentation | Independent bounded session journal; retain labels for all reversible transitions. Choose count/byte quota, pruning indicator and abandoned-entry visibility. No descriptive retention limit is approved. | C panel release |
+| D4 | Logical action/interruption boundaries: BOX field sessions, Apply/PM behavior, accepted pending Profile click, active drag/editor on switch/Undo/Clear | Preserve accepted Drawing actions; specify exactly-once settlement versus explicit cancellation and lifecycle-gate entry. Any accepted edit is separate from navigation. Review BOX granularity before changing it. | Adapter implementation and integrated cutover |
+| D5 | Technical session reset and initial UI defaults | Review cancellation/publication barrier and complete empty-project defaults; choose initial visible module and treatment of non-project preferences. Permanent Clear and fresh Open history are already settled, not alternatives. | C/D lifecycle enablement |
+| D6 | Descriptive journal serialization, active-module preference, selection and views/camera | Session-only journal initially; optional versioned summaries if approved. Optional saved module/views, omit selection. Execution snapshots are excluded from native history; Open always starts empty. | D format finalization; earlier if panel promises durability |
+| D7 | Native container/extension, compatibility/recovery and verifiable save completion | Select after asset/scale spike; strict required-data validation, lossless optional data only with a contract. Choose completion-capable persistence adapter or explicit reviewed completion acknowledgment for Save and Clear (§10). | D implementation / Save and Clear enablement |
+| D8 | SVG Import replacement/confirmation and project-history behavior | Preserve BOX destination and unrelated documents; full replacement transaction only if approved, with dependent-link validation. | C source replacement / D Open menu |
+| D9 | Dependency update timing, generated/authored ownership, conflicts and cycles | Controlled atomic updates or source plus explicit stale status; preserve unaffected edits, block ambiguous mapping; initially prefer acyclic derivations. Algorithms/UI need separate design. | E implementation |
+| D10 | Performance budgets and optimization | Measure representative cases; agree latency/memory budgets before patches/selectors/workers/library. A count cap is no byte guarantee. | C scale acceptance |
 
 ## 16. Source references and evidence
 
@@ -1164,23 +1268,23 @@ Their interface sketches are explicitly proposed/future responsibilities. No ext
 state-library benchmark or new dependency evaluation was performed beyond the architectural
 comparison against the existing React/TypeScript stack.
 
-Documentation validation performed for this PR:
+Documentation validation for the 2026-11-09 revision:
 
-- **PASS:** 34 local Markdown links, including 8 fragment-anchor targets, resolve across
-  the two changed documents.
-- **PASS:** 53 baseline-pinned source links resolve to local baseline files; all 50
-  source-line fragments are within those files. This checks references, not remote HTTP
-  rendering or renewed browser/application behavior.
-- **PASS:** all 17 requested sections are present in order; fenced blocks are balanced
-  and table column counts are consistent.
-- **PASS:** complete document/index diff reviewed and `git diff --check HEAD` passes;
-  only the requested analysis and minimal docs/README.md link differ.
-- **PASS:** six authoritative scope-protected documents, the historical Dimension
-  analysis and package.json are byte-identical to baseline; no application source,
-  test, configuration or runtime change is present.
-- No documentation/Markdown/lint script is defined in package.json. Focused validation
-  ran from scratch tooling outside the repository. Application tests, production build
-  and new browser acceptance were not run and are not claimed.
+- **PASS:** exact scope is ten Markdown files; the complete PR diff contains no application
+  source, test or configuration changes, and no Stage C implementation.
+- **PASS:** 121 local Markdown links, including 49 anchor targets; 53 baseline-pinned
+  source links, including 50 source-line ranges, resolve against local baseline files.
+- **PASS:** all 17 numbered sections, balanced fences and consistent table columns;
+  `git diff --check` and complete diff review.
+- **PASS:** protected CAD sections/acceptance records, original Dimension-analysis body,
+  original source/test evidence and all seven A–G status labels remain unchanged.
+- **PASS:** repository-wide requirement search; old module-switch and undoable-Clear
+  policies remain only as explicitly superseded historical/conflict descriptions.
+
+Historical source findings remain pinned to the original baseline. No documentation/
+Markdown/lint script is defined in package.json. Focused scratch tooling is outside the
+repository; application tests, production build and new browser acceptance were not run
+or claimed for these documentation changes.
 
 ## 17. Final recommendation
 
@@ -1189,15 +1293,16 @@ as the target architecture. It matches Drawing's existing solved-document outcom
 preserves BOX's stored generated authority, and adds the operation/object context needed
 by the panel without requiring inverse solver commands or a new state library.
 
-Approve the single project owner and restoration/identity contracts before implementation,
-resolve the blocking navigation/transaction/Clear policies, then authorize small Stage C
+Review detailed store, restoration and identity contracts before implementation,
+resolve remaining transaction/lifecycle details, then separately authorize small Stage C
 ownership and transaction slices with the parity gates above. Keep the 30-transition
 buffer distinct from longer-lived panel summaries, and keep both distinct from future
 dependency propagation. Stage D should serialize complete editable content through the
 same validated project boundary; Stage E should add controlled source relationships and
 regeneration without silently replacing downstream work.
 
-This document is a recommendation for architecture review. It does not promote its
-interfaces/policies into Project Master, alter the A–G roadmap, reopen accepted Circle/Arc
-Stages 0–6, fix deferred limitations, authorize implementation, or authorize merging
-the documentation PR.
+The current approved product decisions are synchronized into the relevant vision,
+Project Master, Architecture and roadmap requirements. Proposed interfaces/store choices
+are not promoted to approved architecture, and A–G status labels stay unchanged. This
+revision does not reopen accepted Circle/Arc Stages 0–6, fix deferred limitations,
+authorize implementation, start Stage C, or authorize merging PR #629.

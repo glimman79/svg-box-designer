@@ -141,31 +141,39 @@ algorithms, joint types, manufacturing settings and UI remain undefined/design-r
 
 ## 3. One global project history
 
+**Product decisions revised 2026-11-09 for PR #629.** These requirements supersede the
+earlier module-switch history requirement and settle Clear/Open session boundaries.
+The [Stage B analysis](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md) remains a technical
+proposal for review; this does not approve the complete architecture or implementation.
+
 The approved future requirement is **one global project history across 3D Modeling,
-Drawing, BOX, Puzzle and module navigation**. It supersedes the previous recommendation
+Drawing, BOX and Puzzle project edits**. It supersedes the previous recommendation
 to retain independent workspace histories. Existing implementations remain unchanged
 until a separately authorized migration.
 
-The target history depth is within **10–30 steps, with 30 steps as the design target**.
-This differs from today's separate 100-entry Drawing and 10-entry Construction limits.
-Module switches belong to the shared timeline. Undo/Redo must cross module boundaries
-and consistently restore relevant project state together with the active module.
+The shared limit is **30 reversible committed project-editing transitions**, including
+editable settings. This differs from today's separate 100-entry Drawing and 10-entry
+Construction limits. Ordinary module switches are navigation only: no history entry,
+capacity use, cursor movement or Redo clearing. Undo reverses the latest committed
+project edit regardless of the visible module and automatically opens that edit's module;
+Redo behaves correspondingly. Only a newly committed edit after Undo discards its Redo
+branch. Active-module UI state must not override the affected edit's restore context.
 
 For example:
 
-1. Create geometry in 3D.
-2. Switch to Drawing.
-3. Generate or edit a 2D drawing.
-4. Switch to Puzzle.
-5. Change a puzzle setting.
-6. Undo the setting change.
-7. Undo the module switch, returning to Drawing and the corresponding project state.
+1. Create a Circle in Drawing.
+2. Switch to BOX and change material thickness.
+3. Switch back to Drawing.
+4. Undo opens BOX and immediately restores the previous thickness.
+5. A second Undo opens Drawing and removes the Circle.
+6. Redo restores the Circle in Drawing, then the thickness edit in BOX.
+
+There are two reversible edits in this sequence; navigation adds none.
 
 Pointer movement, hover and similar incidental interactions must not create history
-steps. The exact transaction boundary, policy for other navigation/UI-only state,
-restore strategy and storage mechanism remain **DESIGN REQUIRED**. Today's Drawing
-rule excluding UI-only panel state describes current behavior, not a final policy for
-all future global navigation.
+steps. Navigation and project-editing history are architecturally distinct. Transaction
+granularity, exact restore/storage implementation and other UI preferences remain
+**DESIGN REQUIRED**; navigation is not an undecided undoable transaction type.
 
 ### 3.1 Interactive history panel
 
@@ -176,15 +184,21 @@ open its settings or editing controls, and allow a new change. Affected downstre
 geometry then updates according to the future dependency rules.
 
 Double-click navigation is distinct from chronological Undo/Redo. It must not
-automatically discard subsequent work or rewind the project to an old snapshot. The
-panel therefore requires identifiable operations and persistent references, not merely
+create an Undo step, move the history cursor, mutate Redo or rewind the project to an old
+snapshot. It selects/reveals the object's **current** state and opens current controls.
+A later accepted edit is a normal global transaction: for example, current Line length
+30 mm → 50 mm gives Undo to 30 mm and Redo to 50 mm, including constraint-driven changes.
+The panel therefore requires identifiable operations and persistent references, not merely
 an opaque list of snapshots. No command-log, event-sourcing or snapshot storage design
 is selected here.
 
 Later design must handle deleted objects, renamed/regenerated objects, invalidated
-references, operations without editable settings, historical settings that no longer
-match current geometry, and conflicts with later dependent operations. This document
-does not invent completed fallback behavior for those cases.
+references, reused local IDs with different object lifetimes, unmounted/unavailable
+modules and expired reversible snapshots. Retained entries may still navigate to a current
+object after snapshot eviction. Missing objects are never resurrected by double-click.
+Detailed identity/selection adapters and downstream-conflict algorithms remain proposals;
+see Stage B §9. Journal retention is separate from the 30-edit limit; no journal quota
+or serialization policy is approved.
 
 ## 4. Cross-module dependencies are separate from history
 
@@ -222,9 +236,9 @@ do not yet implement this contract.
 | Open | One control with explicit **Open Project** and **Import SVG** options. Open Project restores the complete editable project. Import SVG always targets BOX, regardless of active module. | Existing SVG import is Construction-only; native Open Project is unimplemented. Import replacement/confirmation and navigation details require design. |
 | Save | Preserve the complete editable project across relevant modules, including source relationships and downstream authoring state. | Disabled placeholder today; native format, serialization and restoration require design. |
 | Export | Produce output for the relevant manufacturing/downstream use case; behavior may differ by module. | Current Construction SVG export does not establish Drawing, 3D or Puzzle export. Export is distinct from Save. |
-| Clear | Global whole-project operation, with clear confirmation before discarding project data. Account for all module documents, generated geometry, dependencies, history and relevant settings. | Existing confirmed Construction Clear does not clear the Drawing document and is insufficient. Clear's interaction with history/recovery requires explicit design. |
+| Clear | Permanent whole-project session reset, never Undoable. Offer Save and Clear / Clear Without Saving / Cancel. Save and Clear requires successful complete native Save; failure/cancellation leaves project/history untouched. Reset all project/module states and Undo/Redo into a clean empty session; clearing itself never deletes or overwrites saved files. | Existing Construction-only Clear is insufficient. Session/async guards must prevent stale callbacks repopulating the project. First Save requests a destination; save completion must be verified. See Stage B §10 for the proposed lifecycle gate. |
 | Fit to screen | Compute bounds from relevant geometry in the active module; eventually use suitable 3D viewport fitting for 3D geometry. | Drawing's current fixed view reset is insufficient. Bounds policy and the 3D camera design remain open. |
-| Undo / Redo | Use the single global project timeline, including module switches. | Current toolbar controllers route to isolated histories. Transaction and persistence architecture remain open. |
+| Undo / Redo | Use the single 30-edit global timeline; automatically open the affected edit's module. Navigation preserves Redo and consumes no steps. | Current toolbar controllers route to isolated histories. Transaction and persistence architecture remain open. |
 
 ## 6. Native project persistence
 
@@ -240,11 +254,13 @@ foundations to wrap or migrate deliberately, not a completed native format. Ordi
 SVG export cannot stand in for restoring native authoring state and relationships.
 
 Format/container choice, validation, schema evolution and restore boundaries require
-technical design. Whether full Undo/Redo history is serialized must be decided
-explicitly; neither inclusion nor exclusion is approved here. Persistence of viewport
-state, selection and active module also requires deliberate decisions. Restoring an
-active module during in-session Undo/Redo is required; its disk persistence is a
-separate question.
+technical design. **Approved:** native Open restores saved editable content into a fresh
+Undo/Redo session, with the loaded project as baseline; previous execution snapshots are
+not restored or required in the native file. Invalidate pending work from the previous
+runtime session, even when reopening the same project. Save alone does not reset current
+history. Descriptive journal serialization is a separate unresolved decision, as are
+viewport, selection and active-module disk preferences. In-session Undo/Redo activation
+comes from the affected edit, never an obsolete saved tab.
 
 ## 7. Proposed delivery structure and unresolved decisions
 
@@ -260,9 +276,9 @@ The following remain unresolved, rather than implicitly approved implementations
 | Design area | Questions requiring later decisions |
 | --- | --- |
 | Project ownership | Complete project-state boundary; wrapping/migration of existing models; module document ownership. |
-| History | Transactions and navigation policy beyond module switches; state restoration and active-module consistency; storage mechanism; bounded retention and relationship to identifiable panel operations; Clear/recovery behavior. |
+| History | Edit transaction granularity; exact restoration/storage and associated-module activation; journal retention/presentation; technical Clear/Open lifecycle gate and clean defaults. Navigation exclusion, permanent Clear and fresh Open history are settled. |
 | History editing | Durable operation/object references, identity after regeneration, missing/non-editable objects, stale settings and downstream conflicts; lifetime of panel entries beyond Undo retention. |
-| Persistence | Native format, schema/validation/migration, serialization of history, viewports, selections and active module. |
+| Persistence | Native format, schema/validation/migration, verifiable Save completion, descriptive journal serialization, viewports, selections and active-module preferences. Open never restores previous Undo/Redo snapshots. |
 | Geometry transfer | Source/derived ownership, supported transfer geometry, identity/provenance and compatibility with the existing straight-edge SVG importer. |
 | Dependencies | Representation, affected-work detection, regeneration, preservation of unaffected edits, incompatible changes and synchronization/conflict handling. |
 | 3D | Kernel, topology, constraint handling, rendering/camera, surface versus thickened-solid extrusion, assembly representation and supported flattening/developability. |

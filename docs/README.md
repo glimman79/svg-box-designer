@@ -7,7 +7,8 @@ Root-level [`REGLER_FOR_CHATT_MED_CHATGPT.md`](../REGLER_FOR_CHATT_MED_CHATGPT.m
 ## Approved future product requirements
 
 - [PRODUCT_ARCHITECTURE_VISION.md](PRODUCT_ARCHITECTURE_VISION.md) — explicitly designated
-  detailed authority for the connected product requirements approved on 2026-11-03:
+  detailed authority for connected product requirements approved on 2026-11-03 and
+  history/navigation/Clear/Open decisions revised on 2026-11-09:
   optional 3D Modeling → Drawing → BOX or Puzzle, global project history, interactive
   history navigation, native persistence and source dependencies. These are **future,
   unimplemented requirements**, not historical proposals or current functionality.
@@ -29,8 +30,10 @@ These narrow contracts remain useful alongside the code. They do not replace the
 These documents analyze a bounded subsystem. Some contain implementation-era baselines or recommendations that later work refined.
 
 - [GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md)
-  — Stage B source-grounded project/history design proposal for review; not an approved
-  architecture decision or implementation, and not a change to roadmap status.
+  — Stage B source-grounded project/history design proposal revised for approved product
+  decisions: 30 committed edits, separate navigation preserving Redo, permanent Clear and
+  fresh history on Open. Detailed architecture remains under review; no implementation
+  or roadmap-status change.
 - [DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md](DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md)
   — historical Drawing design evidence. Its §16 recommendation for Drawing-owned
   snapshot history is superseded as long-term direction by the approved global history

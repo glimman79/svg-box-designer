@@ -801,8 +801,11 @@ and Flatten to 2D are distinct; curved-surface flattening needs separate design.
 historical [Drawing Dimension analysis §16](docs/DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md#16-history--undo--redo)
 recommended Drawing-owned snapshots rather than extending Construction history. The
 user explicitly rejected independent histories as the long-term direction. The approved
-target is **one global project history**, including module switches, within 10–30 steps
-with **30 as the design target**. The original report remains historical evidence.
+target recorded at that date was **one global project history**, including module
+switches, within 10–30 steps with **30 as the design target**. **Superseded 2026-11-09:**
+ordinary module navigation creates no Undo steps and preserves Redo; the limit is 30
+committed project edits. See [§11.29](#1129-stage-b-history-product-decision-revision-2026-11-09).
+The original report remains historical evidence.
 
 Source inspection on freshly verified GitHub main
 `958e19609023984d10707a60f4a10c66ce6e0bd8` confirms separate Drawing snapshots (100 Undo
@@ -832,8 +835,10 @@ BOX. Native Save/Open must preserve the editable multi-module project and relati
 Export remains a distinct output. Clear is confirmed and whole-project; Fit uses active
 geometry. Current conditional controls, Construction Clear/export, fixed Drawing Fit,
 disabled Save and model restore helpers do not already satisfy these requirements.
-Native format, history persistence, selection/viewport/active-module persistence,
-transactions, dependencies and detailed 3D/Puzzle design remain unresolved.
+At that checkpoint, native format, history persistence, selection/viewport/active-module
+persistence, transactions, dependencies and detailed 3D/Puzzle design remained unresolved.
+The Clear and execution-history persistence boundaries are superseded by §11.29;
+descriptive journal serialization remains open.
 
 This decision updates documentation only. It preserves existing Puzzle roadmap
 commitments, Construction authority/pipeline, canonical Circle/Arc geometry, Constraints,
@@ -862,6 +867,39 @@ Circle/Arc Stages 0–6, their verification and acceptance records, the approved
 history requirements and A–G stage structure/statuses remain intact. This correction
 changes documentation only; no application code, tests, configuration or functionality
 changed, and no new application test or browser verification is claimed.
+
+### 11.29 Stage B history product-decision revision (2026-11-09)
+
+**APPROVED FUTURE PRODUCT DECISIONS — NOT IMPLEMENTED.** PR #629's Stage B analysis is
+revised on its existing branch. The snapshot-based hybrid recommendation remains: one
+project owner, exact complete immutable before/after outcomes, stable object identity and
+semantic operation metadata. The complete Stage B architecture/interfaces remain under
+review; no Stage C implementation or merge is authorized.
+
+- The shared capacity is 30 committed project-editing transitions. Ordinary module
+  switching and panel double-click are UI navigation, consume no steps, leave the cursor
+  unchanged and preserve Redo. Only a new committed edit after Undo abandons Redo.
+- Undo/Redo restore the affected edit's complete project state and automatically open
+  its associated module; obsolete snapshot active tabs have no restoration authority.
+- Double-click selects/reveals the referenced object's current state/settings by stable
+  lifetime-qualified identity, never rewinds or resurrects deleted objects. Subsequent
+  editing is a normal transaction; retained summaries can navigate after snapshot expiry.
+- Clear is permanent and project-wide, never Undoable: Save and Clear / Clear Without
+  Saving / Cancel. Save must complete successfully before clearing, including first-save
+  destination selection. Failed/cancelled saves preserve project/history. Reset all module
+  states and Undo/Redo to an empty session; clearing itself never deletes/overwrites a
+  saved file. Session gates reject delayed operations that could repopulate old data.
+- Native Open restores full editable content/dependencies as a new baseline with empty
+  Undo/Redo, without prior snapshots. Pending work from the previous runtime session is
+  invalidated. Journal quota/presentation/serialization and disk UI preferences remain
+  separate decisions, alongside detailed store, interruption and lifecycle design.
+
+This explicitly supersedes §11.27's module-switch entries and 10–30 design range,
+the original Stage B D1/D2 reveal exception and D5 undoable-Clear recommendation, and
+the earlier unresolved native execution-history policy. Current vision, Master,
+Architecture, roadmap and notices are synchronized; historical CAD/acceptance records,
+deferred issues and A–G status labels remain intact. Documentation only: no application
+source, tests, configuration or Stage C implementation changed.
 
 ## 12. Superseded or Temporary Material
 

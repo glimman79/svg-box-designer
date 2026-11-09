@@ -3,7 +3,8 @@
 > **Historical recommendation status — 2026-11-03:** This report retains its original
 > audit baseline, observations and proposals. The §16 recommendation for Drawing-owned
 > history is superseded as long-term direction by the approved **single global project
-> history across modules and module navigation**. See
+> history across module edits**. **2026-11-09 revision:** ordinary module navigation is
+> excluded from Undo steps and preserves Redo; Undo/Redo opens the affected edit's module. See
 > [Product Architecture Vision](PRODUCT_ARCHITECTURE_VISION.md#3-one-global-project-history)
 > and the [decision record](../PROJECT_HISTORY.md#1127-connected-product-architecture-decision-2026-11-03).
 > Current Drawing history now exists, with limitations documented in that inventory;
