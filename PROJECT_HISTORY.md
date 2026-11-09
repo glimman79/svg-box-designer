@@ -870,6 +870,10 @@ changed, and no new application test or browser verification is claimed.
 
 ### 11.29 Stage B history product-decision revision (2026-11-09)
 
+> **Later 2026-11-09 clarification:** bounded/session journal and optional journal
+> persistence statements below describe the earlier revision. They are superseded
+> **as construction history** by §11.30. Navigation/Clear/Open decisions remain valid.
+
 **APPROVED FUTURE PRODUCT DECISIONS — NOT IMPLEMENTED.** PR #629's Stage B analysis is
 revised on its existing branch. The snapshot-based hybrid recommendation remains: one
 project owner, exact complete immutable before/after outcomes, stable object identity and
@@ -900,6 +904,40 @@ the earlier unresolved native execution-history policy. Current vision, Master,
 Architecture, roadmap and notices are synchronized; historical CAD/acceptance records,
 deferred issues and A–G status labels remain intact. Documentation only: no application
 source, tests, configuration or Stage C implementation changed.
+
+### 11.30 Stage B permanent parametric construction-history revision (2026-11-09)
+
+**APPROVED FUTURE REQUIREMENTS — NOT IMPLEMENTED.** Existing PR #629 continues from
+reviewed head `9a685aaf4cbfc9bb39f698ccceda7e68225f09cc`, with remote main freshly
+verified at `97469bd8274edae335254188dc8805f1141dc874`. The new uploaded requirements
+separate global 30-transition Undo/Redo from permanent, project-owned editable
+construction operations inspired by a parametric CAD timeline.
+
+- Create a 30 mm Line: one operation/one Undo step. Edits to 50 then 70 mm update the
+  same operation with a new Undo step each time; snapshots restore parameters, geometry,
+  identities and dependency outcomes consistently. Operations survive Undo eviction and
+  persist with native projects, without arbitrary 100/250-entry journal quotas.
+- The prior bounded semantic/session-journal proposal is explicitly superseded as
+  construction history. An optional descriptive event journal is not an approved
+  requirement. Existing §11.29 navigation, permanent Clear and fresh Open Undo remain.
+- Approved Option A retains valid source edits, updates compatible branches, preserves
+  failed/blocked definitions/parameters/refs and unaffected authored work, and exposes
+  diagnostics for repair/removal. No guessed ref substitution or silent dependent loss.
+  Suppression/deletion detect impacts and are Undoable. Invalid/stale manufacturing
+  artifacts cannot silently export; independent output needs explicit scope/validation.
+- The technical proposal distinguishes operation/entity/transaction identity, canonical
+  parameter bindings and evaluated artifacts; mixed-outcome snapshots and explicit async
+  result transactions use a single guarded publication boundary, without generator
+  replay on Undo/Redo. This remains a proposal, not implemented functionality.
+- Recommend a separately scoped C.2 persistent-operation foundation after C global
+  ownership/Undo, before D complete editable persistence and E's tracking/regeneration,
+  warning/error, repair and downstream management. Exact operation catalog/grouping,
+  legacy migration, scheduling, dependent UX and export-scope policy remain under review.
+
+Documentation only. No source, tests, configuration, Stage C/E implementation, merge or
+replacement PR. Existing A–G statuses, Circle/Arc Stages 0–6, Drawing tool/solver semantics,
+BOX stored authority/pipeline, regression evidence and deferred/open issues are preserved.
+Stop for user/ChatGPT architecture review after updating existing PR #629.
 
 ## 12. Superseded or Temporary Material
 

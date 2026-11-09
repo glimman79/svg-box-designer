@@ -9,8 +9,9 @@ Root-level [`REGLER_FOR_CHATT_MED_CHATGPT.md`](../REGLER_FOR_CHATT_MED_CHATGPT.m
 - [PRODUCT_ARCHITECTURE_VISION.md](PRODUCT_ARCHITECTURE_VISION.md) — explicitly designated
   detailed authority for connected product requirements approved on 2026-11-03 and
   history/navigation/Clear/Open decisions revised on 2026-11-09:
-  optional 3D Modeling → Drawing → BOX or Puzzle, global project history, interactive
-  history navigation, native persistence and source dependencies. These are **future,
+  optional 3D Modeling → Drawing → BOX or Puzzle, separate global Undo/Redo and permanent
+  parametric construction history, interactive navigation, native persistence and Option A
+  source dependencies. These are **future,
   unimplemented requirements**, not historical proposals or current functionality.
   [ROADMAP.md](../ROADMAP.md#4-connected-product-development) owns planning/status, and
   [PROJECT_MASTER.md](../PROJECT_MASTER.md) remains current-architecture authority.
@@ -31,8 +32,11 @@ These documents analyze a bounded subsystem. Some contain implementation-era bas
 
 - [GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md)
   — Stage B source-grounded project/history design proposal revised for approved product
-  decisions: 30 committed edits, separate navigation preserving Redo, permanent Clear and
-  fresh history on Open. Detailed architecture remains under review; no implementation
+  decisions: 30 committed Undo edits, a distinct persistent editable operation model,
+  Option A partial regeneration/repair, exact snapshot consistency and manufacturing
+  validation gates. Supersedes the bounded-journal proposal as construction history;
+  proposes a distinct C.2 foundation before D/full E. Navigation, permanent Clear and
+  fresh Undo on Open remain. Detailed architecture remains under review; no implementation
   or roadmap-status change.
 - [DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md](DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md)
   — historical Drawing design evidence. Its §16 recommendation for Drawing-owned

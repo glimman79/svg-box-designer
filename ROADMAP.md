@@ -1145,12 +1145,23 @@ begun by recording this vision.
 | Stage | Status | Scope and dependency |
 | --- | --- | --- |
 | A — Shared toolbar | **PLANNED / NOT STARTED** | Keep Open, Save, Export, Clear, Fit to screen, Undo, Redo consistently visible and ordered. Use explained disabled states until correct behavior exists; do not expose Construction-only Clear as project-wide or isolated history as global. Module tools remain contextual. |
-| B — Global project/history architecture design | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Define project-state ownership, edit transactions, separate UI navigation, object/operation references, restoration and dependency boundaries. Define persistence needs before selecting a native format. Analyze separate history ownership and Drawing history lifetime for migration, preserving existing working Undo/Redo behavior and the separate deferred Arc limitation. |
-| C — Global history implementation | **PLANNED / NOT STARTED** | After B, migrate separate histories to 30 reversible committed project edits across 3D/Drawing/BOX/Puzzle. Module switches and panel navigation consume no steps and preserve cursor/Redo; Undo/Redo restore the project and open the affected edit's module. Double-click reveals current objects/settings without rewind or history mutation; subsequent edits transact normally. Preserve accepted CAD transactions and semantics. |
-| D — Native Save/Open | **PLANNED / NOT STARTED** | After B and the C transaction/restore boundary, serialize, validate and restore complete editable projects with schema metadata and source relationships. Open has Open Project and Import SVG; SVG always targets BOX. Save is distinct from module output Export. Open establishes a fresh baseline with empty Undo/Redo and no previous snapshots; reject stale old-session callbacks. Decide descriptive journal, viewport, selection and active-module persistence separately. |
-| E — Geometry transfer and dependencies | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Build on B–D ownership, history and persistence boundaries. Define Drawing→BOX/Puzzle contracts, stable identities/provenance, affected-work detection and controlled regeneration. Preserve unaffected downstream edits and report incompatible changes without silent loss. Dependency propagation is separate from chronological history. |
+| B — Global project/history architecture design | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Define ownership, stable operation/entity identities, persistent editable operation model, parameter bindings, transaction/restore integration and dependency/evaluation interfaces. Separate 30-step Undo from permanent construction history. Analyze migration without changing accepted Drawing/BOX semantics or deferred Arc status. |
+| C — Global history implementation | **PLANNED / NOT STARTED** | After B, implement shared project ownership and 30 reversible committed edits across supported modules; reserve complete operation/relationship/evaluation state in snapshots. Navigation preserves cursor/Redo; Undo/Redo restores exact outcomes and opens the edit's module. Proposed distinct C.2 below supplies permanent operation maintenance and current-settings navigation; C does not implement the full E engine. Preserve accepted CAD transactions. |
+| D — Native Save/Open | **PLANNED / NOT STARTED** | After B, C restore and the proposed C.2 operation foundation, preserve complete editable module state, operations/order/parameters, identities, relationships, suppression/diagnostics and authority artifacts. Open Project starts empty executable Undo/Redo; SVG Import always targets BOX. No replay on Open; reject stale callbacks. Save is separate from Export; disk UI preferences remain open. |
+| E — Geometry transfer and dependencies | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Build on C/C.2/D; implement tracking, Drawing→BOX/Puzzle transfer, controlled regeneration, warning/error propagation, reference repair and downstream operation management. Option A retains valid source edits, updates compatible branches and preserves failed/blocked definitions and unaffected authored work. Exact outcomes restore without replay; gate invalid manufacturing output. |
 | F — Simple 3D Modeling | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Extend B–E with editable profile/extrusion definitions, positioning/rotation and simple assemblies. Closed profiles form solids; open Lines/Arcs form surfaces or optionally thickened walls. Exploded View and Flatten to 2D are distinct. Kernel/topology/constraint/rendering and curved/developable flattening require design; no high-end freeform/loft/general CAD commitment. |
 | G — Puzzle | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Integrate Drawing geometry with a separate downstream module and project history, persistence and dependencies. Preserve section 2 commitments; algorithms, joint types, manufacturing settings and UI remain unselected. BOX is not a prerequisite. |
+
+**Proposed C.2 — permanent construction-history foundation (separately scoped, not
+started or approved by this document):** implement persistent operation definitions/order,
+stable identities, parameter bindings, input/output links and atomic maintenance with
+geometry. Repeated Line edits update one operation; a double-click opens current settings
+without rewinding or changing Redo. Keep definitions editable after Undo eviction;
+no arbitrary 100/250-entry journal quota. Resolve operation granularity and honest legacy
+baseline migration before release. Place C.2 before D format freeze and full E; the full
+dependency scheduler, feature mapping, repair and downstream-management engine belong
+to E. This proposal preserves all lettered A–G status labels. An optional descriptive
+event journal is neither this foundation nor an approved product requirement.
 
 Dependency evaluation against existing work: accepted Drawing/Circular Support and the
 Construction pipeline are foundations, not work to repeat. A may establish control
@@ -1171,7 +1182,8 @@ first-save destination. Failure/cancellation preserves work/history. Clearing it
 never deletes or overwrites saved files, and stale async work cannot repopulate the
 project. The complete Stage B architecture remains under review; stage statuses are
 unchanged. Fit uses active-module bounds with future 3D fitting. Technical lifecycle/UI
-details, journal retention/persistence, history-panel adapters, dependency algorithms and
+details, operation catalog/grouping and migration, history-panel adapters, dependency
+scheduling/repair, independent manufacturing-scope validation and
 3D/Puzzle design remain in the
 [unresolved-decision register](docs/PRODUCT_ARCHITECTURE_VISION.md#7-proposed-delivery-structure-and-unresolved-decisions).
 

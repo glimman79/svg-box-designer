@@ -1,6 +1,6 @@
 # Product Architecture Vision
 
-**Decision date: 2026-11-03. Status: APPROVED FUTURE PRODUCT REQUIREMENTS — NOT IMPLEMENTED.**
+**Decision date: 2026-11-03; history requirements revised 2026-11-09. Status: APPROVED FUTURE PRODUCT REQUIREMENTS — NOT IMPLEMENTED.**
 
 This document owns the detailed approved long-term requirements for a connected,
 multi-module SVG Box Designer. It does not claim implementation or authorize application
@@ -33,7 +33,7 @@ clarification; this source review does not establish exhaustive Undo/Redo verifi
 | Puzzle | [Roadmap §2](../ROADMAP.md#2-puzzle) contains planned outer shapes, piece controls, optional frame and physical uniqueness; only a disabled selector exists in code. | Retain those prior commitments and open questions. This decision defines module integration without selecting algorithms, joint catalogs, manufacturing parameters or UI. |
 | Drawing history | [drawingHistory](../src/app/drawingHistory.ts) stores document snapshots, with `DRAWING_HISTORY_LIMIT = 100`. `DrawingWorkspace` owns `historyRef` initialized to empty. `App` conditionally mounts that component. | Drawing history is lost when switching away and back, according to source inspection; the Drawing document itself remains in `App`. This is not a new browser reproduction. |
 | Construction history | `App` owns snapshot Undo/Redo stacks capped by `maxHistoryEntries = 10`; it remains mounted across workspace switches. Its `HistoryState` excludes Drawing and active workspace. | Neither existing history is a complete project timeline. The earlier recommendation for separate histories is superseded as the future target, not removed from the current code. |
-| History panels | `App` has a Construction workflow-group navigator using single-click; Drawing renders explanatory History text. | These are not the required global chronological history or cross-module double-click editor navigation. |
+| History panels | `App` has a Construction workflow-group navigator using single-click; Drawing renders explanatory History text. | These are not the required persistent construction-operation panel or cross-module double-click editor navigation. |
 | Persistence | `DrawingDocumentV2`, canonical validation/normalization and Construction snapshots are current foundations. `App` renders a disabled Save placeholder. [Stage 6](../ROADMAP.md#circlearc-implementation-stages-and-status) explicitly excluded actual Drawing Save/Reload. | Complete native Save/Open, a global project document and cross-module restoration are not implemented. SVG export is not native persistence. |
 | Import / export / Clear / Fit | `App` imports SVG into Construction and exports Construction SVG; confirmed Clear resets Construction state and history without clearing Drawing. Construction Fit uses geometry bounds; Drawing Fit resets `initialDrawingViewBox`. | Preserve SVG's BOX destination. Current controls are not the complete global toolbar, whole-project Clear, or geometry-based Drawing Fit. |
 | Circle/Arc | [Locked canonical model](../PROJECT_MASTER.md#locked-target-circlearc-architecture) and accepted [Stages 0–6](../ROADMAP.md#circlearc-implementation-stages-and-status). | Closed and unchanged. Preserve acceptance records, regression evidence, constraints/solver semantics and deferred issues. |
@@ -146,8 +146,9 @@ earlier module-switch history requirement and settle Clear/Open session boundari
 The [Stage B analysis](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md) remains a technical
 proposal for review; this does not approve the complete architecture or implementation.
 
-The approved future requirement is **one global project history across 3D Modeling,
-Drawing, BOX and Puzzle project edits**. It supersedes the previous recommendation
+The approved future requirement is **one global Undo/Redo system across 3D Modeling,
+Drawing, BOX and Puzzle project edits**, plus the separate permanent parametric
+construction history defined below. It supersedes the previous recommendation
 to retain independent workspace histories. Existing implementations remain unchanged
 until a separately authorized migration.
 
@@ -197,8 +198,36 @@ references, reused local IDs with different object lifetimes, unmounted/unavaila
 modules and expired reversible snapshots. Retained entries may still navigate to a current
 object after snapshot eviction. Missing objects are never resurrected by double-click.
 Detailed identity/selection adapters and downstream-conflict algorithms remain proposals;
-see Stage B §9. Journal retention is separate from the 30-edit limit; no journal quota
-or serialization policy is approved.
+see Stage B §9. Current construction operations remain available/editable after their
+original Undo transition expires; native persistence is mandatory. No arbitrary
+100/250-entry journal quota may bound construction history.
+
+### 3.2 Permanent parametric construction history
+
+**APPROVED FUTURE REQUIREMENT — NOT IMPLEMENTED (2026-11-09).** This persistent,
+project-owned system is inspired by Fusion 360's parametric design timeline. It contains
+meaningful construction operations with stable identities, editable current parameters,
+object references and dependency relationships. It is distinct from Undo snapshots,
+event logs, semantic transaction journals and audit logs, and is not limited by Undo's
+30 steps or an arbitrary journal quota. Persist it with the complete editable native
+project. The previous Stage B bounded session-journal proposal is explicitly superseded
+as a solution for construction history; an optional descriptive event journal is not an
+approved requirement.
+
+Create a 30 mm Line: one construction operation and one Undo step. Edit to 50 mm, then
+70 mm: update the **same** operation each time, with one new Undo transaction per
+accepted edit. Undo/Redo restores the corresponding current parameters and complete
+geometry consistently. Expired Undo transitions do not remove the operation. Double-click
+opens its current settings without rewinding or changing Redo.
+
+Operations support conceptual Edit, Review Warning/Error, Repair Reference, Suppress
+and Delete actions. Preserve identities across Undo restoration; genuine recreation
+with reused local IDs is a new lifetime. One operation may produce multiple objects;
+not every solver mutation or user edit is a visible operation. Exact operation catalog,
+Profile/sketch/Dimension/Constraint and BOX grouping, parameter ownership, migration and
+panel UI remain **DESIGN REQUIRED**. Accepted Drawing and BOX semantics remain unchanged.
+The [Stage B model and acceptance criteria](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md#9-permanent-parametric-construction-history-and-navigation)
+are technical recommendations for review, not implementation.
 
 ## 4. Cross-module dependencies are separate from history
 
@@ -216,8 +245,31 @@ controlled regeneration, preservation of unaffected downstream edits, explicit h
 of incompatible changes, and avoidance of silent data loss. Not every downstream
 setting can necessarily survive every source change automatically.
 
-Dependency graph representation, identity across regeneration, update timing,
-synchronization, conflict resolution and regeneration algorithms remain design work.
+**Approved dependency failure behavior — Option A:** keep an otherwise valid source
+edit, update compatible branches, and retain failed/blocked downstream definitions,
+parameters, refs, diagnostics and unaffected authored work for repair or removal. A
+downstream failure cannot automatically reject the source edit, silently delete dependents
+or guess replacement refs. Distinguish valid, warning, error, stale, blocked and suppressed
+states. Retained last-known-good artifacts must be visibly distinguished from validated
+current geometry. Inspection identifies failure reasons and affected downstream operations;
+suppression/deletion must detect consequences and be Undoable.
+
+One controlled mutation boundary must commit operation state, geometry, dependency
+statuses and affected results consistently. Undo/Redo restores exact committed outcomes
+without generator replay. Synchronous partial success can be one transaction; async
+source+stale state and later accepted regeneration must be explicit transactions with
+stale-callback guards across Undo/Redo, Clear, Open and superseding edits. Navigation,
+mount effects and failed previews cannot create hidden history edits.
+
+**Manufacturing safety:** stale, failed or otherwise unvalidated geometry cannot silently
+be valid laser/export output. Independent valid output requires explicit scope and full
+validation; the availability/UX of partial export remains a design decision. No implicit
+export of last-known-good artifacts is allowed.
+
+Dependency graph representation, verified feature mapping, scheduling/async acceptance,
+generated-versus-authored ownership and regeneration algorithms remain design work.
+Fusion's warning/error repair workflow is behavioral inspiration; no claim is made that
+every implementation detail has been verified.
 Current within-sketch solver propagation and Construction reconciliation are useful
 foundations, not evidence that project-wide dependency propagation already exists.
 
@@ -246,7 +298,8 @@ Save/Open must restore a complete editable multi-module project. It must preserv
 information for editable source geometry; Drawing entities and persistent identities;
 Constraints and Dimensions; canonical Circle/Arc geometry; 3D extrusion definitions and
 assembly relationships; BOX construction state and manufacturing settings; Puzzle
-geometry/settings; cross-module source relationships; generated geometry and provenance;
+geometry/settings; permanent construction operations, parameters, input/output and
+dependency relationships, suppression/evaluation/diagnostic state; generated geometry and provenance;
 and appropriate project metadata and schema version.
 
 `DrawingDocumentV2`, Construction models and stored generated snapshots are current
@@ -258,8 +311,9 @@ technical design. **Approved:** native Open restores saved editable content into
 Undo/Redo session, with the loaded project as baseline; previous execution snapshots are
 not restored or required in the native file. Invalidate pending work from the previous
 runtime session, even when reopening the same project. Save alone does not reset current
-history. Descriptive journal serialization is a separate unresolved decision, as are
-viewport, selection and active-module disk preferences. In-session Undo/Redo activation
+history. Permanent construction history is required saved editable content, including
+repairable failed/blocked states. An optional descriptive journal is not a requirement;
+viewport, selection and active-module disk preferences remain unresolved. In-session Undo/Redo activation
 comes from the affected edit, never an obsolete saved tab.
 
 ## 7. Proposed delivery structure and unresolved decisions
@@ -271,16 +325,26 @@ history and transfer must build on designed ownership boundaries. Drawing-first 
 and dependencies need not wait for 3D. Later 3D and Puzzle integration must extend those
 boundaries rather than reopen accepted Circle/Arc stages.
 
+**Recommended implementation dependency plan, awaiting review:** B defines ownership,
+identity, persistent operations, transaction integration and dependency interfaces. C
+implements shared ownership and global Undo/Redo. A distinct **C.2 construction-history
+foundation** should implement operation maintenance/bindings and current-settings
+navigation before D's format freeze. D preserves the complete editable operation graph
+with fresh executable history on Open. E supplies tracking, controlled regeneration,
+warning/error propagation, reference repair and downstream management. C.2 is a proposed
+substage, not an approved implementation or status change; C must not silently absorb
+the full Stage E engine.
+
 The following remain unresolved, rather than implicitly approved implementations:
 
 | Design area | Questions requiring later decisions |
 | --- | --- |
 | Project ownership | Complete project-state boundary; wrapping/migration of existing models; module document ownership. |
-| History | Edit transaction granularity; exact restoration/storage and associated-module activation; journal retention/presentation; technical Clear/Open lifecycle gate and clean defaults. Navigation exclusion, permanent Clear and fresh Open history are settled. |
-| History editing | Durable operation/object references, identity after regeneration, missing/non-editable objects, stale settings and downstream conflicts; lifetime of panel entries beyond Undo retention. |
-| Persistence | Native format, schema/validation/migration, verifiable Save completion, descriptive journal serialization, viewports, selections and active-module preferences. Open never restores previous Undo/Redo snapshots. |
+| Undo/Redo | Edit granularity; exact store/restore contracts and lifecycle gate/defaults. Navigation exclusion, 30 edits, permanent Clear and fresh Open history are settled. |
+| Construction operations | Catalog/granularity, parameter bindings, output identity/mapping and legacy baseline migration; proposed C.2 and current-settings adapters. Permanent project ownership, persistence and independence from Undo capacity are settled. |
+| Persistence | Native format, operation/schema compatibility, validation/migration, Save completion and optional disk UI preferences. Operations/relationships must persist; Open never restores previous Undo/Redo snapshots. |
 | Geometry transfer | Source/derived ownership, supported transfer geometry, identity/provenance and compatibility with the existing straight-edge SVG importer. |
-| Dependencies | Representation, affected-work detection, regeneration, preservation of unaffected edits, incompatible changes and synchronization/conflict handling. |
+| Dependencies | Scheduling/async acceptance, coherent evaluation units, mapping/repair and generated/authored ownership; suppress/delete UX and independent manufacturing scope validation. Option A and no silent invalid export are settled. |
 | 3D | Kernel, topology, constraint handling, rendering/camera, surface versus thickened-solid extrusion, assembly representation and supported flattening/developability. |
 | Puzzle | Generation, joint types, uniqueness validation, manufacturing settings and UI, subject to existing roadmap commitments. |
 | Existing history migration | Analyze separate history ownership and Drawing history lifetime for global-history migration; preserve existing working behavior and keep the accepted deferred Arc empty/blind Undo limitation separate. |

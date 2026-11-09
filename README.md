@@ -13,12 +13,19 @@ The Drawing and imported/construction document models are currently separate. Se
 **Approved future direction — not implemented:** an optional connected workflow of
 **3D Modeling → 2D Drawing → BOX or Puzzle**, with BOX/Puzzle as parallel destinations
 and Drawing also usable independently. Simple 3D Modeling will focus on profile
-extrusion; one global history of 30 committed project edits, native project Save/Open and
-traceable downstream updates remain future work. Current SVG import/export serves BOX,
+extrusion; global Undo/Redo of 30 committed edits and a **separate permanent parametric
+construction history** remain future work. Construction operations retain editable current
+parameters/relationships, survive Undo eviction and persist with native projects; repeated
+Line dimension edits update the same operation. Native Save/Open and traceable downstream
+updates are also future work. Current SVG import/export serves BOX,
 and native Save/Open is not available. Revised requirements exclude module navigation
 from Undo history, preserve Redo during navigation, and open the affected edit's module
 on Undo/Redo. Clear offers Save and Clear / Clear Without Saving / Cancel; proceeding
-permanently resets project/history. Successful Open begins a fresh history baseline. See the
+permanently resets the project, construction history and Undo/Redo. Successful Open
+preserves saved operations/relationships while starting empty executable Undo/Redo.
+Approved Option A keeps valid source edits and compatible updates while preserving failed
+downstream operations for repair. Stale/unvalidated output cannot silently be valid laser
+export. Detailed architecture and the proposed C.2 foundation remain under review. See the
 [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) and
 [proposed development stages](ROADMAP.md#4-connected-product-development).
 

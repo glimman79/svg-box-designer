@@ -45,20 +45,23 @@ and downstream manufacturing geometry, with stable references and provenance. Dr
 transfer into BOX must respect the existing pipeline below. SVG import through Open
 always targets BOX, while native Open Project restores the whole editable project.
 
-Three separate responsibilities require technical design:
+The separate history systems and dependency boundary require technical design:
 
 | Responsibility | Approved target / open boundary |
 | --- | --- |
 | Global chronological history | One timeline of 30 reversible committed project edits across modules. Ordinary switches are UI navigation and preserve cursor/Redo without consuming capacity. Undo/Redo restore the full affected project state and open the edit's associated module; never restore an obsolete captured tab. Detailed store/transaction design remains proposed. |
-| History-panel editing navigation | Double-click locates/selects/reveals the object's current state and settings by stable identity; no rewind, Undo step or Redo mutation. A subsequent accepted edit is a normal transaction. Identity lifetimes, unmounted/unavailable targets and expired snapshots are covered in the Stage B proposal; journal retention remains open. |
-| Source-to-derived dependencies | Detect affected geometry and regenerate under controlled rules, preserving unaffected downstream edits and handling incompatible changes explicitly. Graph/update/conflict algorithms are unselected; Undo/Redo alone cannot provide this. |
+| Permanent parametric construction history / panel | Project-owned editable operation definitions, stable identities, current parameters, input/output refs and relationships persist without Undo/journal quotas. Repeated Line dimension edits update the same operation and add normal Undo transactions. Double-click reveals current settings without rewind/Redo mutation. Operation-to-entity mapping, grouping and migration remain proposed. |
+| Source-to-derived dependencies | Approved Option A keeps valid source edits, updates compatible branches and preserves failed/blocked definitions/refs and unaffected authored work for repair/removal. Explicit diagnostic states and no guessed refs/silent deletion. Exact mixed outcomes restore without replay; algorithms/repair UI remain unselected. |
 
 Native persistence must retain editable module data, canonical geometry, Constraints,
 Dimensions, extrusion/assembly definitions, construction/manufacturing and Puzzle state,
 source relationships/provenance and schema metadata. Native Open establishes the loaded
-project as a fresh baseline with empty Undo/Redo and no prior snapshots. Descriptive
-journal, active-module, viewport and selection serialization remain undecided. SVG
-export is a separate output.
+project as a fresh baseline with empty Undo/Redo and no prior snapshots. Permanent
+operation definitions/order, parameter bindings, dependencies and suppression/diagnostic
+states are required saved data. Disk UI preferences remain undecided; an optional
+descriptive journal is not construction history or an approved requirement. SVG export
+is separate: stale/failed/unvalidated artifacts cannot silently be valid manufacturing
+output. Independent valid export requires explicit scope and full validation.
 The target toolbar is Open → Save → Export → Clear → Fit to screen → Undo → Redo;
 Clear is a permanent project-wide session reset with Save and Clear / Clear Without
 Saving / Cancel. Reset only after successful Save for the save choice; failure/cancellation
@@ -66,7 +69,11 @@ leaves work/history untouched. Clearing itself never deletes or overwrites saved
 Clear/Open invalidate pending old-session callbacks. Fit uses active-module geometry;
 Undo/Redo uses global edit history. These product decisions were revised 2026-11-09;
 the complete [Stage B design](docs/GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md) remains
-under review. See the [full contract](docs/PRODUCT_ARCHITECTURE_VISION.md#5-global-toolbar-contract)
+under review. B defines operation/identity/transaction/dependency contracts; C supplies
+shared ownership/global Undo, a proposed separate C.2 supplies persistent operation
+maintenance before D Save/Open, and E supplies the full dependency/repair engine. C
+must not absorb all of E. The former bounded session-journal recommendation is superseded
+as construction history. See the [full contract](docs/PRODUCT_ARCHITECTURE_VISION.md#5-global-toolbar-contract)
 and [proposed staging](ROADMAP.md#4-connected-product-development).
 
 The earlier separate-history recommendation is superseded only as future direction;

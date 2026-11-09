@@ -3,7 +3,24 @@
 Entries record completed changes at their respective checkpoints. Current architecture
 and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
 
+## Documentation — Stage B permanent parametric history revision (2026-11-09)
+
+- Revised existing PR #629 for two separate systems: 30-transition global Undo/Redo
+  and persistent editable construction operations/relationships. Repeated Line parameter
+  edits update one operation; construction history survives Undo eviction and native Open.
+- Superseded bounded session-journal construction history; an event journal remains
+  optional/unapproved. Added operation/entity/incarnation model, Option A partial branch
+  success, diagnostics/repair/suppress/delete boundaries and invalid-export gates.
+- Proposed distinct C.2 operation foundation before D persistence/full E dependencies;
+  added 14 architectural acceptance scenarios and prioritized unresolved decisions.
+- Documentation only; no application source, tests, configuration, Stage C/E work or
+  new application acceptance. Existing CAD evidence and A–G statuses preserved; no merge.
+
 ## Documentation — Stage B history architecture revision (2026-11-09)
+
+> The bounded/session-journal assumptions at this earlier checkpoint are superseded
+> as construction history by the permanent parametric revision above. Other approved
+> navigation/Clear/Open behavior remains valid.
 
 - Revised PR #629's hybrid snapshot proposal throughout: 30 committed project edits,
   UI-owned module navigation preserving Redo, edit-associated Undo/Redo activation and

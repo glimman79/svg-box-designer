@@ -47,7 +47,21 @@ Ordinary module switches create no steps, consume no capacity and preserve curso
 Undo/Redo reverse/restore the latest global edit and open its associated module regardless
 of the visible module. Double-click reveals the referenced object's current state/settings
 without rewind or history/Redo mutation; only a later committed edit branches after Undo.
-Source-to-derived dependency propagation remains separate. The
+A separate permanent parametric construction history owns meaningful operation
+definitions, current editable parameters, stable operation/object identities and
+dependencies. Repeated Line dimension edits update the same operation while each
+accepted edit adds one Undo transaction. Operations persist with the native editable
+project, beyond Undo eviction and without an arbitrary journal quota. They are neither
+an event journal nor an audit/snapshot log. The prior bounded-journal proposal is
+superseded as construction history; a descriptive event journal is optional/unapproved.
+
+Approved Option A keeps a valid source edit, updates compatible branches and preserves
+failed/blocked operation definitions, parameters, refs and unaffected authored work for
+repair/removal. Suppress/delete detect dependent consequences and are Undoable. Exact
+snapshots restore geometry, operation state, results and diagnostics together without
+replay. Stale/failed/unvalidated artifacts cannot silently become valid laser/export
+output; independent export requires explicit validated scope. Detailed algorithms and
+UI remain design work. The
 [Stage B technical proposal](docs/GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md) is still
 under review; these decisions do not approve the complete architecture.
 
@@ -63,7 +77,11 @@ session boundary. These operations, global history, dependencies, 3D and Puzzle 
 remain future work.
 The [vision](docs/PRODUCT_ARCHITECTURE_VISION.md) owns full requirements and unresolved
 choices; the [Roadmap](ROADMAP.md#4-connected-product-development) owns proposed staging.
-Accepted Circle/Arc Stages 0–6 remain closed and unchanged.
+Accepted Circle/Arc Stages 0–6 remain closed and unchanged. Recommended sequencing,
+awaiting review: B contracts → C shared ownership/global Undo → distinct C.2 persistent
+construction-operation foundation → D complete native persistence → E dependency,
+regeneration, warning/error, repair and downstream management. C.2 is a proposed substage;
+all existing A–G statuses remain unchanged and no implementation is authorized here.
 
 ## 3. Document models and shared boundary
 
@@ -78,9 +96,10 @@ the conditionally mounted `DrawingWorkspace`, so switching away/back loses that 
 according to source inspection, while its document remains in `App`. Construction
 snapshots are capped at 10 and remain in `App`; they omit Drawing and active workspace.
 Neither is the required global timeline. Native Save/Open is unimplemented; model
-validation and snapshots do not establish complete project persistence. Descriptive
-journal, active-module, selection and viewport serialization remain open; previous
-Undo/Redo snapshots are not restored by native Open.
+validation and snapshots do not establish complete project persistence or permanent
+parametric construction history. Future operations/relationships must persist; optional
+active-module, selection and viewport serialization remain open. Native Open starts
+empty executable Undo/Redo without previous snapshots.
 
 ## 4. 2D Drawing architecture
 
