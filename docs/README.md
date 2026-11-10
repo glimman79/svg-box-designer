@@ -6,6 +6,11 @@ Root-level [`REGLER_FOR_CHATT_MED_CHATGPT.md`](../REGLER_FOR_CHATT_MED_CHATGPT.m
 
 ## Approved future product requirements
 
+- [GLOBAL_WORKSPACE_UI_SPECIFICATION.md](GLOBAL_WORKSPACE_UI_SPECIFICATION.md) — approved
+  seven-region shared workspace placement, contextual controls and operation-timeline
+  interactions for Drawing, BOX, Puzzle and future modules. UI-1–UI-4 are proposed and
+  unimplemented; integration depends on C/proposed C.2, D persistence and E dependencies.
+  Refines canvas-only Fit placement without changing A–G stage statuses or CAD semantics.
 - [PRODUCT_ARCHITECTURE_VISION.md](PRODUCT_ARCHITECTURE_VISION.md) — explicitly designated
   detailed authority for connected product requirements approved on 2026-11-03 and
   history/navigation/Clear/Open decisions revised on 2026-11-09:

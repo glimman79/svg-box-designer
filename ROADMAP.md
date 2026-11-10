@@ -1144,7 +1144,7 @@ begun by recording this vision.
 
 | Stage | Status | Scope and dependency |
 | --- | --- | --- |
-| A — Shared toolbar | **PLANNED / NOT STARTED** | Keep Open, Save, Export, Clear, Fit to screen, Undo, Redo consistently visible and ordered. Use explained disabled states until correct behavior exists; do not expose Construction-only Clear as project-wide or isolated history as global. Module tools remain contextual. |
+| A — Shared toolbar | **PLANNED / NOT STARTED** | Consistent top-bar module navigation, project commands (Open, Save, Export, Clear) and Undo/Redo; Fit stays only beside canvas zoom. Module tools use the left toolbar; relevant Apply/Finish Group controls are contextual on canvas. Use explained disabled states until correct behavior exists; do not expose Construction-only Clear as project-wide or isolated history as global. See the Global Workspace UI specification below. |
 | B — Global project/history architecture design | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Define ownership, stable operation/entity identities, persistent editable operation model, parameter bindings, transaction/restore integration and dependency/evaluation interfaces. Require one logical action for source edits and all automatic async consequences; compare pending contracts. Separate 30-step Undo from permanent construction history. Analyze migration without changing accepted Drawing/BOX semantics or deferred Arc status. |
 | C — Global history implementation | **PLANNED / NOT STARTED** | After B, implement shared project ownership and 30 reversible committed edits across supported modules; reserve complete operation/relationship/evaluation state plus pending-action admit/finalize/suspend/resume/abandon and lifecycle guards, preserving compatibility with E's responsive-authoring contract; synchronous actions seal immediately. Navigation preserves cursor/Redo; Undo/Redo restores exact outcomes and opens the edit's module. Proposed distinct C.2 below supplies permanent operation maintenance and current-settings navigation; C does not implement the full E engine. Preserve accepted CAD transactions. |
 | D — Native Save/Open | **PLANNED / NOT STARTED** | After B, C restore and the proposed C.2 operation foundation, preserve complete editable module state, operations/order/parameters, identities, relationships, suppression/diagnostics and authority artifacts. Open Project starts empty executable Undo/Redo; SVG Import always targets BOX. No replay on Open; reject stale callbacks. Save is separate from Export; disk UI preferences remain open. |
@@ -1207,3 +1207,26 @@ limitations for Stage B to analyze against the global-history requirements. Pres
 existing working behavior, prior Stage 6 browser acceptance and the separately deferred
 Arc empty/blind Undo limitation; the closed Circle/Arc migration is not reopened.
 R1–R3 and unimplemented R5 retain their recorded status.
+
+## Global Workspace UI delivery slices
+
+**Approved UI requirements; proposed sequencing — all UI milestones NOT IMPLEMENTED.**
+The [Global Workspace UI Specification](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md)
+owns the seven regions, interaction requirements and detailed acceptance criteria.
+These slices complement A–G without renumbering or changing any existing stage status.
+Canvas-only Fit supersedes the earlier future top-bar placement requirement; its
+functionality and all accepted tool/Undo behavior must be preserved.
+
+| UI milestone | Proposed scope | Dependency and acceptance boundary |
+| --- | --- | --- |
+| UI-1 — Shared workspace shell | Top/module navigation, project-command and Undo/Redo regions, module-specific left toolbar and shared boundaries. | May ship early within A; Drawing/BOX remain functional and future modules fit. No Undo changes or false claims of global command/history implementation. |
+| UI-2 — Contextual canvas controls | Remove top Fit, retain canvas Fit, relocate relevant Apply/Finish Group using the contextual constraint-control concept. | May follow UI-1 early; preserve accepted actions, multi-step/cancel/incomplete states and Undo boundaries. Controls appear only when relevant without unnecessarily obscuring geometry. |
+| UI-3 — Construction-history timeline shell | Shared horizontal bottom layout, scrolling, selection/navigation boundaries, labels/icons/diagnostic space. | Can precede complete C.2, but must integrate with its stable-reference boundary. Preserve module-switch context; no workflow-group relabelling or throwaway history model. |
+| UI-4 — Construction-history integration | Persistent operations, in-place/current-settings editing, diagnostics/repair and Undo/dependency synchronization. | Requires C shared project/global Undo, proposed C.2 operations/bindings and appropriate E foundations; D is required for native saved-history behavior. New operations add entries; edits retain identity; invalid/blocked definitions remain accessible; native Open retains operations with a fresh Undo tape. |
+
+F — Simple 3D Modeling remains optional future integration, and G — Puzzle uses the
+same workspace when implemented. Neither is made available by a UI shell. UI-4 cannot
+be implemented independently of C/C.2 and E; coordinate with D rather than duplicate
+persistence/history work. Stage B remains the merged technical reference with its
+requirements/proposals distinction intact; no application implementation is authorized
+or completed by recording these slices.

@@ -983,6 +983,23 @@ Existing CAD/acceptance evidence, separate permanent construction history, A–G
 Circle/Arc closure, Drawing semantics and BOX stored authority remain unchanged. Push
 to existing PR #629 and stop for architecture review; no new PR or merge.
 
+### 11.32 Global Workspace UI specification (2026-11-10)
+
+Recorded the approved seven-region workspace contract in
+[Global Workspace UI Specification](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md): shared
+bottom permanent construction history, module-specific left tools, top module navigation,
+project commands and global Undo/Redo, canvas-only Fit, and relevant contextual canvas
+Apply/Finish Group. Canvas-only Fit supersedes the earlier future top-bar placement;
+functionality and accepted tool/transaction semantics remain protected.
+
+UI-1 shell → UI-2 contextual controls → UI-3 timeline shell → UI-4 operation integration
+is proposed, not implemented. UI-4 requires C/proposed C.2 and E foundations, with D for
+native saved history. Existing workflow-group History is not the required operation model.
+Stage B's separate persistent operations and 30-action Undo tape, Option A, native Open/
+Save/Clear contracts, all A–G statuses and accepted CAD/historical evidence are preserved.
+No application source, tests, configuration or generated artifacts changed; no new
+application test or browser acceptance result is claimed.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics

@@ -3,6 +3,16 @@
 Entries record completed changes at their respective checkpoints. Current architecture
 and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
 
+## Documentation — Global Workspace UI specification (2026-11-10)
+
+- Added approved seven-region workspace requirements and proposed UI-1–UI-4 sequencing,
+  aligned with existing A–G labels and C/proposed C.2/D/E dependencies.
+- Specified a shared permanent operation timeline separate from global 30-step Undo/Redo,
+  module tools/navigation, project commands, canvas-only Fit and contextual Apply/Finish
+  Group; preserved Option A, accepted tool boundaries and native Save/Open/Clear semantics.
+- Documentation only: no UI implementation, stage-status changes, new application tests
+  or browser acceptance. Existing CAD evidence and Stage B recommendations are retained.
+
 ## Documentation — Stage B global tape-recorder architecture revision (2026-11-09)
 
 - Revised existing PR #629: one completed state-changing user action, including all

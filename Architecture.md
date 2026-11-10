@@ -62,7 +62,14 @@ states are required saved data. Disk UI preferences remain undecided; an optiona
 descriptive journal is not construction history or an approved requirement. SVG export
 is separate: stale/failed/unvalidated artifacts cannot silently be valid manufacturing
 output. Independent valid export requires explicit scope and full validation.
-The target toolbar is Open → Save → Export → Clear → Fit to screen → Undo → Redo;
+The target top bar groups module navigation, project commands and Undo/Redo, retaining
+Open → Save → Export → Clear → Undo → Redo order. The approved
+[Global Workspace UI Specification](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md) moves Fit
+exclusively beside canvas zoom, module tools to the left and relevant Apply/Finish Group
+controls onto the canvas, with shared permanent construction history at the bottom.
+UI-1–UI-4 are proposed, unimplemented delivery slices; UI-4 requires C/C.2, D for saved
+history and E for dependency diagnostics/repair. Placement changes preserve accepted
+tool/Undo semantics and do not implement global ownership or native commands.
 Clear is a permanent project-wide session reset with Save and Clear / Clear Without
 Saving / Cancel. Reset only after successful Save for the save choice; failure/cancellation
 leaves work/history untouched. Clearing itself never deletes or overwrites saved files.
