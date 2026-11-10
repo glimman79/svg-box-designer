@@ -11,6 +11,11 @@ current/target boundaries, and [PROJECT_HISTORY.md](../PROJECT_HISTORY.md#1127-c
 records this decision and superseded recommendations. Explicit future requirements here
 are authoritative for this scope; historical analyses do not override them.
 
+The [Global Workspace UI Specification](GLOBAL_WORKSPACE_UI_SPECIFICATION.md) owns the
+approved seven-region workspace layout and contextual controls. It refines placement
+without implementing these requirements or changing A–G status; its UI-1–UI-4 sequence
+is a proposed incremental plan, dependent on the existing project/history foundations.
+
 ## 1. Status and documentation inventory
 
 The inventory and source inspection used GitHub `main`
@@ -328,9 +333,16 @@ foundations, not evidence that project-wide dependency propagation already exist
 
 ## 5. Global toolbar contract
 
-The common controls must remain consistently visible and ordered across all modules:
+The top bar must consistently group module navigation, project commands and Undo/Redo.
+Keep the shared project controls ordered across modules:
 
-**Open → Save → Export → Clear → Fit to screen → Undo → Redo**
+Project control order: **Open → Save → Export → Clear → Undo → Redo**.
+
+The approved [workspace UI placement](GLOBAL_WORKSPACE_UI_SPECIFICATION.md#3-seven-approved-ui-regions)
+supersedes the earlier top-bar Fit requirement: Fit appears only with canvas zoom
+controls. Module tools occupy the left toolbar; Apply/Finish Group are contextual canvas
+controls only where relevant; permanent construction history is a shared bottom timeline.
+Relocation preserves tool acceptance, cancellation and Undo boundaries.
 
 Unavailable functionality may be disabled with a clear explanation. Module-specific
 tools remain contextual. The present conditional Construction/Drawing action groups
@@ -342,7 +354,7 @@ do not yet implement this contract.
 | Save | Preserve the complete editable project across relevant modules, including source relationships and downstream authoring state. | Disabled placeholder today; native format, serialization and restoration require design. |
 | Export | Produce output for the relevant manufacturing/downstream use case; behavior may differ by module. | Current Construction SVG export does not establish Drawing, 3D or Puzzle export. Export is distinct from Save. |
 | Clear | Permanent whole-project session reset, never Undoable. Offer Save and Clear / Clear Without Saving / Cancel. Save and Clear requires successful complete native Save; failure/cancellation leaves project/history untouched. Reset all project/module states and Undo/Redo into a clean empty session; clearing itself never deletes or overwrites saved files. | Existing Construction-only Clear is insufficient. Session/async guards must prevent stale callbacks repopulating the project. First Save requests a destination; save completion must be verified. See Stage B §10 for the proposed lifecycle gate. |
-| Fit to screen | Compute bounds from relevant geometry in the active module; eventually use suitable 3D viewport fitting for 3D geometry. | Drawing's current fixed view reset is insufficient. Bounds policy and the 3D camera design remain open. |
+| Fit to screen (canvas only) | Keep alongside canvas zoom; remove the redundant top-bar control while preserving functionality. Viewport action, no construction entry or Undo step. Compute bounds from relevant active-module geometry; eventually use suitable 3D fitting. | Drawing's current fixed view reset is insufficient. Bounds policy and the 3D camera design remain open; relocation does not implement them. |
 | Undo / Redo | Use the single 30-edit global timeline; automatically open the affected edit's module. Navigation preserves Redo and consumes no steps. | Current toolbar controllers route to isolated histories. Transaction and persistence architecture remain open. |
 
 ## 6. Native project persistence

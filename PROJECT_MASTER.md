@@ -21,6 +21,8 @@ status are independent. Historical proposals and diagnostics under `docs/` are n
 current authority. [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md)
 is explicitly designated as the detailed approved future-requirements document for
 the connected product; it does not describe implemented capabilities.
+[Global Workspace UI Specification](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md) owns the
+approved seven-region layout and interactions; UI-1–UI-4 remain proposed/unimplemented.
 
 ## 2. Product organization
 
@@ -79,7 +81,13 @@ authoring; the single-slot model may need significant evolution and C/D must pre
 compatibility (Stage B §11). Global authoring lockout is not a permanent approved requirement;
 lifecycle/attempt guards must reject obsolete results. No implementation is included here.
 
-The common toolbar order is **Open, Save, Export, Clear, Fit to screen, Undo, Redo**.
+The shared top bar groups module navigation, project commands and Undo/Redo; the command
+order remains **Open, Save, Export, Clear, Undo, Redo**. The approved
+[workspace UI specification](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md#3-seven-approved-ui-regions)
+supersedes the earlier top-bar Fit placement: Fit stays only beside canvas zoom controls.
+Module tools belong on the left, Apply/Finish Group become relevant contextual canvas
+controls, and permanent construction history belongs at the bottom. These are future
+placement requirements, not implemented changes or new transaction boundaries.
 Open offers Open Project and Import SVG; SVG import always targets BOX. Native Save/Open
 must restore the complete editable project and its source relationships; Export remains
 output-oriented. Clear offers Save and Clear / Clear Without Saving / Cancel and
