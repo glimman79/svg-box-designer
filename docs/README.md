@@ -35,11 +35,12 @@ These documents analyze a bounded subsystem. Some contain implementation-era bas
   decisions: a 30-action global Undo/Redo tape, one step per completed state-changing
   action including all async automatic consequences, a distinct persistent operation
   model, Option A and invalid-export gates. Compares three async models; recommends one
-  pending slot with immutable finalization, serialized admission and explicit pending
-  Undo/Redo/Save/Export/lifecycle contracts. Supersedes separate source/result Undo steps
+  pending slot with immutable finalization, possible initial serialized admission and
+  explicit pending Undo/Redo/Save/Export/lifecycle contracts. Supersedes separate source/result Undo steps
   and bounded-journal construction history; proposed C.2 remains under review before
-  D/full E. Navigation, permanent Clear and fresh Open tape remain. No implementation
-  or roadmap-status change.
+  D/full E. Stage E must refine scheduling for responsive unrelated authoring; single-slot
+  compatibility risk is explicit. Navigation, permanent Clear and fresh Open tape remain.
+  No implementation or roadmap-status change.
 - [DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md](DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md)
   — historical Drawing design evidence. Its §16 recommendation for Drawing-owned
   snapshot history is superseded as long-term direction by the approved global history

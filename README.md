@@ -28,10 +28,11 @@ Approved Option A keeps valid source edits and compatible updates while preservi
 downstream operations for repair. Stale/unvalidated output cannot silently be valid laser
 export. One completed action includes every automatic consequence even when asynchronous;
 completion cannot create another Undo step. Creation/deletion restores exact identities.
-Stage B recommends one pending action that finalizes the same position, with further edit
-acceptance waiting, pending Undo/Redo guards, Save waiting/cancelling and pending Export
-blocked. That responsiveness tradeoff, detailed architecture and proposed C.2 remain
-under review; no Stage C/C.2/D/E implementation is included. See the
+Stage B proposes an initial serialized pending-action baseline that finalizes the same
+position. Its authoring wait is temporary: Stage E must refine dependency-aware scheduling
+for responsive unrelated editing while preserving one Undo position per accepted action.
+That scheduling design, detailed architecture and proposed C.2 remain under review;
+no Stage C/C.2/D/E implementation is included. See the
 [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) and
 [proposed development stages](ROADMAP.md#4-connected-product-development).
 

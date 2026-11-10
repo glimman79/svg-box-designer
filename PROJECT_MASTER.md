@@ -72,10 +72,12 @@ under review; these decisions do not approve the complete architecture. Its form
 source/stale transaction plus second regeneration transaction is superseded. The current
 recommendation reserves one pending action, stages automatic results and seals the same
 tape position once. Pending Undo suspends; unfinished Redo resumes captured inputs;
-completed Redo restores the exact final frame. Further edits wait with explicit busy
-feedback; navigation remains available. Save waits/cancels, Export blocks pending output,
-and lifecycle/attempt guards reject obsolete results. This admission/latency tradeoff and
-bounded scheduling budgets require review, not implementation here.
+completed Redo restores the exact final frame. In this possible initial serialized baseline,
+further edits wait visibly; navigation remains available, Save waits/cancels and pending
+Export blocks. Stage E must refine dependency-aware scheduling for responsive unrelated
+authoring; the single-slot model may need significant evolution and C/D must preserve
+compatibility (Stage B §11). Global authoring lockout is not a permanent approved requirement;
+lifecycle/attempt guards must reject obsolete results. No implementation is included here.
 
 The common toolbar order is **Open, Save, Export, Clear, Fit to screen, Undo, Redo**.
 Open offers Open Project and Import SVG; SVG import always targets BOX. Native Save/Open

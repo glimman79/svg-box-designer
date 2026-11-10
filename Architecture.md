@@ -77,9 +77,11 @@ must not absorb all of E. The former bounded session-journal recommendation is s
 as construction history. The former two-transaction source/regeneration recommendation
 is also superseded: the current async recommendation stages one pending logical action
 and seals that same slot. Pending Undo suspends, unfinished Redo resumes captured inputs,
-and sealed Redo restores the exact result. New edits wait with visible busy feedback;
-navigation remains usable. Save waits/cancels and pending Export blocks. This latency
-tradeoff and worker budgets require review in Stage B §11, not application changes.
+and sealed Redo restores the exact result. In this possible initial serialized baseline,
+new edits wait visibly; navigation remains usable, Save waits/cancels and pending Export
+blocks. Stage E must refine dependency-aware scheduling for responsive unrelated authoring;
+the single-slot model may need significant evolution and C/D must preserve compatibility
+(Stage B §11). Global authoring lockout is not a permanent approved requirement.
 See the [full contract](docs/PRODUCT_ARCHITECTURE_VISION.md#5-global-toolbar-contract)
 and [proposed staging](ROADMAP.md#4-connected-product-development).
 

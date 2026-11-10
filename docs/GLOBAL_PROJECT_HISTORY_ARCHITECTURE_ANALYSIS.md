@@ -5,8 +5,8 @@ separately from technical recommendations; the complete Stage B architecture is 
 
 Repository: `glimman79/svg-box-designer`. Source baseline:
 `97469bd8274edae335254188dc8805f1141dc874`.
-Investigation date: 2026-11-05; product-decision revisions: 2026-11-09.
-This final revision adds the approved global tape-recorder behavior, including one
+Investigation date: 2026-11-05; product-decision revisions: 2026-11-09; final alignment: 2026-11-10.
+This revision retains the approved global tape-recorder behavior, including one
 logical Undo action for a source edit and all asynchronous automatic consequences. It
 retains the separate permanent parametric construction history and approved Option A.
 No application implementation, refactoring, test change,
@@ -63,8 +63,10 @@ Only a newly accepted, valid state-changing user action after Undo abandons Redo
 navigation never does. One completed creation, deletion, edit or gesture consumes one
 position, including every automatic solver/dependency consequence. Async completion
 never adds another position. Recommend one pending logical action with serialized edit
-admission (§11): Undo suspends it, unfinished Redo resumes it, and sealed Redo restores
-its exact complete result. This pending architecture and its UI tradeoffs need review.
+admission as a possible initial implementation baseline (§11): Undo suspends it,
+unfinished Redo resumes it, and sealed Redo restores its exact complete result.
+Dependency-aware responsive authoring remains required; Stage E must refine scheduling
+without making this baseline's global wait a permanent product restriction.
 
 **Approved product decisions (2026-11-09):** Clear is a permanent, project-wide session
 reset with Save and Clear / Clear Without Saving / Cancel; a failed or cancelled save
@@ -451,7 +453,8 @@ App / project session (lifetime exceeds every module view)
       identity registry + ConstructionHistory (definitions, order, evaluation records)
       dependency records (schema reserved now, execution in Stage E)
     HistoryService: at most 30 logical transitions, cursor, per-action metadata
-      at most one pending position; immutable seed/staging; sealed before/after frames
+      initial serialized baseline: one pending position; immutable seed/staging
+      sealed before/after frames; future responsive scheduling contract in §11
   UiSession: active module, selections, views, editors, gesture previews
   DerivedRuntime: reference indexes, solver/rank/DOF, bounds, FinalGeometry caches
   Module views: read selected state; submit accepted candidate transactions
@@ -610,7 +613,7 @@ type ReversibleTransition = SealedTransition | PendingTransition;
 interface HistoryBuffer {
   transitions: readonly ReversibleTransition[]; // at most 30, pending included
   cursor: number; // [0, transitions.length]; next Undo is cursor - 1
-  // At most one pending position, at the end; none can have a successor.
+  // Serialized baseline only: one pending position at the end, without successors.
 }
 
 interface PreparedTransaction {
@@ -638,6 +641,8 @@ interface ProjectTransactionService {
 ```
 
 Request/result/token types above describe proposed boundaries, not a callable API.
+The one-pending-slot restriction describes the initial serialized baseline; Stage E's
+responsive-authoring compatibility requirement and bounded risk are defined in §11.
 `EvaluationInputDescriptor`, `PreparedOutcome` and `FinalizeResult` are conceptual
 contracts defined by §11, not Stage E implementations. Metadata is frozen per accepted
 user action; the associated module is not whichever module displays a later result.
@@ -715,7 +720,7 @@ the product's logical action remains **DECISION D4**. Do not silently reinterpre
 current callback granularity. Separate workflow actions and Apply stay distinct when
 they are distinct accepted user actions; a helper's internal setters are not entries.
 
-For future asynchronous automatic consequences, use the single pending action and
+For the initial serialized baseline's asynchronous consequences, use the pending action and
 guarded finalization contract in §11. Jobs return data to that action's staging area;
 they cannot invoke ordinary commit or consume a second Undo position. Undo/Redo,
 Open/Clear and branch abandonment invalidate attempts. Unmount invalidates view-bound
@@ -849,6 +854,15 @@ not mean that user-deleted operations remain forever or that abandoned Undo bran
 are archived. Suppressed operations remain definitions. Resource limits must be explicit
 and reviewed, without silently evicting current definitions. No arbitrary quota is selected.
 
+Every completed meaningful construction operation has an editable entry: Line, Circle,
+Arc, profile, independently authored geometric relationship/Constraint or Dimension,
+BOX construction, finger joints and other geometry/manufacturing operations. Multi-click
+tools create entries at their accepted completion boundaries, not per click. Profile
+retains one operation per accepted segment; grouping may organize those operations
+without hiding their definitions/editability. Automatic solver consequences belong to
+the originating action; editing an existing definition updates it in place. Tool/panel
+opening, selection and unfinished previews create no construction operation or Undo step.
+
 ### Proposed persistent model and identity
 
 **PROPOSAL, not a production API or final file schema:**
@@ -940,11 +954,11 @@ or live references require them. Deleted operations need not retain whole geomet
 | Existing domain | Recommended construction mapping / protected boundary |
 | --- | --- |
 | Standalone Line | One creation operation for the accepted segment. Editing a driving length updates that operation's binding/current parameter; solver consequences and the operation update share one Undo transaction. |
-| Profile | Preserve each accepted completed segment and exactly-once delayed-click boundary. Recommend per-segment operations initially; a grouped Profile presentation may reference them. Grouping granularity needs review and never changes accepted geometry or chain completion. |
+| Profile | Preserve each accepted completed segment as an editable operation and the exactly-once delayed-click boundary; a grouped Profile presentation may reference those operations. Grouping UI needs review and never changes accepted geometry or chain completion. |
 | Drawing sketches | Operations carry sketch scope; sketch points/entities/order remain in DrawingDocumentV2. A sketch/container operation and grouping UX need review. Independent sketches require no cross-module link. |
-| Dimensions / Constraints | Retain shared semantic records and driving/reference distinctions. A driving dimension binds current intent; a reference dimension measures and cannot drive geometry. Intrinsic Circle/Arc equations remain runtime entity equations, never visible user operations. Whether adding a meaningful Dimension/Constraint gets its own visible operation is unresolved; no entry per solver mutation or glyph move. |
-| Circle / Arc | Bind to existing canonical center/radius and Arc endpoints/orientation. No tessellated circle, bulge, persisted derived center/angle or reinterpretation of Arc P3. Accepted solver, grip, topology and presentation behavior remains unchanged. |
-| BOX | Preserve source → PM → construction → generation → composition → reconciliation → FinalGeometry → compensation → preview/export. Meaningful import/construction/Apply operations may have multiple outputs. Do not wrap every setter or cache as an operation, rerun authority selection on restore, or imply current GeometryOperation already implements this model. Exact visible PM/Apply/TB/W/S grouping needs review. |
+| Dimensions / Constraints | Retain shared semantic records and driving/reference distinctions. A driving dimension binds current intent; a reference dimension measures and cannot drive geometry. An independently authored meaningful Dimension or relationship/Constraint has its own editable operation; adding one does not duplicate the Line producer. Grouped acceptance may link multiple definitions within one Undo action. Intrinsic Circle/Arc equations remain runtime entity equations; no entry per solver mutation or glyph move. Exact grouping/bindings need C.2 design. |
+| Circle / Arc | One operation per completed creation, bound to existing canonical center/radius and Arc endpoints/orientation. No tessellated circle, bulge, persisted derived center/angle or reinterpretation of Arc P3. Accepted solver, grip, topology and presentation behavior remains unchanged. |
+| BOX | Preserve source → PM → construction → generation → composition → reconciliation → FinalGeometry → compensation → preview/export. Each meaningful construction, finger-joint or other manufacturing operation has an editable definition and may have multiple outputs. Do not wrap every setter or cache as an operation, rerun authority selection on restore, or imply current GeometryOperation already implements this model. Exact visible PM/Apply/TB/W/S grouping needs review without omitting meaningful operations. |
 | Future Modeling / Puzzle | Reserve module, versioned kind, parameters, qualified inputs/outputs and evaluation capability. Future stages define their types/algorithms. Puzzle does not depend on BOX; no extrusion kernel or puzzle generator is invented here. |
 
 In the required Line example, creation at 30 mm yields construction operation O and
@@ -953,6 +967,12 @@ transaction T1. Accepting 50 mm yields T2 with **the same O** and updated curren
 Redo restores 70 mm. Adding a separate Dimension is a distinct semantic authoring action,
 not evidence that editing its value should append another Line operation. Policy for
 standalone Dimension/Constraint operations must not duplicate the Line definition.
+
+For Line A at 50 mm → BOX → finger joints, double-click A and accept 70 mm: update A
+in place, re-evaluate affected Drawing geometry/constraints, BOX and finger joints in
+dependency order, and record one Undo action including all results/diagnostics. Preserve
+valid later operations and mark incompatible ones (§11). No Undo rewind is needed;
+creating a genuinely new operation afterward adds its own entry and Undo action.
 
 Legacy current geometry has no reconstructible full construction chronology. Recommend
 explicit imported/baseline operations with preserved module state and stable identities,
@@ -977,8 +997,8 @@ Selection targets semantic Dimensions/Constraints/SketchPoints, never SVG glyph 
 | Action | Conceptual contract |
 | --- | --- |
 | Edit | Inspect current parameters; accepted change transacts through the one project boundary. |
-| Review Warning/Error | Show failure reason, missing inputs, last evaluation and affected downstream operations; inspection creates no edit. |
-| Repair Reference | User explicitly supplies a compatible replacement; validate mapping and regenerate affected closure; one accepted edit, no guessed reference. |
+| Review Warning/Error | Select/click a visibly marked operation to identify it, see why it failed or is blocked and the responsible dependency/reference, and open its current editable settings where supported; inspection creates no edit. Distinguish the actual failure from blocked consumers. |
+| Repair parameters/reference | Where possible, accept corrected parameters or an explicitly supplied compatible reference; validate and re-evaluate the affected closure in one Undo action. No guessed reference or silent removal of later authored operations; not every error is repairable. |
 | Suppress / Unsuppress | Keep definition/parameters/references; exclude suppressed output from current evaluation; analyze dependents and commit consequences (§11). |
 | Delete | Show dependent impact; remove selected definition without silently cascading authored work; preserve broken refs/diagnostics in retained dependents (§11). Undoable. |
 
@@ -1156,6 +1176,14 @@ Independent Drawing and BOX projects with no cross-module edges are valid. Navig
 creates neither operations nor dependencies. Future Modeling/Puzzle use the same boundary
 without selecting their algorithms or making BOX a Puzzle prerequisite.
 
+**REQUIREMENT.** Invalidation follows explicit inputs and their membership/version rules,
+not module names. An input may be an entity, profile/contour, sketch or explicitly defined
+source set. Creating unrelated Circle B adds one operation and one Undo action without
+regenerating BOX A that references only Line A. It may affect a consumer whose referenced
+profile/sketch/set actually changes. Evaluate only the affected downstream closure in
+dependency order, including necessary coupled solver/composition units; unrelated valid
+operations retain their exact state.
+
 ### Proposed dependency and evaluation contracts
 
 ```ts
@@ -1199,8 +1227,12 @@ must not use timestamps, local labels or the Undo cursor as geometry identity.
 | Blocked | Required upstream result is missing, failed, stale or suppressed; retain authored work and causal diagnostic. |
 | Suppressed | Explicitly disabled definition, preserved for unsuppression/Undo; output is not an active manufacturing contribution. |
 
-Diagnostics identify reason/code, input/operation refs and affected downstream operations.
-An error at one producer can block consumers while independent branches remain valid.
+**REQUIREMENT.** Every affected operation that cannot evaluate correctly has its own
+appropriate visible diagnostic state. The panel exposes all six states (with pending
+shown explicitly), identifies the actual failure versus blocked consumers, and supports
+inspection/current-settings navigation and supported repair as defined in §9.
+Diagnostics identify reason/code, responsible input/operation refs and affected downstream
+operations. An error at one producer can block consumers while independent branches remain valid.
 Last-known-good artifacts may aid comparison/repair, with visible stale/error treatment;
 they must not masquerade as current geometry. Exact styling and diagnostic catalog need design.
 
@@ -1265,21 +1297,34 @@ hybrid (Alternative C in §6), not replacement of its exact restoration contract
 | --- | --- | --- | --- |
 | 1. Complete before final publication | Keep the entire candidate detached until every branch is terminal; append one final before/after pair. | Undo must cancel the visible in-progress intent before traversing older history. Retaining unfinished intent for Redo requires a provisional tape slot, converging on alternative 2. Later edits must wait or branch from speculative state. | Strong snapshot isolation; delayed visibility and ambiguous unfinished Redo unless explicitly modelled. Viable if pending intent is wholly unaccepted, but less useful for a valid source already accepted. |
 | 2. One pending logical action, serialized admission | Accept the validated source into one pending slot with immutable before/seed; collect results off-store; atomically seal that same slot once. | Undo suspends that slot; Redo resumes it from captured inputs. Block new project-edit acceptance until it seals or is undone; navigation remains available. | **RECOMMENDED for review.** Bounds complexity and incomplete work; preserves exact sealed frames and single-step behavior. Costs authoring latency while pending. |
-| 3. Concurrent actions with immutable versioned evaluation graph | Give every action its own immutable input node and resolved outcome; publish a rebuilt coherent suffix only after required nodes settle. Never patch shared historical roots. | Several accepted edits can overlap, but Undo/Redo must address every unresolved node; successors cannot safely use missing predecessor outcomes without explicit dependency/rebase rules. | Potentially more responsive. Requires bounded admission, deterministic per-action evaluation, cancellation, dependency-aware suffix rebuild and resource accounting; reject naive last-result-wins/coalescing that loses accepted edits. Defer unless alternative 2's measured latency is unacceptable. |
+| 3. Concurrent actions with immutable versioned evaluation graph | Give every action its own immutable input node and resolved outcome; publish a rebuilt coherent suffix only after required nodes settle. Never patch shared historical roots. | Several accepted edits can overlap, but Undo/Redo must address every unresolved node; successors cannot safely use missing predecessor outcomes without explicit dependency/rebase rules. | Possible later strategy, not selected here. Requires bounded admission, deterministic per-action evaluation, cancellation, dependency-aware suffix rebuild and resource accounting; reject naive last-result-wins/coalescing that loses accepted edits. Stage E refines scheduling to meet responsive-authoring requirements. |
 
-The recommendation deliberately serializes **accepted project edits**, including edits
+The possible initial baseline serializes **accepted project edits**, including edits
 to unrelated modules. It does not silently merge rapid dimension edits, enlarge the
 30-step capacity or introduce a queue of accepted but invisible actions. Busy controls
 explain the pending action and offer Undo; module navigation, inspection and view changes
 remain usable. A request at the busy gate is **not accepted**, is not saved, changes no
 project/history state and is not automatically replayed. The user resubmits after
-settlement. This responsiveness tradeoff is a technical/UI recommendation awaiting
-architecture review, not an additional approved product restriction. If review requires
-multiple edits to be accepted concurrently, design alternative 3 before implementation;
-do not claim that the serialized model already supports them.
+settlement. These busy-gate rules and the single-slot protocols below describe that
+baseline only; they are not a permanent approved authoring restriction.
 
-Place the busy gate before a tool accepts a placement or field value. Never accept a
-click and then drop it as busy, or change a multi-click tool's completion/cancellation
+**REQUIREMENT / FUTURE E.** Long-term authoring must remain dependency-aware and responsive:
+an unrelated Drawing creation must not wait for unrelated BOX regeneration merely because
+a module is busy. Every accepted action keeps its own logical Undo position and all its
+automatic consequences; no accepted interaction may be silently lost. Old async results
+cannot overwrite newer geometry, and Undo/Redo must restore coherent geometry, operation
+definitions, relationships and statuses. Stage E must refine concurrency/scheduling to
+meet this contract; no concurrent-edit solution is selected or claimed solved here.
+
+**Bounded architectural risk:** the proposed single pending slot forbids successors and
+assumes each next before-frame is a sealed predecessor. Supporting overlapping accepted
+edits may therefore require significant changes to pending storage/publication. C/D must
+preserve the identity, per-action ordering, immutable-state and serializable-content
+boundaries so E can evolve that mechanism without changing approved product behavior.
+Review that compatibility in C's protocol design; defer the scheduling solution to E.
+
+For an initial serialized implementation, place the busy gate before a tool accepts a
+placement or field value. Never accept a click and then drop it as busy, or change a multi-click tool's completion/cancellation
 meaning. D4 must review waiting feedback and accepted-click ownership, including Profile
 continuation. If serialized admission cannot preserve those accepted semantics, choose
 alternative 3 before implementation rather than redefine the tool to fit this proposal.
@@ -1456,8 +1501,9 @@ never export diagnostic overlays or substitute stale geometry automatically.
 B defines serializable operation/ref/evaluation contracts, one logical action across
 asynchronous consequences, atomic mixed-outcome frames, ownership, publication guards
 and manufacturing gates. C must reserve begin/admit, stage/finalize, suspend/resume and
-abandon hooks with a single pending slot, fresh attempt tokens, serialized edit/lifecycle
-gates and synchronous zero-job sealing. It can validate that protocol with fake delayed
+abandon hooks, fresh attempt tokens, lifecycle guards and synchronous zero-job sealing.
+The possible initial single-slot/serialized implementation must preserve the future E
+compatibility contract above. It can validate that baseline with fake delayed
 outcomes in a later authorized scope; no dependency evaluator/scheduler belongs in C.
 C supplies shared mutation/restore; C.2 supplies persistent operation maintenance;
 D persists those relationships and repairable states. E later implements affected-work
@@ -1518,8 +1564,8 @@ or stage-status change is authorized now.
 
 Review the detailed Stage B ownership/history interfaces while preserving the approved
 foundation; decide remaining interaction policies D4 and technical lifecycle details in D5 below.
-Review D9's single pending-slot/admission protocol before C, while reserving Stage E's
-actual evaluator/scheduler design for its own scope. A busy gate must preserve accepted
+Review D9's possible initial pending-slot protocol and future compatibility before C,
+while reserving E's responsive scheduling/evaluator design for its own scope. A busy gate must preserve accepted
 tool completion/cancellation semantics; it is not permission to discard accepted clicks.
 D1/D2 and the fundamental Clear/Open policy are settled product requirements; do not
 reopen them as approval prerequisites. Confirm the complete module capture inventory,
@@ -1540,7 +1586,7 @@ and full Stage E, without requiring E's scheduler, cross-module transfer or repa
 | --- | --- | --- |
 | C preparation — characterization | Approved Stage B contract; inventory current Drawing/BOX action boundaries, accepted-click behavior, contextual restore and failure cases with meaningful tests | Existing behavior recorded without asserting a new defect. No misleading global UI; revert this isolated test/analysis slice if assumptions prove wrong. |
 | C ownership foundation | Wrap current documents in complete project/module structures and introduce one lifetime-above-views owner; preserve existing domain IDs and APIs through narrow adapters | Switch away/back retains documents and intended views; no changes to solver/generator results. Existing histories may temporarily remain separately labelled during internal migration, not presented as global. |
-| C transaction core | Snapshot transition/cursor/prepare/restore service, 30-position combined retention, identity registry and one pending-action protocol: admit/finalize/suspend/resume/abandon, attempt guards, busy and lifecycle gates; current synchronous actions seal immediately | Prove one-step finalization, pending Undo/Redo, abandoned-result rejection and retention with synthetic delayed outcomes once authorized. No Stage E engine or misleading partially global UI. |
+| C transaction core | Snapshot transition/cursor/prepare/restore service, 30-position combined retention, identity registry and pending-action admit/finalize/suspend/resume/abandon, attempt/lifecycle guards; possible initial serialized baseline, compatible with §11's future E contract; synchronous actions seal immediately | Prove one-step finalization, pending Undo/Redo, abandoned-result rejection and retention with synthetic delayed outcomes once authorized. No Stage E engine or misleading partially global UI. |
 | C Drawing adapter | Consume unchanged mutation/solver results; preserve same-event placement and gesture-preview boundaries; replace local execution ownership | Segment/Dimension/Constraint/Circle/Arc/delete parity passes through real store adapter; no second Drawing history execution path. |
 | C BOX adapter | Consolidate all authoring/settings/source/PM/Apply paths and automatic derivations into candidate transactions; retain applied result/authority and context | Source/assignments/settings/generated output restore together; mixed authority/compensation/export parity; agreed input/Apply failure semantics. No unrelated geometry rewrite. |
 | C integrated cutover | Both supported modules migrated; selectors/panel use UI navigation, shortcuts/toolbar edits use one history service, restore explicitly activates the affected edit's module | Global cross-module scenarios pass, including unmounted target; remove old stacks/controller registration as execution authority. Enable truthful global controls only at this boundary. |
@@ -1548,7 +1594,7 @@ and full Stage E, without requiring E's scheduler, cross-module transfer or repa
 | C.2 panel navigation | Current-operation settings/capability adapters; no event-log dependency | Old operation double-click shows current settings without rewind/Redo loss; deleted/recreated/unmounted targets explicit. Failure/repair/dependent actions activate only as E capabilities become available. |
 | C/D session lifecycle | Shared epoch/publication gate and approved Clear/Open behavior; native Save completion contract before Save and Clear is enabled | Non-reversible project-wide Clear with three outcomes; failed/cancelled save preserves work; successful Open creates a fresh baseline; stale callbacks cannot publish across sessions. |
 | D native persistence | C transaction/restore + C.2 supported operation model/identities; versioned relationship/evaluation boundary; approved format/compatibility/preferences | Complete editable geometry, operations, dependencies, suppressed/broken states and authority artifacts round-trip; empty executable Undo on Open; failed-Open preservation. Save is distinct from Export. |
-| E dependencies | C's pending-action contract + C.2 real operation definitions + D relationship persistence; separately designed evaluators, scheduler, coherent units and verified feature mapping | Stage all automatic outcomes under the originating action; seal one mixed-outcome transition. Implement Option A, diagnostics/repair and manufacturing gates; no regeneration-only automatic Undo step. |
+| E dependencies | E-compatible C action/lifecycle boundaries + C.2 real operation definitions + D relationship persistence; refine responsive dependency-aware scheduling, evaluators, coherent units and verified feature mapping | All automatic outcomes stay in their originating action. Implement Option A, diagnostics/repair and manufacturing gates; no regeneration-only Undo step or unnecessary global wait for unrelated authoring. |
 | F/G extension | Extend slots/adapters/validators/metadata with separately designed Modeling/Puzzle semantics | Optional modules, direct Drawing/BOX starts and parallel BOX/Puzzle stay valid; accepted CAD foundation is reused. |
 
 During ownership preparation, any temporary adapter must state purpose, required callers,
@@ -1624,6 +1670,7 @@ These are future acceptance criteria, **not executed application tests**.
 | 12 | Export with stale/error downstream manufacturing geometry | Requested invalid scope is blocked with reasons; no stale artifact silently exported. Independent output requires explicit scope and full validation under reviewed D12 policy. |
 | 13 | Navigate, preview, mount, or complete stale background work | No phantom operation or Undo entry; failed previews leave Redo intact. Async work stages/finalizes the originating action's same slot; callbacks from suspended/abandoned actions or old sessions cannot publish. |
 | 14 | Existing accepted Drawing and BOX flows | Preserve Profile/Line distinction, solver/Dimension/Constraint semantics, canonical Circle/Arc, accepted-click and grip behavior, BOX applied/composition authority and compensation/export until explicitly migrated; no new pass/fix claimed here. |
+| 15 | Edit old Line A, 50→70 mm, feeding BOX and finger joints | Same A operation; evaluate affected Drawing/constraints→BOX→finger joints in dependency order; retain valid later work and diagnose each failed/blocked operation. One complete Undo action; no rewind. Creating unrelated Circle B adds its own operation/action and does not regenerate BOX unless a referenced input set changes. |
 
 ### Final tape-recorder acceptance scenarios
 
@@ -1639,7 +1686,7 @@ matrix above; pending behavior follows the recommendation, not an implemented fe
 | 5 | Switch modules before automatic completion | Completion seals the same position, creates no step and leaves the selected module visible. |
 | 6 | Undo while regeneration is pending | One cursor move restores B and suspends T; late/uncancellable callbacks cannot restore any part of S/F. Undo racing seal has exactly one winner. |
 | 7 | Redo unfinished or completed action | Unfinished: same seed/IDs/inputs, fresh attempt, visible pending, no source re-solve. Completed: exact captured F, no computation; mixed failures round-trip. |
-| 8 | Request 30→50→70 rapidly while T1 is pending | 50 is accepted as T1; 70 is visibly busy/not-accepted, never queued/coalesced. Reaccept 70 after T1 seals as T2; Undo visits 50 then 30. Undo T1 then accept 70 abandons T1 instead; no stale publication. |
+| 8 | Initial serialized baseline: request 30→50→70 while T1 is pending | 50 is accepted as T1; 70 is visibly busy/not-accepted, never queued/coalesced. Reaccept 70 after T1 seals as T2; Undo visits 50 then 30. Undo T1 then accept 70 abandons T1 instead; no stale publication. This wait is not the long-term authoring contract. |
 | 9 | Option A mixed branch failure | Keep source S′, valid B′, C definition/refs with error, D blocked and unrelated U. All belong to one action; exact Undo/Redo; failed artifacts are not valid output. |
 | 10 | Repeated module switches after Undo | Zero actions, no cursor/capacity change; Redo payload/availability stays intact. |
 | 11 | Undo a BOX action while viewing Drawing | One Undo opens BOX and restores its before-frame, without a navigation step. |
@@ -1650,6 +1697,7 @@ matrix above; pending behavior follows the recommendation, not an implemented fe
 | 16 | Export pending/stale/failed geometry | Pending export visibly blocked; after seal, invalid requested closure remains blocked. No stale or unvalidated laser geometry silently exported. |
 | 17 | Overlapping branch jobs complete out of order | Unit/version guards and dependency-order assembly yield one F; duplicate and obsolete results do nothing, including after module switches. |
 | 18 | Worker crash, timeout, repeated Undo/Redo, waiting Save interrupted | Bounded workers/retries/staging; terminal error/blocked outcome retains source in one slot. No infinite pending queue; old attempt/save intents cannot publish or clear newer content. |
+| 19 | Future E: unrelated Drawing creation during BOX evaluation | No wait solely because BOX is busy; each accepted action retains its own Undo position/consequences, stale results cannot overwrite newer state, and Undo/Redo stays coherent. Scheduling design remains deferred. |
 
 Use property-based/random operation sequences where they exercise invariants rather
 than mirror implementation: immutability, identity non-reuse, cursor laws and reference
@@ -1689,10 +1737,10 @@ P2 is optional/deferred. Priority does not authorize work. Existing IDs remain t
 | Priority / ID | Genuine unresolved decision | Recommendation | Needed before |
 | --- | --- | --- | --- |
 | P0 / D0 | Store host, complete snapshot/interfaces, mixed-outcome validation, ownership units | Keep the immutable snapshot hybrid; one synchronous owner/publication gate; separately review precise contracts. Reserve persistent operation/evaluation data now. | C authorization |
-| P0 / D3 (revised) | Operation catalog/granularity and parameter authority; previous bounded-journal recommendation superseded | Distinct C.2; one operation per accepted standalone Line; repeated edits update it. Review Profile grouping, sketch containers, Dimension/Constraint visibility and BOX PM/Apply grouping. Bind canonical records instead of duplicating editable values. | C.2 scope/release |
+| P0 / D3 (revised) | Operation catalog/grouping and parameter authority; meaningful-operation coverage is settled | Distinct C.2; completed meaningful operations have editable entries, repeated edits update existing definitions. Review grouping, sketch containers and BOX PM/Apply boundaries without omitting independently authored Dimensions/Constraints. Bind canonical records instead of duplicating editable values. | C.2 scope/release |
 | P0 / D11 (new) | Legacy geometry bootstrap, output identity across regeneration, operation/schema compatibility | Honest baseline/import definitions; preserve IDs; qualified lifetimes and verified mappings. Do not infer full chronology or heal refs by label/coordinates. Define which baseline objects are editable. | C.2 migration and D format freeze |
 | P0 / D4 | Logical edit/interruption boundaries, BOX field sessions and pending accepted Profile clicks | Preserve accepted CAD actions; specify exactly-once settlement/cancellation before navigation/restore/lifecycle gate; no hidden edits. | C adapters/cutover |
-| P0 / D9 (revised) | Pending-action admission UX, evaluator determinism/version retention, scheduling/budgets, coherent units, cycles and generated/authored ownership | Review §11's one pending slot and serialized admission; source + all outcomes seal once. No two-step async alternative remains permissible. C reserves the protocol; E implements bounded scheduler/evaluators/mapping/repair. | C protocol approval; E engine design |
+| P0 / D9 (revised) | Initial pending-action admission UX and future concurrency compatibility; evaluator versions, scheduling/budgets, coherent units, cycles and generated/authored ownership | Review §11's possible serialized baseline and bounded risk; preserve one action with all consequences and E's required responsive authoring. C reserves compatible boundaries; E refines scheduling and implements evaluators/mapping/repair. No two-step async alternative. | C protocol compatibility; E engine design |
 | P0 / D12 (new) | Manufacturing scope independence, warning eligibility and partial-export UX | Block invalid requested scope by default. Permit explicit unaffected scope only after full closure/composition/manufacturing validation and review; disclose exclusions. | E export enablement |
 | P1 / D13 (new) | Suppress/delete dependent-impact UX; optional cascade, detach/copy/bake semantics | Preserve dependent definitions, block required consumers, no silent cascade. Review optional-input behavior and explicit dependent actions; retain accepted Drawing deletion until migration is authorized. | E downstream-management release |
 | P1 / D5 | Lifecycle cancellation barrier, empty-project defaults and initial visible module | New runtime session on Clear/Open; publication guards; choose UI defaults without restoring old geometry. Fundamental Clear/Open policy is settled. | C/D lifecycle enablement |
@@ -1703,7 +1751,8 @@ P2 is optional/deferred. Priority does not authorize work. Existing IDs remain t
 
 Settled in addition to D1/D2/Clear/Open: permanent operation persistence without arbitrary
 journal quota; same-operation Line parameter edits; consistent geometry/operation Undo;
-Option A source retention/partial success; no silent invalid manufacturing output.
+meaningful-operation coverage; dependency-aware invalidation and interactive diagnostics/
+repair; responsive unrelated authoring; Option A; no silent invalid manufacturing output.
 These are not alternatives requiring another product choice. The proposed C.2 split and
 detailed model remain recommendations for architecture review, not implemented features.
 
@@ -1829,17 +1878,18 @@ contracts for later validation, not measured implementation results.
 
 ## 17. Final recommendation
 
-Retain the snapshot hybrid and recommend **alternative 2: one pending logical action,
-serialized edit admission and immutable finalization of the same tape position** (§11).
+Retain the snapshot hybrid and recommend **alternative 2 as a possible initial baseline:
+one pending logical action, serialized admission and immutable finalization of the same tape position** (§11).
 Source validation/acceptance reserves one of 30 positions; all automatic results stage
 under its transaction ID; finalization changes no cursor/count. Pending Undo suspends
 the attempt, unfinished Redo resumes captured inputs, and sealed Redo restores exact
 results. No late callback or automatic module activation creates another action.
 
-The authoring wait, interrupted Save behavior, evaluator determinism/version retention
-and measured timeout/worker/memory budgets require review. Concurrent accepted editing
-requires the more complex alternative 3, not an unbounded queue or merging of accepted
-actions. These tradeoffs do not reopen the approved one-action/30-transition behavior.
+Stage E must refine dependency-aware scheduling to meet the approved responsive-authoring
+contract; unrelated edits cannot permanently wait on unrelated regeneration. The single-slot
+model needs compatibility review in C and may need significant evolution (§11); concurrent
+editing is not solved here. Save details, evaluator versions and measured budgets remain
+implementation decisions, without reopening one-action/30-transition behavior.
 
 
 Retain **Alternative C: immutable complete project frames + transaction metadata**,

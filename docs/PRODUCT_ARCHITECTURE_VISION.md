@@ -1,6 +1,6 @@
 # Product Architecture Vision
 
-**Decision date: 2026-11-03; history requirements revised 2026-11-09. Status: APPROVED FUTURE PRODUCT REQUIREMENTS — NOT IMPLEMENTED.**
+**Decision date: 2026-11-03; history requirements revised 2026-11-09, aligned 2026-11-10. Status: APPROVED FUTURE PRODUCT REQUIREMENTS — NOT IMPLEMENTED.**
 
 This document owns the detailed approved long-term requirements for a connected,
 multi-module SVG Box Designer. It does not claim implementation or authorize application
@@ -238,10 +238,15 @@ opens its current settings without rewinding or changing Redo.
 
 Operations support conceptual Edit, Review Warning/Error, Repair Reference, Suppress
 and Delete actions. Preserve identities across Undo restoration; genuine recreation
-with reused local IDs is a new lifetime. One operation may produce multiple objects;
-not every solver mutation or user edit is a visible operation. Exact operation catalog,
-Profile/sketch/Dimension/Constraint and BOX grouping, parameter ownership, migration and
-panel UI remain **DESIGN REQUIRED**. Accepted Drawing and BOX semantics remain unchanged.
+with reused local IDs is a new lifetime. Every completed meaningful construction operation
+has an editable entry: Line, Circle, Arc, profile, independently authored Dimension or
+relationship/Constraint, BOX, finger joints and other geometry/manufacturing operations.
+Multi-step tools record accepted completed operations, not mouse clicks; Profile retains
+per-segment completion, and groups retain editable member definitions. One operation may
+produce multiple objects; edits update existing definitions, and automatic solver mutations
+create no separate entries. Selection, tool/panel opening and unfinished previews create
+neither operation nor Undo action. Exact catalog/grouping, parameter bindings, migration
+and UI remain **DESIGN REQUIRED**, within this coverage contract and accepted tool semantics.
 The [Stage B model and acceptance criteria](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md#9-permanent-parametric-construction-history-and-navigation)
 are technical recommendations for review, not implementation.
 
@@ -261,14 +266,25 @@ controlled regeneration, preservation of unaffected downstream edits, explicit h
 of incompatible changes, and avoidance of silent data loss. Not every downstream
 setting can necessarily survive every source change automatically.
 
+Invalidate explicit entity, profile/contour, sketch or source-set dependencies, then
+evaluate only the affected closure in dependency order, including necessary solver or
+composition units. Creating Circle B does not regenerate BOX A referencing only Line A;
+it may affect a consumer if its referenced profile/sketch/set changes. Editing old Line A
+50→70 mm in place updates affected Drawing/constraints→BOX→finger joints as one Undo
+action, preserving valid later operations and unrelated branches; no Undo rewind is needed.
+
 **Approved dependency failure behavior — Option A:** keep an otherwise valid source
 edit, update compatible branches, and retain failed/blocked downstream definitions,
 parameters, refs, diagnostics and unaffected authored work for repair or removal. A
 downstream failure cannot automatically reject the source edit, silently delete dependents
-or guess replacement refs. Distinguish valid, warning, error, stale, blocked and suppressed
+or guess replacement refs. Distinguish valid, warning, error, stale/pending, blocked and suppressed
 states. Retained last-known-good artifacts must be visibly distinguished from validated
-current geometry. Inspection identifies failure reasons and affected downstream operations;
-suppression/deletion must detect consequences and be Undoable.
+current geometry. Each failed or blocked operation has its own visible diagnostic state.
+Click/select a marked operation to identify it, see the failure/blocking reason and causal
+reference/dependency, and open current editable settings where supported. An accepted
+parameter/reference repair re-evaluates the affected closure in one Undo action without
+silently removing later authored work; not every error is repairable. Suppression/deletion
+must detect consequences and be Undoable.
 
 One controlled mutation boundary must keep operation state, geometry, dependency
 statuses and affected results consistent. A valid source edit and **all** its automatic
@@ -278,7 +294,8 @@ proposal of a source/stale transaction plus a second regeneration transaction is
 Navigation, mount effects and failed previews cannot create hidden history edits.
 
 **Technical recommendation for review, not implementation:** Stage B §11 compares three
-async models and recommends one pending logical action with serialized edit admission.
+async models and recommends one pending logical action with serialized admission as a
+possible initial implementation baseline.
 It reserves one of the 30 positions, stages results off-store and seals the same slot
 once. Undo suspends it and rejects late callbacks; unfinished Redo restores the captured
 source/identities and resumes under a fresh attempt; sealed Redo restores the exact final
@@ -286,9 +303,16 @@ result. While pending, further project-edit requests are visibly unaccepted, nev
 queued or merged. Navigation remains available; completion never switches modules.
 Save waits for settlement or cancels, preserving editable failure records on successful
 Save; Export is blocked while pending and still validates the full scope after settlement.
-Clear/Open use session barriers. This conservative authoring wait, bounded job/retry
-budgets and evaluator determinism require architecture review; they are not additional
-approved restrictions or evidence of an implemented dependency engine.
+Clear/Open use session barriers. The global wait belongs only to this baseline.
+
+**Approved long-term requirement:** dependency-aware responsive authoring must allow
+unrelated Drawing creation without waiting for unrelated BOX regeneration merely because
+another module is busy. Preserve every accepted interaction and its logical Undo position;
+reject stale async results and restore coherent project states. Stage E refines concurrency
+and scheduling. The proposed single-slot/no-successor model may need significant changes;
+C/D must preserve compatible identity, action-ordering and immutable content boundaries
+([Stage B risk and contract](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md#alternatives-and-recommendation)).
+Concurrent editing is not solved here; bounded budgets and evaluator design remain deferred.
 
 **Manufacturing safety:** stale, failed or otherwise unvalidated geometry cannot silently
 be valid laser/export output. Independent valid output requires explicit scope and full
