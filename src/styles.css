@@ -2113,6 +2113,9 @@ button:disabled {
   overflow: hidden;
 }
 
+/* A hidden module remains mounted, but occupies no layout or interaction space. */
+.workspace-shell[hidden] { display: none; }
+
 .workspace-shell .workspace-canvas {
   grid-area: canvas;
   width: 100%;
@@ -2173,15 +2176,53 @@ button:disabled {
   background: #ffffff;
 }
 
-.drawing-tool-sidebar {
+.workspace-shell :is(.tool-sidebar, .drawing-tool-sidebar) {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
   justify-content: flex-start;
+  gap: 6px;
   padding: 9px 5px;
   color: #cbd5e1;
   background: #111827;
   border: 1px solid #1f2937;
   border-radius: 0;
   box-shadow: none;
+  overflow-y: auto;
+}
+
+.workspace-shell .drawing-tool-sidebar button {
+  width: 100%;
+}
+
+.workspace-shell .drawing-tool-sidebar .drawing-utility-tool { font-size: 9px; padding-inline: 0; }
+
+/* Keep each command region in the same position for both implemented modules. */
+.top-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(260px, 1fr);
+  grid-template-areas: "brand modules modules" "project undo actions";
+  gap: 6px 12px;
+}
+
+.brand-lockup { grid-area: brand; }
+.workspace-selector { grid-area: modules; justify-self: end; }
+.project-commands { grid-area: project; }
+.history-commands { grid-area: undo; }
+.module-actions { grid-area: actions; }
+.command-scope { color: #99f6e4; font-size: 0.7rem; font-weight: 700; }
+.project-commands .toolbar-button[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+
+@media (min-width: 761px) {
+  .app-shell { height: 100vh; min-height: 100vh; overflow: hidden; }
+}
+
+@media (max-width: 760px) {
+  .top-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "brand brand" "modules modules" "project undo" "actions actions";
+  }
+  .workspace-selector { justify-self: stretch; overflow-x: auto; }
 }
 
 .drawing-canvas-card .canvas-frame {

@@ -1,3 +1,4 @@
+import { WorkspaceShell } from './WorkspaceShell';
 import { routeDrawingGeometryPointerSelection } from './drawingGeometrySelection.js';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes';
@@ -151,7 +152,9 @@ export function DrawingWorkspace({
   constraintsPanelOpen,
   setConstraintsPanelOpen,
   onHistoryControllerChange,
+  isActive = true,
 }: {
+  isActive?: boolean;
   document: DrawingDocumentV2;
   setDocument: Dispatch<SetStateAction<DrawingDocumentV2>>;
   viewBox: DrawingViewBox;
@@ -206,11 +209,11 @@ export function DrawingWorkspace({
     return () => sidebar.removeEventListener('selectionstart', preventToolChromeSelection);
   }, []);
   useLayoutEffect(() => {
-    if (!constraintsPanelOpen || constraintsPanelPosition) return;
+    if (!isActive || !constraintsPanelOpen || constraintsPanelPosition) return;
     const frame = canvasFrameRef.current?.getBoundingClientRect();
     const panel = constraintsPanelRef.current?.getBoundingClientRect();
     if (frame && panel) setConstraintsPanelPosition(initialConstraintsPanelPosition(frame, panel));
-  }, [constraintsPanelOpen, constraintsPanelPosition]);
+  }, [isActive, constraintsPanelOpen, constraintsPanelPosition]);
   const [segmentInteraction, setSegmentInteraction] = useState<LineSegmentInteractionState>(EMPTY_LINE_SEGMENT_INTERACTION);
   const [circleInteraction, setCircleInteraction] = useState<CircleToolInteraction>(EMPTY_CIRCLE_INTERACTION);
   const [arcInteraction, setArcInteraction] = useState<ArcToolInteraction>(EMPTY_ARC_INTERACTION);
@@ -306,6 +309,7 @@ export function DrawingWorkspace({
   };
 
   useEffect(() => {
+    if (!isActive) return;
     const activate = (event: Event) => {
       const detail = (event as CustomEvent<{ timestamp?: number; x?: number; y?: number }>).detail;
       if (detail?.timestamp !== undefined && detail.x !== undefined && detail.y !== undefined) {
@@ -656,6 +660,7 @@ export function DrawingWorkspace({
   };
 
   const ctrlSnapOverride = useCadCtrlSnapOverride((held) => {
+    if (!isActive) return;
     if (lastPointerClientRef.current && (activeToolRef.current === 'profile' || activeToolRef.current === 'line' || activeToolRef.current === 'circle' || activeToolRef.current === 'arc')) {
       const placement = resolvePlacementRef.current(lastPointerClientRef.current, held);
       if (activeToolRef.current === 'circle' && placement) {
@@ -701,7 +706,7 @@ export function DrawingWorkspace({
     setToolLifecycle(activateDrawingTool('select'));
     setDimensionTool({ phase: 'inactive' });
   };
-  useCadEscapeToolExit(exitActiveTool);
+  useCadEscapeToolExit(() => { if (isActive) exitActiveTool(); });
 
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (panHandlers.onPointerDown(event)) return;
@@ -1128,7 +1133,7 @@ export function DrawingWorkspace({
   const editingAngleGeometry = editingDimension?.kind === 'LINE_TO_LINE_ANGLE' ? angleAnnotationGeometry(editingDimension) : null;
   const editingCircularAnchor = editingDimension?.kind === 'CIRCULAR_SIZE' && editingDimension.placement.kind === 'radial' ? editingDimension.placement.anchor : null;
   const editingMiddle = editingCircularAnchor ?? editingAngleGeometry?.label ?? (editingGeometry ? { x: (editingGeometry.a.x + editingGeometry.b.x) / 2, y: (editingGeometry.a.y + editingGeometry.b.y) / 2 } : null);
-  const editorAnchor = editingMiddle && svgRef.current && overlaySvgRef.current
+  const editorAnchor = isActive && editingMiddle && svgRef.current && overlaySvgRef.current
     ? modelToOverlayPoint(editingMiddle, svgRef.current.getScreenCTM()!, overlaySvgRef.current.getScreenCTM()!) : null;
   const editorWidth = dimensionEditorWidthPixels(dimensionDraft);
 
@@ -1211,6 +1216,7 @@ export function DrawingWorkspace({
   useEffect(() => () => onHistoryControllerChange?.(null), [onHistoryControllerChange]);
 
   useEffect(() => {
+    if (!isActive) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.target as HTMLElement).tagName === 'INPUT') return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { if (historyRef.current.undo.length > 0) { event.preventDefault(); undo(); } }
@@ -1230,7 +1236,7 @@ export function DrawingWorkspace({
       }
     };
     window.addEventListener('keydown', onKeyDown); return () => window.removeEventListener('keydown', onKeyDown);
-  }, [document, hoveredGeometricConstraintId, selectedDimensionId, selectedGeometricConstraintId, selectedGeometry]);
+  }, [isActive, document, hoveredGeometricConstraintId, selectedDimensionId, selectedGeometricConstraintId, selectedGeometry]);
 
   const pixelsPerMm = viewport.width / viewBox.width;
   const parallelMarkers = activeSketch ? deriveParallelMarkers(activeSketch, pixelsPerMm) : [];
@@ -1242,6 +1248,7 @@ export function DrawingWorkspace({
   const yLabelValues = getVisibleAxisValues(viewBox.y, viewBox.y + viewBox.height, labelInterval);
 
   useLayoutEffect(() => {
+    if (!isActive) return;
     const drawingToClientTransform = svgRef.current?.getScreenCTM();
     const overlayToClientTransform = overlaySvgRef.current?.getScreenCTM();
     if (!drawingToClientTransform || !overlayToClientTransform) {
@@ -1255,7 +1262,7 @@ export function DrawingWorkspace({
     const xLabels = xLabelValues.map((value) => ({ value, anchor: toOverlay({ x: value, y: DRAWING_ORIGIN.y }) })).filter((label): label is { value: number; anchor: CoordinatePoint } => label.anchor !== null);
     const yLabels = yLabelValues.map((value) => ({ value, anchor: toOverlay({ x: DRAWING_ORIGIN.x, y: value }) })).filter((label): label is { value: number; anchor: CoordinatePoint } => label.anchor !== null);
     setOverlayGeometry(origin && xIndicatorAnchor && yIndicatorAnchor ? { origin, xLabels, yLabels, xIndicatorAnchor, yIndicatorAnchor } : null);
-  }, [viewBox, viewport.width, viewport.height, labelInterval]);
+  }, [isActive, viewBox, viewport.width, viewport.height, labelInterval]);
   // The accepted snap is the transient inference authority. Derive the overlay
   // in this render instead of racing a second, independently cleared state value.
   const drawingTransform = svgRef.current?.getScreenCTM();
@@ -1268,13 +1275,15 @@ export function DrawingWorkspace({
   const selectionBoxRect = boxSelection?.exceeded ? normalizeDrawingSelectionRect(boxSelection.originModel, boxSelection.currentModel) : null;
   const selectionBoxMode = boxSelection ? drawingSelectionMode(boxSelection.originClient.x, boxSelection.currentClient.x) : null;
   return (
-    <section className="drawing-workspace workspace-shell" aria-label="2D Drawing workspace">
+    <WorkspaceShell active={isActive} className="drawing-workspace" label="2D Drawing workspace">
       <aside ref={toolSidebarRef} className="drawing-tool-sidebar" aria-label="Drawing tools" onPointerDownCapture={preventToolChromePointerSelection} onMouseDownCapture={preventToolChromeMouseSelection}>
         <button type="button" className={`cad-tool-button${activeTool === 'select' ? ' is-active' : ''}`} aria-pressed={activeTool === 'select'} onPointerDown={(event) => activateToolFromPointer('select', event)} onClick={(event) => activateToolFromKeyboard('select', event)}>Select</button>
         <button type="button" className={`cad-tool-button${activeTool === 'line' ? ' is-active' : ''}`} aria-pressed={activeTool === 'line'} onPointerDown={(event) => activateToolFromPointer('line', event)} onClick={(event) => activateToolFromKeyboard('line', event)}>Line</button>
         <button type="button" className={`cad-tool-button${activeTool === 'circle' ? ' is-active' : ''}`} aria-pressed={activeTool === 'circle'} onPointerDown={(event) => activateToolFromPointer('circle', event)} onClick={(event) => activateToolFromKeyboard('circle', event)}>Circle</button>
         <button type="button" className={`cad-tool-button${activeTool === 'arc' ? ' is-active' : ''}`} aria-pressed={activeTool === 'arc'} onPointerDown={(event) => activateToolFromPointer('arc', event)} onClick={(event) => activateToolFromKeyboard('arc', event)}>Arc</button>
         <button type="button" className={`cad-tool-button${activeTool === 'profile' ? ' is-active' : ''}`} aria-pressed={activeTool === 'profile'} onPointerDown={(event) => activateToolFromPointer('profile', event)} onClick={(event) => activateToolFromKeyboard('profile', event)}>Profile</button>
+        <button type="button" className={`cad-tool-button drawing-utility-tool${activeTool === 'dimension' ? ' is-active' : ''}`} aria-pressed={activeTool === 'dimension'} title="Create a drawing dimension" onPointerDown={(event) => activateToolFromPointer('dimension', event)} onClick={(event) => activateToolFromKeyboard('dimension', event)}>Dimension</button>
+        <button type="button" className={`cad-tool-button drawing-utility-tool${constraintsPanelOpen ? ' is-active' : ''}`} aria-pressed={constraintsPanelOpen} onPointerDown={(event) => { if (event.button === 0) { event.preventDefault(); setConstraintsPanelOpen((open) => !open); } }} onClick={(event) => { if (event.detail === 0) setConstraintsPanelOpen((open) => !open); }}>Constraints</button>
       </aside>
       <section className="canvas-card drawing-canvas-card workspace-canvas">
         <div ref={canvasFrameRef} className="canvas-frame">
@@ -1566,6 +1575,6 @@ export function DrawingWorkspace({
       <aside className="workflow-history-panel drawing-history panel" aria-label="Drawing history">
         <div className="workflow-history-items"><span className="workflow-history-label">History</span><p className="workflow-history-empty muted">Dimension create/delete supports Ctrl+Z / Ctrl+Y.</p></div>
       </aside>
-    </section>
+    </WorkspaceShell>
   );
 }

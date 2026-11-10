@@ -5,12 +5,12 @@
 ## Current application versus connected target
 
 The current application has separate Drawing and Construction documents owned in `App`,
-a conditionally mounted `DrawingWorkspace`, and a disabled Puzzle selector. There is no
+a mounted `DrawingWorkspace` hidden while inactive, and a disabled Puzzle selector. There is no
 3D Modeling module, complete native project Save/Open, cross-module geometry-transfer
 contract or dependency/regeneration system. `DrawingDocumentV2`, Construction models and
 generated snapshots are foundations rather than a completed shared project format.
 
-Source inspection rechecked on 2026-11-04 at main
+Historical source inspection rechecked on 2026-11-04 at main
 `8630f40d31c7c7e71cab3d7cce7ac6673648c4b9` confirms:
 
 - Drawing uses document snapshots capped at 100 Undo entries (`drawingHistory.ts`). Its
@@ -23,6 +23,16 @@ Source inspection rechecked on 2026-11-04 at main
 - Import and SVG export serve Construction. Save is disabled; confirmed Construction
   Clear does not clear Drawing. Construction Fit derives geometry bounds while Drawing
   Fit resets a fixed view. Conditional toolbar groups are not the target global toolbar.
+
+**UI-1 current checkpoint (2026-11-10):** `WorkspaceTopBar` consolidates module navigation,
+BOX-scoped project commands and active-module local Undo/Redo. `WorkspaceShell` shares
+layout boundaries and keeps module owners mounted; Drawing history/tool/selection state
+now survives ordinary switches. Hidden Drawing keyboard and activation events are gated.
+Drawing Dimension/Constraints launchers join its left tools. Import/Export/Clear retain
+BOX semantics; Open/Save remain disabled. Existing Fit/Apply/Finish Group and bottom
+History are unchanged. [Validation](docs/UI1_SHARED_WORKSPACE_SHELL_VALIDATION.md) records
+the automated checks; user acceptance is pending. The historical observations above
+remain evidence of the earlier architecture, not the current mounting/placement behavior.
 
 **APPROVED FUTURE REQUIREMENTS — NOT IMPLEMENTED:**
 
@@ -67,7 +77,7 @@ Open → Save → Export → Clear → Undo → Redo order. The approved
 [Global Workspace UI Specification](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md) moves Fit
 exclusively beside canvas zoom, module tools to the left and relevant Apply/Finish Group
 controls onto the canvas, with shared permanent construction history at the bottom.
-UI-1–UI-4 are proposed, unimplemented delivery slices; UI-4 requires C/C.2, D for saved
+UI-1 is implemented and browser-checked, pending user acceptance; UI-2/UI-3/UI-4 remain unimplemented; UI-4 requires C/C.2, D for saved
 history and E for dependency diagnostics/repair. Placement changes preserve accepted
 tool/Undo semantics and do not implement global ownership or native commands.
 Clear is a permanent project-wide session reset with Save and Clear / Clear Without
@@ -95,8 +105,8 @@ and [proposed staging](ROADMAP.md#4-connected-product-development).
 The earlier separate-history recommendation is superseded only as future direction;
 this documentation does not replace either existing history. No current functional
 defect was confirmed during the user's Drawing Undo/Redo testing; exhaustive action
-coverage is not established. Separate ownership and Drawing history loss on unmount
-are architectural limitations to address in global-history design. The accepted deferred
+coverage is not established. Separate history ownership remains a global-history design
+limitation; UI-1 avoids navigation unmounts without introducing global history. The accepted deferred
 Arc empty/blind Undo limitation remains unchanged. Accepted Circle/Arc models, solver,
 transactions, Direct Manipulation and Stage 0–6 evidence below remain intact. References
 to shared/global Drawing concerns below mean sharing within Drawing, not an already

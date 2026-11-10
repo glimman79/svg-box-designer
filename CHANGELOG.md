@@ -3,6 +3,18 @@
 Entries record completed changes at their respective checkpoints. Current architecture
 and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
 
+## UI-1 — Shared workspace shell (2026-11-10)
+
+- Consolidated module navigation, explicitly scoped project commands and active-module
+  Undo/Redo into one top bar; native Open/Save and Puzzle remain disabled.
+- Reused one shell/layout boundary and left toolbar styling; moved Drawing Dimension and
+  Constraints launchers into its tools. Both modules remain mounted, retaining Drawing
+  history, selection and unfinished workflows across switches with hidden input isolation.
+- Preserved BOX command handlers, Fit/Apply/Finish Group, bottom History, CAD models and
+  transaction boundaries. UI-2/UI-3/UI-4 and all A–G stage statuses remain unchanged.
+- Added component/browser coverage and updated placement assertions. See
+  [validation](docs/UI1_SHARED_WORKSPACE_SHELL_VALIDATION.md); pending user acceptance.
+
 ## Documentation — Global Workspace UI specification (2026-11-10)
 
 - Added approved seven-region workspace requirements and proposed UI-1–UI-4 sequencing,

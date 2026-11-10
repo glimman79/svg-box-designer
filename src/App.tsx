@@ -46,7 +46,9 @@ import { createDrawingDocumentV2, DEFAULT_WORKSPACE, selectWorkspace, type Works
 import { useCadWheelCapture } from './app/useCadWheelCapture';
 import { useCadPanGesture } from './app/cadInteraction';
 import { createBoxDocumentV1 } from './app/boxDocument';
-import { HistoryControls, type HistoryControlsProps } from './app/HistoryControls';
+import type { HistoryControlsProps } from './app/HistoryControls';
+import { WorkspaceTopBar } from './app/WorkspaceTopBar';
+import { WorkspaceShell } from './app/WorkspaceShell';
 import type { ActiveSGroup, ActiveTBGroup, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, TBConnectionDefinition, TBConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties } from './app/connectionTypes';
 import { getNextConnectionLabel, parseConnectionLabel } from './app/connectionLabels';
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
@@ -626,15 +628,9 @@ function App() {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(DEFAULT_WORKSPACE);
   const [drawingDocument, setDrawingDocument] = useState(createDrawingDocumentV2);
   const [drawingViewBox, setDrawingViewBox] = useState(initialDrawingViewBox);
-  const [drawingActiveTool, setDrawingActiveTool] = useState<'select' | 'line' | 'profile' | 'dimension'>('select');
   const [drawingConstraintsPanelOpen, setDrawingConstraintsPanelOpen] = useState(false);
   const [drawingHistoryController, setDrawingHistoryController] = useState<HistoryControlsProps | null>(null);
   const updateDrawingHistoryController = useCallback((controller: HistoryControlsProps | null) => setDrawingHistoryController(controller), []);
-  useEffect(() => {
-    const updateDrawingTool = (event: Event) => setDrawingActiveTool((event as CustomEvent<{ activeTool: 'select' | 'line' | 'profile' | 'dimension' }>).detail.activeTool);
-    window.addEventListener('drawing:tool-state', updateDrawingTool);
-    return () => window.removeEventListener('drawing:tool-state', updateDrawingTool);
-  }, []);
   const [svgModel, setSvgModel] = useState<SvgDocumentModel>(createBoxDocumentV1);
   const [edgeAssignments, setEdgeAssignments] = useState<Record<string, EdgeAssignmentBucket>>({});
   const [connections, setConnections] = useState<ConnectionMap>({});
@@ -691,6 +687,7 @@ function App() {
   }, []);
 
   useLayoutEffect(() => {
+    if (activeWorkspace !== 'construction') return;
     const updateCanvasViewportSize = () => {
       const svgElement = svgRef.current;
       const fallbackViewBox = parseViewBox(svgModel.viewBox);
@@ -713,7 +710,7 @@ function App() {
       resizeObserver?.disconnect();
       window.removeEventListener('resize', updateCanvasViewportSize);
     };
-  }, [svgModel.viewBox]);
+  }, [activeWorkspace, svgModel.viewBox]);
 
   useEffect(() => {
     setConnections((currentConnections) => {
@@ -2182,26 +2179,19 @@ function App() {
 
   return (
     <main className="app-shell">
-      <header className="top-toolbar" aria-label="Primary actions">
-        <div className="brand-lockup" aria-label="SVG Box Designer">
-          <span className="brand-mark" aria-hidden="true">SBD</span>
-          <h1>SVG BOX DESIGNER</h1>
-        </div>
-        <nav className="workspace-selector" aria-label="Main workspaces">
-          <button type="button" className={activeWorkspace === 'drawing' ? 'active' : ''} aria-pressed={activeWorkspace === 'drawing'} onClick={() => setActiveWorkspace((current) => selectWorkspace(current, 'drawing'))}>2D Drawing</button>
-          <button type="button" disabled title="Puzzle is not implemented">Puzzle <span>Not implemented</span></button>
-          <button type="button" className={activeWorkspace === 'construction' ? 'active' : ''} aria-pressed={activeWorkspace === 'construction'} onClick={() => setActiveWorkspace((current) => selectWorkspace(current, 'construction'))}>Box / Construction</button>
-        </nav>
-        {activeWorkspace === 'construction' && <div className="toolbar-actions">
-          <label className="toolbar-button primary" title="Import SVG">
-            Import
-            <input type="file" accept=".svg,image/svg+xml" onChange={handleImportWithError} />
-          </label>
-          <button className="toolbar-button" type="button" disabled title="Save placeholder">Save</button>
-          <button className="toolbar-button" type="button" onClick={exportSvg} disabled={isProjectLocked || Object.keys(edgeAssignments).length === 0} title="Export SVG">Export</button>
-          <button className="toolbar-button" type="button" onClick={requestClearProject}>Clear</button>
+      <WorkspaceTopBar
+        activeWorkspace={activeWorkspace}
+        onSelectWorkspace={(workspace) => setActiveWorkspace((current) => selectWorkspace(current, workspace))}
+        onImport={handleImportWithError}
+        onExport={exportSvg}
+        onClear={requestClearProject}
+        canExport={!isProjectLocked && Object.keys(edgeAssignments).length > 0}
+        history={activeWorkspace === 'drawing'
+          ? drawingHistoryController ?? { canUndo: false, canRedo: false, onUndo: () => undefined, onRedo: () => undefined }
+          : { canUndo: undoStack.length > 0, canRedo: redoStack.length > 0, onUndo: undoLastEdit, onRedo: redoLastEdit }}
+      >
+        {activeWorkspace === 'construction' && <>
           <button className="toolbar-button" type="button" onClick={fitCanvasToScreen}>Fit to screen</button>
-          <HistoryControls canUndo={undoStack.length > 0} canRedo={redoStack.length > 0} onUndo={undoLastEdit} onRedo={redoLastEdit} />
           <button className="toolbar-button" type="button" onClick={applyPanelPaths} disabled={isProjectLocked || !hasApplyInputs}>Apply</button>
           <button
             className="toolbar-button"
@@ -2212,21 +2202,15 @@ function App() {
           >
             {activeToolbarFinish?.label ?? 'Finish Group'}
           </button>
-          <a ref={downloadRef} className="visually-hidden" aria-hidden="true">
-            download
-          </a>
-        </div>}
-        {activeWorkspace === 'drawing' && <div className="toolbar-actions drawing-operation-toolbar" aria-label="Drawing operations">
-          <HistoryControls canUndo={drawingHistoryController?.canUndo ?? false} canRedo={drawingHistoryController?.canRedo ?? false} onUndo={drawingHistoryController?.onUndo ?? (() => undefined)} onRedo={drawingHistoryController?.onRedo ?? (() => undefined)} />
-          <button className={`toolbar-button cad-tool-button${drawingActiveTool === 'dimension' ? ' is-active' : ''}`} type="button" aria-pressed={drawingActiveTool === 'dimension'} title="Create a drawing dimension" onPointerDown={(event) => { if (event.button === 0) { event.preventDefault(); window.dispatchEvent(new CustomEvent('drawing:activate-dimension', { detail: { timestamp: event.timeStamp, x: event.clientX, y: event.clientY } })); } }} onClick={(event) => { if (event.detail === 0) window.dispatchEvent(new CustomEvent('drawing:activate-dimension')); }}><span aria-hidden="true">↔</span> Dimension</button>
-          <button className={`toolbar-button cad-tool-button${drawingConstraintsPanelOpen ? ' is-active' : ''}`} type="button" aria-pressed={drawingConstraintsPanelOpen} onPointerDown={(event) => { if (event.button === 0) { event.preventDefault(); setDrawingConstraintsPanelOpen((open) => !open); } }} onClick={(event) => { if (event.detail === 0) setDrawingConstraintsPanelOpen((open) => !open); }}>Constraints</button>
-        </div>}
-      </header>
+        </>}
+      </WorkspaceTopBar>
+      <a ref={downloadRef} className="visually-hidden" aria-hidden="true">download</a>
 
       {isClearDialogOpen && (
         <div className="clear-dialog-backdrop" role="presentation">
           <div className="clear-dialog" role="dialog" aria-modal="true" aria-labelledby="clear-dialog-title">
-            <h2 id="clear-dialog-title">Clear current project?</h2>
+            <h2 id="clear-dialog-title">Clear BOX / Construction?</h2>
+            <p>Drawing is preserved.</p>
             <div className="clear-dialog-actions">
               <button className="toolbar-button" type="button" onClick={cancelClearProject}>Cancel</button>
               <button className="toolbar-button primary" type="button" onClick={clearProject}>Clear</button>
@@ -2255,7 +2239,8 @@ function App() {
 
       {errorMessage && <div className="notice">{errorMessage}</div>}
 
-      {activeWorkspace === 'drawing' ? <DrawingWorkspace document={drawingDocument} viewBox={drawingViewBox} setViewBox={setDrawingViewBox} setDocument={setDrawingDocument} constraintsPanelOpen={drawingConstraintsPanelOpen} setConstraintsPanelOpen={setDrawingConstraintsPanelOpen} onHistoryControllerChange={updateDrawingHistoryController} /> : <section className="workspace workspace-shell" aria-label="SVG connection workspace">
+      <DrawingWorkspace isActive={activeWorkspace === 'drawing'} document={drawingDocument} viewBox={drawingViewBox} setViewBox={setDrawingViewBox} setDocument={setDrawingDocument} constraintsPanelOpen={drawingConstraintsPanelOpen} setConstraintsPanelOpen={setDrawingConstraintsPanelOpen} onHistoryControllerChange={updateDrawingHistoryController} />
+      <WorkspaceShell active={activeWorkspace === 'construction'} className="workspace" label="SVG connection workspace">
         <aside className="tool-sidebar" aria-label="Tool sidebar">
           {([
             ['select', 'Select', 'Select and inspect existing edges'],
@@ -2666,7 +2651,7 @@ function App() {
             )}
           </div>
         </aside>
-      </section>}
+      </WorkspaceShell>
     </main>
   );
 }

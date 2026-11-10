@@ -8,7 +8,7 @@ const activation = await build('cadToolActivation');
 const lifecycle = await build('drawingToolLifecycle');
 const dimension = await build('drawingDimension');
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
-const app = fs.readFileSync('src/App.tsx', 'utf8');
+const rail = workspace.match(/<aside[^>]*drawing-tool-sidebar[\s\S]*?<\/aside>/)?.[0] ?? '';
 const css = fs.readFileSync('src/styles.css', 'utf8');
 
 const once = activation.resolveCadToolPointerActivation('dimension', 1000, { x: 20, y: 20 }, null);
@@ -21,11 +21,11 @@ assert.match(workspace, /appendDimension\(current, committed\)[\s\S]*finishDrawi
 assert.match(workspace, /nextLifecycle\.activeTool === 'dimension' \? \{ phase: 'waitingForFirstTarget' \}/, 'persistent completion immediately reacquires a reference');
 assert.match(workspace, /setToolLifecycle\(activateDrawingTool\('select'\)\);[\s\S]*setDimensionTool\(\{ phase: 'inactive' \}\)/, 'Escape exits Dimension through the shared tool contract');
 assert.match(workspace, /const selectTool = \(tool[\s\S]*setDimensionTool\(tool === 'dimension'/, 'Select and other tools clear Dimension transient state');
-assert.match(app, /aria-pressed=\{drawingActiveTool === 'dimension'\}/, 'upper Dimension button exposes pressed state');
-assert.match(app, /drawingActiveTool === 'dimension' \? ' is-active'/, 'upper Dimension button exposes shared active styling');
-assert.match(css, /drawing-operation-toolbar \.toolbar-button\.is-active/, 'upper Dimension active highlight is visible');
-assert.doesNotMatch(app.match(/drawing-operation-toolbar[\s\S]*?<\/div>/)?.[0] ?? '', /onDoubleClick=/, 'native dblclick is not activation authority');
-assert.match(app, /detail: \{ timestamp: event\.timeStamp, x: event\.clientX, y: event\.clientY \}/, 'upper button delegates pointer sequence to the accepted resolver');
+assert.match(rail, /aria-pressed=\{activeTool === 'dimension'\}/, 'left Dimension button exposes local pressed state');
+assert.match(rail, /activeTool === 'dimension' \? ' is-active'/, 'left Dimension button exposes shared active styling');
+assert.match(css, /drawing-tool-sidebar \.cad-tool-button\.is-active/, 'left Dimension uses the existing module tool highlight');
+assert.doesNotMatch(rail, /onDoubleClick=/, 'native dblclick is not activation authority');
+assert.match(rail, /onPointerDown=\{\(event\) => activateToolFromPointer\('dimension', event\)\}/, 'Dimension delegates pointer sequences to the same accepted resolver as other module tools');
 
 for (const [value, expected] of [[95.623, '95.623'], [120, '120'], [120.5, '120.5'], [120.125, '120.125'], [120.1255, '120.126']]) {
   assert.equal(dimension.formatDimensionEditValue(value), expected);

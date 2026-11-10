@@ -44,19 +44,21 @@ assert.deepEqual(anchored, { x: 100, y: 75, width: 400, height: 300 }, 'wheel zo
 
 const appSource = fs.readFileSync('src/App.tsx', 'utf8');
 assert.match(appSource, /useState<WorkspaceId>\(DEFAULT_WORKSPACE\)/);
-assert.match(appSource, /<DrawingWorkspace document=\{drawingDocument\} viewBox=\{drawingViewBox\}/);
-assert.match(appSource, /workspace workspace-shell/);
+assert.match(appSource, /<DrawingWorkspace isActive=\{activeWorkspace === 'drawing'\} document=\{drawingDocument\} viewBox=\{drawingViewBox\}/);
+assert.match(appSource, /<WorkspaceShell active=\{activeWorkspace === 'construction'\} className="workspace"/);
 assert.match(appSource, /aria-label="Active Tool overlay"/);
 assert.match(appSource, /onClick=\{fitCanvasToScreen\}>Fit/);
 assert.match(appSource, /useCadWheelCapture\(svgRef,[\s\S]*?getSvgPointFromClient/);
 assert.doesNotMatch(appSource, /grid-template-columns:.*active/);
-assert.match(appSource, /activeWorkspace === 'construction' && <div className="toolbar-actions">/);
-assert.match(appSource, /<button type="button" disabled title="Puzzle is not implemented">/);
+assert.match(appSource, /<WorkspaceTopBar/);
+const topBarSource = fs.readFileSync('src/app/WorkspaceTopBar.tsx', 'utf8');
+assert.match(topBarSource, /aria-label="Project commands"/);
+assert.match(topBarSource, /id: 'puzzle', label: 'Puzzle', available: false/);
 assert.doesNotMatch(appSource, /type ActiveTool = [^;]*(drawing|puzzle)/);
 
 const drawingSource = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 assert.doesNotMatch(drawingSource, /(generatedGeometry|FinalGeometry|ManufacturingGeometry|SvgDocumentModel|selectedEdgeId|undoStack)/);
-assert.match(drawingSource, /drawing-workspace workspace-shell/);
+assert.match(drawingSource, /<WorkspaceShell active=\{isActive\} className="drawing-workspace"/);
 assert.match(drawingSource, /patternUnits="userSpaceOnUse"/);
 assert.match(drawingSource, /DRAWING_ORIGIN\.x/);
 assert.match(drawingSource, /drawing-label-overlay/);
