@@ -46,6 +46,7 @@ test('workspace exposes Line UI, shared placement, synchronous commit, and neutr
   assert.match(workspace, /drawing-authoring-preview/);
   assert.match(workspace, /drawing-segment-cursor/);
   assert.match(styles, /\.drawing-svg\.has-authoring-cursor/);
-  assert.match(app, /'select' \| 'line' \| 'profile' \| 'dimension'/);
+  assert.doesNotMatch(app, /drawingActiveTool/, 'module tool state is no longer mirrored for shared chrome');
+  assert.match(workspace, /useRef<DrawingActiveTool>\(activeTool\)/, 'Drawing retains the complete local tool identity');
   assert.match(workspace, /drawing:tool-state/);
 });

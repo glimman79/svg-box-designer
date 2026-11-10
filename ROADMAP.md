@@ -1210,7 +1210,8 @@ R1–R3 and unimplemented R5 retain their recorded status.
 
 ## Global Workspace UI delivery slices
 
-**Approved UI requirements; proposed sequencing — all UI milestones NOT IMPLEMENTED.**
+**Approved UI requirements: UI-1 IMPLEMENTED / browser-checked (2026-11-10), pending user
+review/acceptance; UI-2/UI-3/UI-4 NOT IMPLEMENTED.**
 The [Global Workspace UI Specification](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md)
 owns the seven regions, interaction requirements and detailed acceptance criteria.
 These slices complement A–G without renumbering or changing any existing stage status.
@@ -1219,7 +1220,7 @@ functionality and all accepted tool/Undo behavior must be preserved.
 
 | UI milestone | Proposed scope | Dependency and acceptance boundary |
 | --- | --- | --- |
-| UI-1 — Shared workspace shell | Top/module navigation, project-command and Undo/Redo regions, module-specific left toolbar and shared boundaries. | May ship early within A; Drawing/BOX remain functional and future modules fit. No Undo changes or false claims of global command/history implementation. |
+| UI-1 — Shared workspace shell | **IMPLEMENTED / browser-checked; pending user acceptance.** Shared top/module navigation, scoped project commands, active-module Undo/Redo, left toolbars and mounted shell boundaries. | Drawing/BOX state and local history survive switches; unavailable commands/modules stay disabled. No global ownership, native persistence or transaction changes. [Validation](docs/UI1_SHARED_WORKSPACE_SHELL_VALIDATION.md). |
 | UI-2 — Contextual canvas controls | Remove top Fit, retain canvas Fit, relocate relevant Apply/Finish Group using the contextual constraint-control concept. | May follow UI-1 early; preserve accepted actions, multi-step/cancel/incomplete states and Undo boundaries. Controls appear only when relevant without unnecessarily obscuring geometry. |
 | UI-3 — Construction-history timeline shell | Shared horizontal bottom layout, scrolling, selection/navigation boundaries, labels/icons/diagnostic space. | Can precede complete C.2, but must integrate with its stable-reference boundary. Preserve module-switch context; no workflow-group relabelling or throwaway history model. |
 | UI-4 — Construction-history integration | Persistent operations, in-place/current-settings editing, diagnostics/repair and Undo/dependency synchronization. | Requires C shared project/global Undo, proposed C.2 operations/bindings and appropriate E foundations; D is required for native saved-history behavior. New operations add entries; edits retain identity; invalid/blocked definitions remain accessible; native Open retains operations with a fresh Undo tape. |
@@ -1228,5 +1229,5 @@ F — Simple 3D Modeling remains optional future integration, and G — Puzzle u
 same workspace when implemented. Neither is made available by a UI shell. UI-4 cannot
 be implemented independently of C/C.2 and E; coordinate with D rather than duplicate
 persistence/history work. Stage B remains the merged technical reference with its
-requirements/proposals distinction intact; no application implementation is authorized
-or completed by recording these slices.
+requirements/proposals distinction intact. UI-1 placement does not complete A or any
+other A–G stage, and does not authorize implementation of later slices.

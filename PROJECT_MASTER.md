@@ -22,7 +22,8 @@ current authority. [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISIO
 is explicitly designated as the detailed approved future-requirements document for
 the connected product; it does not describe implemented capabilities.
 [Global Workspace UI Specification](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md) owns the
-approved seven-region layout and interactions; UI-1–UI-4 remain proposed/unimplemented.
+approved seven-region layout and interactions; UI-1 is implemented and browser-checked
+(2026-11-10), pending user review/acceptance. UI-2/UI-3/UI-4 remain unimplemented.
 
 ## 2. Product organization
 
@@ -107,6 +108,23 @@ all existing A–G statuses remain unchanged and no implementation is authorized
 C must reserve single-action admit/finalize/suspend/resume/abandon and lifecycle contracts
 without implementing E's evaluator, scheduler, verified feature mapping or repair engine.
 
+### 2.2 UI-1 shared workspace shell (implemented 2026-11-10)
+
+`WorkspaceTopBar` owns one module registry/navigation region, one project-command region
+and one top-bar history placement. `WorkspaceShell` supplies the existing left tools,
+canvas and bottom History layout without moving document/history ownership. Drawing's
+Dimension and Constraints launchers join its left tools; the contextual Constraints
+panel is unchanged. Construction tools, Fit, Apply and Finish Group retain their handlers.
+
+Import/Export/Clear remain explicitly BOX-scoped and unavailable while Drawing is active;
+native Open and Save remain disabled. Clear's existing confirmation now names its BOX
+scope. Undo/Redo bind to the active module's existing local owner, not a global tape.
+Existing bottom History content/navigation is unchanged. Desktop checks at 1920×1080,
+1366×768 and 1024×768 preserve bounded workspace layout without document scrolling.
+See [UI-1 validation](docs/UI1_SHARED_WORKSPACE_SHELL_VALIDATION.md) for evidence and limits.
+UI-2/UI-3/UI-4 and all A–G stage statuses remain unchanged; implementation is pending user
+review/acceptance, not a new CAD acceptance or release.
+
 ## 3. Document models and shared boundary
 
 Construction uses `SvgDocumentModel`, which preserves SVG root information, source edges, panels, contours, containment, dimensions, and diagnostics. Panel Manager adds panel identity/thickness authority needed by construction.
@@ -116,9 +134,10 @@ Drawing owns a separate versioned `DrawingDocumentV2`. It contains ordered sketc
 A shared, versioned cross-workspace `ProjectDocument`, cross-workspace references, and global History remain planned. Existing Drawing and construction models should be wrapped or migrated deliberately rather than implicitly conflated.
 
 Current histories remain separate: Drawing snapshots allow 100 Undo entries and live in
-the conditionally mounted `DrawingWorkspace`, so switching away/back loses that history
-according to source inspection, while its document remains in `App`. Construction
-snapshots are capped at 10 and remain in `App`; they omit Drawing and active workspace.
+the mounted `DrawingWorkspace`; UI-1 keeps both module shells mounted and hides/inerts
+the inactive shell, preserving Drawing document, history, tool/selection and unfinished
+work across switches. Hidden Drawing does not consume keyboard/tool activation events.
+Construction snapshots are capped at 10 and remain in `App`; they omit Drawing and active workspace.
 Neither is the required global timeline. Native Save/Open is unimplemented; model
 validation and snapshots do not establish complete project persistence or permanent
 parametric construction history. Future operations/relationships must persist; optional

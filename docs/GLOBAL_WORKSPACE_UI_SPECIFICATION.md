@@ -1,6 +1,7 @@
 # Laser Program — Global Workspace UI Specification
 
-**Status: APPROVED PRODUCT REQUIREMENTS; UI-1–UI-4 are PROPOSED / NOT IMPLEMENTED.**
+**Status: APPROVED PRODUCT REQUIREMENTS; UI-1 IMPLEMENTED / browser-checked (2026-11-10),
+pending user review/acceptance. UI-2/UI-3/UI-4 remain PROPOSED / NOT IMPLEMENTED.**
 
 ## 1. Purpose, scope and authority
 
@@ -17,7 +18,8 @@ The merged [Stage B analysis](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md) r
 the technical reference, with its approved requirements distinct from recommendations
 still under review. Merging that analysis did not implement or approve every proposal.
 
-This is documentation only. No UI milestone or A–G stage is completed by this change.
+The original specification was documentation only. UI-1 now implements the shell described
+in §5; no A–G stage is completed by that placement work.
 The canvas-only Fit placement below supersedes the earlier future top-bar Fit placement;
 other approved history, persistence, Clear and CAD contracts remain in force.
 
@@ -49,6 +51,21 @@ CAD acceptance and deferred Arc limitations remain as recorded in
 [Master §4](../PROJECT_MASTER.md#4-2d-drawing-architecture) and the
 [Stage B regression risks](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md#12-cad-regression-risks-and-mitigation).
 The user's Drawing Undo/Redo verification did not establish a new functional defect.
+
+### UI-1 implementation checkpoint (2026-11-10)
+
+The observations above describe the pre-implementation baseline. `WorkspaceTopBar` now
+renders one navigation/command/history region; `WorkspaceShell` keeps the existing module
+owners mounted and shares layout boundaries. Drawing's Dimension/Constraints launchers
+now live with its left tools. Local Drawing history and unfinished workflows survive
+switches; inactive Drawing keyboard/activation input is gated. No global history engine
+or transaction changes were introduced.
+
+Import/Export/Clear remain BOX-scoped and disabled in Drawing; native Open/Save remain
+disabled. BOX Clear confirms that Drawing is preserved. The future BLUE/ORANGE contracts
+below are still future functionality. Existing bottom History, Fit (including BOX top-bar
+Fit), Apply and Finish Group remain unchanged pending UI-2/UI-3/UI-4. See
+[UI-1 validation](UI1_SHARED_WORKSPACE_SHELL_VALIDATION.md) for exact checks and limitations.
 
 ## 3. Seven approved UI regions
 
@@ -182,12 +199,15 @@ Undo step. Stage E refines responsive unrelated authoring and evaluation; this U
 does not select a scheduler. See the authoritative
 [Stage B dependency contract](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md#11-dependency-boundary-option-a-and-partial-regeneration).
 
-## 5. Proposed UI-1 through UI-4 delivery plan
+## 5. UI-1 through UI-4 delivery plan
 
-All milestones below are **PROPOSED / NOT IMPLEMENTED**. They complement the existing
-A–G roadmap without renumbering it or changing any stage's status.
+UI-1 is **IMPLEMENTED / browser-checked**, pending user review/acceptance. UI-2/UI-3/UI-4
+remain **PROPOSED / NOT IMPLEMENTED**. These slices complement the existing A–G roadmap
+without renumbering it or changing any stage's status.
 
 ### UI-1 — Shared workspace shell
+
+**IMPLEMENTED / browser-checked (2026-11-10); pending user review/acceptance.**
 
 **Scope:** consistent top/module navigation, global project-command and Undo/Redo regions,
 module-specific left toolbar and shared layout boundaries. May be delivered early as an
@@ -255,9 +275,10 @@ foundation is implemented while Open starts a fresh Undo tape.
 
 ## 6. Non-goals and deferred details
 
-No React/CSS/state/tool changes, tool-set redesign, persistence implementation, new
-history store, solver changes or broad architecture redesign. No A–G status changes,
-completed UI milestones, new CAD/browser acceptance, release dates or reopening Option A.
+Beyond UI-1 shell placement and mounted-owner preservation, no tool-set redesign,
+persistence implementation, new history store, solver changes or broad architecture
+redesign. No A–G status changes, later completed UI milestones, new user CAD acceptance,
+release dates or reopening Option A. Automated browser evidence for UI-1 is linked above.
 Preserve historical and accepted evidence. Operation catalog/grouping, legacy migration,
 exact menu/overlay placement, identity adapters, native schema, dependency scheduler,
 repair algorithms, 3D and Puzzle details remain with their existing architecture stages.

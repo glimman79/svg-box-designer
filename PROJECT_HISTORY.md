@@ -1000,6 +1000,21 @@ Save/Clear contracts, all A–G statuses and accepted CAD/historical evidence ar
 No application source, tests, configuration or generated artifacts changed; no new
 application test or browser acceptance result is claimed.
 
+### 11.33 UI-1 shared workspace shell implementation (2026-11-10)
+
+Implemented the first approved UI slice from main `7b8fe036d7454017647a9c3e2f2972c23679bfeb`.
+Shared navigation, project-command and Undo/Redo regions now serve both mounted module
+shells. Drawing Dimension/Constraints launchers join the module's left tools. Navigation
+preserves local history, documents and unfinished tools; hidden Drawing ignores keyboard
+and activation events. Import/Export/Clear retain BOX ownership and existing semantics;
+Open/Save and Puzzle remain unavailable. Existing Fit/Apply/Finish Group and bottom
+workflow History retain their behavior. No geometry/solver/persistence/transaction code
+was changed. UI-2/UI-3/UI-4 and A–G statuses remain unchanged.
+
+[Validation](docs/UI1_SHARED_WORKSPACE_SHELL_VALIDATION.md) records passing component,
+CAD regression and Chromium checks. This implementation awaits user review/acceptance;
+previous accepted CAD evidence and deferred Arc limitations are unchanged.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics

@@ -17,7 +17,8 @@ assert.doesNotMatch(css, /\.cad-tool-button \*/, 'redundant descendant selection
 
 
 assert.match(workspace, /dispatchEvent\(new CustomEvent\('drawing:tool-state',[\s\S]*detail: \{ activeTool, activationMode:/, 'Drawing publishes the Profile-capable active tool contract');
-assert.match(app, /CustomEvent<\{ activeTool: 'select' \| 'line' \| 'profile' \| 'dimension' \}>/, 'App consumes the Profile tool-state identity');
+assert.doesNotMatch(app, /drawingActiveTool|drawing:tool-state/, 'App no longer mirrors module-local tool state for top-bar tool buttons');
+assert.match(rail, /activeTool === 'dimension'[\s\S]*activateToolFromPointer\('dimension', event\)/, 'Dimension now consumes the same local lifecycle as the other Drawing tools');
 assert.match(workspace, /activeTool === 'line'/, 'standalone Line has its own tool identity');
 
 console.log('CAD tool cleanup tests passed');

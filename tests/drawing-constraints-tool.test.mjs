@@ -44,15 +44,14 @@ test('Select and Constraints route to the shared toggle without stealing authori
   assert.doesNotMatch(workspaceSource, /event\.shiftKey/, 'Shift follows the ordinary Select path');
 });
 
-test('Constraints launcher is directly after Dimension in the top bar and absent from the drawing sidebar', () => {
-  const topBar = appSource.match(/drawing-operation-toolbar[\s\S]*?<\/div>}/)?.[0] ?? '';
-  assert.match(topBar, />↔<\/span> Dimension<\/button>\s*<button[^>]*[\s\S]*?>Constraints<\/button>/, 'Constraints immediately follows Dimension');
+test('Constraints launcher directly follows Dimension in the module-specific left toolbar', () => {
   const sidebar = workspaceSource.match(/<aside[^>]*drawing-tool-sidebar[\s\S]*?<\/aside>/)?.[0] ?? '';
-  assert.doesNotMatch(sidebar, />Constraints<\/button>/, 'left Drawing toolbar has no Constraints launcher');
+  assert.match(sidebar, />Dimension<\/button>\s*<button[^>]*[\s\S]*?>Constraints<\/button>/, 'Constraints immediately follows Dimension');
+  assert.doesNotMatch(appSource, />Constraints<\/button>/, 'the shared top bar no longer duplicates module tools');
 });
 
 test('moved launcher and close button share the one existing panel state', () => {
-  assert.match(appSource, /setDrawingConstraintsPanelOpen\(\(open\) => !open\)/, 'top launcher toggles the panel state');
+  assert.match(workspaceSource, /setConstraintsPanelOpen\(\(open\) => !open\)/, 'left launcher toggles the existing panel state');
   assert.match(appSource, /constraintsPanelOpen=\{drawingConstraintsPanelOpen\} setConstraintsPanelOpen=\{setDrawingConstraintsPanelOpen\}/, 'workspace receives that same state authority');
   assert.match(workspaceSource, /aria-label="Close Constraints"[\s\S]*?setConstraintsPanelOpen\(false\)/, 'close button still closes the shared panel');
   assert.equal((workspaceSource.match(/className="drawing-constraints-panel"/g) ?? []).length, 1, 'exactly one floating panel is rendered');
@@ -69,7 +68,7 @@ test('floating panel defaults from the current frame right edge and retains sess
   assert.deepEqual(initialConstraintsPanelPosition({ width: 1400, height: 700 }, { width: 292, height: 330 }), { x: 1076, y: 58 });
   assert.deepEqual(initialConstraintsPanelPosition({ width: 900, height: 700 }, { width: 292, height: 330 }), { x: 576, y: 58 });
   assert.doesNotMatch(workspaceSource, /x: 78/, 'arbitrary left-relative x is no longer position authority');
-  assert.match(workspaceSource, /if \(!constraintsPanelOpen \|\| constraintsPanelPosition\) return/, 'an existing default or user position is not recalculated on reopen');
+  assert.match(workspaceSource, /if \(!isActive \|\| !constraintsPanelOpen \|\| constraintsPanelPosition\) return/, 'an existing default or user position is not recalculated on reopen');
   assert.match(workspaceSource, /left: constraintsPanelPosition\?\.x/, 'the session position remains render authority');
 });
 

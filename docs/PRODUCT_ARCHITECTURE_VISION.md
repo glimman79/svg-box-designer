@@ -13,8 +13,9 @@ are authoritative for this scope; historical analyses do not override them.
 
 The [Global Workspace UI Specification](GLOBAL_WORKSPACE_UI_SPECIFICATION.md) owns the
 approved seven-region workspace layout and contextual controls. It refines placement
-without implementing these requirements or changing A–G status; its UI-1–UI-4 sequence
-is a proposed incremental plan, dependent on the existing project/history foundations.
+with UI-1 shell placement implemented and browser-checked (2026-11-10), pending user
+acceptance. UI-2/UI-3/UI-4 and the functional global contracts remain unimplemented;
+A–G statuses and project/history foundation dependencies are unchanged.
 
 ## 1. Status and documentation inventory
 
@@ -61,6 +62,15 @@ architectural limitations relative to the approved global project history, not e
 of a defect while working within Drawing. Existing Stage 6 browser acceptance remains
 intact. The known Arc empty/blind Undo issue remains separately **DEFERRED — accepted
 known limitation** and is not fixed or reclassified by this correction.
+
+**UI-1 checkpoint (2026-11-10):** the inventory above is historical baseline evidence.
+The shared shell now keeps Drawing mounted when inactive, preserving its local history
+and tools during navigation; active-module command/history placement is consolidated.
+Import/Export/Clear still belong to BOX and are unavailable in Drawing; native Open/Save,
+global Undo and project-wide Clear remain future functionality. The earlier unmount-loss
+observation does not describe current navigation. See
+[UI-1 validation](UI1_SHARED_WORKSPACE_SHELL_VALIDATION.md). No accepted CAD evidence or
+remaining architecture requirement changes.
 
 ## 2. Connected modules and optional workflows
 

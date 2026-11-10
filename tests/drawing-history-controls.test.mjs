@@ -8,15 +8,16 @@ import { resolveDrawingPointReference } from '../.test-build/drawing-history-con
 const app = fs.readFileSync('src/App.tsx', 'utf8');
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const controls = fs.readFileSync('src/app/HistoryControls.tsx', 'utf8');
+const topBar = fs.readFileSync('src/app/WorkspaceTopBar.tsx', 'utf8');
 
 assert.match(controls, /canUndo: boolean;[\s\S]*canRedo: boolean;[\s\S]*onUndo: \(\) => void;[\s\S]*onRedo: \(\) => void;/, 'controls expose a generic presentation contract');
 assert.match(controls, /disabled=\{!canUndo\}[\s\S]*disabled=\{!canRedo\}/, 'both buttons derive disabled state from capabilities');
 assert.match(controls, /aria-label="Undo \(Ctrl\+Z\)" title="Undo \(Ctrl\+Z\)"/, 'Undo has an accessible label and matching tooltip');
 assert.match(controls, /aria-label="Redo \(Ctrl\+Y\)" title="Redo \(Ctrl\+Y\)"/, 'Redo has an accessible label and matching tooltip');
 assert.match(controls, />↶<\/button>[\s\S]*>↷<\/button>/, 'Box icon order and orientation are retained');
-assert.equal((app.match(/<HistoryControls /g) ?? []).length, 2, 'Box and Drawing render the same component');
-assert.match(app, /activeWorkspace === 'construction'[\s\S]*?<HistoryControls canUndo=\{undoStack\.length > 0\}/, 'Box retains its own history connection');
-assert.match(app, /activeWorkspace === 'drawing'[\s\S]*?<HistoryControls canUndo=\{drawingHistoryController\?\.canUndo \?\? false\}/, 'Drawing controls live in its top toolbar');
+assert.equal((topBar.match(/<HistoryControls /g) ?? []).length, 1, 'both modules share one top-bar history placement');
+assert.match(app, /history=\{activeWorkspace === 'drawing'[\s\S]*drawingHistoryController \?\?[\s\S]*canUndo: undoStack.length > 0, canRedo: redoStack.length > 0, onUndo: undoLastEdit, onRedo: redoLastEdit/, 'the active module supplies its existing owner and disabled states');
+assert.match(topBar, /<header[\s\S]*<HistoryControls \{\.\.\.history\}/, 'history controls remain in the application header');
 assert.match(workspace, /transactDocument\(\(current\) => appendEntityToActiveSketch/, 'Line creation uses existing Drawing history transactions');
 assert.match(workspace, /key\.toLowerCase\(\) === 'z'[\s\S]*undo\(\)/, 'Ctrl/Cmd+Z and the button share Undo');
 assert.match(workspace, /key\.toLowerCase\(\) === 'y'[\s\S]*redo\(\)/, 'Ctrl/Cmd+Y and the button share Redo');

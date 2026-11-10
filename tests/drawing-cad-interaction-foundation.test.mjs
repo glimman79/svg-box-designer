@@ -61,7 +61,7 @@ assert.deepEqual(committed.entity.end, { x: 40, y: 10 }, 'resolved spatial point
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 const css = fs.readFileSync('src/styles.css', 'utf8');
 assert.match(workspace, /aria-pressed=\{activeTool === 'profile'\}/, 'active styling derives from activeTool');
-assert.match(workspace, /useCadEscapeToolExit\(exitActiveTool\)/, 'one Escape uses the shared exit contract');
+assert.match(workspace, /useCadEscapeToolExit\(\(\) => \{ if \(isActive\) exitActiveTool\(\); \}\)/, 'one Escape uses the shared exit contract');
 assert.match(workspace, /onDoubleClick=\{\(\) => \{ if \(activeTool === 'profile'\) finishProfile\(\)/, 'canvas double-click finishes the current construction');
 assert.match(workspace, /resolveCadToolPointerActivation[\s\S]*?selectTool\(tool, resolution\.activationMode\)/, 'application-controlled pointer activation can explicitly request persistent mode');
 const panSource = fs.readFileSync('src/app/cadInteraction.ts', 'utf8');
