@@ -801,8 +801,11 @@ and Flatten to 2D are distinct; curved-surface flattening needs separate design.
 historical [Drawing Dimension analysis §16](docs/DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md#16-history--undo--redo)
 recommended Drawing-owned snapshots rather than extending Construction history. The
 user explicitly rejected independent histories as the long-term direction. The approved
-target is **one global project history**, including module switches, within 10–30 steps
-with **30 as the design target**. The original report remains historical evidence.
+target recorded at that date was **one global project history**, including module
+switches, within 10–30 steps with **30 as the design target**. **Superseded 2026-11-09:**
+ordinary module navigation creates no Undo steps and preserves Redo; the limit is 30
+committed project edits. See [§11.29](#1129-stage-b-history-product-decision-revision-2026-11-09).
+The original report remains historical evidence.
 
 Source inspection on freshly verified GitHub main
 `958e19609023984d10707a60f4a10c66ce6e0bd8` confirms separate Drawing snapshots (100 Undo
@@ -832,8 +835,10 @@ BOX. Native Save/Open must preserve the editable multi-module project and relati
 Export remains a distinct output. Clear is confirmed and whole-project; Fit uses active
 geometry. Current conditional controls, Construction Clear/export, fixed Drawing Fit,
 disabled Save and model restore helpers do not already satisfy these requirements.
-Native format, history persistence, selection/viewport/active-module persistence,
-transactions, dependencies and detailed 3D/Puzzle design remain unresolved.
+At that checkpoint, native format, history persistence, selection/viewport/active-module
+persistence, transactions, dependencies and detailed 3D/Puzzle design remained unresolved.
+The Clear and execution-history persistence boundaries are superseded by §11.29;
+descriptive journal serialization remains open.
 
 This decision updates documentation only. It preserves existing Puzzle roadmap
 commitments, Construction authority/pipeline, canonical Circle/Arc geometry, Constraints,
@@ -862,6 +867,121 @@ Circle/Arc Stages 0–6, their verification and acceptance records, the approved
 history requirements and A–G stage structure/statuses remain intact. This correction
 changes documentation only; no application code, tests, configuration or functionality
 changed, and no new application test or browser verification is claimed.
+
+### 11.29 Stage B history product-decision revision (2026-11-09)
+
+> **Later 2026-11-09 clarification:** bounded/session journal and optional journal
+> persistence statements below describe the earlier revision. They are superseded
+> **as construction history** by §11.30. Navigation/Clear/Open decisions remain valid.
+
+**APPROVED FUTURE PRODUCT DECISIONS — NOT IMPLEMENTED.** PR #629's Stage B analysis is
+revised on its existing branch. The snapshot-based hybrid recommendation remains: one
+project owner, exact complete immutable before/after outcomes, stable object identity and
+semantic operation metadata. The complete Stage B architecture/interfaces remain under
+review; no Stage C implementation or merge is authorized.
+
+- The shared capacity is 30 committed project-editing transitions. Ordinary module
+  switching and panel double-click are UI navigation, consume no steps, leave the cursor
+  unchanged and preserve Redo. Only a new committed edit after Undo abandons Redo.
+- Undo/Redo restore the affected edit's complete project state and automatically open
+  its associated module; obsolete snapshot active tabs have no restoration authority.
+- Double-click selects/reveals the referenced object's current state/settings by stable
+  lifetime-qualified identity, never rewinds or resurrects deleted objects. Subsequent
+  editing is a normal transaction; retained summaries can navigate after snapshot expiry.
+- Clear is permanent and project-wide, never Undoable: Save and Clear / Clear Without
+  Saving / Cancel. Save must complete successfully before clearing, including first-save
+  destination selection. Failed/cancelled saves preserve project/history. Reset all module
+  states and Undo/Redo to an empty session; clearing itself never deletes/overwrites a
+  saved file. Session gates reject delayed operations that could repopulate old data.
+- Native Open restores full editable content/dependencies as a new baseline with empty
+  Undo/Redo, without prior snapshots. Pending work from the previous runtime session is
+  invalidated. Journal quota/presentation/serialization and disk UI preferences remain
+  separate decisions, alongside detailed store, interruption and lifecycle design.
+
+This explicitly supersedes §11.27's module-switch entries and 10–30 design range,
+the original Stage B D1/D2 reveal exception and D5 undoable-Clear recommendation, and
+the earlier unresolved native execution-history policy. Current vision, Master,
+Architecture, roadmap and notices are synchronized; historical CAD/acceptance records,
+deferred issues and A–G status labels remain intact. Documentation only: no application
+source, tests, configuration or Stage C implementation changed.
+
+### 11.30 Stage B permanent parametric construction-history revision (2026-11-09)
+
+> Historical checkpoint: its separate async source/result transaction recommendation
+> below is **superseded by §11.31**. Permanent construction history and Option A remain.
+
+**APPROVED FUTURE REQUIREMENTS — NOT IMPLEMENTED.** Existing PR #629 continues from
+reviewed head `9a685aaf4cbfc9bb39f698ccceda7e68225f09cc`, with remote main freshly
+verified at `97469bd8274edae335254188dc8805f1141dc874`. The new uploaded requirements
+separate global 30-transition Undo/Redo from permanent, project-owned editable
+construction operations inspired by a parametric CAD timeline.
+
+- Create a 30 mm Line: one operation/one Undo step. Edits to 50 then 70 mm update the
+  same operation with a new Undo step each time; snapshots restore parameters, geometry,
+  identities and dependency outcomes consistently. Operations survive Undo eviction and
+  persist with native projects, without arbitrary 100/250-entry journal quotas.
+- The prior bounded semantic/session-journal proposal is explicitly superseded as
+  construction history. An optional descriptive event journal is not an approved
+  requirement. Existing §11.29 navigation, permanent Clear and fresh Open Undo remain.
+- Approved Option A retains valid source edits, updates compatible branches, preserves
+  failed/blocked definitions/parameters/refs and unaffected authored work, and exposes
+  diagnostics for repair/removal. No guessed ref substitution or silent dependent loss.
+  Suppression/deletion detect impacts and are Undoable. Invalid/stale manufacturing
+  artifacts cannot silently export; independent output needs explicit scope/validation.
+- The technical proposal distinguishes operation/entity/transaction identity, canonical
+  parameter bindings and evaluated artifacts; mixed-outcome snapshots and explicit async
+  result transactions use a single guarded publication boundary, without generator
+  replay on Undo/Redo. This remains a proposal, not implemented functionality.
+- Recommend a separately scoped C.2 persistent-operation foundation after C global
+  ownership/Undo, before D complete editable persistence and E's tracking/regeneration,
+  warning/error, repair and downstream management. Exact operation catalog/grouping,
+  legacy migration, scheduling, dependent UX and export-scope policy remain under review.
+
+Documentation only. No source, tests, configuration, Stage C/E implementation, merge or
+replacement PR. Existing A–G statuses, Circle/Arc Stages 0–6, Drawing tool/solver semantics,
+BOX stored authority/pipeline, regression evidence and deferred/open issues are preserved.
+Stop for user/ChatGPT architecture review after updating existing PR #629.
+
+### 11.31 Stage B global Undo/Redo tape-recorder revision (2026-11-09)
+
+**APPROVED FUTURE BEHAVIOR; TECHNICAL PROPOSAL FOR REVIEW — NOT IMPLEMENTED.** Continue
+existing open PR #629 from reviewed head `84e62f3ec44f31cae6060076dbfd6023b9f9070a`;
+fresh remote main/base/merge-base is `97469bd8274edae335254188dc8805f1141dc874`.
+Branch `docs/stage-b-global-project-history` and clean working tree were verified before
+editing. The final uploaded brief authorizes documentation and push to this PR only.
+
+- One completed state-changing user action creates one tape transition, including
+  creation, editing, deletion and **all** automatic solver/dependency effects even if
+  asynchronous. One gesture is one action; previews/invalid/cancelled/no-op input add
+  none. Undo/Redo restores exact identities and coherent geometry/statuses. Combined
+  past/future capacity remains 30; navigation is free and preserves Redo.
+- The prior source/stale commit followed by a separately Undoable regeneration commit
+  is explicitly **superseded**, not relabelled. Stage B compares completion-before-
+  publication, a pending logical action, and concurrent immutable evaluation graphs.
+- **Recommended, awaiting review:** one pending tape position with serialized edit
+  admission; detached staging and one immutable finalization. Pending Undo suspends
+  and invalidates attempts; unfinished Redo resumes captured source/inputs/IDs; sealed
+  Redo restores exact outcomes. Completion never adds a step or switches modules.
+  Further edit requests are visibly unaccepted while busy, not silently queued/merged.
+  This authoring-latency tradeoff needs review; concurrent accepted editing requires
+  the more complex alternative, not an implicit change to the 30-action requirement.
+- Option A keeps valid source edits, compatible results and failed/blocked definitions,
+  refs/diagnostics and unrelated authored work in the same action. Pending Save waits
+  or cancels; settled failed records can be saved for repair. Pending Export blocks;
+  settled export requires full manufacturing validation. Clear/Open invalidate old work.
+- C reserves admit/finalize/suspend/resume/abandon and lifecycle guards with immediate
+  sealing for synchronous edits. Proposed C.2 provides real persistent operation
+  definitions/bindings/identities. D saves current editable state, never executable tape
+  or jobs. E alone supplies evaluator/scheduler, feature mapping and reference repair.
+- Added final tape-recorder acceptance cases covering pending interleavings, rapid
+  requests, module switching, out-of-order jobs, retention, Save/Open/Clear and export.
+  Remaining review issues include admission UX, determinism/version retention and
+  measured time/worker/memory budgets; approved behavior is not reopened.
+
+Documentation only: no application code, tests, configuration or C/C.2/D/E implementation.
+Existing CAD/acceptance evidence, separate permanent construction history, A–G statuses,
+Circle/Arc closure, Drawing semantics and BOX stored authority remain unchanged. Push
+to existing PR #629 and stop for architecture review; no new PR or merge.
 
 ## 12. Superseded or Temporary Material
 

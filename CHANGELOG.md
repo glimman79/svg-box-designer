@@ -3,6 +3,55 @@
 Entries record completed changes at their respective checkpoints. Current architecture
 and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
 
+## Documentation — Stage B global tape-recorder architecture revision (2026-11-09)
+
+- Revised existing PR #629: one completed state-changing user action, including all
+  asynchronous automatic consequences, is one logical Undo step; combined capacity
+  remains 30. Creation/deletion preserves identities; navigation creates no steps.
+- Explicitly superseded separate async source/regeneration transactions. Compared three
+  models; recommend one pending action, immutable staging/finalization of the same slot,
+  suspended Undo and resumable unfinished Redo, with serialized edit admission for review.
+- Defined Option A outcomes, out-of-order/stale job guards, bounded pending work,
+  Save/Export/Clear/Open interleavings and 18 final tape acceptance scenarios.
+- Preserved permanent parametric construction history and proposed C.2; C reserves the
+  async transaction protocol while the evaluator/scheduler/mapping/repair remain in E.
+- Documentation only; no source, tests, configuration, implementation, merge, new PR or
+  new application acceptance. Existing CAD evidence and all A–G status labels preserved.
+
+## Documentation — Stage B permanent parametric history revision (2026-11-09)
+
+> Historical checkpoint. Any separate async source/result transaction recommendation
+> is superseded by the tape-recorder revision above; construction history remains valid.
+
+- Revised existing PR #629 for two separate systems: 30-transition global Undo/Redo
+  and persistent editable construction operations/relationships. Repeated Line parameter
+  edits update one operation; construction history survives Undo eviction and native Open.
+- Superseded bounded session-journal construction history; an event journal remains
+  optional/unapproved. Added operation/entity/incarnation model, Option A partial branch
+  success, diagnostics/repair/suppress/delete boundaries and invalid-export gates.
+- Proposed distinct C.2 operation foundation before D persistence/full E dependencies;
+  added 14 architectural acceptance scenarios and prioritized unresolved decisions.
+- Documentation only; no application source, tests, configuration, Stage C/E work or
+  new application acceptance. Existing CAD evidence and A–G statuses preserved; no merge.
+
+## Documentation — Stage B history architecture revision (2026-11-09)
+
+> The bounded/session-journal assumptions at this earlier checkpoint are superseded
+> as construction history by the permanent parametric revision above. Other approved
+> navigation/Clear/Open behavior remains valid.
+
+- Revised PR #629's hybrid snapshot proposal throughout: 30 committed project edits,
+  UI-owned module navigation preserving Redo, edit-associated Undo/Redo activation and
+  current-object history-panel navigation without rewind.
+- Replaced the proposed reversible Clear with the approved permanent whole-project
+  Save and Clear / Clear Without Saving / Cancel workflow, verified-save gating and
+  stale-session safeguards. Native Open establishes a fresh history baseline.
+- Synchronized affected requirements from #627 and marked historical decisions
+  superseded. Journal retention/serialization and detailed architecture remain under
+  review; accepted CAD records and roadmap statuses are unchanged.
+- Documentation only; no application implementation, tests, configuration, Stage C
+  work or new browser acceptance. No merge performed.
+
 ## Documentation — Drawing Undo/Redo classification correction (2026-11-04)
 
 - Corrected PR #627's inaccurate open functional-issue classification following the
@@ -20,7 +69,10 @@ and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
 ## Documentation — connected product architecture vision (2026-11-03)
 
 > **2026-11-04 clarification:** The Drawing Undo/Redo issue classification recorded
-> below is superseded by the correction above. The original entry is preserved as history.
+> below is superseded by the correction above. **2026-11-09:** module-switch entries,
+> the 10–30 target range and unresolved Clear/execution-history persistence policy are
+> superseded by the Stage B revision above and Project History §11.29. The original
+> entry is preserved as history.
 
 - Added [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) with the
   documentation/source inventory, approved optional 3D Modeling → Drawing → BOX or Puzzle

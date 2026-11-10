@@ -7,9 +7,11 @@ Root-level [`REGLER_FOR_CHATT_MED_CHATGPT.md`](../REGLER_FOR_CHATT_MED_CHATGPT.m
 ## Approved future product requirements
 
 - [PRODUCT_ARCHITECTURE_VISION.md](PRODUCT_ARCHITECTURE_VISION.md) — explicitly designated
-  detailed authority for the connected product requirements approved on 2026-11-03:
-  optional 3D Modeling → Drawing → BOX or Puzzle, global project history, interactive
-  history navigation, native persistence and source dependencies. These are **future,
+  detailed authority for connected product requirements approved on 2026-11-03 and
+  history/navigation/Clear/Open decisions revised on 2026-11-09:
+  optional 3D Modeling → Drawing → BOX or Puzzle, separate global Undo/Redo and permanent
+  parametric construction history, interactive navigation, native persistence and Option A
+  source dependencies. These are **future,
   unimplemented requirements**, not historical proposals or current functionality.
   [ROADMAP.md](../ROADMAP.md#4-connected-product-development) owns planning/status, and
   [PROJECT_MASTER.md](../PROJECT_MASTER.md) remains current-architecture authority.
@@ -28,6 +30,17 @@ These narrow contracts remain useful alongside the code. They do not replace the
 
 These documents analyze a bounded subsystem. Some contain implementation-era baselines or recommendations that later work refined.
 
+- [GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md)
+  — Stage B source-grounded project/history design proposal revised for approved product
+  decisions: a 30-action global Undo/Redo tape, one step per completed state-changing
+  action including all async automatic consequences, a distinct persistent operation
+  model, Option A and invalid-export gates. Compares three async models; recommends one
+  pending slot with immutable finalization, possible initial serialized admission and
+  explicit pending Undo/Redo/Save/Export/lifecycle contracts. Supersedes separate source/result Undo steps
+  and bounded-journal construction history; proposed C.2 remains under review before
+  D/full E. Stage E must refine scheduling for responsive unrelated authoring; single-slot
+  compatibility risk is explicit. Navigation, permanent Clear and fresh Open tape remain.
+  No implementation or roadmap-status change.
 - [DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md](DRAWING_DIMENSION_ARCHITECTURE_ANALYSIS.md)
   — historical Drawing design evidence. Its §16 recommendation for Drawing-owned
   snapshot history is superseded as long-term direction by the approved global history
