@@ -150,7 +150,8 @@
     "test:drawing-coincidence-drag": "rm -rf .test-build/drawing-coincidence-drag && tsc --ignoreConfig src/app/drawingTypes.ts src/app/drawingArcGeometry.ts src/app/drawingTopology.ts src/app/drawingSolverVariables.ts src/app/drawingDimension.ts src/app/drawingConstraintAnalysis.ts src/app/drawingConstraintSolver.ts src/app/drawingCoincidentConstraint.ts src/app/drawingConstraintsTool.ts src/app/drawingDirectManipulation.ts src/app/drawingPointerArbitration.ts src/app/drawingDocumentMutation.ts src/app/drawingHistory.ts --target es2022 --module esnext --moduleResolution bundler --outDir .test-build/drawing-coincidence-drag --skipLibCheck && node --test tests/drawing-coincidence-drag.test.mjs",
     "test:workspace-shell": "rm -rf .test-build/workspace-shell && tsc --ignoreConfig src/app/WorkspaceShell.tsx src/app/WorkspaceTopBar.tsx --target es2022 --module commonjs --outDir .test-build/workspace-shell --skipLibCheck --jsx react-jsx --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .test-build/workspace-shell/package.json && node --test tests/shared-workspace-shell.test.cjs",
     "test:workspace-shell:browser": "node tests/shared-workspace-shell.browser.cjs",
-    "test:contextual-canvas-controls:browser": "node tests/contextual-canvas-controls.browser.cjs"
+    "test:contextual-canvas-controls:browser": "node tests/contextual-canvas-controls.browser.cjs",
+    "test:compact-workspace-settings:browser": "node tests/compact-workspace-settings.browser.cjs"
   },
   "dependencies": {
     "react": "latest",

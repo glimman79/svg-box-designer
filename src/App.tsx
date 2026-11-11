@@ -184,7 +184,7 @@ export const buildWorkflowHistoryItems = (
   const panelManagerItem = includePanelManager ? [{
       id: 'workflow-history-panel-manager',
       kind: 'PM' as const,
-      name: 'PM',
+      name: 'Panel Manager',
       labels: [],
       isActive: false,
       childCount: 0,
@@ -1196,11 +1196,11 @@ function App() {
   };
 
   const activeWorkflowFinish = activeTool === 'TB' && activeTBGroup?.isActive
-    ? { label: 'Finish TB', onClick: finishTBGroup }
+    ? { label: 'OK', onClick: finishTBGroup }
     : activeTool === 'W' && activeWallGroup?.isActive
-      ? { label: 'Finish W', onClick: finishWallGroup }
+      ? { label: 'OK', onClick: finishWallGroup }
     : activeTool === 'S' && activeSGroup?.isActive
-      ? { label: 'Finish S', onClick: finishSGroup }
+      ? { label: 'OK', onClick: finishSGroup }
       : null;
 
   // Placement only: keep the existing command availability and acceptance boundaries.
@@ -1896,7 +1896,7 @@ function App() {
     const activeConnectionPrefix = activeTool === 'TB' ? 'TB' : activeTool;
 
     if (!selectedConnection || selectedConnection.prefix !== activeConnectionPrefix) {
-      return <p className="muted">Select a {activeTool === 'TB' ? 'TB / Top Bottom' : activeTool} connection to inspect this tool.</p>;
+      return <p className="muted">Select a {activeTool === 'PM' ? 'Panel Manager' : activeTool === 'TB' ? 'TB / Top Bottom' : activeTool} connection to inspect this tool.</p>;
     }
 
     if (selectedConnection.prefix === 'TB') {
@@ -2059,7 +2059,7 @@ function App() {
 
       return (
         <div className="compact-property-controls" aria-label={`Compact ${toolLabel} controls`}>
-          <span className="muted">PM thickness</span>
+          <span className="muted">Panel Manager thickness</span>
           <NumericField id="compact-edge-tab-size" label="Tab" min={0} value={tbViewModel.displayTabMm} disabled={tbViewModel.displayTabMm === null} placeholder={`Complete ${toolLabel} connection`} onChange={(fingerWidthMm) => updateEdgeProperties({ fingerWidthMm })} />
         </div>
       );
@@ -2218,7 +2218,7 @@ function App() {
               <p>Panel count: {svgModel.panels.length}</p>
               <p>Hole count: {svgModel.panels.reduce((total, panel) => total + panel.innerContours.length, 0)}</p>
               {formatImportDiagnosticMessage(svgModel).split('\n').map((line) => <p key={line}>{line}</p>)}
-              <p>Please assign panel thickness in the PM tool before continuing, or accept the project default thickness.</p>
+              <p>Please assign panel thickness in Panel Manager before continuing, or accept the project default thickness.</p>
             </div>
             <div className="clear-dialog-actions">
               <button className="toolbar-button primary" type="button" onClick={() => { setIsPanelManagerModalOpen(false); setActiveTool('PM'); }}>OK</button>
@@ -2258,30 +2258,30 @@ function App() {
         {(activeTool !== 'select' || selectedEdge) && <aside className="active-tool-panel panel" aria-label="Active Tool overlay">
           <div className="panel-heading">
             <p className="eyebrow">Active tool</p>
-            <h2>{activeTool === 'TB' ? 'TB / Top Bottom' : activeTool === 'manufacturing' ? 'Manufacturing' : activeTool}</h2>
+            <h2>{activeTool === 'PM' ? 'Panel Manager' : activeTool === 'TB' ? 'TB / Top Bottom' : activeTool === 'manufacturing' ? 'Manufacturing' : activeTool}</h2>
           </div>
 
           {(activeTool === 'PM' || hasContextualGeometryActions) && (
             <div className="contextual-tool-actions" role="group" aria-label="Active workflow actions">
               {activeTool === 'PM' ? <>
                 <button className="toolbar-button primary" type="button" onClick={applyPanelManager} disabled={!canApplyPanelManager}>Apply</button>
-                <button className="toolbar-button" type="button" onClick={finishPanelManager} disabled={!panelManager.isApplied}>Finish PM</button>
+                <button className="toolbar-button" type="button" onClick={finishPanelManager} disabled={!panelManager.isApplied}>OK</button>
               </> : <>
                 <button className="toolbar-button primary" type="button" onClick={applyPanelPaths} disabled={isProjectLocked || !hasApplyInputs}>Apply</button>
                 {activeWorkflowFinish && <button className="toolbar-button" type="button"
                   onClick={activeWorkflowFinish.onClick} disabled={isProjectLocked}
-                  title={`${activeWorkflowFinish.label} Group`}>{activeWorkflowFinish.label}</button>}
+                  title={`OK · ${activeTool} Group`}>{activeWorkflowFinish.label}</button>}
               </>}
             </div>
           )}
 
           {activeTool === 'PM' && (
             <div className="active-tool-card">
-              {renderPanelList()}
-              {panelManagerValidationMessage ? <p className="notice inline-notice">{panelManagerValidationMessage}</p> : null}
               <div className="pm-actions">
                 <button className="toolbar-button" type="button" onClick={acceptDefaultPanelThickness}>Accept default thickness</button>
               </div>
+              {panelManagerValidationMessage ? <p className="notice inline-notice">{panelManagerValidationMessage}</p> : null}
+              {renderPanelList()}
             </div>
           )}
 
@@ -2641,12 +2641,12 @@ function App() {
                 key={item.id}
                 type="button"
                 className={`workflow-history-item${item.isActive ? ' active' : ''}`}
-                aria-label={item.kind === 'PM' ? 'PM, opens Panel Manager panel' : item.kind === 'manufacturing' ? 'MFG, opens Manufacturing panel' : `${item.name}, ${item.isActive ? 'active' : 'inactive'}, ${item.childCount} ${item.childCount === 1 ? 'child connection' : 'child connections'}`}
+                aria-label={item.kind === 'PM' ? 'Panel Manager, opens Panel Manager panel' : item.kind === 'manufacturing' ? 'MFG, opens Manufacturing panel' : `${item.name}, ${item.isActive ? 'active' : 'inactive'}, ${item.childCount} ${item.childCount === 1 ? 'child connection' : 'child connections'}`}
                 aria-pressed={item.kind === 'PM' ? activeTool === 'PM' : item.kind === 'manufacturing' ? activeTool === 'manufacturing' : item.labels.includes(selectedLabelId ?? '')}
-                title={item.kind === 'PM' ? 'PM · Panel Manager' : item.kind === 'manufacturing' ? 'MFG · Manufacturing' : `${item.name} · ${item.isActive ? 'Active' : 'Inactive'} · ${item.childCount} ${item.childCount === 1 ? 'child' : 'children'}`}
+                title={item.kind === 'PM' ? 'Panel Manager' : item.kind === 'manufacturing' ? 'MFG · Manufacturing' : `${item.name} · ${item.isActive ? 'Active' : 'Inactive'} · ${item.childCount} ${item.childCount === 1 ? 'child' : 'children'}`}
                 onClick={() => navigateToWorkflowHistoryItem(item)}
               >
-                <span className="history-item-icon" aria-hidden="true">{item.kind === 'manufacturing' ? 'MFG' : item.kind}</span>
+                <span className="history-item-icon" aria-hidden="true">{item.kind === 'PM' ? '▤' : item.kind === 'manufacturing' ? 'MFG' : item.kind}</span>
               </button>
             )) : (
               <p className="workflow-history-empty muted">No workflow groups yet.</p>

@@ -1,5 +1,19 @@
 # SVG Box Designer — Project History
 
+## UI-2.1 – Compact Workspace & Settings (2026-11-11)
+
+Implemented and Chromium-checked on the merged UI-2 baseline (`1ff28c75b987941409f050059bcbdaf0bef65678`, PR #632). User review/acceptance and separate merge approval remain pending.
+
+- Shared header order: brand, Import/Open/Save/Export/Clear, Settings, Undo/Redo, modules. Small/Normal use one row at 1920, 1366 and 1024; Large wraps safely at 1024.
+- Central CSS tokens provide Small, Normal (default), and Large control sizes across header/navigation, Drawing/BOX rails, viewport controls and compact actions. Normal BOX rail is 52px.
+- Settings → Icon size is a nested hover/click/keyboard menu with checked selection, Escape/outside dismissal, focus handling and viewport collision placement. Guarded localStorage key `sbd.ui.iconSize` persists chrome preference independently of project documents/history; storage denial falls back to Normal.
+- Dimension and Constraints occupy the Drawing upper toolbar; Select, Line, Circle, Arc and Profile remain on the left. Existing handlers and active states are retained.
+- Panel Manager replaces visible PM names; a compact ▤ workflow chip has the full accessible name and tooltip. Accept default thickness precedes the list below Apply/OK. Finish workflow buttons now read OK, retaining their handlers/validation.
+- CAD, manufacturing, project state, mounted owners and module-local Undo/Redo semantics are unchanged. UI-1/UI-2 history is preserved. UI-3/UI-4, A–G statuses and accepted CAD evidence are unchanged.
+
+See [UI-2.1 validation](docs/UI21_COMPACT_WORKSPACE_SETTINGS_VALIDATION.md) for exact commands, screenshots, limits and results.
+
+
 ## 1. Purpose and Scope
 
 This document answers: what happened, why important architectural decisions were made, which regressions changed understanding, and how SVG Box Designer reached its current baseline.
