@@ -1195,13 +1195,17 @@ function App() {
     setActiveTool('select'); setErrorMessage('');
   };
 
-  const activeToolbarFinish = activeTool === 'TB' && activeTBGroup?.isActive
+  const activeWorkflowFinish = activeTool === 'TB' && activeTBGroup?.isActive
     ? { label: 'Finish TB', onClick: finishTBGroup }
     : activeTool === 'W' && activeWallGroup?.isActive
       ? { label: 'Finish W', onClick: finishWallGroup }
     : activeTool === 'S' && activeSGroup?.isActive
       ? { label: 'Finish S', onClick: finishSGroup }
       : null;
+
+  // Placement only: keep the existing command availability and acceptance boundaries.
+  const hasContextualGeometryActions = activeTool === 'TB' || activeTool === 'W'
+    || activeTool === 'S' || activeTool === 'manufacturing';
 
   const clearEdgeLabel = (edgeId: string) => {
     if (!edgeAssignments[edgeId]) {
@@ -2189,21 +2193,7 @@ function App() {
         history={activeWorkspace === 'drawing'
           ? drawingHistoryController ?? { canUndo: false, canRedo: false, onUndo: () => undefined, onRedo: () => undefined }
           : { canUndo: undoStack.length > 0, canRedo: redoStack.length > 0, onUndo: undoLastEdit, onRedo: redoLastEdit }}
-      >
-        {activeWorkspace === 'construction' && <>
-          <button className="toolbar-button" type="button" onClick={fitCanvasToScreen}>Fit to screen</button>
-          <button className="toolbar-button" type="button" onClick={applyPanelPaths} disabled={isProjectLocked || !hasApplyInputs}>Apply</button>
-          <button
-            className="toolbar-button"
-            type="button"
-            onClick={activeToolbarFinish?.onClick}
-            disabled={isProjectLocked || !activeToolbarFinish}
-            title={activeToolbarFinish ? `${activeToolbarFinish.label} Group` : 'No active group for current tool'}
-          >
-            {activeToolbarFinish?.label ?? 'Finish Group'}
-          </button>
-        </>}
-      </WorkspaceTopBar>
+      />
       <a ref={downloadRef} className="visually-hidden" aria-hidden="true">download</a>
 
       {isClearDialogOpen && (
@@ -2271,14 +2261,26 @@ function App() {
             <h2>{activeTool === 'TB' ? 'TB / Top Bottom' : activeTool === 'manufacturing' ? 'Manufacturing' : activeTool}</h2>
           </div>
 
+          {(activeTool === 'PM' || hasContextualGeometryActions) && (
+            <div className="contextual-tool-actions" role="group" aria-label="Active workflow actions">
+              {activeTool === 'PM' ? <>
+                <button className="toolbar-button primary" type="button" onClick={applyPanelManager} disabled={!canApplyPanelManager}>Apply</button>
+                <button className="toolbar-button" type="button" onClick={finishPanelManager} disabled={!panelManager.isApplied}>Finish PM</button>
+              </> : <>
+                <button className="toolbar-button primary" type="button" onClick={applyPanelPaths} disabled={isProjectLocked || !hasApplyInputs}>Apply</button>
+                {activeWorkflowFinish && <button className="toolbar-button" type="button"
+                  onClick={activeWorkflowFinish.onClick} disabled={isProjectLocked}
+                  title={`${activeWorkflowFinish.label} Group`}>{activeWorkflowFinish.label}</button>}
+              </>}
+            </div>
+          )}
+
           {activeTool === 'PM' && (
             <div className="active-tool-card">
               {renderPanelList()}
               {panelManagerValidationMessage ? <p className="notice inline-notice">{panelManagerValidationMessage}</p> : null}
               <div className="pm-actions">
                 <button className="toolbar-button" type="button" onClick={acceptDefaultPanelThickness}>Accept default thickness</button>
-                <button className="toolbar-button primary" type="button" onClick={applyPanelManager} disabled={!canApplyPanelManager}>Apply</button>
-                <button className="toolbar-button" type="button" onClick={finishPanelManager} disabled={!panelManager.isApplied}>Finish PM</button>
               </div>
             </div>
           )}

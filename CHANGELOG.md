@@ -3,6 +3,18 @@
 Entries record completed changes at their respective checkpoints. Current architecture
 and stage status are maintained in `PROJECT_MASTER.md` and `ROADMAP.md`.
 
+## UI-2 — Contextual canvas controls (2026-11-11)
+
+- Removed BOX's redundant top-bar Fit; each canvas retains its existing Fit beside zoom.
+- Relocated geometry Apply and active TB/W/S Finish into the existing tool overlay.
+  PM uses the same sticky action-row presentation with its original Apply/Finish PM;
+  Manufacturing has Apply only, and Select/placeholders have no workflow actions.
+- Preserved command handlers, validation, CAD/manufacturing semantics, local Undo
+  boundaries, UI-1 navigation/project commands and unfinished module state.
+- Added focused Chromium acceptance, retained UI-1/CAD regressions and captured both
+  layouts at three desktop sizes. [Validation](docs/UI2_CONTEXTUAL_CANVAS_CONTROLS_VALIDATION.md).
+  Pending user review/acceptance; UI-3/UI-4 and A–G statuses remain unchanged.
+
 ## UI-1 — Shared workspace shell (2026-11-10)
 
 - Consolidated module navigation, explicitly scoped project commands and active-module

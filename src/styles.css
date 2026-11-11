@@ -2148,6 +2148,26 @@ button:disabled {
   box-shadow: 0 20px 55px rgb(15 23 42 / 24%);
 }
 
+/* Share the existing inspector footprint; no pointer-following popup over geometry. */
+.contextual-tool-actions {
+  position: sticky;
+  top: -10px;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 0;
+  margin-bottom: 8px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.contextual-tool-actions button:focus-visible,
+.canvas-zoom-controls button:focus-visible {
+  outline: 3px solid #0f766e;
+  outline-offset: 2px;
+}
+
 .workspace-shell .workflow-history-panel {
   grid-area: history;
   border-radius: 0;
@@ -2201,7 +2221,7 @@ button:disabled {
 .top-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(260px, 1fr);
-  grid-template-areas: "brand modules modules" "project undo actions";
+  grid-template-areas: "brand modules modules" "project undo .";
   gap: 6px 12px;
 }
 
@@ -2209,7 +2229,6 @@ button:disabled {
 .workspace-selector { grid-area: modules; justify-self: end; }
 .project-commands { grid-area: project; }
 .history-commands { grid-area: undo; }
-.module-actions { grid-area: actions; }
 .command-scope { color: #99f6e4; font-size: 0.7rem; font-weight: 700; }
 .project-commands .toolbar-button[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
 
@@ -2220,7 +2239,7 @@ button:disabled {
 @media (max-width: 760px) {
   .top-toolbar {
     grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: "brand brand" "modules modules" "project undo" "actions actions";
+    grid-template-areas: "brand brand" "modules modules" "project undo";
   }
   .workspace-selector { justify-self: stretch; overflow-x: auto; }
 }

@@ -77,7 +77,9 @@ Open → Save → Export → Clear → Undo → Redo order. The approved
 [Global Workspace UI Specification](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md) moves Fit
 exclusively beside canvas zoom, module tools to the left and relevant Apply/Finish Group
 controls onto the canvas, with shared permanent construction history at the bottom.
-UI-1 is implemented and browser-checked, pending user acceptance; UI-2/UI-3/UI-4 remain unimplemented; UI-4 requires C/C.2, D for saved
+UI-1/UI-2 are implemented and browser-checked, pending user acceptance. UI-2 retains
+existing handlers and places Fit only beside canvas zoom, with relevant Apply/Finish
+in the existing BOX tool overlay. UI-3/UI-4 remain unimplemented; UI-4 requires C/C.2, D for saved
 history and E for dependency diagnostics/repair. Placement changes preserve accepted
 tool/Undo semantics and do not implement global ownership or native commands.
 Clear is a permanent project-wide session reset with Save and Clear / Clear Without

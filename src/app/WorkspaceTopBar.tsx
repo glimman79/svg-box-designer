@@ -1,4 +1,4 @@
-import type { ChangeEvent, ReactNode } from 'react';
+import type { ChangeEvent } from 'react';
 import type { WorkspaceId } from './drawingTypes';
 import { HistoryControls, type HistoryControlsProps } from './HistoryControls';
 
@@ -9,7 +9,7 @@ const modules: ReadonlyArray<{ id: WorkspaceId; label: string; available: boolea
 ];
 
 /** Placement only: commands and history retain their existing module owners. */
-export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, onExport, onClear, canExport, history, children }: {
+export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, onExport, onClear, canExport, history }: {
   activeWorkspace: WorkspaceId;
   onSelectWorkspace: (workspace: WorkspaceId) => void;
   onImport: (event: ChangeEvent<HTMLInputElement>) => void;
@@ -17,7 +17,6 @@ export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, 
   onClear: () => void;
   canExport: boolean;
   history: HistoryControlsProps;
-  children?: ReactNode;
 }) {
   const isConstruction = activeWorkspace === 'construction';
   return <header className="top-toolbar" aria-label="Primary actions">
@@ -47,6 +46,5 @@ export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, 
     <div className="toolbar-actions history-commands" role="group" aria-label={`${isConstruction ? 'BOX / Construction' : 'Drawing'} Undo/Redo`} title="Active module history; shared project Undo/Redo is not implemented">
       <HistoryControls {...history} />
     </div>
-    <div className="toolbar-actions module-actions" role="group" aria-label="Active module actions">{children}</div>
   </header>;
 }
