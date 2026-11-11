@@ -1,3 +1,4 @@
+import { WorkspaceSettings } from './WorkspaceSettings';
 import type { ChangeEvent } from 'react';
 import type { WorkspaceId } from './drawingTypes';
 import { HistoryControls, type HistoryControlsProps } from './HistoryControls';
@@ -24,14 +25,6 @@ export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, 
       <span className="brand-mark" aria-hidden="true">SBD</span>
       <h1>SVG BOX DESIGNER</h1>
     </div>
-    <nav className="workspace-selector" aria-label="Main workspaces">
-      {modules.map(({ id, label, available }) => <button key={id} type="button"
-        className={activeWorkspace === id ? 'active' : ''} aria-pressed={activeWorkspace === id}
-        disabled={!available} title={available ? undefined : `${label} is not implemented`}
-        onClick={() => onSelectWorkspace(id)}>
-        {label}{!available && <span>Not implemented</span>}
-      </button>)}
-    </nav>
     <div className="toolbar-actions project-commands" role="group" aria-label="Project commands">
       <span className="command-scope" title="These existing commands belong to BOX / Construction">BOX</span>
       <label className={`toolbar-button${isConstruction ? ' primary' : ''}`} aria-disabled={!isConstruction} title="Import SVG into BOX / Construction">
@@ -43,8 +36,17 @@ export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, 
       <button className="toolbar-button" type="button" onClick={onExport} disabled={!isConstruction || !canExport} title="Export SVG from BOX / Construction">Export</button>
       <button className="toolbar-button" type="button" onClick={onClear} disabled={!isConstruction} title="Clear BOX / Construction only; Drawing is preserved">Clear</button>
     </div>
+    <WorkspaceSettings />
     <div className="toolbar-actions history-commands" role="group" aria-label={`${isConstruction ? 'BOX / Construction' : 'Drawing'} Undo/Redo`} title="Active module history; shared project Undo/Redo is not implemented">
       <HistoryControls {...history} />
     </div>
+    <nav className="workspace-selector" aria-label="Main workspaces">
+      {modules.map(({ id, label, available }) => <button key={id} type="button"
+        className={activeWorkspace === id ? 'active' : ''} aria-pressed={activeWorkspace === id}
+        disabled={!available} title={available ? undefined : `${label} is not implemented`}
+        onClick={() => onSelectWorkspace(id)}>
+        {label}{!available && <span>Not implemented</span>}
+      </button>)}
+    </nav>
   </header>;
 }

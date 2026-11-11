@@ -2,6 +2,7 @@
 
 **Status: APPROVED PRODUCT REQUIREMENTS; UI-1 IMPLEMENTED / browser-checked (2026-11-10),
 pending user review/acceptance. UI-2 IMPLEMENTED / browser-checked (2026-11-11),
+pending user review/acceptance. UI-2.1 IMPLEMENTED / browser-checked (2026-11-11),
 pending user review/acceptance. UI-3/UI-4 remain PROPOSED / NOT IMPLEMENTED.**
 
 ## 1. Purpose, scope and authority
@@ -123,7 +124,8 @@ work; UI-3 may establish the visual shell without claiming functional parametric
 
 ### GREEN — Module-specific tools
 
-The left vertical toolbar displays the active module's tools; switching modules changes
+The left vertical toolbar displays the active module's tools; UI-2.1 places only Drawing
+Dimension and Constraints in its module-specific upper toolbar. Switching modules changes
 the available tools. Drawing, BOX, Puzzle and future modules share layout boundaries.
 Keep module tool state isolated from unrelated modules and preserve accepted CAD tool
 behavior. This specification does not redesign tool sets or define future Puzzle tools.
@@ -306,3 +308,16 @@ future menu/overlay refinements, identity adapters, native schema, dependency sc
 repair algorithms, 3D and Puzzle details remain with their existing architecture stages.
 The approved regions and interactions constrain that future design without selecting
 unverified implementations.
+
+## UI-2.1 – Compact Workspace & Settings (2026-11-11)
+
+Implemented and Chromium-checked on the merged UI-2 baseline (`1ff28c75b987941409f050059bcbdaf0bef65678`, PR #632). User review/acceptance and separate merge approval remain pending.
+
+- Shared header order: brand, Import/Open/Save/Export/Clear, Settings, Undo/Redo, modules. Small/Normal use one row at 1920, 1366 and 1024; Large wraps safely at 1024.
+- Central CSS tokens provide Small, Normal (default), and Large control sizes across header/navigation, Drawing/BOX rails, viewport controls and compact actions. Normal BOX rail is 52px.
+- Settings → Icon size is a nested hover/click/keyboard menu with checked selection, Escape/outside dismissal, focus handling and viewport collision placement. Guarded localStorage key `sbd.ui.iconSize` persists chrome preference independently of project documents/history; storage denial falls back to Normal.
+- Dimension and Constraints occupy the Drawing upper toolbar; Select, Line, Circle, Arc and Profile remain on the left. Existing handlers and active states are retained.
+- Panel Manager replaces visible PM names; a compact ▤ workflow chip has the full accessible name and tooltip. Accept default thickness precedes the list below Apply/OK. Finish workflow buttons now read OK, retaining their handlers/validation.
+- CAD, manufacturing, project state, mounted owners and module-local Undo/Redo semantics are unchanged. UI-1/UI-2 history is preserved. UI-3/UI-4, A–G statuses and accepted CAD evidence are unchanged.
+
+See [UI-2.1 validation](UI21_COMPACT_WORKSPACE_SETTINGS_VALIDATION.md) for exact commands, screenshots, limits and results.

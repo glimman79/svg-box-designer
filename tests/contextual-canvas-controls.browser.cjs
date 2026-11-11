@@ -25,7 +25,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
   const boxSvg = page.getByRole('img', { name: 'Imported SVG with selectable edges', exact: true });
   const contours = () => page.locator('.final-contour-kerf-layer').innerHTML();
   async function noTopActions() {
-    assert.equal(await page.getByLabel('Primary actions', { exact: true }).getByRole('button', { name: /^(Fit|Apply|Finish)/ }).count(), 0);
+    assert.equal(await page.getByLabel('Primary actions', { exact: true }).getByRole('button', { name: /^(Fit|Apply|OK)$/ }).count(), 0);
     assert.equal(await page.getByLabel('Primary actions', { exact: true }).getByRole('button', { name: /Undo/ }).count(), 1);
     assert.equal(await page.getByLabel('Primary actions', { exact: true }).getByRole('button', { name: /Redo/ }).count(), 1);
   }
@@ -36,7 +36,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
   async function prepare() {
     await page.goto(url); await box(); await importPanels();
     await overlay.getByRole('button', { name: 'Accept default thickness', exact: true }).click();
-    await apply().click(); await finish('Finish PM').click();
+    await apply().click(); await finish('OK').click();
   }
   async function edge(index) {
     const client = await page.locator('.edge-hitbox').nth(index).evaluate(e => {
@@ -77,18 +77,18 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
 
     await box(); await importPanels();
     assert.equal(await apply().isDisabled(), true);
-    assert.equal(await finish('Finish PM').isDisabled(), true);
+    assert.equal(await finish('OK').isDisabled(), true);
     await overlay.getByRole('button', { name: 'Accept default thickness', exact: true }).click();
     assert.equal(await apply().isEnabled(), true);
     await apply().focus(); await page.keyboard.press('Enter');
     assert.equal(await apply().isDisabled(), true);
-    assert.equal(await finish('Finish PM').isEnabled(), true);
+    assert.equal(await finish('OK').isEnabled(), true);
     await undo().click();
     assert.equal(await apply().isEnabled(), true);
     assert.equal(await undo().isDisabled(), true, 'keyboard Apply accepted exactly once');
     await page.getByRole('dialog', { name: 'Panel Manager', exact: true }).getByRole('button', { name: 'OK', exact: true }).click();
     await redo().click();
-    await finish('Finish PM').focus(); await page.keyboard.press('Space');
+    await finish('OK').focus(); await page.keyboard.press('Space');
     assert.equal(await actions.count(), 0);
     await undo().click(); assert.equal(await tool('TB').isDisabled(), true, 'Finish PM adds no new Undo action');
     await page.getByRole('dialog', { name: 'Panel Manager', exact: true }).getByRole('button', { name: 'OK', exact: true }).click();
@@ -99,7 +99,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     for (const name of ['TB', 'W', 'S']) {
       await prepare(); await tool(name).click();
       assert.equal(await apply().isDisabled(), true, `${name} has no Apply inputs yet`);
-      assert.equal(await finish(`Finish ${name}`).isEnabled(), true, 'preserve existing incomplete-group Finish availability');
+      assert.equal(await finish('OK').isEnabled(), true, 'preserve existing incomplete-group Finish availability');
       const toolState = await overlay.innerText();
       await drawing(); assert.equal(await page.getByRole('group', { name: 'Active workflow actions', exact: true }).count(), 0);
       await page.keyboard.press('Escape'); await page.keyboard.press('Enter'); await box();
@@ -112,13 +112,13 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
       await viewport().getByRole('button', { name: 'Zoom in', exact: true }).click();
       await viewport().getByRole('button', { name: 'Fit', exact: true }).click();
       assert.equal(await boxSvg.getAttribute('viewBox'), view);
-      await finish(`Finish ${name}`).focus(); await page.keyboard.press('Enter');
+      await finish('OK').focus(); await page.keyboard.press('Enter');
       assert.equal(await actions.count(), 0, 'finished controls disappear');
       await undo().click();
       assert.equal(await actions.count(), 0, 'Undo retains the existing Select tool');
       await tool(name).click();
-      assert.equal(await finish(`Finish ${name}`).isVisible(), true, 'one Undo restores group');
-      await redo().click(); assert.equal(await finish(`Finish ${name}`).count(), 0, 'one Redo finishes group');
+      assert.equal(await finish('OK').isVisible(), true, 'one Undo restores group');
+      await redo().click(); assert.equal(await finish('OK').count(), 0, 'one Redo finishes group');
     }
     passed.push('TB/W/S incomplete Finish, tool exit/reopen, module switch isolation and single-step Finish Undo/Redo');
 
@@ -130,13 +130,13 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     assert.notEqual(await contours(), beforeApply, 'Apply generates geometry using the existing pipeline');
     assert.equal(await page.locator('.notice:not(.inline-notice)').count(), 0);
     const applied = await contours();
-    await finish('Finish TB').click(); assert.equal(await actions.count(), 0);
+    await finish('OK').click(); assert.equal(await actions.count(), 0);
     assert.match(await page.getByRole('complementary', { name: 'Workflow history', exact: true }).innerText(), /TB/);
-    await undo().click(); await tool('TB').click(); assert.equal(await finish('Finish TB').isVisible(), true);
+    await undo().click(); await tool('TB').click(); assert.equal(await finish('OK').isVisible(), true);
     await redo().click(); assert.equal(await contours(), applied);
     await tool('MFG').click();
     assert.equal(await apply().count(), 1);
-    assert.equal(await actions.getByRole('button', { name: /^Finish/ }).count(), 0);
+    assert.equal(await actions.getByRole('button', { name: /^OK$/ }).count(), 0);
     const kerf = page.locator('#manufacturing-kerf');
     await kerf.fill('0.20'); await kerf.press('Enter');
     assert.equal(await apply().isEnabled(), true);
@@ -161,7 +161,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
       await apply().click();
       assert.equal(await page.locator('.notice:not(.inline-notice)').count(), 0, `${name} Apply validates the complete connection`);
       assert.notEqual(await contours(), original, `${name} Apply generates geometry`);
-      await finish(`Finish ${name}`).click();
+      await finish('OK').click();
       assert.equal(await actions.count(), 0);
       assert.match(await page.getByRole('complementary', { name: 'Workflow history', exact: true }).innerText(), new RegExp(name));
     }
@@ -171,14 +171,14 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     // reports the original validation error and does not silently finish its group.
     await prepare(); await tool('W').click(); await edge(0);
     assert.equal(await apply().isEnabled(), true); await apply().click();
-    assert.equal(await finish('Finish W').isVisible(), true);
+    assert.equal(await finish('OK').isVisible(), true);
     assert.ok(await page.locator('.notice:not(.inline-notice)').count() > 0);
     await undo().click(); assert.equal(await apply().isDisabled(), true, 'failed Apply creates no extra Undo entry');
     passed.push('incomplete Wall Apply preserves validation, active group and Undo boundary');
 
     await prepare(); await tool('TB').click();
     await drawing();
-    const drawingTool = name => page.getByLabel('Drawing tools', { exact: true }).getByRole('button', { name, exact: true });
+    const drawingTool = name => page.getByLabel(['Dimension', 'Constraints'].includes(name) ? 'Drawing upper tools' : 'Drawing tools', { exact: true }).getByRole('button', { name, exact: true });
     const drawPoint = async point => {
       const p = await page.locator('svg.drawing-svg').evaluate((s, point) => {
         const c = new DOMPoint(point.x, point.y).matrixTransform(s.getScreenCTM()); return { x: c.x, y: c.y };
@@ -192,9 +192,9 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     for (const size of [{ width: 1920, height: 1080 }, { width: 1366, height: 768 }, { width: 1024, height: 768 }]) {
       await page.setViewportSize(size); await assertActionsVisible();
       await apply().evaluate(e => e.scrollIntoView());
-      await finish('Finish TB').focus();
+      await finish('OK').focus();
       await page.keyboard.press('Tab'); await page.keyboard.press('Shift+Tab');
-      assert.equal(await finish('Finish TB').evaluate(e => e.matches(':focus-visible') && getComputedStyle(e).outlineStyle !== 'none'), true);
+      assert.equal(await finish('OK').evaluate(e => e.matches(':focus-visible') && getComputedStyle(e).outlineStyle !== 'none'), true);
       await overlay.evaluate(e => { e.scrollTop = 0; });
       for (const [select, label] of [[box, 'construction'], [drawing, 'drawing']]) {
         await select(); await noTopActions();

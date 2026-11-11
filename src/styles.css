@@ -2308,3 +2308,69 @@ button:disabled {
   stroke-width: 3px;
   pointer-events: none;
 }
+
+/* UI-2.1: application chrome sizing. Forms and SVG/model units stay independent. */
+:root {
+  --ui-control-height: 28px;
+  --ui-control-padding: 7px;
+  --ui-gap: 4px;
+  --ui-font: 12px;
+  --ui-icon: 16px;
+  --ui-tool-width: 52px;
+}
+:root[data-ui-size="small"] {
+  --ui-control-height: 24px; --ui-control-padding: 5px; --ui-gap: 3px;
+  --ui-font: 11px; --ui-icon: 14px; --ui-tool-width: 48px;
+}
+:root[data-ui-size="large"] {
+  --ui-control-height: 36px; --ui-control-padding: 11px; --ui-gap: 7px;
+  --ui-font: 14px; --ui-icon: 20px; --ui-tool-width: 64px;
+}
+.app-shell { max-width: 100%; min-width: 0; }
+.top-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--ui-gap) calc(var(--ui-gap) * 2);
+  padding: var(--ui-gap) 8px;
+  min-height: 0;
+  overflow: visible;
+}
+.brand-lockup { gap: var(--ui-gap); }
+.brand-lockup h1 { font-size: var(--ui-font); }
+.brand-mark { width: var(--ui-control-height); height: var(--ui-control-height); font-size: 10px; }
+.top-toolbar .toolbar-actions { flex: 0 0 auto; gap: var(--ui-gap); overflow: visible; }
+.top-toolbar .history-commands, .top-toolbar .workspace-selector { border-left: 1px solid #475569; padding-left: calc(var(--ui-gap) * 2); }
+.top-toolbar .workspace-selector { display: flex; flex-wrap: wrap; gap: var(--ui-gap); margin-left: auto; max-width: 100%; }
+.top-toolbar .workspace-selector button { white-space: nowrap; }
+:is(.toolbar-button, .workspace-selector button, .canvas-zoom-controls button, .drawing-operation-toolbar button) {
+  min-height: var(--ui-control-height);
+  height: auto;
+  padding: 2px var(--ui-control-padding);
+  font-size: var(--ui-font);
+  border-radius: 5px;
+}
+.canvas-zoom-controls { gap: var(--ui-gap); }
+.canvas-zoom-controls button { min-width: var(--ui-control-height); width: auto; }
+.settings-gear { font-size: var(--ui-icon); line-height: 1; margin-right: var(--ui-gap); }
+.workspace-shell { grid-template-columns: var(--ui-tool-width) minmax(0, 1fr); }
+.workspace-shell :is(.tool-sidebar, .drawing-tool-sidebar) { width: var(--ui-tool-width); gap: var(--ui-gap); padding: var(--ui-gap) 3px; }
+.workspace-shell :is(.tool-sidebar, .drawing-tool-sidebar) button { min-height: var(--ui-control-height); padding: 2px 0; font-size: var(--ui-font); border-radius: 5px; }
+.drawing-canvas-card { grid-template-rows: auto minmax(0, 1fr); }
+.drawing-operation-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-gap); padding: var(--ui-gap); background: #111827; }
+.drawing-operation-toolbar button { color: #e5e7eb; background: #1f2937; border: 1px solid #374151; }
+.drawing-operation-toolbar button.is-active { color: #022c22; background: #5eead4; border-color: #2dd4bf; }
+.contextual-tool-actions { gap: var(--ui-gap); padding-block: var(--ui-gap); }
+.workspace-settings { flex: 0 0 auto; }
+.settings-menu { position: fixed; z-index: 100; min-width: 160px; max-width: calc(100vw - 8px); max-height: calc(100vh - 8px); overflow-y: auto; padding: 3px; color: #172033; background: #fff; border: 1px solid #94a3b8; border-radius: 4px; box-shadow: 0 5px 16px #0003; }
+/* The child is fixed to viewport coordinates, avoiding ancestor clipping. */
+.settings-menu button { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: max(28px, var(--ui-control-height)); padding: 4px 9px; border: 0; border-radius: 2px; font-size: 13px; text-align: left; color: inherit; background: transparent; }
+.settings-menu button:hover, .settings-menu button:focus { outline: 2px solid #0f766e; outline-offset: -2px; background: #e0f2fe; }
+.settings-submenu button { justify-content: flex-start; gap: 8px; }
+.settings-submenu button span { width: 16px; }
+.workspace-settings > button:focus-visible, .drawing-operation-toolbar button:focus-visible { outline: 3px solid #2dd4bf; outline-offset: 2px; }
+@media (max-width: 760px) {
+  .top-toolbar .project-commands { flex-wrap: wrap; max-width: 100%; }
+  .top-toolbar .workspace-selector { margin-left: 0; overflow: visible; }
+}
