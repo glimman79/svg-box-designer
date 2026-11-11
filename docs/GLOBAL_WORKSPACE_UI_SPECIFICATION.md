@@ -124,9 +124,12 @@ work; UI-3 may establish the visual shell without claiming functional parametric
 
 ### GREEN — Module-specific tools
 
-The left vertical toolbar displays the active module's tools; UI-2.1 places only Drawing
-Dimension and Constraints in its module-specific upper toolbar. Switching modules changes
-the available tools. Drawing, BOX, Puzzle and future modules share layout boundaries.
+The left vertical toolbar displays the active module's tools. The UI-2.1 follow-up places
+Drawing Dimension and Constraints directly after Undo/Redo in the shared application header,
+before module navigation; the separate Drawing upper-toolbar row is removed. They remain
+Drawing-owned controls, absent in BOX without a reserved slot. Select, Line, Circle, Arc and
+Profile remain on the left in that order. Switching modules changes the available tools.
+Drawing, BOX, Puzzle and future modules share layout boundaries.
 Keep module tool state isolated from unrelated modules and preserve accepted CAD tool
 behavior. This specification does not redesign tool sets or define future Puzzle tools.
 
@@ -321,3 +324,39 @@ Implemented and Chromium-checked on the merged UI-2 baseline (`1ff28c75b98794140
 - CAD, manufacturing, project state, mounted owners and module-local Undo/Redo semantics are unchanged. UI-1/UI-2 history is preserved. UI-3/UI-4, A–G statuses and accepted CAD evidence are unchanged.
 
 See [UI-2.1 validation](UI21_COMPACT_WORKSPACE_SETTINGS_VALIDATION.md) for exact commands, screenshots, limits and results.
+
+
+## UI-2.1 follow-up — Layout & Size Correction (2026-11-11)
+
+PR #633 is merged. This incremental correction starts from its merge commit
+`b4dc0ec2e5465609c07f165e85141e4b97f51f2d` on a new branch/PR.
+The original checkpoints above retain historical placement/sizing evidence.
+
+Header order: brand, Import/Open/Save/Export/Clear, Settings, Undo, Redo, Drawing-only
+Dimension, Constraints, module navigation. Drawing portals the existing controls and handlers
+into a typed `HTMLDivElement | null` target; it retains all CAD tool state. BOX removes the
+slot entirely. The Drawing canvas card contains only its frame, with one flexible grid row.
+The left tools, existing Settings submenu, keyboard focus/shortcuts and mounted owners remain.
+The shared header wraps only when needed; no project or Drawing commands are hidden to fit.
+
+| Token | Small | Normal (default) | Large |
+| --- | --- | --- | --- |
+| `--ui-control-height` | 20px | 24px | 28px |
+| `--ui-control-padding` | 4px | 5px | 7px |
+| `--ui-gap` | 2px | 3px | 4px |
+| `--ui-font` | 10px | 11px | 12px |
+| `--ui-icon` | 12px | 14px | 16px |
+| `--ui-tool-width` | 44px | 48px | 52px |
+
+Normal matches previous Small tokens; Large matches previous Normal. The existing preference
+names and guarded localStorage persist without migration. Size changes immediately affect
+chrome only: no SVG viewBox, zoom, model units, geometry, solver/manufacturing, workflow or
+Undo/Redo changes. Inspector forms are not indiscriminately reduced.
+
+This is mouse-first desktop CAD. Compact controls, hover tooltips, accurate pointer selection,
+visible keyboard focus and keyboard access take priority over finger-touch target sizing.
+A precision stylus/digital pen may be recommended for future touchscreen CAD work; touch layouts,
+pen handling, palm rejection and gestures are outside this correction and are not implemented/tested.
+
+[Follow-up commands, Chromium matrix, screenshots and limits](UI21_COMPACT_WORKSPACE_SETTINGS_VALIDATION.md#ui-21-follow-up--layout--size-correction-2026-11-11).
+UI-3/UI-4, global history, A–G stage statuses and accepted historical CAD evidence are unchanged.

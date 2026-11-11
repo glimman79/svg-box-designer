@@ -8,7 +8,7 @@ const activation = await build('cadToolActivation');
 const lifecycle = await build('drawingToolLifecycle');
 const dimension = await build('drawingDimension');
 const workspace = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
-const rail = workspace.match(/<div[^>]*drawing-operation-toolbar[\s\S]*?<\/div>/)?.[0] ?? '';
+const rail = workspace.match(/<div[^>]*drawing-header-tools[\s\S]*?<\/div>/)?.[0] ?? '';
 const css = fs.readFileSync('src/styles.css', 'utf8');
 
 const once = activation.resolveCadToolPointerActivation('dimension', 1000, { x: 20, y: 20 }, null);
@@ -21,9 +21,9 @@ assert.match(workspace, /appendDimension\(current, committed\)[\s\S]*finishDrawi
 assert.match(workspace, /nextLifecycle\.activeTool === 'dimension' \? \{ phase: 'waitingForFirstTarget' \}/, 'persistent completion immediately reacquires a reference');
 assert.match(workspace, /setToolLifecycle\(activateDrawingTool\('select'\)\);[\s\S]*setDimensionTool\(\{ phase: 'inactive' \}\)/, 'Escape exits Dimension through the shared tool contract');
 assert.match(workspace, /const selectTool = \(tool[\s\S]*setDimensionTool\(tool === 'dimension'/, 'Select and other tools clear Dimension transient state');
-assert.match(rail, /aria-pressed=\{activeTool === 'dimension'\}/, 'upper Dimension button exposes local pressed state');
-assert.match(rail, /activeTool === 'dimension' \? ' is-active'/, 'upper Dimension button exposes shared active styling');
-assert.match(css, /drawing-operation-toolbar button\.is-active/, 'upper Dimension uses the existing module tool highlight');
+assert.match(rail, /aria-pressed=\{activeTool === 'dimension'\}/, 'header Dimension button exposes local pressed state');
+assert.match(rail, /activeTool === 'dimension' \? ' is-active'/, 'header Dimension button exposes shared active styling');
+assert.match(css, /drawing-header-tools button\.is-active/, 'header Dimension uses the existing module tool highlight');
 assert.doesNotMatch(rail, /onDoubleClick=/, 'native dblclick is not activation authority');
 assert.match(rail, /onPointerDown=\{\(event\) => activateToolFromPointer\('dimension', event\)\}/, 'Dimension delegates pointer sequences to the same accepted resolver as other module tools');
 

@@ -10,7 +10,7 @@ const modules: ReadonlyArray<{ id: WorkspaceId; label: string; available: boolea
 ];
 
 /** Placement only: commands and history retain their existing module owners. */
-export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, onExport, onClear, canExport, history }: {
+export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, onExport, onClear, canExport, history, onDrawingToolsHostChange }: {
   activeWorkspace: WorkspaceId;
   onSelectWorkspace: (workspace: WorkspaceId) => void;
   onImport: (event: ChangeEvent<HTMLInputElement>) => void;
@@ -18,6 +18,8 @@ export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, 
   onClear: () => void;
   canExport: boolean;
   history: HistoryControlsProps;
+  /** Drawing portals its authoritative controls here; no tool state belongs to the header. */
+  onDrawingToolsHostChange?: (host: HTMLDivElement | null) => void;
 }) {
   const isConstruction = activeWorkspace === 'construction';
   return <header className="top-toolbar" aria-label="Primary actions">
@@ -40,6 +42,7 @@ export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, 
     <div className="toolbar-actions history-commands" role="group" aria-label={`${isConstruction ? 'BOX / Construction' : 'Drawing'} Undo/Redo`} title="Active module history; shared project Undo/Redo is not implemented">
       <HistoryControls {...history} />
     </div>
+    {activeWorkspace === 'drawing' && <div className="drawing-header-slot" ref={onDrawingToolsHostChange} />}
     <nav className="workspace-selector" aria-label="Main workspaces">
       {modules.map(({ id, label, available }) => <button key={id} type="button"
         className={activeWorkspace === id ? 'active' : ''} aria-pressed={activeWorkspace === id}

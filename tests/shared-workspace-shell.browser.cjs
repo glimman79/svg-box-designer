@@ -14,7 +14,7 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
   const box = () => nav('Box / Construction').click();
   const undo = () => page.getByRole('button', { name: 'Undo (Ctrl+Z)', exact: true });
   const redo = () => page.getByRole('button', { name: 'Redo (Ctrl+Y)', exact: true });
-  const tool = name => page.getByLabel(['Dimension', 'Constraints'].includes(name) ? 'Drawing upper tools' : 'Drawing tools').getByRole('button', { name, exact: true });
+  const tool = name => page.getByLabel(['Dimension', 'Constraints'].includes(name) ? 'Drawing header tools' : 'Drawing tools').getByRole('button', { name, exact: true });
   const count = async selector => page.locator(selector).count();
   async function click(point) {
     const client = await page.locator('svg.drawing-svg').evaluate((s, p) => {

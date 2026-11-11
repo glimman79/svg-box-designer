@@ -35,6 +35,12 @@ test('top-bar history reflects the provided module capabilities', () => {
   for (const module of ['drawing', 'construction']) assert.match(button(render(module), '↷'), /disabled=""/);
 });
 
+test('Drawing owns a header portal slot directly after history and before navigation', () => {
+  const html = render('drawing');
+  assert.match(html, /aria-label="Redo \(Ctrl\+Y\)"[^>]*>↷<\/button><\/div><div class="drawing-header-slot"><\/div><nav/);
+  assert.doesNotMatch(render('construction'), /drawing-header-slot/);
+});
+
 test('viewport and workflow actions do not occupy the global top bar', () => {
   for (const module of ['drawing', 'construction']) {
     assert.doesNotMatch(render(module), />Fit(?: to screen)?<|>Apply<|>Finish[^<]*<|Active module actions/);
