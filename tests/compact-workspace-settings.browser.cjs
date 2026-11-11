@@ -28,7 +28,9 @@ const output = process.env.UI21_BROWSER_OUTPUT;
   await settings().click();await page.keyboard.press('Tab');assert.equal(await menu().count(),0);assert.equal(await page.evaluate(()=>document.activeElement===document.body),false);
   await settings().click();await button('2D Drawing').click();assert.equal(await menu().count(),0);
   for(const name of ['Select','Line','Circle','Arc','Profile']) assert.equal(await page.getByLabel('Drawing tools',{exact:true}).getByRole('button',{name,exact:true}).count(),1);
-  for(const name of ['Dimension','Constraints']) {assert.equal(await page.getByLabel('Drawing tools',{exact:true}).getByRole('button',{name,exact:true}).count(),0);assert.equal(await page.getByRole('toolbar',{name:'Drawing upper tools'}).getByRole('button',{name,exact:true}).count(),1);}
+  for(const name of ['Dimension','Constraints']) {assert.equal(await page.getByLabel('Drawing tools',{exact:true}).getByRole('button',{name,exact:true}).count(),0);assert.equal(await page.getByRole('toolbar',{name:'Drawing header tools'}).getByRole('button',{name,exact:true}).count(),1);}
+  await button('Dimension').focus();await page.keyboard.press('Enter');assert.equal(await button('Dimension').getAttribute('aria-pressed'),'true');assert.match(await button('Dimension').getAttribute('class'),/is-active/);await page.keyboard.press('Escape');assert.equal(await button('Select').getAttribute('aria-pressed'),'true');
+  await button('Constraints').click();assert.equal(await button('Constraints').getAttribute('aria-pressed'),'true');await page.getByRole('dialog',{name:'Constraints',exact:true}).waitFor();await page.keyboard.press('Escape');assert.equal(await button('Constraints').getAttribute('aria-pressed'),'false');
   await button('Line').click();await click({x:-120,y:-70});await click({x:-20,y:-70});await page.waitForFunction(()=>document.querySelectorAll('[data-sketch-line-id]').length===1);
   await button('Select').click();await button('Undo (Ctrl+Z)').click();
   const before=await svg().getAttribute('viewBox');
@@ -44,11 +46,26 @@ const output = process.env.UI21_BROWSER_OUTPUT;
      await button(module).click();
      const layout=await page.locator('.top-toolbar').evaluate(e=>{const rs=[...e.children].map(e=>e.getBoundingClientRect());return {height:e.getBoundingClientRect().height,rows:[...new Set(rs.map(r=>Math.round(r.top+r.height/2)))],overflow:document.documentElement.scrollWidth>innerWidth,overlap:rs.some((r,i)=>rs.some((q,j)=>i<j&&Math.min(r.right,q.right)-Math.max(r.left,q.left)>1&&Math.min(r.bottom,q.bottom)-Math.max(r.top,q.top)>1)),outside:rs.some(r=>r.left<0||r.right>innerWidth)};});
      assert.equal(layout.overflow,false,JSON.stringify({width,size,module,layout}));assert.equal(layout.overlap,false);assert.equal(layout.outside,false);
-     if(width>=1366 && size!=='Large')assert.equal(layout.rows.length,1,JSON.stringify({width,size,layout}));
+     const headerControls=await page.locator('.top-toolbar').evaluate(e=>{const rs=[...e.querySelectorAll('button,label.toolbar-button')].map(e=>e.getBoundingClientRect()).filter(r=>r.width>0);return {outside:rs.some(r=>r.left<0||r.right>innerWidth||r.bottom>innerHeight),overlap:rs.some((r,i)=>rs.some((q,j)=>i<j&&Math.min(r.right,q.right)-Math.max(r.left,q.left)>1&&Math.min(r.bottom,q.bottom)-Math.max(r.top,q.top)>1))}});assert.deepEqual(headerControls,{outside:false,overlap:false});
+     if(width>=1366 || size!=='Large')assert.equal(layout.rows.length,1,JSON.stringify({width,size,module,layout}));
      assert.ok(layout.height<=110,JSON.stringify({width,size,layout}));
      console.log(JSON.stringify({width,height,size,module,layout}));
-     if(output && ((width===1366 && size==='Normal')||(width===1024 && size==='Large')||(width===1920 && size==='Small'))) {fs.mkdirSync(output,{recursive:true});await page.screenshot({path:`${output}/${module==='2D Drawing'?'drawing':'box'}-${width}-${size.toLowerCase()}.png`});}
-     assert.equal(await page.getByRole('toolbar',{name:'Drawing upper tools'}).isVisible(),module==='2D Drawing');
+     if(output && ((width===1366 && size==='Normal')||(width===1024 && ['Small','Large'].includes(size)))) {fs.mkdirSync(output,{recursive:true});await page.screenshot({path:`${output}/${module==='2D Drawing'?'drawing':'box'}-${width}-${size.toLowerCase()}.png`});}
+     assert.equal(await page.getByRole('toolbar',{name:'Drawing header tools'}).count(),module==='2D Drawing'?1:0);
+     assert.equal(await page.locator('.drawing-operation-toolbar').count(),0);
+     assert.equal(await page.locator('.drawing-header-slot').count(),module==='2D Drawing'?1:0);
+     const tokens=await page.evaluate(()=>{const s=getComputedStyle(document.documentElement);return ['control-height','control-padding','gap','font','icon','tool-width'].map(k=>s.getPropertyValue(`--ui-${k}`).trim())});
+     assert.deepEqual(tokens,{Small:['20px','4px','2px','10px','12px','44px'],Normal:['24px','5px','3px','11px','14px','48px'],Large:['28px','7px','4px','12px','16px','52px']}[size]);
+     if(module==='2D Drawing') {
+      const placement=await page.evaluate(()=>{
+       const header=document.querySelector('.top-toolbar'), history=header.querySelector('.history-commands'), slot=header.querySelector('.drawing-header-slot');
+       const card=document.querySelector('.drawing-canvas-card'), frame=card.querySelector('.canvas-frame'), rail=document.querySelector('.drawing-tool-sidebar');
+       const rect=e=>e.getBoundingClientRect();
+       const controls=[...header.querySelectorAll('button, label.toolbar-button')].filter(e=>rect(e).width>0);
+       return {directlyAfterHistory:history.nextElementSibling===slot,nextIsNavigation:slot.nextElementSibling.matches('nav'),tools:[...slot.querySelectorAll('button')].map(e=>e.textContent),left:[...rail.querySelectorAll('button')].map(e=>e.textContent),frameOnlyChild:card.children.length===1&&card.firstElementChild===frame,canvasGap:rect(frame).top-rect(header).bottom,controlOverlap:controls.some((e,i)=>controls.some((f,j)=>i<j&&Math.min(rect(e).right,rect(f).right)-Math.max(rect(e).left,rect(f).left)>1&&Math.min(rect(e).bottom,rect(f).bottom)-Math.max(rect(e).top,rect(f).top)>1)),controlOutside:controls.some(e=>rect(e).left<0||rect(e).right>innerWidth||rect(e).bottom>innerHeight)};
+      });
+      assert.equal(placement.directlyAfterHistory,true);assert.equal(placement.nextIsNavigation,true);assert.deepEqual(placement.tools,['Dimension','Constraints']);assert.deepEqual(placement.left,['Select','Line','Circle','Arc','Profile']);assert.equal(placement.frameOnlyChild,true);assert.ok(placement.canvasGap<=2,JSON.stringify(placement));assert.equal(placement.controlOverlap,false);assert.equal(placement.controlOutside,false);
+     } else for(const name of ['Dimension','Constraints'])assert.equal(await button(name).count(),0);
     }
    }
   }
@@ -61,6 +78,9 @@ const output = process.env.UI21_BROWSER_OUTPUT;
   await page.getByLabel('Import SVG into BOX / Construction',{exact:true}).setInputFiles({name:'panels.svg',mimeType:'image/svg+xml',buffer:Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><rect width="100" height="80"/><rect x="130" width="100" height="80"/></svg>')});
   await page.getByRole('dialog',{name:'Panel Manager',exact:true}).getByRole('button',{name:'OK',exact:true}).click();
   const overlay=page.getByRole('complementary',{name:'Active Tool overlay'});await overlay.getByRole('heading',{name:'Panel Manager',exact:true}).waitFor();
+  const boxView=await page.getByRole('img',{name:'Imported SVG with selectable edges',exact:true}).getAttribute('viewBox');
+  const pmFields=await overlay.locator('input').evaluateAll(es=>es.map(e=>e.value));
+  for(const size of ['Small','Normal','Large']) {await choose(size);await overlay.getByRole('heading',{name:'Panel Manager',exact:true}).waitFor();assert.deepEqual(await overlay.locator('input').evaluateAll(es=>es.map(e=>e.value)),pmFields);assert.equal(await page.getByRole('img',{name:'Imported SVG with selectable edges',exact:true}).getAttribute('viewBox'),boxView);assert.equal(await overlay.getByRole('button',{name:'OK',exact:true}).isDisabled(),true);}
   const order=await overlay.evaluate(e=>{const main=e.querySelector('.contextual-tool-actions').getBoundingClientRect(), action=[...e.querySelectorAll('button')].find(b=>b.textContent==='Accept default thickness').getBoundingClientRect(),list=e.querySelector('.pm-panel-list').getBoundingClientRect();return main.bottom<=action.top && action.bottom<=list.top});assert.equal(order,true);
   assert.equal(await overlay.getByRole('button',{name:'OK',exact:true}).isDisabled(),true);await overlay.getByRole('button',{name:'Accept default thickness'}).click();await overlay.getByRole('button',{name:'Apply',exact:true}).click();await overlay.getByRole('button',{name:'OK',exact:true}).click();
   const pm=page.getByRole('button',{name:'Panel Manager, opens Panel Manager panel',exact:true});assert.equal(await pm.getAttribute('title'),'Panel Manager');await pm.click();

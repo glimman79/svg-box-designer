@@ -44,14 +44,16 @@ test('Select and Constraints route to the shared toggle without stealing authori
   assert.doesNotMatch(workspaceSource, /event\.shiftKey/, 'Shift follows the ordinary Select path');
 });
 
-test('Constraints launcher directly follows Dimension in the module-specific upper toolbar', () => {
-  const sidebar = workspaceSource.match(/<div[^>]*drawing-operation-toolbar[\s\S]*?<\/div>/)?.[0] ?? '';
+test('Constraints launcher directly follows Dimension in the Drawing header portal', () => {
+  const sidebar = workspaceSource.match(/<div[^>]*drawing-header-tools[\s\S]*?<\/div>/)?.[0] ?? '';
   assert.match(sidebar, />Dimension<\/button>\s*<button[^>]*[\s\S]*?>Constraints<\/button>/, 'Constraints immediately follows Dimension');
-  assert.doesNotMatch(appSource, />Constraints<\/button>/, 'the shared top bar no longer duplicates module tools');
+  assert.doesNotMatch(appSource, />Constraints<\/button>/, 'App does not duplicate the Drawing-owned controls');
+  assert.match(workspaceSource, /isActive && headerToolsHost && createPortal\(/, 'Drawing renders its authoritative controls into the typed header target');
+  assert.doesNotMatch(workspaceSource, /drawing-operation-toolbar/, 'the old canvas toolbar element is removed');
 });
 
 test('moved launcher and close button share the one existing panel state', () => {
-  assert.match(workspaceSource, /setConstraintsPanelOpen\(\(open\) => !open\)/, 'upper launcher toggles the existing panel state');
+  assert.match(workspaceSource, /setConstraintsPanelOpen\(\(open\) => !open\)/, 'header launcher toggles the existing panel state');
   assert.match(appSource, /constraintsPanelOpen=\{drawingConstraintsPanelOpen\} setConstraintsPanelOpen=\{setDrawingConstraintsPanelOpen\}/, 'workspace receives that same state authority');
   assert.match(workspaceSource, /aria-label="Close Constraints"[\s\S]*?setConstraintsPanelOpen\(false\)/, 'close button still closes the shared panel');
   assert.equal((workspaceSource.match(/className="drawing-constraints-panel"/g) ?? []).length, 1, 'exactly one floating panel is rendered');

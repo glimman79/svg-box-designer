@@ -631,6 +631,7 @@ function App() {
   const [drawingConstraintsPanelOpen, setDrawingConstraintsPanelOpen] = useState(false);
   const [drawingHistoryController, setDrawingHistoryController] = useState<HistoryControlsProps | null>(null);
   const updateDrawingHistoryController = useCallback((controller: HistoryControlsProps | null) => setDrawingHistoryController(controller), []);
+  const [drawingToolsHost, setDrawingToolsHost] = useState<HTMLDivElement | null>(null);
   const [svgModel, setSvgModel] = useState<SvgDocumentModel>(createBoxDocumentV1);
   const [edgeAssignments, setEdgeAssignments] = useState<Record<string, EdgeAssignmentBucket>>({});
   const [connections, setConnections] = useState<ConnectionMap>({});
@@ -2189,6 +2190,7 @@ function App() {
         onImport={handleImportWithError}
         onExport={exportSvg}
         onClear={requestClearProject}
+        onDrawingToolsHostChange={setDrawingToolsHost}
         canExport={!isProjectLocked && Object.keys(edgeAssignments).length > 0}
         history={activeWorkspace === 'drawing'
           ? drawingHistoryController ?? { canUndo: false, canRedo: false, onUndo: () => undefined, onRedo: () => undefined }
@@ -2229,7 +2231,7 @@ function App() {
 
       {errorMessage && <div className="notice">{errorMessage}</div>}
 
-      <DrawingWorkspace isActive={activeWorkspace === 'drawing'} document={drawingDocument} viewBox={drawingViewBox} setViewBox={setDrawingViewBox} setDocument={setDrawingDocument} constraintsPanelOpen={drawingConstraintsPanelOpen} setConstraintsPanelOpen={setDrawingConstraintsPanelOpen} onHistoryControllerChange={updateDrawingHistoryController} />
+      <DrawingWorkspace isActive={activeWorkspace === 'drawing'} document={drawingDocument} viewBox={drawingViewBox} setViewBox={setDrawingViewBox} setDocument={setDrawingDocument} constraintsPanelOpen={drawingConstraintsPanelOpen} setConstraintsPanelOpen={setDrawingConstraintsPanelOpen} onHistoryControllerChange={updateDrawingHistoryController} headerToolsHost={drawingToolsHost} />
       <WorkspaceShell active={activeWorkspace === 'construction'} className="workspace" label="SVG connection workspace">
         <aside className="tool-sidebar" aria-label="Tool sidebar">
           {([

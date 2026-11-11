@@ -1,5 +1,31 @@
 # SVG Box Designer — Project Master
 
+## UI-2.1 follow-up — Layout & Size Correction (2026-11-11)
+
+Follow-up to merged PR #633, implemented from clean `main`
+`b4dc0ec2e5465609c07f165e85141e4b97f51f2d`; separate review/merge and user acceptance remain pending.
+
+- Drawing-owned Dimension and Constraints now appear directly after Undo/Redo in the shared
+  header, before right-aligned module navigation. A typed DOM portal target preserves the
+  authoritative handlers, active states and mounted workspace. BOX has no slot or reserved gap.
+- The separate Drawing upper-toolbar element and its grid row are removed. Select, Line,
+  Circle, Arc and Profile remain in their original left-rail order.
+- Central size tokens are remapped: Small uses 20px controls / 44px rail, Normal uses the
+  previous Small (24px / 48px), Large the previous Normal (28px / 52px). Normal remains default;
+  named saved preferences are retained without migration. Exact six-token values appear in
+  [follow-up validation](docs/UI21_COMPACT_WORKSPACE_SETTINGS_VALIDATION.md#ui-21-follow-up--layout--size-correction-2026-11-11).
+- Mouse-first desktop CAD density is intentional. Keyboard focus and shortcuts remain.
+  A precision stylus may be recommended for future touchscreen use; no touch/pen support is implemented.
+- UI-1/UI-2/Settings behavior, CAD/model units, mounted state, manufacturing and module-local
+  Undo/Redo semantics remain unchanged. UI-3/UI-4 and A–G statuses are unchanged.
+
+Validation: 81/81 regression commands and all 18 Chromium layouts pass; UI-1/UI-2 browser
+checks pass, Arc 23/23 and Coincidence 10/10. Eight new screenshots are under
+`screenshots/ui21-layout-size-correction/`; command results and limits are linked above.
+
+The original UI-2.1 checkpoint below is retained as history; this follow-up supersedes its
+Drawing upper-toolbar placement and sizing values.
+
 ## UI-2.1 – Compact Workspace & Settings (2026-11-11)
 
 Implemented and Chromium-checked on the merged UI-2 baseline (`1ff28c75b987941409f050059bcbdaf0bef65678`, PR #632). User review/acceptance and separate merge approval remain pending.

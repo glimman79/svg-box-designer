@@ -1,4 +1,5 @@
 import { WorkspaceShell } from './WorkspaceShell';
+import { createPortal } from 'react-dom';
 import { routeDrawingGeometryPointerSelection } from './drawingGeometrySelection.js';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
 import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes';
@@ -152,6 +153,7 @@ export function DrawingWorkspace({
   constraintsPanelOpen,
   setConstraintsPanelOpen,
   onHistoryControllerChange,
+  headerToolsHost,
   isActive = true,
 }: {
   isActive?: boolean;
@@ -162,6 +164,8 @@ export function DrawingWorkspace({
   constraintsPanelOpen: boolean;
   setConstraintsPanelOpen: Dispatch<SetStateAction<boolean>>;
   onHistoryControllerChange?: (controller: HistoryControlsProps | null) => void;
+  /** Presentation target only: handlers and active state stay in this mounted workspace. */
+  headerToolsHost?: HTMLDivElement | null;
 }) {
   const toolSidebarRef = useRef<HTMLElement>(null);
   const canvasFrameRef = useRef<HTMLDivElement>(null);
@@ -1284,10 +1288,10 @@ export function DrawingWorkspace({
         <button type="button" className={`cad-tool-button${activeTool === 'profile' ? ' is-active' : ''}`} aria-pressed={activeTool === 'profile'} onPointerDown={(event) => activateToolFromPointer('profile', event)} onClick={(event) => activateToolFromKeyboard('profile', event)}>Profile</button>
       </aside>
       <section className="canvas-card drawing-canvas-card workspace-canvas">
-        <div className="drawing-operation-toolbar" role="toolbar" aria-label="Drawing upper tools" onPointerDownCapture={preventToolChromePointerSelection} onMouseDownCapture={preventToolChromeMouseSelection}>
+        {isActive && headerToolsHost && createPortal(<div className="toolbar-actions drawing-header-tools" role="toolbar" aria-label="Drawing header tools" onPointerDownCapture={preventToolChromePointerSelection} onMouseDownCapture={preventToolChromeMouseSelection}>
           <button type="button" className={`cad-tool-button drawing-utility-tool${activeTool === 'dimension' ? ' is-active' : ''}`} aria-pressed={activeTool === 'dimension'} title="Create a drawing dimension" onPointerDown={(event) => activateToolFromPointer('dimension', event)} onClick={(event) => activateToolFromKeyboard('dimension', event)}>Dimension</button>
           <button type="button" className={`cad-tool-button drawing-utility-tool${constraintsPanelOpen ? ' is-active' : ''}`} aria-pressed={constraintsPanelOpen} onPointerDown={(event) => { if (event.button === 0) { event.preventDefault(); setConstraintsPanelOpen((open) => !open); } }} onClick={(event) => { if (event.detail === 0) setConstraintsPanelOpen((open) => !open); }}>Constraints</button>
-        </div>
+        </div>, headerToolsHost)}
         <div ref={canvasFrameRef} className="canvas-frame">
           <div className="drawing-status" aria-live="polite">
             <strong>{activeSketch?.name ?? 'No active sketch'}</strong><span>Unit: {document.unit}</span><span>Grid: {gridSpacing} mm</span><span>Active Tool: {activeTool === 'line' ? 'Line' : activeTool === 'circle' ? 'Circle' : activeTool === 'arc' ? 'Arc' : activeTool === 'profile' ? 'Profile' : activeTool === 'dimension' ? 'Dimension' : 'Select'}</span>

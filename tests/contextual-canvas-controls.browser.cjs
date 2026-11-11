@@ -178,7 +178,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
 
     await prepare(); await tool('TB').click();
     await drawing();
-    const drawingTool = name => page.getByLabel(['Dimension', 'Constraints'].includes(name) ? 'Drawing upper tools' : 'Drawing tools', { exact: true }).getByRole('button', { name, exact: true });
+    const drawingTool = name => page.getByLabel(['Dimension', 'Constraints'].includes(name) ? 'Drawing header tools' : 'Drawing tools', { exact: true }).getByRole('button', { name, exact: true });
     const drawPoint = async point => {
       const p = await page.locator('svg.drawing-svg').evaluate((s, point) => {
         const c = new DOMPoint(point.x, point.y).matrixTransform(s.getScreenCTM()); return { x: c.x, y: c.y };
