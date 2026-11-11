@@ -8,8 +8,10 @@ Root-level [`REGLER_FOR_CHATT_MED_CHATGPT.md`](../REGLER_FOR_CHATT_MED_CHATGPT.m
 
 - [GLOBAL_WORKSPACE_UI_SPECIFICATION.md](GLOBAL_WORKSPACE_UI_SPECIFICATION.md) — approved
   seven-region shared workspace placement, contextual controls and operation-timeline
-  interactions for Drawing, BOX, Puzzle and future modules. UI-1–UI-4 are proposed and
-  unimplemented; integration depends on C/proposed C.2, D persistence and E dependencies.
+  interactions for Drawing, BOX, Puzzle and future modules. UI-1/UI-2 are implemented and
+  browser-checked, pending user acceptance; UI-3/UI-4 remain unimplemented. See
+  [UI-2 validation](UI2_CONTEXTUAL_CANVAS_CONTROLS_VALIDATION.md). UI-4 integration depends
+  on C/proposed C.2, D persistence and E dependencies.
   Refines canvas-only Fit placement without changing A–G stage statuses or CAD semantics.
 - [PRODUCT_ARCHITECTURE_VISION.md](PRODUCT_ARCHITECTURE_VISION.md) — explicitly designated
   detailed authority for connected product requirements approved on 2026-11-03 and

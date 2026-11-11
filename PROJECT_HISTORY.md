@@ -1015,6 +1015,23 @@ was changed. UI-2/UI-3/UI-4 and A–G statuses remain unchanged.
 CAD regression and Chromium checks. This implementation awaits user review/acceptance;
 previous accepted CAD evidence and deferred Arc limitations are unchanged.
 
+### 11.34 UI-2 contextual canvas controls implementation (2026-11-11)
+
+Started from verified GitHub main `664863fa0733f0d5169637cbc9e02482896ad759` (UI-1, #631).
+Removed the redundant BOX top-bar Fit and the global Apply/Finish placement. Reused the
+existing canvas Fit and BOX tool overlay; a sticky row keeps relevant actions accessible
+without adding another popup or gesture-driven positioning. PM keeps its separate actions;
+TB/W/S use geometry Apply and their active group's Finish; Manufacturing uses Apply only.
+Select/placeholders expose neither. The original command/validation handlers and Undo
+boundaries remain unchanged, including PM's dialog-on-Undo and geometry Apply's existing
+acceptance behavior. Inactive shells preserve unfinished module state.
+
+[UI-2 validation](docs/UI2_CONTEXTUAL_CANVAS_CONTROLS_VALIDATION.md) records successful
+build/tests, 76 regression commands, UI-1 and focused UI-2 Chromium acceptance, Arc and
+Coincidence browser regressions, and both layouts at three desktop sizes. Implementation
+awaits user review/acceptance; UI-1 status, accepted CAD evidence, deferred limitations,
+UI-3/UI-4 and A–G statuses are preserved. No automatic merge.
+
 ## 12. Superseded or Temporary Material
 
 ### 12.1 Historical reports and diagnostics

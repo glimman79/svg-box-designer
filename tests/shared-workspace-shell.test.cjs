@@ -35,6 +35,12 @@ test('top-bar history reflects the provided module capabilities', () => {
   for (const module of ['drawing', 'construction']) assert.match(button(render(module), '↷'), /disabled=""/);
 });
 
+test('viewport and workflow actions do not occupy the global top bar', () => {
+  for (const module of ['drawing', 'construction']) {
+    assert.doesNotMatch(render(module), />Fit(?: to screen)?<|>Apply<|>Finish[^<]*<|Active module actions/);
+  }
+});
+
 test('inactive module shell retains its children and removes interaction access', () => {
   const renderShell = active => renderToStaticMarkup(React.createElement(WorkspaceShell, {
     active, className: 'drawing-workspace', label: 'Drawing', children: React.createElement('span', null, 'Document owner'),

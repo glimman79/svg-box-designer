@@ -1,7 +1,8 @@
 # Laser Program — Global Workspace UI Specification
 
 **Status: APPROVED PRODUCT REQUIREMENTS; UI-1 IMPLEMENTED / browser-checked (2026-11-10),
-pending user review/acceptance. UI-2/UI-3/UI-4 remain PROPOSED / NOT IMPLEMENTED.**
+pending user review/acceptance. UI-2 IMPLEMENTED / browser-checked (2026-11-11),
+pending user review/acceptance. UI-3/UI-4 remain PROPOSED / NOT IMPLEMENTED.**
 
 ## 1. Purpose, scope and authority
 
@@ -18,8 +19,8 @@ The merged [Stage B analysis](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md) r
 the technical reference, with its approved requirements distinct from recommendations
 still under review. Merging that analysis did not implement or approve every proposal.
 
-The original specification was documentation only. UI-1 now implements the shell described
-in §5; no A–G stage is completed by that placement work.
+The original specification was documentation only. UI-1 implements the shell described
+in §5; UI-2 implements contextual control placement. Neither completes an A–G stage.
 The canvas-only Fit placement below supersedes the earlier future top-bar Fit placement;
 other approved history, persistence, Clear and CAD contracts remain in force.
 
@@ -66,6 +67,23 @@ disabled. BOX Clear confirms that Drawing is preserved. The future BLUE/ORANGE c
 below are still future functionality. Existing bottom History, Fit (including BOX top-bar
 Fit), Apply and Finish Group remain unchanged pending UI-2/UI-3/UI-4. See
 [UI-1 validation](UI1_SHARED_WORKSPACE_SHELL_VALIDATION.md) for exact checks and limitations.
+
+### UI-2 implementation checkpoint (2026-11-11)
+
+The redundant top-bar BOX Fit and permanent top-bar Apply/Finish are removed. Both canvases
+retain one existing Fit alongside zoom with their original handlers/state. Relevant BOX
+workflow actions share a sticky row in the existing tool overlay, preserving its position
+and footprint rather than adding a second popup. PM uses its original Apply/Finish PM;
+TB/W/S use geometry Apply and their matching active-group Finish; Manufacturing has Apply
+only. Select and placeholders have no workflow actions. An inactive module's controls
+remain hidden/inert with its mounted shell; switches neither accept nor cancel drafts.
+
+Enabled/disabled predicates and command handlers are unchanged. Geometry Apply remains
+available in Manufacturing after finishing a group, without starting another group.
+Native buttons retain keyboard activation with explicit focus outlines. No geometry,
+solver, manufacturing, model, persistence or Undo transaction code changes.
+See [UI-2 validation and screenshots](UI2_CONTEXTUAL_CANVAS_CONTROLS_VALIDATION.md).
+UI-1 remains pending user acceptance; UI-3/UI-4 and A–G statuses are unchanged.
 
 ## 3. Seven approved UI regions
 
@@ -170,9 +188,9 @@ hide them when the associated workflow ends. Not every tool requires these actio
 
 Preserve Apply, Finish Group, cancellation, incomplete-state and accepted-action
 semantics. Relocation must neither force completion nor accept/cancel work implicitly,
-lose an accepted action, or create/merge Undo steps. Exact positioning and shared-control
-implementation remain deferred; contextual constraint behavior is a reference concept,
-not proof that a reusable Apply/Finish component already exists.
+lose an accepted action, or create/merge Undo steps. UI-2 uses a sticky action row in the
+existing BOX tool overlay. Contextual constraint behavior remains the interaction reference;
+the Drawing Constraints implementation is unchanged.
 
 ## 4. Construction history, Undo/Redo and dependencies
 
@@ -201,8 +219,8 @@ does not select a scheduler. See the authoritative
 
 ## 5. UI-1 through UI-4 delivery plan
 
-UI-1 is **IMPLEMENTED / browser-checked**, pending user review/acceptance. UI-2/UI-3/UI-4
-remain **PROPOSED / NOT IMPLEMENTED**. These slices complement the existing A–G roadmap
+UI-1 and UI-2 are **IMPLEMENTED / browser-checked**, pending user review/acceptance.
+UI-3/UI-4 remain **PROPOSED / NOT IMPLEMENTED**. These slices complement the existing A–G roadmap
 without renumbering it or changing any stage's status.
 
 ### UI-1 — Shared workspace shell
@@ -220,6 +238,9 @@ future modules can use the shell without restructuring it; disabled native/globa
 capabilities are not presented as implemented.
 
 ### UI-2 — Contextual canvas controls
+
+**IMPLEMENTED / browser-checked (2026-11-11); pending user review/acceptance.**
+See [validation](UI2_CONTEXTUAL_CANVAS_CONTROLS_VALIDATION.md).
 
 **Scope:** remove top-bar Fit, retain canvas Fit, and relocate relevant Apply/Finish Group
 controls to the canvas, aligning with contextual constraint interactions where appropriate.
@@ -275,12 +296,13 @@ foundation is implemented while Open starts a fresh Undo tape.
 
 ## 6. Non-goals and deferred details
 
-Beyond UI-1 shell placement and mounted-owner preservation, no tool-set redesign,
+Beyond UI-1 shell placement/mounted-owner preservation and UI-2 contextual action placement,
+no tool-set redesign,
 persistence implementation, new history store, solver changes or broad architecture
 redesign. No A–G status changes, later completed UI milestones, new user CAD acceptance,
 release dates or reopening Option A. Automated browser evidence for UI-1 is linked above.
 Preserve historical and accepted evidence. Operation catalog/grouping, legacy migration,
-exact menu/overlay placement, identity adapters, native schema, dependency scheduler,
+future menu/overlay refinements, identity adapters, native schema, dependency scheduler,
 repair algorithms, 3D and Puzzle details remain with their existing architecture stages.
 The approved regions and interactions constrain that future design without selecting
 unverified implementations.

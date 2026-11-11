@@ -23,7 +23,8 @@ is explicitly designated as the detailed approved future-requirements document f
 the connected product; it does not describe implemented capabilities.
 [Global Workspace UI Specification](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md) owns the
 approved seven-region layout and interactions; UI-1 is implemented and browser-checked
-(2026-11-10), pending user review/acceptance. UI-2/UI-3/UI-4 remain unimplemented.
+(2026-11-10), pending user review/acceptance. UI-2 is implemented and browser-checked
+(2026-11-11), pending user review/acceptance; UI-3/UI-4 remain unimplemented.
 
 ## 2. Product organization
 
@@ -122,8 +123,28 @@ scope. Undo/Redo bind to the active module's existing local owner, not a global 
 Existing bottom History content/navigation is unchanged. Desktop checks at 1920×1080,
 1366×768 and 1024×768 preserve bounded workspace layout without document scrolling.
 See [UI-1 validation](docs/UI1_SHARED_WORKSPACE_SHELL_VALIDATION.md) for evidence and limits.
-UI-2/UI-3/UI-4 and all A–G stage statuses remain unchanged; implementation is pending user
-review/acceptance, not a new CAD acceptance or release.
+UI-1 remains pending user review/acceptance, not a new CAD acceptance or release.
+
+### 2.3 UI-2 contextual canvas controls (implemented 2026-11-11)
+
+Fit is available once per canvas beside zoom; the redundant BOX top-bar Fit is removed.
+Drawing's fixed-view reset and BOX's existing bounds-based Fit handler/state are unchanged.
+The top bar retains module navigation, scoped project commands and local Undo/Redo.
+
+Apply/Finish use a sticky action row in the existing BOX tool overlay. PM retains its
+separate Apply and Finish PM handlers/validation. TB/W/S expose geometry Apply and expose
+Finish TB/W/S only while their matching group is active. Manufacturing exposes Apply
+only. Select and placeholder tools expose neither. Geometry Apply retains its original
+project-lock/input predicate and validation; disabled states do not imply new acceptance
+rules. After finishing a group, Manufacturing still offers geometry Apply without starting
+another group. Tool exit hides controls without accepting/canceling drafts; module switches
+preserve unfinished workflows through the existing mounted shell and inactive input isolation.
+
+No command handlers, geometry/solver/manufacturing algorithms, models, history ownership,
+Undo transaction boundaries or persistence schemas changed. Opening/closing/scrolling the
+action row adds no state or Undo entries. [UI-2 validation](docs/UI2_CONTEXTUAL_CANVAS_CONTROLS_VALIDATION.md)
+records Chromium acceptance and regression results. Pending user review/acceptance;
+UI-3/UI-4 and all A–G stage statuses remain unchanged.
 
 ## 3. Document models and shared boundary
 

@@ -116,7 +116,7 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
     assert.match(fs.readFileSync(await download.path(), 'utf8'), /<svg/);
     assert.equal(await undo().isEnabled(), true); await undo().click(); await redo().click();
     for (const name of ['TB', 'W', 'S', 'MFG']) { await page.getByLabel('Tool sidebar').getByRole('button', { name, exact: true }).click(); assert.equal(await overlay.isVisible(), true); }
-    await page.getByRole('button', { name: 'Fit to screen', exact: true }).click();
+    await page.getByLabel('Canvas zoom controls', { exact: true }).getByRole('button', { name: 'Fit', exact: true }).click();
     await page.getByRole('complementary', { name: 'Workflow history' }).getByRole('button', { name: 'PM, opens Panel Manager panel', exact: true }).click();
     await drawing(); assert.deepEqual(await snapshot(), geometry); await box();
     assert.equal(await overlay.getByRole('heading', { name: 'PM', exact: true }).isVisible(), true);
