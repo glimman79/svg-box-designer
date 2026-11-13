@@ -1,0 +1,506 @@
+{
+  "passed": [
+    "Drawing empty state, stable navigation, preserved geometry/view/Redo/unfinished Circle and exact Undo depth",
+    "real PM/TB/W entries, original pointer/keyboard selection, unfinished group, manufacturing output and Finish Redo retained",
+    "18 Chromium combinations: one stable bottom row, retained owners, usable canvas, no overlap/overflow/clipping, exact sizing, usable TB/W",
+    "test-only long track: native wheel/keyboard scrolling, retained BOX scroll context, no canvas/workflow/Undo/page changes"
+  ],
+  "matrix": [
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "size": "Small",
+      "module": "drawing",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 1080,
+      "top": 1055,
+      "height": 25,
+      "canvasHeight": 1024,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "20px",
+        "4px",
+        "2px",
+        "10px",
+        "12px",
+        "44px"
+      ]
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "size": "Small",
+      "module": "box",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 1080,
+      "top": 1055,
+      "height": 25,
+      "canvasHeight": 1024,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "20px",
+        "4px",
+        "2px",
+        "10px",
+        "12px",
+        "44px"
+      ],
+      "controlHeight": 20
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "size": "Normal",
+      "module": "drawing",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 1080,
+      "top": 1049,
+      "height": 31,
+      "canvasHeight": 1012,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "24px",
+        "5px",
+        "3px",
+        "11px",
+        "14px",
+        "48px"
+      ]
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "size": "Normal",
+      "module": "box",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 1080,
+      "top": 1049,
+      "height": 31,
+      "canvasHeight": 1012,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "24px",
+        "5px",
+        "3px",
+        "11px",
+        "14px",
+        "48px"
+      ],
+      "controlHeight": 24
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "size": "Large",
+      "module": "drawing",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 1080,
+      "top": 1043,
+      "height": 37,
+      "canvasHeight": 1000,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "28px",
+        "7px",
+        "4px",
+        "12px",
+        "16px",
+        "52px"
+      ]
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "size": "Large",
+      "module": "box",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 1080,
+      "top": 1043,
+      "height": 37,
+      "canvasHeight": 1000,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "28px",
+        "7px",
+        "4px",
+        "12px",
+        "16px",
+        "52px"
+      ],
+      "controlHeight": 28
+    },
+    {
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "size": "Small",
+      "module": "drawing",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 768,
+      "top": 743,
+      "height": 25,
+      "canvasHeight": 712,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "20px",
+        "4px",
+        "2px",
+        "10px",
+        "12px",
+        "44px"
+      ]
+    },
+    {
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "size": "Small",
+      "module": "box",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 768,
+      "top": 743,
+      "height": 25,
+      "canvasHeight": 712,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "20px",
+        "4px",
+        "2px",
+        "10px",
+        "12px",
+        "44px"
+      ],
+      "controlHeight": 20
+    },
+    {
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "size": "Normal",
+      "module": "drawing",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 768,
+      "top": 737,
+      "height": 31,
+      "canvasHeight": 700,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "24px",
+        "5px",
+        "3px",
+        "11px",
+        "14px",
+        "48px"
+      ]
+    },
+    {
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "size": "Normal",
+      "module": "box",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 768,
+      "top": 737,
+      "height": 31,
+      "canvasHeight": 700,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "24px",
+        "5px",
+        "3px",
+        "11px",
+        "14px",
+        "48px"
+      ],
+      "controlHeight": 24
+    },
+    {
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "size": "Large",
+      "module": "drawing",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 768,
+      "top": 731,
+      "height": 37,
+      "canvasHeight": 688,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "28px",
+        "7px",
+        "4px",
+        "12px",
+        "16px",
+        "52px"
+      ]
+    },
+    {
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "size": "Large",
+      "module": "box",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 768,
+      "top": 731,
+      "height": 37,
+      "canvasHeight": 688,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "28px",
+        "7px",
+        "4px",
+        "12px",
+        "16px",
+        "52px"
+      ],
+      "controlHeight": 28
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "size": "Small",
+      "module": "drawing",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 768,
+      "top": 743,
+      "height": 25,
+      "canvasHeight": 712,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "20px",
+        "4px",
+        "2px",
+        "10px",
+        "12px",
+        "44px"
+      ]
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "size": "Small",
+      "module": "box",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 768,
+      "top": 743,
+      "height": 25,
+      "canvasHeight": 712,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "20px",
+        "4px",
+        "2px",
+        "10px",
+        "12px",
+        "44px"
+      ],
+      "controlHeight": 20
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "size": "Normal",
+      "module": "drawing",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 768,
+      "top": 737,
+      "height": 31,
+      "canvasHeight": 700,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "24px",
+        "5px",
+        "3px",
+        "11px",
+        "14px",
+        "48px"
+      ]
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "size": "Normal",
+      "module": "box",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 768,
+      "top": 737,
+      "height": 31,
+      "canvasHeight": 700,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "24px",
+        "5px",
+        "3px",
+        "11px",
+        "14px",
+        "48px"
+      ],
+      "controlHeight": 24
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "size": "Large",
+      "module": "drawing",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 768,
+      "top": 731,
+      "height": 37,
+      "canvasHeight": 656,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "28px",
+        "7px",
+        "4px",
+        "12px",
+        "16px",
+        "52px"
+      ]
+    },
+    {
+      "viewport": {
+        "width": 1024,
+        "height": 768
+      },
+      "size": "Large",
+      "module": "box",
+      "one": true,
+      "shared": true,
+      "track": true,
+      "owners": true,
+      "overflow": false,
+      "bottom": 768,
+      "top": 731,
+      "height": 37,
+      "canvasHeight": 688,
+      "canvasAbove": true,
+      "clipped": false,
+      "tokens": [
+        "28px",
+        "7px",
+        "4px",
+        "12px",
+        "16px",
+        "52px"
+      ],
+      "controlHeight": 28
+    }
+  ],
+  "errors": []
+}

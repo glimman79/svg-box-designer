@@ -1,5 +1,13 @@
 # SVG Box Designer roadmap
 
+## UI-3 — Shared History presentation checkpoint (2026-11-13)
+
+**IMPLEMENTED / Chromium-checked; pending user acceptance and separate merge.** Reuse the
+existing BOX bottom row as one stable application-level History region in Drawing and BOX.
+BOX workflow navigation remains functional; Drawing has no permanent-operation entries.
+Native horizontal scrolling and a typed future reference boundary are prepared without
+an operation store. [UI-3 validation](docs/UI3_UNIFIED_CONSTRUCTION_HISTORY_VALIDATION.md). UI-4 and C/C.2/D/E remain deferred; A–G statuses are unchanged.
+
 ## UI-2.1 follow-up — Layout & Size Correction (2026-11-11)
 
 Follow-up to merged PR #633, implemented from clean `main`
@@ -1252,7 +1260,8 @@ R1–R3 and unimplemented R5 retain their recorded status.
 
 **Approved UI requirements: UI-1 IMPLEMENTED / browser-checked (2026-11-10), pending user
 review/acceptance; UI-2 IMPLEMENTED / browser-checked (2026-11-11), pending user
-review/acceptance; UI-3/UI-4 NOT IMPLEMENTED.**
+review/acceptance; UI-3 IMPLEMENTED / browser-checked (2026-11-13), pending user
+acceptance; UI-4 NOT IMPLEMENTED.**
 The [Global Workspace UI Specification](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md)
 owns the seven regions, interaction requirements and detailed acceptance criteria.
 These slices complement A–G without renumbering or changing any existing stage status.
@@ -1263,7 +1272,7 @@ functionality and all accepted tool/Undo behavior must be preserved.
 | --- | --- | --- |
 | UI-1 — Shared workspace shell | **IMPLEMENTED / browser-checked; pending user acceptance.** Shared top/module navigation, scoped project commands, active-module Undo/Redo, left toolbars and mounted shell boundaries. | Drawing/BOX state and local history survive switches; unavailable commands/modules stay disabled. No global ownership, native persistence or transaction changes. [Validation](docs/UI1_SHARED_WORKSPACE_SHELL_VALIDATION.md). |
 | UI-2 — Contextual canvas controls | **IMPLEMENTED / browser-checked; pending user acceptance.** Fit only beside canvas zoom; Apply/Finish integrated into the existing BOX tool overlay for PM, TB/W/S and Manufacturing as appropriate. | Existing handlers/validation, incomplete and multi-step workflows, module state and Undo boundaries preserved. Select/placeholders have no workflow actions. [Validation and screenshots](docs/UI2_CONTEXTUAL_CANVAS_CONTROLS_VALIDATION.md). UI-3/UI-4 and A–G remain unchanged. |
-| UI-3 — Construction-history timeline shell | Shared horizontal bottom layout, scrolling, selection/navigation boundaries, labels/icons/diagnostic space. | Can precede complete C.2, but must integrate with its stable-reference boundary. Preserve module-switch context; no workflow-group relabelling or throwaway history model. |
+| UI-3 — Construction-history timeline shell | **IMPLEMENTED / browser-checked; pending user acceptance.** One shared application-level region reuses the existing BOX row; Drawing shows an accurate empty state. | Original BOX navigation/state/handlers preserved; scroll context survives switches. Opaque future reference presentation type only, with no permanent operations or parallel store. [UI-3 validation](docs/UI3_UNIFIED_CONSTRUCTION_HISTORY_VALIDATION.md). C.2/UI-4 integration remains deferred. |
 | UI-4 — Construction-history integration | Persistent operations, in-place/current-settings editing, diagnostics/repair and Undo/dependency synchronization. | Requires C shared project/global Undo, proposed C.2 operations/bindings and appropriate E foundations; D is required for native saved-history behavior. New operations add entries; edits retain identity; invalid/blocked definitions remain accessible; native Open retains operations with a fresh Undo tape. |
 
 F — Simple 3D Modeling remains optional future integration, and G — Puzzle uses the
