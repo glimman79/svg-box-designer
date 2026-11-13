@@ -102,7 +102,7 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
     await overlay.getByRole('button', { name: 'Accept default thickness', exact: true }).click();
     await overlay.getByRole('button', { name: 'Apply', exact: true }).click();
     await overlay.getByRole('button', { name: 'OK', exact: true }).click();
-    assert.equal(await page.getByRole('complementary', { name: 'Workflow history' }).getByRole('button', { name: 'Panel Manager, opens Panel Manager panel', exact: true }).count(), 1);
+    assert.equal(await page.getByRole('complementary', { name: 'Construction history' }).getByRole('button', { name: 'Panel Manager, opens Panel Manager panel', exact: true }).count(), 1);
     await page.getByLabel('Tool sidebar').getByRole('button', { name: 'TB', exact: true }).click();
     const edgeClient = await page.locator('.edge-hitbox').first().evaluate(e => {
       const p = new DOMPoint((+e.getAttribute('x1') + +e.getAttribute('x2')) / 2, (+e.getAttribute('y1') + +e.getAttribute('y2')) / 2).matrixTransform(e.getScreenCTM());
@@ -117,16 +117,16 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
     assert.equal(await undo().isEnabled(), true); await undo().click(); await redo().click();
     for (const name of ['TB', 'W', 'S', 'MFG']) { await page.getByLabel('Tool sidebar').getByRole('button', { name, exact: true }).click(); assert.equal(await overlay.isVisible(), true); }
     await page.getByLabel('Canvas zoom controls', { exact: true }).getByRole('button', { name: 'Fit', exact: true }).click();
-    await page.getByRole('complementary', { name: 'Workflow history' }).getByRole('button', { name: 'Panel Manager, opens Panel Manager panel', exact: true }).click();
+    await page.getByRole('complementary', { name: 'Construction history' }).getByRole('button', { name: 'Panel Manager, opens Panel Manager panel', exact: true }).click();
     await drawing(); assert.deepEqual(await snapshot(), geometry); await box();
     assert.equal(await overlay.getByRole('heading', { name: 'Panel Manager', exact: true }).isVisible(), true);
-    const historyCount = await page.getByRole('complementary', { name: 'Workflow history' }).getByRole('button').count();
+    const historyCount = await page.getByRole('complementary', { name: 'Construction history' }).getByRole('button').count();
     await page.getByRole('button', { name: 'Clear', exact: true }).click();
     await page.getByRole('dialog', { name: 'Clear BOX / Construction?', exact: true }).getByRole('button', { name: 'Cancel', exact: true }).click();
-    assert.equal(await page.getByRole('complementary', { name: 'Workflow history' }).getByRole('button').count(), historyCount);
+    assert.equal(await page.getByRole('complementary', { name: 'Construction history' }).getByRole('button').count(), historyCount);
     await page.getByRole('button', { name: 'Clear', exact: true }).click();
     await page.getByRole('dialog', { name: 'Clear BOX / Construction?', exact: true }).getByRole('button', { name: 'Clear', exact: true }).click();
-    assert.equal(await page.getByRole('complementary', { name: 'Workflow history' }).getByRole('button').count(), 0);
+    assert.equal(await page.getByRole('complementary', { name: 'Construction history' }).getByRole('button').count(), 0);
     await drawing(); assert.deepEqual(await snapshot(), geometry);
     passed.push('BOX Import/PM Apply/Finish, TB edge assignment/SVG Export, local Undo/Redo, TB/W/S/MFG availability, workflow History navigation, Fit and scoped Clear');
 

@@ -49,6 +49,7 @@ import { createBoxDocumentV1 } from './app/boxDocument';
 import type { HistoryControlsProps } from './app/HistoryControls';
 import { WorkspaceTopBar } from './app/WorkspaceTopBar';
 import { WorkspaceShell } from './app/WorkspaceShell';
+import { SharedHistoryRegion } from './app/SharedHistoryRegion';
 import type { ActiveSGroup, ActiveTBGroup, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, CornerConnectionDefinition, CornerConnectionProperties, TBConnectionDefinition, TBConnectionProperties, PatternConnectionDefinition, PatternConnectionProperties, SlotConnectionDefinition, SlotConnectionProperties } from './app/connectionTypes';
 import { getNextConnectionLabel, parseConnectionLabel } from './app/connectionLabels';
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
@@ -2635,9 +2636,10 @@ function App() {
             </svg>
           </div>
         </section>
-        <aside className="workflow-history-panel panel" aria-label="Workflow history">
-          <div className="workflow-history-items" aria-label="Workflow groups">
-            <span className="workflow-history-label">History</span>
+      </WorkspaceShell>
+      <SharedHistoryRegion
+        presentation={activeWorkspace === 'construction' ? 'workflow-navigation' : 'operations-unavailable'}
+        workflowNavigation={<>
             {workflowHistoryItems.length > 0 ? workflowHistoryItems.map((item) => (
               <button
                 key={item.id}
@@ -2653,9 +2655,8 @@ function App() {
             )) : (
               <p className="workflow-history-empty muted">No workflow groups yet.</p>
             )}
-          </div>
-        </aside>
-      </WorkspaceShell>
+        </>}
+      />
     </main>
   );
 }

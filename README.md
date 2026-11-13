@@ -8,6 +8,9 @@ SVG Box Designer is a browser-based React application for drawing semantic 2D sk
 - **Box / Construction** imports or starts an SVG document, identifies panels and selectable straight edges, and applies Panel Manager, TB (Top/Bottom finger-joint), W (Wall), and S (Slot) workflows. Generated geometry is composed, reconciled, manufacturing-compensated for clearances and kerf, previewed, and exported as SVG.
 - **Puzzle** is reserved in the workspace selector but is **not implemented**.
 
+One compact bottom History region is shared by Drawing and BOX. BOX retains its workflow-group
+navigation; Drawing shows that persistent operation history is not yet available.
+
 The Drawing and imported/construction document models are currently separate. See [PROJECT_MASTER.md](PROJECT_MASTER.md) for current product scope, architectural authority, invariants, and known boundaries.
 
 **Approved future direction — not implemented:** an optional connected workflow of

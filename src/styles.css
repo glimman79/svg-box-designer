@@ -2102,8 +2102,8 @@ button:disabled {
   flex: 1 1 auto;
   display: grid;
   grid-template-columns: 62px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) 42px;
-  grid-template-areas: "tools canvas" "history history";
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "tools canvas";
   gap: 0;
   min-height: 0;
   height: auto;
@@ -2164,15 +2164,6 @@ button:disabled {
 .canvas-zoom-controls button:focus-visible {
   outline: 3px solid #0f766e;
   outline-offset: 2px;
-}
-
-.workspace-shell .workflow-history-panel {
-  grid-area: history;
-  border-radius: 0;
-  border-right: 0;
-  border-bottom: 0;
-  border-left: 0;
-  box-shadow: none;
 }
 
 .workspace-selector {
@@ -2275,8 +2266,6 @@ button:disabled {
 .drawing-label-overlay .drawing-axis-letter { fill: #334155; font-size: 12px; font-weight: 800; }
 .drawing-origin-screen { fill: #fff; stroke: #0f766e; stroke-width: 1.5; }
 
-.drawing-history { padding: 5px 8px; }
-
 .drawing-canvas-card .canvas-zoom-controls {
   top: 56px;
   left: 10px;
@@ -2370,4 +2359,47 @@ button:disabled {
 @media (max-width: 760px) {
   .top-toolbar .project-commands { flex-wrap: wrap; max-width: 100%; }
   .top-toolbar .workspace-selector { margin-left: 0; overflow: visible; }
+}
+
+/* UI-3: reuse the bottom History row once, outside both mounted workspace grids. */
+.shared-history-region {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--ui-gap);
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: var(--ui-gap) 8px;
+  border-radius: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  box-shadow: none;
+}
+.shared-history-region .workflow-history-items {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--ui-control-height);
+  gap: var(--ui-gap);
+  overscroll-behavior-x: contain;
+}
+.workflow-history-content {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--ui-gap);
+}
+.workflow-history-content[hidden], .shared-history-region [hidden] { display: none; }
+.shared-history-region .workflow-history-item {
+  width: calc(var(--ui-control-height) + var(--ui-control-padding));
+  min-width: calc(var(--ui-control-height) + var(--ui-control-padding));
+  height: var(--ui-control-height);
+  font-size: var(--ui-font);
+  border-radius: 5px;
+}
+.shared-history-region :is(.workflow-history-label, .workflow-history-empty) { font-size: var(--ui-font); }
+.shared-history-region :is(.workflow-history-items, .workflow-history-item):focus-visible {
+  outline: 2px solid #0f766e;
+  outline-offset: -2px;
 }

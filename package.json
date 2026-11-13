@@ -151,7 +151,9 @@
     "test:workspace-shell": "rm -rf .test-build/workspace-shell && tsc --ignoreConfig src/app/WorkspaceShell.tsx src/app/WorkspaceTopBar.tsx --target es2022 --module commonjs --outDir .test-build/workspace-shell --skipLibCheck --jsx react-jsx --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .test-build/workspace-shell/package.json && node --test tests/shared-workspace-shell.test.cjs",
     "test:workspace-shell:browser": "node tests/shared-workspace-shell.browser.cjs",
     "test:contextual-canvas-controls:browser": "node tests/contextual-canvas-controls.browser.cjs",
-    "test:compact-workspace-settings:browser": "node tests/compact-workspace-settings.browser.cjs"
+    "test:compact-workspace-settings:browser": "node tests/compact-workspace-settings.browser.cjs",
+    "test:shared-history": "rm -rf .test-build/shared-history && tsc --ignoreConfig src/app/SharedHistoryRegion.tsx --target es2022 --module commonjs --outDir .test-build/shared-history --skipLibCheck --jsx react-jsx --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .test-build/shared-history/package.json && node --test tests/shared-history-region.test.cjs",
+    "test:shared-history:browser": "node tests/shared-history-region.browser.cjs"
   },
   "dependencies": {
     "react": "latest",
