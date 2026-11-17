@@ -35,6 +35,10 @@ Root-level [`REGLER_FOR_CHATT_MED_CHATGPT.md`](../REGLER_FOR_CHATT_MED_CHATGPT.m
 
 These narrow contracts remain useful alongside the code. They do not replace the Project Master.
 
+- [PROJECT_STATE_CAPTURE_BOUNDARY.md](PROJECT_STATE_CAPTURE_BOUNDARY.md) — Stage C PR 1
+  pure Drawing/BOX capture/projection foundation, state inventory and restoration limits;
+  no production owner, global history, native persistence or dependency implementation.
+
 - `D2_5E2_LINE_TO_LINE_DISTANCE.md` — implemented Line-to-Line distance relation and solver contract.
 - `DRAWING_GEOMETRY_VISUAL_STATE.md` — current Drawing geometry visual-state contract.
 - `WALL_V2_STEP_B1_TB_ROLE_INHERITANCE_CONTRACT.md` — accepted Wall/TB role-inheritance contract.
