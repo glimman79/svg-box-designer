@@ -1,5 +1,20 @@
 # SVG Box Designer — Project History
 
+## UI-3 — Existing BOX History becomes one shared region (2026-11-13)
+
+The user's clarification supersedes any plan for an additional bottom timeline: reuse
+the existing BOX History row, preserve its working workflow navigation and expose the same
+region in Drawing. `App` now owns its stable presentation outside both workspace grids;
+Drawing's old separate message row is removed. The original BOX buttons and handler remain.
+Drawing shows an empty availability message, without inferred geometry or Undo operations.
+
+Chromium checks cover the stable region/track and workspace instances, real PM/TB/W
+navigation, retained tools/geometry/Redo and scroll context, plus all 18 requested layouts.
+Ten new screenshots were opened and visually inspected. [UI-3 validation](docs/UI3_UNIFIED_CONSTRUCTION_HISTORY_VALIDATION.md) records all checks.
+Implementation/browser checks are complete; user acceptance and separate merge remain pending.
+Permanent operations, global Undo/Redo, native persistence, dependencies and UI-4 are deferred.
+Existing UI-1/UI-2/UI-2.1/CAD evidence and A–G stage statuses are preserved.
+
 ## UI-2.1 follow-up — Layout & Size Correction (2026-11-11)
 
 Follow-up to merged PR #633, implemented from clean `main`

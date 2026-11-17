@@ -1,5 +1,23 @@
 # SVG Box Designer — Project Master
 
+## UI-3 — Unified Construction History (2026-11-13)
+
+Implemented and Chromium-checked on the merged #634 baseline; pending user acceptance
+and separate merge. [UI-3 validation](docs/UI3_UNIFIED_CONSTRUCTION_HISTORY_VALIDATION.md) records exact evidence and limits.
+
+`App` owns one `SharedHistoryRegion` below both mounted workspace shells. It reuses the
+existing compact BOX History presentation; Drawing's separate explanatory row is removed.
+BOX retains its existing derived workflow groups, IDs, labels, pressed/active rules and
+`navigateToWorkflowHistoryItem` handler in `App`. The shell receives presentation children,
+keeps one native horizontal track and remembers its scroll position per presentation.
+Drawing exposes only an accurate persistent-operations-unavailable message, without entries.
+
+`ConstructionOperationPresentation<OperationRef>` reserves opaque reference, module/type,
+label/icon, selection, status and current-settings navigation fields. It is a UI input type,
+with no production instances, operation registry, ID conversion or persistence schema.
+C/C.2/D/E and UI-4 remain deferred; global Undo/Redo and permanent history remain distinct.
+CAD models, algorithms, manufacturing, local history owners and A–G statuses are unchanged.
+
 ## UI-2.1 follow-up — Layout & Size Correction (2026-11-11)
 
 Follow-up to merged PR #633, implemented from clean `main`
@@ -64,7 +82,8 @@ the connected product; it does not describe implemented capabilities.
 [Global Workspace UI Specification](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md) owns the
 approved seven-region layout and interactions; UI-1 is implemented and browser-checked
 (2026-11-10), pending user review/acceptance. UI-2 is implemented and browser-checked
-(2026-11-11), pending user review/acceptance; UI-3/UI-4 remain unimplemented.
+(2026-11-11), pending user review/acceptance. UI-3 is implemented/browser-checked
+(2026-11-13), pending user acceptance; UI-4 remains unimplemented.
 
 ## 2. Product organization
 

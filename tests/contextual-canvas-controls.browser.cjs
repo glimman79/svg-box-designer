@@ -131,7 +131,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     assert.equal(await page.locator('.notice:not(.inline-notice)').count(), 0);
     const applied = await contours();
     await finish('OK').click(); assert.equal(await actions.count(), 0);
-    assert.match(await page.getByRole('complementary', { name: 'Workflow history', exact: true }).innerText(), /TB/);
+    assert.match(await page.getByRole('complementary', { name: 'Construction history', exact: true }).innerText(), /TB/);
     await undo().click(); await tool('TB').click(); assert.equal(await finish('OK').isVisible(), true);
     await redo().click(); assert.equal(await contours(), applied);
     await tool('MFG').click();
@@ -163,7 +163,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
       assert.notEqual(await contours(), original, `${name} Apply generates geometry`);
       await finish('OK').click();
       assert.equal(await actions.count(), 0);
-      assert.match(await page.getByRole('complementary', { name: 'Workflow history', exact: true }).innerText(), new RegExp(name));
+      assert.match(await page.getByRole('complementary', { name: 'Construction history', exact: true }).innerText(), new RegExp(name));
     }
     passed.push('complete Wall and Slot edge assignment, geometry Apply, Finish and workflow history');
 

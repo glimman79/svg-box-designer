@@ -1,5 +1,14 @@
 # Unreleased
 
+## UI-3 — Unified Construction History (2026-11-13)
+
+- Reused BOX's existing bottom History row as one stable region shared with Drawing,
+  preserving original workflow navigation and module-local Undo/Redo behavior.
+- Drawing shows a compact availability message; no fake operations or history engine.
+- Added typed future presentation input, confined native scrolling, 18 Chromium layout
+  checks and ten inspected screenshots. [UI-3 validation](docs/UI3_UNIFIED_CONSTRUCTION_HISTORY_VALIDATION.md) contains exact results and limits.
+- Pending user acceptance and separate merge. C/C.2/D/E, UI-4 and A–G statuses are unchanged.
+
 ## UI-2.1 follow-up — Layout & Size Correction (2026-11-11)
 
 Follow-up to merged PR #633, implemented from clean `main`

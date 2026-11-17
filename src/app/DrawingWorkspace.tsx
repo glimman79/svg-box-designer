@@ -1578,9 +1578,6 @@ export function DrawingWorkspace({
           </svg>
         </div>
       </section>
-      <aside className="workflow-history-panel drawing-history panel" aria-label="Drawing history">
-        <div className="workflow-history-items"><span className="workflow-history-label">History</span><p className="workflow-history-empty muted">Dimension create/delete supports Ctrl+Z / Ctrl+Y.</p></div>
-      </aside>
     </WorkspaceShell>
   );
 }

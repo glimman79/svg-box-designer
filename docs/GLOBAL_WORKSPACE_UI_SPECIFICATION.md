@@ -3,7 +3,8 @@
 **Status: APPROVED PRODUCT REQUIREMENTS; UI-1 IMPLEMENTED / browser-checked (2026-11-10),
 pending user review/acceptance. UI-2 IMPLEMENTED / browser-checked (2026-11-11),
 pending user review/acceptance. UI-2.1 IMPLEMENTED / browser-checked (2026-11-11),
-pending user review/acceptance. UI-3/UI-4 remain PROPOSED / NOT IMPLEMENTED.**
+pending user review/acceptance. UI-3 IMPLEMENTED / browser-checked (2026-11-13),
+pending user acceptance. UI-4 remains PROPOSED / NOT IMPLEMENTED.**
 
 ## 1. Purpose, scope and authority
 
@@ -100,8 +101,11 @@ UI-1 remains pending user acceptance; UI-3/UI-4 and A–G statuses are unchanged
 
 ### RED — Permanent construction-history timeline
 
-- Provide one Fusion 360-inspired horizontal timeline across all modules at the bottom
-  of the workspace, with horizontal scrolling when entries exceed available width.
+- Reuse the existing BOX bottom History row as ONE shared application-level region in
+  Drawing and BOX. Do not add, stack or retain a second History row. The permanent
+  operation timeline will use this same region when its foundation exists, with horizontal
+  scrolling when entries exceed available width. UI-3 preserves the existing BOX
+  workflow-group navigation and shows an accurate empty availability state in Drawing.
 - Entries represent completed, meaningful construction operations, with stable operation
   identities and editable current parameters. New meaningful operations append entries;
   editing an existing operation updates its entry rather than creating a replacement.
@@ -225,7 +229,8 @@ does not select a scheduler. See the authoritative
 ## 5. UI-1 through UI-4 delivery plan
 
 UI-1 and UI-2 are **IMPLEMENTED / browser-checked**, pending user review/acceptance.
-UI-3/UI-4 remain **PROPOSED / NOT IMPLEMENTED**. These slices complement the existing A–G roadmap
+UI-3 is **IMPLEMENTED / browser-checked (2026-11-13), pending user acceptance**;
+UI-4 remains **PROPOSED / NOT IMPLEMENTED**. These slices complement the existing A–G roadmap
 without renumbering it or changing any stage's status.
 
 ### UI-1 — Shared workspace shell
@@ -258,10 +263,17 @@ their accepted semantics; no accepted action is lost and Undo boundaries remain 
 
 ### UI-3 — Construction-history timeline shell
 
-**Scope:** shared bottom layout, horizontal overflow/scrolling, selection/navigation
-boundaries, labels/icons/diagnostic space and an integration boundary for real project
-operation references. Fits the shared shell and can precede the completed operation
-foundation; it must not simulate missing history features with workflow groups.
+**IMPLEMENTED / browser-checked (2026-11-13); pending user acceptance.**
+
+**Scope:** reuse the existing BOX History row as one shared bottom presentation shell,
+owned by `App` outside both mounted workspace grids. Preserve BOX's current workflow-group
+buttons, IDs, handlers and selection semantics; show the same region in Drawing with an
+accurate empty state. No second row, permanent-operation adapter, fake chronology, Undo
+snapshot entries or operation store. The same shell/track persist across module switches.
+Horizontal scrolling stays within the track; UI-2.1 size tokens control its compact chrome.
+A generic opaque-reference presentation type reserves future module/type, label/icon,
+selection/status and navigation fields without choosing C.2's schema or creating operations.
+[Implementation and validation](UI3_UNIFIED_CONSTRUCTION_HISTORY_VALIDATION.md).
 
 **Acceptance criteria:** no alternative/throwaway operation model; groups are not labelled
 as permanent operations; switching modules preserves timeline context; real stable

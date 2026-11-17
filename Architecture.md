@@ -79,7 +79,8 @@ exclusively beside canvas zoom, module tools to the left and relevant Apply/Fini
 controls onto the canvas, with shared permanent construction history at the bottom.
 UI-1/UI-2 are implemented and browser-checked, pending user acceptance. UI-2 retains
 existing handlers and places Fit only beside canvas zoom, with relevant Apply/Finish
-in the existing BOX tool overlay. UI-3/UI-4 remain unimplemented; UI-4 requires C/C.2, D for saved
+in the existing BOX tool overlay. UI-3 now shares the existing bottom History region
+(see checkpoint below); UI-4 remains unimplemented and requires C/C.2, D for saved
 history and E for dependency diagnostics/repair. Placement changes preserve accepted
 tool/Undo semantics and do not implement global ownership or native commands.
 Clear is a permanent project-wide session reset with Save and Clear / Clear Without
@@ -207,6 +208,15 @@ an extensibility requirement, not a current alternate Arc-center identity.
 Concentricity remains a common center relation across Circle/Arc pairs; Tangency shares
 support-circle math plus finite directed-Arc contact validation. Both Constraint features remain unimplemented; canonical Arc storage is implemented. Full normative details are in
 [PROJECT_MASTER.md](PROJECT_MASTER.md#locked-target-circlearc-architecture).
+
+## UI-3 presentation ownership (2026-11-13)
+
+One `SharedHistoryRegion` is an `App` child after both mounted workspace shells. It reuses
+BOX's existing workflow-group presentation and original `App` state/actions through a
+presentation-only child slot. Drawing supplies no operations; its old explanatory row is
+removed. The shell owns only scroll presentation. Future opaque operation references will
+come from C.2; no project model, registry, persistence or evaluation ownership moves here.
+[Validation](docs/UI3_UNIFIED_CONSTRUCTION_HISTORY_VALIDATION.md); user acceptance pending.
 
 ## Pipeline
 
