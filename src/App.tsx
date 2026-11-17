@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ChangeEvent, PointerEvent } from 'react';
 import { exportLabeledSvg, formatImportDiagnosticMessage, getEdgeAssignmentDisplayLabels, parseSvgDocument } from './svgUtils';
 import { layoutPanelLabels } from './app/labelLayout';
@@ -15,7 +15,7 @@ import type { GeneratedProfileId } from './app/generatedProfiles';
 import type { ProfileOffsetSelectionTargetId } from './app/profileOffsetSelection';
 import { createGeneratedProfileOffsetTargetId, createOrdinaryProfileOffsetTargetId } from './app/profileOffsetSelection';
 import { buildFinalGeometry as buildNativeFinalGeometry } from './app/finalGeometry';
-import { createGeneratedGeometrySnapshot, restoreGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
+import { createGeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { selectGeneratedGeometryAuthority } from './app/generatedGeometryAuthority';
 import type { GeneratedGeometryAuthoritySelection } from './app/generatedGeometryAuthority';
 import { downloadGeometryRuntimeDebugState, geometryContributorRegistryIdentity, probeGeometryDownstreamExceptions } from './app/geometryRuntimeDebug';
@@ -23,8 +23,8 @@ import type { GeometryRuntimeDebugCapture } from './app/geometryRuntimeDebug';
 import { assembleGeneratedGeometryDiagnostics } from './app/generatedGeometryAssembly';
 import { resolvePanelCompositionAuthorityMode } from './app/panelCompositionAuthorityMode';
 import { collectSourceEdgeAuthoringClaims, deriveCanvasEdgeRelationshipState, deriveGeneratedCanvasEdgeRelationshipState, sourceEdgeRelationshipKey } from './app/canvasEdgeRelationships';
-import type { PanelCompositionAuthorityMode, PanelCompositionModel } from './app/generatedGeometryAuthority';
-import type { GeneratedGeometryItem, GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
+import type { PanelCompositionAuthorityMode } from './app/generatedGeometryAuthority';
+import type { GeneratedGeometrySnapshot } from './app/generatedGeometrySnapshot';
 import { validateGeometryAuthoring } from './app/authoringRelationships';
 import { buildGeneratedWGeometryItems } from './app/wallGeometry';
 import { applyFingerWidthUpdate, shouldShowFingerJointTabControl } from './app/tabSizeControl';
@@ -42,10 +42,11 @@ import { createTabSegmentPlan, pointsToClosedPathD, projectPointDistanceOnSide }
 import { getContourEdgePoints, validateClosedPanel } from './app/sharedPanelGeometry';
 import type { EdgeAssignment, EdgeAssignmentBucket, EdgeAssignmentRecord, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
 import { DrawingWorkspace, initialDrawingViewBox } from './app/DrawingWorkspace';
-import { createDrawingDocumentV2, DEFAULT_WORKSPACE, selectWorkspace, type WorkspaceId } from './app/drawingTypes';
+import { DEFAULT_WORKSPACE, selectWorkspace, type WorkspaceId } from './app/drawingTypes';
 import { useCadWheelCapture } from './app/useCadWheelCapture';
 import { useCadPanGesture } from './app/cadInteraction';
 import { createBoxDocumentV1 } from './app/boxDocument';
+import { createInitialBoxState, createProjectOwner, type ProjectUpdate } from './app/projectOwner';
 import type { HistoryControlsProps } from './app/HistoryControls';
 import { WorkspaceTopBar } from './app/WorkspaceTopBar';
 import { WorkspaceShell } from './app/WorkspaceShell';
@@ -627,30 +628,37 @@ const SelectField = ({ id, label, value, options, onChange }: SelectFieldProps) 
 
 function App() {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(DEFAULT_WORKSPACE);
-  const [drawingDocument, setDrawingDocument] = useState(createDrawingDocumentV2);
+  const [projectOwner] = useState(createProjectOwner);
+  const project = useSyncExternalStore(projectOwner.subscribe, projectOwner.getSnapshot, projectOwner.getSnapshot);
+  const { drawingDocument, box } = project;
+  const setDrawingDocument = projectOwner.setDrawingDocument;
   const [drawingViewBox, setDrawingViewBox] = useState(initialDrawingViewBox);
   const [drawingConstraintsPanelOpen, setDrawingConstraintsPanelOpen] = useState(false);
   const [drawingHistoryController, setDrawingHistoryController] = useState<HistoryControlsProps | null>(null);
   const updateDrawingHistoryController = useCallback((controller: HistoryControlsProps | null) => setDrawingHistoryController(controller), []);
   const [drawingToolsHost, setDrawingToolsHost] = useState<HTMLDivElement | null>(null);
-  const [svgModel, setSvgModel] = useState<SvgDocumentModel>(createBoxDocumentV1);
-  const [edgeAssignments, setEdgeAssignments] = useState<Record<string, EdgeAssignmentBucket>>({});
-  const [connections, setConnections] = useState<ConnectionMap>({});
-  const [projectSettings, setProjectSettings] = useState<ProjectSettings>(defaultProjectSettings);
-  const [lastAppliedManufacturingSettings, setLastAppliedManufacturingSettings] = useState<ProjectSettings | null>(null);
-  const [assignmentTargetConnectionId, setAssignmentTargetConnectionId] = useState<string | null>(null);
-  const [displayConnectionId, setDisplayConnectionId] = useState<string | null>(null);
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [generatedGeometryItems, setGeneratedGeometryItems] = useState<GeneratedGeometryItem[]>([]);
+  const { svgModel, edgeAssignments, connections, projectSettings, lastAppliedManufacturingSettings,
+    assignmentTargetConnectionId, displayConnectionId, selectedEdgeId, activeSGroup, activeTBGroup,
+    completedTBGroups, activeWallGroup, completedWallGroups, workflowGroupOrder, panelManager,
+    generatedGeometrySnapshot } = box;
+  const generatedGeometryItems = generatedGeometrySnapshot.generatedGeometry;
+  const generatedGeometryCompositionModel = generatedGeometrySnapshot.metadata.panelCompositionModel ?? 'legacy';
   const geometryRuntimeDebugCaptureRef = useRef<GeometryRuntimeDebugCapture | null>(null);
-  // Non-legacy marks arrays already selected at Apply or restored from history; they are never raw generator input.
-  const [generatedGeometryCompositionModel, setGeneratedGeometryCompositionModel] = useState<PanelCompositionModel>('legacy');
-  const [activeSGroup, setActiveSGroup] = useState<ActiveSGroup | null>(null);
-  const [activeTBGroup, setActiveTBGroup] = useState<ActiveTBGroup | null>(null);
-  const [completedTBGroups, setCompletedTBGroups] = useState<ActiveTBGroup[]>([]);
-  const [activeWallGroup, setActiveWallGroup] = useState<ActiveWallGroup | null>(null);
-  const [completedWallGroups, setCompletedWallGroups] = useState<ActiveWallGroup[]>([]);
-  const [workflowGroupOrder, setWorkflowGroupOrder] = useState<Record<string, number>>({});
+  const setSvgModel = (change: ProjectUpdate<typeof box.svgModel>) => projectOwner.setBoxField('svgModel', change);
+  const setEdgeAssignments = (change: ProjectUpdate<typeof box.edgeAssignments>) => projectOwner.setBoxField('edgeAssignments', change);
+  const setConnections = (change: ProjectUpdate<typeof box.connections>) => projectOwner.setBoxField('connections', change);
+  const setProjectSettings = (change: ProjectUpdate<typeof box.projectSettings>) => projectOwner.setBoxField('projectSettings', change);
+  const setLastAppliedManufacturingSettings = (change: ProjectUpdate<typeof box.lastAppliedManufacturingSettings>) => projectOwner.setBoxField('lastAppliedManufacturingSettings', change);
+  const setAssignmentTargetConnectionId = (change: ProjectUpdate<typeof box.assignmentTargetConnectionId>) => projectOwner.setBoxField('assignmentTargetConnectionId', change);
+  const setDisplayConnectionId = (change: ProjectUpdate<typeof box.displayConnectionId>) => projectOwner.setBoxField('displayConnectionId', change);
+  const setSelectedEdgeId = (change: ProjectUpdate<typeof box.selectedEdgeId>) => projectOwner.setBoxField('selectedEdgeId', change);
+  const setActiveSGroup = (change: ProjectUpdate<typeof box.activeSGroup>) => projectOwner.setBoxField('activeSGroup', change);
+  const setActiveTBGroup = (change: ProjectUpdate<typeof box.activeTBGroup>) => projectOwner.setBoxField('activeTBGroup', change);
+  const setCompletedTBGroups = (change: ProjectUpdate<typeof box.completedTBGroups>) => projectOwner.setBoxField('completedTBGroups', change);
+  const setActiveWallGroup = (change: ProjectUpdate<typeof box.activeWallGroup>) => projectOwner.setBoxField('activeWallGroup', change);
+  const setCompletedWallGroups = (change: ProjectUpdate<typeof box.completedWallGroups>) => projectOwner.setBoxField('completedWallGroups', change);
+  const setWorkflowGroupOrder = (change: ProjectUpdate<typeof box.workflowGroupOrder>) => projectOwner.setBoxField('workflowGroupOrder', change);
+  const setPanelManager = (change: ProjectUpdate<typeof box.panelManager>) => projectOwner.setBoxField('panelManager', change);
   const [errorMessage, setErrorMessage] = useState('');
   const downloadRef = useRef<HTMLAnchorElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -663,7 +671,6 @@ function App() {
   const [expandedSGroups, setExpandedSGroups] = useState<Record<string, boolean>>({});
   const [expandedTBGroups, setExpandedTBGroups] = useState<Record<string, boolean>>({});
   const [activeTool, setActiveTool] = useState<ActiveTool>('select');
-  const [panelManager, setPanelManager] = useState<PanelManagerState>(defaultPanelManagerState);
   const [isPanelManagerModalOpen, setIsPanelManagerModalOpen] = useState(false);
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
   const [activeHoleId, setActiveHoleId] = useState<string | null>(null);
@@ -674,10 +681,10 @@ function App() {
   const availableLabels = useMemo(() => Object.keys(connections), [connections]);
   const selectedLabelId = displayConnectionId;
   const selectedConnection = displayConnectionId ? connections[displayConnectionId] ?? null : null;
-  const selectConnectionForDisplayAndAssignment = (connectionId: string | null) => {
+  const selectConnectionForDisplayAndAssignment = (connectionId: string | null) => projectOwner.batch(() => {
     setAssignmentTargetConnectionId(connectionId);
     setDisplayConnectionId(connectionId);
-  };
+  });
   const selectedEdge = svgModel.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
 
   useEffect(() => {
@@ -714,38 +721,9 @@ function App() {
     };
   }, [activeWorkspace, svgModel.viewBox]);
 
-  useEffect(() => {
-    setConnections((currentConnections) => {
-      const synchronizedConnections = recalculateAutomaticTBFingerWidths(
-        svgModel,
-        edgeAssignments,
-        recalculateAutomaticSSlotLengths(svgModel, edgeAssignments, currentConnections, panelManager),
-        panelManager,
-      );
-
-      const hasAutomaticPropertyChange = Object.keys(currentConnections).some((connectionId) => {
-        const currentConnection = currentConnections[connectionId];
-        const synchronizedConnection = synchronizedConnections[connectionId];
-
-        if (!currentConnection || !synchronizedConnection || currentConnection.prefix !== synchronizedConnection.prefix) {
-          return currentConnection !== synchronizedConnection;
-        }
-
-        if (currentConnection.prefix === 'TB' && synchronizedConnection.prefix === 'TB') {
-          return currentConnection.properties.fingerWidthMm !== synchronizedConnection.properties.fingerWidthMm;
-        }
-
-        if (currentConnection.prefix === 'S' && synchronizedConnection.prefix === 'S') {
-          return currentConnection.properties.slotLengthMm !== synchronizedConnection.properties.slotLengthMm;
-        }
-
-        return false;
-      });
-
-      return hasAutomaticPropertyChange ? synchronizedConnections : currentConnections;
-    });
-  }, [connections, edgeAssignments, panelManager, svgModel]);
-
+  // Legacy recalculateAutomaticSSlotLengths/TBFingerWidths are identity helpers.
+  // Automatic sizes derive from Panel Manager in domain readers/generators;
+  // no effect writes a second project publication after a completed update.
   const labelCounts = useMemo(() => {
     return availableLabels.reduce<Record<string, number>>((counts, label) => {
       counts[label] = Object.values(edgeAssignments).reduce((count, assignment) => (
@@ -839,12 +817,6 @@ function App() {
 
 
   const panelCompositionAuthorityMode: PanelCompositionAuthorityMode = requestedPanelCompositionAuthorityMode;
-  const generatedGeometrySnapshot = useMemo(
-    () => createGeneratedGeometrySnapshot({ generatedGeometry: [...generatedGeometryItems],
-      panelCompositionModel: generatedGeometryCompositionModel }),
-    [generatedGeometryCompositionModel, generatedGeometryItems],
-  );
-
   const finalGeometry = useMemo(
     () => buildNativeFinalGeometry(svgModel, generatedGeometrySnapshot),
     [generatedGeometrySnapshot, svgModel],
@@ -910,7 +882,7 @@ function App() {
   const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, wallLabelGroups, sLabelGroups, workflowGroupOrder.manufacturing, panelManager.isApplied), [panelManager.isApplied, sLabelGroups, tbLabelGroups, wallLabelGroups, workflowGroupOrder]);
   const hasPendingManufacturingSettings = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
   const hasApplyInputs = hasPendingManufacturingSettings || Object.keys(edgeAssignments).length > 0;
-  const navigateToWorkflowHistoryItem = (item: WorkflowHistoryItem) => {
+  const navigateToWorkflowHistoryItem = (item: WorkflowHistoryItem) => projectOwner.batch(() => {
     const firstLabel = item.labels[0] ?? null;
     setActiveTool(getWorkflowHistoryTool(item));
     setAssignmentTargetConnectionId(firstLabel);
@@ -939,32 +911,19 @@ function App() {
       return;
     }
 
-  };
+  });
 
   const hasAssignedTBEdges = useMemo(() => {
     return Object.values(edgeAssignments).some((assignment) => getBucketEdgeAssignment(assignment)?.connectionId.startsWith('TB'));
   }, [edgeAssignments]);
 
-  const getCurrentHistoryState = (): HistoryState => cloneHistoryState({
-    projectSettings,
-    lastAppliedManufacturingSettings,
-    edgeAssignments,
-    connections,
-    assignmentTargetConnectionId,
-    displayConnectionId,
-    selectedLabelId: displayConnectionId,
-    selectedEdgeId,
-    generatedGeometrySnapshot,
-    activeSGroup,
-    activeTBGroup,
-    completedTBGroups,
-    activeWallGroup,
-    completedWallGroups,
-    workflowGroupOrder,
-    panelManager,
-  });
+  const getCurrentHistoryState = (): HistoryState => {
+    const currentBox = projectOwner.getSnapshot().box;
+    // Preserve the legacy selected-label fallback in the local history format.
+    return cloneHistoryState({ ...currentBox, selectedLabelId: currentBox.displayConnectionId });
+  };
 
-  const restoreHistoryState = (state: HistoryState) => {
+  const restoreHistoryState = (state: HistoryState) => projectOwner.batch(() => {
     const snapshot = cloneHistoryState(state);
     setProjectSettings(normalizeProjectSettings({ ...defaultProjectSettings, ...snapshot.projectSettings }).settings);
     setLastAppliedManufacturingSettings(snapshot.lastAppliedManufacturingSettings);
@@ -973,9 +932,7 @@ function App() {
     setAssignmentTargetConnectionId(snapshot.assignmentTargetConnectionId ?? snapshot.selectedLabelId ?? null);
     setDisplayConnectionId(snapshot.displayConnectionId ?? snapshot.selectedLabelId ?? null);
     setSelectedEdgeId(snapshot.selectedEdgeId);
-    const restoredGeneratedSnapshot = restoreGeneratedGeometrySnapshot(snapshot.generatedGeometrySnapshot);
-    setGeneratedGeometryItems([...restoredGeneratedSnapshot.generatedGeometry]);
-    setGeneratedGeometryCompositionModel(restoredGeneratedSnapshot.panelCompositionModel);
+    projectOwner.setBoxField('generatedGeometrySnapshot', snapshot.generatedGeometrySnapshot);
     setActiveSGroup(snapshot.activeSGroup);
     setActiveTBGroup(snapshot.activeTBGroup);
     setCompletedTBGroups(snapshot.completedTBGroups);
@@ -984,7 +941,7 @@ function App() {
     setWorkflowGroupOrder(snapshot.workflowGroupOrder);
     setPanelManager(snapshot.panelManager);
     setIsPanelManagerModalOpen(!snapshot.panelManager.isApplied && Object.keys(snapshot.panelManager.panels).length > 0);
-  };
+  });
 
   const pushUndoState = () => {
     const snapshot = getCurrentHistoryState();
@@ -992,51 +949,41 @@ function App() {
     setRedoStack([]);
   };
 
+  useEffect(() => () => projectOwner.invalidateBoxImports(), [projectOwner]);
+
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
+    const input = event.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    const token = projectOwner.beginBoxImport();
+    try {
+      const text = await file.text();
+      if (!projectOwner.isCurrentBoxImport(token)) return;
+      const parsedSvg = parseSvgDocument(text);
+      const nextPanelManager = createPanelManagerStateFromModel(parsedSvg);
+      // Preserve legacy import semantics: connections survive source replacement;
+      // assignment/workflow/applied state and the BOX local tapes reset.
+      if (!projectOwner.publishBoxImport(token, { ...createInitialBoxState(),
+        svgModel: parsedSvg, connections: token.box.connections, panelManager: nextPanelManager })) return;
+      setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
+      setActivePanelId(null);
+      setActiveHoleId(null);
+      setIsPanelManagerModalOpen(parsedSvg.panels.length > 0);
+      setActiveTool('select');
+      setUndoStack([]);
+      setRedoStack([]);
+      setExpandedTBGroups({});
+      setExpandedSGroups({});
+      setErrorMessage(formatImportDiagnosticMessage(parsedSvg));
+      input.value = '';
+    } catch (error) {
+      if (projectOwner.isCurrentBoxImport(token)) setErrorMessage(error instanceof Error ? error.message : 'Unable to import SVG.');
     }
-
-    const text = await file.text();
-    const parsedSvg = parseSvgDocument(text);
-    setSvgModel(parsedSvg);
-    setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
-    setEdgeAssignments({});
-    setProjectSettings(defaultProjectSettings);
-    setLastAppliedManufacturingSettings(null);
-    setAssignmentTargetConnectionId(null);
-    setDisplayConnectionId(null);
-    setSelectedEdgeId(null);
-    setActivePanelId(null);
-    setActiveHoleId(null);
-    setGeneratedGeometryItems([]);
-    setGeneratedGeometryCompositionModel('legacy');
-    setActiveSGroup(null);
-    setActiveTBGroup(null);
-    setCompletedTBGroups([]);
-    setActiveWallGroup(null);
-    setCompletedWallGroups([]);
-    setWorkflowGroupOrder({});
-    const nextPanelManager = createPanelManagerStateFromModel(parsedSvg);
-    setPanelManager(nextPanelManager);
-    setIsPanelManagerModalOpen(parsedSvg.panels.length > 0);
-    setActiveTool('select');
-    setUndoStack([]);
-    setRedoStack([]);
-    setExpandedTBGroups({});
-    setExpandedSGroups({});
-    setErrorMessage(formatImportDiagnosticMessage(parsedSvg));
-    event.target.value = '';
   };
 
-  const handleImportWithError = (event: ChangeEvent<HTMLInputElement>) => {
-    handleImport(event).catch((error: Error) => {
-      setErrorMessage(error.message);
-    });
-  };
+  const handleImportWithError = (event: ChangeEvent<HTMLInputElement>) => { void handleImport(event); };
 
-  const createLabel = (prefix: LabelPrefix) => {
+  const createLabel = (prefix: LabelPrefix) => projectOwner.batch(() => {
     if (isProjectLocked) {
       setErrorMessage('Apply Panel Manager before using workflow tools.');
       return;
@@ -1063,9 +1010,9 @@ function App() {
     }));
     selectConnectionForDisplayAndAssignment(nextLabel);
     setErrorMessage('');
-  };
+  });
 
-  const startTBGroup = () => {
+  const startTBGroup = () => projectOwner.batch(() => {
     pushUndoState();
     const nextWorkflow = startTBGroupWorkflow(connections, defaultConnectionProperties.TB);
     setConnections(nextWorkflow.connections);
@@ -1078,9 +1025,9 @@ function App() {
     }));
     setExpandedTBGroups((currentGroups) => ({ ...currentGroups, [nextWorkflow.activeTBGroup.groupId]: true }));
     setErrorMessage('');
-  };
+  });
 
-  const finishTBGroup = () => {
+  const finishTBGroup = () => projectOwner.batch(() => {
     if (!activeTBGroup?.isActive) {
       return;
     }
@@ -1099,9 +1046,9 @@ function App() {
     setSelectedEdgeId(null);
     setActiveTool('select');
     setErrorMessage('');
-  };
+  });
 
-  const startSGroup = () => {
+  const startSGroup = () => projectOwner.batch(() => {
     pushUndoState();
     const nextWorkflow = startSGroupWorkflow(connections);
     setConnections(nextWorkflow.connections);
@@ -1112,10 +1059,10 @@ function App() {
       [nextWorkflow.activeSGroup.groupId]: currentOrder[nextWorkflow.activeSGroup.groupId] ?? getNextWorkflowGroupOrderIndex(currentOrder),
     }));
     setErrorMessage('');
-  };
+  });
 
 
-  const handleToolClick = (tool: ActiveTool) => {
+  const handleToolClick = (tool: ActiveTool) => projectOwner.batch(() => {
     if (isProjectLocked && !['select', 'PM'].includes(tool)) {
       setErrorMessage('Apply Panel Manager before using workflow tools.');
       return;
@@ -1167,10 +1114,10 @@ function App() {
       setErrorMessage('');
       return;
     }
-  };
+  });
 
 
-  const finishSGroup = () => {
+  const finishSGroup = () => projectOwner.batch(() => {
     if (!activeSGroup?.isActive) {
       return;
     }
@@ -1184,9 +1131,9 @@ function App() {
     setSelectedEdgeId(null);
     setActiveTool('select');
     setErrorMessage('');
-  };
+  });
 
-  const finishWallGroup = () => {
+  const finishWallGroup = () => projectOwner.batch(() => {
     if (!activeWallGroup?.isActive) return;
     pushUndoState();
     const next = finishWallGroupWithTrailingCleanup(activeWallGroup, connections, edgeAssignments);
@@ -1195,7 +1142,7 @@ function App() {
     setCompletedWallGroups((groups) => [...groups.filter((group) => group.groupId !== next.activeWallGroup.groupId), next.activeWallGroup]);
     setAssignmentTargetConnectionId(null); setDisplayConnectionId(null); setSelectedEdgeId(null);
     setActiveTool('select'); setErrorMessage('');
-  };
+  });
 
   const activeWorkflowFinish = activeTool === 'TB' && activeTBGroup?.isActive
     ? { label: 'OK', onClick: finishTBGroup }
@@ -1209,7 +1156,7 @@ function App() {
   const hasContextualGeometryActions = activeTool === 'TB' || activeTool === 'W'
     || activeTool === 'S' || activeTool === 'manufacturing';
 
-  const clearEdgeLabel = (edgeId: string) => {
+  const clearEdgeLabel = (edgeId: string) => projectOwner.batch(() => {
     if (!edgeAssignments[edgeId]) {
       return;
     }
@@ -1221,9 +1168,9 @@ function App() {
       return nextAssignments;
     });
     setErrorMessage('');
-  };
+  });
 
-  const assignSelectedLabelToEdge = (edgeId: string) => {
+  const assignSelectedLabelToEdge = (edgeId: string) => projectOwner.batch(() => {
     const assignmentConnectionId = assignmentTargetConnectionId;
     const assignedConnectionId = activeTool === 'W'
       ? (getBucketEdgeAssignment(edgeAssignments[edgeId])?.connectionId.startsWith('W') ? getBucketEdgeAssignment(edgeAssignments[edgeId])?.connectionId : undefined)
@@ -1384,9 +1331,9 @@ function App() {
     }
 
     setErrorMessage('');
-  };
+  });
 
-  const updateAssignedEdgeRole = (edgeId: string, edgeRole: EdgeRole) => {
+  const updateAssignedEdgeRole = (edgeId: string, edgeRole: EdgeRole) => projectOwner.batch(() => {
     const bucket = toEdgeAssignmentBucket(edgeAssignments[edgeId]);
     const assignment = bucket?.edgeAssignment;
     const connection = assignment ? connections[assignment.connectionId] : undefined;
@@ -1413,9 +1360,9 @@ function App() {
       },
     }));
     setErrorMessage('');
-  };
+  });
 
-  const updateAssignedSlotRole = (edgeId: string, slotRole: SlotRole) => {
+  const updateAssignedSlotRole = (edgeId: string, slotRole: SlotRole) => projectOwner.batch(() => {
     const bucket = toEdgeAssignmentBucket(edgeAssignments[edgeId]);
     const assignment = bucket?.slotAssignments?.[0];
     const connection = assignment ? connections[assignment.connectionId] : undefined;
@@ -1436,7 +1383,7 @@ function App() {
       },
     }));
     setErrorMessage('');
-  };
+  });
 
   const clearSelectedLabel = () => {
     if (!selectedEdgeId) {
@@ -1446,7 +1393,7 @@ function App() {
     clearEdgeLabel(selectedEdgeId);
   };
 
-  const applyPanelPaths = () => {
+  const applyPanelPaths = () => projectOwner.batch(() => {
     if (isProjectLocked) {
       setErrorMessage('Apply Panel Manager before applying or exporting workflow geometry.');
       return;
@@ -1484,41 +1431,45 @@ function App() {
         setLastAppliedManufacturingSettings(structuredClone(projectSettings));
       }
       setConnections(nextConnections);
-      setGeneratedGeometryItems([...authority.generatedGeometry]);
-      setGeneratedGeometryCompositionModel(authority.panelCompositionModel);
+      projectOwner.setBoxField('generatedGeometrySnapshot', createGeneratedGeometrySnapshot({
+        generatedGeometry: [...authority.generatedGeometry], panelCompositionModel: authority.panelCompositionModel,
+      }));
       setErrorMessage('');
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Unable to apply geometry.');
     }
-  };
+  });
 
-  const undoLastEdit = () => {
+  const undoLastEdit = () => projectOwner.batch(() => {
     const previousState = undoStack[undoStack.length - 1];
 
     if (!previousState) {
       return;
     }
 
-    setRedoStack((currentStack) => [...currentStack, getCurrentHistoryState()].slice(-maxHistoryEntries));
+    const currentState = getCurrentHistoryState();
+    setRedoStack((currentStack) => [...currentStack, currentState].slice(-maxHistoryEntries));
     setUndoStack((currentStack) => currentStack.slice(0, -1));
     restoreHistoryState(previousState);
     setErrorMessage('');
-  };
+  });
 
-  const redoLastEdit = () => {
+  const redoLastEdit = () => projectOwner.batch(() => {
     const nextState = redoStack[redoStack.length - 1];
 
     if (!nextState) {
       return;
     }
 
-    setUndoStack((currentStack) => [...currentStack, getCurrentHistoryState()].slice(-maxHistoryEntries));
+    const currentState = getCurrentHistoryState();
+    setUndoStack((currentStack) => [...currentStack, currentState].slice(-maxHistoryEntries));
     setRedoStack((currentStack) => currentStack.slice(0, -1));
     restoreHistoryState(nextState);
     setErrorMessage('');
-  };
+  });
 
-  const clearProject = () => {
+  const clearProject = () => projectOwner.batch(() => {
+    projectOwner.invalidateBoxImports();
     const emptyBoxDocument = createBoxDocumentV1();
     setSvgModel(emptyBoxDocument);
     setEdgeAssignments({});
@@ -1528,8 +1479,7 @@ function App() {
     setAssignmentTargetConnectionId(null);
     setDisplayConnectionId(null);
     setSelectedEdgeId(null);
-    setGeneratedGeometryItems([]);
-    setGeneratedGeometryCompositionModel('legacy');
+    projectOwner.setBoxField('generatedGeometrySnapshot', createGeneratedGeometrySnapshot({ generatedGeometry: [] }));
     setActiveSGroup(null);
     setActiveTBGroup(null);
     setCompletedTBGroups([]);
@@ -1544,7 +1494,7 @@ function App() {
     setExpandedSGroups({});
     setCanvasViewBox(parseViewBox(emptyBoxDocument.viewBox));
     setIsClearDialogOpen(false);
-  };
+  });
 
   const requestClearProject = () => {
     setIsClearDialogOpen(true);
@@ -1554,7 +1504,7 @@ function App() {
     setIsClearDialogOpen(false);
   };
 
-  const updatePanelThickness = (panelId: string, thicknessMm: number) => {
+  const updatePanelThickness = (panelId: string, thicknessMm: number) => projectOwner.batch(() => {
     setActivePanelId(panelId);
     setActiveHoleId(null);
     setPanelManager((current) => {
@@ -1569,9 +1519,9 @@ function App() {
         },
       };
     });
-  };
+  });
 
-  const acceptDefaultPanelThickness = () => {
+  const acceptDefaultPanelThickness = () => projectOwner.batch(() => {
     const defaultThicknessMm = panelManager.defaultThicknessMm > 0
       ? panelManager.defaultThicknessMm
       : DEFAULT_PANEL_THICKNESS_MM;
@@ -1585,9 +1535,9 @@ function App() {
     setActivePanelId(null);
     setActiveHoleId(null);
     setErrorMessage('');
-  };
+  });
 
-  const finishPanelManager = () => {
+  const finishPanelManager = () => projectOwner.batch(() => {
     setActiveTool('select');
     setAssignmentTargetConnectionId(null);
     setDisplayConnectionId(null);
@@ -1596,9 +1546,9 @@ function App() {
     setActiveHoleId(null);
     setIsPanelManagerModalOpen(false);
     setErrorMessage('');
-  };
+  });
 
-  const applyPanelManager = () => {
+  const applyPanelManager = () => projectOwner.batch(() => {
     const validationError = validatePanelManagerState(panelManager);
     if (validationError) {
       setErrorMessage(validationError);
@@ -1623,22 +1573,23 @@ function App() {
       setErrorMessage(`Unable to compose panel geometry: ${authority.blockingDecisions.map((decision) => formatAuthorityBlockingDecision(authority, decision)).join('; ')}`);
       return;
     }
-    setGeneratedGeometryItems([...authority.generatedGeometry]);
-    setGeneratedGeometryCompositionModel(authority.panelCompositionModel);
+    projectOwner.setBoxField('generatedGeometrySnapshot', createGeneratedGeometrySnapshot({
+      generatedGeometry: [...authority.generatedGeometry], panelCompositionModel: authority.panelCompositionModel,
+    }));
     setPanelManager(appliedPanelManager);
     setIsPanelManagerModalOpen(false);
     setActivePanelId(null);
     setActiveHoleId(null);
     setErrorMessage('');
-  };
+  });
 
-  const updateProjectSettings = (updates: Partial<ProjectSettings>) => {
+  const updateProjectSettings = (updates: Partial<ProjectSettings>) => projectOwner.batch(() => {
     pushUndoState();
     setProjectSettings((currentSettings) => normalizeProjectSettings({ ...currentSettings, ...updates }).settings);
     setErrorMessage('');
-  };
+  });
 
-  const updateEdgeProperties = (updates: Partial<TBConnectionProperties>) => {
+  const updateEdgeProperties = (updates: Partial<TBConnectionProperties>) => projectOwner.batch(() => {
     if (!selectedConnection || (selectedConnection.prefix !== 'TB' && selectedConnection.prefix !== 'W')) {
       return;
     }
@@ -1663,9 +1614,9 @@ function App() {
 
       return applyFingerWidthUpdate(currentConnections, selectedConnection.id, nextProperties);
     });
-  };
+  });
 
-  const updateSlotProperties = (updates: Partial<SlotConnectionProperties>) => {
+  const updateSlotProperties = (updates: Partial<SlotConnectionProperties>) => projectOwner.batch(() => {
     if (!selectedConnection || selectedConnection.prefix !== 'S') {
       return;
     }
@@ -1686,10 +1637,10 @@ function App() {
         [currentSelectedConnection.id]: applySlotPropertyUpdates(currentSelectedConnection, updates),
       };
     });
-  };
+  });
 
 
-  const updateCornerProperties = (updates: Partial<CornerConnectionProperties>) => {
+  const updateCornerProperties = (updates: Partial<CornerConnectionProperties>) => projectOwner.batch(() => {
     if (!selectedConnection || selectedConnection.prefix !== 'C') {
       return;
     }
@@ -1716,9 +1667,9 @@ function App() {
       ...currentConnections,
       [nextConnection.id]: nextConnection,
     }));
-  };
+  });
 
-  const updatePatternProperties = (updates: Partial<PatternConnectionProperties>) => {
+  const updatePatternProperties = (updates: Partial<PatternConnectionProperties>) => projectOwner.batch(() => {
     if (!selectedConnection || selectedConnection.prefix !== 'P') {
       return;
     }
@@ -1732,7 +1683,7 @@ function App() {
       ...currentConnections,
       [nextConnection.id]: nextConnection,
     }));
-  };
+  });
 
   const exportSvg = () => {
     // Export after Apply is clean laser geometry; export before Apply remains label/reference export.
@@ -2232,7 +2183,7 @@ function App() {
 
       {errorMessage && <div className="notice">{errorMessage}</div>}
 
-      <DrawingWorkspace isActive={activeWorkspace === 'drawing'} document={drawingDocument} viewBox={drawingViewBox} setViewBox={setDrawingViewBox} setDocument={setDrawingDocument} constraintsPanelOpen={drawingConstraintsPanelOpen} setConstraintsPanelOpen={setDrawingConstraintsPanelOpen} onHistoryControllerChange={updateDrawingHistoryController} headerToolsHost={drawingToolsHost} />
+      <DrawingWorkspace isActive={activeWorkspace === 'drawing'} document={drawingDocument} viewBox={drawingViewBox} ownedDocumentRef={projectOwner.drawingDocumentRef} setViewBox={setDrawingViewBox} setDocument={setDrawingDocument} constraintsPanelOpen={drawingConstraintsPanelOpen} setConstraintsPanelOpen={setDrawingConstraintsPanelOpen} onHistoryControllerChange={updateDrawingHistoryController} headerToolsHost={drawingToolsHost} />
       <WorkspaceShell active={activeWorkspace === 'construction'} className="workspace" label="SVG connection workspace">
         <aside className="tool-sidebar" aria-label="Tool sidebar">
           {([

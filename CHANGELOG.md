@@ -1,5 +1,16 @@
 # Unreleased
 
+## Stage C PR 2 — Shared project owner (review pending)
+
+- Replaced independently writable Drawing/BOX React fields with one synchronous project
+  owner and coherent publication, retaining local Undo/Redo and existing domain models.
+- Preserved full generated snapshots on restore, removed the inert TB/S write-back
+  effect while retaining existing automatic-size derivation, and guarded stale imports.
+- Added production-adapter and Chromium ownership regression coverage.
+  [Design, validation and limits](docs/SHARED_PROJECT_OWNER.md). Global history, permanent
+  operations and Stage C completion remain deferred; user acceptance is pending.
+
+
 ## Architecture documentation — Multi-Sketch, Unfold and BOX export (2026-11-17)
 
 - Documented approved future Sketch contexts and one operation per Sketch, distinct

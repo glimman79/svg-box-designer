@@ -147,6 +147,7 @@ export { routeDrawingGeometryPointerSelection } from './drawingGeometrySelection
 
 export function DrawingWorkspace({
   document,
+  ownedDocumentRef,
   setDocument,
   viewBox,
   setViewBox,
@@ -158,6 +159,8 @@ export function DrawingWorkspace({
 }: {
   isActive?: boolean;
   document: DrawingDocumentV2;
+  /** Read/write accessor into the application owner; standalone callers retain the local adapter. */
+  ownedDocumentRef?: { current: DrawingDocumentV2 };
   setDocument: Dispatch<SetStateAction<DrawingDocumentV2>>;
   viewBox: DrawingViewBox;
   setViewBox: Dispatch<SetStateAction<DrawingViewBox>>;
@@ -202,7 +205,8 @@ export function DrawingWorkspace({
   const constraintsPanelDragRef = useRef<{ pointerId: number; dx: number; dy: number } | null>(null);
   const [selectedGeometricConstraintId, setSelectedGeometricConstraintId] = useState<string | null>(null);
   const [hoveredGeometricConstraintId, setHoveredGeometricConstraintId] = useState<string | null>(null);
-  const documentRef = useRef(document);
+  const standaloneDocumentRef = useRef(ownedDocumentRef ? null : document);
+  const documentRef = ownedDocumentRef ?? (standaloneDocumentRef as { current: DrawingDocumentV2 });
   const historyRef = useRef(EMPTY_DRAWING_HISTORY);
   const [historyRevision, setHistoryRevision] = useState(0);
 
@@ -271,7 +275,7 @@ export function DrawingWorkspace({
   segmentInteractionRef.current = segmentInteraction;
   arcInteractionRef.current = arcInteraction;
   drawingSnapRef.current = drawingSnap;
-  documentRef.current = document;
+  if (!ownedDocumentRef) documentRef.current = document;
   boxSelectionRef.current = boxSelection;
   geometryDragRef.current = geometryDrag;
 
