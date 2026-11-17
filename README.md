@@ -14,13 +14,13 @@ navigation; Drawing shows that persistent operation history is not yet available
 The Drawing and imported/construction document models are currently separate. See [PROJECT_MASTER.md](PROJECT_MASTER.md) for current product scope, architectural authority, invariants, and known boundaries.
 
 **Approved future direction — not implemented:** an optional connected workflow of
-**3D Modeling → 2D Drawing → BOX or Puzzle**, with BOX/Puzzle as parallel destinations
+**3D Modeling → Unfold → 2D Drawing → BOX / Construction**, with BOX/Puzzle as parallel destinations
 and Drawing also usable independently. Simple 3D Modeling will focus on profile
 extrusion; global tape-recorder Undo/Redo of 30 completed state-changing actions and a
 **separate permanent parametric
 construction history** remain future work. Construction operations retain editable current
 parameters/relationships, survive Undo eviction and persist with native projects; repeated
-Line dimension edits update the same operation. Native Save/Open and traceable downstream
+member Line dimension edits update the same Sketch operation. Native Save/Open and traceable downstream
 updates are also future work. Current SVG import/export serves BOX,
 and native Save/Open is not available. Revised requirements exclude module navigation
 from Undo history, preserve Redo during navigation, and open the affected edit's module
@@ -38,6 +38,13 @@ That scheduling design, detailed architecture and proposed C.2 remain under revi
 no Stage C/C.2/D/E implementation is included. See the
 [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) and
 [proposed development stages](ROADMAP.md#4-connected-product-development).
+
+The [Multi-Sketch / Unfold / BOX specification](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md) details future
+New Sketch / Finish Sketch, one permanent operation per Sketch, metadata continuity
+and selective export of one or multiple eligible Sketch groups. BOX input recognition
+uses relevant visible canvas geometry; export selection is separate. Direct
+**2D Drawing → BOX / Construction** remains supported without 3D or Unfold.
+These capabilities are not implemented; compatibility and grouping design remain open.
 
 The locked Arc contract—including three-point creation, endpoint-pivot semantics, and
 the shared Circle/Arc foundation—is authoritative in

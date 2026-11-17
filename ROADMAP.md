@@ -1,8 +1,34 @@
 # SVG Box Designer roadmap
 
+## Multi-Sketch / Unfold / selective BOX export direction (2026-11-17)
+
+**APPROVED TARGET — NOT IMPLEMENTED.** See the [scoped specification](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md)
+for New Sketch / Finish Sketch, multiple visible independent Sketches with one editable
+context, one permanent operation per Sketch, multi-plane 3D extrusion and distinct Unfold.
+The two supported paths are **2D Drawing → BOX / Construction** and
+**3D Modeling → Unfold → 2D Drawing → BOX / Construction**. Puzzle remains optional.
+BOX recognizes relevant visible geometry; export separately selects one or multiple
+eligible Sketch groups. Metadata continuity includes thickness/material and stable
+panel/source identity through manufacturing/export where applicable.
+
+**PROPOSED DESIGN:** extend B contracts coherently for Sketch ownership/identity,
+geometry transfer, panel metadata, history, persistence and dependency propagation before
+C/C.2 adapter and D format decisions. E can deliver Drawing-first integration independently
+of 3D. F's older combined extrusion/flattening assumption needs future review for a
+separately scoped Unfold delivery slice with E integration; no letter is assigned and no
+A–G label, meaning or status is changed. Existing stage rows below retain the earlier
+planning assumptions; this scoped refinement governs the new requirements. UI-4 must use
+Sketch-level entries rather than automatically promoting primitives into top-level entries.
+
+**OPEN QUESTIONS:** explicit-context migration preserving geometry/references/Constraints/
+Dimensions/Undo; transfer eligibility/overlaps/visibility and updates; plane/face attachment;
+Unfold eligibility, schema and 2D-to-3D edit policy; Sketch/group/panel/workflow/output
+identity mappings; export grouping/validation/packaging; and the revised delivery plan.
+No implementation, dates, accepted CAD status changes or automatic migration are implied.
+
 ## UI-3 — Shared History presentation checkpoint (2026-11-13)
 
-**IMPLEMENTED / Chromium-checked; pending user acceptance and separate merge.** Reuse the
+**IMPLEMENTED / Chromium-checked; PR #635 merged, user acceptance pending.** Reuse the
 existing BOX bottom row as one stable application-level History region in Drawing and BOX.
 BOX workflow navigation remains functional; Drawing has no permanent-operation entries.
 Native horizontal scrolling and a typed future reference boundary are prepared without
@@ -898,7 +924,7 @@ Puzzle document, tool set, solver, or export pipeline. Puzzle is not the histori
 bending-pattern functionality and must not be conflated with P1, TB, S, Wall, or other
 Box / Construction tooling.
 
-In the approved connected workflow **3D Modeling → 2D Drawing → BOX or Puzzle**, BOX
+In the approved connected workflow **3D Modeling → Unfold → 2D Drawing → BOX / Construction**, BOX
 and Puzzle are parallel destinations. Drawing can be the starting module, and Puzzle
 does not require a BOX step. The capabilities and questions below retain their previous
 planned status; this decision does not choose algorithms, joint types, manufacturing
@@ -1180,7 +1206,7 @@ assembly engine, animation system, or automatic folding system.
 **Approved product direction (2026-11-03); implementation NOT STARTED.** Detailed
 requirements and design questions are owned by
 [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md). The target is optional
-**3D Modeling → 2D Drawing → BOX or Puzzle**, with direct Drawing entry and preservation
+**3D Modeling → Unfold → 2D Drawing → BOX / Construction**, with direct Drawing entry and preservation
 of work between modules. BOX/Puzzle are parallel, not sequential. This extends the older
 shared `ProjectDocument` direction and supersedes independent workspace histories as the
 long-term recommendation; current code remains unchanged.
@@ -1203,7 +1229,7 @@ begun by recording this vision.
 **Proposed C.2 — permanent construction-history foundation (separately scoped, not
 started or approved by this document):** implement persistent operation definitions/order,
 stable identities, parameter bindings, input/output links and atomic maintenance with
-geometry. Repeated Line edits update one operation; a double-click opens current settings
+geometry. Sketch member Line edits update one Sketch operation (superseding the earlier primitive-entry mapping); a double-click opens current settings
 without rewinding or changing Redo. Keep definitions editable after Undo eviction;
 no arbitrary 100/250-entry journal quota. Resolve operation granularity and honest legacy
 baseline migration before release. Place C.2 before D format freeze and full E; the full

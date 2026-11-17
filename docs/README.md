@@ -6,6 +6,12 @@ Root-level [`REGLER_FOR_CHATT_MED_CHATGPT.md`](../REGLER_FOR_CHATT_MED_CHATGPT.m
 
 ## Approved future product requirements
 
+- [MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md](MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md) — scoped approved targets
+  for explicit multi-Sketch authoring, one operation per Sketch, distinct Unfold, both
+  supported 2D workflows, metadata continuity, visible-canvas BOX input and separate
+  one/multiple Sketch-group export. All new capabilities are **NOT IMPLEMENTED**;
+  technical designs/group mappings/migration remain open. Supersedes earlier direct
+  3D-to-Drawing flattening and top-level primitive history assumptions.
 - [GLOBAL_WORKSPACE_UI_SPECIFICATION.md](GLOBAL_WORKSPACE_UI_SPECIFICATION.md) — approved
   seven-region shared workspace placement, contextual controls and operation-timeline
   interactions for Drawing, BOX, Puzzle and future modules. UI-1/UI-2 are implemented and
@@ -18,7 +24,7 @@ Root-level [`REGLER_FOR_CHATT_MED_CHATGPT.md`](../REGLER_FOR_CHATT_MED_CHATGPT.m
 - [PRODUCT_ARCHITECTURE_VISION.md](PRODUCT_ARCHITECTURE_VISION.md) — explicitly designated
   detailed authority for connected product requirements approved on 2026-11-03 and
   history/navigation/Clear/Open decisions revised on 2026-11-09:
-  optional 3D Modeling → Drawing → BOX or Puzzle, separate global Undo/Redo and permanent
+  optional 3D Modeling → Unfold → Drawing → BOX or Puzzle, separate global Undo/Redo and permanent
   parametric construction history, interactive navigation, native persistence and Option A
   source dependencies. These are **future,
   unimplemented requirements**, not historical proposals or current functionality.

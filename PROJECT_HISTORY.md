@@ -839,7 +839,8 @@ unchanged.
 ### 11.27 Connected product architecture decision (2026-11-03)
 
 **APPROVED FUTURE DIRECTION — NOT IMPLEMENTED.** The user approved a connected product
-with the optional primary workflow **3D Modeling → 2D Drawing → BOX or Puzzle**. BOX
+with the then-approved optional primary workflow **3D Modeling → 2D Drawing → BOX or Puzzle**
+(sequence refined by §11.35 to include Unfold). BOX
 and Puzzle are parallel destinations; users may start in Drawing and need not use all
 modules. The full decision is preserved in
 [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md); the
@@ -1086,6 +1087,41 @@ build/tests, 76 regression commands, UI-1 and focused UI-2 Chromium acceptance, 
 Coincidence browser regressions, and both layouts at three desktop sizes. Implementation
 awaits user review/acceptance; UI-1 status, accepted CAD evidence, deferred limitations,
 UI-3/UI-4 and A–G statuses are preserved. No automatic merge.
+
+### 11.35 Multi-Sketch, Unfold and selective BOX export decision (2026-11-17)
+
+**APPROVED TARGET — NOT IMPLEMENTED.** The documentation branch starts from freshly
+verified GitHub main `99550ece086ab5c88d6380d594288a7af62f74aa`, the merged PR #635
+commit. That PR establishes shared History presentation, not permanent operations;
+its existing browser evidence and pending user acceptance remain unchanged.
+
+The [scoped architecture specification](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md) records the new decisions:
+explicit New Sketch / Finish Sketch with multiple independent visible Sketches and one
+editable context; reopening updates the same Sketch; one permanent history entry per
+Sketch, with editable member geometry, Dimensions and Constraints inside it. This refines
+§§11.30–11.31 and supersedes their primitive-level top-level operation examples, while
+preserving stable-definition edits, existing local Undo and the future 30-action tape.
+
+The 3D-derived route is now **3D Modeling → Unfold → 2D Drawing → BOX / Construction**;
+direct **2D Drawing → BOX / Construction** remains supported. A distinct Unfold module
+refines §11.27's flattening intent and must preserve panel identity, thickness, material,
+orientation, source provenance and validity through downstream manufacturing/export where
+applicable. Multi-plane Sketches, arbitrary construction planes, suitable panel-face
+attachment and valid closed-profile extrusion are future 3D requirements. Puzzle and the
+separate deferred static preview remain planned.
+
+BOX input should recognize relevant visible geometry, without a mandatory source-Sketch
+selector. Export separately allows one or multiple eligible Sketch groups, preventing
+unselected inclusion and invalid/stale manufacturing output. These decisions avoid
+conflating visibility, contour eligibility, group identity and validated output.
+
+Migration/compatibility, inclusion/overlap/visibility/update rules, 3D/Unfold technical
+design, metadata schema, direct 2D edit effects on 3D, all Sketch/panel/workflow/output
+group mappings and export packaging remain open. B–E contracts must account for these
+before schema/adapter freeze; a distinct Unfold delivery slice is proposed for review,
+without renumbering A–G or changing statuses. Historical evidence is preserved with
+supersession notices. This is documentation only: no new functionality, test or browser
+acceptance claim; accepted CAD invariants and Circle/Arc stages remain unchanged.
 
 ## 12. Superseded or Temporary Material
 

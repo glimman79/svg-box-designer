@@ -201,6 +201,34 @@ lose an accepted action, or create/merge Undo steps. UI-2 uses a sticky action r
 existing BOX tool overlay. Contextual constraint behavior remains the interaction reference;
 the Drawing Constraints implementation is unchanged.
 
+## Multi-Sketch interaction refinement (2026-11-17)
+
+**APPROVED TARGET — NOT IMPLEMENTED.** The
+[scoped specification](MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md) owns these new behaviors:
+
+- New Sketch creates an empty independent Sketch, keeping existing Sketches on the canvas
+  and previously visible Sketches visible by default; only the new Sketch is editable.
+  Other visible Sketches remain non-editable references with independent geometry,
+  Dimensions, Constraints and stable identities.
+- Finish Sketch exits the active editing context. Reopening an existing Sketch reuses
+  its identity; it creates neither a replacement Sketch nor another permanent operation.
+  Exact placement, unfinished-tool handling and legacy transition require design.
+- One Sketch is one permanent timeline operation; member primitives, Dimensions and
+  Constraints do not automatically add top-level entries. Double-click opens that
+  Sketch's current definition; edits update its existing entry. Undo boundaries remain
+  separate. UI-3 is the shared presentation region only; UI-4 needs real C/C.2 operations.
+- Future navigation accommodates 3D Modeling and distinct Unfold before Drawing; direct
+  Drawing remains supported and Puzzle remains deferred. Placeholders are not capabilities.
+- BOX recognizes relevant visible geometry under eligibility rules still to be designed.
+  Its export-selection interface separately supports one or multiple eligible Sketch
+  groups and an explicit scope, excluding unselected output and validating manufacturing
+  results/metadata. It is not a mandatory BOX input selector or TB/W/S group selector.
+
+Current Drawing's immediate authoring and initialized Sketch are preserved until explicit
+compatibility design. Migration must preserve geometry, references, Constraints,
+Dimensions and Undo. Current BOX navigation/import/export and local histories stay intact.
+No widget layout, grouping schema, migration mechanism or packaging behavior is selected.
+
 ## 4. Construction history, Undo/Redo and dependencies
 
 | System | What it represents | Effect of editing an existing operation |

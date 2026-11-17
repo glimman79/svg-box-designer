@@ -1,6 +1,6 @@
 # Product Architecture Vision
 
-**Decision date: 2026-11-03; history requirements revised 2026-11-09, aligned 2026-11-10. Status: APPROVED FUTURE PRODUCT REQUIREMENTS — NOT IMPLEMENTED.**
+**Decision date: 2026-11-03; history requirements revised 2026-11-09; multi-Sketch/Unfold/export refined 2026-11-17. Status: APPROVED FUTURE PRODUCT REQUIREMENTS — NOT IMPLEMENTED.**
 
 This document owns the detailed approved long-term requirements for a connected,
 multi-module SVG Box Designer. It does not claim implementation or authorize application
@@ -11,10 +11,18 @@ current/target boundaries, and [PROJECT_HISTORY.md](../PROJECT_HISTORY.md#1127-c
 records this decision and superseded recommendations. Explicit future requirements here
 are authoritative for this scope; historical analyses do not override them.
 
+The [Multi-Sketch, Unfold and BOX specification](MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md)
+owns the detailed 2026-11-17 scoped refinement: multiple visible Sketches with explicit
+editing contexts, one top-level operation per Sketch, distinct Unfold, continuous panel
+metadata, visible-canvas BOX input and separate one/multiple Sketch-group export.
+Its decision classifications and open questions apply without changing accepted CAD or
+A–G statuses. This Vision retains authority for the other connected-product contracts.
+
 The [Global Workspace UI Specification](GLOBAL_WORKSPACE_UI_SPECIFICATION.md) owns the
 approved seven-region workspace layout and contextual controls. It refines placement
 with UI-1 shell placement implemented and browser-checked (2026-11-10), pending user
-acceptance. UI-2/UI-3/UI-4 and the functional global contracts remain unimplemented;
+acceptance. UI-2/UI-3 are also implemented/browser-checked, pending user acceptance;
+PR #635 is merged. UI-4 and the functional global contracts remain unimplemented;
 A–G statuses and project/history foundation dependencies are unchanged.
 
 ## 1. Status and documentation inventory
@@ -74,19 +82,18 @@ remaining architecture requirement changes.
 
 ## 2. Connected modules and optional workflows
 
-The intended primary workflow is **3D Modeling → 2D Drawing → BOX or Puzzle**:
+**APPROVED TARGET — NOT IMPLEMENTED (refined 2026-11-17):**
 
 ```text
-3D Modeling (optional)
-  -> 2D Drawing (also an independent starting point)
-       -> BOX / Construction
-       -> Puzzle
+Direct:     2D Drawing → BOX / Construction
+3D-derived: 3D Modeling → Unfold → 2D Drawing → BOX / Construction
 ```
 
-BOX and Puzzle are parallel destinations; Puzzle does not require passage through BOX.
-This is not a mandatory linear wizard. Projects may use Drawing alone, Drawing + BOX,
-Drawing + Puzzle, or a complete workflow starting in 3D. Every project need not use all
-modules. Users must be able to move between modules without discarding existing work.
+Unfold is a distinct planned module, not a prerequisite for direct Drawing. BOX and
+Puzzle remain parallel Drawing destinations; Puzzle does not require BOX. Projects may
+use only the modules they need, and navigation must preserve existing work. Both paths
+use compatible 2D geometry/panel semantics; the 3D-derived path retains source provenance,
+thickness, material and panel metadata throughout downstream processing/export where applicable.
 
 ### 2.1 Simple 3D Modeling
 
@@ -100,25 +107,27 @@ The principle is **2D geometry + extrusion = simple 3D geometry**. Intended conc
   extruded objects; simple assemblies of those components.
 - Editing source profiles and extrusion parameters rather than only storing final meshes.
 
+Multiple independent Sketches must support XY/XZ/YZ, user-defined and arbitrarily
+oriented construction planes, and suitable existing panel faces. Sketches, planes,
+extrusions and downstream geometry require stable references; panels require thickness
+and material. These are approved future capabilities, not a selected 3D architecture.
+
 Initial scope explicitly excludes advanced freeform sculpting, complex lofting and
 general-purpose high-end mechanical solid/surface CAD. No extrusion kernel, topology
 representation, 3D constraint system or rendering architecture has been selected.
 
-### 2.2 Exploded View and Flatten to 2D
+### 2.2 Exploded View and Unfold
 
-**Exploded View** is a separated 3D assembly view showing component relationships.
-**Flatten to 2D** generates planar manufacturing or drawing representations from 3D
-components. These are distinct operations; separating components visually does not
-produce planar manufacturing geometry.
-
-Generated 2D geometry should open in Drawing for inspection and further editing.
-Source-to-generated relationships should remain traceable so source changes can
-propagate without complete reconstruction. Regeneration, synchronization and conflict
-resolution algorithms require later design.
-
-There is no promise that every curved surface can be flattened without distortion.
-Developable-surface handling and curved-panel manufacturing flattening require separate
-technical design, eligibility rules and validation.
+**APPROVED TARGET — NOT IMPLEMENTED:** Exploded View is a separated 3D assembly view.
+Unfold is a separate module that converts suitable 3D panels into flat 2D representations
+for Drawing, preserving stable panel identity and metadata rather than disconnected SVG
+lines or only a visual projection. It refines the earlier "Flatten to 2D" intent.
+Thickness/material, originating panel/feature, orientation/front/back/directions, source
+Sketch/feature references where appropriate and update/validity must continue through
+**3D → Unfold → 2D → BOX → manufacturing/export where applicable**. Exact schema,
+regeneration and validation require design. Curved-surface eligibility/developability
+is not guaranteed. Whether direct 2D edits modify upstream 3D or remain overrides is
+an open question; neither behavior is selected. See the scoped specification §4.
 
 ### 2.3 2D Drawing
 
@@ -126,6 +135,14 @@ Drawing remains both an independent authoring module and the drawing/editing env
 for geometry derived from 3D. Its geometry can become source material for either BOX or
 Puzzle. The future project model must distinguish original 2D authoring geometry,
 3D-derived geometry, and downstream construction/manufacturing geometry.
+
+**APPROVED TARGET — NOT IMPLEMENTED:** New Sketch creates an empty independent Sketch,
+retains existing visible Sketches and makes only the new one editable. Other visible
+Sketches remain non-editable references. Finish Sketch exits editing; reopening an
+existing Sketch reuses its identity and history entry. Each Sketch independently owns
+geometry, Dimensions and Constraints. Current immediate Drawing into an initialized
+Sketch must transition deliberately: compatibility must preserve existing geometry,
+references, Constraints, Dimensions and Undo; the migration mechanism remains open.
 
 The accepted Circle/Arc model is preserved: Circle has persistent `centerPointId` and
 radius; Arc has persistent center, radius, P1/P2 and CW/CCW orientation, with derived
@@ -141,6 +158,17 @@ edge connections, joint generation, manufacturing preparation and SVG export. Dr
 geometry should eventually transfer through an explicit, traceable workflow into the
 existing source → Panel Manager → construction → generated geometry → composition →
 reconciliation → FinalGeometry → manufacturing → preview/export pipeline.
+
+**APPROVED TARGET — NOT IMPLEMENTED:** BOX recognizes relevant visible canvas geometry,
+without a mandatory manual source-Sketch selector. Visibility, eligible input, reference/
+construction graphics, validated manufacturing contours and source identities are
+separate concerns. Inclusion, overlaps, contour rules, visibility synchronization and
+updates require design. Export separately lets users choose one or multiple eligible
+Sketch groups; only that explicit selected scope is exported, with correct manufacturing
+geometry and relevant metadata, excluding unrelated/unselected groups. Invalid/stale/
+unvalidated results must not silently export as valid. Sketch/group/Unfold panel/BOX
+panel/workflow/output group relationships and packaging are open; TB/W/S groups are not
+Sketch groups. The scoped specification §§5–6 owns these distinctions.
 
 External SVG imported through the future Open menu must target BOX, regardless of the
 active module. This preserves the current importer destination; it does not turn the
@@ -162,7 +190,7 @@ The [Stage B analysis](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md) remains 
 proposal for review; this does not approve the complete architecture or implementation.
 
 The approved future requirement is **one global Undo/Redo system across 3D Modeling,
-Drawing, BOX and Puzzle project edits**, plus the separate permanent parametric
+Unfold, Drawing, BOX and Puzzle project edits**, plus the separate permanent parametric
 construction history defined below. It supersedes the previous recommendation
 to retain independent workspace histories. Existing implementations remain unchanged
 until a separately authorized migration.
@@ -245,23 +273,24 @@ project. The previous Stage B bounded session-journal proposal is explicitly sup
 as a solution for construction history; an optional descriptive event journal is not an
 approved requirement.
 
-Create a 30 mm Line: one construction operation and one Undo step. Edit to 50 mm, then
-70 mm: update the **same** operation each time, with one new Undo transaction per
-accepted edit. Undo/Redo restores the corresponding current parameters and complete
-geometry consistently. Expired Undo transitions do not remove the operation. Double-click
-opens its current settings without rewinding or changing Redo.
+**APPROVED TARGET — NOT IMPLEMENTED (refined 2026-11-17):** each Sketch has one stable
+Sketch operation and one shared timeline entry. Its Lines, Circles, Arcs, Dimensions and
+Constraints remain editable members, without automatic top-level primitive entries.
+Double-click reopens that Sketch; editing updates the existing definition, not a
+replacement entry. This supersedes the earlier per-primitive catalog for Sketch contents.
 
-Operations support conceptual Edit, Review Warning/Error, Repair Reference, Suppress
-and Delete actions. Preserve identities across Undo restoration; genuine recreation
-with reused local IDs is a new lifetime. Every completed meaningful construction operation
-has an editable entry: Line, Circle, Arc, profile, independently authored Dimension or
-relationship/Constraint, BOX, finger joints and other geometry/manufacturing operations.
-Multi-step tools record accepted completed operations, not mouse clicks; Profile retains
-per-segment completion, and groups retain editable member definitions. One operation may
-produce multiple objects; edits update existing definitions, and automatic solver mutations
-create no separate entries. Selection, tool/panel opening and unfinished previews create
-neither operation nor Undo action. Exact catalog/grouping, parameter bindings, migration
-and UI remain **DESIGN REQUIRED**, within this coverage contract and accepted tool semantics.
+A Sketch member Line changed from 30 to 50 then 70 mm keeps its containing Sketch
+operation. Each accepted edit still creates its normal Undo action, including all
+automatic consequences; Undo/Redo restores the corresponding parameters and geometry.
+Profile's per-segment completion and existing local Undo semantics are unchanged.
+Operations support Edit, Review Warning/Error, Repair Reference, Suppress and Delete
+where supported. Undo restoration preserves identities; genuine recreation is a new
+lifetime. BOX, finger joints and other meaningful manufacturing operations still require
+editable definitions; exact catalog/grouping outside Sketches remains design work.
+Selection, tool opening and unfinished previews add no operation or Undo action.
+Operations persist beyond Undo eviction, with native projects. Source changes reevaluate
+affected dependencies; invalid/blocked operations retain diagnostics. BOX workflow groups
+are not permanent operations. Exact member bindings, migration and adapters remain open.
 The [Stage B model and acceptance criteria](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md#9-permanent-parametric-construction-history-and-navigation)
 are technical recommendations for review, not implementation.
 
@@ -331,7 +360,8 @@ Concurrent editing is not solved here; bounded budgets and evaluator design rema
 
 **Manufacturing safety:** stale, failed or otherwise unvalidated geometry cannot silently
 be valid laser/export output. Independent valid output requires explicit scope and full
-validation; the availability/UX of partial export remains a design decision. No implicit
+validation. One/multiple eligible Sketch-group selection is now approved; mixed-validity
+handling and independent-scope validation/UX remain design decisions. No implicit
 export of last-known-good artifacts is allowed.
 
 Dependency graph representation, verified feature mapping, scheduling/async acceptance,
@@ -362,7 +392,7 @@ do not yet implement this contract.
 | --- | --- | --- |
 | Open | One control with explicit **Open Project** and **Import SVG** options. Open Project restores the complete editable project. Import SVG always targets BOX, regardless of active module. | Existing SVG import is Construction-only; native Open Project is unimplemented. Import replacement/confirmation and navigation details require design. |
 | Save | Preserve the complete editable project across relevant modules, including source relationships and downstream authoring state. | Disabled placeholder today; native format, serialization and restoration require design. |
-| Export | Produce output for the relevant manufacturing/downstream use case; behavior may differ by module. | Current Construction SVG export does not establish Drawing, 3D or Puzzle export. Export is distinct from Save. |
+| Export | Produce output for the relevant manufacturing/downstream use case; BOX explicitly selects one or multiple eligible Sketch groups separately from input recognition. | Current Construction SVG export does not establish Drawing, 3D or Puzzle export. Export is distinct from Save. |
 | Clear | Permanent whole-project session reset, never Undoable. Offer Save and Clear / Clear Without Saving / Cancel. Save and Clear requires successful complete native Save; failure/cancellation leaves project/history untouched. Reset all project/module states and Undo/Redo into a clean empty session; clearing itself never deletes or overwrites saved files. | Existing Construction-only Clear is insufficient. Session/async guards must prevent stale callbacks repopulating the project. First Save requests a destination; save completion must be verified. See Stage B §10 for the proposed lifecycle gate. |
 | Fit to screen (canvas only) | Keep alongside canvas zoom; remove the redundant top-bar control while preserving functionality. Viewport action, no construction entry or Undo step. Compute bounds from relevant active-module geometry; eventually use suitable 3D fitting. | Drawing's current fixed view reset is insufficient. Bounds policy and the 3D camera design remain open; relocation does not implement them. |
 | Undo / Redo | Use the single 30-edit global timeline; automatically open the affected edit's module. Navigation preserves Redo and consumes no steps. | Current toolbar controllers route to isolated histories. Transaction and persistence architecture remain open. |
@@ -375,7 +405,10 @@ Constraints and Dimensions; canonical Circle/Arc geometry; 3D extrusion definiti
 assembly relationships; BOX construction state and manufacturing settings; Puzzle
 geometry/settings; permanent construction operations, parameters, input/output and
 dependency relationships, suppression/evaluation/diagnostic state; generated geometry and provenance;
-and appropriate project metadata and schema version.
+and appropriate project metadata and schema version. Explicit Sketch ownership/identities,
+Unfold panel definitions, thickness/material, orientation, provenance and update/validity
+are also required future editable data. Their exact schema and compatibility/migration
+mechanisms must be designed coherently before format freeze.
 
 `DrawingDocumentV2`, Construction models and stored generated snapshots are current
 foundations to wrap or migrate deliberately, not a completed native format. Ordinary
@@ -419,11 +452,12 @@ The following remain unresolved, rather than implicitly approved implementations
 | --- | --- |
 | Project ownership | Complete project-state boundary; wrapping/migration of existing models; module document ownership. |
 | Undo/Redo | Exact store/restore and pending-action admission UX, lifecycle gate/defaults and remaining field/interruption boundaries. One action including automatic consequences, 30 positions, navigation exclusion, permanent Clear and fresh Open history are settled. |
-| Construction operations | Catalog/granularity, parameter bindings, output identity/mapping and legacy baseline migration; proposed C.2 and current-settings adapters. Permanent project ownership, persistence and independence from Undo capacity are settled. |
+| Construction operations | One top-level entry per Sketch is settled; remaining catalog/granularity outside Sketch contents, member parameter bindings, output identity/mapping and legacy baseline migration; proposed C.2 and current-settings adapters. Permanent project ownership, persistence and independence from Undo capacity are settled. |
 | Persistence | Native format, operation/schema compatibility, validation/migration, Save completion and optional disk UI preferences. Operations/relationships must persist; Open never restores previous Undo/Redo snapshots. |
 | Geometry transfer | Source/derived ownership, supported transfer geometry, identity/provenance and compatibility with the existing straight-edge SVG importer. |
 | Dependencies | Bounded scheduling, deterministic/versioned unfinished evaluation, coherent units, mapping/repair and generated/authored ownership; suppress/delete UX and manufacturing scope validation. Option A, one logical action across async consequences and no silent invalid export are settled. |
 | 3D | Kernel, topology, constraint handling, rendering/camera, surface versus thickened-solid extrusion, assembly representation and supported flattening/developability. |
+| Multi-Sketch / Unfold / export | Context UI, cross-Sketch references and migration; visible-input eligibility/overlap/update rules; Unfold suitability, metadata schema and direct 2D edit policy; Sketch/group/panel/workflow/output mappings; export validation/grouping/encoding/packaging; distinct Unfold roadmap slice. See the scoped specification. |
 | Puzzle | Generation, joint types, uniqueness validation, manufacturing settings and UI, subject to existing roadmap commitments. |
 | Existing history migration | Analyze separate history ownership and Drawing history lifetime for global-history migration; preserve existing working behavior and keep the accepted deferred Arc empty/blind Undo limitation separate. |
 
