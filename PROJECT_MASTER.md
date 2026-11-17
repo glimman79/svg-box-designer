@@ -1,9 +1,28 @@
 # SVG Box Designer — Project Master
 
+## Approved target update (2026-11-17)
+
+**APPROVED TARGET — NOT IMPLEMENTED:** independent visible Sketches with explicit
+New Sketch / Finish Sketch and one editable context; one permanent operation per Sketch;
+optional **3D Modeling → Unfold → 2D Drawing → BOX / Construction**, alongside direct
+**2D Drawing → BOX / Construction**. BOX recognizes relevant visible canvas geometry;
+export separately selects one or multiple eligible Sketch groups. Thickness, material,
+panel identity/provenance and validity must survive the 3D-derived downstream path.
+The [scoped future specification](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md) owns the full requirements,
+classification, source baseline and open design questions. Exact grouping, migration,
+metadata schema and 2D-edit/upstream policy remain undecided.
+
+Current Drawing initializes a Sketch for immediate authoring. Sketch maps/IDs are
+implemented foundations, not the planned multi-Sketch interaction. PR #635 is merged
+at verified main `99550ece086ab5c88d6380d594288a7af62f74aa`; it supplies the shared History
+presentation only. Permanent operations, global Undo, native persistence, 3D/Unfold and
+selective Sketch-group export remain unavailable. Existing module-local Undo/Redo,
+BOX behavior, A–G statuses and accepted CAD evidence are unchanged.
+
 ## UI-3 — Unified Construction History (2026-11-13)
 
-Implemented and Chromium-checked on the merged #634 baseline; pending user acceptance
-and separate merge. [UI-3 validation](docs/UI3_UNIFIED_CONSTRUCTION_HISTORY_VALIDATION.md) records exact evidence and limits.
+Implemented and Chromium-checked on the merged #634 baseline; PR #635 is now merged.
+User acceptance remains pending. [UI-3 validation](docs/UI3_UNIFIED_CONSTRUCTION_HISTORY_VALIDATION.md) records exact evidence and limits.
 
 `App` owns one `SharedHistoryRegion` below both mounted workspace shells. It reuses the
 existing compact BOX History presentation; Drawing's separate explanatory row is removed.
@@ -97,9 +116,9 @@ The accepted Box / Construction compatibility baseline is v1.2 (`package.json` v
 
 ### 2.1 Approved future product direction
 
-**APPROVED FUTURE REQUIREMENTS — NOT IMPLEMENTED (2026-11-03).** The application is
-evolving toward **3D Modeling → 2D Drawing → BOX or Puzzle**, with BOX and Puzzle as
-parallel downstream modules. Drawing remains an independent starting point; projects
+**APPROVED TARGET — NOT IMPLEMENTED (2026-11-03; workflow refined 2026-11-17).** The application is
+evolving toward **3D Modeling → Unfold → 2D Drawing → BOX / Construction**, with Puzzle
+retained as a parallel optional Drawing destination. Drawing remains an independent starting point; projects
 need not use every module, and switching modules must preserve existing work. Simple
 3D Modeling is limited to extrusion-based geometry, separate from the earlier planned
 static Construction preview. Its kernel and detailed technical design remain open.
@@ -117,8 +136,9 @@ of the visible module. Double-click reveals the referenced object's current stat
 without rewind or history/Redo mutation; only a later committed edit branches after Undo.
 A separate permanent parametric construction history owns meaningful operation
 definitions, current editable parameters, stable operation/object identities and
-dependencies. Repeated Line dimension edits update the same operation while each
-accepted edit adds one Undo transaction. Operations persist with the native editable
+dependencies. A Sketch owns one top-level operation; repeated edits to its member Lines,
+Dimensions or Constraints update that Sketch definition while each accepted edit adds
+one Undo transaction. Operations persist with the native editable
 project, beyond Undo eviction and without an arbitrary journal quota. They are neither
 an event journal nor an audit/snapshot log. The prior bounded-journal proposal is
 superseded as construction history; a descriptive event journal is optional/unapproved.
@@ -760,7 +780,8 @@ remain planned; algorithms, joint types, manufacturing settings and UI require d
 
 ## 8. Current limitations and documentation boundaries
 
-- 3D Modeling, Puzzle, a shared global project document, global history, native Save/Open
+- Multi-Sketch authoring, 3D Modeling, Unfold, selective Sketch-group export, Puzzle,
+  a shared global project document, global history, native Save/Open
   and cross-module transfer/dependencies remain unimplemented future work.
 - The user confirmed no current functional defect in Drawing Undo/Redo during their
   testing; this does not establish exhaustive action coverage. Separate history ownership

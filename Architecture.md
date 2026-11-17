@@ -37,15 +37,16 @@ remain evidence of the earlier architecture, not the current mounting/placement 
 **APPROVED FUTURE REQUIREMENTS — NOT IMPLEMENTED:**
 
 ```text
-3D Modeling (optional, simple profile extrusion)
-  -> 2D Drawing (also independent authoring)
+3D Modeling (optional, multi-plane Sketches and simple profile extrusion)
+  -> Unfold (distinct planned panel-flattening module)
+  -> 2D Drawing (also independent multi-Sketch authoring)
        -> BOX / Construction
        -> Puzzle
 ```
 
 This is an optional connected workflow, not a linear wizard. BOX/Puzzle are parallel.
-Exploded View shows separated 3D components; Flatten to 2D generates planar geometry for
-Drawing. Curved-surface flattening/developability needs separate design. The 3D kernel,
+Exploded View shows separated 3D components; Unfold generates flat panel representations
+with metadata continuity for Drawing. Curved-surface flattening/developability needs separate design. The 3D kernel,
 topology, constraints and rendering are unselected; high-end freeform/general CAD is
 outside initial scope. The earlier static Construction preview is a separate planned
 capability, not the limit of the new modeling direction.
@@ -60,7 +61,7 @@ The separate history systems and dependency boundary require technical design:
 | Responsibility | Approved target / open boundary |
 | --- | --- |
 | Global chronological history | Tape-recorder Undo/Redo: one completed state-changing user action, including all automatic solver/dependency consequences, is one logical transition; combined past/future capacity is 30. Creation/deletion restores original identities; previews/invalid/cancelled/no-op actions add none. Ordinary switches are UI navigation and preserve cursor/Redo without consuming capacity. Undo/Redo restore the full affected project state and open the edit's associated module; never restore an obsolete captured tab. Detailed store/transaction design remains proposed. |
-| Permanent parametric construction history / panel | Project-owned editable operation definitions, stable identities, current parameters, input/output refs and relationships persist without Undo/journal quotas. Repeated Line dimension edits update the same operation and add normal Undo transactions. Double-click reveals current settings without rewind/Redo mutation. Operation-to-entity mapping, grouping and migration remain proposed. |
+| Permanent parametric construction history / panel | Project-owned editable operation definitions, stable identities, current parameters, input/output refs and relationships persist without Undo/journal quotas. A Sketch is one top-level operation; member Line dimension edits update that Sketch and add normal Undo transactions. Double-click reveals current settings without rewind/Redo mutation. Operation-to-entity mapping, grouping and migration remain proposed. |
 | Source-to-derived dependencies | Approved Option A keeps valid source edits, updates compatible branches and preserves failed/blocked definitions/refs and unaffected authored work for repair/removal. Explicit diagnostic states and no guessed refs/silent deletion. Exact mixed outcomes restore without replay; algorithms/repair UI remain unselected. |
 
 Native persistence must retain editable module data, canonical geometry, Constraints,
@@ -114,6 +115,31 @@ Arc empty/blind Undo limitation remains unchanged. Accepted Circle/Arc models, s
 transactions, Direct Manipulation and Stage 0–6 evidence below remain intact. References
 to shared/global Drawing concerns below mean sharing within Drawing, not an already
 implemented cross-module project history.
+
+## Multi-Sketch and Unfold ownership target (2026-11-17)
+
+**APPROVED TARGET — NOT IMPLEMENTED.** The [scoped specification](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md)
+owns the detailed contracts and open questions. Sketches independently own geometry,
+Dimensions and Constraints; visibility and the single active editing context are distinct.
+One persistent operation represents each Sketch; member edits retain that entry.
+
+```text
+Direct Drawing Sketches ──────────────────────→ compatible 2D geometry → BOX
+3D multi-plane Sketches → extrusion → Unfold → compatible 2D panels   → BOX
+BOX → existing composition/reconciliation/FinalGeometry/compensation → scoped export
+```
+
+Stable panel identity, thickness, material, source Sketch/3D feature provenance,
+orientation/front/back and update validity must continue through Unfold, 2D, BOX and
+manufacturing/export where applicable. The exact metadata schema and ownership of direct
+2D edits to unfolded panels remain open. BOX recognizes relevant visible canvas geometry
+under eligibility rules still to be designed; reference graphics do not become contours.
+Export separately selects one or multiple eligible Sketch groups, excluding unselected
+output and requiring manufacturing validation. Sketch/group, Unfold/BOX panel, workflow
+and output-group identities need explicit mappings; TB/W/S groups are not Sketch groups.
+Native persistence, permanent history and dependency propagation must share coherent
+identity/transfer contracts. Current document/history owners and the pipeline below stay
+unchanged; this target does not supply adapters or a migration.
 
 ## Drawing architecture
 

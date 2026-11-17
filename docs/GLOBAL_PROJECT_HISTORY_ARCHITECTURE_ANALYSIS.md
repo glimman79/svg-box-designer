@@ -14,6 +14,27 @@ native persistence, dependency propagation, or roadmap-status change is included
 This revision also synchronizes the narrowly affected architecture/roadmap requirements
 and records which earlier decisions it supersedes (§2).
 
+## Scoped supersession notice (2026-11-17)
+
+The [Multi-Sketch / Unfold / BOX specification](MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md)
+refines the approved target after this analysis. **One Sketch is one top-level permanent
+operation/entry**; its primitives, Dimensions and Constraints remain editable members.
+The primitive-level catalog, standalone Line-operation examples and proposed mappings in
+§9, C.2 staging, §14 scenarios and D3 below are retained as earlier design evidence and
+are **superseded for Sketch contents**. Read Line 30→50→70 as member edits inside the same
+Sketch operation, with distinct normal Undo actions. Per-segment Profile transactions,
+canonical CAD semantics, permanent stable definitions and the 30-action Undo contract
+remain intact. New Sketch / Finish Sketch and migration are not implemented.
+
+Distinct Unfold now refines earlier 3D flattening intent; metadata must continue through
+3D→Unfold→2D→BOX→manufacturing/export where applicable. One/multiple eligible Sketch-group
+export selection is approved, refining D12's formerly wholly open export-scope UX;
+identity mappings, scope validation and packaging remain open. BOX input separately
+recognizes relevant visible canvas geometry without a mandatory source-Sketch selector.
+The proposed schemas below are not final designs for these refinements. Extend Sketch
+ownership/identity, transfer, panel metadata, history, persistence and propagation
+contracts coherently before schema/adapter freeze. A–G meanings/statuses are unchanged.
+
 ## 1. Executive summary
 
 Recommend a **single project owner with immutable, complete restorable project frames,
@@ -821,6 +842,9 @@ component closures to mutate historical state. Do not run ordinary switch handle
 automatic authoring effects as a side effect of restoration.
 
 ## 9. Permanent parametric construction history and navigation
+
+> **2026-11-17 refinement:** the [scoped supersession notice](#scoped-supersession-notice-2026-11-17)
+> governs the primitive-entry catalog and examples below: Sketch members share one top-level Sketch entry.
 
 ### Two history systems and the superseded journal proposal
 
@@ -1651,6 +1675,9 @@ Do not weaken behavioral assertions merely to pass a refactor.
 | Scale | Representative entity/constraint/annotation counts, large imported SVG/generated projects, 30 transitions and large persistent operation graphs; measure prepare/validate/restore latency, preview rate, heap and released references. Agree numerical budgets from measured baselines. |
 
 ### Required architectural acceptance scenarios
+
+> Historical proposed scenarios: apply the [2026-11-17 refinement](#scoped-supersession-notice-2026-11-17)
+> to the primitive-entry expectations; accepted CAD transactions are unchanged.
 
 These are future acceptance criteria, **not executed application tests**.
 
