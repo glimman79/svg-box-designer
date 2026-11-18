@@ -1,5 +1,12 @@
 # SVG Box Designer — Project Master
 
+## Stage C PR 5 BOX transaction checkpoint
+
+On the review branch, SVG replacement, PM thickness/defaults and Apply, and manufacturing
+settings/output use complete provisional frames. The shared owner retains the original source
+and selected geometry. Drawing and BOX local histories continue to execute Undo/Redo.
+[Scope, guarantees and validation](docs/BOX_TRANSACTION_ADAPTER.md).
+
 ## Stage C PR 4 Drawing transaction checkpoint
 
 The review branch connects accepted Drawing edits to the shared project owner through
