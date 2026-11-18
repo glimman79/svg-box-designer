@@ -1,5 +1,16 @@
 # SVG Box Designer — Project Master
 
+## Stage C PR 3 — Pure transaction/history foundation (2026-11-18)
+
+The task branch adds an independently tested `ProjectStateCapture` history core with
+30 combined Undo/Redo transitions, synchronous nested acceptance/rollback and immutable
+complete frames. It returns exact stored data and edit metadata without publishing,
+solving, generating or selecting manufacturing authority. The shared project owner
+remains the only runtime authority; local Drawing/BOX histories and all UI handlers
+are unchanged. [Core contract and validation](docs/GLOBAL_HISTORY_CORE.md).
+Review/acceptance is pending. Global Undo/Redo is not active, Stage C is not complete,
+and permanent operations/native persistence/dependencies remain deferred.
+
 ## Approved target update (2026-11-17)
 
 **APPROVED TARGET — NOT IMPLEMENTED:** independent visible Sketches with explicit

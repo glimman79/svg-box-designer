@@ -1,5 +1,14 @@
 # Unreleased
 
+## Stage C PR 3 — Global transaction/history core (review pending)
+
+- Added a pure complete-frame history engine with synchronous nested transactions,
+  atomic rejection/exception rollback, exact Undo/Redo and 30 combined transitions.
+- Protected accepted frames from later mutations while sharing unchanged immutable data;
+  added focused pure tests and [API/validation documentation](docs/GLOBAL_HISTORY_CORE.md).
+- No application wiring: global Undo/Redo is not active. Local histories/import/UI are
+  unchanged; runtime adapters, permanent operations and Stage C completion remain deferred.
+
 ## Stage C PR 2 — Shared project owner (review pending)
 
 - Replaced independently writable Drawing/BOX React fields with one synchronous project

@@ -2,6 +2,16 @@
 
 > **Status: current orientation and future-boundary map.** [PROJECT_MASTER.md](PROJECT_MASTER.md) is the authority for current architecture. [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) owns the detailed approved future requirements; its target is not implemented. Historical pipeline snapshots and investigations are indexed in [docs/README.md](docs/README.md).
 
+## Stage C PR 3 pure history checkpoint
+
+The task branch adds `projectHistory.ts`: complete captured frames, synchronous nested
+transaction staging/rollback and exact Undo/Redo with 30 combined transitions. It is
+disconnected from the application and does not publish into the project owner. Frames
+share proven immutable subtrees and isolate mutable candidates. Local Drawing/BOX
+histories, import lock, lifecycle handlers and shared History UI stay active and unchanged.
+[API, architecture reconciliation and limits](docs/GLOBAL_HISTORY_CORE.md).
+Review/acceptance is pending; Stage C is not complete and global Undo/Redo is not active.
+
 ## Stage C PR 2 ownership checkpoint
 
 The task branch introduces one application-level `ProjectStateSource` owner through
