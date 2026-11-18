@@ -154,7 +154,10 @@
     "test:compact-workspace-settings:browser": "node tests/compact-workspace-settings.browser.cjs",
     "test:shared-history": "rm -rf .test-build/shared-history && tsc --ignoreConfig src/app/SharedHistoryRegion.tsx --target es2022 --module commonjs --outDir .test-build/shared-history --skipLibCheck --jsx react-jsx --esModuleInterop && printf '{\"type\":\"commonjs\"}' > .test-build/shared-history/package.json && node --test tests/shared-history-region.test.cjs",
     "test:shared-history:browser": "node tests/shared-history-region.browser.cjs",
-    "test:project-state": "rm -rf .test-build/project-state && tsc --ignoreConfig tests/fixtures/project-state.ts tests/types/project-state.ts --target es2022 --module commonjs --outDir .test-build/project-state --skipLibCheck --esModuleInterop --strict && node -e 'require(\"fs\").writeFileSync(\".test-build/project-state/package.json\", JSON.stringify({type:\"commonjs\"}))' && node --test tests/project-state.test.cjs"
+    "test:project-state": "rm -rf .test-build/project-state && tsc --ignoreConfig tests/fixtures/project-state.ts tests/types/project-state.ts --target es2022 --module commonjs --outDir .test-build/project-state --skipLibCheck --esModuleInterop --strict && node -e 'require(\"fs\").writeFileSync(\".test-build/project-state/package.json\", JSON.stringify({type:\"commonjs\"}))' && node --test tests/project-state.test.cjs",
+    "test:project-owner": "rm -rf .test-build/project-owner && tsc --ignoreConfig tests/fixtures/project-owner.ts --target es2022 --module commonjs --outDir .test-build/project-owner --skipLibCheck --esModuleInterop --strict && node -e 'require(\"fs\").writeFileSync(\".test-build/project-owner/package.json\", JSON.stringify({type:\"commonjs\"}))' && node --test tests/project-owner.test.cjs",
+    "test:project-owner:browser": "node tests/project-owner.browser.cjs",
+    "test:svg-import-lock:browser": "node tests/svg-import-lock.browser.cjs"
   },
   "dependencies": {
     "react": "latest",

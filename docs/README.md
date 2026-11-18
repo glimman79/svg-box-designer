@@ -1,5 +1,7 @@
 # Documentation index and status
 
+- [Shared project owner](SHARED_PROJECT_OWNER.md) — Stage C PR 2 ownership implementation, inventory, validation and deferred work; review/acceptance pending.
+
 This directory contains specifications, architecture analyses, diagnostic evidence, and release snapshots created at different stages. **`PROJECT_MASTER.md` at the repository root is the current architecture authority.** The forward-looking product plan is maintained separately in **[`ROADMAP.md`](../ROADMAP.md)**. A report's observations can remain useful even when its proposed next step or “current state” is historical.
 
 Root-level [`REGLER_FOR_CHATT_MED_CHATGPT.md`](../REGLER_FOR_CHATT_MED_CHATGPT.md) is the authority for collaboration and development workflow rules.

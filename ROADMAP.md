@@ -1,5 +1,13 @@
 # SVG Box Designer roadmap
 
+## Stage C PR 2 — Ownership checkpoint (2026-11-17)
+
+Task-branch ownership migration; review and user acceptance pending. One owner wraps the
+complete existing Drawing/BOX state while retaining local 100/10-entry histories.
+[Design and validation](docs/SHARED_PROJECT_OWNER.md). Stage C is not completed; global
+Undo/Redo, C.2, UI-4 and A–G labels/statuses below remain unchanged.
+
+
 ## Multi-Sketch / Unfold / selective BOX export direction (2026-11-17)
 
 **APPROVED TARGET — NOT IMPLEMENTED.** See the [scoped specification](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md)

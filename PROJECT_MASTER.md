@@ -229,7 +229,14 @@ UI-3/UI-4 and all A–G stage statuses remain unchanged.
 
 Construction uses `SvgDocumentModel`, which preserves SVG root information, source edges, panels, contours, containment, dimensions, and diagnostics. Panel Manager adds panel identity/thickness authority needed by construction.
 
-Drawing owns a separate versioned `DrawingDocumentV2`. It contains ordered sketches, stable points and entities, dimensions, and geometric constraints. Drawing state is not currently embedded in a global project document.
+Drawing uses a separate versioned `DrawingDocumentV2`. It contains ordered sketches, stable points and entities, dimensions, and geometric constraints. On the Stage C PR 2 task branch, Drawing and all BOX authorities are wrapped in one
+application-level `ProjectStateSource` owner. App subscribes with `useSyncExternalStore`;
+compatibility setters and Drawing's synchronous document accessor target that same root.
+Accepted BOX generated output is owned as a complete stored snapshot. Automatic TB/S
+sizing stays in domain readers/generators; the legacy no-op effect is removed and local
+restore preserves exact stored values.
+See [owner design and limits](docs/SHARED_PROJECT_OWNER.md). Review/user acceptance remains
+pending; this does not introduce a native format, permanent operations or global history.
 
 A shared, versioned cross-workspace `ProjectDocument`, cross-workspace references, and global History remain planned. Existing Drawing and construction models should be wrapped or migrated deliberately rather than implicitly conflated.
 

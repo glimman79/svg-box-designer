@@ -1,5 +1,16 @@
 # SVG Box Designer — Project History
 
+## Stage C PR 2 — Shared project owner (2026-11-17)
+
+Following PR #637’s lossless capture inventory, the task branch moves Drawing and all
+BOX authorities into one application-level owner. Direct adapters replace the old React
+fields; synchronous Drawing access and existing local histories remain. Complete stored
+generated authority restores without replay, and the inert TB/S write-back effect is
+removed while existing domain-derived automatic sizing stays unchanged. [Design and validation](docs/SHARED_PROJECT_OWNER.md) records compatibility
+and lifecycle limits. Review/user acceptance is pending; global history and permanent
+operations remain deferred. No earlier CAD acceptance or Roadmap status is changed.
+
+
 ## UI-3 — Existing BOX History becomes one shared region (2026-11-13)
 
 The user's clarification supersedes any plan for an additional bottom timeline: reuse

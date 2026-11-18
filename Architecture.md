@@ -2,9 +2,23 @@
 
 > **Status: current orientation and future-boundary map.** [PROJECT_MASTER.md](PROJECT_MASTER.md) is the authority for current architecture. [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) owns the detailed approved future requirements; its target is not implemented. Historical pipeline snapshots and investigations are indexed in [docs/README.md](docs/README.md).
 
+## Stage C PR 2 ownership checkpoint
+
+The task branch introduces one application-level `ProjectStateSource` owner through
+`projectOwner.ts`, with synchronous immutable publication and React subscriptions. It
+owns complete Drawing and BOX source/authoring/applied data; App compatibility setters
+write into it directly. Drawing/BOX keep their existing 100/10-entry local histories.
+Stored generated snapshots restore without regeneration or timestamp replacement;
+the inert TB/S write-back effect is removed. Automatic sizing stays in existing domain
+readers/generators.
+[Design, inventory, lifecycle limits and validation](docs/SHARED_PROJECT_OWNER.md).
+Review/user acceptance is pending. Global Undo, permanent operations and other Stage C
+slices remain deferred; historical checkpoints below retain their original context.
+
 ## Current application versus connected target
 
-The current application has separate Drawing and Construction documents owned in `App`,
+The current application has separate Drawing and Construction domain models under one
+App-lifetime project owner,
 a mounted `DrawingWorkspace` hidden while inactive, and a disabled Puzzle selector. There is no
 3D Modeling module, complete native project Save/Open, cross-module geometry-transfer
 contract or dependency/regeneration system. `DrawingDocumentV2`, Construction models and

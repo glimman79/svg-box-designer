@@ -1,5 +1,11 @@
 # Stage C PR 1 — Project-state capture boundary
 
+**PR 2 follow-up:** [Shared project owner](SHARED_PROJECT_OWNER.md) now uses this inventory
+and `ProjectStateSource` contract in production on the task branch. Ownership statements
+below describe the PR 1 baseline. The pure capture/projection helpers remain explicit
+boundary utilities; they are not called on the production edit hot path.
+
+
 **Scope: capture foundation only; awaiting review/acceptance.** Stage C shared ownership,
 global Undo/Redo, permanent operations, native persistence and dependencies are not
 implemented by this change. Existing owners, setters, 100-entry Drawing history,
