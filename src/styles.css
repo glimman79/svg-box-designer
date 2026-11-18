@@ -1201,6 +1201,20 @@ button:disabled {
   gap: 10px;
 }
 
+.svg-import-dialog {
+  width: min(360px, calc(100vw - 40px));
+  padding: 22px;
+  color: #e5e7eb;
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 16px;
+  box-shadow: 0 22px 55px rgb(15 23 42 / 45%);
+}
+
+.svg-import-dialog::backdrop { background: rgb(15 23 42 / 45%); }
+.svg-import-dialog h2 { margin-top: 0; font-size: 1.05rem; }
+.svg-import-dialog p { margin-bottom: 0; }
+
 .toolbar-button {
   display: inline-flex;
   align-items: center;

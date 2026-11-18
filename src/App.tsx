@@ -47,6 +47,7 @@ import { useCadWheelCapture } from './app/useCadWheelCapture';
 import { useCadPanGesture } from './app/cadInteraction';
 import { createBoxDocumentV1 } from './app/boxDocument';
 import { createInitialBoxState, createProjectOwner, type ProjectUpdate } from './app/projectOwner';
+import { useSvgImportLock } from './app/useSvgImportLock';
 import type { HistoryControlsProps } from './app/HistoryControls';
 import { WorkspaceTopBar } from './app/WorkspaceTopBar';
 import { WorkspaceShell } from './app/WorkspaceShell';
@@ -629,6 +630,7 @@ const SelectField = ({ id, label, value, options, onChange }: SelectFieldProps) 
 function App() {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(DEFAULT_WORKSPACE);
   const [projectOwner] = useState(createProjectOwner);
+  const importLock = useSvgImportLock(projectOwner);
   const project = useSyncExternalStore(projectOwner.subscribe, projectOwner.getSnapshot, projectOwner.getSnapshot);
   const { drawingDocument, box } = project;
   const setDrawingDocument = projectOwner.setDrawingDocument;
@@ -949,23 +951,27 @@ function App() {
     setRedoStack([]);
   };
 
-  useEffect(() => () => projectOwner.invalidateBoxImports(), [projectOwner]);
-
   const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.target;
     const file = input.files?.[0];
+    // Capture first, reset immediately: every outcome permits the same file again,
+    // and late cleanup cannot clear the selection belonging to a newer import.
+    input.value = '';
     if (!file) return;
-    const token = projectOwner.beginBoxImport();
+    const token = importLock.acquire();
+    if (!token) return;
     try {
       const text = await file.text();
-      if (!projectOwner.isCurrentBoxImport(token)) return;
+      if (!importLock.isCurrent(token)) return;
       const parsedSvg = parseSvgDocument(text);
       const nextPanelManager = createPanelManagerStateFromModel(parsedSvg);
+      const nextViewBox = parseViewBox(parsedSvg.viewBox);
+      const diagnosticMessage = formatImportDiagnosticMessage(parsedSvg);
       // Preserve legacy import semantics: connections survive source replacement;
       // assignment/workflow/applied state and the BOX local tapes reset.
       if (!projectOwner.publishBoxImport(token, { ...createInitialBoxState(),
         svgModel: parsedSvg, connections: token.box.connections, panelManager: nextPanelManager })) return;
-      setCanvasViewBox(parseViewBox(parsedSvg.viewBox));
+      setCanvasViewBox(nextViewBox);
       setActivePanelId(null);
       setActiveHoleId(null);
       setIsPanelManagerModalOpen(parsedSvg.panels.length > 0);
@@ -974,10 +980,11 @@ function App() {
       setRedoStack([]);
       setExpandedTBGroups({});
       setExpandedSGroups({});
-      setErrorMessage(formatImportDiagnosticMessage(parsedSvg));
-      input.value = '';
+      setErrorMessage(diagnosticMessage);
     } catch (error) {
-      if (projectOwner.isCurrentBoxImport(token)) setErrorMessage(error instanceof Error ? error.message : 'Unable to import SVG.');
+      if (importLock.isCurrent(token)) setErrorMessage(error instanceof Error ? error.message : 'Unable to import SVG.');
+    } finally {
+      importLock.release(token);
     }
   };
 
@@ -2135,7 +2142,14 @@ function App() {
   );
 
   return (
-    <main className="app-shell">
+    <>
+    <dialog ref={importLock.dialogRef} className="svg-import-dialog" aria-modal="true"
+      aria-labelledby="svg-import-title" aria-describedby="svg-import-description" tabIndex={-1}
+      onCancel={(event) => event.preventDefault()}>
+      <h2 id="svg-import-title">Importing SVG…</h2>
+      <p id="svg-import-description">Please wait while the file is being imported.</p>
+    </dialog>
+    <main className="app-shell" inert={importLock.isImporting} aria-busy={importLock.isImporting}>
       <WorkspaceTopBar
         activeWorkspace={activeWorkspace}
         onSelectWorkspace={(workspace) => setActiveWorkspace((current) => selectWorkspace(current, workspace))}
@@ -2609,6 +2623,7 @@ function App() {
         </>}
       />
     </main>
+    </>
   );
 }
 

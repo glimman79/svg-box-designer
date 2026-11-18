@@ -4,9 +4,77 @@ Baseline: `d654213d369d0f20c8be7789113830c6fabd5c19`; isolated branch
 `stage-c-pr2-shared-project-owner`. This evidence covers the ownership implementation,
 not global history, permanent operations or user acceptance. See [design and limits](SHARED_PROJECT_OWNER.md).
 
-## Commands and results
+## Exclusive SVG import correction — 2026-11-18
 
-All results below are from the completed runs on this branch.
+Correction baseline: PR #638 remote head
+`618b8c58b5d45239b675c40a96ba430b200ccc88`, verified through GitHub PR metadata and
+`git ls-remote origin refs/heads/stage-c-pr2-shared-project-owner`. Work uses that exact
+commit on the existing branch with an initially clean tree. Remote `main` remains
+`d654213d369d0f20c8be7789113830c6fabd5c19`; this correction does not restart from main.
+
+Completed correction checks:
+
+| Command / inventory | Result |
+| --- | --- |
+| `npm run test:project-owner` | **29/29 PASS** |
+| All 138 regression commands listed below | **138/138 PASS** |
+| `npm run build` | **PASS**, TypeScript and Vite |
+| `npm run test:svg-import-lock:browser` | **PASS**, all four workflow groups below |
+| `npm run test:workspace-shell:browser` | **PASS** |
+| `npm run test:shared-history:browser` | **PASS** |
+| `npm run test:contextual-canvas-controls:browser` | **PASS** |
+| `npm run test:project-owner:browser` | **PASS**, TB/W/S flows |
+| `node tests/drawing-arc-direct-manipulation.browser.cjs` | **23/23 PASS** |
+| `node tests/drawing-coincidence-drag.browser.cjs` | **10/10 PASS** |
+| `git diff --check` | **PASS** |
+
+The 138-command inventory was rerun sequentially, removing only the generated shared
+`.test-build/package.json` marker before each command, as in the original run. The four
+workspace/BOX browser suites were rerun against the final production source after
+adding focusout isolation. No baseline test failures remain.
+
+The focused suite executes the actual App handler, owner and import-lock hook, using
+scheduled hook commits/native EventTarget for isolated lifecycle checks. It covers
+same-turn admission; a rejected second read; lock retention through publication and
+PM/history setters; read rejection and synchronous throw; parser, PM initialization,
+diagnostic and publication exceptions; refused/stale publication; project/history
+preservation; input reset/retry; owner sequence/revision safeguards; older cleanup versus
+later selection/lock; and no UI updates after unmount. These isolated failure injections
+are not claimed as browser coverage.
+
+Actual headless Chromium verification uses the real production App at 1366×768, native
+modal/inert/focus behavior and production handlers. Only `File.text()` settlement is
+delayed or rejected; project/store state is not injected:
+
+1. Author two Drawing Lines, import/apply BOX panels, start TB and edit manufacturing
+   settings with Undo/Redo available. While a read is pending, verify the modal, inert
+   app and focused dialog; block actual pointer clicks on module/Clear/history/PM/TB/W/S/
+   manufacturing/import targets, keyboard Tab/Shift+Tab/Escape/Enter/Space/Ctrl+Z/Ctrl+Y/
+   Ctrl+Shift+Z/Meta+Z/Delete/Backspace, direct hidden-Drawing events and attempts to
+   refocus/click underlying controls. Also attempt controls synchronously inside
+   `File.text()` before the modal commits. A numeric draft must not commit on modal blur.
+   Read failure preserves Drawing/BOX presentation, draft and Undo/Redo availability,
+   releases the lock, restores focus and leaves the file input empty.
+2. Select the exact same on-disk `06_two_independent_panels.svg` again after rejection.
+   Import succeeds, the input is empty, PM initializes both panels, BOX history resets
+   only on success, and Drawing toolbar/keyboard Undo/Redo resumes normally.
+3. Real parser rejection of malformed SVG and non-SVG XML preserves prior BOX data,
+   releases the lock and resets the input; a subsequent valid import succeeds.
+4. Mount and unmount a separate real App in StrictMode during a pending read, then
+   settle it successfully. No late PM modal, publication or page error appears, and
+   the remaining App accepts navigation, proving listener cleanup.
+
+Original P2 finding: **addressed in code** by clearing the file input immediately after
+capturing its File, before any await or stale return. No late cleanup resets the input.
+The review thread is left for reviewer confirmation; no merge or user acceptance is
+claimed. All seven Chromium suites pass. Firefox/WebKit, screen-reader testing and
+large-file latency are not covered. `File.text()` remains non-cancellable, a never-settled
+read continues to block interaction, and parsing remains synchronous on the main thread.
+
+## Original ownership commands and results
+
+The original ownership implementation recorded the results below. The correction's
+fresh results above supersede the focused-test count and add the import-lock suite.
 
 - `npm run test:project-owner`: 17/17 focused owner/production-adapter checks pass.
 - `npm run build`: TypeScript and Vite pass.

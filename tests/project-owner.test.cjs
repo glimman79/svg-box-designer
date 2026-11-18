@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
 const api = require('../.test-build/project-owner/tests/fixtures/project-owner.js');
+const {importLockHarness} = require('./svg-import-lock-harness.cjs');
 
 // Execute the actual production adapters as well as the store. AST extraction
 // excludes rendering/import.meta, and retains every handler's real control flow.
@@ -22,9 +23,10 @@ function production(name, context, source=sources[0]) {
 }
 function harness(initial=api.makePopulatedProjectState()) {
   const projectOwner=api.createProjectOwner(initial);
+  const lockHarness=importLockHarness(projectOwner);
   const state={undoStack:[],redoStack:[],errorMessage:'',activeTool:'select'};
   const deferredHistory=[];
-  const context=vm.createContext({...api, projectOwner, structuredClone, Error,
+  const context=vm.createContext({...api, projectOwner, importLock:lockHarness.lock, structuredClone, Error,
     defaultConnectionProperties:{TB:{fingerWidthMm:9,isFingerWidthManual:false}},
     defaultProjectSettings:{...api.DEFAULT_PROJECT_SETTINGS,selectedProfileOffsetIds:[]},
     maxHistoryEntries:10, panelCompositionAuthorityMode:'mixed',
@@ -47,7 +49,7 @@ function harness(initial=api.makePopulatedProjectState()) {
   }
   context.parseViewBox=()=>({x:0,y:0,width:100,height:100});
   for(const name of ['getNextWorkflowGroupOrderIndex','cloneHistoryState','haveProjectSettingsChanged','getCurrentHistoryState','restoreHistoryState','pushUndoState','undoLastEdit','redoLastEdit','updateProjectSettings','updatePanelThickness','applyPanelManager','applyPanelPaths','selectConnectionForDisplayAndAssignment','startTBGroup','startSGroup','finishTBGroup','finishSGroup','finishWallGroup','clearProject','handleImport']) context[name]=production(name,context);
-  return {projectOwner,context,state,flushHistory:()=>{while(deferredHistory.length)deferredHistory.shift()();}};
+  return {projectOwner,context,state,lockHarness,flushHistory:()=>{while(deferredHistory.length)deferredHistory.shift()();}};
 }
 
 test('one frozen root, synchronous functional updates and subscriptions; no-op retains root without publication',()=>{
@@ -171,26 +173,141 @@ function importHarness() {
   h.context.formatImportDiagnosticMessage=()=>'';
   return h;
 }
-test('actual asynchronous import publishes once, preserves Drawing and legacy connections, rejects older/stale results',async()=>{
+test('actual asynchronous import locks synchronously, rejects a second read and preserves Drawing/connections',async()=>{
   const {projectOwner:owner,context:c}=importHarness(); const before=owner.getSnapshot();let count=0;owner.subscribe(()=>count++);
-  const older=deferred(),newer=deferred();const oldJob=c.handleImport(eventFor(older.promise)),job=c.handleImport(eventFor(newer.promise));
+  const pending=deferred();const event=eventFor(pending.promise),job=c.handleImport(event);
+  assert.equal(event.target.value,'','input resets before the read settles');
+  assert.equal(c.importLock.acquire(),null,'same-turn admission is exclusive before React commits');
+  let secondReads=0;
+  await c.handleImport({target:{files:[{text:()=>{secondReads++;return Promise.resolve('second');}}],value:'second.svg'}});
+  assert.equal(secondReads,0);
   owner.setDrawingDocument(doc=>({...doc,sketchOrder:[...doc.sketchOrder]})); const drawing=owner.getSnapshot().drawingDocument;
-  newer.resolve('new SVG');await job; assert.equal(count,2);
+  pending.resolve('new SVG');await job; assert.equal(count,2);
   assert.equal(owner.getSnapshot().box.svgModel.content,'new SVG');assert.equal(owner.getSnapshot().drawingDocument,drawing);
   assert.deepEqual(owner.getSnapshot().box.connections,before.box.connections);
   assert.equal(owner.getSnapshot().box.generatedGeometrySnapshot.generatedGeometry.length,0);
-  older.resolve('old SVG');await oldJob;assert.equal(count,2);assert.equal(owner.getSnapshot().box.svgModel.content,'new SVG');
+  const next=c.importLock.acquire();assert.ok(next,'success releases lock');c.importLock.release(next);
   const stale=deferred(),staleJob=c.handleImport(eventFor(stale.promise));c.updatePanelThickness('panel-a',7);const accepted=owner.getSnapshot();
   stale.resolve('must not replace edit');await staleJob;assert.equal(owner.getSnapshot(),accepted);
 });
 
-test('failed imports and callbacks after Clear/unmount invalidation cannot repopulate state or errors',async()=>{
-  const {projectOwner:owner,context:c}=importHarness(); const before=owner.getSnapshot();
+test('failed imports and callbacks after external Clear/unmount invalidation cannot repopulate state or errors',async()=>{
+  const {projectOwner:owner,context:c,lockHarness}=importHarness(); const before=owner.getSnapshot();
   await c.handleImport(eventFor(Promise.resolve('invalid')));assert.equal(owner.getSnapshot(),before);assert.equal(c.errorMessage,'invalid SVG');
   const late=deferred(),job=c.handleImport(eventFor(late.promise)); c.clearProject();const cleared=owner.getSnapshot();
   late.resolve('late');await job;assert.equal(owner.getSnapshot(),cleared);assert.equal(c.errorMessage,'');
-  const unmounted=deferred(),unmountedJob=c.handleImport(eventFor(unmounted.promise));owner.invalidateBoxImports();
+  const unmounted=deferred(),unmountedJob=c.handleImport(eventFor(unmounted.promise));lockHarness.unmount();
+  const setterCount=lockHarness.setters.length;
   unmounted.reject(Error('late failure'));await unmountedJob;assert.equal(owner.getSnapshot(),cleared);assert.equal(c.errorMessage,'');
+  assert.equal(lockHarness.setters.length,setterCount,'no late lock state update');
+});
+
+for (const failure of ['read rejection','synchronous read','parse','Panel Manager initialization','diagnostics','publication']) {
+  test(`import ${failure} failure preserves the project and both histories, resets input and unlocks`,async()=>{
+    const {projectOwner:owner,context:c,lockHarness}=importHarness();
+    c.updateProjectSettings({kerfMm:.31});c.updateProjectSettings({kerfMm:.52});c.undoLastEdit();
+    const before=owner.getSnapshot(),undo=c.undoStack,redo=c.redoStack;
+    const error=Error(`${failure} failed`);
+    const event=eventFor(Promise.resolve('valid'));
+    if(failure==='read rejection')event.target.files[0].text=()=>Promise.reject(error);
+    if(failure==='synchronous read')event.target.files[0].text=()=>{throw error;};
+    if(failure==='parse')c.parseSvgDocument=()=>{throw error;};
+    if(failure==='Panel Manager initialization')c.createPanelManagerStateFromModel=()=>{throw error;};
+    if(failure==='diagnostics')c.formatImportDiagnosticMessage=()=>{throw error;};
+    if(failure==='publication')owner.publishBoxImport=()=>{throw error;};
+    await c.handleImport(event);
+    assert.equal(owner.getSnapshot(),before);
+    assert.equal(c.undoStack,undo);assert.equal(c.redoStack,redo);
+    assert.equal(c.errorMessage,error.message);assert.equal(event.target.value,'');
+    lockHarness.render();assert.equal(lockHarness.lock.isImporting,false);
+    const retry=c.importLock.acquire();assert.ok(retry);c.importLock.release(retry);
+  });
+}
+
+test('native interaction capture blocks keyboard, pointer, navigation and input before the modal commit; normal events resume',()=>{
+  const owner=api.createProjectOwner(),h=importLockHarness(owner),token=h.lock.acquire();
+  assert.equal(h.dialog.open,false,'React commit is deliberately deferred');
+  let deliveries=0;
+  for(const type of ['keydown','keyup','pointerdown','pointerup','pointermove','mousedown','mouseup','mousemove',
+    'click','dblclick','contextmenu','wheel','touchstart','touchmove','touchend','beforeinput','input','change','submit',
+    'dragstart','dragover','drop','focusin','focusout','drawing:activate-dimension']) {
+    const listener=()=>deliveries++;
+    h.window.addEventListener(type,listener);
+    const event=new Event(type,{cancelable:true});
+    assert.equal(h.window.dispatchEvent(event),false,type);
+    assert.equal(deliveries,0,type);
+    h.window.removeEventListener(type,listener);
+  }
+  assert.equal(h.lock.acquire(),null);
+  h.render();assert.equal(h.lock.isImporting,true);assert.equal(h.dialog.open,true);
+  h.lock.release(token);h.render();assert.equal(h.dialog.open,false);assert.equal(h.lock.isImporting,false);
+  h.window.addEventListener('keydown',()=>deliveries++);
+  assert.equal(h.window.dispatchEvent(new Event('keydown',{cancelable:true})),true);assert.equal(deliveries,1);
+  h.unmount();assert.equal(h.lock.acquire(),null);
+});
+
+test('stale/rejected import resets input and permits the exact same File to be selected again',async()=>{
+  const {projectOwner:owner,context:c,lockHarness}=importHarness();
+  const read=deferred(),event=eventFor(read.promise),file=event.target.files[0];
+  const job=c.handleImport(event);lockHarness.render();
+  owner.setBoxField('selectedEdgeId','newer data');const committed=owner.getSnapshot();
+  read.resolve('stale');await job;
+  assert.equal(owner.getSnapshot(),committed);assert.equal(event.target.value,'');
+  lockHarness.render();assert.equal(lockHarness.lock.isImporting,false);
+  file.text=()=>Promise.resolve('retry');event.target.value='chosen.svg';
+  await c.handleImport(event);
+  assert.equal(owner.getSnapshot().box.svgModel.content,'retry');assert.equal(event.target.value,'');
+});
+
+test('publication refusal leaves history/project unchanged and releases the lock',async()=>{
+  const {projectOwner:owner,context:c}=importHarness();const before=owner.getSnapshot();
+  owner.publishBoxImport=()=>false;
+  const event=eventFor(Promise.resolve('rejected'));
+  await c.handleImport(event);assert.equal(owner.getSnapshot(),before);assert.equal(event.target.value,'');
+  const retry=c.importLock.acquire();assert.ok(retry);c.importLock.release(retry);
+});
+
+test('lock stays active through coherent publication and Panel Manager/history transitions',async()=>{
+  const {projectOwner:owner,context:c}=importHarness();
+  c.parseSvgDocument=()=>({...api.createInitialBoxState().svgModel,panels:[{id:'imported-panel',innerContours:[]}]});
+  const original=c.createPanelManagerStateFromModel;
+  c.createPanelManagerStateFromModel=model=>{assert.equal(c.importLock.acquire(),null);return original(model);};
+  owner.subscribe(()=>assert.equal(c.importLock.acquire(),null,'publication is locked'));
+  for(const name of ['setCanvasViewBox','setActivePanelId','setActiveHoleId','setIsPanelManagerModalOpen',
+    'setActiveTool','setUndoStack','setRedoStack','setExpandedTBGroups','setExpandedSGroups','setErrorMessage']) {
+    const setter=c[name];c[name]=value=>{assert.equal(c.importLock.acquire(),null,name);setter(value);};
+  }
+  await c.handleImport(eventFor(Promise.resolve('panel')));
+  assert.equal(c.isPanelManagerModalOpen,true);assert.ok(owner.getSnapshot().box.panelManager.panels['imported-panel']);
+  assert.equal(c.undoStack.length,0);assert.equal(c.redoStack.length,0);
+  const next=c.importLock.acquire();assert.ok(next);c.importLock.release(next);
+});
+
+test('old release cannot unlock a newer import; unmounted successful read cannot publish or set UI state',async()=>{
+  const {projectOwner:owner,context:c,lockHarness}=importHarness();
+  const old=c.importLock.acquire();c.importLock.release(old);
+  const next=c.importLock.acquire();c.importLock.release(old);assert.equal(c.importLock.acquire(),null);
+  c.importLock.release(next);
+  const read=deferred(),job=c.handleImport(eventFor(read.promise)),before=owner.getSnapshot();
+  lockHarness.unmount();const calls=lockHarness.setters.length;
+  for(const name of ['setErrorMessage','setUndoStack','setRedoStack','setCanvasViewBox','setIsPanelManagerModalOpen'])
+    c[name]=()=>assert.fail(`${name} after unmount`);
+  read.resolve('late success');await job;
+  assert.equal(owner.getSnapshot(),before);assert.equal(lockHarness.setters.length,calls);
+});
+
+test('owner sequence guard still rejects superseded publication, and stale cleanup never clears a later selection',async()=>{
+  const {projectOwner:owner,context:c}=importHarness();
+  const read=deferred(),event=eventFor(read.promise),job=c.handleImport(event);
+  assert.equal(event.target.value,'');
+  const newer=owner.beginBoxImport(),before=owner.getSnapshot();
+  event.target.value='later selection.svg';
+  read.resolve('superseded');await job;
+  assert.equal(owner.getSnapshot(),before);assert.equal(event.target.value,'later selection.svg');
+  assert.equal(owner.publishBoxImport(newer,api.createInitialBoxState()),true,'UI cleanup does not invalidate a newer owner token');
+  const olderToken=owner.beginBoxImport(),newerToken=owner.beginBoxImport();
+  assert.equal(owner.publishBoxImport(olderToken,api.createInitialBoxState()),false);
+  assert.equal(owner.publishBoxImport(newerToken,api.createInitialBoxState()),true);
 });
 
 test('ordinary edits structurally share source/output; no capture/projection/full-project clone in the production hot path',()=>{

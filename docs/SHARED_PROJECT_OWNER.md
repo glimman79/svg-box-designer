@@ -84,11 +84,12 @@ Chromium Finish/Undo/navigate/Redo flow cover this boundary.
 
 ## Runtime lifecycle and preserved legacy limits
 
-- SVG reads use an import sequence plus monotonic BOX publication revision. A newer read,
-  intervening BOX publication, BOX Clear or App cleanup prevents a late success/error
-  from publishing. Drawing edits and ordinary module navigation do not invalidate an
-  otherwise current import. Revision checks also reject edit/restore-to-identical-object
-  races. Parsing failures preserve the committed project.
+- SVG import now exclusively locks application interaction until success or failure,
+  as explicitly approved for the PR #638 correction. The existing owner import sequence
+  and monotonic BOX revision remain unchanged: external newer imports, BOX publications,
+  Clear or App cleanup reject stale success/error callbacks, including an
+  edit/restore-to-identical-object race. Ordinary Drawing edits and navigation are
+  blocked by the UI while importing; they do not become owner-revision dependencies.
 - `File.text()` itself is not cancellable; invalidated reads can retain their captured
   BOX references until settlement, but cannot publish.
 - This is a narrow import guard, not the later global pending-action/attempt protocol.
@@ -107,6 +108,36 @@ Chromium Finish/Undo/navigate/Redo flow cover this boundary.
   Later BOX transaction-adapter work must review these semantics explicitly.
 - Preview still combines current manufacturing settings with stored geometry. No new
   validity policy, manufacturing algorithm or deferred Arc Undo fix is introduced.
+
+### Exclusive SVG import lifecycle
+
+`useSvgImportLock` owns transient UI state, not project data or history. Admission stores
+the owner's import token in a ref synchronously, before reading the file or scheduling
+the modal. A second admission is rejected. Window capture listeners consult that same
+ref to stop pointer, keyboard, input, focus and activation events before React and
+Drawing's window shortcuts. This covers the selecting event before the modal commits.
+
+A native modal `<dialog>` displays “Importing SVG…” and the wait explanation, with an
+accessible name/description. The app becomes `inert`; the browser's top layer/backdrop
+blocks underlying controls and contains focus. Tab/Escape/shortcuts cannot dismiss or
+bypass the lock. Native modal closing restores focus. Capturing `focusout` also prevents
+the modal's focus change from committing an underlying manufacturing numeric draft.
+There is no cancellation control or workspace redesign.
+
+App captures the `File` and clears the input immediately. No later cleanup writes the
+input, so every outcome permits reselection without erasing a later selection. Parsing,
+PM initialization, view and diagnostic preparation happen before atomic owner
+publication. Accepted import keeps connection definitions and the existing PM/history
+transitions; only success clears BOX history. Failure preserves the committed project
+and both local histories and uses the existing error message. Stale callbacks stay silent.
+`finally` releases only the matching lock after synchronous import transitions. Unmount
+clears UI admission, invalidates owner imports and removes listeners; settled reads then
+publish neither project nor UI updates. The owner remains the only writable project root.
+
+This import-only policy does not implement the future pending-action protocol, global
+history or general asynchronous task management. `File.text()` is still not cancellable;
+a read that never settles continues to show the lock. Parsing is synchronous on the
+main thread; no responsiveness/large-file latency guarantee is added.
 
 ## Performance
 
