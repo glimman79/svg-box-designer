@@ -76,7 +76,7 @@ assert.strictEqual(moveDimensionPlacement(document, 'missing', 4), document);
 const persistedPlacement = dimension.placement;
 const positivePlacement = { kind: 'linear', offset: 24 };
 const negativePlacement = { kind: 'linear', offset: -24 };
-const beginDrag = (pointerId = 7) => beginDimensionAnnotationDragSession(pointerId, dimension, { x: 10, y: 10 });
+const beginDrag = (pointerId = 7) => beginDimensionAnnotationDragSession(pointerId, dimension, { x: 10, y: 10 }, document);
 let drag = beginDrag();
 assert.strictEqual(dimensionPlacementForDisplay(dimension, drag), persistedPlacement, 'a new drag initially displays persisted placement');
 drag = updateDimensionAnnotationDragSession(drag, 8, 1, { x: 10, y: 60 }, negativePlacement, 4);
@@ -126,7 +126,7 @@ for (const [kind, placement] of [
   ['CIRCULAR_SIZE diameter', { kind: 'radial', anchor: { x: -5, y: -6 } }],
 ]) {
   const familyDimension = { ...dimension, id: kind, placement };
-  const familyDrag = beginDimensionAnnotationDragSession(11, familyDimension, { x: 0, y: 0 });
+  const familyDrag = beginDimensionAnnotationDragSession(11, familyDimension, { x: 0, y: 0 }, document);
   assert.strictEqual(dimensionPlacementForDisplay(familyDimension, cancelDimensionAnnotationDragSession(familyDrag, 11)), placement, `${kind} shares canceled-preview placement authority`);
 }
 

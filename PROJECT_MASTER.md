@@ -1,5 +1,13 @@
 # SVG Box Designer — Project Master
 
+## Stage C PR 4 Drawing transaction checkpoint
+
+The review branch connects accepted Drawing edits to the shared project owner through
+the pure history core. A completed edit has one complete before/after transition.
+Drawing keeps its 100-step local controls and BOX keeps its 10-step local controls.
+The application retains no project-wide timeline between edits. Stage C remains open.
+[Ownership, action boundaries and validation](docs/DRAWING_TRANSACTION_ADAPTER.md).
+
 ## Stage C PR 3 — Pure transaction/history foundation (2026-11-18)
 
 The task branch adds an independently tested `ProjectStateCapture` history core with

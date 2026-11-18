@@ -158,6 +158,8 @@
     "test:project-owner": "rm -rf .test-build/project-owner && tsc --ignoreConfig tests/fixtures/project-owner.ts --target es2022 --module commonjs --outDir .test-build/project-owner --skipLibCheck --esModuleInterop --strict && node -e 'require(\"fs\").writeFileSync(\".test-build/project-owner/package.json\", JSON.stringify({type:\"commonjs\"}))' && node --test tests/project-owner.test.cjs",
     "test:project-owner:browser": "node tests/project-owner.browser.cjs",
     "test:svg-import-lock:browser": "node tests/svg-import-lock.browser.cjs",
+    "test:drawing-transaction-adapter": "rm -rf .test-build/drawing-transaction-adapter && tsc --ignoreConfig tests/fixtures/project-owner.ts src/app/drawingConstraintsTool.ts src/app/drawingDirectManipulation.ts --target es2022 --module commonjs --outDir .test-build/drawing-transaction-adapter --skipLibCheck --esModuleInterop --strict && node -e 'require(\"fs\").writeFileSync(\".test-build/drawing-transaction-adapter/package.json\", JSON.stringify({type:\"commonjs\"}))' && node --test tests/drawing-transaction-adapter.test.cjs",
+    "test:drawing-transaction-adapter:browser": "node tests/drawing-transaction-adapter.browser.cjs",
     "test:project-history": "rm -rf .test-build/project-history && tsc --ignoreConfig tests/fixtures/project-history.ts tests/types/project-history.ts --target es2022 --module commonjs --outDir .test-build/project-history --skipLibCheck --esModuleInterop --strict && node -e 'require(\"fs\").writeFileSync(\".test-build/project-history/package.json\", JSON.stringify({type:\"commonjs\"}))' && node --test tests/project-history.test.cjs"
   },
   "dependencies": {

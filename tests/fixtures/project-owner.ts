@@ -2,6 +2,7 @@ export * from './project-state';
 export * from '../../src/app/projectOwner';
 export * from '../../src/app/drawingDocumentMutation';
 export * from '../../src/app/drawingHistory';
+export * from '../../src/app/drawingTransactionAdapter';
 export * from '../../src/app/panelManagerModel';
 export * from '../../src/app/projectSettings';
 export * from '../../src/app/projectDefaults';

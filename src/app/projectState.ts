@@ -79,7 +79,8 @@ export const projectDrawingState = (capture: DrawingStateCapture): DrawingDocume
   structuredClone(capture) as DrawingDocumentV2
 );
 
-export const captureBoxState = (source: BoxStateSource): BoxStateCapture => captureData({
+/** Group existing authority and restoration fields without projecting or cloning their values. */
+export const boxStateFields = (source: BoxStateSource) => ({
   data: {
     svgModel: source.svgModel,
     edgeAssignments: source.edgeAssignments,
@@ -101,6 +102,8 @@ export const captureBoxState = (source: BoxStateSource): BoxStateCapture => capt
     selectedEdgeId: source.selectedEdgeId,
   },
 });
+
+export const captureBoxState = (source: BoxStateSource): BoxStateCapture => captureData(boxStateFields(source));
 
 /**
  * Project back to owner-facing values. The snapshot is retained whole, including

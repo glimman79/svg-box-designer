@@ -1,5 +1,13 @@
 # SVG Box Designer — Project History
 
+## Stage C PR 4 — Drawing transaction adapter (2026-11-18)
+
+Following #637–#639, the review branch uses the shared owner as the baseline for each
+accepted Drawing edit. A one-action project transition can be inspected and released
+while the existing local Drawing stack continues to own Undo/Redo. This keeps a local
+restore or BOX edit from leaving a stale project cursor.
+[Design and validation](docs/DRAWING_TRANSACTION_ADAPTER.md).
+
 ## Stage C PR 3 — Pure global history core (2026-11-18)
 
 After merged #637/#638, this task branch adds complete immutable project frames and a

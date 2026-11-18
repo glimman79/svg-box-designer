@@ -2,6 +2,14 @@
 
 > **Status: current orientation and future-boundary map.** [PROJECT_MASTER.md](PROJECT_MASTER.md) is the authority for current architecture. [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) owns the detailed approved future requirements; its target is not implemented. Historical pipeline snapshots and investigations are indexed in [docs/README.md](docs/README.md).
 
+## Stage C PR 4 Drawing publication boundary
+
+DrawingWorkspace submits each completed model edit to an App-lifetime adapter. The
+adapter stages complete frames with the history core and compares the original owner
+root before publishing. Owner subscribers see the final document and its matching local
+Undo step together. The UI releases the provisional transition after each action.
+[Drawing adapter design and validation](docs/DRAWING_TRANSACTION_ADAPTER.md).
+
 ## Stage C PR 3 pure history checkpoint
 
 The task branch adds `projectHistory.ts`: complete captured frames, synchronous nested

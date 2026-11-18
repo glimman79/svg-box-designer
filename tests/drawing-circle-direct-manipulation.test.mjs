@@ -204,7 +204,7 @@ test('workspace routes center before body and shares threshold/cancel/history li
   assert.match(arbitration, /createCircleRadiusDragTarget\(document, entity\.id, pointer\)/);
   assert.match(source, /DRAWING_DRAG_THRESHOLD_PX/);
   assert.match(source, /candidate: candidate \?\? geometryDrag\.candidate/);
-  assert.match(source, /if \(geometryDrag\) \{ cancelGeometryDrag\(\); return; \}/);
+  assert.match(source, /if \(geometryDragRef\.current\) \{ cancelGeometryDrag\(\); return; \}/);
   assert.match(source, /onPointerCancel=.*cancelGeometryDrag\(event\.pointerId\)/s);
   assert.match(source, /onLostPointerCapture=.*cancelGeometryDrag\(event\.pointerId\)/s);
   assert.match(source, /session\.exceeded && session\.candidate !== session\.startDocument/);

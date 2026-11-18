@@ -1,5 +1,12 @@
 # Unreleased
 
+## Stage C PR 4 — Drawing transaction adapter (review pending)
+
+- Added complete immutable before/after frames for accepted Drawing commands and drag
+  releases, with guarded owner publication and the existing local Undo/Redo controls.
+- Added adapter and Chromium regressions for grouping, stale releases, restoration and
+  sharing of stored BOX geometry. [Details](docs/DRAWING_TRANSACTION_ADAPTER.md).
+
 ## Stage C PR 3 — Global transaction/history core (review pending)
 
 - Added a pure complete-frame history engine with synchronous nested transactions,

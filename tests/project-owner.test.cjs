@@ -89,7 +89,8 @@ test('coherent nested batches publish once and exceptions roll back; exact resto
 
 test('same-event Drawing mutations and production local Undo/Redo read the owner and preserve all Sketch identities',()=>{
   const owner=api.createProjectOwner(api.makePopulatedProjectState()), before=owner.getSnapshot(), box=before.box;
-  const c=vm.createContext({...api, documentRef:owner.drawingDocumentRef, historyRef:{current:api.EMPTY_DRAWING_HISTORY},
+  const c=vm.createContext({...api, publishDrawingEdit:api.createDrawingTransactionAdapter(owner).transact, ownedDocumentRef:owner.drawingDocumentRef,
+    cancelPendingDrawingGestures:()=>{}, documentRef:owner.drawingDocumentRef, historyRef:{current:api.EMPTY_DRAWING_HISTORY},
     setDocument:owner.setDrawingDocument, setHistoryRevision:()=>{},setEditingDimensionId:()=>{},setDimensionEditError:()=>{},setSelectedDimensionId:()=>{},setSelectedGeometry:()=>{},setSelectedGeometricConstraintId:()=>{}});
   const transact=production('transactDocument',c,sources[1]), undo=production('undo',c,sources[1]), redo=production('redo',c,sources[1]);
   transact(doc=>api.appendEntityToActiveSketch(doc,{id:'new-a',type:'line',start:{x:30,y:20},end:{x:40,y:20},startPointId:'shared-a',endPointId:'shared-b'}));

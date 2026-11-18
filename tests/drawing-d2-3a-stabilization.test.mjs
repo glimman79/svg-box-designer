@@ -62,6 +62,7 @@ const initialDocument = types.createDrawingDocumentV2();
 initialDocument.sketches[initialDocument.activeSketchId].points.start = { id: 'start', ...start };
 Object.assign(context, {
   historyRef: { current: history.EMPTY_DRAWING_HISTORY }, documentRef: { current: initialDocument },
+  publishDrawingEdit: undefined, ownedDocumentRef: undefined,
   transactDrawingDocument: history.transactDrawingDocument,
   setDocument: (document) => { transactions++; entities = [...topology.resolveActiveSketchLines(document)]; },
   setHistoryRevision: () => {},
@@ -165,7 +166,7 @@ const dragContext = {
   panHandlers: { onPointerMove: () => false, onPointerCancel: () => {} },
   geometryDragRef: { current: null }, boxSelectionRef: { current: null }, dimensionDragRef: { current: null },
   activeTool: 'select', isSegmentTool: false,
-  svgRef: { current: { getScreenCTM: () => ({}) } },
+  svgRef: { current: { getScreenCTM: () => ({}), hasPointerCapture: () => false } },
   clientToModelPoint: (point) => point, DRAWING_DRAG_THRESHOLD_PX: 4,
   solveDrawingDragCandidate: () => { solved++; return candidate; },
   setGeometryDrag: () => {}, setGeometryPreselection: () => {}, resolveDimensionCandidate: () => null,

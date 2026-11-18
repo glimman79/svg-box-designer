@@ -7,6 +7,14 @@ export type DrawingHistory = Readonly<{
   redo: readonly DrawingDocumentV2[];
 }>;
 
+/** A domain updater returns its input for a no-op and null for an explicit rejection. */
+export type DrawingMutation = (current: DrawingDocumentV2) => DrawingDocumentV2 | null;
+export const requireDrawingChange = (command: (current: DrawingDocumentV2) => DrawingDocumentV2): DrawingMutation =>
+  current => {
+    const next = command(current);
+    return next === current ? null : next;
+  };
+
 export const EMPTY_DRAWING_HISTORY: DrawingHistory = { undo: [], redo: [] };
 
 const appendBounded = (stack: readonly DrawingDocumentV2[], document: DrawingDocumentV2) => (

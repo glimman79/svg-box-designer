@@ -63,7 +63,7 @@ test('OK clears only semantic selection while Escape exits Constraints after hig
   assert.match(workspaceSource, /const finishConstraintSelection = \(\) => setSelectedGeometry\(\[\]\)/);
   assert.match(workspaceSource, /drawing-constraints-actions[\s\S]*disabled=\{selectedGeometry\.length === 0\}[\s\S]*onClick=\{finishConstraintSelection\}>OK/);
   assert.match(workspaceSource, /if \(editingDimensionId\)[\s\S]*if \(activeToolRef\.current === 'select' && constraintsPanelOpen\) \{\s*setConstraintsPanelOpen\(false\);\s*setSelectedGeometry\(\[\]\);/);
-  assert.match(workspaceSource, /onClick=\{\(\) => transactDocument\(\(current\) => applyDrawingConstraint\(current, item\)\)\}/, 'constraint application does not clear the selection');
+  assert.match(workspaceSource, /onClick=\{\(\) => transactDocument\(requireDrawingChange\(current => applyDrawingConstraint\(current, item\)\), 'Apply Constraint'\)\}/, 'constraint application does not clear the selection');
 });
 
 test('floating panel defaults from the current frame right edge and retains session state', () => {

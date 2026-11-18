@@ -1,5 +1,12 @@
 # SVG Box Designer roadmap
 
+## Stage C PR 4 — Drawing transaction adapter (review pending)
+
+The Drawing adapter now prepares one complete transition per accepted command or drag
+release. The remaining Stage C work includes BOX transactions, project restoration and
+the global Undo/Redo cutover. Local controls are active during review.
+[Scope and remaining integration](docs/DRAWING_TRANSACTION_ADAPTER.md).
+
 ## Stage C PR 3 — Pure history-core checkpoint (2026-11-18)
 
 Task-branch foundation; review/acceptance pending. Complete captured frames support

@@ -77,6 +77,13 @@ export const createProjectOwner = (initial: ProjectStateSource = createInitialPr
     }
     return result;
   };
+  // A prepared action may publish only at the outer boundary it observed. Even an
+  // empty enclosing batch could subsequently roll back an apparent successful commit.
+  const batchIfCurrent = (expected: ProjectStateSource, publish: () => void): boolean => {
+    if (depth !== 0 || expected !== committed) return false;
+    batch(publish);
+    return true;
+  };
   const update = (mutation: (current: ProjectStateSource) => ProjectStateSource) => batch(() => {
     candidate = mutation(candidate);
   });
@@ -107,7 +114,7 @@ export const createProjectOwner = (initial: ProjectStateSource = createInitialPr
     return true;
   };
 
-  return { getSnapshot, subscribe, update, batch, setDrawingDocument, setBoxField, drawingDocumentRef,
+  return { getSnapshot, subscribe, update, batch, batchIfCurrent, setDrawingDocument, setBoxField, drawingDocumentRef,
     beginBoxImport, isCurrentBoxImport, invalidateBoxImports, publishBoxImport };
 };
 
