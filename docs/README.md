@@ -1,5 +1,8 @@
 # Documentation index and status
 
+- [Global transaction and history core](GLOBAL_HISTORY_CORE.md) — Stage C PR 3 pure API,
+  invariants, immutability and deferred runtime adapters; [validation](GLOBAL_HISTORY_CORE_VALIDATION.md).
+  Global Undo/Redo is not active; review/acceptance pending.
 - [Shared project owner](SHARED_PROJECT_OWNER.md) — Stage C PR 2 ownership implementation, inventory, validation and deferred work; review/acceptance pending.
 
 This directory contains specifications, architecture analyses, diagnostic evidence, and release snapshots created at different stages. **`PROJECT_MASTER.md` at the repository root is the current architecture authority.** The forward-looking product plan is maintained separately in **[`ROADMAP.md`](../ROADMAP.md)**. A report's observations can remain useful even when its proposed next step or “current state” is historical.

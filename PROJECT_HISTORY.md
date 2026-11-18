@@ -1,5 +1,16 @@
 # SVG Box Designer — Project History
 
+## Stage C PR 3 — Pure global history core (2026-11-18)
+
+After merged #637/#638, this task branch adds complete immutable project frames and a
+pure synchronous transaction/history mechanism. An outer logical action produces one
+Undo transition; rejected children/exceptions roll back the entire action. Traversal
+returns exact stored frames with a combined 30-transition limit, preserving generated
+authority without replay. [Design and evidence](docs/GLOBAL_HISTORY_CORE.md).
+Review/acceptance is pending. No runtime cutover, permanent operations or Stage C
+completion is claimed; existing local histories, import behavior and CAD acceptance
+remain unchanged.
+
 ## Stage C PR 2 — Shared project owner (2026-11-17)
 
 Following PR #637’s lossless capture inventory, the task branch moves Drawing and all

@@ -1,5 +1,14 @@
 # SVG Box Designer roadmap
 
+## Stage C PR 3 — Pure history-core checkpoint (2026-11-18)
+
+Task-branch foundation; review/acceptance pending. Complete captured frames support
+synchronous accepted/rejected/no-op transactions, nested rollback and exact Undo/Redo
+with 30 combined transitions. [Design and remaining PR 4–7 work](docs/GLOBAL_HISTORY_CORE.md).
+Global Undo/Redo is not active; local 100/10-entry histories remain unchanged. Runtime
+adapters/cutover, async/lifecycle orchestration, C.2 and UI-4 remain deferred. Stage C
+is not completed; all existing A–G/UI statuses below are unchanged.
+
 ## Stage C PR 2 — Ownership checkpoint (2026-11-17)
 
 Task-branch ownership migration; review and user acceptance pending. One owner wraps the
