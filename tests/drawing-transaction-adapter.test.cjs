@@ -1,0 +1,212 @@
+'use strict';
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const api = require('../.test-build/drawing-transaction-adapter/tests/fixtures/project-owner.js');
+const {applyDrawingConstraint, getDrawingConstraintApplicability} = require('../.test-build/drawing-transaction-adapter/src/app/drawingConstraintsTool.js');
+const {createCircleRadiusDragTarget, createArcCenterDragTarget, solveDrawingDragCandidate} = require('../.test-build/drawing-transaction-adapter/src/app/drawingDirectManipulation.js');
+const {acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION} = require('../.test-build/drawing-transaction-adapter/src/app/drawingArcTool.js');
+const {applyResolvedCircleClick, EMPTY_CIRCLE_INTERACTION} = require('../.test-build/drawing-transaction-adapter/src/app/drawingCircleTool.js');
+const {deleteEntityWithDependentDimensions} = require('../.test-build/drawing-transaction-adapter/src/app/drawingDimension.js');
+const {captureProjectState} = require('../.test-build/drawing-transaction-adapter/src/app/projectState.js');
+
+function setup(initial) {
+  const owner = api.createProjectOwner(initial);
+  const adapter = api.createDrawingTransactionAdapter(owner);
+  const local = {current: api.EMPTY_DRAWING_HISTORY};
+  const run = (action, label = 'Drawing edit') => adapter.transact(local, label, action);
+  return {owner, local, run};
+}
+const line = id => doc => api.appendEntityToActiveSketch(doc, {
+  id, type: 'line', start: {x: 0, y: 0}, end: {x: 10, y: 2},
+  startPointId: id + '-a', endPointId: id + '-b',
+});
+const sketch = document => document.sketches[document.activeSketchId];
+
+test('nested accepted edits publish exactly one complete transition and one local step', () => {
+  const {owner, local, run} = setup(api.makePopulatedProjectState());
+  const before = owner.getSnapshot();
+  let publications = 0;
+  owner.subscribe(() => {
+    publications++;
+    assert.equal(local.current.undo.at(-1), before.drawingDocument);
+    assert.ok(sketch(owner.drawingDocumentRef.current).entities.second);
+  });
+  const result = run([line('first'), [current => {
+    assert.ok(sketch(current).entities.first);
+    assert.equal(owner.getSnapshot(), before);
+    return line('second')(current);
+  }]], 'Two linked edits');
+  assert.equal(result.outcome, 'accepted');
+  const after = owner.getSnapshot();
+  const [entry] = result.history.undo;
+  assert.equal(result.history.undo.length, 1);
+  assert.deepEqual(entry.frame, captureProjectState(before));
+  assert.deepEqual(result.frame, captureProjectState(after));
+  assert.equal(entry.transaction.label, 'Two linked edits');
+  assert.equal(entry.transaction.module, 'drawing');
+  assert.equal(entry.frame.drawingDocument, before.drawingDocument);
+  assert.equal(result.frame.drawingDocument, after.drawingDocument);
+  assert.equal(after.drawingDocument.sketches.beta, before.drawingDocument.sketches.beta);
+  assert.equal(after.drawingDocument.sketchOrder, before.drawingDocument.sketchOrder);
+  assert.equal(after.box, before.box);
+  assert.equal(result.frame.box, entry.frame.box);
+  assert.equal(result.frame.box.data.generatedGeometrySnapshot, before.box.generatedGeometrySnapshot);
+  assert.equal(publications, 1);
+});
+
+test('identity, explicit rejection, nested exceptions and net return to the baseline publish nothing', () => {
+  const {owner, local, run} = setup();
+  const before = owner.getSnapshot();
+  let publications = 0;
+  owner.subscribe(() => publications++);
+  assert.equal(run(doc => doc).outcome, 'noop');
+  assert.equal(run([line('a'), () => before.drawingDocument]).outcome, 'noop');
+  assert.equal(run([line('a'), [() => null, line('ignored')]]).outcome, 'rejected');
+  const error = new Error('mutation failed');
+  assert.equal(run([line('a'), [() => { throw error; }]]).error, error);
+  assert.equal(run(doc => {
+    assert.equal(run(line('inner')).outcome, 'rejected');
+    return line('outer')(doc);
+  }).outcome, 'rejected');
+  assert.equal(publications, 0);
+  assert.equal(owner.getSnapshot(), before);
+  assert.equal(local.current, api.EMPTY_DRAWING_HISTORY);
+});
+
+test('an intervening BOX publication and an open owner savepoint each prevent stale publication', () => {
+  const {owner, local, run} = setup();
+  const before = owner.getSnapshot();
+  const result = run(doc => {
+    owner.setBoxField('selectedEdgeId', 'new selection');
+    return line('stale')(doc);
+  });
+  assert.equal(result.outcome, 'rejected');
+  assert.equal(owner.drawingDocumentRef.current, before.drawingDocument);
+  assert.equal(local.current, api.EMPTY_DRAWING_HISTORY);
+  owner.batch(() => {
+    owner.setBoxField('displayConnectionId', 'new connection');
+    assert.equal(run(line('in batch')).outcome, 'rejected');
+  });
+  const accepted = run(line('fresh'));
+  assert.equal(accepted.frame.box.context.selectedEdgeId, 'new selection');
+  assert.equal(accepted.frame.box.context.displayConnectionId, 'new connection');
+  assert.deepEqual(sketch(accepted.frame.drawingDocument).entityOrder, ['fresh']);
+});
+
+test('subscribers can read the committed edit and immediately start a new action', () => {
+  const {owner, local, run} = setup();
+  owner.subscribe(() => {
+    if (local.current.undo.length === 1) {
+      assert.ok(sketch(owner.drawingDocumentRef.current).entities.first);
+      assert.equal(run(line('second')).outcome, 'accepted');
+    }
+  });
+  const first = run(line('first'));
+  assert.equal(first.outcome, 'accepted');
+  assert.deepEqual(sketch(owner.drawingDocumentRef.current).entityOrder, ['first', 'second']);
+  assert.equal(local.current.undo.at(-1), first.frame.drawingDocument);
+  assert.equal(local.current.undo.length, 2);
+});
+
+test('local restore, branching and the 100-step limit use the current owner as the next baseline', () => {
+  const {owner, local, run} = setup();
+  for (let i = 0; i < 102; i++) assert.equal(run(line('L' + i)).history.undo.length, 1);
+  assert.equal(local.current.undo.length, 100);
+  const restore = op => {
+    const restored = op(local.current, owner.drawingDocumentRef.current);
+    local.current = restored.history;
+    owner.drawingDocumentRef.current = restored.document;
+    return restored.document;
+  };
+  const tip = owner.drawingDocumentRef.current;
+  restore(api.undoDrawingDocument);
+  assert.equal(restore(api.redoDrawingDocument), tip);
+  const branch = restore(api.undoDrawingDocument);
+  const redo = local.current.redo;
+  assert.equal(run(doc => doc).outcome, 'noop');
+  assert.equal(run(() => null).outcome, 'rejected');
+  assert.equal(local.current.redo, redo);
+  const result = run(line('branch'));
+  assert.equal(result.history.undo[0].frame.drawingDocument, branch);
+  assert.equal(result.history.undo.length, 1);
+  assert.equal(local.current.redo.length, 0);
+  assert.equal(sketch(owner.drawingDocumentRef.current).entities.L101, undefined);
+});
+
+test('real Circle/Arc creation, solved modification and deletion preserve the accepted geometry', () => {
+  const {owner, local, run} = setup();
+  const center = applyResolvedCircleClick(EMPTY_CIRCLE_INTERACTION, {x: 0, y: 0}, () => 'circle');
+  assert.equal(center.entity, null);
+  const circle = applyResolvedCircleClick(center.interaction, {x: 10, y: 0}, () => 'circle').entity;
+  run(doc => api.appendCircleToActiveSketch(doc, circle));
+  const before = owner.drawingDocumentRef.current;
+  const pointer = {x: 10, y: 0};
+  const target = createCircleRadiusDragTarget(before, 'circle', pointer);
+  const candidate = solveDrawingDragCandidate(before, target, {x: 5, y: 0}, pointer);
+  const resized = run(() => candidate);
+  assert.equal(resized.outcome, 'accepted');
+  assert.deepEqual(resized.frame.drawingDocument, candidate);
+  assert.ok(Math.abs(sketch(candidate).entities.circle.radius - 15) < 1e-7);
+
+  const endpoint = point => ({point, pointId: null, midpointLineId: null, lineBodyId: null, curveId: null});
+  const first = acceptArcEndpoint(EMPTY_ARC_INTERACTION, endpoint({x: 20, y: 0}));
+  const second = acceptArcEndpoint(first, endpoint({x: 40, y: 0}));
+  assert.equal(commitArcForm(second, {x: 30, y: 0}, 'arc').entity, null);
+  const arc = commitArcForm(second, {x: 30, y: 10}, 'arc').entity;
+  assert.equal(local.current.undo.length, 2);
+  run(doc => api.appendArcToActiveSketch(doc, arc));
+  const arcStart = owner.drawingDocumentRef.current;
+  const moved = solveDrawingDragCandidate(arcStart, createArcCenterDragTarget(arcStart, 'arc'), {x: 3, y: 2});
+  assert.equal(run(() => moved).outcome, 'accepted');
+  assert.deepEqual(owner.drawingDocumentRef.current, moved);
+  assert.equal(run(doc => deleteEntityWithDependentDimensions(doc, 'arc')).outcome, 'accepted');
+  assert.equal(run(doc => deleteEntityWithDependentDimensions(doc, 'arc')).outcome, 'noop');
+  assert.equal(local.current.undo.length, 5);
+});
+
+test('actual Constraint command rejection rolls back earlier siblings', () => {
+  const {owner, run} = setup();
+  run(line('line'));
+  const selection = [{kind: 'line', lineId: 'line'}];
+  const horizontal = api.requireDrawingChange(doc => {
+    const item = getDrawingConstraintApplicability(selection, doc).find(item => item.kind === 'horizontal');
+    return applyDrawingConstraint(doc, item);
+  });
+  const accepted = run(horizontal);
+  assert.equal(accepted.outcome, 'accepted');
+  assert.equal(sketch(accepted.frame.drawingDocument).geometricConstraintOrder.length, 1);
+  const before = owner.getSnapshot();
+  assert.equal(run([line('discarded'), [horizontal]]).outcome, 'rejected');
+  assert.equal(owner.getSnapshot(), before);
+});
+
+test('repeated production edits share BOX source and applied geometry without revisiting their records', () => {
+  const initial = api.makePopulatedProjectState();
+  let visits = 0;
+  const probe = {ownKeys(target) { visits++; return Reflect.ownKeys(target); }};
+  initial.box.svgModel = new Proxy(initial.box.svgModel, probe);
+  initial.box.generatedGeometrySnapshot = new Proxy(initial.box.generatedGeometrySnapshot, probe);
+  const {run} = setup(initial);
+  // Count actual snapshot writes as well as record traversal. A temporary full
+  // copy followed by returning the original would pass identity/clone assertions.
+  const define = Object.defineProperty;
+  let boxFieldCopies = 0;
+  Object.defineProperty = (target, key, descriptor) => {
+    if (key === 'innerMarkup' || key === 'generatedGeometry') boxFieldCopies++;
+    return define(target, key, descriptor);
+  };
+  let first;
+  try { first = run(line('first')); }
+  finally { Object.defineProperty = define; }
+  assert.equal(boxFieldCopies, 0);
+  assert.equal(first.outcome, 'accepted');
+  visits = 0;
+  for (let i = 0; i < 45; i++) {
+    const result = run(line('line-' + i));
+    assert.equal(result.outcome, 'accepted');
+    assert.equal(result.frame.box, first.frame.box);
+    assert.equal(result.frame.box.data.svgModel, initial.box.svgModel);
+    assert.equal(result.frame.box.data.generatedGeometrySnapshot, initial.box.generatedGeometrySnapshot);
+  }
+  assert.equal(visits, 0);
+});

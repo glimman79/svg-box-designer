@@ -46,6 +46,7 @@ import { DEFAULT_WORKSPACE, selectWorkspace, type WorkspaceId } from './app/draw
 import { useCadWheelCapture } from './app/useCadWheelCapture';
 import { useCadPanGesture } from './app/cadInteraction';
 import { createBoxDocumentV1 } from './app/boxDocument';
+import { createDrawingTransactionAdapter } from './app/drawingTransactionAdapter';
 import { createInitialBoxState, createProjectOwner, type ProjectUpdate } from './app/projectOwner';
 import { useSvgImportLock } from './app/useSvgImportLock';
 import type { HistoryControlsProps } from './app/HistoryControls';
@@ -630,6 +631,7 @@ const SelectField = ({ id, label, value, options, onChange }: SelectFieldProps) 
 function App() {
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(DEFAULT_WORKSPACE);
   const [projectOwner] = useState(createProjectOwner);
+  const [drawingTransactions] = useState(() => createDrawingTransactionAdapter(projectOwner));
   const importLock = useSvgImportLock(projectOwner);
   const project = useSyncExternalStore(projectOwner.subscribe, projectOwner.getSnapshot, projectOwner.getSnapshot);
   const { drawingDocument, box } = project;
@@ -2197,7 +2199,7 @@ function App() {
 
       {errorMessage && <div className="notice">{errorMessage}</div>}
 
-      <DrawingWorkspace isActive={activeWorkspace === 'drawing'} document={drawingDocument} viewBox={drawingViewBox} ownedDocumentRef={projectOwner.drawingDocumentRef} setViewBox={setDrawingViewBox} setDocument={setDrawingDocument} constraintsPanelOpen={drawingConstraintsPanelOpen} setConstraintsPanelOpen={setDrawingConstraintsPanelOpen} onHistoryControllerChange={updateDrawingHistoryController} headerToolsHost={drawingToolsHost} />
+      <DrawingWorkspace isActive={activeWorkspace === 'drawing'} document={drawingDocument} viewBox={drawingViewBox} publishDrawingEdit={drawingTransactions.transact} ownedDocumentRef={projectOwner.drawingDocumentRef} setViewBox={setDrawingViewBox} setDocument={setDrawingDocument} constraintsPanelOpen={drawingConstraintsPanelOpen} setConstraintsPanelOpen={setDrawingConstraintsPanelOpen} onHistoryControllerChange={updateDrawingHistoryController} headerToolsHost={drawingToolsHost} />
       <WorkspaceShell active={activeWorkspace === 'construction'} className="workspace" label="SVG connection workspace">
         <aside className="tool-sidebar" aria-label="Tool sidebar">
           {([

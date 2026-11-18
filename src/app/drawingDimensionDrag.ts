@@ -1,9 +1,10 @@
-import type { DrawingDimension } from './drawingTypes';
+import type { DrawingDimension, DrawingDocumentV2 } from './drawingTypes';
 
 export type DimensionAnnotationDragSession = Readonly<{
   pointerId: number;
   id: string;
   startClient: Readonly<{ x: number; y: number }>;
+  startDocument: DrawingDocumentV2;
   startPlacement: DrawingDimension['placement'];
   previewPlacement: DrawingDimension['placement'];
   exceeded: boolean;
@@ -13,10 +14,12 @@ export const beginDimensionAnnotationDragSession = (
   pointerId: number,
   dimension: DrawingDimension,
   startClient: Readonly<{ x: number; y: number }>,
+  startDocument: DrawingDocumentV2,
 ): DimensionAnnotationDragSession => ({
   pointerId,
   id: dimension.id,
   startClient,
+  startDocument,
   startPlacement: dimension.placement,
   previewPlacement: dimension.placement,
   exceeded: false,

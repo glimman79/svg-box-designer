@@ -59,14 +59,25 @@ const snapshot = <T>(value: T, copies = new WeakMap<object, unknown>()): T => {
   if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
     throw new TypeError('Project history accepts plain project data only');
   }
-  const copy = Array.isArray(value) ? new Array(value.length) : Object.create(prototype);
-  copies.set(value, copy);
+  const copy = Array.isArray(value) ? [] : Object.create(prototype);
+  copies.set(value, copy); // Also provides a placeholder for cyclic references.
   let canShare = Object.isFrozen(value);
-  for (const [key, child] of Object.entries(value)) {
+  const entries = Object.entries(value);
+  const store = (key: string, child: unknown) => Object.defineProperty(copy, key,
+    { value: child, enumerable: true, writable: true, configurable: true });
+  for (let index = 0; index < entries.length; index++) {
+    const [key, child] = entries[index];
     const captured = snapshot(child, copies);
-    Object.defineProperty(copy, key, { value: captured, enumerable: true, writable: true, configurable: true });
-    if (captured !== child) canShare = false;
+    if (canShare) {
+      // Audit owner-frozen SVG and manufacturing records without populating
+      // disposable copies. A shallow-frozen input may still require detachment.
+      if (captured === child) continue;
+      for (let prior = 0; prior < index; prior++) store(...entries[prior]);
+      canShare = false;
+    }
+    store(key, captured);
   }
+  if (!canShare && Array.isArray(value)) copy.length = value.length;
   const result: object = canShare ? value : Object.freeze(copy);
   copies.set(value, result);
   immutableNodes.add(result);

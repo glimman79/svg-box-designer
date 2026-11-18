@@ -25,8 +25,8 @@ import { appendDimension, chooseLineDimensionKind, choosePointDimensionKind, cre
 import { candidateForSector, createLineAngleBasis, deriveLineAngleAnnotation } from './drawingLineAngle';
 import { solveDrawingDimensionEdit } from './drawingConstraintSolver';
 import type { HistoryControlsProps } from './HistoryControls';
-import { EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from './drawingHistory';
-import { collectDrawingAuthoringPoints, deriveEntityDefiningPointIds, pointIdForLineEndpoint, removeEntityAndOrphans, resolveActiveSketchLines, resolveArc, resolveCircle, resolveLine } from './drawingTopology.js';
+import { requireDrawingChange, type DrawingHistory, type DrawingMutation, EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from './drawingHistory';
+import { collectDrawingAuthoringPoints, deriveEntityDefiningPointIds, pointIdForLineEndpoint, resolveActiveSketchLines, resolveArc, resolveCircle, resolveLine } from './drawingTopology.js';
 import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcEndpointReference, resolveArcPreview, updateArcPreview, type ArcToolInteraction } from './drawingArcTool.js';
 import { drawingArcPath } from './drawingArcGeometry.js';
 import { circularDimensionEndpoints, resolveCircularSize } from './drawingCircularSize.js';
@@ -148,6 +148,7 @@ export { routeDrawingGeometryPointerSelection } from './drawingGeometrySelection
 export function DrawingWorkspace({
   document,
   ownedDocumentRef,
+  publishDrawingEdit,
   setDocument,
   viewBox,
   setViewBox,
@@ -159,6 +160,7 @@ export function DrawingWorkspace({
 }: {
   isActive?: boolean;
   document: DrawingDocumentV2;
+  publishDrawingEdit?: (local: { current: DrawingHistory }, label: string, edit: DrawingMutation) => { outcome: 'accepted' | 'noop' | 'rejected' };
   /** Read/write accessor into the application owner; standalone callers retain the local adapter. */
   ownedDocumentRef?: { current: DrawingDocumentV2 };
   setDocument: Dispatch<SetStateAction<DrawingDocumentV2>>;
@@ -277,7 +279,6 @@ export function DrawingWorkspace({
   drawingSnapRef.current = drawingSnap;
   if (!ownedDocumentRef) documentRef.current = document;
   boxSelectionRef.current = boxSelection;
-  geometryDragRef.current = geometryDrag;
 
   const setDimensionDragSession = (session: DimensionAnnotationDragSession | null) => {
     dimensionDragRef.current = session;
@@ -294,10 +295,19 @@ export function DrawingWorkspace({
   };
 
   const cancelGeometryDrag = (pointerId?: number) => {
-    if (pointerId !== undefined && geometryDragRef.current?.pointerId !== pointerId) return;
+    const session = geometryDragRef.current;
+    if (!session || (pointerId !== undefined && session.pointerId !== pointerId)) return;
     geometryDragRef.current = null;
     setGeometryDrag(null);
+    if (svgRef.current?.hasPointerCapture(session.pointerId)) svgRef.current.releasePointerCapture(session.pointerId);
   };
+
+  useLayoutEffect(() => {
+    if (!isActive) {
+      cancelGeometryDrag();
+      cancelDimensionDrag();
+    }
+  }, [isActive]);
 
   const endBoxSelection = (releaseCapture = true) => {
     const session = boxSelectionRef.current;
@@ -307,12 +317,17 @@ export function DrawingWorkspace({
     if (releaseCapture && session && svg?.hasPointerCapture(session.pointerId)) svg.releasePointerCapture(session.pointerId);
   };
 
-  const transactDocument = (update: (current: DrawingDocumentV2) => DrawingDocumentV2) => {
-    const result = transactDrawingDocument(historyRef.current, documentRef.current, update);
+  const transactDocument = (update: DrawingMutation, label: string) => {
+    if (publishDrawingEdit) {
+      const result = publishDrawingEdit(historyRef, label, update);
+      if (result.outcome === 'accepted') setHistoryRevision(revision => revision + 1);
+      return;
+    }
+    const result = transactDrawingDocument(historyRef.current, documentRef.current, current => update(current) ?? current);
     if (!result.changed) return;
     historyRef.current = result.history;
     documentRef.current = result.document;
-    setDocument(result.document);
+    if (!ownedDocumentRef) setDocument(result.document);
     setHistoryRevision((revision) => revision + 1);
   };
 
@@ -626,7 +641,8 @@ export function DrawingWorkspace({
         acceptedInteraction.startLineId || acceptedLineBodyId
           ? { startLineId: acceptedInteraction.startLineId ?? undefined, endLineId: acceptedLineBodyId ?? undefined } : null,
         acceptedInteraction.startMidpointLineId || acceptedMidpointLineId
-          ? { startLineId: acceptedInteraction.startMidpointLineId ?? undefined, endLineId: acceptedMidpointLineId ?? undefined } : null));
+          ? { startLineId: acceptedInteraction.startMidpointLineId ?? undefined, endLineId: acceptedMidpointLineId ?? undefined } : null),
+        tool === 'line' ? 'Create Line' : 'Create Profile segment');
       if (tool === 'line') {
         setCadCursor(null);
         setToolLifecycle((current) => finishDrawingConstruction(current));
@@ -692,7 +708,7 @@ export function DrawingWorkspace({
 
   const exitActiveTool = () => {
     if (boxSelectionRef.current) { endBoxSelection(); return; }
-    if (geometryDrag) { cancelGeometryDrag(); return; }
+    if (geometryDragRef.current) { cancelGeometryDrag(); return; }
     if (dimensionDragRef.current) { cancelDimensionDrag(); return; }
     if (editingDimensionId) { setEditingDimensionId(null); setDimensionEditError(null); return; }
     if (activeToolRef.current === 'select' && constraintsPanelOpen) {
@@ -803,7 +819,7 @@ export function DrawingWorkspace({
         const preview = dimensionTool.dimension;
         if (preview.kind === 'CIRCULAR_SIZE') {
           const committed = { ...preview, id: createDimensionId(), placement: { kind: 'radial' as const, anchor: point } };
-          transactDocument((current) => appendDimension(current, committed));
+          transactDocument((current) => appendDimension(current, committed), 'Create Dimension');
           const nextLifecycle = finishDrawingConstruction(toolLifecycle); setToolLifecycle(nextLifecycle);
           setDimensionTool(nextLifecycle.activeTool === 'dimension' ? { phase: 'waitingForFirstTarget' } : { phase: 'inactive' }); setDimensionPreselection(null); return;
         }
@@ -811,14 +827,14 @@ export function DrawingWorkspace({
           const first = resolveDimensionLineReference(activeSketch, preview.references[0]), second = resolveDimensionLineReference(activeSketch, preview.references[1]);
           const refreshed = first && second ? createLineToLineAngleDimension(first, second, point, createDimensionId()) : null;
           if (!refreshed) return;
-          transactDocument((current) => appendDimension(current, refreshed));
+          transactDocument((current) => appendDimension(current, refreshed), 'Create Dimension');
           const nextLifecycle = finishDrawingConstruction(toolLifecycle); setToolLifecycle(nextLifecycle);
           setDimensionTool(nextLifecycle.activeTool === 'dimension' ? { phase: 'waitingForFirstTarget' } : { phase: 'inactive' }); setDimensionPreselection(null); return;
         }
         if (preview.kind === 'LINE_TO_LINE_DISTANCE') {
           const first = resolveDimensionLineReference(activeSketch, preview.references[0]), second = resolveDimensionLineReference(activeSketch, preview.references[1]);
           const refreshed = first && second ? createLinePairDimension(first, second, point, createDimensionId()) : null; if (!refreshed || refreshed.kind !== 'LINE_TO_LINE_DISTANCE') return;
-          transactDocument((current) => appendDimension(current, refreshed)); const nextLifecycle = finishDrawingConstruction(toolLifecycle); setToolLifecycle(nextLifecycle); setDimensionTool(nextLifecycle.activeTool === 'dimension' ? { phase: 'waitingForFirstTarget' } : { phase: 'inactive' }); setDimensionPreselection(null); return;
+          transactDocument((current) => appendDimension(current, refreshed), 'Create Dimension'); const nextLifecycle = finishDrawingConstruction(toolLifecycle); setToolLifecycle(nextLifecycle); setDimensionTool(nextLifecycle.activeTool === 'dimension' ? { phase: 'waitingForFirstTarget' } : { phase: 'inactive' }); setDimensionPreselection(null); return;
         }
         const offsetLine = preview.kind === 'POINT_TO_LINE_DISTANCE' ? resolveDimensionLineReference(activeSketch, preview.references[1]) : (() => { const a = resolveDrawingPointReference(activeSketch, preview.references[0]), b = resolveDrawingPointReference(activeSketch, preview.references[1]); return a && b ? { id: '', type: 'line' as const, startPointId: '', endPointId: '', start: a, end: b } : null; })();
         if (!offsetLine) return;
@@ -827,7 +843,7 @@ export function DrawingWorkspace({
           ? pointToLineDimensionOffset(pointReference, offsetLine, point)
           : dimensionOffset(offsetLine, point, preview.kind);
         const committed = { ...preview, id: createDimensionId(), placement: { kind: 'linear' as const, offset } };
-        transactDocument((current) => appendDimension(current, committed));
+        transactDocument((current) => appendDimension(current, committed), 'Create Dimension');
         const nextLifecycle = finishDrawingConstruction(toolLifecycle);
         setToolLifecycle(nextLifecycle);
         setDimensionTool(nextLifecycle.activeTool === 'dimension' ? { phase: 'waitingForFirstTarget' } : { phase: 'inactive' });
@@ -883,7 +899,9 @@ export function DrawingWorkspace({
       const effectivePoint = placement.position.point;
       const endpointPointId = placement.position.kind === 'endpoint' ? placement.position.pointId : null;
       const lineBodyId = placement.position.kind === 'line-body' ? placement.position.entityId : null;
+      const acceptedDocument = documentRef.current;
       scheduleDrawingProfileCommit(pendingProfileClickRef, window, () => {
+        if (documentRef.current !== acceptedDocument) return;
         if (placement.position.kind === 'midpoint') commitSegmentPlacement('profile', effectivePoint, endpointPointId, placement.interaction,
           undefined, placement.position.entityId);
         else commitSegmentPlacement('profile', effectivePoint, endpointPointId, placement.interaction, lineBodyId, undefined);
@@ -914,7 +932,7 @@ export function DrawingWorkspace({
       segmentInteractionRef.current = EMPTY_LINE_SEGMENT_INTERACTION;
       if (result.entity) {
         transactDocument((current) => appendCircleToActiveSketch(current, result.entity!, undefined,
-          circleInteraction.midpointLineId, endpointPointId, circleInteraction.lineBodyId, circleInteraction.centerCurveId));
+          circleInteraction.midpointLineId, endpointPointId, circleInteraction.lineBodyId, circleInteraction.centerCurveId), 'Create Circle');
         setDrawingSnap(null); setCadCursor(null);
         setToolLifecycle((current) => finishDrawingConstruction(current));
       }
@@ -935,7 +953,7 @@ export function DrawingWorkspace({
         const result = commitArcForm(arcInteraction, placement.position.point, id, arcFormCandidate?.pointId ?? null);
         setArcInteraction(result.interaction); arcInteractionRef.current = result.interaction;
         if (result.entity) {
-          transactDocument((current) => appendArcToActiveSketch(current, result.entity!));
+          transactDocument((current) => appendArcToActiveSketch(current, result.entity!), 'Create Arc');
           setDrawingSnap(null); setCadCursor(null); setArcFormCandidate(null); arcFormCandidateRef.current = null;
           setToolLifecycle((current) => finishDrawingConstruction(current));
         }
@@ -1057,11 +1075,13 @@ export function DrawingWorkspace({
     if (session && svg?.hasPointerCapture(session.pointerId)) svg.releasePointerCapture(session.pointerId);
     if (dimensionSession && svg?.hasPointerCapture(dimensionSession.pointerId)) svg.releasePointerCapture(dimensionSession.pointerId);
     boxSelectionRef.current = null;
+    geometryDragRef.current = null;
     dimensionDragRef.current = null;
   }, []);
 
   const selectTool = (tool: DrawingActiveTool, activationMode: 'normal' | 'persistent' = 'normal') => {
     endBoxSelection();
+    cancelGeometryDrag();
     cancelDimensionDrag();
     cancelDrawingProfileCommit(pendingProfileClickRef, window);
     setSegmentInteraction(EMPTY_LINE_SEGMENT_INTERACTION);
@@ -1145,12 +1165,34 @@ export function DrawingWorkspace({
     ? modelToOverlayPoint(editingMiddle, svgRef.current.getScreenCTM()!, overlaySvgRef.current.getScreenCTM()!) : null;
   const editorWidth = dimensionEditorWidthPixels(dimensionDraft);
 
+  const commitDimensionEdit = () => {
+    if (!editingDimensionId) return;
+    const source = documentRef.current;
+    const dimension = source.sketches[source.activeSketchId]?.dimensions[editingDimensionId];
+    if (!dimension) return;
+    const target = parseLinearDimension(dimensionDraft);
+    if (target === null) {
+      setDimensionEditError(dimension.kind === 'LINE_TO_LINE_ANGLE'
+        ? 'Angle must be greater than 0° and less than 180°.' : 'Dimension must be 0 mm or greater.');
+      return;
+    }
+    if (target !== dimension.value && dimensionDraft.trim() !== formatDimensionEditValue(dimension.value)) {
+      const result = solveDrawingDimensionEdit({ document: source, dimensionId: dimension.id, targetValue: target });
+      if (!result.ok) { setDimensionEditError(result.message); return; }
+      transactDocument(current => current === source ? result.document : null, 'Edit Dimension');
+    }
+    setEditingDimensionId(null);
+    setDimensionEditError(null);
+  };
+
   const finishGeometryDrag = (event: PointerEvent<SVGSVGElement>) => {
     const session = geometryDragRef.current;
     if (!session || session.pointerId !== event.pointerId) return;
     geometryDragRef.current = null;
     setGeometryDrag(null);
-    if (session.exceeded && session.candidate !== session.startDocument) transactDocument(() => session.candidate);
+    if (session.exceeded && session.candidate !== session.startDocument) {
+      transactDocument(current => current === session.startDocument ? session.candidate : null, 'Drag geometry');
+    }
     // Selection is independent from solver mobility and remains after both a
     // meaningful drag and a fully constrained/no-op drag.
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
@@ -1175,10 +1217,13 @@ export function DrawingWorkspace({
   };
 
   const finishDimensionDrag = (event: PointerEvent<SVGSVGElement>) => {
+    const startDocument = dimensionDragRef.current?.startDocument;
     const result = finishDimensionAnnotationDragSession(dimensionDragRef.current, event.pointerId);
     if (result.session === dimensionDragRef.current) return;
     setDimensionDragSession(result.session);
-    if (result.commit) transactDocument((current) => moveDimensionPlacement(current, result.commit!.id, result.commit!.placement));
+    const { commit } = result;
+    if (commit) transactDocument(current => current === startDocument
+      ? moveDimensionPlacement(current, commit.id, commit.placement) : null, 'Move Dimension');
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
@@ -1186,20 +1231,35 @@ export function DrawingWorkspace({
     if (event.button !== CAD_PRIMARY_BUTTON || editingDimensionId || activeTool !== 'select') return;
     captureDimensionPointer(captureTarget, event.pointerId);
     setSelectedDimensionId(dimension.id);
-    setDimensionDragSession(beginDimensionAnnotationDragSession(event.pointerId, dimension, { x: event.clientX, y: event.clientY }));
+    setDimensionDragSession(beginDimensionAnnotationDragSession(event.pointerId, dimension, { x: event.clientX, y: event.clientY }, documentRef.current));
+  };
+
+  const cancelPendingDrawingGestures = () => {
+    cancelGeometryDrag();
+    cancelDimensionDrag();
+    cancelDrawingProfileCommit(pendingProfileClickRef, window);
+    setSegmentInteraction(EMPTY_LINE_SEGMENT_INTERACTION);
+    segmentInteractionRef.current = EMPTY_LINE_SEGMENT_INTERACTION;
+    setArcInteraction(EMPTY_ARC_INTERACTION);
+    arcInteractionRef.current = EMPTY_ARC_INTERACTION;
+    setCircleInteraction(EMPTY_CIRCLE_INTERACTION);
+    if (activeToolRef.current === 'dimension') setDimensionTool({ phase: 'waitingForFirstTarget' });
+    setDrawingSnap(null);
+    drawingSnapRef.current = null;
   };
 
   const undo = () => {
     const result = undoDrawingDocument(historyRef.current, documentRef.current);
     if (!result.changed) return;
     historyRef.current = result.history;
+    cancelPendingDrawingGestures();
     documentRef.current = result.document;
     setEditingDimensionId(null);
     setDimensionEditError(null);
     setSelectedDimensionId(null);
     setSelectedGeometry([]);
     setSelectedGeometricConstraintId(null);
-    setDocument(result.document);
+    if (!ownedDocumentRef) setDocument(result.document);
     setHistoryRevision((revision) => revision + 1);
   };
 
@@ -1207,13 +1267,14 @@ export function DrawingWorkspace({
     const result = redoDrawingDocument(historyRef.current, documentRef.current);
     if (!result.changed) return;
     historyRef.current = result.history;
+    cancelPendingDrawingGestures();
     documentRef.current = result.document;
     setEditingDimensionId(null);
     setDimensionEditError(null);
     setSelectedDimensionId(null);
     setSelectedGeometry([]);
     setSelectedGeometricConstraintId(null);
-    setDocument(result.document);
+    if (!ownedDocumentRef) setDocument(result.document);
     setHistoryRevision((revision) => revision + 1);
   };
 
@@ -1231,15 +1292,15 @@ export function DrawingWorkspace({
       else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { if (historyRef.current.redo.length > 0) { event.preventDefault(); redo(); } }
       else if ((event.key === 'Delete' || event.key === 'Backspace') && (hoveredGeometricConstraintId || selectedGeometricConstraintId)) {
         event.preventDefault();
-        transactDocument((current) => deleteGeometricConstraint(current, hoveredGeometricConstraintId ?? selectedGeometricConstraintId!));
+        transactDocument((current) => deleteGeometricConstraint(current, hoveredGeometricConstraintId ?? selectedGeometricConstraintId!), 'Delete Constraint');
         setHoveredGeometricConstraintId(null);
         setSelectedGeometricConstraintId(null);
       }
-      else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedDimensionId) { event.preventDefault(); transactDocument((current) => deleteDimension(current, selectedDimensionId)); setSelectedDimensionId(null); }
+      else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedDimensionId) { event.preventDefault(); transactDocument((current) => deleteDimension(current, selectedDimensionId), 'Delete Dimension'); setSelectedDimensionId(null); }
       else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedGeometry.length === 1 && (selectedGeometry[0].kind === 'line' || selectedGeometry[0].kind === 'circle' || selectedGeometry[0].kind === 'arc')) {
         event.preventDefault();
         const selectedEntityId = selectedGeometry[0].kind === 'line' ? selectedGeometry[0].lineId : selectedGeometry[0].kind === 'circle' ? selectedGeometry[0].circleId : selectedGeometry[0].arcId;
-        transactDocument((current) => selectedGeometry[0].kind === 'line' ? deleteEntityWithDependentDimensions(current, selectedEntityId) : ({ ...current, sketches: { ...current.sketches, [current.activeSketchId]: removeEntityAndOrphans(current.sketches[current.activeSketchId], selectedEntityId) } }));
+        transactDocument(current => deleteEntityWithDependentDimensions(current, selectedEntityId), 'Delete geometry');
         setSelectedGeometry([]);
       }
     };
@@ -1312,7 +1373,7 @@ export function DrawingWorkspace({
               onPointerCancel={(event) => { if (constraintsPanelDragRef.current?.pointerId === event.pointerId) constraintsPanelDragRef.current = null; }}>
               <strong>Constraints</strong><button type="button" aria-label="Close Constraints" onPointerDown={(event) => event.stopPropagation()} onClick={() => setConstraintsPanelOpen(false)}>×</button>
             </div>
-            <div className="drawing-constraints-grid">{getDrawingConstraintApplicability(selectedGeometry, document).map((item) => { const catalog = DRAWING_CONSTRAINT_CATALOG.find(({ kind }) => kind === item.kind)!; return <button key={item.kind} type="button" disabled={!item.enabled} title={item.disabledReason} onClick={() => transactDocument((current) => applyDrawingConstraint(current, item))}>{catalog.label}</button>; })}</div>
+            <div className="drawing-constraints-grid">{getDrawingConstraintApplicability(selectedGeometry, document).map((item) => { const catalog = DRAWING_CONSTRAINT_CATALOG.find(({ kind }) => kind === item.kind)!; return <button key={item.kind} type="button" disabled={!item.enabled} title={item.disabledReason} onClick={() => transactDocument(requireDrawingChange(current => applyDrawingConstraint(current, item)), 'Apply Constraint')}>{catalog.label}</button>; })}</div>
             <div className="drawing-constraints-actions"><button type="button" disabled={selectedGeometry.length === 0} onClick={finishConstraintSelection}>OK</button></div>
           </div>}
           <svg
@@ -1541,7 +1602,7 @@ export function DrawingWorkspace({
               width={selectionBoxRect.maxX - selectionBoxRect.minX} height={selectionBoxRect.maxY - selectionBoxRect.minY} />}
           </svg>
           <svg ref={overlaySvgRef} className="drawing-label-overlay" viewBox={`0 0 ${viewport.width} ${viewport.height}`} aria-label="Model coordinate scale">
-            {editingDimension && editorAnchor && <foreignObject className="drawing-dimension-editor-frame" x={editorAnchor.x - editorWidth / 2} y={editorAnchor.y - DIMENSION_EDITOR_HEIGHT_PX + 2} width={editorWidth} height={DIMENSION_EDITOR_HEIGHT_PX}><input ref={dimensionEditorInputRef} className="drawing-dimension-editor" value={dimensionDraft} aria-label={editingDimension.kind === 'LINE_TO_LINE_ANGLE' ? 'Dimension value in degrees' : 'Dimension value in millimetres'} onChange={(event) => { setDimensionDraft(event.target.value); setDimensionEditError(null); }} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingDimensionId(null); setDimensionEditError(null); } if (event.key === 'Enter') { const parsed = parseLinearDimension(dimensionDraft); if (parsed === null) { setDimensionEditError(editingDimension.kind === 'LINE_TO_LINE_ANGLE' ? 'Angle must be greater than 0° and less than 180°.' : 'Dimension must be 0 mm or greater.'); return; } const result = solveDrawingDimensionEdit({ document, dimensionId: editingDimension.id, targetValue: parsed }); if (!result.ok) { setDimensionEditError(result.message); return; } transactDocument(() => result.document); setEditingDimensionId(null); setDimensionEditError(null); } }} /></foreignObject>}
+            {editingDimension && editorAnchor && <foreignObject className="drawing-dimension-editor-frame" x={editorAnchor.x - editorWidth / 2} y={editorAnchor.y - DIMENSION_EDITOR_HEIGHT_PX + 2} width={editorWidth} height={DIMENSION_EDITOR_HEIGHT_PX}><input ref={dimensionEditorInputRef} className="drawing-dimension-editor" value={dimensionDraft} aria-label={editingDimension.kind === 'LINE_TO_LINE_ANGLE' ? 'Dimension value in degrees' : 'Dimension value in millimetres'} onChange={(event) => { setDimensionDraft(event.target.value); setDimensionEditError(null); }} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingDimensionId(null); setDimensionEditError(null); } if (event.key === 'Enter') commitDimensionEdit(); }} /></foreignObject>}
             {overlayGeometry && overlayGeometry.origin.y >= 0 && overlayGeometry.origin.y <= viewport.height && overlayGeometry.xLabels.filter(({ value }) => value !== 0).map((label) => (
               <text className="drawing-coordinate-label drawing-x-coordinate" data-label-side="below" key={`x-${label.value}`} x={label.anchor.x} y={label.anchor.y + 15} textAnchor="middle">{label.value}</text>
             ))}

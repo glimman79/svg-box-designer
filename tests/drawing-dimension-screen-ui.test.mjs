@@ -71,5 +71,5 @@ assert.doesNotMatch(workspace, /autoFocus className="drawing-dimension-editor"/,
 assert.match(workspace, /if \(dimension\.role === 'reference'\) return;[\s\S]*setEditingDimensionId\(dimension\.id\)/, 'reference dimensions remain non-editable');
 assert.match(workspace, /dimensionTarget && activeTool !== 'select' && \(explicitDimensionValueTarget \|\| activeTool !== 'dimension'\)/, 'Select sends value and line surfaces through root semantic arbitration while other tools retain isolation');
 assert.match(workspace, /event\.key === 'Escape'[\s\S]*setEditingDimensionId\(null\)/, 'Escape retains the cancel path');
-assert.match(workspace, /event\.key === 'Enter'[\s\S]*solveDrawingDimensionEdit\([\s\S]*transactDocument\(\(\) => result\.document\)/, 'Enter retains the solver-backed transaction path');
+assert.match(workspace, /event\.key === 'Enter'\) commitDimensionEdit\(\)/, 'Enter submits through the Dimension edit handler');
 console.log('Drawing Dimension screen UI checks passed.');
