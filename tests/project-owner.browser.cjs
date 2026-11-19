@@ -38,6 +38,29 @@ const assert=require('node:assert/strict');
       await tool('MFG').click();await edit('#manufacturing-kerf','0.25');await action('Apply').click();
       assert.notEqual(await contours(),output);await undo().click();assert.equal(await contours(),output);
       await redo().click();assert.notEqual(await contours(),output);
+      await undo().click();
+      const kerf=page.locator('#manufacturing-kerf');
+      const previousKerf=await kerf.inputValue();
+      await kerf.fill('0.42');await kerf.press('Escape');
+      assert.equal(await kerf.inputValue(),previousKerf);
+      await kerf.fill(previousKerf+'0');await kerf.press('Enter');
+      assert.equal(await redo().isEnabled(),true,'cancel and equivalent normalized commit preserve Redo');
+      await redo().click();assert.equal(await kerf.inputValue(),'0.25');
+
+      if(name==='S'){
+        await tool('S').click();await edge(2);await edge(6);
+        await undo().click(); // A normal in-progress S group with only its first assignment.
+        await history.getByRole('button',{name:'Panel Manager, opens Panel Manager panel',exact:true}).click();
+        await edit('#pm-panel-thickness-panel-1','5');
+        const acceptedContours=await contours();
+        await action('Apply').click();
+        assert.match(await page.locator('.notice:not(.inline-notice)').innerText(),/one S-A edge and one S-B edge/);
+        assert.equal(await contours(),acceptedContours);
+        assert.equal(await action('Apply').isEnabled(),true,'thickness remains pending');
+        assert.equal(await redo().isEnabled(),true,'failed generation preserves the second edge on Redo');
+        await redo().click();
+        console.log('PASS incomplete second S connection: rejected PM Apply preserves accepted contours, pending thickness and Redo');
+      }
       console.log(`PASS ${name}: actual SVG import, PM thickness edit/Apply, assignment, property edits, Geometry Apply, Finish, local Undo/Redo, manufacturing settings/Apply`);
     }
     assert.deepEqual(errors,[]);

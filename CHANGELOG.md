@@ -1,5 +1,10 @@
 # Unreleased
 
+## Stage C PR 5 — BOX transaction boundary (review pending)
+
+- SVG replacement, Panel Manager and manufacturing edits now prepare complete project transitions.
+- Failed Apply preserves accepted geometry and both local stacks. Committing an unchanged manufacturing value preserves Redo. [Design, tests and manual checks](docs/BOX_TRANSACTION_ADAPTER.md).
+
 ## Stage C PR 4 — Drawing transaction adapter (review pending)
 
 - Added complete immutable before/after frames for accepted Drawing commands and drag

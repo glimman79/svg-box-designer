@@ -1,5 +1,12 @@
 # SVG Box Designer — Project History
 
+## Stage C PR 5 — BOX source, Panel Manager and manufacturing (2026-11-18)
+
+After #637–#640, BOX source replacement and Apply use the shared owner and the
+one-action history lifecycle. PM now records its local step after generation and
+composition succeed. The existing 10-step BOX history retains source-free snapshots
+and shares frozen output on capture. [Implementation and verification](docs/BOX_TRANSACTION_ADAPTER.md).
+
 ## Stage C PR 4 — Drawing transaction adapter (2026-11-18)
 
 Following #637–#639, the review branch uses the shared owner as the baseline for each

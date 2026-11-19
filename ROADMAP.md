@@ -1,5 +1,11 @@
 # SVG Box Designer roadmap
 
+## Stage C PR 5 — BOX transaction boundary (review pending)
+
+The branch covers BOX source replacement, Panel Manager and manufacturing. Stage C
+remains open. Independent construction authoring belongs to PR 6. Global restoration
+and Undo/Redo routing belong to PR 7. [Scope and evidence](docs/BOX_TRANSACTION_ADAPTER.md).
+
 ## Stage C PR 4 — Drawing transaction adapter (review pending)
 
 The Drawing adapter now prepares one complete transition per accepted command or drag

@@ -2,6 +2,13 @@
 
 > **Status: current orientation and future-boundary map.** [PROJECT_MASTER.md](PROJECT_MASTER.md) is the authority for current architecture. [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) owns the detailed approved future requirements; its target is not implemented. Historical pipeline snapshots and investigations are indexed in [docs/README.md](docs/README.md).
 
+## Stage C PR 5 BOX publication boundary
+
+SVG import completes its locked read and parsing before opening a synchronous BOX
+transaction. PM and manufacturing Apply build complete candidates against one owner
+root. Validation, geometry generation and composition selection precede publication
+and any local history update. [Production entry points and rollback](docs/BOX_TRANSACTION_ADAPTER.md).
+
 ## Stage C PR 4 Drawing publication boundary
 
 DrawingWorkspace submits each completed model edit to an App-lifetime adapter. The

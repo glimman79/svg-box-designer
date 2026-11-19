@@ -18,15 +18,16 @@ function production(name, context, source=sources[0]) {
   }
   visit(source);
   assert.ok(declaration, `production declaration ${name}`);
-  const code=ts.transpile(`const result = ${declaration.initializer.getText(source).replaceAll('import.meta.env.DEV','false')}; result;`, {target:ts.ScriptTarget.ES2022});
-  return vm.runInContext(code.replace('const result =','var result ='), context);
+  // Run handlers in the same JS realm as their owner and history data, as in App.
+  const code=ts.transpile(`return (${declaration.initializer.getText(source).replaceAll('import.meta.env.DEV','false')});`, {target:ts.ScriptTarget.ES2022});
+  return vm.compileFunction(code, [], {contextExtensions:[context]})();
 }
 function harness(initial=api.makePopulatedProjectState()) {
   const projectOwner=api.createProjectOwner(initial);
   const lockHarness=importLockHarness(projectOwner);
   const state={undoStack:[],redoStack:[],errorMessage:'',activeTool:'select'};
   const deferredHistory=[];
-  const context=vm.createContext({...api, projectOwner, importLock:lockHarness.lock, structuredClone, Error,
+  const context=vm.createContext({...api, projectOwner, boxTransactions:api.createBoxTransactionAdapter(projectOwner), importLock:lockHarness.lock, structuredClone, Error,
     defaultConnectionProperties:{TB:{fingerWidthMm:9,isFingerWidthManual:false}},
     defaultProjectSettings:{...api.DEFAULT_PROJECT_SETTINGS,selectedProfileOffsetIds:[]},
     maxHistoryEntries:10, panelCompositionAuthorityMode:'mixed',
@@ -39,7 +40,6 @@ function harness(initial=api.makePopulatedProjectState()) {
   }
   Object.defineProperty(context,'isProjectLocked',{get:()=>!context.panelManager.isApplied});
   Object.defineProperty(context,'generatedGeometryItems',{get:()=>context.generatedGeometrySnapshot.generatedGeometry});
-  Object.defineProperty(context,'generatedGeometryCompositionModel',{get:()=>context.generatedGeometrySnapshot.metadata.panelCompositionModel??'legacy'});
   for(const key of ['undoStack','redoStack','errorMessage','activeTool','canvasViewBox','activePanelId','activeHoleId','isPanelManagerModalOpen','expandedTBGroups','expandedSGroups','isClearDialogOpen']) {
     Object.defineProperty(context,key,{get:()=>state[key],configurable:true});
     context[`set${key[0].toUpperCase()+key.slice(1)}`]=change=>{
@@ -48,7 +48,7 @@ function harness(initial=api.makePopulatedProjectState()) {
     };
   }
   context.parseViewBox=()=>({x:0,y:0,width:100,height:100});
-  for(const name of ['getNextWorkflowGroupOrderIndex','cloneHistoryState','haveProjectSettingsChanged','getCurrentHistoryState','restoreHistoryState','pushUndoState','undoLastEdit','redoLastEdit','updateProjectSettings','updatePanelThickness','applyPanelManager','applyPanelPaths','selectConnectionForDisplayAndAssignment','startTBGroup','startSGroup','finishTBGroup','finishSGroup','finishWallGroup','clearProject','handleImport']) context[name]=production(name,context);
+  for(const name of ['getNextWorkflowGroupOrderIndex','reportBoxResult','recalculateBoxConnections','selectAppliedSnapshot','acceptDefaultPanelThickness','openManufacturing','toggleProfileOffsetProfile','cloneHistoryState','haveProjectSettingsChanged','getCurrentHistoryState','restoreHistoryState','pushUndoState','undoLastEdit','redoLastEdit','updateProjectSettings','updatePanelThickness','applyPanelManager','applyPanelPaths','selectConnectionForDisplayAndAssignment','startTBGroup','startSGroup','finishTBGroup','finishSGroup','finishWallGroup','clearProject','handleImport']) context[name]=production(name,context);
   return {projectOwner,context,state,lockHarness,flushHistory:()=>{while(deferredHistory.length)deferredHistory.shift()();}};
 }
 
@@ -363,16 +363,22 @@ test('Geometry Apply uses existing generators/authority and retains draft-versus
   c.applyPanelPaths();assert.equal(owner.getSnapshot(),snapshot);assert.match(c.errorMessage,/rejected/);assert.equal(seen.length,1);
 });
 
-test('PM authority rejection retains its legacy history boundary without partial output',()=>{
-  const initial=api.makePopulatedProjectState();initial.box.connections.TB1.properties.isFingerWidthManual=false;
-  const {projectOwner:owner,context:c}=harness(initial);const before=owner.getSnapshot();let count=0;owner.subscribe(()=>count++);
+test('PM authority rejection preserves both local stacks, connections, flags and accepted output',()=>{
+  const {projectOwner:owner,context:c}=harness();
+  c.updateProjectSettings({kerfMm:.24});c.updateProjectSettings({kerfMm:.31});c.undoLastEdit();
+  c.updatePanelThickness('panel-a',4);
+  const before=owner.getSnapshot(),undo=c.undoStack,redo=c.redoStack;
+  let count=0;owner.subscribe(()=>count++);
+  // Exercise the previous write-before-authority defect even if today's sizing
+  // compatibility helper returns its input. All geometry builders still run.
+  c.recalculateAutomaticTBFingerWidths=(model,assignments,connections)=>({...connections});
   c.selectGeneratedGeometryAuthority=()=>({ok:false,blockingDecisions:[{reason:'blocked'}]});
   c.applyPanelManager();
-  assert.match(c.errorMessage,/blocked/);assert.equal(c.undoStack.length,1);
+  assert.match(c.errorMessage,/blocked/);assert.equal(c.undoStack,undo);assert.equal(c.redoStack,redo);
   assert.equal(count,0);assert.equal(owner.getSnapshot(),before);
   assert.equal(owner.getSnapshot().box.panelManager,before.box.panelManager);
   assert.equal(owner.getSnapshot().box.generatedGeometrySnapshot,before.box.generatedGeometrySnapshot);
-  c.undoLastEdit();assert.deepEqual(structuredClone(owner.getSnapshot().box.connections),before.box.connections);
+  c.redoLastEdit();assert.equal(owner.getSnapshot().box.projectSettings.kerfMm,.31);
 });
 
 test('production BOX restore preserves every composition marker, including an absent legacy marker, and snapshot metadata verbatim',()=>{
@@ -396,4 +402,172 @@ test('BOX local capture preserves legacy selected-label fallback for assignment 
   c.updateProjectSettings({kerfMm:.8});c.undoLastEdit();
   assert.equal(owner.getSnapshot().box.assignmentTargetConnectionId,initial.box.displayConnectionId);
   assert.equal(owner.getSnapshot().box.displayConnectionId,initial.box.displayConnectionId);
+});
+
+function observeBoxActions(context) {
+  const results = [];
+  const adapter = context.boxTransactions;
+  context.boxTransactions = Object.fromEntries(Object.entries(adapter).map(([key, method]) => [
+    key, (...args) => {
+      const result = method(...args);
+      results.push(result);
+      return result;
+    },
+  ]));
+  return results;
+}
+
+function assertCompleteFrame(frame, root) {
+  assert.equal(frame.drawingDocument, root.drawingDocument);
+  const fields = { ...frame.box.data, ...frame.box.context };
+  assert.deepEqual(Object.keys(fields).sort(), Object.keys(root.box).sort());
+  for (const key of Object.keys(root.box)) assert.equal(fields[key], root.box[key], key);
+}
+
+test('source replacement frames retain complete parsed source, reset dependent data, and traverse without replay', async () => {
+  const {projectOwner: owner, context: c} = importHarness();
+  c.updateProjectSettings({kerfMm:.28}); c.updateProjectSettings({kerfMm:.39}); c.undoLastEdit();
+  assert.ok(c.undoStack.length && c.redoStack.length);
+  const before = owner.getSnapshot();
+  const imported = structuredClone(before.box.svgModel);
+  imported.content = imported.content.replace('original source', 'replacement source');
+  imported.innerMarkup = imported.innerMarkup.replace('original source', 'replacement source');
+  c.parseSvgDocument = text => { assert.equal(text, imported.content); return imported; };
+  const results = observeBoxActions(c);
+  await c.handleImport(eventFor(Promise.resolve(imported.content)));
+  assert.equal(results.length, 1);
+  const result = results[0], after = owner.getSnapshot();
+  assert.equal(result.outcome, 'accepted'); assert.equal(result.history.undo.length, 1);
+  assertCompleteFrame(result.history.undo[0].frame, before); assertCompleteFrame(result.frame, after);
+  assert.equal(after.drawingDocument, before.drawingDocument);
+  assert.equal(after.box.connections, before.box.connections);
+  assert.deepEqual(after.box.svgModel, imported);
+  assert.deepEqual(after.box.panelManager, api.createPanelManagerStateFromModel(imported));
+  const empty = api.createInitialBoxState();
+  for (const key of Object.keys(empty)) {
+    if (!['connections','svgModel','panelManager','generatedGeometrySnapshot'].includes(key)) assert.deepEqual(after.box[key], empty[key], key);
+  }
+  assert.deepEqual(after.box.generatedGeometrySnapshot.generatedGeometry, []);
+  assert.equal(c.undoStack.length, 0); assert.equal(c.redoStack.length, 0);
+
+  const core = require('../.test-build/project-owner/src/app/projectHistory.js');
+  const undo = core.undoProjectHistory(result.history);
+  assertCompleteFrame(undo.frame, before);
+  assert.ok(undo.frame.box.data.generatedGeometrySnapshot.operations.length);
+  const redo = core.redoProjectHistory(undo.history);
+  assertCompleteFrame(redo.frame, after);
+  assert.equal(owner.getSnapshot(), after);
+});
+
+test('pending edits use frozen subtrees even in local Undo; normalized no-ops keep Redo and original frames', () => {
+  const {projectOwner: owner, context: c} = harness();
+  const results = observeBoxActions(c), before = owner.getSnapshot();
+  let clones = 0, snapshotCalls = 0;
+  const nativeClone = global.structuredClone;
+  const countClone = value => { clones++; return nativeClone(value); };
+  global.structuredClone = c.structuredClone = countClone;
+  c.createGeneratedGeometrySnapshot = () => { snapshotCalls++; throw Error('unexpected regeneration'); };
+  try {
+    c.updatePanelThickness('panel-a', before.box.panelManager.panels['panel-a'].thicknessMm);
+    assert.equal(results.at(-1).outcome, 'noop'); assert.equal(owner.getSnapshot(), before);
+    c.acceptDefaultPanelThickness();
+    const pending = owner.getSnapshot();
+    assert.equal(pending.box.panelManager.isApplied, false); assert.equal(pending.box.panelManager.isDirty, true);
+    assert.ok(Object.values(pending.box.panelManager.panels).every(panel => panel.thicknessMm === 3.2));
+    c.acceptDefaultPanelThickness();
+    assert.equal(results.at(-1).outcome, 'noop'); assert.equal(owner.getSnapshot(), pending);
+    assert.equal(c.undoStack.length, 0);
+    for (let n = 1; n <= 50; n++) {
+      const baseline = owner.getSnapshot();
+      c.updateProjectSettings({kerfMm:n});
+      const result = results.at(-1), next = owner.getSnapshot();
+      assert.equal(result.history.undo.length, 1); assert.equal(result.history.redo.length, 0);
+      assertCompleteFrame(result.history.undo[0].frame, baseline); assertCompleteFrame(result.frame, next);
+      assert.equal(next.box.svgModel, before.box.svgModel); assert.equal(next.drawingDocument, before.drawingDocument);
+      assert.equal(next.box.generatedGeometrySnapshot, before.box.generatedGeometrySnapshot);
+      assert.equal(next.box.lastAppliedManufacturingSettings, before.box.lastAppliedManufacturingSettings);
+      assert.equal(c.undoStack.at(-1).generatedGeometrySnapshot, before.box.generatedGeometrySnapshot);
+      assert.equal(Object.hasOwn(c.undoStack.at(-1), 'svgModel'), false);
+    }
+    assert.equal(c.undoStack.length, 10);
+    assert.equal(clones, 0); assert.equal(snapshotCalls, 0);
+  } finally { global.structuredClone = c.structuredClone = nativeClone; }
+  c.undoLastEdit();
+  const restored = owner.getSnapshot(), ids = restored.box.projectSettings.selectedProfileOffsetIds;
+  const undo = c.undoStack, redo = c.redoStack;
+  c.updateProjectSettings({ selectedProfileOffsetIds:[...ids,...ids,'ordinary-source-edge:invalid'] });
+  assert.equal(results.at(-1).outcome,'noop'); assert.equal(owner.getSnapshot(), restored);
+  assert.equal(c.undoStack,undo); assert.equal(c.redoStack,redo);
+  c.updateProjectSettings({ selectedProfileOffsetIds:[] });
+  assertCompleteFrame(results.at(-1).history.undo[0].frame, restored);
+  assert.deepEqual(owner.getSnapshot().box.projectSettings.selectedProfileOffsetIds, []);
+  c.toggleProfileOffsetProfile(ids[0]); c.toggleProfileOffsetProfile('second-generated-profile');
+  assert.deepEqual(owner.getSnapshot().box.projectSettings.selectedProfileOffsetIds, [ids[0], 'second-generated-profile']);
+  c.toggleProfileOffsetProfile(ids[0]);
+  assert.deepEqual(owner.getSnapshot().box.projectSettings.selectedProfileOffsetIds, ['second-generated-profile']);
+});
+
+test('first manufacturing workflow visit authors only its order; later visits are navigation', () => {
+  const initial = api.makePopulatedProjectState(); delete initial.box.workflowGroupOrder.manufacturing;
+  const {context:c, projectOwner:owner} = harness(initial);
+  const results = observeBoxActions(c), before = owner.getSnapshot();
+  c.openManufacturing();
+  const after = owner.getSnapshot();
+  assert.equal(c.activeTool, 'manufacturing'); assert.equal(after.box.workflowGroupOrder.manufacturing, 5);
+  assertCompleteFrame(results[0].history.undo[0].frame, before); assertCompleteFrame(results[0].frame, after);
+  c.openManufacturing();
+  assert.equal(results.length, 1); assert.equal(c.undoStack.length, 0); assert.equal(owner.getSnapshot(), after);
+});
+
+test('Apply stages one selected snapshot; late snapshot failure keeps both histories and the prior settings stamp', () => {
+  const {context:c, projectOwner:owner} = harness();
+  const results = observeBoxActions(c);
+  const factory = c.createGeneratedGeometrySnapshot;
+  let snapshots = 0;
+  c.createGeneratedGeometrySnapshot = input => { snapshots++; return factory(input); };
+  c.updatePanelThickness('panel-a', 4);
+  let before = owner.getSnapshot();
+  c.applyPanelManager();
+  assert.equal(snapshots, 1); assert.equal(results.at(-1).history.undo.length,1);
+  assertCompleteFrame(results.at(-1).history.undo[0].frame, before);
+  assertCompleteFrame(results.at(-1).frame, owner.getSnapshot());
+  c.applyPanelPaths(); assert.equal(snapshots, 2);
+  assertCompleteFrame(results.at(-1).frame, owner.getSnapshot());
+  assert.equal(owner.getSnapshot().box.generatedGeometrySnapshot.metadata.panelCompositionModel,'relationship-composed-mixed-v1');
+
+  c.updateProjectSettings({kerfMm:.41}); c.updateProjectSettings({kerfMm:.52}); c.undoLastEdit();
+  before = owner.getSnapshot();
+  const undo = c.undoStack, redo = c.redoStack;
+  c.createGeneratedGeometrySnapshot = () => { throw Error('snapshot creation failed'); };
+  c.applyPanelPaths();
+  assert.match(c.errorMessage,/snapshot creation failed/); assert.equal(results.at(-1).outcome,'rejected');
+  assert.equal(owner.getSnapshot(), before); assert.equal(c.undoStack,undo); assert.equal(c.redoStack,redo);
+});
+
+test('BOX adapter rejects nested, stale and reentrant publications without advancing local history', () => {
+  const owner = api.createProjectOwner(), adapter = api.createBoxTransactionAdapter(owner), before = owner.getSnapshot();
+  const edit = box => ({...box, selectedEdgeId:'new'});
+  let local = 0;
+  const record = () => { local++; };
+  const nested = adapter.transact('outer', box => {
+    assert.equal(adapter.transact('inner', edit, record).outcome, 'rejected');
+    return edit(box);
+  }, record);
+  assert.equal(nested.outcome,'rejected'); assert.equal(owner.getSnapshot(), before);
+  assert.equal(adapter.transact('async', async box => edit(box), record).outcome, 'rejected');
+  assert.equal(adapter.transact('incomplete', () => ({selectedEdgeId:'incomplete'}), record).outcome, 'rejected');
+  assert.equal(owner.getSnapshot(), before);
+  owner.batch(() => assert.equal(adapter.transact('nested batch', edit, record).outcome, 'rejected'));
+  const stale = adapter.transact('stale', box => {
+    owner.setBoxField('displayConnectionId','intervening edit');
+    return edit(box);
+  }, record);
+  assert.equal(stale.outcome,'rejected'); assert.equal(owner.getSnapshot().box.selectedEdgeId,null);
+  assert.equal(owner.getSnapshot().box.displayConnectionId,'intervening edit'); assert.equal(local,0);
+  const unsubscribe = owner.subscribe(() => {
+    assert.equal(local,1,'local baseline recorded before subscribers run');
+    assert.equal(adapter.transact('subscriber edit', edit, record).outcome,'rejected');
+  });
+  assert.equal(adapter.transact('accepted',edit,record).outcome,'accepted'); unsubscribe();
+  assert.equal(local,1);
 });
