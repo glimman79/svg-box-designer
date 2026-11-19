@@ -1,3 +1,4 @@
+import { propertiesChanged } from './connectionTypes';
 import type { SlotRole } from '../svgUtils';
 import type { EdgeAssignmentRecord } from '../svgUtils';
 import { getBucketSlotAssignments } from './assignmentBuckets';
@@ -73,6 +74,7 @@ export const applySlotPropertyUpdates = (
     nextProperties.isSlotLengthManual = true;
   }
 
+  if (!propertiesChanged(connection.properties, nextProperties)) return connection;
   return {
     ...connection,
     properties: nextProperties,
@@ -88,16 +90,16 @@ export const applyActiveSGroupSlotPropertyUpdates = (
     return connections;
   }
 
-  const activeConnectionIds = new Set(activeSGroup.connectionIds);
-
-  return Object.fromEntries(
-    Object.entries(connections).map(([connectionId, connection]) => [
-      connectionId,
-      activeConnectionIds.has(connectionId) && connection.prefix === 'S'
-        ? applySlotPropertyUpdates(connection, updates)
-        : connection,
-    ]),
-  );
+  let next = connections;
+  for (const id of activeSGroup.connectionIds) {
+    const connection = connections[id];
+    if (connection?.prefix !== 'S') continue;
+    const updated = applySlotPropertyUpdates(connection, updates);
+    if (updated === connection) continue;
+    if (next === connections) next = { ...connections };
+    next[id] = updated;
+  }
+  return next;
 };
 
 export const startSGroupWorkflow = (connections: ConnectionMap) => {

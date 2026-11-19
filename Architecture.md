@@ -2,6 +2,10 @@
 
 > **Status: current orientation and future-boundary map.** [PROJECT_MASTER.md](PROJECT_MASTER.md) is the authority for current architecture. [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) owns the detailed approved future requirements; its target is not implemented. Historical pipeline snapshots and investigations are indexed in [docs/README.md](docs/README.md).
 
+## Stage C PR 6 construction publication boundary
+
+Construction commands prepare a complete BOX candidate from the current shared owner using the existing BOX transaction adapter. Group and connection helpers run before publication. The owner publishes once with the local history already advanced. Applied output retains its snapshot through authoring and local restore. [Construction transaction architecture](docs/BOX_CONSTRUCTION_TRANSACTIONS.md).
+
 ## Stage C PR 5 BOX publication boundary
 
 SVG import completes its locked read and parsing before opening a synchronous BOX

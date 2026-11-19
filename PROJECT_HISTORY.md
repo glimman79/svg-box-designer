@@ -1,5 +1,9 @@
 # SVG Box Designer — Project History
 
+## Stage C PR 6 — Construction authoring (2026-11-19, review pending)
+
+Following #641, the review branch groups construction assignments and their automatic definitions in one transaction. Baseline Chromium testing also identified a separately authored S continuation that had no independent Undo. [Evidence, local history behavior and manual acceptance](docs/BOX_CONSTRUCTION_TRANSACTIONS.md).
+
 ## Stage C PR 5 — BOX source, Panel Manager and manufacturing (2026-11-18)
 
 After #637–#640, BOX source replacement and Apply use the shared owner and the

@@ -21,3 +21,6 @@ export * from '../../src/app/authoringRelationships';
 export * from '../../src/app/finalGeometry';
 export * from '../../src/app/manufacturingCompensation';
 export * from '../../src/app/boxDocument';
+export * from '../../src/app/boxConstruction';
+export * from '../../src/app/connectionLabels';
+export * from '../../src/app/connectionViewModel';

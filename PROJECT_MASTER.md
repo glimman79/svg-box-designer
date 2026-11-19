@@ -1,8 +1,12 @@
 # SVG Box Designer — Project Master
 
+## Stage C PR 6 construction checkpoint
+
+BOX construction edits now prepare complete project frames. The local BOX stack records each accepted user intent, including automatic TB/W/S continuation and trailing cleanup. Manufacturing output updates through Apply. Personal acceptance is pending. [Construction boundary and limitations](docs/BOX_CONSTRUCTION_TRANSACTIONS.md).
+
 ## Stage C PR 5 BOX transaction checkpoint
 
-On the review branch, SVG replacement, PM thickness/defaults and Apply, and manufacturing
+Since #641, SVG replacement, PM thickness/defaults and Apply, and manufacturing
 settings/output use complete provisional frames. The shared owner retains the original source
 and selected geometry. Drawing and BOX local histories continue to execute Undo/Redo.
 [Scope, guarantees and validation](docs/BOX_TRANSACTION_ADAPTER.md).

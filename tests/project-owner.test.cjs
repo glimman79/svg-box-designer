@@ -3,54 +3,8 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const ts = require('typescript');
-const api = require('../.test-build/project-owner/tests/fixtures/project-owner.js');
+const { api, harness, production, sources, observeBoxActions, assertCompleteFrame } = require('./project-owner-harness.cjs');
 const {importLockHarness} = require('./svg-import-lock-harness.cjs');
-
-// Execute the actual production adapters as well as the store. AST extraction
-// excludes rendering/import.meta, and retains every handler's real control flow.
-const sources = ['src/App.tsx','src/app/DrawingWorkspace.tsx'].map(path => ts.createSourceFile(path, fs.readFileSync(path,'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX));
-function production(name, context, source=sources[0]) {
-  let declaration;
-  function visit(node) {
-    if (ts.isVariableDeclaration(node) && node.name.getText(source)===name) declaration=node;
-    ts.forEachChild(node, visit);
-  }
-  visit(source);
-  assert.ok(declaration, `production declaration ${name}`);
-  // Run handlers in the same JS realm as their owner and history data, as in App.
-  const code=ts.transpile(`return (${declaration.initializer.getText(source).replaceAll('import.meta.env.DEV','false')});`, {target:ts.ScriptTarget.ES2022});
-  return vm.compileFunction(code, [], {contextExtensions:[context]})();
-}
-function harness(initial=api.makePopulatedProjectState()) {
-  const projectOwner=api.createProjectOwner(initial);
-  const lockHarness=importLockHarness(projectOwner);
-  const state={undoStack:[],redoStack:[],errorMessage:'',activeTool:'select'};
-  const deferredHistory=[];
-  const context=vm.createContext({...api, projectOwner, boxTransactions:api.createBoxTransactionAdapter(projectOwner), importLock:lockHarness.lock, structuredClone, Error,
-    defaultConnectionProperties:{TB:{fingerWidthMm:9,isFingerWidthManual:false}},
-    defaultProjectSettings:{...api.DEFAULT_PROJECT_SETTINGS,selectedProfileOffsetIds:[]},
-    maxHistoryEntries:10, panelCompositionAuthorityMode:'mixed',
-    reportAuthorityDownstreamDiagnostics:()=>{},
-    formatAuthorityBlockingDecision:(_,d)=>d.reason,
-  });
-  for(const key of Object.keys(initial.box)) {
-    Object.defineProperty(context,key,{get:()=>projectOwner.getSnapshot().box[key],configurable:true});
-    context[`set${key[0].toUpperCase()+key.slice(1)}`]=change=>projectOwner.setBoxField(key,change);
-  }
-  Object.defineProperty(context,'isProjectLocked',{get:()=>!context.panelManager.isApplied});
-  Object.defineProperty(context,'generatedGeometryItems',{get:()=>context.generatedGeometrySnapshot.generatedGeometry});
-  for(const key of ['undoStack','redoStack','errorMessage','activeTool','canvasViewBox','activePanelId','activeHoleId','isPanelManagerModalOpen','expandedTBGroups','expandedSGroups','isClearDialogOpen']) {
-    Object.defineProperty(context,key,{get:()=>state[key],configurable:true});
-    context[`set${key[0].toUpperCase()+key.slice(1)}`]=change=>{
-      const apply=()=>{state[key]=typeof change==='function'?change(state[key]):change;};
-      if(state.deferHistory && ['undoStack','redoStack'].includes(key)) deferredHistory.push(apply); else apply();
-    };
-  }
-  context.parseViewBox=()=>({x:0,y:0,width:100,height:100});
-  for(const name of ['getNextWorkflowGroupOrderIndex','reportBoxResult','recalculateBoxConnections','selectAppliedSnapshot','acceptDefaultPanelThickness','openManufacturing','toggleProfileOffsetProfile','cloneHistoryState','haveProjectSettingsChanged','getCurrentHistoryState','restoreHistoryState','pushUndoState','undoLastEdit','redoLastEdit','updateProjectSettings','updatePanelThickness','applyPanelManager','applyPanelPaths','selectConnectionForDisplayAndAssignment','startTBGroup','startSGroup','finishTBGroup','finishSGroup','finishWallGroup','clearProject','handleImport']) context[name]=production(name,context);
-  return {projectOwner,context,state,lockHarness,flushHistory:()=>{while(deferredHistory.length)deferredHistory.shift()();}};
-}
 
 test('one frozen root, synchronous functional updates and subscriptions; no-op retains root without publication',()=>{
   const owner=api.createProjectOwner(); const start=owner.getSnapshot(); const seen=[];
@@ -149,14 +103,14 @@ test('Panel Manager pending state retains accepted output and TB/S source proper
 
 test('production TB/W/S completion, workflow creation and restoration retain authoring/order without implicit geometry Apply',()=>{
   const {projectOwner:owner,context:c}=harness(); const before=owner.getSnapshot(), generated=before.box.generatedGeometrySnapshot;
-  c.finishTBGroup(); assert.equal(owner.getSnapshot().box.activeTBGroup.isActive,false);
-  c.finishSGroup(); assert.equal(owner.getSnapshot().box.activeSGroup.isActive,false);
-  c.finishWallGroup(); assert.equal(owner.getSnapshot().box.activeWallGroup.isActive,false);
+  c.finishGroup('TB'); assert.equal(owner.getSnapshot().box.activeTBGroup.isActive,false);
+  c.finishGroup('S'); assert.equal(owner.getSnapshot().box.activeSGroup.isActive,false);
+  c.finishGroup('W'); assert.equal(owner.getSnapshot().box.activeWallGroup.isActive,false);
   assert.equal(owner.getSnapshot().box.completedWallGroups.at(-1).groupId,'w-current');
-  c.startTBGroup(); assert.equal(owner.getSnapshot().box.activeTBGroup.isActive,true);
+  c.startGroup('TB'); assert.equal(owner.getSnapshot().box.activeTBGroup.isActive,true);
   const group=owner.getSnapshot().box.activeTBGroup; assert.ok(owner.getSnapshot().box.connections[group.connectionIds[0]]);
   assert.ok(Number.isFinite(owner.getSnapshot().box.workflowGroupOrder[group.groupId]));
-  c.startSGroup(); assert.equal(owner.getSnapshot().box.activeSGroup.isActive,true);
+  c.startGroup('S'); assert.equal(owner.getSnapshot().box.activeSGroup.isActive,true);
   assert.equal(owner.getSnapshot().box.generatedGeometrySnapshot,generated);
   c.undoLastEdit(); c.redoLastEdit(); assert.equal(owner.getSnapshot().box.activeSGroup.isActive,true);
 });
@@ -329,14 +283,13 @@ test('App subscriptions and all compatibility setters use the owner; no second w
 });
 
 
-test('BOX snapshots are captured before deferred React stack updaters run',()=>{
-  const {projectOwner:owner,context:c,state,flushHistory}=harness();
+test('BOX snapshots and local stack changes are synchronous before another action or render',()=>{
+  const {projectOwner:owner,context:c}=harness();
   c.updateProjectSettings({kerfMm:.5});
-  state.deferHistory=true;
-  c.undoLastEdit(); flushHistory();
+  c.undoLastEdit();
   assert.equal(owner.getSnapshot().box.projectSettings.kerfMm,.17);
   assert.equal(c.redoStack.at(-1).projectSettings.kerfMm,.5);
-  c.redoLastEdit(); flushHistory();
+  c.redoLastEdit();
   assert.equal(owner.getSnapshot().box.projectSettings.kerfMm,.5);
   assert.equal(c.undoStack.at(-1).projectSettings.kerfMm,.17);
 });
@@ -403,26 +356,6 @@ test('BOX local capture preserves legacy selected-label fallback for assignment 
   assert.equal(owner.getSnapshot().box.assignmentTargetConnectionId,initial.box.displayConnectionId);
   assert.equal(owner.getSnapshot().box.displayConnectionId,initial.box.displayConnectionId);
 });
-
-function observeBoxActions(context) {
-  const results = [];
-  const adapter = context.boxTransactions;
-  context.boxTransactions = Object.fromEntries(Object.entries(adapter).map(([key, method]) => [
-    key, (...args) => {
-      const result = method(...args);
-      results.push(result);
-      return result;
-    },
-  ]));
-  return results;
-}
-
-function assertCompleteFrame(frame, root) {
-  assert.equal(frame.drawingDocument, root.drawingDocument);
-  const fields = { ...frame.box.data, ...frame.box.context };
-  assert.deepEqual(Object.keys(fields).sort(), Object.keys(root.box).sort());
-  for (const key of Object.keys(root.box)) assert.equal(fields[key], root.box[key], key);
-}
 
 test('source replacement frames retain complete parsed source, reset dependent data, and traverse without replay', async () => {
   const {projectOwner: owner, context: c} = importHarness();
