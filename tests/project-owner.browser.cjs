@@ -17,10 +17,9 @@ const assert=require('node:assert/strict');
     await page.mouse.click(p.x,p.y);
   };
   try{
-    const panels='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><rect width="100" height="80"/><rect x="130" width="100" height="80"/></svg>';
     for(const name of ['TB','W','S']){
       await page.goto(process.env.WORKSPACE_BROWSER_URL||'http://127.0.0.1:5173/');
-      await page.getByLabel('Import SVG into BOX / Construction',{exact:true}).setInputFiles({name:'owner.svg',mimeType:'image/svg+xml',buffer:Buffer.from(panels)});
+      await page.getByLabel('Import SVG into BOX / Construction',{exact:true}).setInputFiles('tests/fixtures/construction-two-panels.svg');
       await page.getByRole('dialog',{name:'Panel Manager',exact:true}).getByRole('button',{name:'OK',exact:true}).click();
       await action('Accept default thickness').click();
       await edit('#pm-panel-thickness-panel-1','4');

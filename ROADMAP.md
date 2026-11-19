@@ -1,8 +1,12 @@
 # SVG Box Designer roadmap
 
-## Stage C PR 5 — BOX transaction boundary (review pending)
+## Stage C PR 6 — BOX construction (review pending)
 
-The branch covers BOX source replacement, Panel Manager and manufacturing. Stage C
+The review branch integrates independent connection, group, assignment, role and property edits. Stage C remains open. Project-wide restoration and the global execution timeline remain scheduled for PR 7. [Mutation inventory and acceptance checks](docs/BOX_CONSTRUCTION_TRANSACTIONS.md).
+
+## Stage C PR 5 — BOX transaction boundary (merged in #641)
+
+#641 covers BOX source replacement, Panel Manager and manufacturing. Stage C
 remains open. Independent construction authoring belongs to PR 6. Global restoration
 and Undo/Redo routing belong to PR 7. [Scope and evidence](docs/BOX_TRANSACTION_ADAPTER.md).
 

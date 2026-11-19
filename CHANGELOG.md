@@ -1,6 +1,10 @@
 # Unreleased
 
-## Stage C PR 5 — BOX transaction boundary (review pending)
+## Stage C PR 6 — BOX construction (review pending)
+
+- Rejected assignments and equivalent construction properties preserve local Redo. Removing an assigned row preserves other relationships on the same source edge. A separate completed-S continuation now has its own Undo step. [Manual checks](docs/BOX_CONSTRUCTION_TRANSACTIONS.md).
+
+## Stage C PR 5 — BOX transaction boundary (merged in #641)
 
 - SVG replacement, Panel Manager and manufacturing edits now prepare complete project transitions.
 - Failed Apply preserves accepted geometry and both local stacks. Committing an unchanged manufacturing value preserves Redo. [Design, tests and manual checks](docs/BOX_TRANSACTION_ADAPTER.md).

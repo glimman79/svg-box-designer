@@ -11,10 +11,10 @@ SVG Box Designer is a browser-based React application for drawing semantic 2D sk
 One compact bottom History region is shared by Drawing and BOX. BOX retains its workflow-group
 navigation; Drawing shows that persistent operation history is not yet available.
 
-The Drawing and imported/construction domain models remain separate. The Stage C PR 2
-task branch wraps their complete state in one application-level owner, while keeping
-existing module-local Undo/Redo. Review/user acceptance is pending; see the
-[ownership checkpoint](docs/SHARED_PROJECT_OWNER.md). See [PROJECT_MASTER.md](PROJECT_MASTER.md) for current product scope, architectural authority, invariants, and known boundaries.
+Drawing and BOX keep their domain models in one shared project owner. Drawing has
+100 local Undo steps and BOX has 10. The PR 6 review branch groups each accepted
+construction assignment with its automatic connection and group changes.
+[Construction transactions and manual checks](docs/BOX_CONSTRUCTION_TRANSACTIONS.md). See [PROJECT_MASTER.md](PROJECT_MASTER.md) for current product scope, architectural authority, invariants, and known boundaries.
 
 **Approved future direction — not implemented:** an optional connected workflow of
 **3D Modeling → Unfold → 2D Drawing → BOX / Construction**, with BOX/Puzzle as parallel destinations

@@ -190,7 +190,6 @@ shows its error, keeps the pending thickness and preserves local history.
    contours remain visible, the new thickness remains pending, and Redo remains available
    to restore the second assignment.
 
-PR 6 retains independent connection, edge, TB/W/S property, group Apply/Finish and
-construction navigation integration. PR 7 retains project-wide restoration, lifecycle
+PR 6 covers independent connection, edge, TB/W/S property and group start/Finish integration. See the [construction inventory and validation](BOX_CONSTRUCTION_TRANSACTIONS.md). PR 7 retains project-wide restoration, lifecycle
 coordination and global control routing. Native Open and downstream regeneration
 remain future work.

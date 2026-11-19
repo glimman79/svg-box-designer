@@ -92,3 +92,7 @@ export type ActiveTBGroup = {
   connectionIds: string[];
   isActive: boolean;
 };
+
+/** Connection properties are flat scalar records. Compare only supplied fields, including manual flags. */
+export const propertiesChanged = <T extends object>(current: T, patch: Partial<T>) =>
+  (Object.keys(patch) as (keyof T)[]).some(key => current[key] !== patch[key]);

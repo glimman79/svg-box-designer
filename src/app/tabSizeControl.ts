@@ -1,3 +1,4 @@
+import { propertiesChanged } from './connectionTypes';
 import type { ConnectionMap, TBConnectionProperties } from './connectionTypes';
 
 /** Visibility policy for the shared TB/Wall finger-width control. */
@@ -15,17 +16,13 @@ export const applyFingerWidthUpdate = (
   const connection = connections[connectionId];
   if (!connection || (connection.prefix !== 'TB' && connection.prefix !== 'W')) return connections;
 
-  return {
-    ...connections,
-    [connectionId]: {
-      ...connection,
-      properties: {
-        ...connection.properties,
-        ...updates,
-        isFingerWidthManual: updates.fingerWidthMm !== undefined
-          ? true
-          : updates.isFingerWidthManual ?? connection.properties.isFingerWidthManual,
-      },
-    },
-  } as ConnectionMap;
+  const properties = {
+    ...connection.properties,
+    ...updates,
+    isFingerWidthManual: updates.fingerWidthMm !== undefined
+      ? true
+      : updates.isFingerWidthManual ?? connection.properties.isFingerWidthManual,
+  };
+  if (!propertiesChanged(connection.properties, properties)) return connections;
+  return { ...connections, [connectionId]: { ...connection, properties } } as ConnectionMap;
 };
