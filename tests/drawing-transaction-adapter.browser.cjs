@@ -53,13 +53,13 @@ const assert = require('node:assert/strict');
     await button('Line').click();
     await click(-80,-50);
     await move(20,-50,10);
-    assert.deepEqual(await metrics(), {accepted: [], publications: 0});
+    assert.deepEqual(await metrics(), {accepted: [], publications: 1});
     await click(20,-50);
     await page.locator('[data-sketch-line-id]').waitFor({state: 'attached'});
     await page.keyboard.press('Escape');
 
     const baseline = await metrics();
-    assert.deepEqual(baseline, {accepted: ['Create Line'], publications: 1});
+    assert.deepEqual(baseline, {accepted: ['Create Line'], publications: 2});
     await svg.evaluate(el => el.addEventListener('pointerdown', event => { window.drawingTestPointerId = event.pointerId; }));
     const startDrag = async () => {
       await move(-30,-50);
@@ -91,7 +91,7 @@ const assert = require('node:assert/strict');
     await startDrag();
     await page.mouse.up();
     const moved = await metrics();
-    assert.deepEqual(moved, {accepted: ['Create Line','Drag geometry'], publications: 2});
+    assert.deepEqual(moved, {accepted: ['Create Line','Drag geometry'], publications: 3});
 
     // Interrupt a new preview by restoring global history. Its late release cannot
     // overwrite the restored Line, even if Redo returns to the same document.
@@ -101,10 +101,10 @@ const assert = require('node:assert/strict');
     await page.keyboard.press('Control+z');
     await page.keyboard.press('Control+y');
     await page.mouse.up();
-    assert.deepEqual(await metrics(), {accepted: moved.accepted, publications: 4});
+    assert.deepEqual(await metrics(), {accepted: moved.accepted, publications: 5});
     await button('Box / Construction').click();
     await button('2D Drawing').click();
-    assert.equal((await metrics()).publications, 4);
+    assert.equal((await metrics()).publications, 7);
 
     await button('Dimension').focus();
     await page.keyboard.press('Enter');

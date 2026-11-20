@@ -1,5 +1,9 @@
 # Unreleased
 
+## Stage C PR 8 — Reversible workspace navigation (in review)
+
+- Undoing a Drawing → BOX switch returns to Drawing with its geometry intact. Redo reopens BOX. Each switch shares the 30-step project history and discards any abandoned Redo branch.
+
 ## Stage C PR 7 — Global Undo/Redo (in review)
 
 - Undo and Redo traverse the latest 30 accepted edits across Drawing and BOX and open the workspace where each edit originated.

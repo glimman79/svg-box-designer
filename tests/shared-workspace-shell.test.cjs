@@ -19,7 +19,7 @@ test('one navigation and command region, with explicit capability and ownership 
     assert.match(html, /disabled="" title="Puzzle is not implemented"/);
     for (const command of ['Open', 'Save']) assert.match(button(html, command), /disabled=""/);
     assert.match(button(html, 'Clear'), /title="Clear entire project"/);
-    assert.match(html, /Undo or redo a project edit across workspaces/);
+    assert.match(html, /Undo or redo a project edit or workspace switch/);
     assert.equal(button(html, 'Export').includes('disabled=""'), module === 'drawing');
     assert.doesNotMatch(button(html, 'Clear'), /disabled=""/);
     const input = html.match(/<input[^>]*type="file"[^>]*>/)[0];

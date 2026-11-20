@@ -1,10 +1,10 @@
-import { createProjectHistory, redoProjectHistory, transactProjectHistory, undoProjectHistory,
+import { createProjectHistory, recordWorkspaceNavigation, redoProjectHistory, transactProjectHistory, undoProjectHistory,
   type ProjectHistory, type ProjectTransaction, type ProjectTransactionAction,
   type ProjectTransactionMetadata, type ProjectTransactionResult } from './projectHistory';
 import { createInitialProjectState, createProjectOwner } from './projectOwner';
 import { boxStateFields, type BoxRestorationContext, type BoxStateCapture, type BoxStateSource,
   type ProjectStateCapture, type ProjectStateSource } from './projectState';
-import type { DrawingDocumentV2 } from './drawingTypes';
+import { DEFAULT_WORKSPACE, selectWorkspace, type DrawingDocumentV2, type SupportedWorkspace, type WorkspaceId } from './drawingTypes';
 
 type Module = ProjectTransactionMetadata['module'];
 export const workspaceForEdit = (module: Module) => module === 'box' ? 'construction' : 'drawing';
@@ -66,8 +66,8 @@ export function createGlobalProjectHistory(initial?: ProjectStateSource) {
     || !restorableContext(baseline.box.context)) throw new TypeError('Incomplete initial project');
   const roots = new WeakMap<ProjectStateCapture, ProjectStateSource>([[baseline, first]]);
   const boxes = new WeakMap<BoxStateCapture, BoxStateSource>([[baseline.box, first.box]]);
-  let publication: Readonly<{ project: ProjectStateSource; history: ProjectHistory; epoch: number; revision: number; session: Readonly<{ startRevision: number }> }>
-    = Object.freeze({ project: first, history: initialHistory, epoch: 0, revision: 0, session: Object.freeze({ startRevision: 0 }) });
+  let publication: Readonly<{ project: ProjectStateSource; history: ProjectHistory; activeWorkspace: SupportedWorkspace; epoch: number; revision: number; session: Readonly<{ startRevision: number }> }>
+    = Object.freeze({ project: first, history: initialHistory, activeWorkspace: DEFAULT_WORKSPACE, epoch: 0, revision: 0, session: Object.freeze({ startRevision: 0 }) });
   let sequence = 0;
   let staging: ProjectTransaction | undefined;
   const getAttempt = () => ({ session: publication.session, revision: publication.revision });
@@ -91,11 +91,12 @@ export function createGlobalProjectHistory(initial?: ProjectStateSource) {
     return root;
   }
 
-  function publish(next: ProjectHistory, root: ProjectStateSource, operation: 'edit' | 'context' | 'restore' | 'reset') {
+  function publish(next: ProjectHistory, root: ProjectStateSource, operation: 'edit' | 'context' | 'navigation' | 'restore' | 'reset',
+    activeWorkspace = publication.activeWorkspace) {
     const before = publication;
     const invalidate = operation === 'restore' || operation === 'reset'
       || before.project.box.svgModel !== root.box.svgModel;
-    const position = Object.freeze({ project: root, history: next, revision: before.revision + 1,
+    const position = Object.freeze({ project: root, history: next, activeWorkspace, revision: before.revision + 1,
       epoch: before.epoch + Number(invalidate), session: operation === 'reset' ? Object.freeze({ startRevision: before.revision + 1 }) : before.session });
     // New position identity also wakes React when two same-event traversals
     // return to the same project root before a component can render.
@@ -125,13 +126,27 @@ export function createGlobalProjectHistory(initial?: ProjectStateSource) {
     return publish(result.history, root, 'edit') ? result : { outcome: 'rejected' };
   }
 
+  function navigate(requested: WorkspaceId, leave?: (source: SupportedWorkspace) => void) {
+    const { activeWorkspace: source, session } = publication;
+    const destination = selectWorkspace(source, requested);
+    if (staging || source === destination) return false;
+    leave?.(source);
+    // Settlement may have committed a Profile edit. Append after its publication.
+    if (publication.session !== session || publication.activeWorkspace !== source) return false;
+    const next = recordWorkspaceNavigation(publication.history, source, destination);
+    return publish(next, publication.project, 'navigation', destination);
+  }
+
   function traverse(direction: 'undo' | 'redo') {
     if (staging) return null;
     const history = publication.history;
     const result = direction === 'undo' ? undoProjectHistory(history) : redoProjectHistory(history);
     const root = roots.get(result.frame);
-    if (!result.transaction || !root || !publish(result.history, root, 'restore')) return null;
-    return workspaceForEdit(result.transaction.module);
+    const action = result.transaction;
+    if (!action || !root) return null;
+    const workspace = action.kind === 'edit' ? workspaceForEdit(action.module)
+      : direction === 'undo' ? action.source : action.destination;
+    return publish(result.history, root, 'restore', workspace) ? workspace : null;
   }
 
   function setBoxContext(patch: Partial<BoxRestorationContext>) {
@@ -152,13 +167,13 @@ export function createGlobalProjectHistory(initial?: ProjectStateSource) {
     if (staging || expectedSession !== publication.session) return false;
     const { drawingDocument, box } = createInitialProjectState();
     const next = createProjectHistory({ drawingDocument, box: boxStateFields(box) });
-    return publish(next, project(next.current), 'reset');
+    return publish(next, project(next.current), 'reset', DEFAULT_WORKSPACE);
   }
 
   return { getSnapshot: owner.getSnapshot, subscribe: owner.subscribe, getHistory: () => publication.history,
     getPublication: () => publication,
     drawingDocumentRef: { get current() { return owner.getSnapshot().drawingDocument; } },
-    getEpoch: () => publication.epoch, getAttempt, isCurrent, transact, traverse, clearProject, setBoxContext,
+    getEpoch: () => publication.epoch, getAttempt, isCurrent, transact, navigate, traverse, clearProject, setBoxContext,
     beginBoxImport: owner.beginBoxImport, isCurrentBoxImport: owner.isCurrentBoxImport, invalidateBoxImports: owner.invalidateBoxImports };
 }
 export type GlobalProjectHistory = ReturnType<typeof createGlobalProjectHistory>;

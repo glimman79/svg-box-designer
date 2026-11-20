@@ -60,7 +60,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     await drawing();
     assert.match(await history.innerText(), /persistent operations are available/);
     assert.equal(await history.getByRole('button').count(), 0);
-    assert.equal(await undo().isEnabled(), false);
+    assert.equal(await undo().isEnabled(), true);
     assert.equal(await redo().isEnabled(), false);
     await button('Line').click(); await clickDrawing({ x: -180, y: -90 }); await clickDrawing({ x: -80, y: -90 });
     await page.locator('[data-sketch-line-id]').waitFor({ state: 'attached' });
@@ -71,23 +71,27 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     assert.deepEqual(await capabilities(), [true, true]);
     await button('Circle').click(); await clickDrawing({ x: 90, y: -50 }); // unfinished tool survives navigation
     for (let n = 0; n < 2; n++) {
-      await box(); assert.deepEqual(await capabilities(), [true, true]);
-      await drawing(); assert.deepEqual(await capabilities(), [true, true]);
+      await box(); assert.deepEqual(await capabilities(), [true, false]);
+      await drawing(); assert.deepEqual(await capabilities(), [true, false]);
       assert.equal(await button('Circle').getAttribute('aria-pressed'), 'true');
       assert.deepEqual(await geometry(), drawingBefore);
       assert.equal(await drawingSvg.getAttribute('viewBox'), drawingView);
       assert.equal(await history.getByRole('button').count(), 0);
     }
     await track.click(); await track.dblclick();
-    assert.deepEqual(await capabilities(), [true, true]);
+    assert.deepEqual(await capabilities(), [true, false]);
     assert.deepEqual(await geometry(), drawingBefore);
     await clickDrawing({ x: 120, y: -50 }); await page.locator('[data-sketch-circle-id]').waitFor({ state: 'attached' });
-    await button('Select').click(); await undo().click(); await undo().click();
-    assert.equal(await page.locator('[data-sketch-line-id]').count(), 0, 'only the two completed edits consumed Undo');
+    await button('Select').click(); await undo().click(); // Circle
+    for (let i = 0; i < 4; i++) await undo().click();
+    assert.deepEqual(await geometry(), drawingBefore);
+    await undo().click(); // Line
+    assert.equal(await page.locator('[data-sketch-line-id]').count(), 0);
+    await undo().click(); // Initial switch to Drawing
     assert.equal(await undo().isEnabled(), false);
-    await redo().click(); await redo().click();
+    for (let i = 0; i < 7; i++) await redo().click();
     console.log('PASS Drawing preservation');
-    passed.push('Drawing empty state, stable navigation, preserved geometry/view/Redo/unfinished Circle and exact Undo depth');
+    passed.push('Drawing empty state, stable navigation, preserved geometry/view/unfinished Circle and exact Undo depth');
 
     await box();
     await page.getByLabel('Import SVG into BOX / Construction', { exact: true }).setInputFiles({ name: 'ui3.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(panels) });
@@ -112,19 +116,21 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     await wall.focus(); await page.keyboard.press('Enter');
     assert.equal(await wall.getAttribute('aria-pressed'), 'true');
     assert.equal(await boxTool('W').getAttribute('class').then(s => s.includes('active')), true);
+    assert.equal(await redo().isEnabled(), true, 'workflow inspection preserves Finish Redo');
     const unfinishedWall = await overlay.innerText();
     for (let n = 0; n < 2; n++) {
       await drawing(); assert.equal(await history.getByRole('button').count(), 0);
-      await box(); assert.equal(await redo().isEnabled(), true);
+      await box(); assert.equal(await redo().isEnabled(), false);
       assert.equal(await overlay.innerText(), unfinishedWall);
       assert.equal(await wall.getAttribute('aria-pressed'), 'true');
       assert.equal(await contours(), boxBefore); assert.equal(await boxSvg.getAttribute('viewBox'), boxView);
     }
-    await redo().click(); assert.equal(await contours(), manufacturedBefore);
+    await overlay.getByRole('button', {name:'OK', exact:true}).click();
+    await undo().click(); await redo().click(); assert.equal(await contours(), manufacturedBefore);
     assert.equal(await overlay.getByRole('button', { name: 'OK', exact: true }).count(), 0);
     await tb.click(); await capture('box-workflow-navigation');
     console.log('PASS BOX navigation');
-    passed.push('real PM/TB/W entries, original pointer/keyboard selection, unfinished group, manufacturing output and Finish Redo retained');
+    passed.push('real PM/TB/W entries, original pointer/keyboard selection, unfinished group, manufacturing output and Finish Undo/Redo');
 
     for (const [width, height] of [[1920, 1080], [1366, 768], [1024, 768]]) {
       await page.setViewportSize({ width, height });

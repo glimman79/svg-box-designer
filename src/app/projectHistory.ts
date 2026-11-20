@@ -1,3 +1,4 @@
+import type { SupportedWorkspace } from './drawingTypes';
 import type { ProjectStateCapture } from './projectState';
 
 export const PROJECT_HISTORY_LIMIT = 30;
@@ -9,10 +10,16 @@ export type ProjectTransactionMetadata = Readonly<{
   label: string;
 }>;
 
-export type ProjectHistoryEntry = Readonly<{
-  frame: ProjectStateCapture;
-  transaction: ProjectTransactionMetadata;
+type ProjectEdit = ProjectTransactionMetadata & Readonly<{ kind: 'edit' }>;
+type WorkspaceNavigation = Readonly<{
+  kind: 'navigation';
+  source: SupportedWorkspace;
+  destination: SupportedWorkspace;
 }>;
+
+export type ProjectHistoryEntry =
+  | Readonly<{ frame: ProjectStateCapture; transaction: ProjectEdit }>
+  | Readonly<{ transaction: WorkspaceNavigation }>;
 
 /** Stacks are oldest first. undo.length + redo.length never exceeds 30. */
 export type ProjectHistory = Readonly<{
@@ -45,7 +52,7 @@ export type ProjectHistoryRestore = Readonly<{
   history: ProjectHistory;
   frame: ProjectStateCapture;
   changed: boolean;
-  transaction: ProjectTransactionMetadata | null;
+  transaction: ProjectHistoryEntry['transaction'] | null;
 }>;
 
 // Only proven deeply frozen nodes enter this weak cache. Object.isFrozen alone
@@ -164,23 +171,31 @@ export const transactProjectHistory = (
   const outcome = run(action);
   if (outcome.outcome !== 'accepted') return { ...outcome, history, frame: history.current };
   // Keep only explicit value metadata, never candidate closures or UI handles.
-  const transaction = Object.freeze({ id: metadata.id, module: metadata.module, label: metadata.label });
+  const transaction = Object.freeze({ kind: 'edit' as const, id: metadata.id, module: metadata.module, label: metadata.label });
   const next = historyState(candidate, appendBounded(history.undo, { frame: history.current, transaction }), []);
   return { outcome: 'accepted', history: next, frame: next.current };
 };
 
-export const undoProjectHistory = (history: ProjectHistory): ProjectHistoryRestore => {
-  const entry = history.undo.at(-1);
-  if (!entry) return { history, frame: history.current, changed: false, transaction: null };
-  const next = historyState(entry.frame, history.undo.slice(0, -1),
-    [...history.redo, Object.freeze({ frame: history.current, transaction: entry.transaction })]);
-  return { history: next, frame: next.current, changed: true, transaction: entry.transaction };
-};
+export function recordWorkspaceNavigation(history: ProjectHistory, source: SupportedWorkspace, destination: SupportedWorkspace): ProjectHistory {
+  if (source === destination) return history;
+  const transaction = Object.freeze({ kind: 'navigation' as const, source, destination });
+  return historyState(history.current, appendBounded(history.undo, { transaction }), []);
+}
 
-export const redoProjectHistory = (history: ProjectHistory): ProjectHistoryRestore => {
-  const entry = history.redo.at(-1);
+function traverseProjectHistory(history: ProjectHistory, direction: 'undo' | 'redo'): ProjectHistoryRestore {
+  const stack = history[direction];
+  const entry = stack.at(-1);
   if (!entry) return { history, frame: history.current, changed: false, transaction: null };
-  const next = historyState(entry.frame, appendBounded(history.undo, { frame: history.current, transaction: entry.transaction }),
-    history.redo.slice(0, -1));
-  return { history: next, frame: next.current, changed: true, transaction: entry.transaction };
-};
+  // BOX inspection can replace the current restoration context between actions.
+  // A navigation entry must carry that live frame through in both directions.
+  const frame = 'frame' in entry ? entry.frame : history.current;
+  const inverse = 'frame' in entry ? Object.freeze({ frame: history.current, transaction: entry.transaction }) : entry;
+  const remaining = stack.slice(0, -1);
+  const next = direction === 'undo'
+    ? historyState(frame, remaining, [...history.redo, inverse])
+    : historyState(frame, [...history.undo, inverse], remaining);
+  return { history: next, frame, changed: true, transaction: entry.transaction };
+}
+
+export const undoProjectHistory = (history: ProjectHistory) => traverseProjectHistory(history, 'undo');
+export const redoProjectHistory = (history: ProjectHistory) => traverseProjectHistory(history, 'redo');

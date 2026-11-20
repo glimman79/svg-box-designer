@@ -3,13 +3,12 @@
 > **Historical recommendation status — 2026-11-03:** This report retains its original
 > audit baseline, observations and proposals. The §16 recommendation for Drawing-owned
 > history is superseded as long-term direction by the approved **single global project
-> history across module edits**. **2026-11-09 revision:** ordinary module navigation is
-> excluded from Undo steps and preserves Redo; Undo/Redo opens the affected edit's module. See
+> history across module edits**. **2026-11-20 revision:** deliberate Drawing/BOX switches share the 30-step timeline.
+> Edit traversal opens the affected edit's module. See
 > [Product Architecture Vision](PRODUCT_ARCHITECTURE_VISION.md#3-one-global-project-history)
 > and the [decision record](../PROJECT_HISTORY.md#1127-connected-product-architecture-decision-2026-11-03).
 > Current Drawing history now exists, with limitations documented in that inventory;
-> this old report is not current implementation authority. No historical text below is
-> rewritten, and the global system remains unimplemented.
+> the historical recommendations below predate the global history introduced in #643.
 
 > **D2.5a implementation note:** The implemented V2 sketch model intentionally contains only aligned, horizontal, and vertical two-point dimensions over existing Line endpoints. Value editing validates input but refuses a changed value until D2.5b can atomically solve geometry. For that next stage, an otherwise unconstrained Line keeps start A fixed and moves end B. Axis-aligned Lines use aligned as the canonical length interpretation, suppressing its identical axis-distance choice; zero projection remains available. No Circle, Arc, solver, or geometric constraint types were introduced.
 

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ChangeEvent, PointerEvent } from 'react';
+import { flushSync } from 'react-dom';
 import { exportLabeledSvg, formatImportDiagnosticMessage, getEdgeAssignmentDisplayLabels, parseSvgDocument } from './svgUtils';
 import { layoutPanelLabels } from './app/labelLayout';
 import { formatFixedNumericValue, parseCompleteNumericDraft } from './app/numericDraft';
@@ -42,7 +43,6 @@ import { createTabSegmentPlan, pointsToClosedPathD, projectPointDistanceOnSide }
 import { getContourEdgePoints, validateClosedPanel } from './app/sharedPanelGeometry';
 import type { EdgeAssignmentBucket, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
 import { DrawingWorkspace, initialDrawingViewBox, type DrawingInteractionBoundary } from './app/DrawingWorkspace';
-import { DEFAULT_WORKSPACE, selectWorkspace, type WorkspaceId } from './app/drawingTypes';
 import { useCadWheelCapture } from './app/useCadWheelCapture';
 import { useCadPanGesture } from './app/cadInteraction';
 import { projectDataEqual } from './app/projectDataEqual';
@@ -530,10 +530,9 @@ function ProjectWorkspace({ projectOwner, position }: {
   projectOwner: GlobalProjectHistory;
   position: ReturnType<GlobalProjectHistory['getPublication']>;
 }) {
-  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(DEFAULT_WORKSPACE);
   const [drawingTransactions] = useState(() => createDrawingTransactionAdapter(projectOwner));
   const importLock = useSvgImportLock(projectOwner);
-  const { project, history, epoch: renderEpoch, session } = position;
+  const { project, history, activeWorkspace, epoch: renderEpoch, session } = position;
   const { drawingDocument, box } = project;
   const boxTransactions = useMemo(() => createBoxTransactionAdapter(projectOwner, renderEpoch), [projectOwner, renderEpoch]);
   const drawingInteraction = useRef<DrawingInteractionBoundary | null>(null);
@@ -1052,8 +1051,7 @@ function ProjectWorkspace({ projectOwner, position }: {
     if (isClearDialogOpen || importLock.isImporting) return;
     drawingInteraction.current?.settle();
     const source = projectOwner.getSnapshot().box.svgModel;
-    const workspace = projectOwner.traverse(direction);
-    if (!workspace) return;
+    if (!projectOwner.traverse(direction)) return;
     invalidateInteractions();
     const restored = projectOwner.getSnapshot().box;
     if (source !== restored.svgModel) {
@@ -1062,11 +1060,13 @@ function ProjectWorkspace({ projectOwner, position }: {
       setActiveTool(restored.panelManager.isApplied || !restored.svgModel.panels.length ? 'select' : 'PM');
     }
     setIsPanelManagerModalOpen(false);
-    setActiveWorkspace(workspace);
   };
 
-  const historyCommand = useRef(traverse);
-  useLayoutEffect(() => { historyCommand.current = traverse; });
+  // The next input in the same browser task can target a newly enabled command
+  // or editor. Install its DOM and handlers before returning from this command.
+  const runHistoryCommand = (direction: 'undo' | 'redo') => flushSync(() => traverse(direction));
+  const historyCommand = useRef(runHistoryCommand);
+  useLayoutEffect(() => { historyCommand.current = runHistoryCommand; });
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.altKey || !(event.ctrlKey || event.metaKey)) return;
@@ -1091,7 +1091,7 @@ function ProjectWorkspace({ projectOwner, position }: {
   const requestClearProject = () => {
     if (isClearDialogOpen) return;
     resumeProfile.current = drawingInteraction.current?.pauseProfile();
-    setIsClearDialogOpen(true);
+    flushSync(() => setIsClearDialogOpen(true));
   };
 
   const cancelClearProject = () => {
@@ -1640,11 +1640,14 @@ function ProjectWorkspace({ projectOwner, position }: {
       <WorkspaceTopBar
         activeWorkspace={activeWorkspace}
         onSelectWorkspace={(workspace) => {
-          const next = selectWorkspace(activeWorkspace, workspace);
-          if (next === activeWorkspace) return;
-          if (activeWorkspace === 'drawing') drawingInteraction.current?.settle();
-          else cancelCanvasPan();
-          setActiveWorkspace(next);
+          if (isClearDialogOpen || importLock.isImporting || session !== projectOwner.getPublication().session) return;
+          flushSync(() => projectOwner.navigate(workspace, source => {
+            if (source === 'drawing') drawingInteraction.current?.leaveWorkspace();
+            else {
+              cancelCanvasPan();
+              pointerEpoch.current = -1;
+            }
+          }));
         }}
         onImport={handleImportWithError}
         onExport={exportSvg}
@@ -1653,7 +1656,7 @@ function ProjectWorkspace({ projectOwner, position }: {
         onDrawingToolsHostChange={setDrawingToolsHost}
         canExport={!isProjectLocked && Object.keys(edgeAssignments).length > 0}
         history={{ canUndo: history.undo.length > 0 || pendingProfileSegment, canRedo: history.redo.length > 0,
-          onUndo: () => traverse('undo'), onRedo: () => traverse('redo') }}
+          onUndo: () => runHistoryCommand('undo'), onRedo: () => runHistoryCommand('redo') }}
       />
       <a ref={downloadRef} className="visually-hidden" aria-hidden="true">download</a>
 

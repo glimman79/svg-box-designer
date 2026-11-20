@@ -2,10 +2,12 @@ import { resolveDrawingArc } from './drawingArcGeometry.js';
 
 export type WorkspaceId = 'drawing' | 'puzzle' | 'construction';
 
-export const DEFAULT_WORKSPACE: WorkspaceId = 'construction';
+export type SupportedWorkspace = Exclude<WorkspaceId, 'puzzle'>;
 
-export const selectWorkspace = (current: WorkspaceId, requested: WorkspaceId): WorkspaceId => (
-  requested === 'puzzle' ? current : requested
+export const DEFAULT_WORKSPACE: SupportedWorkspace = 'construction';
+
+export const selectWorkspace = (current: SupportedWorkspace, requested: WorkspaceId): SupportedWorkspace => (
+  requested === 'drawing' || requested === 'construction' ? requested : current
 );
 
 export type SketchId = string;

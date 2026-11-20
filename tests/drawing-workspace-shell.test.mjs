@@ -43,7 +43,7 @@ const anchored = drawingGrid.zoomViewBoxAtPoint({ x: 0, y: 0, width: 800, height
 assert.deepEqual(anchored, { x: 100, y: 75, width: 400, height: 300 }, 'wheel zoom preserves its model-space pointer anchor');
 
 const appSource = fs.readFileSync('src/App.tsx', 'utf8');
-assert.match(appSource, /useState<WorkspaceId>\(DEFAULT_WORKSPACE\)/);
+assert.match(appSource, /\{ project, history, activeWorkspace, .* \} = position/);
 assert.match(appSource, /<DrawingWorkspace isActive=\{activeWorkspace === 'drawing'\} document=\{drawingDocument\} viewBox=\{drawingViewBox\}/);
 assert.match(appSource, /<WorkspaceShell active=\{activeWorkspace === 'construction'\} className="workspace"/);
 assert.match(appSource, /aria-label="Active Tool overlay"/);

@@ -184,35 +184,11 @@ algorithms, joint types, manufacturing settings and UI remain undefined/design-r
 
 ## 3. One global project history
 
-**Product decisions revised 2026-11-09 for PR #629.** These requirements supersede the
-earlier module-switch history requirement and settle Clear/Open session boundaries.
-The [Stage B analysis](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md) remains a technical
-proposal for review; this does not approve the complete architecture or implementation.
+**Product decision revised 2026-11-20.** The single global timeline has a combined limit of 30 reversible transitions. PR 7 delivered complete project-edit restoration across Drawing and BOX. The November 20 decision supersedes the November 9 exclusion of deliberate workspace switches. Each successful user switch between these two modules records its source and destination. Each accepted edit or switch consumes one slot and branches after Undo. Unavailable modules, active-tab clicks, automatic activation and inspection consume zero slots.
 
-The approved future requirement is **one global Undo/Redo system across 3D Modeling,
-Unfold, Drawing, BOX and Puzzle project edits**, plus the separate permanent parametric
-construction history defined below. It supersedes the previous recommendation
-to retain independent workspace histories. Existing implementations remain unchanged
-until a separately authorized migration.
+For example, create a Circle, switch to BOX, change a panel thickness, then switch back to Drawing. The first Undo returns to BOX with the new thickness. The second restores the old thickness. The third opens Drawing with the Circle intact. The fourth removes the Circle. Redo follows the original four actions in order.
 
-The shared limit is **30 reversible committed project-editing transitions**, including
-editable settings. This differs from today's separate 100-entry Drawing and 10-entry
-Construction limits. Ordinary module switches are navigation only: no history entry,
-capacity use, cursor movement or Redo clearing. Undo reverses the latest committed
-project edit regardless of the visible module and automatically opens that edit's module;
-Redo behaves correspondingly. Only a newly committed edit after Undo discards its Redo
-branch. Active-module UI state must not override the affected edit's restore context.
-
-For example:
-
-1. Create a Circle in Drawing.
-2. Switch to BOX and change material thickness.
-3. Switch back to Drawing.
-4. Undo opens BOX and immediately restores the previous thickness.
-5. A second Undo opens Drawing and removes the Circle.
-6. Redo restores the Circle in Drawing, then the thickness edit in BOX.
-
-There are two reversible edits in this sequence; navigation adds none.
+The eventual 3D Modeling, Unfold and Puzzle modules and the permanent parametric construction history remain future work.
 
 **Approved tape-recorder behavior:** each completed state-changing user action creates
 one logical Undo step across the entire project. This includes creating a Line, Circle,
@@ -233,7 +209,7 @@ Pointer movement, hover and similar incidental interactions must not create hist
 steps. Navigation and project-editing history are architecturally distinct. Accepted
 tool boundaries remain authoritative; exact restore/storage, BOX field acceptance and
 interruption UI remain **DESIGN REQUIRED**. One-step automatic consequences, 30 positions
-and navigation exclusion are settled requirements.
+and reversible Drawing/BOX switches are settled requirements.
 
 ### 3.1 Interactive history panel
 
@@ -395,7 +371,7 @@ do not yet implement this contract.
 | Export | Produce output for the relevant manufacturing/downstream use case; BOX explicitly selects one or multiple eligible Sketch groups separately from input recognition. | Current Construction SVG export does not establish Drawing, 3D or Puzzle export. Export is distinct from Save. |
 | Clear | Permanent whole-project session reset, never Undoable. Offer Save and Clear / Clear Without Saving / Cancel. Save and Clear requires successful complete native Save; failure/cancellation leaves project/history untouched. Reset all project/module states and Undo/Redo into a clean empty session; clearing itself never deletes or overwrites saved files. | The PR 7 correction implements Clear Without Saving and Cancel with session guards. Save and Clear stays disabled pending native saving. First Save requests a destination; save completion must be verified. See Stage B §10 for the proposed lifecycle gate. |
 | Fit to screen (canvas only) | Keep alongside canvas zoom; remove the redundant top-bar control while preserving functionality. Viewport action, no construction entry or Undo step. Compute bounds from relevant active-module geometry; eventually use suitable 3D fitting. | Drawing's current fixed view reset is insufficient. Bounds policy and the 3D camera design remain open; relocation does not implement them. |
-| Undo / Redo | Use the single 30-edit global timeline; automatically open the affected edit's module. Navigation preserves Redo and consumes no steps. | Current toolbar controllers route to isolated histories. Transaction and persistence architecture remain open. |
+| Undo / Redo | Use one 30-transition timeline for edits and deliberate Drawing/BOX switches. | PR 8 extends the global toolbar and keyboard commands introduced by #643. |
 
 ## 6. Native project persistence
 
@@ -422,7 +398,7 @@ runtime session, even when reopening the same project. Save alone does not reset
 history. Permanent construction history is required saved editable content, including
 repairable failed/blocked states. An optional descriptive journal is not a requirement;
 viewport, selection and active-module disk preferences remain unresolved. In-session Undo/Redo activation
-comes from the affected edit, never an obsolete saved tab.
+uses the edit's associated module or the navigation transition's recorded endpoint.
 
 ## 7. Proposed delivery structure and unresolved decisions
 
@@ -451,7 +427,7 @@ The following remain unresolved, rather than implicitly approved implementations
 | Design area | Questions requiring later decisions |
 | --- | --- |
 | Project ownership | Complete project-state boundary; wrapping/migration of existing models; module document ownership. |
-| Undo/Redo | Exact store/restore and pending-action admission UX, lifecycle gate/defaults and remaining field/interruption boundaries. One action including automatic consequences, 30 positions, navigation exclusion, permanent Clear and fresh Open history are settled. |
+| Undo/Redo | Exact store/restore and pending-action admission UX, lifecycle gate/defaults and remaining field/interruption boundaries. One action including automatic consequences, 30 transitions, reversible Drawing/BOX switches, permanent Clear and fresh Open history are settled. |
 | Construction operations | One top-level entry per Sketch is settled; remaining catalog/granularity outside Sketch contents, member parameter bindings, output identity/mapping and legacy baseline migration; proposed C.2 and current-settings adapters. Permanent project ownership, persistence and independence from Undo capacity are settled. |
 | Persistence | Native format, operation/schema compatibility, validation/migration, Save completion and optional disk UI preferences. Operations/relationships must persist; Open never restores previous Undo/Redo snapshots. |
 | Geometry transfer | Source/derived ownership, supported transfer geometry, identity/provenance and compatibility with the existing straight-edge SVG importer. |

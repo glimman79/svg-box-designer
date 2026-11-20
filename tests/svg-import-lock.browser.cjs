@@ -122,8 +122,11 @@ const svg = content => ({name:'same.svg',mimeType:'image/svg+xml',buffer:Buffer.
     await nav('2D Drawing').click();
     await page.keyboard.press('Control+z');assert.deepEqual(await drawingSnapshot(),drawing);
     assert.equal(await page.locator('nav button[aria-pressed="true"]').textContent(),'Box / Construction');
+    await page.keyboard.press('Control+z'); // Undo import after reversing navigation.
     assert.ok(await tool('TB').isEnabled());
     await page.keyboard.press('Control+y');assert.deepEqual(await drawingSnapshot(),drawing);
+    await page.keyboard.press('Control+y');
+    assert.equal(await nav('2D Drawing').getAttribute('aria-pressed'),'true');
     await nav('Box / Construction').click();
     console.log('PASS exact same SVG retry: successful import resets input and supplies one BOX transition, initializes Panel Manager with both panels and releases lock; global Undo/Redo resumes');
 
