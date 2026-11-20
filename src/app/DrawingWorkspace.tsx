@@ -144,7 +144,11 @@ export const drawingGeometrySelectionClass = (selection: readonly DrawingSelecti
 
 export { routeDrawingGeometryPointerSelection } from './drawingGeometrySelection.js';
 
-export type DrawingInteractionBoundary = { settle: () => void; invalidate: () => void };
+export type DrawingInteractionBoundary = {
+  settle: () => void;
+  invalidate: () => void;
+  pauseProfile: () => (() => void) | undefined;
+};
 
 export function DrawingWorkspace({
   document,
@@ -1253,6 +1257,12 @@ export function DrawingWorkspace({
   useLayoutEffect(() => {
     interactionRef.current = {
       settle: () => { flushDrawingProfileCommit(pendingProfileClickRef, window); },
+      pauseProfile: () => {
+        const pending = pendingProfileClickRef.current;
+        if (!pending) return;
+        cancelDrawingProfileCommit(pendingProfileClickRef, window);
+        return () => scheduleDrawingProfileCommit(pendingProfileClickRef, window, pending.commit);
+      },
       invalidate: () => {
         cancelPan();
         cancelPendingDrawingGestures();

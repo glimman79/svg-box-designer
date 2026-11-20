@@ -1,7 +1,7 @@
 import { createProjectHistory, redoProjectHistory, transactProjectHistory, undoProjectHistory,
   type ProjectHistory, type ProjectTransaction, type ProjectTransactionAction,
   type ProjectTransactionMetadata, type ProjectTransactionResult } from './projectHistory';
-import { createInitialBoxState, createProjectOwner } from './projectOwner';
+import { createInitialProjectState, createProjectOwner } from './projectOwner';
 import { boxStateFields, type BoxRestorationContext, type BoxStateCapture, type BoxStateSource,
   type ProjectStateCapture, type ProjectStateSource } from './projectState';
 import type { DrawingDocumentV2 } from './drawingTypes';
@@ -66,8 +66,8 @@ export function createGlobalProjectHistory(initial?: ProjectStateSource) {
     || !restorableContext(baseline.box.context)) throw new TypeError('Incomplete initial project');
   const roots = new WeakMap<ProjectStateCapture, ProjectStateSource>([[baseline, first]]);
   const boxes = new WeakMap<BoxStateCapture, BoxStateSource>([[baseline.box, first.box]]);
-  let publication: Readonly<{ project: ProjectStateSource; history: ProjectHistory; epoch: number; revision: number; session: symbol }>
-    = Object.freeze({ project: first, history: initialHistory, epoch: 0, revision: 0, session: Symbol('project session') });
+  let publication: Readonly<{ project: ProjectStateSource; history: ProjectHistory; epoch: number; revision: number; session: Readonly<{ startRevision: number }> }>
+    = Object.freeze({ project: first, history: initialHistory, epoch: 0, revision: 0, session: Object.freeze({ startRevision: 0 }) });
   let sequence = 0;
   let staging: ProjectTransaction | undefined;
   const getAttempt = () => ({ session: publication.session, revision: publication.revision });
@@ -96,7 +96,7 @@ export function createGlobalProjectHistory(initial?: ProjectStateSource) {
     const invalidate = operation === 'restore' || operation === 'reset'
       || before.project.box.svgModel !== root.box.svgModel;
     const position = Object.freeze({ project: root, history: next, revision: before.revision + 1,
-      epoch: before.epoch + Number(invalidate), session: operation === 'reset' ? Symbol('project session') : before.session });
+      epoch: before.epoch + Number(invalidate), session: operation === 'reset' ? Object.freeze({ startRevision: before.revision + 1 }) : before.session });
     // New position identity also wakes React when two same-event traversals
     // return to the same project root before a component can render.
     return owner.publishFrame(before.project, root, () => {
@@ -148,16 +148,17 @@ export function createGlobalProjectHistory(initial?: ProjectStateSource) {
     publish(Object.freeze({ ...history, current }), project(current), 'context');
   }
 
-  function clearBox() {
-    if (staging) return false;
-    const next = createProjectHistory({ drawingDocument: publication.history.current.drawingDocument, box: boxStateFields(createInitialBoxState()) });
+  function clearProject(expectedSession = publication.session) {
+    if (staging || expectedSession !== publication.session) return false;
+    const { drawingDocument, box } = createInitialProjectState();
+    const next = createProjectHistory({ drawingDocument, box: boxStateFields(box) });
     return publish(next, project(next.current), 'reset');
   }
 
   return { getSnapshot: owner.getSnapshot, subscribe: owner.subscribe, getHistory: () => publication.history,
     getPublication: () => publication,
     drawingDocumentRef: { get current() { return owner.getSnapshot().drawingDocument; } },
-    getEpoch: () => publication.epoch, getAttempt, isCurrent, transact, traverse, clearBox, setBoxContext,
+    getEpoch: () => publication.epoch, getAttempt, isCurrent, transact, traverse, clearProject, setBoxContext,
     beginBoxImport: owner.beginBoxImport, isCurrentBoxImport: owner.isCurrentBoxImport, invalidateBoxImports: owner.invalidateBoxImports };
 }
 export type GlobalProjectHistory = ReturnType<typeof createGlobalProjectHistory>;

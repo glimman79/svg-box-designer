@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
+import { captureModalInput } from './modalInput';
 import type { ProjectOwner } from './projectOwner';
 
 type ImportToken = ReturnType<ProjectOwner['beginBoxImport']>;
@@ -20,16 +21,12 @@ export function useSvgImportLock(projectOwner: Pick<ProjectOwner, 'beginBoxImpor
       event.stopImmediatePropagation();
       if (event.type === 'focusin' && event.target !== dialogRef.current) dialogRef.current?.focus();
     };
-    const events = ['keydown', 'keyup', 'pointerdown', 'pointerup', 'pointermove',
-      'mousedown', 'mouseup', 'mousemove', 'click', 'dblclick', 'contextmenu', 'wheel',
-      'touchstart', 'touchmove', 'touchend', 'beforeinput', 'input', 'change', 'submit',
-      'dragstart', 'dragover', 'drop', 'focusin', 'focusout', 'drawing:activate-dimension'];
-    events.forEach((type) => window.addEventListener(type, blockInteraction, { capture: true, passive: false }));
+    const releaseInput = captureModalInput(blockInteraction);
     return () => {
       mountedRef.current = false;
       activeImportRef.current = null;
       projectOwner.invalidateBoxImports();
-      events.forEach((type) => window.removeEventListener(type, blockInteraction, true));
+      releaseInput();
     };
   }, [projectOwner]);
 

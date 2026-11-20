@@ -4,7 +4,7 @@
 
 ## Stage C PR 7 global execution history
 
-On this review branch, the Drawing and BOX adapters stage edits against the same application-lifetime timeline. The project owner installs the complete immutable root and advances the history position before notifying subscribers. Traversal selects the workspace from the traversed action and reuses its admitted root, including source SVG and generated manufacturing output. The earlier Stage C checkpoints below describe their respective branches. [Publication and restore contract](docs/GLOBAL_HISTORY_CUTOVER.md).
+On this review branch, the Drawing and BOX adapters stage edits against the same application-lifetime timeline. The project owner installs the complete immutable root and advances the history position before notifying subscribers. Traversal selects the workspace from the traversed action and reuses its admitted root, including source SVG and generated manufacturing output. Clear Without Saving publishes the canonical initial project, empty global history and a fresh session together. The workspace UI is mounted for that session so drafts, viewports, pending input and source-specific controls start at their initial values. The earlier Stage C checkpoints below describe their respective branches. [Publication and restore contract](docs/GLOBAL_HISTORY_CUTOVER.md).
 
 ## Stage C PR 6 construction publication boundary
 

@@ -23,9 +23,44 @@ test('runtime guard distinguishes sessions and publications even when a stored r
   assert.equal(api.createDrawingTransactionAdapter(service).transact('invalid',doc=>({...doc,activeSketchId:'absent'})).outcome,'rejected');
   assert.equal(service.getHistory(),redo); assert.equal(service.getSnapshot(),original);
   const resetAttempt=service.getAttempt();
-  service.clearBox(); assert.equal(service.isCurrent(resetAttempt),false);
+  service.clearProject(); assert.equal(service.isCurrent(resetAttempt),false);
   assert.notEqual(service.getAttempt().session,resetAttempt.session);
   assert.equal(service.traverse('redo'),null);
+});
+
+test('Clear publishes the canonical empty project, empty stacks and fresh session together', t => {
+  // The generated-snapshot factory stamps each new baseline with the current time.
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-20T12:00:00Z') });
+  const service = api.createGlobalProjectHistory(api.makePopulatedProjectState());
+  const box = api.createBoxTransactionAdapter(service);
+  for (const kerfMm of [1, 2]) {
+    box.transact('Kerf', current => ({ ...current, projectSettings: { ...current.projectSettings, kerfMm } }));
+  }
+  service.traverse('undo');
+  const before = service.getPublication(), token = service.beginBoxImport();
+  assert.equal(before.history.undo.length, 1);
+  assert.equal(before.history.redo.length, 1);
+  const expected = api.createInitialProjectState();
+  let notifications = 0;
+  service.subscribe(() => {
+    notifications++;
+    const { project, history, session, epoch, revision } = service.getPublication();
+    assert.equal(project, service.getSnapshot());
+    assert.equal(history, service.getHistory());
+    assertCompleteFrame(history.current, project);
+    assert.deepEqual(project, expected);
+    assert.deepEqual(history.undo, []);
+    assert.deepEqual(history.redo, []);
+    assert.notEqual(session, before.session);
+    assert.equal(epoch, before.epoch + 1);
+    assert.equal(revision, before.revision + 1);
+    assert.equal(service.isCurrentBoxImport(token), false);
+  });
+  assert.equal(service.clearProject(before.session), true);
+  assert.equal(service.clearProject(before.session), false, 'late confirmation cannot clear the next session');
+  assert.equal(service.traverse('undo'), null);
+  assert.equal(service.traverse('redo'), null);
+  assert.equal(notifications, 1);
 });
 
 test('unchanged import and Apply keep an existing Redo branch and stored timestamp', () => {

@@ -41,12 +41,15 @@ const assert = require('node:assert/strict');
             if (current.drawingDocument !== root.drawingDocument ||
                 Object.entries({...current.box.data,...current.box.context}).some(([key,value])=>root.box[key] !== value))
               throw Error('Owner and cursor have diverged');
-            return { frame:id(current), root:id(root), output:id(root.box.generatedGeometrySnapshot),
+            const {session,revision,epoch,history} = service.getPublication();
+            return { session:id(session), revision, epoch, history:id(history), frame:id(current), root:id(root), output:id(root.box.generatedGeometrySnapshot),
               drawing:id(root.drawingDocument), undo:undo.length, redo:redo.length,
               label:undo.at(-1)?.transaction.label };
           };
           return {...service, subscribe(listener) {
             window.inspectHistory = inspect;
+            window.readProject = service.getSnapshot;
+            window.resetProjectForImportTest = service.clearProject;
             return service.subscribe(() => { inspect(); listener(); });
           }};
         }
@@ -82,6 +85,8 @@ const assert = require('node:assert/strict');
       assert.equal(await button(workspace).getAttribute('aria-pressed'),'true');
     };
     await page.goto(process.env.WORKSPACE_BROWSER_URL || 'http://127.0.0.1:5173/');
+    await page.waitForFunction(() => !!window.readProject);
+    const initial = await page.evaluate(() => window.readProject());
     await page.getByLabel('Import SVG into BOX / Construction',{exact:true}).setInputFiles('tests/fixtures/construction-two-panels.svg');
     await page.getByRole('dialog',{name:'Panel Manager'}).getByRole('button',{name:'OK'}).click();
     const imported = await state();
@@ -158,16 +163,162 @@ const assert = require('node:assert/strict');
     for (let i=5;i<=10;i++) { await redo.click(); await expectFrame(tape[i],i%2===0 ? box : drawing); }
     await navigate(drawing); await line(175);
     assert.equal((await state()).undo,7); assert.equal(await redo.isEnabled(),false);
-    await navigate(box); const beforeClear=await state();
-    await button('Clear').click();
-    const confirmation=page.getByRole('dialog',{name:'Clear BOX / Construction?'});
-    assert.match(await confirmation.innerText(),/entire Undo\/Redo history, including Drawing/);
-    await confirmation.getByRole('button',{name:'Cancel'}).click(); assert.deepEqual(await state(),beforeClear);
-    await button('Clear').click(); await confirmation.getByRole('button',{name:'Clear',exact:true}).click();
-    assert.equal((await state()).drawing,beforeClear.drawing); assert.equal((await state()).undo,0); assert.equal((await state()).redo,0);
-    await navigate(drawing); await button('Profile').click();
+    const branched = await state();
+    await undo.click(); await navigate(box);
+    const beforeCancel = await state();
+    assert.equal(beforeCancel.redo, 1);
+    const clear = button('Clear');
+    const confirmation = page.getByRole('dialog', {name:'Clear entire project?', exact:true});
+    const dialogClosed = () => page.locator('dialog.project-clear-dialog').waitFor({state:'detached'});
+    const cancel = confirmation.getByRole('button', {name:'Cancel', exact:true});
+    const discard = confirmation.getByRole('button', {name:'Clear Without Saving', exact:true});
+    const save = confirmation.getByRole('button', {name:'Save and Clear', exact:true});
+    let downloads = 0;
+    page.on('download', () => downloads++);
+    await clear.click();
+    assert.match(await confirmation.innerText(), /Saving an editable project is not available yet/);
+    assert.equal(await confirmation.evaluate(el => el.matches(':modal')), true);
+    assert.equal(await cancel.evaluate(el => el === document.activeElement), true);
+    assert.equal(await save.isVisible(), true);
+    assert.equal(await save.isDisabled(), true);
+    const bounds = await save.boundingBox();
+    await page.mouse.click(bounds.x + bounds.width/2, bounds.y + bounds.height/2);
+    await save.evaluate(el => { el.focus(); el.click(); });
+    assert.equal(await save.evaluate(el => el === document.activeElement), false);
+    await cancel.focus(); await page.keyboard.press('Tab');
+    assert.equal(await discard.evaluate(el => el === document.activeElement), true);
+    await page.keyboard.press('Shift+Tab');
+    assert.equal(await cancel.evaluate(el => el === document.activeElement), true);
+    for (const key of ['Control+z','Control+y','Delete']) await page.keyboard.press(key);
+    assert.deepEqual(await state(), beforeCancel);
+    assert.equal(await confirmation.isVisible(), true);
+    assert.doesNotMatch(await confirmation.innerText(), /successfully saved|project (?:was )?saved/i);
+    assert.equal(downloads, 0);
+    await cancel.press('Enter');
+    await dialogClosed();
+    assert.deepEqual(await state(), beforeCancel);
+    assert.equal(await clear.evaluate(el => el === document.activeElement), true);
+    for (const dismiss of [() => page.keyboard.press('Escape'), () => page.mouse.click(5,5)]) {
+      await clear.click(); await dismiss(); await dialogClosed();
+      assert.deepEqual(await state(), beforeCancel);
+    }
+    await redo.click(); await expectFrame(branched,drawing);
+
+    // Keep the full mixed manufacturing project, including both kinds of Drawing geometry.
+    const populated = await page.evaluate(() => window.readProject());
+    assert.ok(populated.box.panelManager.isDirty, 'pending PM settings coexist with previously applied output');
+    assert.ok(populated.box.generatedGeometrySnapshot.generatedGeometry.length > 0);
+    for (const prefix of ['TB','W','S']) assert.ok(Object.keys(populated.box.connections).some(id => id.startsWith(prefix)));
+    const entities = Object.values(populated.drawingDocument.sketches).flatMap(sketch => Object.values(sketch.entities));
+    for (const type of ['line','circle']) assert.ok(entities.some(entity => entity.type === type));
+
+    // Hold an already accepted Profile timer and deliver it even after its timeout is cancelled.
+    await page.evaluate(() => {
+      const schedule = window.setTimeout.bind(window);
+      window.profileCallbacks = [];
+      window.setTimeout = (fn, delay, ...args) => {
+        if (delay !== 220) return schedule(fn, delay, ...args);
+        window.profileCallbacks.push(fn);
+        return schedule(fn, 60000, ...args);
+      };
+      window.restoreTimers = () => { window.setTimeout = schedule; };
+    });
+    await button('Profile').click(); await click(-140,135); await click(-70,130);
+    assert.equal(await page.evaluate(() => window.profileCallbacks.length), 2, 'both Profile placements were accepted');
+    const beforePrompt = await state();
+    await clear.click();
+    await page.evaluate(() => window.profileCallbacks.forEach(fn => fn()));
+    assert.deepEqual(await state(), beforePrompt, 'queued Profile callbacks cannot publish in the dialog');
+    await cancel.click(); await dialogClosed();
+    assert.deepEqual(await state(), beforePrompt);
+    assert.equal(await page.evaluate(() => window.profileCallbacks.length), 3, 'Cancel rescheduled the pending Profile click');
+    await page.evaluate(() => window.profileCallbacks.at(-1)());
+    assert.equal((await state()).label, 'Create Profile segment', 'Cancel resumes the accepted click');
+    await click(-40,160);
+    const beforeClear = await state();
+    await clear.click();
+    await discard.press('Enter');
+    await dialogClosed();
+    await page.evaluate(() => { window.profileCallbacks.forEach(fn => fn()); window.restoreTimers(); });
+    const empty = await state();
+    assert.equal(empty.revision, beforeClear.revision + 1, 'Clear never settles an extra edit');
+    assert.notEqual(empty.session, beforeClear.session);
+    assert.equal(empty.epoch, beforeClear.epoch + 1);
+    const cleared = await page.evaluate(() => window.readProject());
+    // Each canonical factory call timestamps its empty manufacturing snapshot.
+    assert.ok(Number.isFinite(Date.parse(cleared.box.generatedGeometrySnapshot.metadata.createdTimestamp)));
+    initial.box.generatedGeometrySnapshot.metadata.createdTimestamp = cleared.box.generatedGeometrySnapshot.metadata.createdTimestamp;
+    assert.deepEqual(cleared, initial);
+    assert.equal(await button(box).getAttribute('aria-pressed'), 'true');
+    assert.equal(await undo.isDisabled(), true); assert.equal(await redo.isDisabled(), true);
+    assert.equal(await clear.evaluate(el => el === document.activeElement), true);
+    for (const workspace of [drawing,box,drawing]) {
+      await navigate(workspace); assert.deepEqual(await state(),empty);
+    }
+    assert.equal(await page.locator('[data-sketch-line-id], [data-sketch-circle-id]').count(), 0);
+    assert.equal(await page.locator('.edge-hitbox').count(), 0);
+
+    // A genuinely new mixed timeline reaches the new baseline, including across SVG replacement.
+    await line(); const freshLine = await state();
+    await undo.click(); await expectFrame(empty,drawing);
+    await redo.click(); await expectFrame(freshLine,drawing);
+    await navigate(box);
+    await page.getByLabel('Import SVG into BOX / Construction',{exact:true}).setInputFiles('tests/fixtures/construction-two-panels.svg');
+    await page.getByRole('dialog',{name:'Panel Manager'}).getByRole('button',{name:'OK'}).click();
+    const newImport = await state();
+    await action('Accept default thickness');
+    const newBoxEdit = await state();
+    await undo.click(); await expectFrame(newImport,box);
+    await undo.click(); await expectFrame(freshLine,box);
+    await undo.click(); await expectFrame(empty,drawing); assert.equal(await undo.isDisabled(),true);
+    await redo.click(); await expectFrame(freshLine,drawing);
+    await redo.click(); await expectFrame(newImport,box);
+    await redo.click(); await expectFrame(newBoxEdit,box);
+
+    // Opening the dialog from an uncommitted numeric draft must not accept its blur.
+    await action('Apply'); await action('OK'); await tool('MFG');
+    const kerf = page.locator('#manufacturing-kerf');
+    await kerf.fill('0.73');
+    const draftPosition = await state();
+    await clear.click();
+    assert.deepEqual(await state(), draftPosition);
+    await cancel.click(); await dialogClosed();
+    assert.deepEqual(await state(), draftPosition);
+    assert.equal(await kerf.inputValue(), '0.73');
+    assert.equal(await kerf.evaluate(el => el === document.activeElement), true);
+    await kerf.evaluate(el => { window.oldKerf = el; });
+    await clear.click(); await discard.click(); await dialogClosed();
+    const afterDraftClear = await state();
+    assert.equal(afterDraftClear.revision, draftPosition.revision + 1);
+    await page.evaluate(() => window.oldKerf.dispatchEvent(new FocusEvent('focusout', {bubbles:true})));
+    assert.deepEqual(await state(), afterDraftClear);
+
+    // Reset a captured Drawing drag while the physical mouse is still down.
+    await navigate(drawing); await line(); await button('Select').click();
+    const dragPoint = await page.locator('svg.drawing-svg').evaluate(el => {
+      const p = new DOMPoint(-120,-50).matrixTransform(el.getScreenCTM()); return {x:p.x,y:p.y};
+    });
+    const holdDrag = async () => {
+      await page.mouse.move(dragPoint.x, dragPoint.y); await page.mouse.down();
+      await page.mouse.move(dragPoint.x+25, dragPoint.y-30, {steps:4});
+      assert.equal(await page.locator('svg.drawing-svg').evaluate(el => el.hasPointerCapture(1)), true);
+    };
+    await holdDrag();
+    const beforeRelease = await state();
+    await clear.press('Enter'); await page.mouse.up();
+    assert.deepEqual(await state(), beforeRelease, 'captured pointer release cannot edit behind the prompt');
+    await cancel.click(); await dialogClosed();
+    assert.deepEqual(await state(), beforeRelease);
+    await holdDrag(); await clear.press('Enter'); await discard.press('Space');
+    await dialogClosed();
+    const afterDragClear = await state();
+    await page.mouse.up(); await navigate(drawing);
+    assert.equal(afterDragClear.undo, 0); assert.equal(afterDragClear.redo, 0);
+    assert.deepEqual(await state(), afterDragClear);
+    assert.equal(await page.locator('[data-sketch-line-id]').count(), 0);
+    await button('Profile').click();
     await click(-140,135); await click(-70,130);
-    await undo.click(); assert.equal((await state()).drawing,beforeClear.drawing);
+    await undo.click(); assert.equal((await state()).drawing,afterDragClear.drawing);
     await page.waitForTimeout(260); assert.equal((await state()).redo,1);
     await redo.click(); assert.equal((await state()).label,'Create Profile segment');
     await button('Profile').click(); await click(50,140); await click(100,150);
@@ -183,7 +334,35 @@ const assert = require('node:assert/strict');
     assert.equal((await state()).undo,settled.undo+1);
     assert.equal(await button('Profile').getAttribute('aria-pressed'),'false');
     await undo.click(); await expectFrame(settled,drawing);
+    // The modal normally prevents Clear during import. Exercise the same service reset
+    // during a real file read, then deliver that read while the next session owns its lock.
+    await navigate(box);
+    const fileInput = page.locator('input[type=file]');
+    await fileInput.setInputFiles({name:'invalid.svg', mimeType:'image/svg+xml', buffer:Buffer.from('<broken>')});
+    const notice = page.locator('.notice:not(.inline-notice)');
+    await notice.waitFor();
+    assert.match(await notice.innerText(), /not a valid SVG/);
+    await page.evaluate(() => {
+      const read = File.prototype.text;
+      window.reads = [];
+      File.prototype.text = function () {
+        return new Promise(resolve => window.reads.push(async () => resolve(await read.call(this))));
+      };
+    });
+    const importing = page.getByRole('dialog', {name:'Importing SVG…'});
+    await fileInput.setInputFiles('tests/fixtures/construction-two-panels.svg'); await importing.waitFor();
+    await page.evaluate(() => window.resetProjectForImportTest()); await importing.waitFor({state:'hidden'});
+    const afterImportReset = await state();
+    assert.equal(await notice.count(), 0);
+    await fileInput.setInputFiles('tests/fixtures/06_two_independent_panels.svg'); await importing.waitFor();
+    await page.evaluate(() => window.reads[0]());
+    assert.deepEqual(await state(), afterImportReset);
+    assert.equal(await importing.isVisible(), true);
+    await page.evaluate(() => window.reads[1]());
+    await page.getByRole('dialog', {name:'Panel Manager'}).waitFor();
+    assert.equal((await state()).undo, 1);
+    assert.equal((await state()).label, 'Import SVG source');
     assert.deepEqual(errors,[]);
-    console.log('PASS mounted global A/B/C/D/E/I/J: frame and root identity, mixed Apply and solved Dimension, exact 30-action eviction, branch, Clear');
+    console.log('PASS mounted global A/B/C/D/E/I/J: frame and root identity, mixed Apply and solved Dimension, exact 30-action eviction, branch, project-wide Clear, cancellation, fresh editing and stale timer/pointer/import rejection');
   } finally { await browser.close(); }
 })().catch(error=>{console.error(error);process.exitCode=1;});

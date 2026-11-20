@@ -51,8 +51,9 @@ import { assignConstructionEdge, changeConstructionRole, defaultConnectionProper
 export { defaultConnectionProperties } from './app/boxConstruction';
 import { createBoxTransactionAdapter, type BoxTransactionResult } from './app/boxTransactionAdapter';
 import type { BoxStateSource } from './app/projectState';
-import { createGlobalProjectHistory } from './app/globalProjectHistory';
+import { createGlobalProjectHistory, type GlobalProjectHistory } from './app/globalProjectHistory';
 import { useSvgImportLock } from './app/useSvgImportLock';
+import { ClearProjectDialog } from './app/ClearProjectDialog';
 import { WorkspaceTopBar } from './app/WorkspaceTopBar';
 import { WorkspaceShell } from './app/WorkspaceShell';
 import { SharedHistoryRegion } from './app/SharedHistoryRegion';
@@ -518,12 +519,21 @@ const SelectField = ({ id, label, value, options, onChange }: SelectFieldProps) 
 );
 
 function App() {
-  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(DEFAULT_WORKSPACE);
   const [projectOwner] = useState(createGlobalProjectHistory);
+  const position = useSyncExternalStore(projectOwner.subscribe,
+    projectOwner.getPublication, projectOwner.getPublication);
+  return <ProjectWorkspace key={position.session.startRevision} projectOwner={projectOwner} position={position} />;
+}
+
+// Project-scoped tools, editors, viewports and asynchronous UI handles share this lifetime.
+function ProjectWorkspace({ projectOwner, position }: {
+  projectOwner: GlobalProjectHistory;
+  position: ReturnType<GlobalProjectHistory['getPublication']>;
+}) {
+  const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceId>(DEFAULT_WORKSPACE);
   const [drawingTransactions] = useState(() => createDrawingTransactionAdapter(projectOwner));
   const importLock = useSvgImportLock(projectOwner);
-  const { project, history, epoch: renderEpoch } = useSyncExternalStore(projectOwner.subscribe,
-    projectOwner.getPublication, projectOwner.getPublication);
+  const { project, history, epoch: renderEpoch, session } = position;
   const { drawingDocument, box } = project;
   const boxTransactions = useMemo(() => createBoxTransactionAdapter(projectOwner, renderEpoch), [projectOwner, renderEpoch]);
   const drawingInteraction = useRef<DrawingInteractionBoundary | null>(null);
@@ -554,6 +564,7 @@ function App() {
   const [activePanelId, setActivePanelId] = useState<string | null>(null);
   const [activeHoleId, setActiveHoleId] = useState<string | null>(null);
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
+  const resumeProfile = useRef<(() => void) | undefined>(undefined);
   const [isProfileOffsetProfileSelectionActive, setIsProfileOffsetProfileSelectionActive] = useState(false);
   const [hoveredProfileOffsetProfileId, setHoveredProfileOffsetProfileId] = useState<ProfileOffsetSelectionTargetId | null>(null);
 
@@ -1072,24 +1083,21 @@ function App() {
   }, []);
 
   const clearProject = () => {
-    drawingInteraction.current?.settle();
-    if (!projectOwner.clearBox()) return;
-    invalidateInteractions();
-    setVisitedManufacturingOrder(undefined);
-    setIsPanelManagerModalOpen(false);
-    setActiveTool('select');
-    setExpandedTBGroups({});
-    setExpandedSGroups({});
-    setCanvasViewBox(parseViewBox(projectOwner.getSnapshot().box.svgModel.viewBox));
-    setIsClearDialogOpen(false);
+    drawingInteraction.current?.invalidate();
+    cancelCanvasPan();
+    projectOwner.clearProject(session);
   };
 
   const requestClearProject = () => {
+    if (isClearDialogOpen) return;
+    resumeProfile.current = drawingInteraction.current?.pauseProfile();
     setIsClearDialogOpen(true);
   };
 
   const cancelClearProject = () => {
     setIsClearDialogOpen(false);
+    resumeProfile.current?.();
+    resumeProfile.current = undefined;
   };
 
   const updatePanelThickness = (panelId: string, thicknessMm: number) => {
@@ -1627,6 +1635,7 @@ function App() {
       <h2 id="svg-import-title">Importing SVG…</h2>
       <p id="svg-import-description">Please wait while the file is being imported.</p>
     </dialog>
+    {isClearDialogOpen && <ClearProjectDialog onCancel={cancelClearProject} onConfirm={clearProject} />}
     <main className="app-shell" inert={importLock.isImporting} aria-busy={importLock.isImporting}>
       <WorkspaceTopBar
         activeWorkspace={activeWorkspace}
@@ -1640,25 +1649,13 @@ function App() {
         onImport={handleImportWithError}
         onExport={exportSvg}
         onClear={requestClearProject}
+        focusClearOnMount={session.startRevision > 0}
         onDrawingToolsHostChange={setDrawingToolsHost}
         canExport={!isProjectLocked && Object.keys(edgeAssignments).length > 0}
         history={{ canUndo: history.undo.length > 0 || pendingProfileSegment, canRedo: history.redo.length > 0,
           onUndo: () => traverse('undo'), onRedo: () => traverse('redo') }}
       />
       <a ref={downloadRef} className="visually-hidden" aria-hidden="true">download</a>
-
-      {isClearDialogOpen && (
-        <div className="clear-dialog-backdrop" role="presentation">
-          <div className="clear-dialog" role="dialog" aria-modal="true" aria-labelledby="clear-dialog-title">
-            <h2 id="clear-dialog-title">Clear BOX / Construction?</h2>
-            <p>Drawing geometry is preserved. Clearing discards the entire Undo/Redo history, including Drawing edits.</p>
-            <div className="clear-dialog-actions">
-              <button className="toolbar-button" type="button" onClick={cancelClearProject}>Cancel</button>
-              <button className="toolbar-button primary" type="button" onClick={clearProject}>Clear</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {isPanelManagerModalOpen && (
         <div className="clear-dialog-backdrop" role="presentation">

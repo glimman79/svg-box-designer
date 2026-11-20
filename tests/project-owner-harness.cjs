@@ -47,7 +47,7 @@ function harness(initial=api.makePopulatedProjectState()) {
   }
   context.parseViewBox=()=>({x:0,y:0,width:100,height:100});
   for(const name of ['constructionGroupField','getNextWorkflowGroupOrderIndex','reportBoxResult','recalculateBoxConnections','selectAppliedSnapshot','acceptDefaultPanelThickness','openManufacturing','toggleProfileOffsetProfile','haveProjectSettingsChanged','invalidateInteractions','traverse','updateProjectSettings','updatePanelThickness','applyPanelManager','applyPanelPaths','selectConnectionForDisplayAndAssignment','commitConstruction','startGroup','finishGroup','handleToolClick','getNextLabel',
-    'cloneDefaultProperties','createConnectionDefinition','createLabel','assignSelectedLabelToEdge','clearEdgeLabel','updateAssignedRole','updateConnectionProperties','clearProject','handleImport']) context[name]=production(name,context);
+    'cloneDefaultProperties','createConnectionDefinition','createLabel','assignSelectedLabelToEdge','clearEdgeLabel','updateAssignedRole','updateConnectionProperties','handleImport']) context[name]=production(name,context);
   context.undoLastEdit=()=>context.traverse('undo');
   context.redoLastEdit=()=>context.traverse('redo');
   return {projectOwner,context,state,lockHarness};

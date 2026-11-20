@@ -33,26 +33,28 @@ A successful changed SVG import is one BOX transition. Parsing happens once befo
 
 Pending panel thickness, default acceptance, Panel Manager Apply, manufacturing settings and a changed Geometry Apply are independently reversible. Apply still validates and runs the existing generators. Exact equality of operations, output and metadata except the creation timestamp permits reuse of the previous snapshot. A change in an applied settings stamp can therefore create one step even when the preview already reflects the current draft value. No geometric tolerance was added.
 
-Confirmed BOX Clear creates an empty BOX baseline and discards both stacks, including Drawing edit history. Drawing content survives. The confirmation discloses the loss before the destructive action. Cancel preserves the whole project and tape. The fresh baseline includes Wall groups as well as TB and S. Whole-project Save and Clear belongs to the future native persistence workflow.
+Clear opens a native modal from Drawing or BOX. Cancel has initial focus. Cancel, Escape and backdrop dismissal keep the exact project root, history, cursor, Redo and session. Opening the dialog pauses an accepted Profile timer and preserves uncommitted numeric input. Cancel lets the pending interaction continue. **Save and Clear** is disabled with an explanation until native project saving can verify a complete editable save. SVG Export produces manufacturing output and cannot satisfy that requirement.
+
+**Clear Without Saving** cancels pending gestures and calls `clearProject` for the session that opened the dialog. The service uses `createInitialProjectState` to prepare the complete Drawing and BOX baseline and starts a new empty history. A single publication installs the root, cursor, fresh session and advanced interaction epoch, and invalidates old import tokens before notifying subscribers. Undo cannot cross this boundary. The new session remounts the workspace in its standard BOX / Construction view, with initial tools, selections, viewports and manufacturing controls. Old timers, pointer releases and editor commits cannot edit the fresh project.
 
 ## Verification
 
 The production-owner and adapter tests read the live owner and cursor together inside a subscriber. They check same-event edits, nested and stale rejection, immutable identity, all stored composition modes, branching after eviction, and unchanged Apply/import. The core, capture and separate CAD domain suites cover solver results, canonical Arc data, dimension roles, relationship removal, rejected PM/Wall/S operations and generated-output equivalence.
 
-The dedicated Chromium suite observes the production service at Vite's module boundary and uses UI controls for every edit. It checks frame and root identity in both traversal directions, exact oldest reachability after 34 alternating edits, a branch from a partly consumed tape and both Clear choices. It counts actual parser, TB/W/S generator, authority selector, snapshot factory and Dimension solver calls. All were exercised during authoring. None were invoked while traversing the tested mixed Apply/Dimension or SVG replacement frames. Additional mounted suites exercise input locking, pending Profile/timer and pointer release, Kerf and S Offset, group continuation and workflow navigation. A separate baseline-versus-branch Chromium check confirmed that native Profile double-click at a new endpoint completes one final segment and exits the tool.
+The dedicated Chromium suite observes the production service at Vite's module boundary and uses UI controls for every edit. It checks frame and root identity in both traversal directions, exact oldest reachability after 34 alternating edits, a branch from a partly consumed tape and the project-wide Clear dialog. It counts actual parser, TB/W/S generator, authority selector, snapshot factory and Dimension solver calls. All were exercised during authoring. None were invoked while traversing the tested mixed Apply/Dimension or SVG replacement frames. Additional mounted suites exercise input locking, pending Profile/timer and pointer release, Kerf and S Offset, group continuation and workflow navigation. A separate baseline-versus-branch Chromium check confirmed that native Profile double-click at a new endpoint completes one final segment and exits the tool.
 
 ### Recorded results
 
-The validated checkout used Node 24.19.0 and Chromium 151.0.7922.173. All 30 non-browser npm commands below, all eight mounted Chromium suites and the diff check succeeded. The four suites that report individual project-history tests returned the following counts.
+The Clear correction was applied to reviewed branch commit `5e8a64da4cd574d5d2a63c94f80993002b6e77aa` on 20 November 2026. Validation used Node 24.19.0 and Chromium 151.0.7922.173. All 30 non-browser npm commands below, all eight mounted Chromium suites and the diff check succeeded. The four suites that report individual project-history tests returned the following counts.
 
 | Suite | Passed | Failed or skipped |
 | --- | ---: | ---: |
 | Pure project history | 40 | 0 |
 | Complete state capture | 16 | 0 |
-| Shared owner, BOX and global integration | 50 | 0 |
+| Shared owner, BOX and global integration | 51 | 0 |
 | Drawing transaction adapter | 8 | 0 |
 
-The mounted global suite exercised A–E, I and J, including 34 alternating UI edits, all 30 reachable Undo transitions and six Redos before branching. The adapter retention test traversed all 30 transitions in both directions. The construction, Drawing adapter, project owner, import lock, workspace shell, shared History and contextual canvas suites also passed. Production adapter and mounted interaction checks together cover the rejected edits, rapid edits and pending interactions in F–H. These are automated checks. Personal acceptance follows merge.
+The mounted global suite exercised A–E, I and J, including 34 alternating UI edits, all 30 reachable Undo transitions and six Redos before branching. The adapter retention test traversed all 30 transitions in both directions. The construction, Drawing adapter, project owner, import lock, workspace shell, shared History and contextual canvas suites also passed. Production adapter and mounted interaction checks together cover the rejected edits, rapid edits and pending interactions in F–H. The corrected Clear tests also compare the full reset with the canonical factory, check publication inside a subscriber, and compare history, cursor and session identities on dismissal. Chromium exercises the disabled save choice, focus restoration, pending Profile and numeric input, pointer release both during and after the dialog, a late SVG read during a new import, and fresh cross-module editing. Personal acceptance follows merge.
 
 ### Commands
 
@@ -109,7 +111,7 @@ npm run test:contextual-canvas-controls:browser
 
 The cutover shares frozen module subtrees. BOX-only changes retain the complete Drawing document. Drawing edits retain the complete BOX projection. The cache keys are weak, and dev-only Apply diagnostics expire with their input. Permanent construction definitions have no history quota.
 
-After the owner suite compiled its production fixture, the isolated measurement ran with `node --expose-gc --test tests/global-project-history.test.cjs`. All three tests passed. The two-Sketch fixture extended the source by 2 MiB and held 5,000 stored output records.
+On the original reviewed commit, after the owner suite compiled its production fixture, the isolated measurement ran with `node --expose-gc --test tests/global-project-history.test.cjs`. All three tests passed. The two-Sketch fixture extended the source by 2 MiB and held 5,000 stored output records.
 
 | Measurement | Observed result |
 | --- | ---: |
@@ -128,6 +130,8 @@ After merge, use the two-panel SVG fixture for these checks. Import it in BOX, a
 3. **Navigation.** Undo an edit, visit both workspaces and reopen an existing workflow group. Redo should still be available and restore that edit.
 4. **Branching.** Undo an edit, then complete a different Line in Drawing. Redo should become unavailable.
 5. **Manufacturing geometry.** On a fresh fixture assign TB to both top edges, W to the facing vertical edges and S to both bottom edges. Finish each group, open Manufacturing, and Apply. Draw a Line, then Undo twice and Redo twice. Check the source panels and compare the restored preview or exported paths with the original applied result.
-6. **Import and Clear.** Import a different SVG. Undo should restore the previous source and its output. Redo returns to the replacement. Cancel Clear and check both stacks still work. On a disposable project, confirm Clear. BOX should empty, Drawing geometry should remain and both history buttons should disable.
+6. **Import.** Import a different SVG. Undo should restore the previous source and its output. Redo returns to the replacement.
+7. **Cancel Clear.** In a disposable project with a Drawing Line, Circle and BOX construction, undo one edit to enable Redo. Open Clear from either workspace. Check that Save and Clear is visibly disabled and the dialog explains why. Choose Cancel. Check the contents of both modules and redo the edit. Repeat with Escape.
+8. **Clear Without Saving.** Confirm this choice from Drawing. BOX / Construction should open empty. Switch back to Drawing and verify it is empty too. Undo and Redo should both be disabled. Start a new Line, undo and redo it, then import a new SVG in BOX and check that Undo and Redo work across modules.
 
 The tests above are for personal acceptance after merge. C.2 permanent editable operations and UI-4, D native Save/Open, and E dependency evaluation remain deferred. The runtime handles synchronous actions and guarded SVG input. The future asynchronous admit/finalize/suspend/resume/abandon protocol still requires implementation and interleaving tests. The previously accepted rare Arc empty/blind Undo limitation remains open.

@@ -24,11 +24,13 @@ exports.importLockHarness = projectOwner => {
       }
     },
   };
-  const compiled = ts.transpileModule(fs.readFileSync('src/app/useSvgImportLock.ts', 'utf8'), {
+  const compile = path => ts.transpileModule(fs.readFileSync(path, 'utf8'), {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
   }).outputText;
-  const context = vm.createContext({ exports: {}, require: () => react, window });
-  vm.runInContext(compiled, context);
+  const input = vm.createContext({ exports: {}, window });
+  vm.runInContext(compile('src/app/modalInput.ts'), input);
+  const context = vm.createContext({ exports: {}, require: name => name === './modalInput' ? input.exports : react, window });
+  vm.runInContext(compile('src/app/useSvgImportLock.ts'), context);
   const render = () => {
     cursor = 0;
     lock = context.exports.useSvgImportLock(projectOwner);

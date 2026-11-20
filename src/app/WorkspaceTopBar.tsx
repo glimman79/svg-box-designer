@@ -10,12 +10,13 @@ const modules: ReadonlyArray<{ id: WorkspaceId; label: string; available: boolea
 ];
 
 /** Placement only: App supplies the shared history commands. */
-export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, onExport, onClear, canExport, history, onDrawingToolsHostChange }: {
+export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, onExport, onClear, focusClearOnMount, canExport, history, onDrawingToolsHostChange }: {
   activeWorkspace: WorkspaceId;
   onSelectWorkspace: (workspace: WorkspaceId) => void;
   onImport: (event: ChangeEvent<HTMLInputElement>) => void;
   onExport: () => void;
   onClear: () => void;
+  focusClearOnMount?: boolean;
   canExport: boolean;
   history: HistoryControlsProps;
   /** Drawing portals its authoritative controls here; no tool state belongs to the header. */
@@ -28,7 +29,7 @@ export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, 
       <h1>SVG BOX DESIGNER</h1>
     </div>
     <div className="toolbar-actions project-commands" role="group" aria-label="Project commands">
-      <span className="command-scope" title="These existing commands belong to BOX / Construction">BOX</span>
+      <span className="command-scope">Project</span>
       <label className={`toolbar-button${isConstruction ? ' primary' : ''}`} aria-disabled={!isConstruction} title="Import SVG into BOX / Construction">
         Import
         <input aria-label="Import SVG into BOX / Construction" type="file" accept=".svg,image/svg+xml" disabled={!isConstruction} onChange={onImport} />
@@ -36,7 +37,12 @@ export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, 
       <button className="toolbar-button" type="button" disabled title="Native Open Project is not implemented">Open</button>
       <button className="toolbar-button" type="button" disabled title="Native Save Project is not implemented">Save</button>
       <button className="toolbar-button" type="button" onClick={onExport} disabled={!isConstruction || !canExport} title="Export SVG from BOX / Construction">Export</button>
-      <button className="toolbar-button" type="button" onClick={onClear} disabled={!isConstruction} title="Clear BOX / Construction only; Drawing is preserved">Clear</button>
+      <button className="toolbar-button" type="button" autoFocus={focusClearOnMount}
+        onMouseDown={event => {
+          // Keep a focused draft intact until the dialog owns focus.
+          if (document.activeElement?.matches('input, textarea')) event.preventDefault();
+        }}
+        onClick={onClear} title="Clear entire project">Clear</button>
     </div>
     <WorkspaceSettings />
     <div className="toolbar-actions history-commands" role="group" aria-label="Project Undo/Redo" title="Undo or redo a project edit across workspaces">

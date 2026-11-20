@@ -2,7 +2,7 @@
 
 ## Stage C PR 7 — Global execution cutover (2026-11-19, in review)
 
-Following the accepted TB/W/S continuation and numeric-input checks for #642, this branch connects both transaction adapters to a persistent project timeline. Accepted source replacement and changed Geometry Apply now have independently reversible results. The bottom History row continues to navigate workflow groups. Post-merge browser acceptance for the cutover is pending. [Decisions and evidence](docs/GLOBAL_HISTORY_CUTOVER.md).
+Following the accepted TB/W/S continuation and numeric-input checks for #642, this branch connects both transaction adapters to a persistent project timeline. Accepted source replacement and changed Geometry Apply now have independently reversible results. Review on 2026-11-20 identified that the branch's BOX-only Clear contradicted the approved project-wide requirement. The correction gives both workspaces the same confirmation, preserves the session on Cancel and starts a canonical empty project on Clear Without Saving. Save and Clear awaits native saving. The bottom History row continues to navigate workflow groups. Post-merge browser acceptance for the cutover is pending. [Decisions and evidence](docs/GLOBAL_HISTORY_CUTOVER.md).
 
 ## Stage C PR 6 — Construction authoring (2026-11-19, review pending)
 

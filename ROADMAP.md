@@ -2,7 +2,7 @@
 
 ## Stage C PR 7 — Global Undo/Redo cutover in review
 
-The review branch enables a shared 30-transition execution history for synchronous Drawing and BOX edits, including SVG replacement. Review, merge and post-merge user acceptance remain open. C.2 permanent operations, UI-4, native persistence and dependency evaluation remain future work. The earlier checkpoints below describe their original implementation slices. [Scope and validation](docs/GLOBAL_HISTORY_CUTOVER.md).
+The review branch enables a shared 30-transition execution history for synchronous Drawing and BOX edits, including SVG replacement. Clear Without Saving resets both modules and their shared history. Cancel preserves the session. Save and Clear awaits native Save/Open in Stage D. Review, merge and post-merge user acceptance remain open. C.2 permanent operations, UI-4, native persistence and dependency evaluation remain future work. The earlier checkpoints below describe their original implementation slices. [Scope and validation](docs/GLOBAL_HISTORY_CUTOVER.md).
 
 ## Stage C PR 6 — BOX construction (review pending)
 

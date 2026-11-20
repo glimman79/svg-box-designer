@@ -18,10 +18,10 @@ test('one navigation and command region, with explicit capability and ownership 
     assert.equal((html.match(/aria-label="Project commands"/g) || []).length, 1);
     assert.match(html, /disabled="" title="Puzzle is not implemented"/);
     for (const command of ['Open', 'Save']) assert.match(button(html, command), /disabled=""/);
-    assert.match(html, /Clear BOX \/ Construction only; Drawing is preserved/);
+    assert.match(button(html, 'Clear'), /title="Clear entire project"/);
     assert.match(html, /Undo or redo a project edit across workspaces/);
     assert.equal(button(html, 'Export').includes('disabled=""'), module === 'drawing');
-    assert.equal(button(html, 'Clear').includes('disabled=""'), module === 'drawing');
+    assert.doesNotMatch(button(html, 'Clear'), /disabled=""/);
     const input = html.match(/<input[^>]*type="file"[^>]*>/)[0];
     assert.equal(input.includes('disabled=""'), module === 'drawing');
     assert.match(html, /class="active" aria-pressed="true"/);

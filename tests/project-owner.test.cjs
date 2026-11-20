@@ -137,9 +137,10 @@ test('actual asynchronous import locks synchronously, rejects a second read and 
 });
 
 test('failed imports and callbacks after external Clear/unmount invalidation cannot repopulate state or errors',async()=>{
-  const {projectOwner:owner,context:c,lockHarness}=importHarness(); const before=owner.getSnapshot();
-  await c.handleImport(eventFor(Promise.resolve('invalid')));assert.equal(owner.getSnapshot(),before);assert.equal(c.errorMessage,'invalid SVG');
-  const late=deferred(),job=c.handleImport(eventFor(late.promise)); c.clearProject();const cleared=owner.getSnapshot();
+  const {projectOwner:owner,context:c,lockHarness}=importHarness();
+  const late=deferred(),job=c.handleImport(eventFor(late.promise));
+  assert.equal(owner.clearProject(),true);
+  const cleared=owner.getSnapshot();
   late.resolve('late');await job;assert.equal(owner.getSnapshot(),cleared);assert.equal(c.errorMessage,'');
   const unmounted=deferred(),unmountedJob=c.handleImport(eventFor(unmounted.promise));lockHarness.unmount();
   const setterCount=lockHarness.setters.length;

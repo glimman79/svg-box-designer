@@ -2,7 +2,7 @@
 
 ## Stage C PR 7 review checkpoint
 
-Drawing and BOX share 30 reversible edits. A traversal opens the originating workspace and restores both modules from the stored project frame. SVG replacement is reversible. Confirmed BOX Clear preserves Drawing geometry and starts a fresh history session. Review, merge and personal browser acceptance are pending. The earlier checkpoints below record the preceding rollout. [Runtime architecture and validation](docs/GLOBAL_HISTORY_CUTOVER.md).
+Drawing and BOX share 30 reversible edits. A traversal opens the originating workspace and restores both modules from the stored project frame. SVG replacement is reversible. Clear is available in either workspace. Clear Without Saving permanently resets Drawing, BOX and global history. Cancel preserves the current project, history and session. Save and Clear stays disabled until native Save/Open is available. SVG Export only produces output. Review, merge and personal browser acceptance are pending. The earlier checkpoints below record the preceding rollout. [Runtime architecture and validation](docs/GLOBAL_HISTORY_CUTOVER.md).
 
 ## Stage C PR 6 construction checkpoint
 
@@ -230,9 +230,9 @@ canvas and bottom History layout without moving document/history ownership. Draw
 Dimension and Constraints launchers join its left tools; the contextual Constraints
 panel is unchanged. Construction tools, Fit, Apply and Finish Group retain their handlers.
 
-Import/Export/Clear remain explicitly BOX-scoped and unavailable while Drawing is active;
-native Open and Save remain disabled. Clear's existing confirmation now names its BOX
-scope. PR 7 connects the shared controls to the global project timeline and adds the history-discard disclosure.
+UI-1 scoped Import, Export and Clear to BOX. PR 7 keeps SVG Import and Export in BOX,
+makes Clear project-wide, and connects the shared Undo/Redo controls to the global timeline.
+Native Open and Save remain disabled.
 Existing bottom History content/navigation is unchanged. Desktop checks at 1920×1080,
 1366×768 and 1024×768 preserve bounded workspace layout without document scrolling.
 See [UI-1 validation](docs/UI1_SHARED_WORKSPACE_SHELL_VALIDATION.md) for evidence and limits.
