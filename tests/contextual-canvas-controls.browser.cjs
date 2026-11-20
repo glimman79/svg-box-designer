@@ -85,13 +85,12 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     assert.equal(await finish('OK').isEnabled(), true);
     await undo().click();
     assert.equal(await apply().isEnabled(), true);
-    assert.equal(await undo().isDisabled(), true, 'keyboard Apply accepted exactly once');
-    await page.getByRole('dialog', { name: 'Panel Manager', exact: true }).getByRole('button', { name: 'OK', exact: true }).click();
+    assert.equal(await undo().isEnabled(), true, 'source import and default acceptance remain undoable');
+    await undo().click(); assert.equal(await apply().isEnabled(), false); await redo().click();
     await redo().click();
     await finish('OK').focus(); await page.keyboard.press('Space');
     assert.equal(await actions.count(), 0);
     await undo().click(); assert.equal(await tool('TB').isDisabled(), true, 'Finish PM adds no new Undo action');
-    await page.getByRole('dialog', { name: 'Panel Manager', exact: true }).getByRole('button', { name: 'OK', exact: true }).click();
     await redo().click();
     for (const name of ['J', 'P', 'Select']) { await tool(name).click(); assert.equal(await actions.count(), 0); }
     passed.push('PM validation, keyboard Apply/Finish exactly once, existing PM Undo boundary and placeholder/Select absence');
@@ -142,7 +141,8 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     assert.equal(await apply().isEnabled(), true);
     await apply().click();
     const manufactured = await contours(); assert.notEqual(manufactured, applied);
-    await undo().click(); assert.equal(await contours(), applied, 'manufacturing retains original settings acceptance boundary');
+    await undo().click(); assert.equal(await contours(), manufactured, 'Undo Apply restores the old stamp and retains draft settings');
+    await undo().click(); assert.equal(await contours(), applied); await redo().click();
     await redo().click(); assert.equal(await contours(), manufactured);
     await undo().click();
     await tool('Select').click(); await drawing(); await box(); await tool('MFG').click();

@@ -10,12 +10,12 @@ const edit = (context, id, prefix, updates) => context.updateConnectionPropertie
 function acceptedActions(c, owner) {
   const results = observeBoxActions(c);
   return (label, action) => {
-    const before = owner.getSnapshot(), previousLocal = c.undoStack;
+    const before = owner.getSnapshot(), previousUndo = c.undoStack;
     const publications = [];
     const unsubscribe = owner.subscribe(() => {
       publications.push(owner.getSnapshot());
-      assert.notEqual(c.undoStack, previousLocal);
-      assert.equal(c.undoStack.at(-1).edgeAssignments, before.box.edgeAssignments);
+      assert.notEqual(c.undoStack, previousUndo);
+      assert.equal(c.undoStack.at(-1).frame.box.data.edgeAssignments, before.box.edgeAssignments);
       assert.equal(c.redoStack.length, 0);
     });
     const count = results.length;
@@ -24,9 +24,9 @@ function acceptedActions(c, owner) {
     const result = results.at(-1), after = owner.getSnapshot();
     assert.equal(result.outcome, 'accepted', c.errorMessage);
     assert.deepEqual(publications, [after]);
-    assert.equal(c.undoStack.length, Math.min(previousLocal.length + 1, 10));
-    assert.equal(result.history.undo.length, 1);
-    const entry = result.history.undo[0];
+    assert.equal(c.undoStack.length, Math.min(previousUndo.length + 1, 30));
+    assert.equal(result.history.undo.length, c.undoStack.length);
+    const entry = result.history.undo.at(-1);
     assert.equal(entry.transaction.module, 'box');
     assert.equal(entry.transaction.label, label);
     assertCompleteFrame(entry.frame, before);
@@ -43,7 +43,7 @@ function acceptedActions(c, owner) {
 }
 
 for (const tool of ['TB', 'W', 'S']) {
-  test(`${tool}: start, assignment with continuation, property and Finish publish complete frames and restore in one local step each`, () => {
+  test(`${tool}: start, assignment with continuation, property and Finish publish complete frames and restore in one global step each`, () => {
     const initial = api.makePopulatedProjectState();
     const { svgModel, panelManager, generatedGeometrySnapshot } = initial.box;
     initial.box = { ...api.createInitialBoxState(), svgModel, panelManager, generatedGeometrySnapshot };
@@ -125,7 +125,7 @@ test('Remove and role edit address the displayed record within a multi-assignmen
   c.redoLastEdit(); c.redoLastEdit(); assert.deepEqual(owner.getSnapshot().box,removed);
 });
 
-test('rejections preserve the exact owner, both local stacks and accepted output on an Undo branch', () => {
+test('rejections preserve the exact owner, both global stacks and accepted output on an Undo branch', () => {
   const {context:c, projectOwner:owner} = harness();
   c.updateProjectSettings({kerfMm:.8}); c.undoLastEdit();
   assert.ok(c.redoStack.length);
@@ -152,6 +152,8 @@ test('rejections preserve the exact owner, both local stacks and accepted output
   reject(() => c.assignSelectedLabelToEdge(edge('d',1)), /valid connection/);
   c.selectConnectionForDisplayAndAssignment('TB1');
   c.updatePanelThickness('panel-a',7);
+  assert.equal(c.redoStack.length,0);
+  c.updateProjectSettings({kerfMm:.8}); c.undoLastEdit();
   reject(() => edit(c,'TB1','TB',{fingerWidthMm:7}), /Apply Panel Manager/);
   reject(() => c.finishGroup('TB'), /Apply Panel Manager/);
   c.redoLastEdit(); assert.equal(owner.getSnapshot().box.projectSettings.kerfMm,.8);
@@ -229,7 +231,7 @@ test('manual creation and model-only C/P edits preserve defaults, types and hist
   assert.equal(c.redoStack,redo);
 });
 
-test('36 sequential mixed-project construction edits share untouched records, perform no full clones or generation, and bound local history', () => {
+test('36 sequential mixed-project construction edits share untouched records, perform no full clones or generation, and bound global history', () => {
   const {context:c, projectOwner:owner}=harness(), initial=owner.getSnapshot();
   let clones=0,snapshots=0,generators=0,parses=0;
   const clone=global.structuredClone;
@@ -253,7 +255,7 @@ test('36 sequential mixed-project construction edits share untouched records, pe
     }
   } finally {global.structuredClone=c.structuredClone=clone;}
   assert.deepEqual({clones,snapshots,generators,parses},{clones:0,snapshots:0,generators:0,parses:0});
-  assert.equal(c.undoStack.length,10);
+  assert.equal(c.undoStack.length,30);
 });
 
 test('an explicit first Wall role chooses its complement; TB role edits and row removal restore all sibling relationships', () => {
@@ -281,13 +283,13 @@ test('nested owner batch, changed owner during preparation, subscriber reentry a
   c.updateProjectSettings({kerfMm:.7}); c.undoLastEdit();
   const before=owner.getSnapshot(), undo=c.undoStack, redo=c.redoStack;
   const action=()=>edit(c,'W1','W',{fingerWidthMm:15});
-  owner.batch(action);
+  assert.equal(owner.transact('drawing', 'outer', () => { action(); return 'accept'; }).outcome,'rejected');
   assert.match(c.errorMessage,/Unable to complete/);
   assert.equal(owner.getSnapshot(),before); assert.equal(c.undoStack,undo); assert.equal(c.redoStack,redo);
   const prepare=c.editConstructionProperties;
   c.editConstructionProperties=(...args)=>{
     const candidate=prepare(...args);
-    owner.setBoxField('selectedEdgeId',edge('d',2));
+    owner.setBoxContext({selectedEdgeId:edge('d',2)});
     return candidate;
   };
   action();
@@ -298,21 +300,21 @@ test('nested owner batch, changed owner during preparation, subscriber reentry a
   c.editConstructionProperties=prepare;
   let seen=0;
   const unsubscribe=owner.subscribe(()=>{
-    seen++; assert.equal(c.undoStack.length,undo.length+1);
-    assert.equal(edit(c,'W1','W',{fingerWidthMm:7}),false);
+    seen++; assert.equal(c.undoStack.length,undo.length+seen);
+    if (seen === 1) assert.equal(edit(c,'W1','W',{fingerWidthMm:7}),true);
   });
   try { action(); } finally { unsubscribe(); }
-  assert.equal(seen,1); assert.equal(c.undoStack.length,undo.length+1);
-  assert.equal(owner.getSnapshot().box.connections.W1.properties.fingerWidthMm,15);
+  assert.equal(seen,2); assert.equal(c.undoStack.length,undo.length+2);
+  assert.equal(owner.getSnapshot().box.connections.W1.properties.fingerWidthMm,7);
   Object.defineProperty(c,'svgModel',{value:before.box.svgModel});
-  owner.setBoxField('svgModel',{...before.box.svgModel});
+  c.boxTransactions.replaceSource(owner.beginBoxImport(), {...before.box.svgModel}, before.box.panelManager);
   const otherSource=owner.getSnapshot(), steps=c.undoStack;
   action(); assert.match(c.errorMessage,/current SVG source/);
   c.assignSelectedLabelToEdge(edge('d',2)); assert.match(c.errorMessage,/current source edge/);
   assert.equal(owner.getSnapshot(),otherSource); assert.equal(c.undoStack,steps);
 });
 
-test('duplicate TB owner and redundant Finish do not consume a local step or discard the undone property', () => {
+test('duplicate TB owner and redundant Finish do not consume a global step or discard the undone property', () => {
   const {context:c,projectOwner:owner}=harness();
   c.finishGroup('TB');
   c.createLabel('TB');

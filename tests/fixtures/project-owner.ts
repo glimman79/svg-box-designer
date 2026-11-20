@@ -24,3 +24,5 @@ export * from '../../src/app/boxDocument';
 export * from '../../src/app/boxConstruction';
 export * from '../../src/app/connectionLabels';
 export * from '../../src/app/connectionViewModel';
+export * from '../../src/app/globalProjectHistory';
+export * from '../../src/app/projectDataEqual';

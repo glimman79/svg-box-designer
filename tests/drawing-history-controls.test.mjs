@@ -16,11 +16,12 @@ assert.match(controls, /aria-label="Undo \(Ctrl\+Z\)" title="Undo \(Ctrl\+Z\)"/,
 assert.match(controls, /aria-label="Redo \(Ctrl\+Y\)" title="Redo \(Ctrl\+Y\)"/, 'Redo has an accessible label and matching tooltip');
 assert.match(controls, />↶<\/button>[\s\S]*>↷<\/button>/, 'Box icon order and orientation are retained');
 assert.equal((topBar.match(/<HistoryControls /g) ?? []).length, 1, 'both modules share one top-bar history placement');
-assert.match(app, /history=\{activeWorkspace === 'drawing'[\s\S]*drawingHistoryController \?\?[\s\S]*canUndo: undoStack.length > 0, canRedo: redoStack.length > 0, onUndo: undoLastEdit, onRedo: redoLastEdit/, 'the active module supplies its existing owner and disabled states');
+assert.match(app, /canUndo: history.undo.length > 0[\s\S]*canRedo: history.redo.length > 0/, 'global capability regardless of workspace');
 assert.match(topBar, /<header[\s\S]*<HistoryControls \{\.\.\.history\}/, 'history controls remain in the application header');
 assert.match(workspace, /transactDocument\(\(current\) => appendEntityToActiveSketch/, 'Line creation uses existing Drawing history transactions');
-assert.match(workspace, /key\.toLowerCase\(\) === 'z'[\s\S]*undo\(\)/, 'Ctrl/Cmd+Z and the button share Undo');
-assert.match(workspace, /key\.toLowerCase\(\) === 'y'[\s\S]*redo\(\)/, 'Ctrl/Cmd+Y and the button share Redo');
+assert.match(app, /historyCommand.current\(key === 'y' \|\| event.shiftKey \? 'redo' : 'undo'\)/);
+assert.match(app, /onUndo: \(\) => traverse\('undo'\), onRedo: \(\) => traverse\('redo'\)/);
+assert.doesNotMatch(workspace, /undoDrawingDocument|redoDrawingDocument|historyRef/);
 assert.doesNotMatch(controls, /undoLine|undoDimension|redoLine|redoDimension/, 'presentation is operation-agnostic');
 assert.doesNotMatch(controls, /useState|useRef/, 'presentation owns no history stack');
 

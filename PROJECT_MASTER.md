@@ -1,5 +1,9 @@
 # SVG Box Designer — Project Master
 
+## Stage C PR 7 review checkpoint
+
+Drawing and BOX share 30 reversible edits. A traversal opens the originating workspace and restores both modules from the stored project frame. SVG replacement is reversible. Clear is available in either workspace. Clear Without Saving permanently resets Drawing, BOX and global history. Cancel preserves the current project, history and session. Save and Clear stays disabled until native Save/Open is available. SVG Export only produces output. Review, merge and personal browser acceptance are pending. The earlier checkpoints below record the preceding rollout. [Runtime architecture and validation](docs/GLOBAL_HISTORY_CUTOVER.md).
+
 ## Stage C PR 6 construction checkpoint
 
 BOX construction edits now prepare complete project frames. The local BOX stack records each accepted user intent, including automatic TB/W/S continuation and trailing cleanup. Manufacturing output updates through Apply. Personal acceptance is pending. [Construction boundary and limitations](docs/BOX_CONSTRUCTION_TRANSACTIONS.md).
@@ -226,9 +230,9 @@ canvas and bottom History layout without moving document/history ownership. Draw
 Dimension and Constraints launchers join its left tools; the contextual Constraints
 panel is unchanged. Construction tools, Fit, Apply and Finish Group retain their handlers.
 
-Import/Export/Clear remain explicitly BOX-scoped and unavailable while Drawing is active;
-native Open and Save remain disabled. Clear's existing confirmation now names its BOX
-scope. Undo/Redo bind to the active module's existing local owner, not a global tape.
+UI-1 scoped Import, Export and Clear to BOX. PR 7 keeps SVG Import and Export in BOX,
+makes Clear project-wide, and connects the shared Undo/Redo controls to the global timeline.
+Native Open and Save remain disabled.
 Existing bottom History content/navigation is unchanged. Desktop checks at 1920×1080,
 1366×768 and 1024×768 preserve bounded workspace layout without document scrolling.
 See [UI-1 validation](docs/UI1_SHARED_WORKSPACE_SHELL_VALIDATION.md) for evidence and limits.
@@ -238,7 +242,7 @@ UI-1 remains pending user review/acceptance, not a new CAD acceptance or release
 
 Fit is available once per canvas beside zoom; the redundant BOX top-bar Fit is removed.
 Drawing's fixed-view reset and BOX's existing bounds-based Fit handler/state are unchanged.
-The top bar retains module navigation, scoped project commands and local Undo/Redo.
+The top bar retains module navigation, scoped project commands and the shared Undo/Redo controls.
 
 Apply/Finish use a sticky action row in the existing BOX tool overlay. PM retains its
 separate Apply and Finish PM handlers/validation. TB/W/S expose geometry Apply and expose
@@ -259,27 +263,11 @@ UI-3/UI-4 and all A–G stage statuses remain unchanged.
 
 Construction uses `SvgDocumentModel`, which preserves SVG root information, source edges, panels, contours, containment, dimensions, and diagnostics. Panel Manager adds panel identity/thickness authority needed by construction.
 
-Drawing uses a separate versioned `DrawingDocumentV2`. It contains ordered sketches, stable points and entities, dimensions, and geometric constraints. On the Stage C PR 2 task branch, Drawing and all BOX authorities are wrapped in one
-application-level `ProjectStateSource` owner. App subscribes with `useSyncExternalStore`;
-compatibility setters and Drawing's synchronous document accessor target that same root.
-Accepted BOX generated output is owned as a complete stored snapshot. Automatic TB/S
-sizing stays in domain readers/generators; the legacy no-op effect is removed and local
-restore preserves exact stored values.
-See [owner design and limits](docs/SHARED_PROJECT_OWNER.md). Review/user acceptance remains
-pending; this does not introduce a native format, permanent operations or global history.
+Drawing uses a separate versioned `DrawingDocumentV2`. It contains ordered sketches, stable points and entities, dimensions, and geometric constraints. On the PR 7 branch, the application subscribes to one project owner through `useSyncExternalStore`. Both adapters publish accepted Drawing and BOX data with the global cursor. Restoration reuses the stored SVG, generated operations, authority metadata and manufacturing settings. Native persistence and permanent operations remain future work. [Global execution history](docs/GLOBAL_HISTORY_CUTOVER.md).
 
-A shared, versioned cross-workspace `ProjectDocument`, cross-workspace references, and global History remain planned. Existing Drawing and construction models should be wrapped or migrated deliberately rather than implicitly conflated.
+UI-1 keeps the workspace shells mounted across navigation. On the PR 7 branch, the toolbar and keyboard traverse the same application-level history from either workspace. The mounted Drawing and BOX workspaces delegate every accepted edit to their adapters. Ordinary switches preserve Redo.
 
-Current histories remain separate: Drawing snapshots allow 100 Undo entries and live in
-the mounted `DrawingWorkspace`; UI-1 keeps both module shells mounted and hides/inerts
-the inactive shell, preserving Drawing document, history, tool/selection and unfinished
-work across switches. Hidden Drawing does not consume keyboard/tool activation events.
-Construction snapshots are capped at 10 and remain in `App`; they omit Drawing and active workspace.
-Neither is the required global timeline. Native Save/Open is unimplemented; model
-validation and snapshots do not establish complete project persistence or permanent
-parametric construction history. Future operations/relationships must persist; optional
-active-module, selection and viewport serialization remain open. Native Open starts
-empty executable Undo/Redo without previous snapshots.
+A versioned native project format, persisted operation definitions and cross-workspace references remain planned. Native Open is intended to start a fresh execution history. Decisions about serializing the active module, selection and viewport remain open.
 
 ## 4. 2D Drawing architecture
 
@@ -817,14 +805,8 @@ remain planned; algorithms, joint types, manufacturing settings and UI require d
 
 ## 8. Current limitations and documentation boundaries
 
-- Multi-Sketch authoring, 3D Modeling, Unfold, selective Sketch-group export, Puzzle,
-  a shared global project document, global history, native Save/Open
-  and cross-module transfer/dependencies remain unimplemented future work.
-- The user confirmed no current functional defect in Drawing Undo/Redo during their
-  testing; this does not establish exhaustive action coverage. Separate history ownership
-  and loss of Drawing history on workspace unmount (§3) are architectural limitations
-  for the future global history. The deferred Arc empty/blind Undo limitation and
-  recorded Stage 6 acceptance remain unchanged.
+- Multi-Sketch authoring, 3D Modeling, Unfold, selective Sketch-group export, Puzzle, native Save/Open and cross-module transfer/dependencies remain future work.
+- The PR 7 global execution history awaits review, merge and manual acceptance. The previously deferred Arc empty/blind Undo case remains open.
 - Drawing supports accepted Profile, standalone Line, Circle Stage 1, and Arc Stage 1 workflows; it does not yet provide the full prospective CAD tool catalog.
 - The Constraints panel intentionally displays disabled future choices alongside implemented ones.
 - Box v1.2 remains the locked release baseline; post-v1.2 Drawing features are implemented without a new declared product release.

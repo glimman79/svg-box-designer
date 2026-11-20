@@ -27,11 +27,11 @@ const assert = require('node:assert/strict');
             observed.set(owner, metrics);
           }
           const metrics = window.drawingMetrics = observed.get(owner);
-          return { transact(local, label, change) {
-            const result = adapter.transact(local, label, change);
+          return { transact(label, change) {
+            const result = adapter.transact(label, change);
             if (result.outcome === 'accepted') {
-              if (result.history.undo.length !== 1 || result.frame.drawingDocument !== owner.drawingDocumentRef.current
-                || result.frame.box !== result.history.undo[0].frame.box) throw Error('Incoherent transition');
+              if (result.history !== owner.getHistory() || result.frame.drawingDocument !== owner.drawingDocumentRef.current
+                || result.frame.box !== result.history.undo.at(-1).frame.box) throw Error('Incoherent transition');
               metrics.accepted.push(label);
             }
             return result;
@@ -93,7 +93,7 @@ const assert = require('node:assert/strict');
     const moved = await metrics();
     assert.deepEqual(moved, {accepted: ['Create Line','Drag geometry'], publications: 2});
 
-    // Interrupt a new preview by restoring local history. Its late release cannot
+    // Interrupt a new preview by restoring global history. Its late release cannot
     // overwrite the restored Line, even if Redo returns to the same document.
     await move(-10,-20);
     await page.mouse.down();
@@ -135,7 +135,7 @@ const assert = require('node:assert/strict');
     await page.mouse.up();
     assert.deepEqual((await metrics()).accepted, [...beforePlacement.accepted, 'Move Dimension']);
 
-    // Arm a delayed Profile segment, then restore a local edit before its timer.
+    // Arm a delayed Profile segment, then restore a global edit before its timer.
     // A double-click cannot consume our input since the two points are far apart.
     await button('Profile').click();
     await click(40,65);
@@ -145,8 +145,8 @@ const assert = require('node:assert/strict');
     await page.keyboard.press('Control+z');
     await page.waitForTimeout(300); // Production Profile delay is 220 ms.
     const afterUndo = await metrics();
-    assert.deepEqual(afterUndo.accepted, beforeUndo.accepted);
-    assert.equal(afterUndo.publications, beforeUndo.publications + 1);
+    assert.deepEqual(afterUndo.accepted, [...beforeUndo.accepted, 'Create Profile segment']);
+    assert.equal(afterUndo.publications, beforeUndo.publications + 2);
     await page.keyboard.press('Control+y');
     await button('Select').click();
     const grip = await page.locator('[data-sketch-point-id]').first().evaluate(element => {
@@ -162,7 +162,7 @@ const assert = require('node:assert/strict');
     await page.mouse.up();
     assert.deepEqual(await metrics(), beforeUnmount);
     assert.deepEqual(errors, []);
-    console.log('PASS mounted Drawing adapter, including gesture cancellation/unmount, local restore, delayed Profile, Dimension edit and annotation drag');
+    console.log('PASS mounted Drawing adapter, including gesture cancellation/unmount, global restore, delayed Profile, Dimension edit and annotation drag');
   } finally {
     await browser.close();
   }

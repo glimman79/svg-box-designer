@@ -22,33 +22,34 @@ function production(name, context, source=sources[0]) {
   return vm.compileFunction(code, [], {contextExtensions:[context]})();
 }
 function harness(initial=api.makePopulatedProjectState()) {
-  const projectOwner=api.createProjectOwner(initial);
+  const projectOwner=api.createGlobalProjectHistory(initial);
   const lockHarness=importLockHarness(projectOwner);
   const state={errorMessage:'',activeTool:'select'};
-  const boxHistory={current:{undo:[],redo:[]}};
-  const context=vm.createContext({...api, projectOwner, boxHistory, boxTransactions:api.createBoxTransactionAdapter(projectOwner), importLock:lockHarness.lock, structuredClone, Error,
+
+  const context=vm.createContext({...api, projectOwner, drawingInteraction:{current:null}, geometryRuntimeDebugCaptureRef:{current:null}, cancelCanvasPan:()=>{}, boxTransactions:api.createBoxTransactionAdapter(projectOwner), importLock:lockHarness.lock, structuredClone, Error,
     defaultProjectSettings:{...api.DEFAULT_PROJECT_SETTINGS,selectedProfileOffsetIds:[]},
-    maxHistoryEntries:10, panelCompositionAuthorityMode:'mixed',
+    panelCompositionAuthorityMode:'mixed',
     reportAuthorityDownstreamDiagnostics:()=>{},
     formatAuthorityBlockingDecision:(_,d)=>d.reason,
   });
   for(const key of Object.keys(initial.box)) {
     Object.defineProperty(context,key,{get:()=>projectOwner.getSnapshot().box[key],configurable:true});
-    context[`set${key[0].toUpperCase()+key.slice(1)}`]=change=>projectOwner.setBoxField(key,change);
   }
   Object.defineProperty(context,'isProjectLocked',{get:()=>!context.panelManager.isApplied});
   Object.defineProperty(context,'generatedGeometryItems',{get:()=>context.generatedGeometrySnapshot.generatedGeometry});
-  Object.defineProperty(context,'undoStack',{get:()=>boxHistory.current.undo});
-  Object.defineProperty(context,'redoStack',{get:()=>boxHistory.current.redo});
-  for(const key of ['errorMessage','activeTool','canvasViewBox','activePanelId','activeHoleId','isPanelManagerModalOpen','expandedTBGroups','expandedSGroups','isClearDialogOpen']) {
+  Object.defineProperty(context,'undoStack',{get:()=>projectOwner.getHistory().undo});
+  Object.defineProperty(context,'redoStack',{get:()=>projectOwner.getHistory().redo});
+  for(const key of ['errorMessage','activeTool','canvasViewBox','activePanelId','activeHoleId','isPanelManagerModalOpen','expandedTBGroups','expandedSGroups','isClearDialogOpen','visitedManufacturingOrder','isProfileOffsetProfileSelectionActive','hoveredProfileOffsetProfileId','activeWorkspace']) {
     Object.defineProperty(context,key,{get:()=>state[key],configurable:true});
     context[`set${key[0].toUpperCase()+key.slice(1)}`]=change=>{
       state[key]=typeof change==='function'?change(state[key]):change;
     };
   }
   context.parseViewBox=()=>({x:0,y:0,width:100,height:100});
-  for(const name of ['constructionGroupField','getNextWorkflowGroupOrderIndex','reportBoxResult','recalculateBoxConnections','selectAppliedSnapshot','acceptDefaultPanelThickness','openManufacturing','toggleProfileOffsetProfile','haveProjectSettingsChanged','getCurrentHistoryState','restoreHistoryState','pushUndoState','undoLastEdit','redoLastEdit','updateProjectSettings','updatePanelThickness','applyPanelManager','applyPanelPaths','selectConnectionForDisplayAndAssignment','commitConstruction','startGroup','finishGroup','handleToolClick','getNextLabel',
-    'cloneDefaultProperties','createConnectionDefinition','createLabel','assignSelectedLabelToEdge','clearEdgeLabel','updateAssignedRole','updateConnectionProperties','clearProject','handleImport']) context[name]=production(name,context);
+  for(const name of ['constructionGroupField','getNextWorkflowGroupOrderIndex','reportBoxResult','recalculateBoxConnections','selectAppliedSnapshot','acceptDefaultPanelThickness','openManufacturing','toggleProfileOffsetProfile','haveProjectSettingsChanged','invalidateInteractions','traverse','updateProjectSettings','updatePanelThickness','applyPanelManager','applyPanelPaths','selectConnectionForDisplayAndAssignment','commitConstruction','startGroup','finishGroup','handleToolClick','getNextLabel',
+    'cloneDefaultProperties','createConnectionDefinition','createLabel','assignSelectedLabelToEdge','clearEdgeLabel','updateAssignedRole','updateConnectionProperties','handleImport']) context[name]=production(name,context);
+  context.undoLastEdit=()=>context.traverse('undo');
+  context.redoLastEdit=()=>context.traverse('redo');
   return {projectOwner,context,state,lockHarness};
 }
 

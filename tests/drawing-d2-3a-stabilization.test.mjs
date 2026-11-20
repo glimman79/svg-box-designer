@@ -54,7 +54,7 @@ const context = {
   resolvePlacement: () => { resolutions++; return accepted; },
 
 };
-// Use the actual mutation and History transaction bodies, not a mock commit.
+// Drive the real Profile pointer and mutation bodies with an isolated document history.
 const historySource = fs.readFileSync('src/app/drawingHistory.ts', 'utf8');
 const history = vm.runInNewContext(stripTypeScriptTypes(historySource.replace(/^import .*\n/gm, '').replace(/^export /gm, ''))
   + '\n({ EMPTY_DRAWING_HISTORY, transactDrawingDocument, undoDrawingDocument })');
@@ -62,10 +62,15 @@ const initialDocument = types.createDrawingDocumentV2();
 initialDocument.sketches[initialDocument.activeSketchId].points.start = { id: 'start', ...start };
 Object.assign(context, {
   historyRef: { current: history.EMPTY_DRAWING_HISTORY }, documentRef: { current: initialDocument },
-  publishDrawingEdit: undefined, ownedDocumentRef: undefined,
-  transactDrawingDocument: history.transactDrawingDocument,
-  setDocument: (document) => { transactions++; entities = [...topology.resolveActiveSketchLines(document)]; },
-  setHistoryRevision: () => {},
+  getEpoch: () => 0, renderEpoch: 0, onPendingSegment: () => {},
+  publishDrawingEdit: (_label, edit) => {
+    const result = history.transactDrawingDocument(context.historyRef.current, context.documentRef.current, edit);
+    if (result.changed) {
+      context.historyRef.current = result.history;
+      context.documentRef.current = result.document;
+      transactions++; entities = [...topology.resolveActiveSketchLines(result.document)];
+    }
+  },
   pointSequence: { current: 0 }, entitySequence: { current: 0 },
   automaticAxisConstraintKind: line.automaticAxisConstraintKind,
   selectMinimalLineSemanticConstraints: line.selectMinimalLineSemanticConstraints,

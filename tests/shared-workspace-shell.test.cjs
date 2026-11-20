@@ -7,7 +7,7 @@ const { WorkspaceShell } = require('../.test-build/workspace-shell/WorkspaceShel
 const noop = () => {};
 const render = (activeWorkspace, canExport = true) => renderToStaticMarkup(React.createElement(WorkspaceTopBar, {
   activeWorkspace, canExport, onSelectWorkspace: noop, onImport: noop, onExport: noop, onClear: noop,
-  history: { canUndo: activeWorkspace === 'drawing', canRedo: false, onUndo: noop, onRedo: noop },
+  history: { canUndo: true, canRedo: false, onUndo: noop, onRedo: noop },
 }));
 const button = (html, label) => html.match(new RegExp(`<button[^>]*>${label}</button>`))?.[0];
 
@@ -18,10 +18,10 @@ test('one navigation and command region, with explicit capability and ownership 
     assert.equal((html.match(/aria-label="Project commands"/g) || []).length, 1);
     assert.match(html, /disabled="" title="Puzzle is not implemented"/);
     for (const command of ['Open', 'Save']) assert.match(button(html, command), /disabled=""/);
-    assert.match(html, /Clear BOX \/ Construction only; Drawing is preserved/);
-    assert.match(html, /Active module history; shared project Undo\/Redo is not implemented/);
+    assert.match(button(html, 'Clear'), /title="Clear entire project"/);
+    assert.match(html, /Undo or redo a project edit across workspaces/);
     assert.equal(button(html, 'Export').includes('disabled=""'), module === 'drawing');
-    assert.equal(button(html, 'Clear').includes('disabled=""'), module === 'drawing');
+    assert.doesNotMatch(button(html, 'Clear'), /disabled=""/);
     const input = html.match(/<input[^>]*type="file"[^>]*>/)[0];
     assert.equal(input.includes('disabled=""'), module === 'drawing');
     assert.match(html, /class="active" aria-pressed="true"/);
@@ -29,9 +29,9 @@ test('one navigation and command region, with explicit capability and ownership 
   assert.match(button(render('construction', false), 'Export'), /disabled=""/);
 });
 
-test('top-bar history reflects the provided module capabilities', () => {
+test('top-bar history reflects the same project capabilities in both modules', () => {
   assert.doesNotMatch(button(render('drawing'), '↶'), /disabled=""/);
-  assert.match(button(render('construction'), '↶'), /disabled=""/);
+  assert.doesNotMatch(button(render('construction'), '↶'), /disabled=""/);
   for (const module of ['drawing', 'construction']) assert.match(button(render(module), '↷'), /disabled=""/);
 });
 

@@ -6,59 +6,49 @@ const vm = require('node:vm');
 const { api, harness, production, sources, observeBoxActions, assertCompleteFrame } = require('./project-owner-harness.cjs');
 const {importLockHarness} = require('./svg-import-lock-harness.cjs');
 
-test('one frozen root, synchronous functional updates and subscriptions; no-op retains root without publication',()=>{
-  const owner=api.createProjectOwner(); const start=owner.getSnapshot(); const seen=[];
+test('one frozen root and one synchronous notification per outer action; a no-op retains the root',()=>{
+  const owner=api.createGlobalProjectHistory(), start=owner.getSnapshot(), seen=[];
+  const edits=api.createDrawingTransactionAdapter(owner);
   const unsubscribe=owner.subscribe(()=>seen.push(owner.getSnapshot()));
-  owner.setDrawingDocument(current=>({...current,unit:'mm'}));
-  assert.equal(seen.length,1); assert.equal(seen[0],owner.getSnapshot());
-  assert.equal(owner.getSnapshot().box,start.box);
-  assert.throws(()=>{start.box.svgModel.edges.push({});},TypeError);
-  assert.throws(()=>{owner.getSnapshot().drawingDocument.sketchOrder.push('rogue');},TypeError);
-  const current=owner.getSnapshot(); owner.update(value=>value); assert.equal(owner.getSnapshot(),current);
-  owner.batch(()=>{
-    owner.setBoxField('projectSettings',s=>({...s,kerfMm:s.kerfMm+1}));
-    owner.setBoxField('projectSettings',s=>({...s,kerfMm:s.kerfMm+1}));
-    assert.equal(owner.getSnapshot(),current,'unpublished candidate is never exposed');
-  });
-  assert.equal(seen.length,2); assert.equal(owner.getSnapshot().box.projectSettings.kerfMm,2.15);
-  unsubscribe(); owner.setBoxField('selectedEdgeId','edge'); assert.equal(seen.length,2);
+  edits.transact('one',doc=>({...doc}));
+  assert.deepEqual(seen,[owner.getSnapshot()]); assert.equal(seen[0].box,start.box);
+  assert.throws(()=>start.box.svgModel.edges.push({}),TypeError);
+  assert.throws(()=>seen[0].drawingDocument.sketchOrder.push('rogue'),TypeError);
+  edits.transact('identity',doc=>doc); assert.deepEqual(seen,[owner.getSnapshot()]);
+  const snapshot=owner.getSnapshot();
+  edits.transact('nested', [doc=>({...doc}),doc=>{assert.equal(owner.getSnapshot(),snapshot);return {...doc};}]);
+  assert.equal(seen.length,2);
+  unsubscribe(); owner.setBoxContext({selectedEdgeId:'edge'}); assert.equal(seen.length,2);
 });
 
-test('coherent nested batches publish once and exceptions roll back; exact restore survives outer batch',()=>{
-  const owner=api.createProjectOwner(); const start=owner.getSnapshot(); let publications=0;
-  owner.subscribe(()=>{ publications++; assert.equal(owner.getSnapshot().box.displayConnectionId,'TB1'); });
-  assert.throws(()=>owner.batch(()=>{owner.setBoxField('selectedEdgeId','bad');throw Error('rejected');}),/rejected/);
-  assert.equal(owner.getSnapshot(),start); assert.equal(publications,0);
-  owner.batch(()=>{
-    owner.setBoxField('assignmentTargetConnectionId','TB1');
-    assert.throws(()=>owner.batch(()=>{owner.setBoxField('selectedEdgeId','rejected');throw Error('inner rejection');}),/inner rejection/);
-    owner.batch(()=>owner.setBoxField('displayConnectionId','TB1'));
-  });
-  assert.equal(owner.getSnapshot().box.selectedEdgeId,null);
-  assert.equal(publications,1);
-  const connection={id:'TB1',prefix:'TB',properties:{fingerWidthMm:123,isFingerWidthManual:false}};
-  owner.batch(()=>owner.batch(()=>owner.setBoxField('connections',{TB1:connection})));
-  assert.equal(owner.getSnapshot().box.connections.TB1.properties.fingerWidthMm,123);
+test('a failed nested action rejects the complete outer candidate and retains both modules',()=>{
+  const owner=api.createGlobalProjectHistory(), start=owner.getSnapshot(), tape=owner.getHistory();
+  let publications=0; owner.subscribe(()=>publications++);
+  const result=api.createDrawingTransactionAdapter(owner).transact('nested',[doc=>({...doc}),[()=>{throw Error('inner');}]]);
+  assert.equal(result.outcome,'rejected'); assert.equal(owner.getSnapshot(),start);
+  assert.equal(owner.getHistory(),tape); assert.equal(publications,0);
+  const box=api.createBoxTransactionAdapter(owner);
+  assert.equal(box.transact('select on acceptance',current=>({...current,assignmentTargetConnectionId:'TB1',displayConnectionId:'TB1'})).outcome,'accepted');
+  assert.equal(publications,1); assert.equal(owner.getSnapshot().box.displayConnectionId,'TB1');
 });
 
-test('same-event Drawing mutations and production local Undo/Redo read the owner and preserve all Sketch identities',()=>{
-  const owner=api.createProjectOwner(api.makePopulatedProjectState()), before=owner.getSnapshot(), box=before.box;
-  const c=vm.createContext({...api, publishDrawingEdit:api.createDrawingTransactionAdapter(owner).transact, ownedDocumentRef:owner.drawingDocumentRef,
-    cancelPendingDrawingGestures:()=>{}, documentRef:owner.drawingDocumentRef, historyRef:{current:api.EMPTY_DRAWING_HISTORY},
-    setDocument:owner.setDrawingDocument, setHistoryRevision:()=>{},setEditingDimensionId:()=>{},setDimensionEditError:()=>{},setSelectedDimensionId:()=>{},setSelectedGeometry:()=>{},setSelectedGeometricConstraintId:()=>{}});
-  const transact=production('transactDocument',c,sources[1]), undo=production('undo',c,sources[1]), redo=production('redo',c,sources[1]);
+test('same-event Drawing mutations and global Undo/Redo read the owner and preserve all Sketch identities',()=>{
+  const owner=api.createGlobalProjectHistory(api.makePopulatedProjectState()), before=owner.getSnapshot(), box=before.box;
+  const adapter=api.createDrawingTransactionAdapter(owner);
+  const transact=action=>adapter.transact('Line',action);
+  const undo=()=>owner.traverse('undo'), redo=()=>owner.traverse('redo');
   transact(doc=>api.appendEntityToActiveSketch(doc,{id:'new-a',type:'line',start:{x:30,y:20},end:{x:40,y:20},startPointId:'shared-a',endPointId:'shared-b'}));
   transact(doc=>{assert.ok(doc.sketches.alpha.entities['new-a']);return api.appendEntityToActiveSketch(doc,{id:'new-b',type:'line',start:{x:40,y:20},end:{x:50,y:20},startPointId:'shared-b',endPointId:'shared-c'});});
-  const after=owner.getSnapshot(); assert.equal(c.historyRef.current.undo.length,2);
+  const after=owner.getSnapshot(); assert.equal(owner.getHistory().undo.length,2);
   assert.equal(after.box,box); assert.equal(after.drawingDocument.sketches.beta,before.drawingDocument.sketches.beta);
   assert.equal(after.drawingDocument.sketchOrder,before.drawingDocument.sketchOrder);
   assert.equal(after.drawingDocument.sketches.alpha.entities['new-b'].startPointId,'shared-b');
   undo(); assert.equal(owner.getSnapshot().drawingDocument.sketches.alpha.entities['new-b'],undefined);
   redo(); assert.equal(owner.getSnapshot().drawingDocument,after.drawingDocument);
-  const count=c.historyRef.current.undo.length; transact(doc=>doc); assert.equal(c.historyRef.current.undo.length,count);
+  const count=owner.getHistory().undo.length; transact(doc=>doc); assert.equal(owner.getHistory().undo.length,count);
 });
 
-test('production BOX local Undo/Redo retains complete stored authority, draft/applied settings, source and 10-entry cap',()=>{
+test('production BOX global Undo/Redo retains complete stored authority, draft/applied settings, source and 30-transition cap',()=>{
   const {projectOwner:owner,context:c}=harness(); const before=owner.getSnapshot(), expected=structuredClone(before.box); let count=0;
   owner.subscribe(()=>count++);
   c.updateProjectSettings({kerfMm:.55}); assert.equal(count,1);
@@ -70,8 +60,8 @@ test('production BOX local Undo/Redo retains complete stored authority, draft/ap
   assert.deepEqual(structuredClone(owner.getSnapshot().box.generatedGeometrySnapshot.operations),expected.generatedGeometrySnapshot.operations);
   c.redoLastEdit(); assert.equal(owner.getSnapshot().box.projectSettings.kerfMm,.55);
   assert.equal(owner.getSnapshot().drawingDocument,before.drawingDocument);
-  for(let n=0;n<15;n++) c.updateProjectSettings({kerfMm:n/100});
-  assert.equal(c.undoStack.length,10); assert.equal(c.redoStack.length,0);
+  for(let n=0;n<35;n++) c.updateProjectSettings({kerfMm:n/100});
+  assert.equal(c.undoStack.length,30); assert.equal(c.redoStack.length,0);
 });
 
 test('Panel Manager pending state retains accepted output and TB/S source properties while existing generators derive automatic sizes',()=>{
@@ -136,20 +126,21 @@ test('actual asynchronous import locks synchronously, rejects a second read and 
   let secondReads=0;
   await c.handleImport({target:{files:[{text:()=>{secondReads++;return Promise.resolve('second');}}],value:'second.svg'}});
   assert.equal(secondReads,0);
-  owner.setDrawingDocument(doc=>({...doc,sketchOrder:[...doc.sketchOrder]})); const drawing=owner.getSnapshot().drawingDocument;
+  api.createDrawingTransactionAdapter(owner).transact('Drawing edit',doc=>({...doc,sketchOrder:[...doc.sketchOrder]})); const drawing=owner.getSnapshot().drawingDocument;
   pending.resolve('new SVG');await job; assert.equal(count,2);
   assert.equal(owner.getSnapshot().box.svgModel.content,'new SVG');assert.equal(owner.getSnapshot().drawingDocument,drawing);
   assert.deepEqual(owner.getSnapshot().box.connections,before.box.connections);
   assert.equal(owner.getSnapshot().box.generatedGeometrySnapshot.generatedGeometry.length,0);
   const next=c.importLock.acquire();assert.ok(next,'success releases lock');c.importLock.release(next);
-  const stale=deferred(),staleJob=c.handleImport(eventFor(stale.promise));c.updatePanelThickness('panel-a',7);const accepted=owner.getSnapshot();
+  const stale=deferred(),staleJob=c.handleImport(eventFor(stale.promise));c.updateProjectSettings({kerfMm:0.7});const accepted=owner.getSnapshot();
   stale.resolve('must not replace edit');await staleJob;assert.equal(owner.getSnapshot(),accepted);
 });
 
 test('failed imports and callbacks after external Clear/unmount invalidation cannot repopulate state or errors',async()=>{
-  const {projectOwner:owner,context:c,lockHarness}=importHarness(); const before=owner.getSnapshot();
-  await c.handleImport(eventFor(Promise.resolve('invalid')));assert.equal(owner.getSnapshot(),before);assert.equal(c.errorMessage,'invalid SVG');
-  const late=deferred(),job=c.handleImport(eventFor(late.promise)); c.clearProject();const cleared=owner.getSnapshot();
+  const {projectOwner:owner,context:c,lockHarness}=importHarness();
+  const late=deferred(),job=c.handleImport(eventFor(late.promise));
+  assert.equal(owner.clearProject(),true);
+  const cleared=owner.getSnapshot();
   late.resolve('late');await job;assert.equal(owner.getSnapshot(),cleared);assert.equal(c.errorMessage,'');
   const unmounted=deferred(),unmountedJob=c.handleImport(eventFor(unmounted.promise));lockHarness.unmount();
   const setterCount=lockHarness.setters.length;
@@ -169,7 +160,7 @@ for (const failure of ['read rejection','synchronous read','parse','Panel Manage
     if(failure==='parse')c.parseSvgDocument=()=>{throw error;};
     if(failure==='Panel Manager initialization')c.createPanelManagerStateFromModel=()=>{throw error;};
     if(failure==='diagnostics')c.formatImportDiagnosticMessage=()=>{throw error;};
-    if(failure==='publication')owner.publishBoxImport=()=>{throw error;};
+    if(failure==='publication')owner.transact=()=>{throw error;};
     await c.handleImport(event);
     assert.equal(owner.getSnapshot(),before);
     assert.equal(c.undoStack,undo);assert.equal(c.redoStack,redo);
@@ -205,7 +196,7 @@ test('stale/rejected import resets input and permits the exact same File to be s
   const {projectOwner:owner,context:c,lockHarness}=importHarness();
   const read=deferred(),event=eventFor(read.promise),file=event.target.files[0];
   const job=c.handleImport(event);lockHarness.render();
-  owner.setBoxField('selectedEdgeId','newer data');const committed=owner.getSnapshot();
+  owner.setBoxContext({selectedEdgeId:'newer data'});const committed=owner.getSnapshot();
   read.resolve('stale');await job;
   assert.equal(owner.getSnapshot(),committed);assert.equal(event.target.value,'');
   lockHarness.render();assert.equal(lockHarness.lock.isImporting,false);
@@ -216,7 +207,7 @@ test('stale/rejected import resets input and permits the exact same File to be s
 
 test('publication refusal leaves history/project unchanged and releases the lock',async()=>{
   const {projectOwner:owner,context:c}=importHarness();const before=owner.getSnapshot();
-  owner.publishBoxImport=()=>false;
+  owner.transact=()=>({outcome:'rejected'});
   const event=eventFor(Promise.resolve('rejected'));
   await c.handleImport(event);assert.equal(owner.getSnapshot(),before);assert.equal(event.target.value,'');
   const retry=c.importLock.acquire();assert.ok(retry);c.importLock.release(retry);
@@ -224,7 +215,7 @@ test('publication refusal leaves history/project unchanged and releases the lock
 
 test('lock stays active through coherent publication and Panel Manager/history transitions',async()=>{
   const {projectOwner:owner,context:c}=importHarness();
-  c.parseSvgDocument=()=>({...api.createInitialBoxState().svgModel,panels:[{id:'imported-panel',innerContours:[]}]});
+  c.parseSvgDocument=()=>({...api.createInitialBoxState().svgModel,panels:[{...owner.getSnapshot().box.svgModel.panels[0],id:'imported-panel'}]});
   const original=c.createPanelManagerStateFromModel;
   c.createPanelManagerStateFromModel=model=>{assert.equal(c.importLock.acquire(),null);return original(model);};
   owner.subscribe(()=>assert.equal(c.importLock.acquire(),null,'publication is locked'));
@@ -234,7 +225,7 @@ test('lock stays active through coherent publication and Panel Manager/history t
   }
   await c.handleImport(eventFor(Promise.resolve('panel')));
   assert.equal(c.isPanelManagerModalOpen,true);assert.ok(owner.getSnapshot().box.panelManager.panels['imported-panel']);
-  assert.equal(c.undoStack.length,0);assert.equal(c.redoStack.length,0);
+  assert.equal(c.undoStack.length,1);assert.equal(c.redoStack.length,0);
   const next=c.importLock.acquire();assert.ok(next);c.importLock.release(next);
 });
 
@@ -259,16 +250,16 @@ test('owner sequence guard still rejects superseded publication, and stale clean
   event.target.value='later selection.svg';
   read.resolve('superseded');await job;
   assert.equal(owner.getSnapshot(),before);assert.equal(event.target.value,'later selection.svg');
-  assert.equal(owner.publishBoxImport(newer,api.createInitialBoxState()),true,'UI cleanup does not invalidate a newer owner token');
+  assert.equal(c.boxTransactions.replaceSource(newer,before.box.svgModel,before.box.panelManager).outcome,'accepted','UI cleanup does not invalidate a newer owner token');
   const olderToken=owner.beginBoxImport(),newerToken=owner.beginBoxImport();
-  assert.equal(owner.publishBoxImport(olderToken,api.createInitialBoxState()),false);
-  assert.equal(owner.publishBoxImport(newerToken,api.createInitialBoxState()),true);
+  assert.equal(c.boxTransactions.replaceSource(olderToken,before.box.svgModel,before.box.panelManager).outcome,'rejected');
+  assert.equal(c.boxTransactions.replaceSource(newerToken,{...before.box.svgModel,content:'replacement'},before.box.panelManager).outcome,'accepted');
 });
 
 test('ordinary edits structurally share source/output; no capture/projection/full-project clone in the production hot path',()=>{
-  const owner=api.createProjectOwner(api.makePopulatedProjectState()),before=owner.getSnapshot();
+  const owner=api.createGlobalProjectHistory(api.makePopulatedProjectState()),before=owner.getSnapshot();
   const nativeClone=global.structuredClone; let clones=0;global.structuredClone=(...args)=>{clones++;return nativeClone(...args);};
-  try {for(let n=0;n<50;n++) owner.setDrawingDocument(doc=>({...doc}));owner.setBoxField('selectedEdgeId','other');}
+  try {const edits=api.createDrawingTransactionAdapter(owner); for(let n=0;n<50;n++) edits.transact('edit',doc=>({...doc}));owner.setBoxContext({selectedEdgeId:'other'});}
   finally {global.structuredClone=nativeClone;}
   assert.equal(clones,0); assert.equal(owner.getSnapshot().box.svgModel,before.box.svgModel);assert.equal(owner.getSnapshot().box.generatedGeometrySnapshot,before.box.generatedGeometrySnapshot);
 });
@@ -276,29 +267,29 @@ test('ordinary edits structurally share source/output; no capture/projection/ful
 test('App subscriptions and all compatibility setters use the owner; no second writable authoritative React field or sizing effect',()=>{
   const source=fs.readFileSync('src/App.tsx','utf8');
   for(const key of ['drawingDocument',...Object.keys(api.createInitialBoxState()),'generatedGeometryItems','generatedGeometryCompositionModel']) assert.doesNotMatch(source,new RegExp(`const \\[${key},[^\\n]*useState`));
-  assert.match(source,/useSyncExternalStore\(projectOwner.subscribe, projectOwner.getSnapshot/);
+  assert.match(source,/useSyncExternalStore\(projectOwner.subscribe,\s*projectOwner.getPublication/);
   assert.match(source,/ownedDocumentRef=\{projectOwner.drawingDocumentRef\}/);
   assert.doesNotMatch(source,/useEffect\(\(\) => \{\s*setConnections/);
   assert.doesNotMatch(source,/const generatedGeometrySnapshot = useMemo/);
 });
 
 
-test('BOX snapshots and local stack changes are synchronous before another action or render',()=>{
+test('BOX snapshots and global stack changes are synchronous before another action or render',()=>{
   const {projectOwner:owner,context:c}=harness();
   c.updateProjectSettings({kerfMm:.5});
   c.undoLastEdit();
   assert.equal(owner.getSnapshot().box.projectSettings.kerfMm,.17);
-  assert.equal(c.redoStack.at(-1).projectSettings.kerfMm,.5);
+  assert.equal(c.redoStack.at(-1).frame.box.data.projectSettings.kerfMm,.5);
   c.redoLastEdit();
   assert.equal(owner.getSnapshot().box.projectSettings.kerfMm,.5);
-  assert.equal(c.undoStack.at(-1).projectSettings.kerfMm,.17);
+  assert.equal(c.undoStack.at(-1).frame.box.data.projectSettings.kerfMm,.17);
 });
 
 test('an import remains stale even after restoring the identical old BOX object',()=>{
-  const owner=api.createProjectOwner(); const before=owner.getSnapshot(); const token=owner.beginBoxImport();
-  owner.setBoxField('selectedEdgeId','intervening');owner.update(()=>before);
+  const owner=api.createGlobalProjectHistory(); const before=owner.getSnapshot(); const token=owner.beginBoxImport();
+  const box=api.createBoxTransactionAdapter(owner); box.transact('change',b=>({...b,projectSettings:{...b.projectSettings,kerfMm:1}})); owner.traverse('undo');
   assert.equal(owner.isCurrentBoxImport(token),false);
-  assert.equal(owner.publishBoxImport(token,api.createInitialBoxState()),false);
+  assert.equal(box.replaceSource(token,before.box.svgModel,before.box.panelManager).outcome,'rejected');
   assert.equal(owner.getSnapshot(),before);
 });
 
@@ -316,10 +307,11 @@ test('Geometry Apply uses existing generators/authority and retains draft-versus
   c.applyPanelPaths();assert.equal(owner.getSnapshot(),snapshot);assert.match(c.errorMessage,/rejected/);assert.equal(seen.length,1);
 });
 
-test('PM authority rejection preserves both local stacks, connections, flags and accepted output',()=>{
+test('PM authority rejection preserves both global stacks, connections, flags and accepted output',()=>{
   const {projectOwner:owner,context:c}=harness();
   c.updateProjectSettings({kerfMm:.24});c.updateProjectSettings({kerfMm:.31});c.undoLastEdit();
   c.updatePanelThickness('panel-a',4);
+  c.updateProjectSettings({kerfMm:.31});c.undoLastEdit();
   const before=owner.getSnapshot(),undo=c.undoStack,redo=c.redoStack;
   let count=0;owner.subscribe(()=>count++);
   // Exercise the previous write-before-authority defect even if today's sizing
@@ -348,12 +340,12 @@ test('production BOX restore preserves every composition marker, including an ab
 });
 
 
-test('BOX local capture preserves legacy selected-label fallback for assignment context',()=>{
+test('BOX global capture preserves an explicit empty assignment target for assignment context',()=>{
   const initial=api.makePopulatedProjectState();initial.box.assignmentTargetConnectionId=null;
   const {projectOwner:owner,context:c}=harness(initial);
-  const frame=c.getCurrentHistoryState();assert.equal(frame.assignmentTargetConnectionId,initial.box.displayConnectionId);
+  assert.equal(owner.getHistory().current.box.context.assignmentTargetConnectionId,null);
   c.updateProjectSettings({kerfMm:.8});c.undoLastEdit();
-  assert.equal(owner.getSnapshot().box.assignmentTargetConnectionId,initial.box.displayConnectionId);
+  assert.equal(owner.getSnapshot().box.assignmentTargetConnectionId,null);
   assert.equal(owner.getSnapshot().box.displayConnectionId,initial.box.displayConnectionId);
 });
 
@@ -370,8 +362,8 @@ test('source replacement frames retain complete parsed source, reset dependent d
   await c.handleImport(eventFor(Promise.resolve(imported.content)));
   assert.equal(results.length, 1);
   const result = results[0], after = owner.getSnapshot();
-  assert.equal(result.outcome, 'accepted'); assert.equal(result.history.undo.length, 1);
-  assertCompleteFrame(result.history.undo[0].frame, before); assertCompleteFrame(result.frame, after);
+  assert.equal(result.outcome, 'accepted'); assert.equal(result.history.undo.length, 2);
+  assertCompleteFrame(result.history.undo.at(-1).frame, before); assertCompleteFrame(result.frame, after);
   assert.equal(after.drawingDocument, before.drawingDocument);
   assert.equal(after.box.connections, before.box.connections);
   assert.deepEqual(after.box.svgModel, imported);
@@ -381,18 +373,17 @@ test('source replacement frames retain complete parsed source, reset dependent d
     if (!['connections','svgModel','panelManager','generatedGeometrySnapshot'].includes(key)) assert.deepEqual(after.box[key], empty[key], key);
   }
   assert.deepEqual(after.box.generatedGeometrySnapshot.generatedGeometry, []);
-  assert.equal(c.undoStack.length, 0); assert.equal(c.redoStack.length, 0);
+  assert.equal(c.undoStack.length, 2); assert.equal(c.redoStack.length, 0);
 
-  const core = require('../.test-build/project-owner/src/app/projectHistory.js');
-  const undo = core.undoProjectHistory(result.history);
-  assertCompleteFrame(undo.frame, before);
-  assert.ok(undo.frame.box.data.generatedGeometrySnapshot.operations.length);
-  const redo = core.redoProjectHistory(undo.history);
-  assertCompleteFrame(redo.frame, after);
+  c.undoLastEdit();
+  assertCompleteFrame(owner.getHistory().current, before);
+  assert.ok(owner.getSnapshot().box.generatedGeometrySnapshot.operations.length);
+  c.redoLastEdit();
+  assertCompleteFrame(owner.getHistory().current, after);
   assert.equal(owner.getSnapshot(), after);
 });
 
-test('pending edits use frozen subtrees even in local Undo; normalized no-ops keep Redo and original frames', () => {
+test('pending edits use frozen subtrees through global Undo; normalized no-ops keep Redo and original frames', () => {
   const {projectOwner: owner, context: c} = harness();
   const results = observeBoxActions(c), before = owner.getSnapshot();
   let clones = 0, snapshotCalls = 0;
@@ -409,20 +400,20 @@ test('pending edits use frozen subtrees even in local Undo; normalized no-ops ke
     assert.ok(Object.values(pending.box.panelManager.panels).every(panel => panel.thicknessMm === 3.2));
     c.acceptDefaultPanelThickness();
     assert.equal(results.at(-1).outcome, 'noop'); assert.equal(owner.getSnapshot(), pending);
-    assert.equal(c.undoStack.length, 0);
+    assert.equal(c.undoStack.length, 1);
     for (let n = 1; n <= 50; n++) {
       const baseline = owner.getSnapshot();
       c.updateProjectSettings({kerfMm:n});
       const result = results.at(-1), next = owner.getSnapshot();
-      assert.equal(result.history.undo.length, 1); assert.equal(result.history.redo.length, 0);
-      assertCompleteFrame(result.history.undo[0].frame, baseline); assertCompleteFrame(result.frame, next);
+      assert.equal(result.history.undo.length, Math.min(n+1,30)); assert.equal(result.history.redo.length, 0);
+      assertCompleteFrame(result.history.undo.at(-1).frame, baseline); assertCompleteFrame(result.frame, next);
       assert.equal(next.box.svgModel, before.box.svgModel); assert.equal(next.drawingDocument, before.drawingDocument);
       assert.equal(next.box.generatedGeometrySnapshot, before.box.generatedGeometrySnapshot);
       assert.equal(next.box.lastAppliedManufacturingSettings, before.box.lastAppliedManufacturingSettings);
-      assert.equal(c.undoStack.at(-1).generatedGeometrySnapshot, before.box.generatedGeometrySnapshot);
-      assert.equal(Object.hasOwn(c.undoStack.at(-1), 'svgModel'), false);
+      assert.equal(c.undoStack.at(-1).frame.box.data.generatedGeometrySnapshot, before.box.generatedGeometrySnapshot);
+      assert.equal(c.undoStack.at(-1).frame.box.data.svgModel, before.box.svgModel);
     }
-    assert.equal(c.undoStack.length, 10);
+    assert.equal(c.undoStack.length, 30);
     assert.equal(clones, 0); assert.equal(snapshotCalls, 0);
   } finally { global.structuredClone = c.structuredClone = nativeClone; }
   c.undoLastEdit();
@@ -432,7 +423,7 @@ test('pending edits use frozen subtrees even in local Undo; normalized no-ops ke
   assert.equal(results.at(-1).outcome,'noop'); assert.equal(owner.getSnapshot(), restored);
   assert.equal(c.undoStack,undo); assert.equal(c.redoStack,redo);
   c.updateProjectSettings({ selectedProfileOffsetIds:[] });
-  assertCompleteFrame(results.at(-1).history.undo[0].frame, restored);
+  assertCompleteFrame(results.at(-1).history.undo.at(-1).frame, restored);
   assert.deepEqual(owner.getSnapshot().box.projectSettings.selectedProfileOffsetIds, []);
   c.toggleProfileOffsetProfile(ids[0]); c.toggleProfileOffsetProfile('second-generated-profile');
   assert.deepEqual(owner.getSnapshot().box.projectSettings.selectedProfileOffsetIds, [ids[0], 'second-generated-profile']);
@@ -440,16 +431,17 @@ test('pending edits use frozen subtrees even in local Undo; normalized no-ops ke
   assert.deepEqual(owner.getSnapshot().box.projectSettings.selectedProfileOffsetIds, ['second-generated-profile']);
 });
 
-test('first manufacturing workflow visit authors only its order; later visits are navigation', () => {
+test('manufacturing navigation preserves Redo and records workflow order with an accepted edit', () => {
   const initial = api.makePopulatedProjectState(); delete initial.box.workflowGroupOrder.manufacturing;
   const {context:c, projectOwner:owner} = harness(initial);
-  const results = observeBoxActions(c), before = owner.getSnapshot();
-  c.openManufacturing();
-  const after = owner.getSnapshot();
-  assert.equal(c.activeTool, 'manufacturing'); assert.equal(after.box.workflowGroupOrder.manufacturing, 5);
-  assertCompleteFrame(results[0].history.undo[0].frame, before); assertCompleteFrame(results[0].frame, after);
-  c.openManufacturing();
-  assert.equal(results.length, 1); assert.equal(c.undoStack.length, 0); assert.equal(owner.getSnapshot(), after);
+  c.updateProjectSettings({kerfMm:0.7}); c.undoLastEdit();
+  const before = owner.getSnapshot(), tape=owner.getHistory();
+  c.openManufacturing(); c.openManufacturing();
+  assert.equal(c.activeTool,'manufacturing'); assert.equal(c.visitedManufacturingOrder,5);
+  assert.equal(owner.getHistory(),tape); assert.equal(owner.getSnapshot(),before);
+  c.updateProjectSettings({kerfMm:0.8});
+  assert.equal(owner.getSnapshot().box.workflowGroupOrder.manufacturing,5);
+  assert.equal(c.undoStack.length,1); assert.equal(c.redoStack.length,0);
 });
 
 test('Apply stages one selected snapshot; late snapshot failure keeps both histories and the prior settings stamp', () => {
@@ -461,8 +453,8 @@ test('Apply stages one selected snapshot; late snapshot failure keeps both histo
   c.updatePanelThickness('panel-a', 4);
   let before = owner.getSnapshot();
   c.applyPanelManager();
-  assert.equal(snapshots, 1); assert.equal(results.at(-1).history.undo.length,1);
-  assertCompleteFrame(results.at(-1).history.undo[0].frame, before);
+  assert.equal(snapshots, 1); assert.equal(results.at(-1).history.undo.length,2);
+  assertCompleteFrame(results.at(-1).history.undo.at(-1).frame, before);
   assertCompleteFrame(results.at(-1).frame, owner.getSnapshot());
   c.applyPanelPaths(); assert.equal(snapshots, 2);
   assertCompleteFrame(results.at(-1).frame, owner.getSnapshot());
@@ -477,30 +469,20 @@ test('Apply stages one selected snapshot; late snapshot failure keeps both histo
   assert.equal(owner.getSnapshot(), before); assert.equal(c.undoStack,undo); assert.equal(c.redoStack,redo);
 });
 
-test('BOX adapter rejects nested, stale and reentrant publications without advancing local history', () => {
-  const owner = api.createProjectOwner(), adapter = api.createBoxTransactionAdapter(owner), before = owner.getSnapshot();
-  const edit = box => ({...box, selectedEdgeId:'new'});
-  let local = 0;
-  const record = () => { local++; };
-  const nested = adapter.transact('outer', box => {
-    assert.equal(adapter.transact('inner', edit, record).outcome, 'rejected');
-    return edit(box);
-  }, record);
-  assert.equal(nested.outcome,'rejected'); assert.equal(owner.getSnapshot(), before);
-  assert.equal(adapter.transact('async', async box => edit(box), record).outcome, 'rejected');
-  assert.equal(adapter.transact('incomplete', () => ({selectedEdgeId:'incomplete'}), record).outcome, 'rejected');
-  assert.equal(owner.getSnapshot(), before);
-  owner.batch(() => assert.equal(adapter.transact('nested batch', edit, record).outcome, 'rejected'));
-  const stale = adapter.transact('stale', box => {
-    owner.setBoxField('displayConnectionId','intervening edit');
-    return edit(box);
-  }, record);
-  assert.equal(stale.outcome,'rejected'); assert.equal(owner.getSnapshot().box.selectedEdgeId,null);
-  assert.equal(owner.getSnapshot().box.displayConnectionId,'intervening edit'); assert.equal(local,0);
-  const unsubscribe = owner.subscribe(() => {
-    assert.equal(local,1,'local baseline recorded before subscribers run');
-    assert.equal(adapter.transact('subscriber edit', edit, record).outcome,'rejected');
-  });
-  assert.equal(adapter.transact('accepted',edit,record).outcome,'accepted'); unsubscribe();
-  assert.equal(local,1);
+test('BOX adapter rejects nested, asynchronous, incomplete and stale edits atomically', () => {
+  const owner = api.createGlobalProjectHistory(), adapter = api.createBoxTransactionAdapter(owner);
+  const before=owner.getSnapshot(), tape=owner.getHistory();
+  const edit=box=>({...box,projectSettings:{...box.projectSettings,kerfMm:.75}});
+  assert.equal(adapter.transact('outer',box=>{
+    assert.equal(adapter.transact('inner',edit).outcome,'rejected'); return edit(box);
+  }).outcome,'rejected');
+  for(const invalid of [async box=>edit(box),()=>({selectedEdgeId:'incomplete'}),box=>({...box,panelManager:null}),box=>({...box,svgModel:{...box.svgModel,panels:[null]}})]) {
+    assert.equal(adapter.transact('invalid',invalid).outcome,'rejected');
+    assert.equal(owner.getSnapshot(),before); assert.equal(owner.getHistory(),tape);
+  }
+  assert.equal(adapter.transact('stale',box=>{
+    owner.setBoxContext({displayConnectionId:'intervening'});return edit(box);
+  }).outcome,'rejected');
+  assert.equal(owner.getSnapshot().box.projectSettings,before.box.projectSettings);
+  assert.equal(owner.getHistory().undo,tape.undo);
 });

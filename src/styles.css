@@ -1171,6 +1171,17 @@ button:disabled {
   box-shadow: 0 22px 55px rgb(15 23 42 / 45%);
 }
 
+.project-clear-dialog {
+  width: min(480px, calc(100% - 40px));
+  margin: auto;
+}
+
+.project-clear-dialog:not([open]) { display: none; }
+.project-clear-dialog::backdrop { background: rgb(15 23 42 / 45%); }
+.project-clear-dialog p { margin: 0; }
+.project-clear-dialog .clear-dialog-actions { flex-wrap: wrap; }
+.project-clear-dialog .destructive { background: #991b1b; color: white; }
+
 .panel-manager-modal {
   grid-template-rows: auto minmax(0, 1fr) auto;
   width: min(720px, 100%);

@@ -1,5 +1,10 @@
 # Unreleased
 
+## Stage C PR 7 — Global Undo/Redo (in review)
+
+- Undo and Redo traverse the latest 30 accepted edits across Drawing and BOX and open the workspace where each edit originated.
+- SVG replacement, panel thickness changes and changed Apply results are reversible. Clear now asks before removing the entire project. Clear Without Saving empties Drawing, BOX and Undo/Redo and returns to the initial BOX workspace. Cancel keeps pending work and both history stacks. Save and Clear is disabled pending native project saving. [Validation and manual checks](docs/GLOBAL_HISTORY_CUTOVER.md).
+
 ## Stage C PR 6 — BOX construction (review pending)
 
 - Rejected assignments and equivalent construction properties preserve local Redo. Removing an assigned row preserves other relationships on the same source edge. A separate completed-S continuation now has its own Undo step. [Manual checks](docs/BOX_CONSTRUCTION_TRANSACTIONS.md).

@@ -35,7 +35,8 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
     for (const command of ['Open', 'Save']) assert.equal(await page.getByRole('button', { name: command, exact: true }).isDisabled(), true);
     await drawing();
     assert.deepEqual(await positions(), boxPositions, 'project/history placement is stable across modules');
-    for (const command of ['Export', 'Clear']) assert.equal(await page.getByRole('button', { name: command, exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole('button', { name: 'Export', exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole('button', { name: 'Clear', exact: true }).isEnabled(), true);
     assert.equal(await page.getByLabel('Import SVG into BOX / Construction', { exact: true }).isDisabled(), true);
     assert.equal(await undo().isDisabled(), true);
     passed.push('navigation, stable command/history positions and disabled capability boundaries');
@@ -48,9 +49,10 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
     // Neither the hidden workspace shortcuts nor navigation may consume Drawing Redo.
     await drawing(); assert.equal(await redo().isEnabled(), true); await redo().click(); await waitCount('[data-sketch-line-id]', 1);
     const line = await snapshot();
-    await box(); await page.keyboard.press('Control+z'); await page.keyboard.press('Delete'); await drawing();
-    assert.deepEqual(await snapshot(), line, 'hidden Drawing does not consume BOX keyboard input');
-    passed.push('Line creation, local Undo/Redo, preserved Redo and hidden keyboard isolation');
+    await box(); await page.keyboard.press('Delete'); await page.keyboard.press('Control+z');
+    assert.equal(await tool('Line').isVisible(),true); await waitCount('[data-sketch-line-id]',0); await redo().click();
+    assert.deepEqual(await snapshot(), line, 'global keyboard Undo activates Drawing and Redo restores its Line');
+    passed.push('Line creation, global Undo/Redo, preserved Redo and hidden keyboard isolation');
 
     await tool('Circle').click(); await click({ x: 60, y: -50 });
     await box(); await page.keyboard.press('Escape');
@@ -122,13 +124,14 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
     assert.equal(await overlay.getByRole('heading', { name: 'Panel Manager', exact: true }).isVisible(), true);
     const historyCount = await page.getByRole('complementary', { name: 'Construction history' }).getByRole('button').count();
     await page.getByRole('button', { name: 'Clear', exact: true }).click();
-    await page.getByRole('dialog', { name: 'Clear BOX / Construction?', exact: true }).getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Clear entire project?', exact: true }).getByRole('button', { name: 'Cancel', exact: true }).click();
     assert.equal(await page.getByRole('complementary', { name: 'Construction history' }).getByRole('button').count(), historyCount);
     await page.getByRole('button', { name: 'Clear', exact: true }).click();
-    await page.getByRole('dialog', { name: 'Clear BOX / Construction?', exact: true }).getByRole('button', { name: 'Clear', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Clear entire project?', exact: true }).getByRole('button', { name: 'Clear Without Saving', exact: true }).click();
     assert.equal(await page.getByRole('complementary', { name: 'Construction history' }).getByRole('button').count(), 0);
-    await drawing(); assert.deepEqual(await snapshot(), geometry);
-    passed.push('BOX Import/PM Apply/Finish, TB edge assignment/SVG Export, local Undo/Redo, TB/W/S/MFG availability, workflow History navigation, Fit and scoped Clear');
+    await drawing(); assert.deepEqual(await snapshot(), []);
+    assert.equal(await undo().isDisabled(), true); assert.equal(await redo().isDisabled(), true);
+    passed.push('BOX Import/PM Apply/Finish, TB edge assignment/SVG Export, global Undo/Redo, TB/W/S/MFG availability, workflow History navigation, Fit and whole-project Clear');
 
     for (const size of [{ width: 1920, height: 1080 }, { width: 1366, height: 768 }, { width: 1024, height: 768 }]) {
       await page.setViewportSize(size);

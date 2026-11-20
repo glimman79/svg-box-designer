@@ -117,13 +117,15 @@ const svg = content => ({name:'same.svg',mimeType:'image/svg+xml',buffer:Buffer.
     await page.getByRole('dialog',{name:'Panel Manager',exact:true}).waitFor();await waitUnlocked();
     assert.equal(await input().inputValue(),'');assert.deepEqual(await drawingSnapshot(),drawing);
     assert.match(await page.getByRole('dialog',{name:'Panel Manager',exact:true}).innerText(),/Panel count: 2/);
-    assert.equal(await page.getByRole('button',{name:'Undo (Ctrl+Z)',exact:true}).isDisabled(),true);
+    assert.equal(await page.getByRole('button',{name:'Undo (Ctrl+Z)',exact:true}).isEnabled(),true);
     await page.getByRole('dialog',{name:'Panel Manager',exact:true}).getByRole('button',{name:'OK',exact:true}).click();
     await nav('2D Drawing').click();
-    await page.keyboard.press('Control+z');assert.equal(await page.locator('[data-sketch-line-id]').count(),1);
+    await page.keyboard.press('Control+z');assert.deepEqual(await drawingSnapshot(),drawing);
+    assert.equal(await page.locator('nav button[aria-pressed="true"]').textContent(),'Box / Construction');
+    assert.ok(await tool('TB').isEnabled());
     await page.keyboard.press('Control+y');assert.deepEqual(await drawingSnapshot(),drawing);
     await nav('Box / Construction').click();
-    console.log('PASS exact same SVG retry: successful import resets input/history, initializes Panel Manager with both panels and releases lock; Drawing Undo/Redo resumes');
+    console.log('PASS exact same SVG retry: successful import resets input and supplies one BOX transition, initializes Panel Manager with both panels and releases lock; global Undo/Redo resumes');
 
     const beforeInvalid = await boxSnapshot();
     for(const text of ['<svg><broken>','<html>not SVG</html>']) {

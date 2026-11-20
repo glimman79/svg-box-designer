@@ -64,8 +64,8 @@ now live with its left tools. Local Drawing history and unfinished workflows sur
 switches; inactive Drawing keyboard/activation input is gated. No global history engine
 or transaction changes were introduced.
 
-Import/Export/Clear remain BOX-scoped and disabled in Drawing; native Open/Save remain
-disabled. BOX Clear confirms that Drawing is preserved. The future BLUE/ORANGE contracts
+UI-1 limited Import, Export and Clear to BOX. The PR 7 correction makes Clear
+available in either workspace and describes its whole-project scope in the dialog. The future BLUE/ORANGE contracts
 below are still future functionality. Existing bottom History, Fit (including BOX top-bar
 Fit), Apply and Finish Group remain unchanged pending UI-2/UI-3/UI-4. See
 [UI-1 validation](UI1_SHARED_WORKSPACE_SHELL_VALIDATION.md) for exact checks and limitations.
@@ -163,8 +163,8 @@ Preserve permanent whole-project Clear: **Save and Clear / Clear Without Saving 
 Save and Clear requires successful native Save, including a destination on first Save;
 failed/cancelled Save preserves work/history. Clear resets project/module state and
 Undo/Redo, is never Undoable and itself never deletes/overwrites saved files. Clear/Open
-must reject stale old-session work. These are future contracts, not claims that the
-current Construction-only Clear or disabled Save already provides them. See
+must reject stale old-session work. The PR 7 branch implements Clear Without Saving
+and Cancel. Save and Clear is visibly disabled until native saving is implemented. See
 [Vision §5](PRODUCT_ARCHITECTURE_VISION.md#5-global-toolbar-contract) and
 [Stage B persistence](GLOBAL_PROJECT_HISTORY_ARCHITECTURE_ANALYSIS.md#10-native-saveopen-architectural-prerequisites);
 no persistence behavior is implemented or redesigned here. Keep unavailable commands
