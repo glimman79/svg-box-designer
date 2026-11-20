@@ -9,7 +9,7 @@ const modules: ReadonlyArray<{ id: WorkspaceId; label: string; available: boolea
   { id: 'puzzle', label: 'Puzzle', available: false },
 ];
 
-/** Placement only: commands and history retain their existing module owners. */
+/** Placement only: App supplies the shared history commands. */
 export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, onExport, onClear, canExport, history, onDrawingToolsHostChange }: {
   activeWorkspace: WorkspaceId;
   onSelectWorkspace: (workspace: WorkspaceId) => void;
@@ -39,7 +39,7 @@ export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, 
       <button className="toolbar-button" type="button" onClick={onClear} disabled={!isConstruction} title="Clear BOX / Construction only; Drawing is preserved">Clear</button>
     </div>
     <WorkspaceSettings />
-    <div className="toolbar-actions history-commands" role="group" aria-label={`${isConstruction ? 'BOX / Construction' : 'Drawing'} Undo/Redo`} title="Active module history; shared project Undo/Redo is not implemented">
+    <div className="toolbar-actions history-commands" role="group" aria-label="Project Undo/Redo" title="Undo or redo a project edit across workspaces">
       <HistoryControls {...history} />
     </div>
     {activeWorkspace === 'drawing' && <div className="drawing-header-slot" ref={onDrawingToolsHostChange} />}

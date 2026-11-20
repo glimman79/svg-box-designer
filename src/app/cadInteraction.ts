@@ -29,17 +29,23 @@ export function useCadPanGesture<T extends Element>({
     panRef.current = null;
   }, [viewportRef]);
 
-  const end = (event: ReactPointerEvent<T>) => {
-    if (panRef.current?.pointerId !== event.pointerId) return false;
+  const cancelPan = () => {
+    const pan = panRef.current;
+    if (!pan) return;
     panRef.current = null;
     setIsPanning(false);
     callbacksRef.current.onPanEnd?.();
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    const viewport = viewportRef.current;
+    if (viewport?.hasPointerCapture(pan.pointerId)) viewport.releasePointerCapture(pan.pointerId);
+  };
+  const end = (event: ReactPointerEvent<T>) => {
+    if (panRef.current?.pointerId !== event.pointerId) return false;
+    cancelPan();
     return true;
   };
 
   return {
-    isPanning,
+    isPanning, cancelPan,
     isCadPanning: (pointerId?: number) => panRef.current !== null && (pointerId === undefined || panRef.current.pointerId === pointerId),
     panHandlers: {
       onPointerDown: (event: ReactPointerEvent<T>) => {

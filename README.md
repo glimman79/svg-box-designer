@@ -11,23 +11,22 @@ SVG Box Designer is a browser-based React application for drawing semantic 2D sk
 One compact bottom History region is shared by Drawing and BOX. BOX retains its workflow-group
 navigation; Drawing shows that persistent operation history is not yet available.
 
-Drawing and BOX keep their domain models in one shared project owner. Drawing has
-100 local Undo steps and BOX has 10. The PR 6 review branch groups each accepted
-construction assignment with its automatic connection and group changes.
-[Construction transactions and manual checks](docs/BOX_CONSTRUCTION_TRANSACTIONS.md). See [PROJECT_MASTER.md](PROJECT_MASTER.md) for current product scope, architectural authority, invariants, and known boundaries.
+The Stage C PR 7 review branch gives Drawing and BOX one 30-edit Undo/Redo history.
+Undo or Redo opens the workspace where the edit happened. Importing a replacement SVG
+can be undone. Confirming BOX Clear keeps Drawing geometry and discards history for
+both workspaces. Review and post-merge user acceptance are pending.
+[Manual checks and implementation status](docs/GLOBAL_HISTORY_CUTOVER.md).
 
 **Approved future direction — not implemented:** an optional connected workflow of
 **3D Modeling → Unfold → 2D Drawing → BOX / Construction**, with BOX/Puzzle as parallel destinations
 and Drawing also usable independently. Simple 3D Modeling will focus on profile
-extrusion; global tape-recorder Undo/Redo of 30 completed state-changing actions and a
-**separate permanent parametric
-construction history** remain future work. Construction operations retain editable current
+extrusion. A **permanent parametric construction history** remains future work. Construction operations retain editable current
 parameters/relationships, survive Undo eviction and persist with native projects; repeated
 member Line dimension edits update the same Sketch operation. Native Save/Open and traceable downstream
 updates are also future work. Current SVG import/export serves BOX,
 and native Save/Open is not available. Revised requirements exclude module navigation
 from Undo history, preserve Redo during navigation, and open the affected edit's module
-on Undo/Redo. Clear offers Save and Clear / Clear Without Saving / Cancel; proceeding
+on Undo/Redo. The future whole-project Clear will offer Save and Clear / Clear Without Saving / Cancel; proceeding
 permanently resets the project, construction history and Undo/Redo. Successful Open
 preserves saved operations/relationships while starting empty executable Undo/Redo.
 Approved Option A keeps valid source edits and compatible updates while preserving failed
@@ -37,8 +36,7 @@ completion cannot create another Undo step. Creation/deletion restores exact ide
 Stage B proposes an initial serialized pending-action baseline that finalizes the same
 position. Its authoring wait is temporary: Stage E must refine dependency-aware scheduling
 for responsive unrelated editing while preserving one Undo position per accepted action.
-That scheduling design, detailed architecture and proposed C.2 remain under review;
-global history, C.2/D/E and remaining Stage C slices are not implemented. See the
+The asynchronous action lifecycle, permanent construction operations, native persistence and dependency evaluation remain future work. See the
 [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) and
 [proposed development stages](ROADMAP.md#4-connected-product-development).
 

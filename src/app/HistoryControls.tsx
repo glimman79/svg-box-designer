@@ -5,7 +5,7 @@ export type HistoryControlsProps = Readonly<{
   onRedo: () => void;
 }>;
 
-/** Presentation-only history controls. The owning workspace supplies the history commands. */
+/** Presentation-only history controls. The application supplies the history commands. */
 export function HistoryControls({ canUndo, canRedo, onUndo, onRedo }: HistoryControlsProps) {
   return <>
     <button className="toolbar-button icon-button" type="button" onClick={onUndo} disabled={!canUndo} aria-label="Undo (Ctrl+Z)" title="Undo (Ctrl+Z)">↶</button>

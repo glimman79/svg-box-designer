@@ -2,6 +2,10 @@
 
 > **Status: current orientation and future-boundary map.** [PROJECT_MASTER.md](PROJECT_MASTER.md) is the authority for current architecture. [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) owns the detailed approved future requirements; its target is not implemented. Historical pipeline snapshots and investigations are indexed in [docs/README.md](docs/README.md).
 
+## Stage C PR 7 global execution history
+
+On this review branch, the Drawing and BOX adapters stage edits against the same application-lifetime timeline. The project owner installs the complete immutable root and advances the history position before notifying subscribers. Traversal selects the workspace from the traversed action and reuses its admitted root, including source SVG and generated manufacturing output. The earlier Stage C checkpoints below describe their respective branches. [Publication and restore contract](docs/GLOBAL_HISTORY_CUTOVER.md).
+
 ## Stage C PR 6 construction publication boundary
 
 Construction commands prepare a complete BOX candidate from the current shared owner using the existing BOX transaction adapter. Group and connection helpers run before publication. The owner publishes once with the local history already advanced. Applied output retains its snapshot through authoring and local restore. [Construction transaction architecture](docs/BOX_CONSTRUCTION_TRANSACTIONS.md).
@@ -103,7 +107,7 @@ The separate history systems and dependency boundary require technical design:
 
 | Responsibility | Approved target / open boundary |
 | --- | --- |
-| Global chronological history | Tape-recorder Undo/Redo: one completed state-changing user action, including all automatic solver/dependency consequences, is one logical transition; combined past/future capacity is 30. Creation/deletion restores original identities; previews/invalid/cancelled/no-op actions add none. Ordinary switches are UI navigation and preserve cursor/Redo without consuming capacity. Undo/Redo restore the full affected project state and open the edit's associated module; never restore an obsolete captured tab. Detailed store/transaction design remains proposed. |
+| Global chronological history | Tape-recorder Undo/Redo: one completed state-changing user action, including all automatic solver/dependency consequences, is one logical transition; combined past/future capacity is 30. Creation/deletion restores original identities; previews/invalid/cancelled/no-op actions add none. Ordinary switches are UI navigation and preserve cursor/Redo without consuming capacity. Undo/Redo restore the full affected project state and open the edit's associated module; never restore an obsolete captured tab. PR 7 implements synchronous execution history for Drawing and BOX. The asynchronous dependency lifecycle remains planned. |
 | Permanent parametric construction history / panel | Project-owned editable operation definitions, stable identities, current parameters, input/output refs and relationships persist without Undo/journal quotas. A Sketch is one top-level operation; member Line dimension edits update that Sketch and add normal Undo transactions. Double-click reveals current settings without rewind/Redo mutation. Operation-to-entity mapping, grouping and migration remain proposed. |
 | Source-to-derived dependencies | Approved Option A keeps valid source edits, updates compatible branches and preserves failed/blocked definitions/refs and unaffected authored work for repair/removal. Explicit diagnostic states and no guessed refs/silent deletion. Exact mixed outcomes restore without replay; algorithms/repair UI remain unselected. |
 
@@ -149,15 +153,7 @@ the single-slot model may need significant evolution and C/D must preserve compa
 See the [full contract](docs/PRODUCT_ARCHITECTURE_VISION.md#5-global-toolbar-contract)
 and [proposed staging](ROADMAP.md#4-connected-product-development).
 
-The earlier separate-history recommendation is superseded only as future direction;
-this documentation does not replace either existing history. No current functional
-defect was confirmed during the user's Drawing Undo/Redo testing; exhaustive action
-coverage is not established. Separate history ownership remains a global-history design
-limitation; UI-1 avoids navigation unmounts without introducing global history. The accepted deferred
-Arc empty/blind Undo limitation remains unchanged. Accepted Circle/Arc models, solver,
-transactions, Direct Manipulation and Stage 0–6 evidence below remain intact. References
-to shared/global Drawing concerns below mean sharing within Drawing, not an already
-implemented cross-module project history.
+UI-1 kept Drawing mounted during workspace changes. PR 7 moves execution history above both workspaces and preserves accepted Circle/Arc models and solver behavior. The rare Arc empty/blind Undo case remains open. The Stage 0–6 evidence below records the original Drawing acceptance scope.
 
 ## Multi-Sketch and Unfold ownership target (2026-11-17)
 

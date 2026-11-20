@@ -1,3 +1,4 @@
+import { projectDataEqual } from './projectDataEqual';
 import type { GeometryOperation } from './operationTypes';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
 import type { PanelCompositionModel } from './generatedGeometryAuthority';
@@ -49,6 +50,14 @@ export const createGeneratedGeometrySnapshot = ({
     generatedGeometry: Object.freeze(clone(generatedGeometry)),
   });
 };
+
+/** Apply computes a fresh candidate. A clock tick alone cannot change its meaning. */
+export function retainEquivalentSnapshot(previous: GeneratedGeometrySnapshot, next: GeneratedGeometrySnapshot) {
+  const { createdTimestamp: _oldTime, ...oldMetadata } = previous.metadata;
+  const { createdTimestamp: _newTime, ...newMetadata } = next.metadata;
+  return projectDataEqual(oldMetadata, newMetadata) && projectDataEqual(previous.operations, next.operations)
+    && projectDataEqual(previous.generatedGeometry, next.generatedGeometry) ? previous : next;
+}
 
 /** History snapshots contain already-selected authority output and must be restored verbatim. */
 export const restoreGeneratedGeometrySnapshot = (snapshot: GeneratedGeometrySnapshot): Readonly<{

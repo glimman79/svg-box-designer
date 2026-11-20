@@ -4,7 +4,7 @@ import type { ProjectOwner } from './projectOwner';
 type ImportToken = ReturnType<ProjectOwner['beginBoxImport']>;
 
 /** Transient SVG-import UI ownership; project publication still belongs to the owner. */
-export function useSvgImportLock(projectOwner: ProjectOwner) {
+export function useSvgImportLock(projectOwner: Pick<ProjectOwner, 'beginBoxImport' | 'isCurrentBoxImport' | 'invalidateBoxImports'>) {
   const [isImporting, setIsImporting] = useState(false);
   const activeImportRef = useRef<ImportToken | null>(null);
   const mountedRef = useRef(false);

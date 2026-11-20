@@ -24,8 +24,7 @@ import { resolveCadToolPointerActivation, type CadToolActivationRecord } from '.
 import { appendDimension, chooseLineDimensionKind, choosePointDimensionKind, createDimensionId, createCircularSizeDimension, createLineDimension, createLinePairDimension, createLineToLineAngleDimension, createPointToLineDimension, createPointToPointDimension, deleteDimension, deleteEntityWithDependentDimensions, deriveLineToLineAnnotationGeometry, derivePointToLineAnnotationGeometry, dimensionEditorWidthPixels, dimensionOffset, dimensionScreenPixelsToModelUnits, DIMENSION_EDITOR_HEIGHT_PX, DIMENSION_TEXT_SIZE_PX, displayedDimensionMeasurement, formatAngleDimension, formatCircularDimension, formatDimensionEditValue, formatDimensionValue, lineToLineDimensionOffset, moveDimensionPlacement, parseLinearDimension, pointToLineDimensionOffset, preselectionReference, resolveDimensionAnnotationPlacement, resolveDimensionLineReference, resolveDimensionPreselection, resolveDimensionPreselectionForTarget, resolveDrawingPointReference, type DimensionPreselection, type DimensionToolState } from './drawingDimension';
 import { candidateForSector, createLineAngleBasis, deriveLineAngleAnnotation } from './drawingLineAngle';
 import { solveDrawingDimensionEdit } from './drawingConstraintSolver';
-import type { HistoryControlsProps } from './HistoryControls';
-import { requireDrawingChange, type DrawingHistory, type DrawingMutation, EMPTY_DRAWING_HISTORY, redoDrawingDocument, transactDrawingDocument, undoDrawingDocument } from './drawingHistory';
+import { requireDrawingChange, type DrawingMutation } from './drawingHistory';
 import { collectDrawingAuthoringPoints, deriveEntityDefiningPointIds, pointIdForLineEndpoint, resolveActiveSketchLines, resolveArc, resolveCircle, resolveLine } from './drawingTopology.js';
 import { acceptArcEndpoint, commitArcForm, EMPTY_ARC_INTERACTION, resolveArcEndpointReference, resolveArcPreview, updateArcPreview, type ArcToolInteraction } from './drawingArcTool.js';
 import { drawingArcPath } from './drawingArcGeometry.js';
@@ -145,30 +144,31 @@ export const drawingGeometrySelectionClass = (selection: readonly DrawingSelecti
 
 export { routeDrawingGeometryPointerSelection } from './drawingGeometrySelection.js';
 
+export type DrawingInteractionBoundary = { settle: () => void; invalidate: () => void };
+
 export function DrawingWorkspace({
   document,
   ownedDocumentRef,
   publishDrawingEdit,
-  setDocument,
   viewBox,
   setViewBox,
   constraintsPanelOpen,
   setConstraintsPanelOpen,
-  onHistoryControllerChange,
+  interactionRef, onPendingSegment, getEpoch,
   headerToolsHost,
   isActive = true,
 }: {
   isActive?: boolean;
   document: DrawingDocumentV2;
-  publishDrawingEdit?: (local: { current: DrawingHistory }, label: string, edit: DrawingMutation) => { outcome: 'accepted' | 'noop' | 'rejected' };
-  /** Read/write accessor into the application owner; standalone callers retain the local adapter. */
-  ownedDocumentRef?: { current: DrawingDocumentV2 };
-  setDocument: Dispatch<SetStateAction<DrawingDocumentV2>>;
+  publishDrawingEdit: (label: string, edit: DrawingMutation) => { outcome: 'accepted' | 'noop' | 'rejected' };
+  ownedDocumentRef: { readonly current: DrawingDocumentV2 };
+  interactionRef: { current: DrawingInteractionBoundary | null };
+  onPendingSegment: (pending: boolean) => void;
+  getEpoch: () => number;
   viewBox: DrawingViewBox;
   setViewBox: Dispatch<SetStateAction<DrawingViewBox>>;
   constraintsPanelOpen: boolean;
   setConstraintsPanelOpen: Dispatch<SetStateAction<boolean>>;
-  onHistoryControllerChange?: (controller: HistoryControlsProps | null) => void;
   /** Presentation target only: handlers and active state stay in this mounted workspace. */
   headerToolsHost?: HTMLDivElement | null;
 }) {
@@ -196,6 +196,7 @@ export function DrawingWorkspace({
   const [hoveredDimensionId, setHoveredDimensionId] = useState<string | null>(null);
   const [dimensionDrag, setDimensionDrag] = useState<DimensionAnnotationDragSession | null>(null);
   const dimensionDragRef = useRef<DimensionAnnotationDragSession | null>(null);
+  const dimensionCaptureRef = useRef<SVGElement | null>(null);
   const [geometryDrag, setGeometryDrag] = useState<GeometryDragSession | null>(null);
   const geometryDragRef = useRef<GeometryDragSession | null>(null);
   const [boxSelection, setBoxSelection] = useState<BoxSelectionSession | null>(null);
@@ -207,10 +208,8 @@ export function DrawingWorkspace({
   const constraintsPanelDragRef = useRef<{ pointerId: number; dx: number; dy: number } | null>(null);
   const [selectedGeometricConstraintId, setSelectedGeometricConstraintId] = useState<string | null>(null);
   const [hoveredGeometricConstraintId, setHoveredGeometricConstraintId] = useState<string | null>(null);
-  const standaloneDocumentRef = useRef(ownedDocumentRef ? null : document);
-  const documentRef = ownedDocumentRef ?? (standaloneDocumentRef as { current: DrawingDocumentV2 });
-  const historyRef = useRef(EMPTY_DRAWING_HISTORY);
-  const [historyRevision, setHistoryRevision] = useState(0);
+  const documentRef = ownedDocumentRef;
+  const renderEpoch = getEpoch();
 
   useEffect(() => {
     const sidebar = toolSidebarRef.current;
@@ -277,7 +276,6 @@ export function DrawingWorkspace({
   segmentInteractionRef.current = segmentInteraction;
   arcInteractionRef.current = arcInteraction;
   drawingSnapRef.current = drawingSnap;
-  if (!ownedDocumentRef) documentRef.current = document;
   boxSelectionRef.current = boxSelection;
 
   const setDimensionDragSession = (session: DimensionAnnotationDragSession | null) => {
@@ -290,7 +288,9 @@ export function DrawingWorkspace({
     const next = cancelDimensionAnnotationDragSession(session, pointerId);
     if (next === session) return false;
     setDimensionDragSession(next);
-    if (session && svgRef.current?.hasPointerCapture(session.pointerId)) svgRef.current.releasePointerCapture(session.pointerId);
+    const target = dimensionCaptureRef.current;
+    dimensionCaptureRef.current = null;
+    if (session && target?.hasPointerCapture(session.pointerId)) target.releasePointerCapture(session.pointerId);
     return true;
   };
 
@@ -318,17 +318,7 @@ export function DrawingWorkspace({
   };
 
   const transactDocument = (update: DrawingMutation, label: string) => {
-    if (publishDrawingEdit) {
-      const result = publishDrawingEdit(historyRef, label, update);
-      if (result.outcome === 'accepted') setHistoryRevision(revision => revision + 1);
-      return;
-    }
-    const result = transactDrawingDocument(historyRef.current, documentRef.current, current => update(current) ?? current);
-    if (!result.changed) return;
-    historyRef.current = result.history;
-    documentRef.current = result.document;
-    if (!ownedDocumentRef) setDocument(result.document);
-    setHistoryRevision((revision) => revision + 1);
+    if (getEpoch() === renderEpoch) publishDrawingEdit(label, update);
   };
 
   useEffect(() => {
@@ -693,7 +683,7 @@ export function DrawingWorkspace({
       if (activeToolRef.current === 'arc' && placement) setArcInteraction((current) => { const next = updateArcPreview(current, placement.position.point); arcInteractionRef.current = next; return next; });
     }
   });
-  const { isPanning, panHandlers } = useCadPanGesture({
+  const { isPanning, panHandlers, cancelPan } = useCadPanGesture({
     viewportRef: svgRef,
     onPanStart: () => { setCadCursor(null); setDrawingSnap(null); drawingSnapRef.current = null; },
     onPan: ({ dx, dy }) => {
@@ -718,6 +708,7 @@ export function DrawingWorkspace({
     }
     if (activeToolRef.current === 'select') return;
     cancelDrawingProfileCommit(pendingProfileClickRef, window);
+    onPendingSegment(false);
     const empty = EMPTY_LINE_SEGMENT_INTERACTION;
     segmentInteractionRef.current = empty;
     setSegmentInteraction(empty);
@@ -900,8 +891,10 @@ export function DrawingWorkspace({
       const endpointPointId = placement.position.kind === 'endpoint' ? placement.position.pointId : null;
       const lineBodyId = placement.position.kind === 'line-body' ? placement.position.entityId : null;
       const acceptedDocument = documentRef.current;
+      onPendingSegment(placement.interaction.start !== null);
       scheduleDrawingProfileCommit(pendingProfileClickRef, window, () => {
-        if (documentRef.current !== acceptedDocument) return;
+        onPendingSegment(false);
+        if (getEpoch() !== renderEpoch || documentRef.current !== acceptedDocument) return;
         if (placement.position.kind === 'midpoint') commitSegmentPlacement('profile', effectivePoint, endpointPointId, placement.interaction,
           undefined, placement.position.entityId);
         else commitSegmentPlacement('profile', effectivePoint, endpointPointId, placement.interaction, lineBodyId, undefined);
@@ -1071,9 +1064,12 @@ export function DrawingWorkspace({
 
   useEffect(() => () => {
     cancelDrawingProfileCommit(pendingProfileClickRef, window);
+    onPendingSegment(false);
     const session = boxSelectionRef.current, dimensionSession = dimensionDragRef.current, svg = svgRef.current;
     if (session && svg?.hasPointerCapture(session.pointerId)) svg.releasePointerCapture(session.pointerId);
-    if (dimensionSession && svg?.hasPointerCapture(dimensionSession.pointerId)) svg.releasePointerCapture(dimensionSession.pointerId);
+    const target = dimensionCaptureRef.current;
+    if (dimensionSession && target?.hasPointerCapture(dimensionSession.pointerId)) target.releasePointerCapture(dimensionSession.pointerId);
+    dimensionCaptureRef.current = null;
     boxSelectionRef.current = null;
     geometryDragRef.current = null;
     dimensionDragRef.current = null;
@@ -1084,6 +1080,7 @@ export function DrawingWorkspace({
     cancelGeometryDrag();
     cancelDimensionDrag();
     cancelDrawingProfileCommit(pendingProfileClickRef, window);
+    onPendingSegment(false);
     setSegmentInteraction(EMPTY_LINE_SEGMENT_INTERACTION);
     setCircleInteraction(EMPTY_CIRCLE_INTERACTION);
     setArcInteraction(EMPTY_ARC_INTERACTION); arcInteractionRef.current = EMPTY_ARC_INTERACTION;
@@ -1118,6 +1115,7 @@ export function DrawingWorkspace({
 
   const finishProfile = () => {
     cancelDrawingProfileCommit(pendingProfileClickRef, window);
+    onPendingSegment(false);
     setSegmentInteraction(EMPTY_LINE_SEGMENT_INTERACTION);
     setDrawingSnap(null);
     drawingSnapRef.current = null;
@@ -1224,11 +1222,14 @@ export function DrawingWorkspace({
     const { commit } = result;
     if (commit) transactDocument(current => current === startDocument
       ? moveDimensionPlacement(current, commit.id, commit.placement) : null, 'Move Dimension');
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    const target = dimensionCaptureRef.current;
+    dimensionCaptureRef.current = null;
+    if (target?.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
   };
 
   const beginDimensionAnnotationDrag = (event: PointerEvent<SVGElement>, dimension: DrawingDimension, captureTarget: SVGElement) => {
     if (event.button !== CAD_PRIMARY_BUTTON || editingDimensionId || activeTool !== 'select') return;
+    dimensionCaptureRef.current = captureTarget;
     captureDimensionPointer(captureTarget, event.pointerId);
     setSelectedDimensionId(dimension.id);
     setDimensionDragSession(beginDimensionAnnotationDragSession(event.pointerId, dimension, { x: event.clientX, y: event.clientY }, documentRef.current));
@@ -1238,6 +1239,7 @@ export function DrawingWorkspace({
     cancelGeometryDrag();
     cancelDimensionDrag();
     cancelDrawingProfileCommit(pendingProfileClickRef, window);
+    onPendingSegment(false);
     setSegmentInteraction(EMPTY_LINE_SEGMENT_INTERACTION);
     segmentInteractionRef.current = EMPTY_LINE_SEGMENT_INTERACTION;
     setArcInteraction(EMPTY_ARC_INTERACTION);
@@ -1248,49 +1250,43 @@ export function DrawingWorkspace({
     drawingSnapRef.current = null;
   };
 
-  const undo = () => {
-    const result = undoDrawingDocument(historyRef.current, documentRef.current);
-    if (!result.changed) return;
-    historyRef.current = result.history;
-    cancelPendingDrawingGestures();
-    documentRef.current = result.document;
-    setEditingDimensionId(null);
-    setDimensionEditError(null);
-    setSelectedDimensionId(null);
-    setSelectedGeometry([]);
-    setSelectedGeometricConstraintId(null);
-    if (!ownedDocumentRef) setDocument(result.document);
-    setHistoryRevision((revision) => revision + 1);
-  };
-
-  const redo = () => {
-    const result = redoDrawingDocument(historyRef.current, documentRef.current);
-    if (!result.changed) return;
-    historyRef.current = result.history;
-    cancelPendingDrawingGestures();
-    documentRef.current = result.document;
-    setEditingDimensionId(null);
-    setDimensionEditError(null);
-    setSelectedDimensionId(null);
-    setSelectedGeometry([]);
-    setSelectedGeometricConstraintId(null);
-    if (!ownedDocumentRef) setDocument(result.document);
-    setHistoryRevision((revision) => revision + 1);
-  };
-
-  useEffect(() => {
-    onHistoryControllerChange?.({ canUndo: historyRef.current.undo.length > 0, canRedo: historyRef.current.redo.length > 0, onUndo: undo, onRedo: redo });
-  }, [document, historyRevision, onHistoryControllerChange]);
-
-  useEffect(() => () => onHistoryControllerChange?.(null), [onHistoryControllerChange]);
+  useLayoutEffect(() => {
+    interactionRef.current = {
+      settle: () => { flushDrawingProfileCommit(pendingProfileClickRef, window); },
+      invalidate: () => {
+        cancelPan();
+        cancelPendingDrawingGestures();
+        const panelDrag = constraintsPanelDragRef.current;
+        constraintsPanelDragRef.current = null;
+        const header = constraintsPanelRef.current?.querySelector('.drawing-constraints-header');
+        if (panelDrag && header?.hasPointerCapture(panelDrag.pointerId)) header.releasePointerCapture(panelDrag.pointerId);
+        endBoxSelection();
+        setEditingDimensionId(null);
+        setDimensionEditError(null);
+        setSelectedDimensionId(null);
+        setSelectedGeometry([]);
+        setSelectedGeometricConstraintId(null);
+        setHoveredGeometricConstraintId(null);
+        setHoveredDimensionId(null);
+        setGeometryPreselection(null);
+        clearCadCursor();
+        setArcFormCandidate(null);
+        arcFormCandidateRef.current = null;
+        setCircleCurveCandidate(null);
+        circleCurveCandidateRef.current = null;
+        setCirclePointCandidate(null);
+        circlePointCandidateRef.current = null;
+      },
+    };
+    return () => { interactionRef.current = null; };
+  });
 
   useEffect(() => {
     if (!isActive) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.target as HTMLElement).tagName === 'INPUT') return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { if (historyRef.current.undo.length > 0) { event.preventDefault(); undo(); } }
-      else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { if (historyRef.current.redo.length > 0) { event.preventDefault(); redo(); } }
-      else if ((event.key === 'Delete' || event.key === 'Backspace') && (hoveredGeometricConstraintId || selectedGeometricConstraintId)) {
+      if (event.target instanceof Element && (event.target.closest('input, textarea, select, [role="textbox"]')
+        || (event.target as HTMLElement).isContentEditable)) return;
+      if ((event.key === 'Delete' || event.key === 'Backspace') && (hoveredGeometricConstraintId || selectedGeometricConstraintId)) {
         event.preventDefault();
         transactDocument((current) => deleteGeometricConstraint(current, hoveredGeometricConstraintId ?? selectedGeometricConstraintId!), 'Delete Constraint');
         setHoveredGeometricConstraintId(null);

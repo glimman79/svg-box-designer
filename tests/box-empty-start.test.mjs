@@ -22,9 +22,9 @@ assert.ok(viewBoxValues[2] > 0 && viewBoxValues[3] > 0, 'the empty Box fallback 
 assert.match(app, /if \(!contentBounds\) \{\s*return fallbackViewBox;\s*\}/, 'Fit uses the safe document viewBox when geometry is empty');
 
 assert.match(app, /boxTransactions.replaceSource\(token, parsedSvg, nextPanelManager/, 'import supplies parsed BOX source and Panel Manager to the guarded replacement');
-assert.match(fs.readFileSync('src/app/boxTransactionAdapter.ts', 'utf8'), /owner.publishBoxImport\(token, next\)/, 'replacement publishes through the guarded owner');
+assert.match(fs.readFileSync('src/app/boxTransactionAdapter.ts', 'utf8'), /owner\.isCurrentBoxImport\(token\)/, 'replacement publishes through the guarded owner');
 assert.match(app, /createPanelManagerStateFromModel\(parsedSvg\)/, 'imported geometry still enters Panel Manager');
-assert.match(app, /setPanelManager\(snapshot\.panelManager\)/, 'history restore preserves a non-empty project panel state');
+assert.match(fs.readFileSync('src/app/globalProjectHistory.ts', 'utf8'), /box = \{ \.\.\.frame.box.data, \.\.\.frame.box.context \}/, 'restore uses complete captured data and context');
 assert.match(app, /useCadWheelCapture\(svgRef,/, 'Box retains shared CAD wheel capture');
 
 console.log('B3.23 empty Box start tests passed');

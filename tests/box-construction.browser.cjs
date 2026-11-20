@@ -101,7 +101,7 @@ const assert = require('node:assert/strict');
     assert.equal(await contours(),mixed); assert.ok(await redo.isEnabled());
     const modules = page.getByRole('navigation',{name:'Main workspaces'});
     await button(modules,'2D Drawing').click();
-    assert.equal(await redo.isEnabled(),false);
+    assert.equal(await redo.isEnabled(),true);
     await button(modules,'Box / Construction').click();
     assert.ok(await redo.isEnabled()); await redo.click();
     assert.ok(await label('S2',2).isVisible()); assert.equal(await contours(),mixed);
@@ -112,6 +112,6 @@ const assert = require('node:assert/strict');
     await revisit('TB'); assert.ok(await label('TB1',2).isVisible());
     await undo.click(); await tool('S'); assert.ok(await label('S2',2).isVisible());
     assert.deepEqual(errors,[]);
-    console.log('PASS mounted TB/W/S start, continuation, properties, role rejection, cleanup and local traversal; mixed Apply and incomplete-S rejection; module-local Redo');
+    console.log('PASS mounted TB/W/S start, continuation, properties, role rejection, cleanup and global traversal; mixed Apply and incomplete-S rejection; cross-module Redo');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

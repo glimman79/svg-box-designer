@@ -71,7 +71,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     assert.deepEqual(await capabilities(), [true, true]);
     await button('Circle').click(); await clickDrawing({ x: 90, y: -50 }); // unfinished tool survives navigation
     for (let n = 0; n < 2; n++) {
-      await box(); assert.deepEqual(await capabilities(), [false, false]);
+      await box(); assert.deepEqual(await capabilities(), [true, true]);
       await drawing(); assert.deepEqual(await capabilities(), [true, true]);
       assert.equal(await button('Circle').getAttribute('aria-pressed'), 'true');
       assert.deepEqual(await geometry(), drawingBefore);
