@@ -38,21 +38,21 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
     assert.equal(await page.getByRole('button', { name: 'Export', exact: true }).isDisabled(), true);
     assert.equal(await page.getByRole('button', { name: 'Clear', exact: true }).isEnabled(), true);
     assert.equal(await page.getByLabel('Import SVG into BOX / Construction', { exact: true }).isDisabled(), true);
-    assert.equal(await undo().isDisabled(), true);
+    assert.equal(await undo().isEnabled(), true);
     passed.push('navigation, stable command/history positions and disabled capability boundaries');
 
     await tool('Line').click(); await click({ x: -120, y: -70 }); await click({ x: -20, y: -70 });
     await waitCount('[data-sketch-line-id]', 1);
     await undo().click(); await waitCount('[data-sketch-line-id]', 0);
     assert.equal(await redo().isEnabled(), true);
-    await box(); await page.keyboard.press('Control+z'); await page.keyboard.press('Escape');
-    // Neither the hidden workspace shortcuts nor navigation may consume Drawing Redo.
-    await drawing(); assert.equal(await redo().isEnabled(), true); await redo().click(); await waitCount('[data-sketch-line-id]', 1);
+    await drawing(); // An already-active workspace preserves the undone Line.
+    assert.equal(await redo().isEnabled(), true); await redo().click(); await waitCount('[data-sketch-line-id]', 1);
     const line = await snapshot();
     await box(); await page.keyboard.press('Delete'); await page.keyboard.press('Control+z');
-    assert.equal(await tool('Line').isVisible(),true); await waitCount('[data-sketch-line-id]',0); await redo().click();
-    assert.deepEqual(await snapshot(), line, 'global keyboard Undo activates Drawing and Redo restores its Line');
-    passed.push('Line creation, global Undo/Redo, preserved Redo and hidden keyboard isolation');
+    assert.equal(await tool('Line').isVisible(), true); assert.deepEqual(await snapshot(), line);
+    await page.keyboard.press('Control+z'); await waitCount('[data-sketch-line-id]', 0);
+    await redo().click(); assert.deepEqual(await snapshot(), line);
+    passed.push('Line creation, reversible navigation, global keyboard Undo/Redo and hidden keyboard isolation');
 
     await tool('Circle').click(); await click({ x: 60, y: -50 });
     await box(); await page.keyboard.press('Escape');
@@ -81,7 +81,9 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
     assert.equal(await editor.inputValue(), '120', 'unfinished dimension edit survives module navigation');
     await editor.press('Enter');
     assert.notDeepEqual(await snapshot(), geometry, 'accepted dimension edit updates geometry');
-    await undo().click(); await undo().click();
+    await undo().click(); // Dimension edit
+    await undo().click(); await undo().click(); // Both switches while the editor was open
+    await undo().click(); // Dimension creation
     await waitCount('.drawing-dimension-value-hit', 0);
     await page.keyboard.press('Escape');
     assert.deepEqual(await snapshot(), geometry);
@@ -129,8 +131,9 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
     await page.getByRole('button', { name: 'Clear', exact: true }).click();
     await page.getByRole('dialog', { name: 'Clear entire project?', exact: true }).getByRole('button', { name: 'Clear Without Saving', exact: true }).click();
     assert.equal(await page.getByRole('complementary', { name: 'Construction history' }).getByRole('button').count(), 0);
-    await drawing(); assert.deepEqual(await snapshot(), []);
     assert.equal(await undo().isDisabled(), true); assert.equal(await redo().isDisabled(), true);
+    await drawing(); assert.deepEqual(await snapshot(), []);
+    assert.equal(await undo().isEnabled(), true);
     passed.push('BOX Import/PM Apply/Finish, TB edge assignment/SVG Export, global Undo/Redo, TB/W/S/MFG availability, workflow History navigation, Fit and whole-project Clear');
 
     for (const size of [{ width: 1920, height: 1080 }, { width: 1366, height: 768 }, { width: 1024, height: 768 }]) {

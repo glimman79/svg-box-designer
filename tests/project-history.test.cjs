@@ -59,7 +59,7 @@ test('one accepted change preserves the complete before frame and metadata once'
   assert.equal(result.outcome, 'accepted'); assert.equal(result.frame, result.history.current);
   assert.equal(result.history.undo.length, 1); assert.equal(result.history.redo.length, 0);
   assert.equal(result.history.undo[0].frame, before.current);
-  assert.deepEqual(result.history.undo[0].transaction, meta);
+  assert.deepEqual(result.history.undo[0].transaction, { ...meta, kind: 'edit' });
   meta.label = 'Later UI change';
   assert.equal(result.history.undo[0].transaction.label, 'Edit action-1');
   assertFrozen(result.history); assert.equal(before.undo.length, 0);
@@ -240,7 +240,7 @@ test('Undo and Redo return stored frames and the associated edit metadata withou
   assert.equal(undone.frame, before.current); assert.equal(undone.changed, true);
   assert.equal(undone.history.undo.length, 0); assert.equal(undone.history.redo.length, 1);
   assert.equal(undone.history.redo[0].frame, history.current);
-  assert.deepEqual(undone.transaction, metadata('1'));
+  assert.deepEqual(undone.transaction, { ...metadata('1'), kind: 'edit' });
   const redone = redoProjectHistory(undone.history);
   assert.equal(redone.frame, history.current);
   assert.deepEqual(redone.history, history);
@@ -322,14 +322,22 @@ test('multiple Drawing and BOX edits traverse one coherent project sequence', ()
   assert.equal(d.current.box.data.projectSettings.kerfMm, .4);
 });
 
-test('navigation and transient UI activity have no core command and preserve Redo', () => {
-  const history = undoProjectHistory(edit(initial(), 1)).history;
-  const ui = { activeWorkspace: 'drawing', zoom: 1, selection: [] };
-  ui.activeWorkspace = 'box'; ui.zoom = 2; ui.selection.push('panel-a');
-  // Navigation is outside the frame/transaction protocol, including a defensive noop.
-  assert.equal(transactProjectHistory(history, metadata(), () => 'noop').history, history);
-  assert.equal(history.redo.length, 1); assert.equal('activeWorkspace' in history.current, false);
-  assert.equal('selection' in history.current, false);
+test('navigation moves the cursor over identical frames and branches only on a switch', () => {
+  const baseline = initial(true);
+  const switchToBox = history => api.recordWorkspaceNavigation(history, 'drawing', 'construction');
+  const switched = switchToBox(baseline);
+  const entry = switched.undo[0];
+  assert.deepEqual(entry, { transaction: { kind: 'navigation', source: 'drawing', destination: 'construction' } });
+  assertFrozen(entry);
+  const undone = undoProjectHistory(switched);
+  assert.equal(undone.changed, true);
+  assert.equal(undone.frame, baseline.current);
+  assert.equal(undone.history.redo[0], entry);
+  assert.equal(api.recordWorkspaceNavigation(undone.history, 'drawing', 'drawing'), undone.history);
+  assert.equal(transactProjectHistory(undone.history, metadata(), () => 'noop').history, undone.history);
+  assert.equal(redoProjectHistory(undone.history).history.undo[0], entry);
+  assert.equal(switchToBox(undone.history).redo.length, 0);
+  assert.equal('activeWorkspace' in baseline.current, false);
 });
 
 test('initialization/reset starts a fresh timeline for native Open or explicit project reset', () => {

@@ -20,7 +20,7 @@ assert.match(app, /canUndo: history.undo.length > 0[\s\S]*canRedo: history.redo.
 assert.match(topBar, /<header[\s\S]*<HistoryControls \{\.\.\.history\}/, 'history controls remain in the application header');
 assert.match(workspace, /transactDocument\(\(current\) => appendEntityToActiveSketch/, 'Line creation uses existing Drawing history transactions');
 assert.match(app, /historyCommand.current\(key === 'y' \|\| event.shiftKey \? 'redo' : 'undo'\)/);
-assert.match(app, /onUndo: \(\) => traverse\('undo'\), onRedo: \(\) => traverse\('redo'\)/);
+assert.match(app, /onUndo: \(\) => runHistoryCommand\('undo'\), onRedo: \(\) => runHistoryCommand\('redo'\)/);
 assert.doesNotMatch(workspace, /undoDrawingDocument|redoDrawingDocument|historyRef/);
 assert.doesNotMatch(controls, /undoLine|undoDimension|redoLine|redoDimension/, 'presentation is operation-agnostic');
 assert.doesNotMatch(controls, /useState|useRef/, 'presentation owns no history stack');

@@ -142,8 +142,7 @@ behavior. This specification does not redesign tool sets or define future Puzzle
 Use one consistent top-bar navigation region for Drawing, BOX / Construction, Puzzle
 and future modules. Clearly distinguish active, available and not-yet-implemented modules;
 visible placeholders are not capabilities. Future modules must fit without restructuring
-the whole workspace. Manual switching is navigation, never a construction operation or
-Undo action, and preserves project work and Redo.
+the whole workspace. The November 20 decision supersedes the earlier edit-only rule. Manually switching between Drawing and BOX creates one reversible step and preserves project work. The bottom row continues to show BOX workflow groups or Drawing’s empty operation state.
 
 ### BLUE — Global project commands
 
@@ -183,8 +182,7 @@ Keep Undo and Redo in the top bar, connected to the shared project-level system 
 Stage C exists. Never relocate these controls into construction history. Preserve
 Stage B's combined **30-transition** past/future capacity and one logical Undo action
 for each accepted state-changing user action, including all automatic downstream
-consequences. Navigation contributes none. Undo/Redo restores exact captured outcomes
-and opens the edit's associated module. Early placement work must not advertise the
+consequences. Each successful supported workspace switch uses one step and branches after Undo. Its Undo opens the source and its Redo opens the destination. Edits restore exact captured outcomes and open the edit's associated module. Automatic activation and clicks on the active module add zero steps. Early placement work must not advertise the
 current local owners as an implemented global system or change their behavior.
 
 ### PINK — Contextual Apply and Finish Group
@@ -234,7 +232,7 @@ No widget layout, grouping schema, migration mechanism or packaging behavior is 
 | System | What it represents | Effect of editing an existing operation |
 | --- | --- | --- |
 | Permanent construction history | Current editable operation definitions, stable references and dependencies; project-persistent, no Undo quota. | Update the same operation and entry. |
-| Global Undo/Redo | Up to 30 chronological reversible project-edit transitions across modules. | Record one accepted edit including all automatic consequences. |
+| Global Undo/Redo | Up to 30 chronological edits and deliberate workspace switches combined. | Record one entry per accepted switch or edit, including its automatic consequences. |
 | Dependency evaluation | Affected input/output relationships and current results/diagnostics. | Re-evaluate the affected closure; retain unrelated authored work. |
 
 Example: Drawing operation → BOX operation → finger joints → later dependent operations.

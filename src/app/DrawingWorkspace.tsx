@@ -146,6 +146,7 @@ export { routeDrawingGeometryPointerSelection } from './drawingGeometrySelection
 
 export type DrawingInteractionBoundary = {
   settle: () => void;
+  leaveWorkspace: () => void;
   invalidate: () => void;
   pauseProfile: () => (() => void) | undefined;
 };
@@ -305,13 +306,6 @@ export function DrawingWorkspace({
     setGeometryDrag(null);
     if (svgRef.current?.hasPointerCapture(session.pointerId)) svgRef.current.releasePointerCapture(session.pointerId);
   };
-
-  useLayoutEffect(() => {
-    if (!isActive) {
-      cancelGeometryDrag();
-      cancelDimensionDrag();
-    }
-  }, [isActive]);
 
   const endBoxSelection = (releaseCapture = true) => {
     const session = boxSelectionRef.current;
@@ -1239,9 +1233,19 @@ export function DrawingWorkspace({
     setDimensionDragSession(beginDimensionAnnotationDragSession(event.pointerId, dimension, { x: event.clientX, y: event.clientY }, documentRef.current));
   };
 
-  const cancelPendingDrawingGestures = () => {
+  const releasePointerGestures = () => {
     cancelGeometryDrag();
     cancelDimensionDrag();
+    cancelPan();
+    endBoxSelection();
+    const panelDrag = constraintsPanelDragRef.current;
+    constraintsPanelDragRef.current = null;
+    const header = constraintsPanelRef.current?.querySelector('.drawing-constraints-header');
+    if (panelDrag && header?.hasPointerCapture(panelDrag.pointerId)) header.releasePointerCapture(panelDrag.pointerId);
+  };
+
+  const cancelPendingDrawingGestures = () => {
+    releasePointerGestures();
     cancelDrawingProfileCommit(pendingProfileClickRef, window);
     onPendingSegment(false);
     setSegmentInteraction(EMPTY_LINE_SEGMENT_INTERACTION);
@@ -1257,6 +1261,10 @@ export function DrawingWorkspace({
   useLayoutEffect(() => {
     interactionRef.current = {
       settle: () => { flushDrawingProfileCommit(pendingProfileClickRef, window); },
+      leaveWorkspace: () => {
+        flushDrawingProfileCommit(pendingProfileClickRef, window);
+        releasePointerGestures();
+      },
       pauseProfile: () => {
         const pending = pendingProfileClickRef.current;
         if (!pending) return;
@@ -1264,13 +1272,7 @@ export function DrawingWorkspace({
         return () => scheduleDrawingProfileCommit(pendingProfileClickRef, window, pending.commit);
       },
       invalidate: () => {
-        cancelPan();
         cancelPendingDrawingGestures();
-        const panelDrag = constraintsPanelDragRef.current;
-        constraintsPanelDragRef.current = null;
-        const header = constraintsPanelRef.current?.querySelector('.drawing-constraints-header');
-        if (panelDrag && header?.hasPointerCapture(panelDrag.pointerId)) header.releasePointerCapture(panelDrag.pointerId);
-        endBoxSelection();
         setEditingDimensionId(null);
         setDimensionEditError(null);
         setSelectedDimensionId(null);

@@ -41,10 +41,10 @@ const assert = require('node:assert/strict');
             if (current.drawingDocument !== root.drawingDocument ||
                 Object.entries({...current.box.data,...current.box.context}).some(([key,value])=>root.box[key] !== value))
               throw Error('Owner and cursor have diverged');
-            const {session,revision,epoch,history} = service.getPublication();
-            return { session:id(session), revision, epoch, history:id(history), frame:id(current), root:id(root), output:id(root.box.generatedGeometrySnapshot),
+            const {session,revision,epoch,history,activeWorkspace} = service.getPublication();
+            return { activeWorkspace, session:id(session), revision, epoch, history:id(history), frame:id(current), root:id(root), output:id(root.box.generatedGeometrySnapshot),
               drawing:id(root.drawingDocument), undo:undo.length, redo:redo.length,
-              label:undo.at(-1)?.transaction.label };
+              action:undo.at(-1)?.transaction, label:undo.at(-1)?.transaction.label };
           };
           return {...service, subscribe(listener) {
             window.inspectHistory = inspect;
@@ -82,10 +82,33 @@ const assert = require('node:assert/strict');
       const current = await state();
       assert.equal(current.frame,snapshot.frame);
       assert.equal(current.root,snapshot.root);
+      assert.equal(current.activeWorkspace,workspace === box ? 'construction' : 'drawing');
       assert.equal(await button(workspace).getAttribute('aria-pressed'),'true');
     };
     await page.goto(process.env.WORKSPACE_BROWSER_URL || 'http://127.0.0.1:5173/');
     await page.waitForFunction(() => !!window.readProject);
+    // Issue consecutive commands in one browser task, with no wait between events.
+    const initialPosition = await state();
+    const rapid = await page.evaluate(() => {
+      const [drawing, box, puzzle] = document.querySelectorAll('.workspace-selector button');
+      const seen = [];
+      for (const target of [drawing, box, drawing, drawing, puzzle]) {
+        target.click(); seen.push(window.inspectHistory());
+      }
+      for (const command of document.querySelectorAll('.history-commands button')) {
+        command.click();
+        seen.push(window.inspectHistory());
+      }
+      return seen;
+    });
+    assert.deepEqual(rapid.map(p => [p.activeWorkspace,p.undo,p.redo]), [
+      ['drawing',1,0], ['construction',2,0], ['drawing',3,0], ['drawing',3,0],
+      ['drawing',3,0], ['construction',2,1], ['drawing',3,0],
+    ]);
+    for (const p of rapid) assert.equal(p.root,initialPosition.root);
+    await expectFrame(initialPosition,drawing);
+    await undo.click(); await undo.click(); await undo.click();
+    await expectFrame(initialPosition,box);
     const initial = await page.evaluate(() => window.readProject());
     await page.getByLabel('Import SVG into BOX / Construction',{exact:true}).setInputFiles('tests/fixtures/construction-two-panels.svg');
     await page.getByRole('dialog',{name:'Panel Manager'}).getByRole('button',{name:'OK'}).click();
@@ -94,21 +117,40 @@ const assert = require('node:assert/strict');
     const circle = await state(); assert.equal(circle.label,'Create Circle');
     await navigate(box); await page.locator('#pm-panel-thickness-panel-1').fill('4');
     const thickness = await state(); assert.equal(thickness.label,'Edit panel thickness');
-    await navigate(drawing); await undo.click(); await expectFrame(circle,box);
+    await navigate(drawing); await undo.click(); await expectFrame(thickness,box);
+    await undo.click(); await expectFrame(circle,box);
+    await undo.click(); await expectFrame(circle,drawing);
     await undo.click(); await expectFrame(imported,drawing);
     await redo.click(); await expectFrame(circle,drawing);
+    await redo.click(); await expectFrame(circle,box);
     await redo.click(); await expectFrame(thickness,box);
-    await undo.click(); await navigate(drawing); await navigate(box); await redo.click(); await expectFrame(thickness,box);
-    await undo.click(); await navigate(drawing); await line();
+    await undo.click(); await navigate(box); assert.ok(await redo.isEnabled());
+    await navigate(drawing); assert.ok(await redo.isDisabled());
+    await navigate(box); await undo.click(); await expectFrame(circle,drawing);
+    await line();
     assert.equal(await redo.isEnabled(),false);
     const baseLine = await state();
     await navigate(box); await action('Accept default thickness'); await action('Apply'); await action('OK');
-    await tool('TB'); const group = await state(); await edge(0); const assigned = await state();
+    // Start TB immediately after navigation in the same call stack.
+    await navigate(drawing);
+    const sameEvent = await page.evaluate(() => {
+      document.querySelectorAll('.workspace-selector button')[1].click();
+      for (const key of ['z','y']) window.dispatchEvent(new KeyboardEvent('keydown',{key,ctrlKey:true,bubbles:true}));
+      const switched = window.inspectHistory();
+      [...document.querySelectorAll('.tool-sidebar button')].find(b => b.textContent.trim() === 'TB').click();
+      return [switched, window.inspectHistory()];
+    });
+    assert.equal(sameEvent[1].undo,sameEvent[0].undo+1);
+    const group = await state(); assert.equal(group.activeWorkspace,'construction');
+    assert.equal(group.action.kind,'edit'); assert.equal(group.action.module,'box');
+    await edge(0); const assigned = await state();
     await edge(4,true); await page.keyboard.press('Control+z'); await page.keyboard.press('Control+y');
     await page.mouse.up(); await expectFrame(assigned,box);
     await navigate(drawing); await line(70); const secondLine = await state();
-    await undo.click(); await expectFrame(assigned,drawing); await undo.click(); await expectFrame(group,box);
-    await redo.click(); await expectFrame(assigned,box); await redo.click(); await expectFrame(secondLine,drawing);
+    await undo.click(); await expectFrame(assigned,drawing); await undo.click(); await expectFrame(assigned,box);
+    await undo.click(); await expectFrame(group,box);
+    await redo.click(); await expectFrame(assigned,box); await redo.click(); await expectFrame(assigned,drawing);
+    await redo.click(); await expectFrame(secondLine,drawing);
     await navigate(box); await edge(4); await action('OK');
     await tool('W'); await edge(1); await edge(7); await action('OK');
     await tool('S'); await edge(2); await edge(6); await action('OK');
@@ -128,10 +170,12 @@ const assert = require('node:assert/strict');
     const appliedCalls=await calls();
     for(const name of Object.values(monitored).flat()) assert.ok(appliedCalls[name]>0,name+' exercised before restore');
     await undo.click(); await expectFrame(dimension,drawing); await undo.click(); await expectFrame(applied,drawing);
+    await undo.click(); await expectFrame(applied,box);
     await undo.click(); await expectFrame(authored,box);
     await history.getByRole('button',{name:/^TB Group 1,/}).click();
     await history.getByRole('button',{name:/^W Group 1,/}).click();
-    await navigate(drawing); await redo.click(); await expectFrame(applied,box);
+    await redo.click(); await expectFrame(applied,box);
+    await redo.click(); await expectFrame(applied,drawing);
     await redo.click(); await expectFrame(dimension,drawing); await redo.click(); await expectFrame(solved,drawing);
     assert.equal((await state()).output,applied.output);
     assert.deepEqual(await calls(),appliedCalls,'traversal and navigation call no solver, parser, generator or authority selector');
@@ -149,22 +193,29 @@ const assert = require('node:assert/strict');
     await navigate(box); await history.getByRole('button',{name:/^Panel Manager,/}).click();
     const tape = [await state()];
     for (let i=0;i<17;i++) {
-      await navigate(drawing); await page.keyboard.down('Control'); await line(-190+i*18,75); await page.keyboard.up('Control');
+      await navigate(drawing); tape.push(await state());
+      await page.keyboard.down('Control'); await line(-190+i*18,75); await page.keyboard.up('Control');
       const placed=await state(); assert.equal(placed.label,'Create Line','placement '+i); assert.notEqual(placed.frame,tape.at(-1).frame);
       tape.push(placed);
-      await navigate(box); await page.locator('#pm-panel-thickness-panel-1').fill(String(5+i));
+      await navigate(box); tape.push(await state());
+      await page.locator('#pm-panel-thickness-panel-1').fill(String(5+i));
       const changed=await state(); assert.equal(changed.label,'Edit panel thickness','thickness '+i); tape.push(changed);
     }
     assert.equal(tape.at(-1).undo,30); assert.equal(tape.at(-1).redo,0);
-    for (let i=34;i>4;i--) {
-      await undo.click(); await expectFrame(tape[i-1], i%2===0 ? box : drawing);
+    const workspaceAt = i => tape[i].activeWorkspace === 'drawing' ? drawing : box;
+    for (let i=68;i>38;i--) {
+      await undo.click(); await expectFrame(tape[i-1],workspaceAt(i-1));
     }
     assert.equal(await undo.isEnabled(),false);
-    for (let i=5;i<=10;i++) { await redo.click(); await expectFrame(tape[i],i%2===0 ? box : drawing); }
-    await navigate(drawing); await line(175);
-    assert.equal((await state()).undo,7); assert.equal(await redo.isEnabled(),false);
+    for (let i=39;i<=68;i++) { await redo.click(); await expectFrame(tape[i],workspaceAt(i)); }
+    for (let i=68;i>44;i--) await undo.click();
+    const fork = await state();
+    await navigate(drawing);
+    assert.equal((await state()).undo,fork.undo+1); assert.ok(await redo.isDisabled());
+    await line(175);
+    assert.equal((await state()).undo,fork.undo+2);
     const branched = await state();
-    await undo.click(); await navigate(box);
+    await undo.click();
     const beforeCancel = await state();
     assert.equal(beforeCancel.redo, 1);
     const clear = button('Clear');
@@ -252,9 +303,12 @@ const assert = require('node:assert/strict');
     assert.equal(await button(box).getAttribute('aria-pressed'), 'true');
     assert.equal(await undo.isDisabled(), true); assert.equal(await redo.isDisabled(), true);
     assert.equal(await clear.evaluate(el => el === document.activeElement), true);
-    for (const workspace of [drawing,box,drawing]) {
-      await navigate(workspace); assert.deepEqual(await state(),empty);
+    await navigate(drawing); await navigate(box);
+    for (const [command, workspace] of [[undo,drawing],[undo,box],[redo,drawing],[redo,box]]) {
+      await command.click(); await expectFrame(empty,workspace);
     }
+    await undo.click(); await undo.click(); assert.ok(await undo.isDisabled());
+    await navigate(drawing);
     assert.equal(await page.locator('[data-sketch-line-id], [data-sketch-circle-id]').count(), 0);
     assert.equal(await page.locator('.edge-hitbox').count(), 0);
 
@@ -268,15 +322,28 @@ const assert = require('node:assert/strict');
     const newImport = await state();
     await action('Accept default thickness');
     const newBoxEdit = await state();
+    await action('Apply'); const newPM = await state(); await action('OK');
+    await tool('TB'); const freshGroup = await state();
+    await edge(0); const firstEdge = await state();
+    await edge(4); const pair = await state();
+    await undo.click(); await expectFrame(firstEdge,box);
+    await undo.click(); await expectFrame(freshGroup,box);
+    await undo.click(); await expectFrame(newPM,box);
+    await undo.click(); await expectFrame(newBoxEdit,box);
     await undo.click(); await expectFrame(newImport,box);
     await undo.click(); await expectFrame(freshLine,box);
-    await undo.click(); await expectFrame(empty,drawing); assert.equal(await undo.isDisabled(),true);
-    await redo.click(); await expectFrame(freshLine,drawing);
-    await redo.click(); await expectFrame(newImport,box);
-    await redo.click(); await expectFrame(newBoxEdit,box);
+    await undo.click(); await expectFrame(freshLine,drawing);
+    assert.equal(await page.locator('[data-sketch-line-id]').count(),1);
+    await undo.click(); await expectFrame(empty,drawing);
+    assert.equal(await page.locator('[data-sketch-line-id]').count(),0);
+    await undo.click(); await expectFrame(empty,box); assert.ok(await undo.isDisabled());
+    for (const [snapshot,workspace] of [[empty,drawing],[freshLine,drawing],[freshLine,box],[newImport,box],
+      [newBoxEdit,box],[newPM,box],[freshGroup,box],[firstEdge,box],[pair,box]]) {
+      await redo.click(); await expectFrame(snapshot,workspace);
+    }
 
     // Opening the dialog from an uncommitted numeric draft must not accept its blur.
-    await action('Apply'); await action('OK'); await tool('MFG');
+    await tool('MFG');
     const kerf = page.locator('#manufacturing-kerf');
     await kerf.fill('0.73');
     const draftPosition = await state();
@@ -304,6 +371,13 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('svg.drawing-svg').evaluate(el => el.hasPointerCapture(1)), true);
     };
     await holdDrag();
+    const beforeSwitch = await state();
+    await button(box).press('Enter');
+    await page.mouse.up();
+    assert.equal((await state()).undo,beforeSwitch.undo+1);
+    await undo.click(); await expectFrame(beforeSwitch,drawing);
+    assert.ok(await redo.isEnabled(),'late pointer release preserved Redo');
+    await holdDrag();
     const beforeRelease = await state();
     await clear.press('Enter'); await page.mouse.up();
     assert.deepEqual(await state(), beforeRelease, 'captured pointer release cannot edit behind the prompt');
@@ -314,26 +388,41 @@ const assert = require('node:assert/strict');
     const afterDragClear = await state();
     await page.mouse.up(); await navigate(drawing);
     assert.equal(afterDragClear.undo, 0); assert.equal(afterDragClear.redo, 0);
-    assert.deepEqual(await state(), afterDragClear);
+    await expectFrame(afterDragClear,drawing);
+    assert.equal((await state()).undo,1);
     assert.equal(await page.locator('[data-sketch-line-id]').count(), 0);
     await button('Profile').click();
     await click(-140,135); await click(-70,130);
     await undo.click(); assert.equal((await state()).drawing,afterDragClear.drawing);
     await page.waitForTimeout(260); assert.equal((await state()).redo,1);
     await redo.click(); assert.equal((await state()).label,'Create Profile segment');
+    const previousProfile = await state();
     await button('Profile').click(); await click(50,140); await click(100,150);
     await navigate(box); const settled=await state();
-    assert.equal(settled.label,'Create Profile segment'); await page.waitForTimeout(260); assert.deepEqual(await state(),settled);
-    await navigate(drawing);
+    assert.deepEqual(settled.action,{kind:'navigation',source:'drawing',destination:'construction'});
+    assert.equal(settled.undo,previousProfile.undo+2);
+    await page.waitForTimeout(260); assert.deepEqual(await state(),settled);
+    await undo.click(); await expectFrame(settled,drawing);
+    assert.equal((await state()).label,'Create Profile segment');
+    await undo.click(); await expectFrame(previousProfile,drawing);
+    await redo.click(); await expectFrame(settled,drawing);
+    await button('Profile').click(); await click(100,150);
+    const beforeDouble = await state();
     const p=await page.locator('svg.drawing-svg').evaluate(el=>{
       const p=new DOMPoint(145,175).matrixTransform(el.getScreenCTM()); return {x:p.x,y:p.y};
     });
     // Verified against the #642 Chromium baseline: the first click completes
     // one final segment and native dblclick finishes the tool without a duplicate.
     await page.mouse.dblclick(p.x,p.y); await page.waitForTimeout(260);
-    assert.equal((await state()).undo,settled.undo+1);
+    assert.equal((await state()).undo,beforeDouble.undo+1);
     assert.equal(await button('Profile').getAttribute('aria-pressed'),'false');
     await undo.click(); await expectFrame(settled,drawing);
+    await button('Profile').click(); await click(-15,130); await click(-15,130);
+    const beforeInvalid = await state();
+    assert.equal(beforeInvalid.drawing,settled.drawing);
+    await navigate(box);
+    assert.equal((await state()).undo,beforeInvalid.undo+1,'zero-length Profile creates only navigation');
+    await undo.click(); await expectFrame(beforeInvalid,drawing);
     // The modal normally prevents Clear during import. Exercise the same service reset
     // during a real file read, then deliver that read while the next session owns its lock.
     await navigate(box);
@@ -363,6 +452,6 @@ const assert = require('node:assert/strict');
     assert.equal((await state()).undo, 1);
     assert.equal((await state()).label, 'Import SVG source');
     assert.deepEqual(errors,[]);
-    console.log('PASS mounted global A/B/C/D/E/I/J: frame and root identity, mixed Apply and solved Dimension, exact 30-action eviction, branch, project-wide Clear, cancellation, fresh editing and stale timer/pointer/import rejection');
+    console.log('PASS mounted global history A–I: Line/navigation/SVG/TB round trip, same-task commands, mixed retention, Apply, Dimension, Profile, Clear and stale input');
   } finally { await browser.close(); }
 })().catch(error=>{console.error(error);process.exitCode=1;});

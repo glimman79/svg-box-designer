@@ -1,8 +1,8 @@
 # SVG Box Designer — Project Master
 
-## Stage C PR 7 review checkpoint
+## Stage C PR 8 — Reversible workspace navigation in review
 
-Drawing and BOX share 30 reversible edits. A traversal opens the originating workspace and restores both modules from the stored project frame. SVG replacement is reversible. Clear is available in either workspace. Clear Without Saving permanently resets Drawing, BOX and global history. Cancel preserves the current project, history and session. Save and Clear stays disabled until native Save/Open is available. SVG Export only produces output. Review, merge and personal browser acceptance are pending. The earlier checkpoints below record the preceding rollout. [Runtime architecture and validation](docs/GLOBAL_HISTORY_CUTOVER.md).
+Drawing and BOX share one timeline of 30 transitions. Each deliberate switch records its source and destination. Undo of a switch opens its source with the same project data. Redo opens its destination. An edit restores its complete project frame and activates its associated module. SVG import remains a BOX edit. Clear Without Saving starts a fresh empty session in BOX. Personal browser acceptance of PR 8 follows merge. [Runtime architecture and validation](docs/GLOBAL_HISTORY_CUTOVER.md)
 
 ## Stage C PR 6 construction checkpoint
 
@@ -157,17 +157,8 @@ need not use every module, and switching modules must preserve existing work. Si
 3D Modeling is limited to extrusion-based geometry, separate from the earlier planned
 static Construction preview. Its kernel and detailed technical design remain open.
 
-**Revised product decisions (2026-11-09):** one global history retains **30 reversible
-committed project edits** across all modules, superseding independent workspace histories.
-Each completed state-changing creation, edit, deletion or accepted gesture is one Undo
-action including all automatic solver/dependency consequences, even if asynchronous.
-Invalid/cancelled/no-op actions and intermediate previews create none. Undo/Redo restores
-exact object identities/relationships and solved geometry. The combined past/future tape
-has at most 30 transitions. Ordinary module switches create no steps, consume no capacity
-and preserve cursor/Redo.
-Undo/Redo reverse/restore the latest global edit and open its associated module regardless
-of the visible module. Double-click reveals the referenced object's current state/settings
-without rewind or history/Redo mutation; only a later committed edit branches after Undo.
+**Navigation decision revised 2026-11-20.** PR 7 implemented the November 9 edit-only policy, and the user verified Drawing Line Undo/Redo. Each successful user switch between Drawing and BOX now consumes one of the same 30 reversible transitions as an accepted project edit. A new switch or edit after Undo discards the abandoned Redo branch. Active-tab clicks, unavailable modules, automatic activation, selection and inspection preserve it. Every accepted edit includes its automatic consequences and restores exact geometry and identities. The future construction panel reveals the referenced object's current settings.
+
 A separate permanent parametric construction history owns meaningful operation
 definitions, current editable parameters, stable operation/object identities and
 dependencies. A Sketch owns one top-level operation; repeated edits to its member Lines,
@@ -265,7 +256,7 @@ Construction uses `SvgDocumentModel`, which preserves SVG root information, sour
 
 Drawing uses a separate versioned `DrawingDocumentV2`. It contains ordered sketches, stable points and entities, dimensions, and geometric constraints. On the PR 7 branch, the application subscribes to one project owner through `useSyncExternalStore`. Both adapters publish accepted Drawing and BOX data with the global cursor. Restoration reuses the stored SVG, generated operations, authority metadata and manufacturing settings. Native persistence and permanent operations remain future work. [Global execution history](docs/GLOBAL_HISTORY_CUTOVER.md).
 
-UI-1 keeps the workspace shells mounted across navigation. On the PR 7 branch, the toolbar and keyboard traverse the same application-level history from either workspace. The mounted Drawing and BOX workspaces delegate every accepted edit to their adapters. Ordinary switches preserve Redo.
+UI-1 keeps the workspace shells mounted across navigation. On the PR 7 branch, the toolbar and keyboard traverse the same application-level history from either workspace. The mounted Drawing and BOX workspaces delegate every accepted edit to their adapters. PR 8 records ordinary switches in that timeline.
 
 A versioned native project format, persisted operation definitions and cross-workspace references remain planned. Native Open is intended to start a fresh execution history. Decisions about serializing the active module, selection and viewport remain open.
 

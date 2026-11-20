@@ -11,11 +11,7 @@ SVG Box Designer is a browser-based React application for drawing semantic 2D sk
 One compact bottom History region is shared by Drawing and BOX. BOX retains its workflow-group
 navigation; Drawing shows that persistent operation history is not yet available.
 
-The Stage C PR 7 review branch gives Drawing and BOX one 30-edit Undo/Redo history.
-Undo or Redo opens the workspace where the edit happened. Importing a replacement SVG
-can be undone. Confirming BOX Clear keeps Drawing geometry and discards history for
-both workspaces. Review and post-merge user acceptance are pending.
-[Manual checks and implementation status](docs/GLOBAL_HISTORY_CUTOVER.md).
+Drawing and BOX share one 30-step Undo/Redo history. The PR 8 change under review makes each workspace switch reversible. For example, after drawing a Line and opening BOX, Undo returns to Drawing with the Line visible. Undo again removes the Line. A new switch after Undo starts a new branch. Replacing an SVG is a BOX edit. Clear Without Saving empties both workspaces and starts a fresh history in BOX. [Manual checks](docs/GLOBAL_HISTORY_CUTOVER.md#user-testing--user-visible-changes)
 
 **Approved future direction — not implemented:** an optional connected workflow of
 **3D Modeling → Unfold → 2D Drawing → BOX / Construction**, with BOX/Puzzle as parallel destinations
@@ -24,10 +20,7 @@ extrusion. A **permanent parametric construction history** remains future work. 
 parameters/relationships, survive Undo eviction and persist with native projects; repeated
 member Line dimension edits update the same Sketch operation. Native Save/Open and traceable downstream
 updates are also future work. Current SVG import/export serves BOX,
-and native Save/Open is not available. Revised requirements exclude module navigation
-from Undo history, preserve Redo during navigation, and open the affected edit's module
-on Undo/Redo. The future whole-project Clear will offer Save and Clear / Clear Without Saving / Cancel; proceeding
-permanently resets the project, construction history and Undo/Redo. Successful Open
+and native Save/Open is not available. Successful Open
 preserves saved operations/relationships while starting empty executable Undo/Redo.
 Approved Option A keeps valid source edits and compatible updates while preserving failed
 downstream operations for repair. Stale/unvalidated output cannot silently be valid laser

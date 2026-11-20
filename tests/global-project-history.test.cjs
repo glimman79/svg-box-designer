@@ -36,15 +36,19 @@ test('Clear publishes the canonical empty project, empty stacks and fresh sessio
   for (const kerfMm of [1, 2]) {
     box.transact('Kerf', current => ({ ...current, projectSettings: { ...current.projectSettings, kerfMm } }));
   }
+  service.navigate('drawing');
+  service.navigate('construction');
   service.traverse('undo');
   const before = service.getPublication(), token = service.beginBoxImport();
-  assert.equal(before.history.undo.length, 1);
+  assert.equal(before.activeWorkspace, 'drawing');
+  assert.equal(before.history.undo.length, 3);
   assert.equal(before.history.redo.length, 1);
   const expected = api.createInitialProjectState();
   let notifications = 0;
   service.subscribe(() => {
     notifications++;
     const { project, history, session, epoch, revision } = service.getPublication();
+    assert.equal(service.getPublication().activeWorkspace, 'construction');
     assert.equal(project, service.getSnapshot());
     assert.equal(history, service.getHistory());
     assertCompleteFrame(history.current, project);
@@ -124,4 +128,74 @@ test('alternating real adapter edits retain 30 transitions with exact shared sou
   assert.equal(service.traverse('redo'),null);
   const traverseMs=performance.now()-traverseStart;
   t.diagnostic(`64 edits ${editsMs.toFixed(2)} ms, 60 restores ${traverseMs.toFixed(2)} ms, heap delta ${heapDelta} bytes (explicit GC ${!!global.gc})`);
+});
+
+test('rapid navigation, context changes and edits use the latest published position', () => {
+  const service = api.createGlobalProjectHistory();
+  const positions = [];
+  service.subscribe(() => positions.push(service.getPublication()));
+  const root = service.getSnapshot(), frame = service.getHistory().current;
+  for (const destination of ['drawing', 'construction', 'drawing']) assert.ok(service.navigate(destination));
+  const undo = () => service.traverse('undo'), redo = () => service.traverse('redo');
+  assert.equal(undo(), 'construction');
+  const before = service.getPublication();
+  const fail = () => assert.fail('same/unsupported workspace settled an interaction');
+  assert.equal(service.navigate('construction', fail), false);
+  assert.equal(service.navigate('puzzle', fail), false);
+  assert.equal(service.getPublication(), before);
+  assert.equal(undo(), 'drawing');
+  assert.equal(redo(), 'construction');
+  assert.equal(redo(), 'drawing');
+  assert.deepEqual(positions.map(p => p.activeWorkspace),
+    ['drawing','construction','drawing','construction','drawing','construction','drawing']);
+  positions.forEach((p, i) => {
+    assert.equal(p.project, root); assert.equal(p.history.current, frame); assert.equal(p.revision, i + 1);
+  });
+  service.setBoxContext({ displayConnectionId: 'TB1' });
+  const context = service.getPublication();
+  assert.equal(undo(), 'construction');
+  assert.equal(service.getSnapshot(), context.project);
+  assert.equal(service.getHistory().current, context.history.current);
+  assert.equal(redo(), 'drawing');
+  assert.equal(service.getSnapshot(), context.project);
+  assert.equal(undo(), 'construction');
+  assert.ok(service.navigate('drawing'));
+  assert.equal(redo(), null);
+  const drawing = api.createDrawingTransactionAdapter(service);
+  assert.equal(drawing.transact('Line', doc => api.appendEntityToActiveSketch(doc, {
+    type:'line', id:'L', start:{x:0,y:0}, end:{x:1,y:1}, startPointId:'A', endPointId:'B',
+  })).outcome, 'accepted');
+  assert.equal(undo(), 'drawing');
+  assert.equal(service.getSnapshot(), context.project);
+  assert.equal(undo(), 'construction');
+});
+
+test('navigation and traversal share large project data at full capacity', t => {
+  const initial = api.makePopulatedProjectState();
+  initial.box.svgModel.content += '<!--' + 'x'.repeat(2 * 1024 * 1024) + '-->';
+  const sample = initial.box.generatedGeometrySnapshot;
+  initial.box.generatedGeometrySnapshot = { ...sample, generatedGeometry:
+    Array.from({length:5000}, (_,i) => ({...sample.generatedGeometry[0], id:String(i)})) };
+  const measured = api.createGlobalProjectHistory(initial);
+  const { project, history } = measured.getPublication();
+  global.gc?.();
+  const heap = process.memoryUsage().heapUsed, start = performance.now();
+  for (let i = 0; i < 10000; i++) measured.navigate(i % 2 ? 'construction' : 'drawing');
+  const navigationMs = performance.now() - start;
+  global.gc?.();
+  const retained = process.memoryUsage().heapUsed - heap;
+  assert.equal(measured.getHistory().undo.length, 30);
+  const frame = measured.getHistory().current;
+  assert.equal(frame, history.current);
+  const traversing = performance.now();
+  for (const direction of ['undo', 'redo']) {
+    for (let i = 0; i < 30; i++) {
+      assert.equal(measured.traverse(direction), i % 2 === 0 ? 'drawing' : 'construction');
+      assert.equal(measured.getSnapshot(), project);
+      assert.equal(measured.getHistory().current, frame);
+      assert.equal(measured.getHistory().undo.length + measured.getHistory().redo.length, 30);
+    }
+    assert.equal(measured.traverse(direction), null);
+  }
+  t.diagnostic(`10000 switches ${navigationMs.toFixed(2)} ms, 60 traversals ${(performance.now()-traversing).toFixed(2)} ms, retained heap delta ${retained} bytes (explicit GC ${!!global.gc})`);
 });

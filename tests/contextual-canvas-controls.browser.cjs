@@ -145,8 +145,8 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     await undo().click(); assert.equal(await contours(), applied); await redo().click();
     await redo().click(); assert.equal(await contours(), manufactured);
     await undo().click();
-    await tool('Select').click(); await drawing(); await box(); await tool('MFG').click();
-    assert.equal(await redo().isEnabled(), true, 'overlay/module navigation preserves Redo');
+    await tool('Select').click(); await box(); await tool('MFG').click();
+    assert.equal(await redo().isEnabled(), true, 'overlay inspection and active module click preserve Redo');
     await redo().click(); assert.equal(await contours(), manufactured);
     const panelBounds = await overlay.boundingBox();
     await page.mouse.move(400, 500); await page.mouse.down({ button: 'right' });

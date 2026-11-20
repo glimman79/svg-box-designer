@@ -45,7 +45,7 @@ export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, 
         onClick={onClear} title="Clear entire project">Clear</button>
     </div>
     <WorkspaceSettings />
-    <div className="toolbar-actions history-commands" role="group" aria-label="Project Undo/Redo" title="Undo or redo a project edit across workspaces">
+    <div className="toolbar-actions history-commands" role="group" aria-label="Project Undo/Redo" title="Undo or redo a project edit or workspace switch">
       <HistoryControls {...history} />
     </div>
     {activeWorkspace === 'drawing' && <div className="drawing-header-slot" ref={onDrawingToolsHostChange} />}
