@@ -131,6 +131,13 @@ test('global restore, branching and the 30-step limit use the current owner as t
 
 test('real Circle/Arc creation, solved modification and deletion preserve the accepted geometry', () => {
   const {owner, run} = setup();
+  const [initial] = owner.getSnapshot().constructionOperations;
+  owner.subscribe(() => {
+    const definitions = api.readSketchDefinitions(owner.getSnapshot());
+    assert.equal(definitions.length, 1);
+    assert.equal(definitions[0].operation.id, initial.id);
+    assert.equal(definitions[0].sketch, sketch(owner.drawingDocumentRef.current));
+  });
   const center = applyResolvedCircleClick(EMPTY_CIRCLE_INTERACTION, {x: 0, y: 0}, () => 'circle');
   assert.equal(center.entity, null);
   const circle = applyResolvedCircleClick(center.interaction, {x: 10, y: 0}, () => 'circle').entity;
@@ -205,4 +212,67 @@ test('repeated production edits share BOX source and applied geometry without re
     assert.equal(result.frame.box.data.generatedGeometrySnapshot, initial.box.generatedGeometrySnapshot);
   }
   assert.equal(visits, 0);
+});
+
+test('Line, driving Dimension and Constraint commands publish and restore the same Sketch lifetime', () => {
+  const { appendDimension, createLineDimension } = require('../.test-build/drawing-transaction-adapter/src/app/drawingDimension.js');
+  const { solveDrawingDimensionEdit } = require('../.test-build/drawing-transaction-adapter/src/app/drawingConstraintSolver.js');
+  const { resolveLine } = require('../.test-build/drawing-transaction-adapter/src/app/drawingTopology.js');
+  const { deleteGeometricConstraint } = require('../.test-build/drawing-transaction-adapter/src/app/drawingParallelMarker.js');
+  const { owner, run } = setup();
+  const baseline = owner.getSnapshot(), states = [baseline];
+  const operationId = baseline.constructionOperations[0].id;
+  let notifications = 0;
+  owner.subscribe(() => {
+    const root = owner.getSnapshot(), frame = owner.getHistory().current;
+    assert.equal(frame.constructionOperations, root.constructionOperations);
+    assert.equal(frame.drawingDocument, root.drawingDocument);
+    assert.equal(root.box, baseline.box);
+    assert.equal(frame.box.data.generatedGeometrySnapshot, baseline.box.generatedGeometrySnapshot);
+    const definitions = api.readSketchDefinitions(root);
+    assert.equal(definitions.length, 1);
+    assert.equal(definitions[0].operation.id, operationId);
+    assert.equal(definitions[0].sketch, sketch(frame.drawingDocument));
+    notifications++;
+  });
+  function accept(action) {
+    assert.equal(run(action).outcome, 'accepted');
+    const root = owner.getSnapshot();
+    assert.notEqual(root.constructionOperations[0].definitionRevision, states.at(-1).constructionOperations[0].definitionRevision);
+    states.push(root);
+    assert.equal(owner.getHistory().undo.length, states.length - 1);
+  }
+  accept(line('L'));
+  accept(doc => {
+    const s = sketch(doc);
+    return appendDimension(doc, createLineDimension(resolveLine(s, s.entities.L), 'ALIGNED_DISTANCE', { x: 5, y: 12 }, 'length'));
+  });
+  for (const targetValue of [30, 50, 70]) {
+    accept(document => {
+      const result = solveDrawingDimensionEdit({ document, dimensionId: 'length', targetValue });
+      assert.ok(result.ok);
+      return result.document;
+    });
+    const s = api.readSketchDefinitions(owner.getSnapshot())[0].sketch;
+    assert.equal(s.dimensions.length.value, targetValue);
+    const { start, end } = resolveLine(s, s.entities.L);
+    assert.ok(Math.abs(Math.hypot(end.x - start.x, end.y - start.y) - targetValue) < 1e-6);
+  }
+  accept(doc => applyDrawingConstraint(doc,
+    getDrawingConstraintApplicability([{ kind: 'line', lineId: 'L' }], doc).find(item => item.kind === 'horizontal')));
+  const [constraintId] = sketch(owner.drawingDocumentRef.current).geometricConstraintOrder;
+  assert.equal(sketch(owner.drawingDocumentRef.current).geometricConstraints[constraintId].kind, 'HORIZONTAL');
+  accept(doc => deleteGeometricConstraint(doc, constraintId));
+  assert.deepEqual(sketch(owner.drawingDocumentRef.current).geometricConstraintOrder, []);
+  for (let iteration = 0; iteration < 2; iteration++) {
+    for (const expected of states.slice(0, -1).reverse()) {
+      owner.traverse('undo');
+      assert.equal(owner.getSnapshot(), expected);
+    }
+    for (const expected of states.slice(1)) {
+      owner.traverse('redo');
+      assert.equal(owner.getSnapshot(), expected);
+    }
+  }
+  assert.equal(notifications, 5 * (states.length - 1));
 });

@@ -1,7 +1,8 @@
 import { createProjectHistory, recordWorkspaceNavigation, redoProjectHistory, transactProjectHistory, undoProjectHistory,
   type ProjectHistory, type ProjectTransaction, type ProjectTransactionAction,
   type ProjectTransactionMetadata, type ProjectTransactionResult } from './projectHistory';
-import { createInitialProjectState, createProjectOwner } from './projectOwner';
+import { updateSketchOperations } from './constructionOperations';
+import { createInitialProjectState, createProjectOwner, type InitialProject } from './projectOwner';
 import { boxStateFields, type BoxRestorationContext, type BoxStateCapture, type BoxStateSource,
   type ProjectStateCapture, type ProjectStateSource } from './projectState';
 import { DEFAULT_WORKSPACE, selectWorkspace, type DrawingDocumentV2, type SupportedWorkspace, type WorkspaceId } from './drawingTypes';
@@ -55,12 +56,16 @@ function restorableContext(context: BoxStateCapture['context']) {
     .every(value => value === null || typeof value === 'string');
 }
 
+function initialHistoryFor({ drawingDocument, constructionOperations, box }: ProjectStateSource) {
+  return createProjectHistory({ drawingDocument, constructionOperations, box: boxStateFields(box) });
+}
+
 /** Only this facade can write the mounted project owner. All roots reachable
  * from the tape have already passed admission and are immutable. */
-export function createGlobalProjectHistory(initial?: ProjectStateSource) {
+export function createGlobalProjectHistory(initial?: InitialProject) {
   const owner = createProjectOwner(initial);
   const first = owner.getSnapshot();
-  const initialHistory = createProjectHistory({ drawingDocument: first.drawingDocument, box: boxStateFields(first.box) });
+  const initialHistory = initialHistoryFor(first);
   const baseline = initialHistory.current;
   if (!restorableDrawing(baseline.drawingDocument) || !restorableBox(baseline.box.data)
     || !restorableContext(baseline.box.context)) throw new TypeError('Incomplete initial project');
@@ -85,7 +90,7 @@ export function createGlobalProjectHistory(initial?: ProjectStateSource) {
         box = { ...frame.box.data, ...frame.box.context } as BoxStateSource;
         boxes.set(frame.box, box);
       }
-      root = { drawingDocument: frame.drawingDocument as DrawingDocumentV2, box };
+      root = { drawingDocument: frame.drawingDocument as DrawingDocumentV2, constructionOperations: frame.constructionOperations, box };
       roots.set(frame, root);
     }
     return root;
@@ -115,7 +120,20 @@ export function createGlobalProjectHistory(initial?: ProjectStateSource) {
     const attempt = getAttempt();
     const result = transactProjectHistory(publication.history, { module, label, id: String(++sequence) }, tx => {
       staging = tx;
-      try { return action(tx); } finally { staging = undefined; }
+      try {
+        const before = tx.getCandidate();
+        const decision = action(tx);
+        if (decision !== 'accept') return decision;
+        const after = tx.getCandidate();
+        if (after.constructionOperations !== before.constructionOperations) {
+          throw new TypeError('Operation maintenance belongs to the project');
+        }
+        if (after.drawingDocument !== before.drawingDocument) {
+          const operations = updateSketchOperations(before.constructionOperations, before.drawingDocument, after.drawingDocument);
+          if (operations !== before.constructionOperations) tx.update(frame => ({ ...frame, constructionOperations: operations }));
+        }
+        return decision;
+      } finally { staging = undefined; }
     });
     if (result.outcome !== 'accepted') return result;
     if (!admit() || !isCurrent(attempt)) return { outcome: 'rejected' };
@@ -165,8 +183,7 @@ export function createGlobalProjectHistory(initial?: ProjectStateSource) {
 
   function clearProject(expectedSession = publication.session) {
     if (staging || expectedSession !== publication.session) return false;
-    const { drawingDocument, box } = createInitialProjectState();
-    const next = createProjectHistory({ drawingDocument, box: boxStateFields(box) });
+    const next = initialHistoryFor(createInitialProjectState());
     return publish(next, project(next.current), 'reset', DEFAULT_WORKSPACE);
   }
 

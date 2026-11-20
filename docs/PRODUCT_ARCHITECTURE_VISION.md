@@ -239,7 +239,7 @@ original Undo transition expires; native persistence is mandatory. No arbitrary
 
 ### 3.2 Permanent parametric construction history
 
-**APPROVED FUTURE REQUIREMENT — NOT IMPLEMENTED (2026-11-09).** This persistent,
+**Approved target (2026-11-09), with the Sketch foundation implemented in C.2 PR 1.** This persistent,
 project-owned system is inspired by Fusion 360's parametric design timeline. It contains
 meaningful construction operations with stable identities, editable current parameters,
 object references and dependency relationships. It is distinct from Undo snapshots,
@@ -249,11 +249,10 @@ project. The previous Stage B bounded session-journal proposal is explicitly sup
 as a solution for construction history; an optional descriptive event journal is not an
 approved requirement.
 
-**APPROVED TARGET — NOT IMPLEMENTED (refined 2026-11-17):** each Sketch has one stable
-Sketch operation and one shared timeline entry. Its Lines, Circles, Arcs, Dimensions and
+C.2 PR 1 implements one stable Sketch operation per Sketch. Its visible timeline entry remains part of the November 17 target. Sketch Lines, Circles, Arcs, Dimensions and
 Constraints remain editable members, without automatic top-level primitive entries.
 Double-click reopens that Sketch; editing updates the existing definition, not a
-replacement entry. This supersedes the earlier per-primitive catalog for Sketch contents.
+replacement entry. This supersedes the earlier per-primitive catalog for Sketch contents. [Sketch operation contract](SKETCH_OPERATION_FOUNDATION.md)
 
 A Sketch member Line changed from 30 to 50 then 70 mm keeps its containing Sketch
 operation. Each accepted edit still creates its normal Undo action, including all

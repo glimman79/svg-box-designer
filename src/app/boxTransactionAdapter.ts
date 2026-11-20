@@ -17,7 +17,7 @@ export function createBoxTransactionAdapter(owner: GlobalProjectHistory, renderE
       const next = prepare(before);
       if (next === before) return 'noop';
       if (!next || Object.keys(before).some(key => !Object.hasOwn(next, key))) throw new TypeError('Incomplete BOX candidate');
-      tx.update(frame => ({ drawingDocument: frame.drawingDocument, box: boxStateFields(next) }));
+      tx.update(frame => ({ ...frame, box: boxStateFields(next) }));
       return 'accept';
     }, current);
   }

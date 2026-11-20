@@ -9,11 +9,12 @@ import { operationFromConnection } from '../../src/app/operationTypes';
 import { defaultPanelManagerState } from '../../src/app/panelManagerModel';
 import { DEFAULT_PROJECT_SETTINGS } from '../../src/app/projectDefaults';
 import { createOrdinaryProfileOffsetTargetId } from '../../src/app/profileOffsetSelection';
+import { initializeSketchOperations } from '../../src/app/constructionOperations';
 import type { ProjectStateSource } from '../../src/app/projectState';
 import { makeEvidenceRectangle } from '../diagnostics/helpers/mixed-evidence-fixture';
 
-export const makeEmptyProjectState = (): ProjectStateSource => ({
-  drawingDocument: createDrawingDocumentV2(),
+export const makeEmptyProjectState = (drawingDocument = createDrawingDocumentV2()): ProjectStateSource => ({
+  drawingDocument, constructionOperations: initializeSketchOperations(drawingDocument),
   box: {
     svgModel: createBoxDocumentV1(),
     edgeAssignments: {}, connections: {},
@@ -64,11 +65,10 @@ const makeSketch = (id: string): DrawingSketchV2 => ({
 
 /** Real TB/S mixed composition plus native W output, prepared before capture. */
 export const makePopulatedProjectState = (): ProjectStateSource => {
-  const source = makeEmptyProjectState();
-  source.drawingDocument = {
+  const source = makeEmptyProjectState({
     schemaVersion: 2, unit: 'mm', activeSketchId: 'alpha', sketchOrder: ['beta', 'alpha'],
     sketches: { alpha: makeSketch('alpha'), beta: makeSketch('beta') },
-  };
+  });
   const rectangles = ['panel-a', 'panel-b', 'panel-c', 'panel-d'].map((id, i) => makeEvidenceRectangle(id, i * 220, 20, 120, 80));
   const box = source.box;
   const innerMarkup = '<!-- original source -->' + rectangles.map(({ panel }) =>

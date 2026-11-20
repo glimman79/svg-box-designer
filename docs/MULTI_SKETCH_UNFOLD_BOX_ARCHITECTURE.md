@@ -60,12 +60,11 @@ canonical Circle/Arc validation and rejected obsolete formats are not reopened.
 
 ## 3. One permanent history operation per Sketch
 
-**APPROVED TARGET — NOT IMPLEMENTED:** each Sketch has one stable Sketch operation and
-one entry in the shared permanent construction timeline. A Sketch containing many Lines,
+C.2 PR 1 implements one stable operation per Sketch in the project. A visible entry per Sketch in the shared permanent construction timeline is still an approved target. A Sketch containing many Lines,
 Circles, Arcs, Dimensions and Constraints normally remains one operation. These editable
 semantic records belong inside the Sketch; they do not automatically create separate
 top-level construction entries. Profile's per-segment accepted transactions remain intact
-without requiring a permanent entry per segment.
+without requiring a permanent entry per segment. [Sketch operation contract](SKETCH_OPERATION_FOUNDATION.md)
 
 Double-clicking the Sketch entry opens that existing Sketch's current definition for
 editing. Edits update the same identity/entry, never append a replacement Sketch. Navigation

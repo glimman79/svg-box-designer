@@ -1,6 +1,6 @@
 # Stage C — Global Undo/Redo and reversible workspace navigation
 
-PR 7 merged in #643. The user verified Line restoration and changed the navigation policy on November 20, 2026. PR 8 is based on verified GitHub main `22d9323db0e2965f9dedbdcf94e7c933cae3aa7f`. Personal browser acceptance of PR 8 follows review and merge.
+PR 7 merged in #643. The user verified Line restoration and changed the navigation policy on November 20, 2026. PR 8 is based on verified GitHub main `22d9323db0e2965f9dedbdcf94e7c933cae3aa7f`. PR #644 merged at `691a4dfaa4e130ca344e37f5220484cb10ddeb2d` and the user verified reversible workspace navigation.
 
 ## One publication per accepted action
 
@@ -144,4 +144,4 @@ After compiling the owner fixtures, `node --expose-gc --test tests/global-projec
 5. Apply a completed TB/W/S construction in Manufacturing and compare the preview before and after Undo/Redo. Import a different SVG, then undo the import. The previous source and its applied output should return together. Redo should restore the replacement.
 6. Open Clear with a Redo available. Cancel or press Escape and redo the action. In a disposable project choose Clear Without Saving. BOX opens empty with Undo and Redo disabled. Switching to Drawing now creates the first step of the new session. Save and Clear stays disabled pending native Save.
 
-Drawing-to-BOX transfer, permanent Sketch operations and UI-4 remain future work. The bottom History row continues to show BOX workflow groups and the Drawing availability message. The previously accepted rare Arc empty/blind Undo limitation remains open.
+At the PR 8 checkpoint, Drawing-to-BOX transfer, permanent Sketch operations and UI-4 remained future work. C.2 PR 1 subsequently added Sketch operations to the captured frame. The bottom History row continues to show BOX workflow groups and the Drawing availability message. The previously accepted rare Arc empty/blind Undo limitation remains open. [Sketch operation contract](SKETCH_OPERATION_FOUNDATION.md)

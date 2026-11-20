@@ -18,6 +18,8 @@ and records which earlier decisions it supersedes (§2).
 
 The user superseded the November 9 D1 policy after verifying edit restoration on merged #643. Each deliberate Drawing/BOX switch now shares the global 30-transition history. Its entry stores source and destination. Undo and Redo of navigation carry the live project frame through by identity. The runtime publishes the visible workspace with the cursor. The ownership inventory and earlier decision records below describe their dated baselines. The separate downstream failure decision (Option A) still applies. [Runtime and validation](GLOBAL_HISTORY_CUTOVER.md)
 
+C.2 PR 1 implements the Sketch portion of D3 and D11, with current V2 baseline bindings and one lifetime per Sketch. The broader operation catalog, native format and downstream mapping decisions remain open. [Sketch operation contract](SKETCH_OPERATION_FOUNDATION.md)
+
 ## Scoped supersession notice (2026-11-17)
 
 The [Multi-Sketch / Unfold / BOX specification](MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md)
@@ -28,7 +30,7 @@ The primitive-level catalog, standalone Line-operation examples and proposed map
 are **superseded for Sketch contents**. Read Line 30→50→70 as member edits inside the same
 Sketch operation, with distinct normal Undo actions. Per-segment Profile transactions,
 canonical CAD semantics, permanent stable definitions and the 30-action Undo contract
-remain intact. New Sketch / Finish Sketch and migration are not implemented.
+remain intact. New Sketch and Finish Sketch remain planned. C.2 PR 1 admits existing V2 Sketches as current baseline definitions.
 
 Distinct Unfold now refines earlier 3D flattening intent; metadata must continue through
 3D→Unfold→2D→BOX→manufacturing/export where applicable. One/multiple eligible Sketch-group

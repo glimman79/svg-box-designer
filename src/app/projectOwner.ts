@@ -1,3 +1,4 @@
+import { initializeSketchOperations } from './constructionOperations';
 import { createDrawingDocumentV2 } from './drawingTypes';
 import { createBoxDocumentV1 } from './boxDocument';
 import { defaultPanelManagerState } from './panelManagerModel';
@@ -16,9 +17,23 @@ export const createInitialBoxState = (): BoxStateSource => ({
   assignmentTargetConnectionId: null, displayConnectionId: null, selectedEdgeId: null,
 });
 
-export const createInitialProjectState = (): ProjectStateSource => ({
-  drawingDocument: createDrawingDocumentV2(), box: createInitialBoxState(),
-});
+/** Pre-C.2 in-memory projects supply Drawing and BOX only. */
+type PreOperationProject = Pick<ProjectStateSource, 'drawingDocument' | 'box'>;
+export type InitialProject = PreOperationProject | ProjectStateSource;
+
+function admitInitialProject(initial: InitialProject): ProjectStateSource {
+  if ('constructionOperations' in initial) {
+    if (!Array.isArray(initial.constructionOperations)) throw new TypeError('Expected a construction operation list');
+    initializeSketchOperations(initial.drawingDocument, initial.constructionOperations);
+    return initial;
+  }
+  return { ...initial, constructionOperations: initializeSketchOperations(initial.drawingDocument) };
+}
+
+export const createInitialProjectState = (): ProjectStateSource => {
+  const drawingDocument = createDrawingDocumentV2();
+  return { drawingDocument, box: createInitialBoxState(), constructionOperations: initializeSketchOperations(drawingDocument) };
+};
 
 /**
  * One per mounted App. Domain values transfer to this owner and must be updated
@@ -27,7 +42,7 @@ export const createInitialProjectState = (): ProjectStateSource => ({
  * roots still receive an initial visit to protect their nested children.
  * No execution history, solver, generator or React state lives here.
  */
-export const createProjectOwner = (initial: ProjectStateSource = createInitialProjectState()) => {
+export const createProjectOwner = (initial?: InitialProject) => {
   const frozen = new WeakSet<object>();
   const freeze = <T>(value: T): T => {
     if (value && typeof value === 'object' && !frozen.has(value)) {
@@ -37,7 +52,7 @@ export const createProjectOwner = (initial: ProjectStateSource = createInitialPr
     }
     return value;
   };
-  let committed = freeze(initial);
+  let committed = freeze(initial === undefined ? createInitialProjectState() : admitInitialProject(initial));
   const importOwner = Symbol('import owner');
   let importSequence = 0;
   let boxRevision = 0;
