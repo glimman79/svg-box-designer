@@ -5,6 +5,10 @@ import type { ProjectStateSource } from '../../src/app/projectState';
 // existing owner-facing model types without a new Drawing or BOX domain schema.
 const checkBoundaryTypes = (source: ProjectStateSource): ProjectStateSource => {
   const capture = captureProjectState(source);
+  // @ts-expect-error captured operation order cannot be mutated
+  capture.constructionOperations.reverse();
+  // @ts-expect-error operation lifetime is immutable
+  capture.constructionOperations[0].id = 'replacement';
   // @ts-expect-error captured Sketch maps cannot be replaced
   capture.drawingDocument.sketches = {};
   // @ts-expect-error captured point records are immutable

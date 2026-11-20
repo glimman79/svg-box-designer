@@ -11,14 +11,12 @@ SVG Box Designer is a browser-based React application for drawing semantic 2D sk
 One compact bottom History region is shared by Drawing and BOX. BOX retains its workflow-group
 navigation; Drawing shows that persistent operation history is not yet available.
 
-Drawing and BOX share one 30-step Undo/Redo history. The PR 8 change under review makes each workspace switch reversible. For example, after drawing a Line and opening BOX, Undo returns to Drawing with the Line visible. Undo again removes the Line. A new switch after Undo starts a new branch. Replacing an SVG is a BOX edit. Clear Without Saving empties both workspaces and starts a fresh history in BOX. [Manual checks](docs/GLOBAL_HISTORY_CUTOVER.md#user-testing--user-visible-changes)
+Drawing and BOX share one 30-step Undo/Redo history. PR #644 added reversible Drawing/BOX switches. For example, after drawing a Line and opening BOX, Undo returns to Drawing with the Line visible. Undo again removes the Line. A new switch after Undo starts a new branch. Replacing an SVG is a BOX edit. Clear Without Saving empties both workspaces and starts a fresh history in BOX. [Manual checks](docs/GLOBAL_HISTORY_CUTOVER.md#user-testing--user-visible-changes)
 
 **Approved future direction — not implemented:** an optional connected workflow of
 **3D Modeling → Unfold → 2D Drawing → BOX / Construction**, with BOX/Puzzle as parallel destinations
 and Drawing also usable independently. Simple 3D Modeling will focus on profile
-extrusion. A **permanent parametric construction history** remains future work. Construction operations retain editable current
-parameters/relationships, survive Undo eviction and persist with native projects; repeated
-member Line dimension edits update the same Sketch operation. Native Save/Open and traceable downstream
+extrusion. The project now holds one permanent operation per Sketch. Repeated Line dimension edits update that Sketch, and its operation survives Undo eviction. Native Save/Open and traceable downstream
 updates are also future work. Current SVG import/export serves BOX,
 and native Save/Open is not available. Successful Open
 preserves saved operations/relationships while starting empty executable Undo/Redo.
@@ -29,12 +27,12 @@ completion cannot create another Undo step. Creation/deletion restores exact ide
 Stage B proposes an initial serialized pending-action baseline that finalizes the same
 position. Its authoring wait is temporary: Stage E must refine dependency-aware scheduling
 for responsive unrelated editing while preserving one Undo position per accepted action.
-The asynchronous action lifecycle, permanent construction operations, native persistence and dependency evaluation remain future work. See the
+The asynchronous action lifecycle, other construction operation kinds, native persistence and dependency evaluation remain future work. See the
 [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) and
 [proposed development stages](ROADMAP.md#4-connected-product-development).
 
 The [Multi-Sketch / Unfold / BOX specification](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md) details future
-New Sketch / Finish Sketch, one permanent operation per Sketch, metadata continuity
+New Sketch / Finish Sketch, metadata continuity
 and selective export of one or multiple eligible Sketch groups. BOX input recognition
 uses relevant visible canvas geometry; export selection is separate. Direct
 **2D Drawing → BOX / Construction** remains supported without 3D or Unfold.

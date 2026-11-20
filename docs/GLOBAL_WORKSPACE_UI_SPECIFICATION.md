@@ -331,7 +331,7 @@ foundation is implemented while Open starts a fresh Undo tape.
 | A — Shared toolbar | UI-1/UI-2 refine placement; Fit moves to canvas. Placement never proves command functionality. |
 | B — Global project/history architecture design | Merged Stage B document remains the technical reference; preserve its separation of requirements and proposals. |
 | C — Global history implementation | Shared project foundation and global Undo/Redo; required for UI-4 synchronization. UI-1 placement can precede it. |
-| Proposed C.2 — permanent construction-history foundation | Stable persistent operations, bindings and current-settings navigation for UI-4; UI-3 must use this boundary, not duplicate it. Still proposed. |
+| C.2 — permanent construction-history foundation | PR 1 supplies ordered, project-owned Sketch operations. Current-settings navigation and visible Sketch symbols remain planned for UI-4. |
 | D — Native Save/Open | Preserve complete editable operations/relationships; saved-history acceptance requires this stage. Coordinate with C.2 before format freeze. |
 | E — Geometry transfer and dependencies | Affected propagation/regeneration, diagnostics and repair for UI-4; not part of early layout work. |
 | F — Simple 3D Modeling | Optional future module; extend the shared shell when implemented. Not a prerequisite for Drawing-first UI work. |

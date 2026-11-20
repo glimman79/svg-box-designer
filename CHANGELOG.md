@@ -1,6 +1,10 @@
 # Unreleased
 
-## Stage C PR 8 — Reversible workspace navigation (in review)
+## Stage C.2 PR 1 — Persistent Sketch operation foundation
+
+- Each Drawing Sketch has one project-owned operation. Its identity survives member edits, Undo eviction and workspace switches. Global Undo/Redo restores its exact definition with the geometry. The change is internal.
+
+## Stage C PR 8 — Reversible workspace navigation (merged in #644, user verified)
 
 - Undoing a Drawing → BOX switch returns to Drawing with its geometry intact. Redo reopens BOX. Each switch shares the 30-step project history and discards any abandoned Redo branch.
 

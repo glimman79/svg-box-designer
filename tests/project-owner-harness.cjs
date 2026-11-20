@@ -68,6 +68,7 @@ function observeBoxActions(context) {
 
 function assertCompleteFrame(frame, root) {
   assert.equal(frame.drawingDocument, root.drawingDocument);
+  assert.equal(frame.constructionOperations, root.constructionOperations);
   const fields = { ...frame.box.data, ...frame.box.context };
   assert.deepEqual(Object.keys(fields).sort(), Object.keys(root.box).sort());
   for (const key of Object.keys(root.box)) assert.equal(fields[key], root.box[key], key);

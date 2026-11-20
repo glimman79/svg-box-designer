@@ -1,5 +1,6 @@
 import type { EdgeAssignmentBucket, SvgDocumentModel } from '../svgUtils';
 import type { ActiveSGroup, ActiveTBGroup, ConnectionMap } from './connectionTypes';
+import type { ConstructionOperations } from './constructionOperations';
 import type { DrawingDocumentV2 } from './drawingTypes';
 import type { GeneratedGeometrySnapshot } from './generatedGeometrySnapshot';
 import type { PanelManagerState } from './panelManagerModel';
@@ -45,12 +46,14 @@ export type BoxStateCapture = CapturedData<{
 export type DrawingStateCapture = CapturedData<DrawingDocumentV2>;
 
 export type ProjectStateSource = {
+  constructionOperations: ConstructionOperations;
   drawingDocument: DrawingDocumentV2;
   box: BoxStateSource;
 };
 
 /** Complete existing editable data, not an execution-history frame or runtime owner. */
 export type ProjectStateCapture = Readonly<{
+  constructionOperations: ConstructionOperations;
   drawingDocument: DrawingStateCapture;
   box: BoxStateCapture;
 }>;
@@ -115,12 +118,14 @@ export const projectBoxState = (capture: BoxStateCapture): BoxStateSource => (
 );
 
 export const captureProjectState = (source: ProjectStateSource): ProjectStateCapture => Object.freeze({
+  constructionOperations: captureData(source.constructionOperations),
   drawingDocument: captureDrawingState(source.drawingDocument),
   box: captureBoxState(source.box),
 });
 
 /** Projection returns independent data; lifecycle/atomic React restoration is deferred. */
 export const projectProjectState = (capture: ProjectStateCapture): ProjectStateSource => ({
+  constructionOperations: structuredClone(capture.constructionOperations),
   drawingDocument: projectDrawingState(capture.drawingDocument),
   box: projectBoxState(capture.box),
 });

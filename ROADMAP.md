@@ -1,8 +1,12 @@
 # SVG Box Designer roadmap
 
-## Stage C PR 8 — Reversible workspace navigation in review
+## Stage C.2 PR 1 — Sketch model implemented
 
-PR 7 merged in #643. The November 20 decision makes each successful Drawing/BOX switch a step on the existing 30-transition timeline. Undo and Redo of a switch preserve geometry. Review and personal browser acceptance are pending. Permanent Sketch operations, UI-4 and Drawing-to-BOX transfer remain future work. [Navigation and validation](docs/GLOBAL_HISTORY_CUTOVER.md)
+One permanent operation per Sketch now participates in shared project capture and restore. Explicit Sketch editing contexts, multiple visible Sketches, the permanent History UI, native persistence and dependency regeneration remain scheduled separately. [Sketch operation contract](docs/SKETCH_OPERATION_FOUNDATION.md)
+
+## Stage C PR 8 — Reversible workspace navigation
+
+PR 7 merged in #643. The November 20 decision makes each successful Drawing/BOX switch a step on the existing 30-transition timeline. Undo and Redo of a switch preserve geometry. PR #644 merged and the user verified reversible workspace navigation. [Navigation and validation](docs/GLOBAL_HISTORY_CUTOVER.md)
 
 ## Stage C PR 6 — BOX construction (review pending)
 
@@ -42,7 +46,7 @@ Undo/Redo, C.2, UI-4 and A–G labels/statuses below remain unchanged.
 
 **APPROVED TARGET — NOT IMPLEMENTED.** See the [scoped specification](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md)
 for New Sketch / Finish Sketch, multiple visible independent Sketches with one editable
-context, one permanent operation per Sketch, multi-plane 3D extrusion and distinct Unfold.
+context, multi-plane 3D extrusion and distinct Unfold. The Sketch operation model is implemented in C.2 PR 1.
 The two supported paths are **2D Drawing → BOX / Construction** and
 **3D Modeling → Unfold → 2D Drawing → BOX / Construction**. Puzzle remains optional.
 BOX recognizes relevant visible geometry; export separately selects one or multiple
@@ -1258,14 +1262,13 @@ begun by recording this vision.
 | --- | --- | --- |
 | A — Shared toolbar | **PLANNED / NOT STARTED** | Consistent top-bar module navigation, project commands (Open, Save, Export, Clear) and Undo/Redo; Fit stays only beside canvas zoom. Module tools use the left toolbar; relevant Apply/Finish Group controls are contextual on canvas. Use explained disabled states until correct behavior exists; do not expose Construction-only Clear as project-wide or isolated history as global. See the Global Workspace UI specification below. |
 | B — Global project/history architecture design | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Define ownership, stable operation/entity identities, persistent editable operation model, parameter bindings, transaction/restore integration and dependency/evaluation interfaces. Require one logical action for source edits and all automatic async consequences; compare pending contracts. Separate 30-step Undo from permanent construction history. Analyze migration without changing accepted Drawing/BOX semantics or deferred Arc status. |
-| C — Global history implementation | **PARTIALLY IMPLEMENTED — PR 7 merged, PR 8 in review** | After B, implement shared project ownership and 30 reversible edits and workspace switches in total; reserve complete operation/relationship/evaluation state plus pending-action admit/finalize/suspend/resume/abandon and lifecycle guards, preserving compatibility with E's responsive-authoring contract; synchronous actions seal immediately. A new deliberate switch branches after Undo. Edit traversal restores exact outcomes and opens the associated module. Proposed distinct C.2 below supplies permanent operation maintenance and current-settings navigation; C does not implement the full E engine. Preserve accepted CAD transactions. |
+| C — Global history implementation | **GLOBAL TIMELINE IMPLEMENTED — #643 and #644 merged, workspace navigation user verified** | After B, implement shared project ownership and 30 reversible edits and workspace switches in total; reserve complete operation/relationship/evaluation state plus pending-action admit/finalize/suspend/resume/abandon and lifecycle guards, preserving compatibility with E's responsive-authoring contract; synchronous actions seal immediately. A new deliberate switch branches after Undo. Edit traversal restores exact outcomes and opens the associated module. Proposed distinct C.2 below supplies permanent operation maintenance and current-settings navigation; C does not implement the full E engine. Preserve accepted CAD transactions. |
 | D — Native Save/Open | **PLANNED / NOT STARTED** | After B, C restore and the proposed C.2 operation foundation, preserve complete editable module state, operations/order/parameters, identities, relationships, suppression/diagnostics and authority artifacts. Open Project starts empty executable Undo/Redo; SVG Import always targets BOX. No replay on Open; reject stale callbacks. Save is separate from Export; disk UI preferences remain open. |
 | E — Geometry transfer and dependencies | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Build on C/C.2/D; implement tracking, Drawing→BOX/Puzzle transfer, controlled regeneration, warning/error propagation, reference repair and downstream operation management. Refine dependency-aware concurrency/scheduling for responsive unrelated authoring while preserving each accepted action's Undo position. Option A retains valid source edits, updates compatible branches and preserves failed/blocked definitions and unaffected authored work. Automatic results finalize their originating action without a second Undo position. Exact outcomes restore without replay; gate invalid manufacturing output. |
 | F — Simple 3D Modeling | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Extend B–E with editable profile/extrusion definitions, positioning/rotation and simple assemblies. Closed profiles form solids; open Lines/Arcs form surfaces or optionally thickened walls. Exploded View and Flatten to 2D are distinct. Kernel/topology/constraint/rendering and curved/developable flattening require design; no high-end freeform/loft/general CAD commitment. |
 | G — Puzzle | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Integrate Drawing geometry with a separate downstream module and project history, persistence and dependencies. Preserve section 2 commitments; algorithms, joint types, manufacturing settings and UI remain unselected. BOX is not a prerequisite. |
 
-**Proposed C.2 — permanent construction-history foundation (separately scoped, not
-started or approved by this document):** implement persistent operation definitions/order,
+**C.2 — permanent construction-history foundation (Sketch model implemented in PR 1, further slices pending).** The wider stage calls for operation definitions/order,
 stable identities, parameter bindings, input/output links and atomic maintenance with
 geometry. Sketch member Line edits update one Sketch operation (superseding the earlier primitive-entry mapping); a double-click opens current settings
 without rewinding or changing Redo. Keep definitions editable after Undo eviction;
