@@ -1,5 +1,9 @@
 # Laser Program – Multi-Sketch, 3D/Unfold & BOX Architecture Documentation
 
+## Current implementation checkpoint — 2026-11-23
+
+**Implemented and tested, pending user browser acceptance.** Geometry for completed Sketches shares one grid. Only the opened Sketch receives authoring, dimension, constraint or drag input. Finish preserves it and enables BOX. The neutral selector reopens the existing operation definition. PR #645 supplies the permanent Sketch lifetimes. Native Save/Open, Drawing-to-BOX geometry transfer, Unfold and the permanent History UI remain planned. Earlier baseline and decision sections record their original dates. [Editing contract](SKETCH_OPERATION_FOUNDATION.md#editing-context)
+
 **Decision date: 2026-11-17. APPROVED TARGET — NOT IMPLEMENTED.**
 
 ## 1. Authority, classification and verified baseline
@@ -20,7 +24,7 @@ documentation-only task and its branch/commit/push/PR scope; merge is not author
 | **PROPOSED DESIGN** | Recommendation awaiting architectural approval. |
 | **OPEN QUESTION** | A future decision is required; no mechanism is selected. |
 | **IMPLEMENTED** | Supported by inspected code and existing validation; acceptance limits remain recorded. |
-| **NOT IMPLEMENTED** | Planned behavior only. Applies to every new capability in §§2–7. |
+| **NOT IMPLEMENTED** | Planned behavior only. Applied to the new capabilities in §§2–7 at the November 17 checkpoint. |
 
 Baseline: GitHub `main` at `99550ece086ab5c88d6380d594288a7af62f74aa`, fetched and
 verified with `git ls-remote --heads origin main` on 2026-11-17. PR #635 is merged and
@@ -38,7 +42,7 @@ acceptance or application test result is claimed:
 
 ## 2. Independent Sketches and editing context
 
-**APPROVED TARGET — NOT IMPLEMENTED:** a project supports multiple independent Sketches
+**Implemented and tested in C.2 PR 2, pending user browser acceptance.** A project supports multiple independent Sketches
 on the same 2D canvas. Each retains stable identity and its own geometry, Dimensions and
 Constraints. `New Sketch` creates a new empty Sketch, keeps existing Sketches on the
 canvas and previously visible Sketches visible by default, and makes only the new Sketch
@@ -47,16 +51,7 @@ distinct from editability and from manufacturing eligibility.
 
 `Finish Sketch` exits the active Sketch editing context. Users can reopen an existing
 Sketch for editing without creating a replacement Sketch or another history operation.
-Exact control placement, behavior outside an active context, unfinished-tool handling,
-cross-Sketch snap/reference rules and visibility controls are **OPEN QUESTIONS**. Being a
-visual reference does not by itself authorize a persistent cross-Sketch constraint.
-
-Current Drawing permits immediate drawing into its initialized Sketch. Explicit creation
-is a future transition, not a requirement already enforced. **APPROVED TARGET:** any
-future compatibility strategy must preserve existing geometry, stable references,
-Constraints, Dimensions and Undo behavior. **OPEN QUESTION:** how existing documents and
-sessions transition to explicit contexts; automatic migration is not assumed. Existing
-canonical Circle/Arc validation and rejected obsolete formats are not reopened.
+The November 17 open questions about control placement, interruption and in-memory admission are resolved in PR 2. Cross-Sketch snapping, persistent relationships and visibility controls remain future design work. Existing V2 records retain their references, dimensions, constraints and canonical Circle/Arc data when admitted in neutral mode. [Editing contract](SKETCH_OPERATION_FOUNDATION.md#editing-context)
 
 ## 3. One permanent history operation per Sketch
 

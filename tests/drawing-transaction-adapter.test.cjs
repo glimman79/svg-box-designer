@@ -9,11 +9,12 @@ const {applyResolvedCircleClick, EMPTY_CIRCLE_INTERACTION} = require('../.test-b
 const {deleteEntityWithDependentDimensions} = require('../.test-build/drawing-transaction-adapter/src/app/drawingDimension.js');
 const {captureProjectState} = require('../.test-build/drawing-transaction-adapter/src/app/projectState.js');
 
-function setup(initial) {
+function setup(initial = api.makeEmptyProjectState()) {
   const owner = api.createGlobalProjectHistory(initial);
-  const adapter = api.createDrawingTransactionAdapter(owner);
+  owner.navigate('drawing');
+  owner.openSketch(owner.getSnapshot().drawingDocument.activeSketchId);
 
-  const run = (action, label = 'Drawing edit') => adapter.transact(label, action);
+  const run = (action, label = 'Drawing edit') => api.createDrawingTransactionAdapter(owner).transact(label, action);
   return {owner, run};
 }
 const line = id => doc => api.appendEntityToActiveSketch(doc, {
@@ -38,8 +39,8 @@ test('nested accepted edits publish exactly one complete transition and one glob
   }]], 'Two linked edits');
   assert.equal(result.outcome, 'accepted');
   const after = owner.getSnapshot();
-  const [entry] = result.history.undo;
-  assert.equal(result.history.undo.length, 1);
+  const entry = result.history.undo.at(-1);
+  assert.equal(result.history.undo.length, 2);
   assert.deepEqual(entry.frame, captureProjectState(before));
   assert.deepEqual(result.frame, captureProjectState(after));
   assert.equal(entry.transaction.label, 'Two linked edits');
@@ -70,7 +71,7 @@ test('identity, explicit rejection, nested exceptions and net return to the base
   }).outcome, 'rejected');
   assert.equal(publications, 0);
   assert.equal(owner.getSnapshot(), before);
-  assert.equal(owner.getHistory().undo.length, 0);
+  assert.equal(owner.getHistory().undo.length, 1);
 });
 
 test('an intervening BOX publication and an open project transaction each prevent stale publication', () => {
@@ -82,7 +83,7 @@ test('an intervening BOX publication and an open project transaction each preven
   });
   assert.equal(result.outcome, 'rejected');
   assert.equal(owner.drawingDocumentRef.current, before.drawingDocument);
-  assert.equal(owner.getHistory().undo.length, 0);
+  assert.equal(owner.getHistory().undo.length, 1);
   const outer = owner.transact('box', 'outer', () => {
     assert.equal(run(line('in batch')).outcome, 'rejected');
     return 'accept';
@@ -98,7 +99,7 @@ test('an intervening BOX publication and an open project transaction each preven
 test('subscribers can read the committed edit and immediately start a new action', () => {
   const {owner, run} = setup();
   owner.subscribe(() => {
-    if (owner.getHistory().undo.length === 1) {
+    if (owner.getHistory().undo.length === 2) {
       assert.ok(sketch(owner.drawingDocumentRef.current).entities.first);
       assert.equal(run(line('second')).outcome, 'accepted');
     }
@@ -107,12 +108,12 @@ test('subscribers can read the committed edit and immediately start a new action
   assert.equal(first.outcome, 'accepted');
   assert.deepEqual(sketch(owner.drawingDocumentRef.current).entityOrder, ['first', 'second']);
   assert.equal(owner.getHistory().undo.at(-1).frame.drawingDocument, first.frame.drawingDocument);
-  assert.equal(owner.getHistory().undo.length, 2);
+  assert.deepEqual(owner.getHistory().undo.map(entry => entry.transaction.kind), ['navigation','edit','edit']);
 });
 
 test('global restore, branching and the 30-step limit use the current owner as the next baseline', () => {
   const {owner, run} = setup();
-  for (let i = 0; i < 102; i++) assert.equal(run(line('L' + i)).history.undo.length, Math.min(i+1,30));
+  for (let i = 0; i < 102; i++) assert.equal(run(line('L' + i)).history.undo.length, Math.min(i+2,30));
   const tip = owner.drawingDocumentRef.current;
   owner.traverse('undo'); owner.traverse('redo');
   assert.equal(owner.drawingDocumentRef.current, tip);
@@ -156,7 +157,7 @@ test('real Circle/Arc creation, solved modification and deletion preserve the ac
   const second = acceptArcEndpoint(first, endpoint({x: 40, y: 0}));
   assert.equal(commitArcForm(second, {x: 30, y: 0}, 'arc').entity, null);
   const arc = commitArcForm(second, {x: 30, y: 10}, 'arc').entity;
-  assert.equal(owner.getHistory().undo.length, 2);
+  assert.equal(owner.getHistory().undo.length, 3);
   run(doc => api.appendArcToActiveSketch(doc, arc));
   const arcStart = owner.drawingDocumentRef.current;
   const moved = solveDrawingDragCandidate(arcStart, createArcCenterDragTarget(arcStart, 'arc'), {x: 3, y: 2});
@@ -164,7 +165,7 @@ test('real Circle/Arc creation, solved modification and deletion preserve the ac
   assert.deepEqual(owner.drawingDocumentRef.current, moved);
   assert.equal(run(doc => deleteEntityWithDependentDimensions(doc, 'arc')).outcome, 'accepted');
   assert.equal(run(doc => deleteEntityWithDependentDimensions(doc, 'arc')).outcome, 'noop');
-  assert.equal(owner.getHistory().undo.length, 5);
+  assert.equal(owner.getHistory().undo.length, 6);
 });
 
 test('actual Constraint command rejection rolls back earlier siblings', () => {
@@ -240,7 +241,7 @@ test('Line, driving Dimension and Constraint commands publish and restore the sa
     const root = owner.getSnapshot();
     assert.notEqual(root.constructionOperations[0].definitionRevision, states.at(-1).constructionOperations[0].definitionRevision);
     states.push(root);
-    assert.equal(owner.getHistory().undo.length, states.length - 1);
+    assert.equal(owner.getHistory().undo.length, states.length);
   }
   accept(line('L'));
   accept(doc => {

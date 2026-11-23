@@ -2428,3 +2428,29 @@ button:disabled {
   outline: 2px solid #0f766e;
   outline-offset: -2px;
 }
+
+.sketch-context-controls {
+  position: absolute;
+  z-index: 3;
+  right: 12px;
+  top: 12px;
+  display: flex;
+  gap: var(--ui-gap);
+}
+.sketch-context-controls :is(button, select) {
+  min-height: var(--ui-control-height);
+  padding: 2px 8px;
+  border: 1px solid #94a3b8;
+  border-radius: 5px;
+  background: #fff;
+  color: #172033;
+  font: inherit;
+}
+.drawing-reference-sketch { fill: none; stroke: #738297; stroke-width: 1.45; pointer-events: none; }
+.drawing-reference-sketch > * { vector-effect: non-scaling-stroke; }
+
+.sketch-context-controls:has(#box-sketch-restriction) { flex-direction: column; align-items: flex-end; }
+#box-sketch-restriction { color: #475569; background: #fff; font-size: .72rem; }
+@media (max-width: 700px) {
+  .sketch-context-controls { top: auto; bottom: 10px; }
+}

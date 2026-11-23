@@ -7,8 +7,8 @@ const { api, harness, production, sources, observeBoxActions, assertCompleteFram
 const {importLockHarness} = require('./svg-import-lock-harness.cjs');
 
 test('one frozen root and one synchronous notification per outer action; a no-op retains the root',()=>{
-  const owner=api.createGlobalProjectHistory(), start=owner.getSnapshot(), seen=[];
-  const edits=api.createDrawingTransactionAdapter(owner);
+  const owner=api.createGlobalProjectHistory(api.makeEmptyProjectState()), start=owner.getSnapshot(), seen=[];
+  const edits=api.projectDrawingActions(owner);
   const unsubscribe=owner.subscribe(()=>seen.push(owner.getSnapshot()));
   edits.transact('one',doc=>({...doc}));
   assert.deepEqual(seen,[owner.getSnapshot()]); assert.equal(seen[0].box,start.box);
@@ -22,9 +22,9 @@ test('one frozen root and one synchronous notification per outer action; a no-op
 });
 
 test('a failed nested action rejects the complete outer candidate and retains both modules',()=>{
-  const owner=api.createGlobalProjectHistory(), start=owner.getSnapshot(), tape=owner.getHistory();
+  const owner=api.createGlobalProjectHistory(api.makeEmptyProjectState()), start=owner.getSnapshot(), tape=owner.getHistory();
   let publications=0; owner.subscribe(()=>publications++);
-  const result=api.createDrawingTransactionAdapter(owner).transact('nested',[doc=>({...doc}),[()=>{throw Error('inner');}]]);
+  const result=api.projectDrawingActions(owner).transact('nested',[doc=>({...doc}),[()=>{throw Error('inner');}]]);
   assert.equal(result.outcome,'rejected'); assert.equal(owner.getSnapshot(),start);
   assert.equal(owner.getHistory(),tape); assert.equal(publications,0);
   const box=api.createBoxTransactionAdapter(owner);
@@ -34,7 +34,7 @@ test('a failed nested action rejects the complete outer candidate and retains bo
 
 test('same-event Drawing mutations and global Undo/Redo read the owner and preserve all Sketch identities',()=>{
   const owner=api.createGlobalProjectHistory(api.makePopulatedProjectState()), before=owner.getSnapshot(), box=before.box;
-  const adapter=api.createDrawingTransactionAdapter(owner);
+  const adapter=api.projectDrawingActions(owner);
   const transact=action=>adapter.transact('Line',action);
   const undo=()=>owner.traverse('undo'), redo=()=>owner.traverse('redo');
   transact(doc=>api.appendEntityToActiveSketch(doc,{id:'new-a',type:'line',start:{x:30,y:20},end:{x:40,y:20},startPointId:'shared-a',endPointId:'shared-b'}));
@@ -126,7 +126,7 @@ test('actual asynchronous import locks synchronously, rejects a second read and 
   let secondReads=0;
   await c.handleImport({target:{files:[{text:()=>{secondReads++;return Promise.resolve('second');}}],value:'second.svg'}});
   assert.equal(secondReads,0);
-  api.createDrawingTransactionAdapter(owner).transact('Drawing edit',doc=>({...doc,sketchOrder:[...doc.sketchOrder]})); const drawing=owner.getSnapshot().drawingDocument;
+  api.projectDrawingActions(owner).transact('Drawing edit',doc=>({...doc,sketchOrder:[...doc.sketchOrder]})); const drawing=owner.getSnapshot().drawingDocument;
   pending.resolve('new SVG');await job; assert.equal(count,2);
   assert.equal(owner.getSnapshot().box.svgModel.content,'new SVG');assert.equal(owner.getSnapshot().drawingDocument,drawing);
   assert.deepEqual(owner.getSnapshot().box.connections,before.box.connections);
@@ -142,6 +142,7 @@ test('failed imports and callbacks after external Clear/unmount invalidation can
   assert.equal(owner.clearProject(),true);
   const cleared=owner.getSnapshot();
   late.resolve('late');await job;assert.equal(owner.getSnapshot(),cleared);assert.equal(c.errorMessage,'');
+  assert.ok(owner.navigate('construction'));
   const unmounted=deferred(),unmountedJob=c.handleImport(eventFor(unmounted.promise));lockHarness.unmount();
   const setterCount=lockHarness.setters.length;
   unmounted.reject(Error('late failure'));await unmountedJob;assert.equal(owner.getSnapshot(),cleared);assert.equal(c.errorMessage,'');
@@ -259,7 +260,7 @@ test('owner sequence guard still rejects superseded publication, and stale clean
 test('ordinary edits structurally share source/output; no capture/projection/full-project clone in the production hot path',()=>{
   const owner=api.createGlobalProjectHistory(api.makePopulatedProjectState()),before=owner.getSnapshot();
   const nativeClone=global.structuredClone; let clones=0;global.structuredClone=(...args)=>{clones++;return nativeClone(...args);};
-  try {const edits=api.createDrawingTransactionAdapter(owner); for(let n=0;n<50;n++) edits.transact('edit',doc=>({...doc}));owner.setBoxContext({selectedEdgeId:'other'});}
+  try {const edits=api.projectDrawingActions(owner); for(let n=0;n<50;n++) edits.transact('edit',doc=>({...doc}));owner.setBoxContext({selectedEdgeId:'other'});}
   finally {global.structuredClone=nativeClone;}
   assert.equal(clones,0); assert.equal(owner.getSnapshot().box.svgModel,before.box.svgModel);assert.equal(owner.getSnapshot().box.generatedGeometrySnapshot,before.box.generatedGeometrySnapshot);
 });
@@ -268,7 +269,7 @@ test('App subscriptions and all compatibility setters use the owner; no second w
   const source=fs.readFileSync('src/App.tsx','utf8');
   for(const key of ['drawingDocument',...Object.keys(api.createInitialBoxState()),'generatedGeometryItems','generatedGeometryCompositionModel']) assert.doesNotMatch(source,new RegExp(`const \\[${key},[^\\n]*useState`));
   assert.match(source,/useSyncExternalStore\(projectOwner.subscribe,\s*projectOwner.getPublication/);
-  assert.match(source,/ownedDocumentRef=\{projectOwner.drawingDocumentRef\}/);
+  assert.match(source,/ownedDocumentRef=\{drawingTransactions.documentRef\}/);
   assert.doesNotMatch(source,/useEffect\(\(\) => \{\s*setConnections/);
   assert.doesNotMatch(source,/const generatedGeometrySnapshot = useMemo/);
 });

@@ -61,6 +61,7 @@ const history = vm.runInNewContext(stripTypeScriptTypes(historySource.replace(/^
 const initialDocument = types.createDrawingDocumentV2();
 initialDocument.sketches[initialDocument.activeSketchId].points.start = { id: 'start', ...start };
 Object.assign(context, {
+  activeSketch: initialDocument.sketches[initialDocument.activeSketchId],
   historyRef: { current: history.EMPTY_DRAWING_HISTORY }, documentRef: { current: initialDocument },
   getEpoch: () => 0, renderEpoch: 0, onPendingSegment: () => {},
   publishDrawingEdit: (_label, edit) => {
@@ -152,6 +153,7 @@ assert.match(workspace, /onPointerDown=\{handlePointerDown\}/);
 assert.match(workspace, /onPointerMove=\{handlePointerMove\}/);
 assert.match(workspace, /onPointerUp=\{\(event\) => \{ if \(boxSelectionRef.current\) finishBoxSelection\(event\); else if \(geometryDragRef.current\) finishGeometryDrag\(event\); else if \(dimensionDragRef.current\) finishDimensionDrag\(event\); else panHandlers.onPointerUp\(event\); \}\}/);
 const move = vm.runInNewContext(extracted('handlePointerMove'), {
+  documentRef: context.documentRef, activeSketch: context.activeSketch,
   panHandlers: { onPointerMove: () => false }, boxSelectionRef: { current: null },
   geometryDragRef: { current: null }, dimensionDragRef: { current: null }, activeTool: 'select', isSegmentTool: false,
   resolveDimensionCandidate: () => null, svgRef: { current: null },
@@ -168,6 +170,7 @@ assert.match(fs.readFileSync('src/app/drawingDirectManipulation.ts', 'utf8'), /e
 let solved = 0, dragTransactions = 0, captureReleases = 0;
 const original = {}, candidate = {};
 const dragContext = {
+  activeSketch: context.activeSketch,
   panHandlers: { onPointerMove: () => false, onPointerCancel: () => {} },
   geometryDragRef: { current: null }, boxSelectionRef: { current: null }, dimensionDragRef: { current: null },
   activeTool: 'select', isSegmentTool: false,

@@ -27,7 +27,7 @@ const assert = require('node:assert/strict');
             observed.set(owner, metrics);
           }
           const metrics = window.drawingMetrics = observed.get(owner);
-          return { transact(label, change) {
+          return { ...adapter, transact(label, change) {
             const result = adapter.transact(label, change);
             if (result.outcome === 'accepted') {
               if (result.history !== owner.getHistory() || result.frame.drawingDocument !== owner.drawingDocumentRef.current
@@ -50,16 +50,17 @@ const assert = require('node:assert/strict');
     const move = async (x,y,steps=1) => { const p = await client(x,y); await page.mouse.move(p.x,p.y,{steps}); };
     await page.goto(process.env.WORKSPACE_BROWSER_URL || 'http://127.0.0.1:5173/');
     await button('2D Drawing').click();
+    await button('New Sketch').click();
     await button('Line').click();
     await click(-80,-50);
     await move(20,-50,10);
-    assert.deepEqual(await metrics(), {accepted: [], publications: 1});
+    assert.deepEqual(await metrics(), {accepted: [], publications: 2});
     await click(20,-50);
     await page.locator('[data-sketch-line-id]').waitFor({state: 'attached'});
     await page.keyboard.press('Escape');
 
     const baseline = await metrics();
-    assert.deepEqual(baseline, {accepted: ['Create Line'], publications: 2});
+    assert.deepEqual(baseline, {accepted: ['Create Line'], publications: 3});
     await svg.evaluate(el => el.addEventListener('pointerdown', event => { window.drawingTestPointerId = event.pointerId; }));
     const startDrag = async () => {
       await move(-30,-50);
@@ -91,7 +92,7 @@ const assert = require('node:assert/strict');
     await startDrag();
     await page.mouse.up();
     const moved = await metrics();
-    assert.deepEqual(moved, {accepted: ['Create Line','Drag geometry'], publications: 3});
+    assert.deepEqual(moved, {accepted: ['Create Line','Drag geometry'], publications: 4});
 
     // Interrupt a new preview by restoring global history. Its late release cannot
     // overwrite the restored Line, even if Redo returns to the same document.
@@ -101,10 +102,12 @@ const assert = require('node:assert/strict');
     await page.keyboard.press('Control+z');
     await page.keyboard.press('Control+y');
     await page.mouse.up();
-    assert.deepEqual(await metrics(), {accepted: moved.accepted, publications: 5});
+    assert.deepEqual(await metrics(), {accepted: moved.accepted, publications: 6});
+    await button('Finish Sketch').click();
     await button('Box / Construction').click();
     await button('2D Drawing').click();
-    assert.equal((await metrics()).publications, 7);
+    await page.getByLabel('Reopen Sketch').selectOption({ label: 'Sketch 1' });
+    assert.equal((await metrics()).publications, 10);
 
     await button('Dimension').focus();
     await page.keyboard.press('Enter');

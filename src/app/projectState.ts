@@ -1,7 +1,7 @@
 import type { EdgeAssignmentBucket, SvgDocumentModel } from '../svgUtils';
 import type { ActiveSGroup, ActiveTBGroup, ConnectionMap } from './connectionTypes';
 import type { ConstructionOperations } from './constructionOperations';
-import type { DrawingDocumentV2 } from './drawingTypes';
+import type { ProjectDrawingDocument } from './drawingTypes';
 import type { GeneratedGeometrySnapshot } from './generatedGeometrySnapshot';
 import type { PanelManagerState } from './panelManagerModel';
 import type { ProjectSettings } from './projectSettings';
@@ -43,11 +43,11 @@ export type BoxStateCapture = CapturedData<{
   context: BoxRestorationContext;
 }>;
 
-export type DrawingStateCapture = CapturedData<DrawingDocumentV2>;
+export type DrawingStateCapture = CapturedData<ProjectDrawingDocument>;
 
 export type ProjectStateSource = {
   constructionOperations: ConstructionOperations;
-  drawingDocument: DrawingDocumentV2;
+  drawingDocument: ProjectDrawingDocument;
   box: BoxStateSource;
 };
 
@@ -75,11 +75,11 @@ const captureData = <T>(source: T): CapturedData<T> => {
 };
 
 /** Preserve all Sketches, local IDs, references, metadata and stored solver results. */
-export const captureDrawingState = (document: DrawingDocumentV2): DrawingStateCapture => captureData(document);
+export const captureDrawingState = (document: ProjectDrawingDocument): DrawingStateCapture => captureData(document);
 
 /** Detached model data only: no migration, normalization, solving or live publication. */
-export const projectDrawingState = (capture: DrawingStateCapture): DrawingDocumentV2 => (
-  structuredClone(capture) as DrawingDocumentV2
+export const projectDrawingState = (capture: DrawingStateCapture): ProjectDrawingDocument => (
+  structuredClone(capture) as ProjectDrawingDocument
 );
 
 /** Group existing authority and restoration fields without projecting or cloning their values. */

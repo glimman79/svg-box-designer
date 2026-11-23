@@ -62,6 +62,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     assert.equal(await history.getByRole('button').count(), 0);
     assert.equal(await undo().isEnabled(), true);
     assert.equal(await redo().isEnabled(), false);
+    await button('New Sketch').click();
     await button('Line').click(); await clickDrawing({ x: -180, y: -90 }); await clickDrawing({ x: -80, y: -90 });
     await page.locator('[data-sketch-line-id]').waitFor({ state: 'attached' });
     await button('Circle').click(); await clickDrawing({ x: 30, y: 0 }); await clickDrawing({ x: 60, y: 0 });
@@ -69,11 +70,13 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     await button('Select').click(); await undo().click();
     const drawingBefore = await geometry(), drawingView = await drawingSvg.getAttribute('viewBox');
     assert.deepEqual(await capabilities(), [true, true]);
-    await button('Circle').click(); await clickDrawing({ x: 90, y: -50 }); // unfinished tool survives navigation
+    await button('Circle').click(); await clickDrawing({ x: 90, y: -50 }); // Finish cancels the unfinished tool
     for (let n = 0; n < 2; n++) {
-      await box(); assert.deepEqual(await capabilities(), [true, false]);
+      assert.ok(await page.getByRole('button',{name:'Box / Construction',exact:true}).isDisabled());
+      await button('Finish Sketch').click(); await box(); assert.deepEqual(await capabilities(), [true, false]);
       await drawing(); assert.deepEqual(await capabilities(), [true, false]);
-      assert.equal(await button('Circle').getAttribute('aria-pressed'), 'true');
+      await page.getByLabel('Reopen Sketch').selectOption({label:'Sketch 1'});
+      assert.equal(await button('Select').getAttribute('aria-pressed'), 'true');
       assert.deepEqual(await geometry(), drawingBefore);
       assert.equal(await drawingSvg.getAttribute('viewBox'), drawingView);
       assert.equal(await history.getByRole('button').count(), 0);
@@ -81,17 +84,20 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     await track.click(); await track.dblclick();
     assert.deepEqual(await capabilities(), [true, false]);
     assert.deepEqual(await geometry(), drawingBefore);
+    await button('Circle').click(); await clickDrawing({x:90, y:-50});
     await clickDrawing({ x: 120, y: -50 }); await page.locator('[data-sketch-circle-id]').waitFor({ state: 'attached' });
     await button('Select').click(); await undo().click(); // Circle
     for (let i = 0; i < 4; i++) await undo().click();
+    await page.getByLabel('Reopen Sketch').selectOption({label:'Sketch 1'});
     assert.deepEqual(await geometry(), drawingBefore);
     await undo().click(); // Line
     assert.equal(await page.locator('[data-sketch-line-id]').count(), 0);
+    await undo().click(); // New Sketch
     await undo().click(); // Initial switch to Drawing
     assert.equal(await undo().isEnabled(), false);
-    for (let i = 0; i < 7; i++) await redo().click();
+    for (let i = 0; i < 8; i++) await redo().click();
     console.log('PASS Drawing preservation');
-    passed.push('Drawing empty state, stable navigation, preserved geometry/view/unfinished Circle and exact Undo depth');
+    passed.push('Drawing empty state, stable navigation, preserved geometry/view and interrupted Circle and exact Undo depth');
 
     await box();
     await page.getByLabel('Import SVG into BOX / Construction', { exact: true }).setInputFiles({ name: 'ui3.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(panels) });

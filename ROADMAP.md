@@ -1,8 +1,14 @@
 # SVG Box Designer roadmap
 
+## Stage C.2 PR 2 — Explicit Sketch authoring
+
+**Implemented and tested, pending user browser acceptance.** The neutral grid, New Sketch, Finish Sketch and reopening use the operations merged in #645. One Sketch receives CAD input while prior geometry remains visible. Finish is required before a deliberate switch to BOX. Global Undo/Redo and the shared navigation history from #643 and user-verified #644 remain in service.
+
+**Planned / not implemented.** The next C.2 slice can expose existing Sketch operations in the shared History row and reopen their current definitions. UI-4, native persistence, cross-Sketch constraints and Drawing-to-BOX transfer remain open. [Sketch contract](docs/SKETCH_OPERATION_FOUNDATION.md#editing-context)
+
 ## Stage C.2 PR 1 — Sketch model implemented
 
-One permanent operation per Sketch now participates in shared project capture and restore. Explicit Sketch editing contexts, multiple visible Sketches, the permanent History UI, native persistence and dependency regeneration remain scheduled separately. [Sketch operation contract](docs/SKETCH_OPERATION_FOUNDATION.md)
+One permanent operation per Sketch now participates in shared project capture and restore. PR 2 adds editing contexts and multiple visible Sketches. The permanent History UI, native persistence and dependency regeneration remain scheduled separately. [Sketch operation contract](docs/SKETCH_OPERATION_FOUNDATION.md)
 
 ## Stage C PR 8 — Reversible workspace navigation
 
@@ -44,9 +50,8 @@ Undo/Redo, C.2, UI-4 and A–G labels/statuses below remain unchanged.
 
 ## Multi-Sketch / Unfold / selective BOX export direction (2026-11-17)
 
-**APPROVED TARGET — NOT IMPLEMENTED.** See the [scoped specification](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md)
-for New Sketch / Finish Sketch, multiple visible independent Sketches with one editable
-context, multi-plane 3D extrusion and distinct Unfold. The Sketch operation model is implemented in C.2 PR 1.
+C.2 PR 1 provides permanent Sketch operations. PR 2 implements and tests New Sketch, Finish Sketch and multiple independent Sketches with one editable context. User browser acceptance is pending. Multi-plane 3D extrusion, distinct Unfold and downstream export remain approved targets. [Scoped specification](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md)
+
 The two supported paths are **2D Drawing → BOX / Construction** and
 **3D Modeling → Unfold → 2D Drawing → BOX / Construction**. Puzzle remains optional.
 BOX recognizes relevant visible geometry; export separately selects one or multiple
@@ -1268,7 +1273,7 @@ begun by recording this vision.
 | F — Simple 3D Modeling | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Extend B–E with editable profile/extrusion definitions, positioning/rotation and simple assemblies. Closed profiles form solids; open Lines/Arcs form surfaces or optionally thickened walls. Exploded View and Flatten to 2D are distinct. Kernel/topology/constraint/rendering and curved/developable flattening require design; no high-end freeform/loft/general CAD commitment. |
 | G — Puzzle | **PLANNED / NOT STARTED — DESIGN REQUIRED** | Integrate Drawing geometry with a separate downstream module and project history, persistence and dependencies. Preserve section 2 commitments; algorithms, joint types, manufacturing settings and UI remain unselected. BOX is not a prerequisite. |
 
-**C.2 — permanent construction-history foundation (Sketch model implemented in PR 1, further slices pending).** The wider stage calls for operation definitions/order,
+**C.2 — permanent construction-history foundation (Sketch model merged in #645, PR 2 editing context pending user browser acceptance).** The wider stage calls for operation definitions/order,
 stable identities, parameter bindings, input/output links and atomic maintenance with
 geometry. Sketch member Line edits update one Sketch operation (superseding the earlier primitive-entry mapping); a double-click opens current settings
 without rewinding or changing Redo. Keep definitions editable after Undo eviction;

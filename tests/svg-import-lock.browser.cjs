@@ -14,7 +14,7 @@ const svg = content => ({name:'same.svg',mimeType:'image/svg+xml',buffer:Buffer.
   const tool = name => page.getByLabel('Tool sidebar',{exact:true}).getByRole('button',{name,exact:true});
   const overlay = () => page.getByLabel('Active Tool overlay',{exact:true});
   const modal = () => page.getByRole('dialog',{name:'Importing SVG…',exact:true});
-  const drawingSnapshot = () => page.locator('[data-sketch-line-id], [data-sketch-circle-id], [data-sketch-arc-id]').evaluateAll(es => es.map(e => e.outerHTML));
+  const drawingSnapshot = () => page.locator('.drawing-reference-sketch > *').evaluateAll(es => es.map(e => e.outerHTML));
   const boxSnapshot = () => page.evaluate(() => ({
     svg:document.querySelector('.workspace:not(.drawing-workspace) svg')?.innerHTML,
     history:document.querySelector('.shared-history-region')?.innerHTML,
@@ -54,12 +54,15 @@ const svg = content => ({name:'same.svg',mimeType:'image/svg+xml',buffer:Buffer.
   }
   try {
     await page.goto(url); await nav('2D Drawing').click();
+    await page.getByRole('button',{name:'New Sketch',exact:true}).click();
     for (const y of [-70,40]) {
       await page.getByLabel('Drawing tools',{exact:true}).getByRole('button',{name:'Line',exact:true}).click();
       await pointClick(-120,y); await pointClick(-20,y);
     }
     assert.equal(await page.locator('[data-sketch-line-id]').count(),2);
+    await page.getByRole('button',{name:'Finish Sketch',exact:true}).click();
     const drawing = await drawingSnapshot();
+    assert.equal(drawing.length,2);
     await nav('Box / Construction').click();
     await input().setInputFiles(svg(panels));
     await page.getByRole('dialog',{name:'Panel Manager',exact:true}).getByRole('button',{name:'OK',exact:true}).click();

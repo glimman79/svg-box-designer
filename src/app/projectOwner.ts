@@ -1,5 +1,5 @@
 import { initializeSketchOperations } from './constructionOperations';
-import { createDrawingDocumentV2 } from './drawingTypes';
+import { createEmptyDrawingDocument } from './drawingTypes';
 import { createBoxDocumentV1 } from './boxDocument';
 import { defaultPanelManagerState } from './panelManagerModel';
 import { DEFAULT_PROJECT_SETTINGS } from './projectDefaults';
@@ -31,7 +31,7 @@ function admitInitialProject(initial: InitialProject): ProjectStateSource {
 }
 
 export const createInitialProjectState = (): ProjectStateSource => {
-  const drawingDocument = createDrawingDocumentV2();
+  const drawingDocument = createEmptyDrawingDocument();
   return { drawingDocument, box: createInitialBoxState(), constructionOperations: initializeSketchOperations(drawingDocument) };
 };
 

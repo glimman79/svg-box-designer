@@ -15,6 +15,13 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
   const undo = () => page.getByRole('button', { name: 'Undo (Ctrl+Z)', exact: true });
   const redo = () => page.getByRole('button', { name: 'Redo (Ctrl+Y)', exact: true });
   const tool = name => page.getByLabel(['Dimension', 'Constraints'].includes(name) ? 'Drawing header tools' : 'Drawing tools').getByRole('button', { name, exact: true });
+  const finishSketch = () => page.getByRole('button',{name:'Finish Sketch', exact:true}).click();
+  const reopen = () => page.getByLabel('Reopen Sketch').selectOption({label:'Sketch 1'});
+  const blocked = async () => {
+    assert.ok(await nav('Box / Construction').isDisabled());
+    await nav('Box / Construction').evaluate(el => el.click());
+    assert.equal(await nav('2D Drawing').getAttribute('aria-pressed'), 'true');
+  };
   const count = async selector => page.locator(selector).count();
   async function click(point) {
     const client = await page.locator('svg.drawing-svg').evaluate((s, p) => {
@@ -41,6 +48,7 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
     assert.equal(await undo().isEnabled(), true);
     passed.push('navigation, stable command/history positions and disabled capability boundaries');
 
+    await page.getByRole('button',{name:'New Sketch',exact:true}).click();
     await tool('Line').click(); await click({ x: -120, y: -70 }); await click({ x: -20, y: -70 });
     await waitCount('[data-sketch-line-id]', 1);
     await undo().click(); await waitCount('[data-sketch-line-id]', 0);
@@ -48,26 +56,26 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
     await drawing(); // An already-active workspace preserves the undone Line.
     assert.equal(await redo().isEnabled(), true); await redo().click(); await waitCount('[data-sketch-line-id]', 1);
     const line = await snapshot();
-    await box(); await page.keyboard.press('Delete'); await page.keyboard.press('Control+z');
+    await finishSketch(); await box(); await page.keyboard.press('Delete'); await page.keyboard.press('Control+z');
+    await reopen();
     assert.equal(await tool('Line').isVisible(), true); assert.deepEqual(await snapshot(), line);
     await page.keyboard.press('Control+z'); await waitCount('[data-sketch-line-id]', 0);
     await redo().click(); assert.deepEqual(await snapshot(), line);
     passed.push('Line creation, reversible navigation, global keyboard Undo/Redo and hidden keyboard isolation');
 
     await tool('Circle').click(); await click({ x: 60, y: -50 });
-    await box(); await page.keyboard.press('Escape');
-    await page.evaluate(() => window.dispatchEvent(new CustomEvent('drawing:activate-dimension')));
+    await blocked();
     await drawing(); assert.equal(await tool('Circle').getAttribute('aria-pressed'), 'true');
     await click({ x: 90, y: -50 }); await waitCount('[data-sketch-circle-id]', 1);
     await tool('Arc').click(); await click({ x: 100, y: 30 }); await click({ x: 30, y: 100 });
-    await box(); await drawing(); await click({ x: 80, y: 80 }); await waitCount('[data-sketch-arc-id]', 1);
+    await blocked(); await click({ x: 80, y: 80 }); await waitCount('[data-sketch-arc-id]', 1);
     await tool('Profile').click(); await click({ x: -140, y: 60 }); await click({ x: -80, y: 60 });
-    await box(); await drawing(); await waitCount('[data-sketch-line-id]', 2);
+    await blocked(); await waitCount('[data-sketch-line-id]', 2);
     await click({ x: -80, y: 110 }); await waitCount('[data-sketch-line-id]', 3);
     await page.keyboard.press('Escape');
     const geometry = await snapshot();
     await tool('Constraints').click(); assert.equal(await page.getByRole('dialog', { name: 'Constraints', exact: true }).isVisible(), true);
-    await box(); await page.keyboard.press('Escape'); await drawing();
+    await blocked();
     assert.equal(await page.getByRole('dialog', { name: 'Constraints', exact: true }).isVisible(), true);
     await page.getByRole('button', { name: 'Close Constraints', exact: true }).click();
     await tool('Dimension').focus(); await page.keyboard.press('Enter');
@@ -77,18 +85,17 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
     await page.locator('.drawing-dimension-value-hit').dblclick();
     const editor = page.getByRole('textbox', { name: 'Dimension value in millimetres', exact: true });
     await editor.fill('120');
-    await box(); await page.keyboard.press('Escape'); await drawing();
-    assert.equal(await editor.inputValue(), '120', 'unfinished dimension edit survives module navigation');
+    await blocked();
+    assert.equal(await editor.inputValue(), '120', 'blocked navigation preserves the dimension draft');
     await editor.press('Enter');
     assert.notDeepEqual(await snapshot(), geometry, 'accepted dimension edit updates geometry');
     await undo().click(); // Dimension edit
-    await undo().click(); await undo().click(); // Both switches while the editor was open
     await undo().click(); // Dimension creation
     await waitCount('.drawing-dimension-value-hit', 0);
     await page.keyboard.press('Escape');
     assert.deepEqual(await snapshot(), geometry);
     assert.equal(await page.evaluate(() => window.retainedDrawing === document.querySelector('.drawing-workspace') && window.retainedBox === document.querySelector('.workspace:not(.drawing-workspace)')), true);
-    passed.push('Circle/Arc incomplete steps, Profile continuation, Constraints, keyboard Dimension creation/edit/Undo and unfinished editor state across mounted module switches');
+    passed.push('Circle/Arc incomplete steps, Profile continuation, Constraints, keyboard Dimension creation/edit/Undo and unfinished editor state during blocked navigation');
 
     // Zoom, pan and Fit remain viewport-only actions.
     const svg = page.locator('svg.drawing-svg'); const initialView = await svg.getAttribute('viewBox');
@@ -99,7 +106,7 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
     assert.deepEqual(await snapshot(), geometry);
     passed.push('Drawing zoom, right-drag pan and canvas Fit preserve geometry');
 
-    await box();
+    await finishSketch(); await box();
     await page.getByLabel('Import SVG into BOX / Construction', { exact: true }).setInputFiles({ name: 'ui1-panels.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><rect x="0" y="0" width="100" height="80"/><rect x="130" y="0" width="100" height="80"/></svg>') });
     await page.getByRole('dialog', { name: 'Panel Manager', exact: true }).getByRole('button', { name: 'OK', exact: true }).click();
     const overlay = page.getByLabel('Active Tool overlay');
@@ -122,7 +129,7 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
     for (const name of ['TB', 'W', 'S', 'MFG']) { await page.getByLabel('Tool sidebar').getByRole('button', { name, exact: true }).click(); assert.equal(await overlay.isVisible(), true); }
     await page.getByLabel('Canvas zoom controls', { exact: true }).getByRole('button', { name: 'Fit', exact: true }).click();
     await page.getByRole('complementary', { name: 'Construction history' }).getByRole('button', { name: 'Panel Manager, opens Panel Manager panel', exact: true }).click();
-    await drawing(); assert.deepEqual(await snapshot(), geometry); await box();
+    await drawing(); await reopen(); assert.deepEqual(await snapshot(), geometry); await finishSketch(); await box();
     assert.equal(await overlay.getByRole('heading', { name: 'Panel Manager', exact: true }).isVisible(), true);
     const historyCount = await page.getByRole('complementary', { name: 'Construction history' }).getByRole('button').count();
     await page.getByRole('button', { name: 'Clear', exact: true }).click();
@@ -133,7 +140,7 @@ const output = process.env.WORKSPACE_BROWSER_OUTPUT;
     assert.equal(await page.getByRole('complementary', { name: 'Construction history' }).getByRole('button').count(), 0);
     assert.equal(await undo().isDisabled(), true); assert.equal(await redo().isDisabled(), true);
     await drawing(); assert.deepEqual(await snapshot(), []);
-    assert.equal(await undo().isEnabled(), true);
+    assert.equal(await undo().isEnabled(), false);
     passed.push('BOX Import/PM Apply/Finish, TB edge assignment/SVG Export, global Undo/Redo, TB/W/S/MFG availability, workflow History navigation, Fit and whole-project Clear');
 
     for (const size of [{ width: 1920, height: 1080 }, { width: 1366, height: 768 }, { width: 1024, height: 768 }]) {

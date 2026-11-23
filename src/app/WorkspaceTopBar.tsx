@@ -10,8 +10,9 @@ const modules: ReadonlyArray<{ id: WorkspaceId; label: string; available: boolea
 ];
 
 /** Placement only: App supplies the shared history commands. */
-export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, onExport, onClear, focusClearOnMount, canExport, history, onDrawingToolsHostChange }: {
+export function WorkspaceTopBar({ activeWorkspace, editingSketch, onSelectWorkspace, onImport, onExport, onClear, focusClearOnMount, canExport, history, onDrawingToolsHostChange }: {
   activeWorkspace: WorkspaceId;
+  editingSketch?: boolean;
   onSelectWorkspace: (workspace: WorkspaceId) => void;
   onImport: (event: ChangeEvent<HTMLInputElement>) => void;
   onExport: () => void;
@@ -52,7 +53,8 @@ export function WorkspaceTopBar({ activeWorkspace, onSelectWorkspace, onImport, 
     <nav className="workspace-selector" aria-label="Main workspaces">
       {modules.map(({ id, label, available }) => <button key={id} type="button"
         className={activeWorkspace === id ? 'active' : ''} aria-pressed={activeWorkspace === id}
-        disabled={!available} title={available ? undefined : `${label} is not implemented`}
+        aria-describedby={editingSketch && id === 'construction' ? 'box-sketch-restriction' : undefined}
+        disabled={!available || (editingSketch && id === 'construction')} title={editingSketch && id === 'construction' ? 'Finish the active Sketch before switching to BOX.' : available ? undefined : `${label} is not implemented`}
         onClick={() => onSelectWorkspace(id)}>
         {label}{!available && <span>Not implemented</span>}
       </button>)}

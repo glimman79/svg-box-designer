@@ -1,8 +1,8 @@
 import { WorkspaceShell } from './WorkspaceShell';
 import { createPortal } from 'react-dom';
 import { routeDrawingGeometryPointerSelection } from './drawingGeometrySelection.js';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type SetStateAction } from 'react';
-import type { DrawingDimension, DrawingDocumentV2, DrawingPoint } from './drawingTypes';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type RefObject, type SetStateAction } from 'react';
+import type { DrawingDimension, DrawingDocumentV2, DrawingEntity, DrawingSketchV2, ProjectDrawingDocument, DrawingPoint } from './drawingTypes';
 import { applyResolvedProfileClick } from './drawingProfileTool';
 import { applyResolvedLineClick } from './drawingLineTool';
 import { automaticAxisConstraintKind, diagnoseLineCommonDirection, EMPTY_LINE_SEGMENT_INTERACTION,
@@ -151,22 +151,15 @@ export type DrawingInteractionBoundary = {
   pauseProfile: () => (() => void) | undefined;
 };
 
-export function DrawingWorkspace({
-  document,
-  ownedDocumentRef,
-  publishDrawingEdit,
-  viewBox,
-  setViewBox,
-  constraintsPanelOpen,
-  setConstraintsPanelOpen,
-  interactionRef, onPendingSegment, getEpoch,
-  headerToolsHost,
-  isActive = true,
-}: {
+type DrawingWorkspaceProps = {
+  editingSketchId: string | null;
+  onNewSketch: () => void;
+  onFinishSketch: () => void;
+  onOpenSketch: (id: string) => void;
   isActive?: boolean;
-  document: DrawingDocumentV2;
+  document: ProjectDrawingDocument;
   publishDrawingEdit: (label: string, edit: DrawingMutation) => { outcome: 'accepted' | 'noop' | 'rejected' };
-  ownedDocumentRef: { readonly current: DrawingDocumentV2 };
+  ownedDocumentRef: { readonly current: DrawingDocumentV2 | null };
   interactionRef: { current: DrawingInteractionBoundary | null };
   onPendingSegment: (pending: boolean) => void;
   getEpoch: () => number;
@@ -176,7 +169,57 @@ export function DrawingWorkspace({
   setConstraintsPanelOpen: Dispatch<SetStateAction<boolean>>;
   /** Presentation target only: handlers and active state stay in this mounted workspace. */
   headerToolsHost?: HTMLDivElement | null;
-}) {
+};
+
+export function DrawingWorkspace(props: DrawingWorkspaceProps) {
+  const commandRef = useRef<HTMLButtonElement>(null);
+  const restoreCommandFocus = useRef(false);
+  useLayoutEffect(() => {
+    if (restoreCommandFocus.current) commandRef.current?.focus();
+    restoreCommandFocus.current = false;
+  }, [props.editingSketchId]);
+  const changeContext = (command: () => void) => {
+    restoreCommandFocus.current = true;
+    command();
+  };
+  return <WorkspaceShell active={props.isActive ?? true} className="drawing-workspace" label="2D Drawing workspace">
+    <DrawingCanvas key={props.editingSketchId === null ? 'neutral' : `editing:${props.editingSketchId}`} {...props} commandRef={commandRef}
+      onNewSketch={() => changeContext(props.onNewSketch)}
+      onFinishSketch={() => changeContext(props.onFinishSketch)}
+      onOpenSketch={id => changeContext(() => props.onOpenSketch(id))} />
+  </WorkspaceShell>;
+}
+
+function ReferenceSketch({ sketch }: { sketch: DrawingSketchV2 }) {
+  return <g className="drawing-reference-sketch" data-reference-sketch={sketch.id} aria-label={sketch.name}>
+    {sketch.entityOrder.map(id => {
+      const entity: DrawingEntity = (sketch.entities as Record<string, DrawingEntity>)[id];
+      if (entity.type === 'line') {
+        const line = resolveLine(sketch, entity);
+        return line && <line key={id} x1={line.start.x} y1={line.start.y} x2={line.end.x} y2={line.end.y} />;
+      }
+      if (entity.type === 'circle') {
+        const circle = resolveCircle(sketch, entity);
+        return circle && <circle key={id} cx={circle.center.x} cy={circle.center.y} r={circle.radius} />;
+      }
+      const arc = resolveArc(sketch, entity);
+      return arc && <path key={id} d={drawingArcPath(arc)} />;
+    })}
+  </g>;
+}
+
+function DrawingCanvas({
+  document, commandRef, editingSketchId, onNewSketch, onFinishSketch, onOpenSketch,
+  ownedDocumentRef,
+  publishDrawingEdit,
+  viewBox,
+  setViewBox,
+  constraintsPanelOpen,
+  setConstraintsPanelOpen,
+  interactionRef, onPendingSegment, getEpoch,
+  headerToolsHost,
+  isActive = true,
+}: DrawingWorkspaceProps & { commandRef: RefObject<HTMLButtonElement | null> }) {
   const toolSidebarRef = useRef<HTMLElement>(null);
   const canvasFrameRef = useRef<HTMLDivElement>(null);
   const constraintsPanelRef = useRef<HTMLDivElement>(null);
@@ -252,8 +295,9 @@ export function DrawingWorkspace({
   const resolvePlacementRef = useRef<(clientPoint: CoordinatePoint, ctrlHeld: boolean) => DrawingPlacementResolution | null>(() => null);
   const entitySequence = useRef(0);
   const pointSequence = useRef(0);
+  const editingDocument = documentRef.current;
   const renderDocument = geometryDrag?.candidate ?? document;
-  const activeSketch = renderDocument.sketches[renderDocument.activeSketchId];
+  const activeSketch = editingSketchId === null ? null : renderDocument.sketches[editingSketchId];
   const resolvedLines = activeSketch?.entityOrder.flatMap((id) => {
     const entity = activeSketch.entities[id];
     const line = entity?.type === 'line' ? resolveLine(activeSketch, entity) : null;
@@ -320,7 +364,7 @@ export function DrawingWorkspace({
   };
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive || !activeSketch) return;
     const activate = (event: Event) => {
       const detail = (event as CustomEvent<{ timestamp?: number; x?: number; y?: number }>).detail;
       if (detail?.timestamp !== undefined && detail.x !== undefined && detail.y !== undefined) {
@@ -386,6 +430,7 @@ export function DrawingWorkspace({
     // React has not rendered that document yet, so inference must read the
     // synchronously updated transaction snapshot rather than render closure data.
     const inferenceDocument = documentRef.current;
+    if (!inferenceDocument) return null;
     const inferenceSketch = inferenceDocument.sketches[inferenceDocument.activeSketchId];
     const inferenceLines = resolveActiveSketchLines(inferenceDocument);
     const interaction = segmentInteractionRef.current;
@@ -672,7 +717,7 @@ export function DrawingWorkspace({
   };
 
   const ctrlSnapOverride = useCadCtrlSnapOverride((held) => {
-    if (!isActive) return;
+    if (!isActive || !activeSketch) return;
     if (lastPointerClientRef.current && (activeToolRef.current === 'profile' || activeToolRef.current === 'line' || activeToolRef.current === 'circle' || activeToolRef.current === 'arc')) {
       const placement = resolvePlacementRef.current(lastPointerClientRef.current, held);
       if (activeToolRef.current === 'circle' && placement) {
@@ -719,10 +764,12 @@ export function DrawingWorkspace({
     setToolLifecycle(activateDrawingTool('select'));
     setDimensionTool({ phase: 'inactive' });
   };
-  useCadEscapeToolExit(() => { if (isActive) exitActiveTool(); });
+  useCadEscapeToolExit(() => { if (isActive && activeSketch) exitActiveTool(); });
 
   const handlePointerDown = (event: PointerEvent<SVGSVGElement>) => {
     if (panHandlers.onPointerDown(event)) return;
+    const source = documentRef.current;
+    if (!activeSketch || !source) return;
     if ((event.target as Element).closest('.drawing-geometric-constraint-marker')) return;
     const dimensionTarget = (event.target as Element).closest('.drawing-dimension-editor, .drawing-dimension-hit, .drawing-dimension-value-hit');
     const explicitDimensionValueTarget = (event.target as Element).closest('.drawing-dimension-editor, .drawing-dimension-value-hit');
@@ -752,7 +799,7 @@ export function DrawingWorkspace({
       const semantic = resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
       const selectedEntityIds = selectedGeometry.flatMap((reference) => reference.kind === 'arc' ? [reference.arcId]
         : reference.kind === 'line' ? [reference.lineId] : reference.kind === 'circle' ? [reference.circleId] : []);
-      const owner = resolveDrawingPointerOwner(documentRef.current, startModel, semantic, evidence, selectedEntityIds);
+      const owner = resolveDrawingPointerOwner(source, startModel, semantic, evidence, selectedEntityIds);
       // Ownership is decided once at the root. Capture and session creation
       // happen only after this semantic arbitration.
       if (owner.kind === 'dimension') {
@@ -773,7 +820,7 @@ export function DrawingWorkspace({
       setSelectedDimensionId(null); setSelectedGeometricConstraintId(null);
       if (route.beginDrag && owner.target) {
         event.currentTarget.setPointerCapture(event.pointerId);
-        const session: GeometryDragSession = { pointerId: event.pointerId, target: owner.target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: documentRef.current, candidate: documentRef.current, exceeded: false };
+        const session: GeometryDragSession = { pointerId: event.pointerId, target: owner.target, startClient: { x: event.clientX, y: event.clientY }, startModel, startDocument: source, candidate: source, exceeded: false };
         geometryDragRef.current = session; setGeometryDrag(session);
       }
       return;
@@ -959,6 +1006,8 @@ export function DrawingWorkspace({
 
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
     if (panHandlers.onPointerMove(event)) return;
+    const source = documentRef.current;
+    if (!activeSketch || !source) return;
     if (boxSelectionRef.current?.pointerId === event.pointerId) {
       const session = boxSelectionRef.current, matrix = svgRef.current?.getScreenCTM();
       const point = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
@@ -1047,7 +1096,7 @@ export function DrawingWorkspace({
       const element = event.target as Element, dimensionElement = element.closest<SVGElement>('[data-dimension-id]');
       const semantic = resolveDimensionCandidate({ x: event.clientX, y: event.clientY });
       const matrix = svgRef.current?.getScreenCTM(), model = matrix ? clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix) : null;
-      const owner = model ? resolveDrawingPointerOwner(documentRef.current, model, semantic, {
+      const owner = model ? resolveDrawingPointerOwner(source, model, semantic, {
         explicitPointId: element.closest<SVGCircleElement>('[data-sketch-point-id]')?.dataset.sketchPointId,
         explicitLineId: element.closest<SVGLineElement>('[data-sketch-line-id]')?.dataset.sketchLineId,
         explicitCircleId: element.closest<SVGCircleElement>('[data-sketch-circle-id]')?.dataset.sketchCircleId,
@@ -1164,6 +1213,7 @@ export function DrawingWorkspace({
   const commitDimensionEdit = () => {
     if (!editingDimensionId) return;
     const source = documentRef.current;
+    if (!source) return;
     const dimension = source.sketches[source.activeSketchId]?.dimensions[editingDimensionId];
     if (!dimension) return;
     const target = parseLinearDimension(dimensionDraft);
@@ -1200,7 +1250,9 @@ export function DrawingWorkspace({
     if (session.exceeded) {
       const rect = normalizeDrawingSelectionRect(session.originModel, session.currentModel);
       const mode = drawingSelectionMode(session.originClient.x, session.currentClient.x);
-      const currentDocument = documentRef.current, sketch = currentDocument.sketches[currentDocument.activeSketchId];
+      const currentDocument = documentRef.current;
+      if (!currentDocument) return endBoxSelection();
+      const sketch = currentDocument.sketches[currentDocument.activeSketchId];
       const circles = sketch ? sketch.entityOrder.flatMap((id) => { const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[id]; const circle = entity?.type === 'circle' ? resolveCircle(sketch, entity) : null; return circle ? [circle] : []; }) : [];
       const arcs = sketch ? sketch.entityOrder.flatMap((id) => { const entity = (sketch.entities as unknown as Record<string, import('./drawingTypes').DrawingEntity>)[id]; const arc = entity?.type === 'arc' ? resolveArc(sketch, entity) : null; return arc ? [arc] : []; }) : [];
       const qualifying = selectDrawingEntitiesInRect([...resolveActiveSketchLines(currentDocument), ...circles, ...arcs], rect, mode);
@@ -1230,7 +1282,9 @@ export function DrawingWorkspace({
     dimensionCaptureRef.current = captureTarget;
     captureDimensionPointer(captureTarget, event.pointerId);
     setSelectedDimensionId(dimension.id);
-    setDimensionDragSession(beginDimensionAnnotationDragSession(event.pointerId, dimension, { x: event.clientX, y: event.clientY }, documentRef.current));
+    const source = documentRef.current;
+    if (!source) return;
+    setDimensionDragSession(beginDimensionAnnotationDragSession(event.pointerId, dimension, { x: event.clientX, y: event.clientY }, source));
   };
 
   const releasePointerGestures = () => {
@@ -1294,7 +1348,7 @@ export function DrawingWorkspace({
   });
 
   useEffect(() => {
-    if (!isActive) return;
+    if (!isActive || !activeSketch) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof Element && (event.target.closest('input, textarea, select, [role="textbox"]')
         || (event.target as HTMLElement).isContentEditable)) return;
@@ -1325,7 +1379,7 @@ export function DrawingWorkspace({
   const yLabelValues = getVisibleAxisValues(viewBox.y, viewBox.y + viewBox.height, labelInterval);
 
   useLayoutEffect(() => {
-    if (!isActive) return;
+    if (!isActive || !activeSketch) return;
     const drawingToClientTransform = svgRef.current?.getScreenCTM();
     const overlayToClientTransform = overlaySvgRef.current?.getScreenCTM();
     if (!drawingToClientTransform || !overlayToClientTransform) {
@@ -1352,36 +1406,50 @@ export function DrawingWorkspace({
   const selectionBoxRect = boxSelection?.exceeded ? normalizeDrawingSelectionRect(boxSelection.originModel, boxSelection.currentModel) : null;
   const selectionBoxMode = boxSelection ? drawingSelectionMode(boxSelection.originClient.x, boxSelection.currentClient.x) : null;
   return (
-    <WorkspaceShell active={isActive} className="drawing-workspace" label="2D Drawing workspace">
+    <>
       <aside ref={toolSidebarRef} className="drawing-tool-sidebar" aria-label="Drawing tools" onPointerDownCapture={preventToolChromePointerSelection} onMouseDownCapture={preventToolChromeMouseSelection}>
+        {activeSketch && <>
         <button type="button" className={`cad-tool-button${activeTool === 'select' ? ' is-active' : ''}`} aria-pressed={activeTool === 'select'} onPointerDown={(event) => activateToolFromPointer('select', event)} onClick={(event) => activateToolFromKeyboard('select', event)}>Select</button>
         <button type="button" className={`cad-tool-button${activeTool === 'line' ? ' is-active' : ''}`} aria-pressed={activeTool === 'line'} onPointerDown={(event) => activateToolFromPointer('line', event)} onClick={(event) => activateToolFromKeyboard('line', event)}>Line</button>
         <button type="button" className={`cad-tool-button${activeTool === 'circle' ? ' is-active' : ''}`} aria-pressed={activeTool === 'circle'} onPointerDown={(event) => activateToolFromPointer('circle', event)} onClick={(event) => activateToolFromKeyboard('circle', event)}>Circle</button>
         <button type="button" className={`cad-tool-button${activeTool === 'arc' ? ' is-active' : ''}`} aria-pressed={activeTool === 'arc'} onPointerDown={(event) => activateToolFromPointer('arc', event)} onClick={(event) => activateToolFromKeyboard('arc', event)}>Arc</button>
         <button type="button" className={`cad-tool-button${activeTool === 'profile' ? ' is-active' : ''}`} aria-pressed={activeTool === 'profile'} onPointerDown={(event) => activateToolFromPointer('profile', event)} onClick={(event) => activateToolFromKeyboard('profile', event)}>Profile</button>
+        </>}
       </aside>
       <section className="canvas-card drawing-canvas-card workspace-canvas">
-        {isActive && headerToolsHost && createPortal(<div className="toolbar-actions drawing-header-tools" role="toolbar" aria-label="Drawing header tools" onPointerDownCapture={preventToolChromePointerSelection} onMouseDownCapture={preventToolChromeMouseSelection}>
+        {activeSketch && isActive && headerToolsHost && createPortal(<div className="toolbar-actions drawing-header-tools" role="toolbar" aria-label="Drawing header tools" onPointerDownCapture={preventToolChromePointerSelection} onMouseDownCapture={preventToolChromeMouseSelection}>
           <button type="button" className={`cad-tool-button drawing-utility-tool${activeTool === 'dimension' ? ' is-active' : ''}`} aria-pressed={activeTool === 'dimension'} title="Create a drawing dimension" onPointerDown={(event) => activateToolFromPointer('dimension', event)} onClick={(event) => activateToolFromKeyboard('dimension', event)}>Dimension</button>
           <button type="button" className={`cad-tool-button drawing-utility-tool${constraintsPanelOpen ? ' is-active' : ''}`} aria-pressed={constraintsPanelOpen} onPointerDown={(event) => { if (event.button === 0) { event.preventDefault(); setConstraintsPanelOpen((open) => !open); } }} onClick={(event) => { if (event.detail === 0) setConstraintsPanelOpen((open) => !open); }}>Constraints</button>
         </div>, headerToolsHost)}
         <div ref={canvasFrameRef} className="canvas-frame">
-          <div className="drawing-status" aria-live="polite">
-            <strong>{activeSketch?.name ?? 'No active sketch'}</strong><span>Unit: {document.unit}</span><span>Grid: {gridSpacing} mm</span><span>Active Tool: {activeTool === 'line' ? 'Line' : activeTool === 'circle' ? 'Circle' : activeTool === 'arc' ? 'Arc' : activeTool === 'profile' ? 'Profile' : activeTool === 'dimension' ? 'Dimension' : 'Select'}</span>
+          <div className="sketch-context-controls">
+            {activeSketch ? <>
+              <button type="button" ref={commandRef} onClick={onFinishSketch}>Finish Sketch</button>
+              <small id="box-sketch-restriction">Finish the active Sketch before switching to BOX.</small>
+            </> : <>
+              <button type="button" ref={commandRef} onClick={onNewSketch}>New Sketch</button>
+              {document.sketchOrder.length > 0 && <select aria-label="Reopen Sketch" value="" onChange={event => onOpenSketch(event.target.value)}>
+                <option value="" disabled>Reopen Sketch…</option>
+                {document.sketchOrder.map(id => <option key={id} value={id}>{document.sketches[id].name}</option>)}
+              </select>}
+            </>}
           </div>
+          {activeSketch && <div className="drawing-status" aria-live="polite">
+            <strong>{activeSketch.name}</strong><span>Unit: {document.unit}</span><span>Grid: {gridSpacing} mm</span><span>Active Tool: {activeTool === 'line' ? 'Line' : activeTool === 'circle' ? 'Circle' : activeTool === 'arc' ? 'Arc' : activeTool === 'profile' ? 'Profile' : activeTool === 'dimension' ? 'Dimension' : 'Select'}</span>
+          </div>}
           <div className="canvas-zoom-controls" aria-label="Drawing canvas zoom controls">
             <button type="button" onClick={() => zoom(1.25)} aria-label="Zoom in">+</button>
             <button type="button" onClick={() => zoom(0.8)} aria-label="Zoom out">−</button>
             <button type="button" onClick={() => setViewBox(initialDrawingViewBox)}>Fit</button>
           </div>
-          {constraintsPanelOpen && <div ref={constraintsPanelRef} className="drawing-constraints-panel" role="dialog" aria-label="Constraints" style={{ left: constraintsPanelPosition?.x ?? 0, top: constraintsPanelPosition?.y ?? 58, visibility: constraintsPanelPosition ? 'visible' : 'hidden' }} onPointerDown={(event) => event.stopPropagation()}>
+          {editingDocument && activeSketch && constraintsPanelOpen && <div ref={constraintsPanelRef} className="drawing-constraints-panel" role="dialog" aria-label="Constraints" style={{ left: constraintsPanelPosition?.x ?? 0, top: constraintsPanelPosition?.y ?? 58, visibility: constraintsPanelPosition ? 'visible' : 'hidden' }} onPointerDown={(event) => event.stopPropagation()}>
             <div className="drawing-constraints-header" onPointerDown={(event) => { if (event.button !== CAD_PRIMARY_BUTTON || (event.target as Element).closest('button')) return; const panel = constraintsPanelRef.current?.getBoundingClientRect(); if (!panel) return; event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); const grab = constraintsPanelGrabOffset({ x: event.clientX, y: event.clientY }, panel); constraintsPanelDragRef.current = { pointerId: event.pointerId, dx: grab.x, dy: grab.y }; }}
               onPointerMove={(event) => { const drag = constraintsPanelDragRef.current; if (!drag || drag.pointerId !== event.pointerId) return; const frame = canvasFrameRef.current?.getBoundingClientRect(); const panel = constraintsPanelRef.current?.getBoundingClientRect(); if (frame && panel) { const desired = constraintsPanelDragPosition({ x: event.clientX, y: event.clientY }, frame, { x: drag.dx, y: drag.dy }); setConstraintsPanelPosition(clampConstraintsPanelPosition(desired, frame, panel)); } }}
               onPointerUp={(event) => { if (constraintsPanelDragRef.current?.pointerId === event.pointerId) constraintsPanelDragRef.current = null; }}
               onPointerCancel={(event) => { if (constraintsPanelDragRef.current?.pointerId === event.pointerId) constraintsPanelDragRef.current = null; }}>
               <strong>Constraints</strong><button type="button" aria-label="Close Constraints" onPointerDown={(event) => event.stopPropagation()} onClick={() => setConstraintsPanelOpen(false)}>×</button>
             </div>
-            <div className="drawing-constraints-grid">{getDrawingConstraintApplicability(selectedGeometry, document).map((item) => { const catalog = DRAWING_CONSTRAINT_CATALOG.find(({ kind }) => kind === item.kind)!; return <button key={item.kind} type="button" disabled={!item.enabled} title={item.disabledReason} onClick={() => transactDocument(requireDrawingChange(current => applyDrawingConstraint(current, item)), 'Apply Constraint')}>{catalog.label}</button>; })}</div>
+            <div className="drawing-constraints-grid">{getDrawingConstraintApplicability(selectedGeometry, editingDocument).map((item) => { const catalog = DRAWING_CONSTRAINT_CATALOG.find(({ kind }) => kind === item.kind)!; return <button key={item.kind} type="button" disabled={!item.enabled} title={item.disabledReason} onClick={() => transactDocument(requireDrawingChange(current => applyDrawingConstraint(current, item)), 'Apply Constraint')}>{catalog.label}</button>; })}</div>
             <div className="drawing-constraints-actions"><button type="button" disabled={selectedGeometry.length === 0} onClick={finishConstraintSelection}>OK</button></div>
           </div>}
           <svg
@@ -1411,19 +1479,21 @@ export function DrawingWorkspace({
             </defs>
             <rect className="drawing-grid-plane" x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#drawing-grid)" />
             {gridHierarchy.majorSpacing !== null && <rect className="drawing-grid-plane drawing-major-grid-plane" x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#drawing-major-grid)" />}
-            <g className="drawing-coordinate-plane" aria-label="Drawing axes and origin">
+            {document.sketchOrder.filter(id => id !== editingSketchId).map(id =>
+              <ReferenceSketch key={id} sketch={document.sketches[id]} />)}
+            {activeSketch && <g className="drawing-coordinate-plane" aria-label="Drawing axes and origin">
               <line className="drawing-axis drawing-x-axis" aria-label="X axis" x1={viewBox.x} y1={DRAWING_ORIGIN.y} x2={viewBox.x + viewBox.width} y2={DRAWING_ORIGIN.y} />
               <line className="drawing-axis drawing-y-axis" aria-label="Y axis" x1={DRAWING_ORIGIN.x} y1={viewBox.y} x2={DRAWING_ORIGIN.x} y2={viewBox.y + viewBox.height} />
-            </g>
+            </g>}
             <g className="drawing-sketch-geometry" aria-label="Committed sketch geometry">
-              {resolvedLines.map((entity) => (
+              {activeSketch && resolvedLines.map((entity) => (
                 <line key={entity.id} data-sketch-line-id={entity.id} data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id })} data-inference-target={segmentCursor?.lineReference?.targetLineId === entity.id ? segmentCursor.lineReference.relation : undefined} className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'line', lineId: entity.id }))}${segmentCursor?.lineReference?.targetLineId === entity.id ? ' is-inference-target' : ''}${dimensionPreselection?.kind === 'line' && dimensionPreselection.lineId === entity.id ? ' is-dimension-preselected' : ''}${dimensionTool.phase === 'lineTargetSelected' && dimensionTool.line.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'line' && geometryPreselection.lineId === entity.id ? ' is-geometry-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'line', lineId: entity.id })}${geometryDrag?.target.kind === 'line' && geometryDrag.target.lineId === entity.id ? ' is-geometry-dragging' : ''}`} x1={entity.start.x} y1={entity.start.y} x2={entity.end.x} y2={entity.end.y} />
               ))}
-              {resolvedCircles.map((entity) => <circle key={entity.id} data-sketch-circle-id={entity.id}
+              {activeSketch && resolvedCircles.map((entity) => <circle key={entity.id} data-sketch-circle-id={entity.id}
                 data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'circle', circleId: entity.id })}
                 className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'circle', circleId: entity.id }))}${dimensionPreselection?.kind === 'curve' && dimensionPreselection.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'curve' && geometryPreselection.entityId === entity.id ? ' is-geometry-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'circle', circleId: entity.id })}`}
                 cx={entity.center.x} cy={entity.center.y} r={entity.radius} fill="none" vectorEffect="non-scaling-stroke" />)}
-              {resolvedArcs.map((entity) => <path key={entity.id} data-sketch-arc-id={entity.id}
+              {activeSketch && resolvedArcs.map((entity) => <path key={entity.id} data-sketch-arc-id={entity.id}
                 data-constraint-state={getGeometryConstraintVisualState(activeSketch, { kind: 'arc', arcId: entity.id })}
                 className={`drawing-geometry-entity drawing-interactive-hit ${geometryConstraintVisualClass(getGeometryConstraintVisualState(activeSketch, { kind: 'arc', arcId: entity.id }))}${dimensionPreselection?.kind === 'curve' && dimensionPreselection.entityId === entity.id ? ' is-dimension-preselected' : ''}${geometryPreselection?.kind === 'curve' && geometryPreselection.entityId === entity.id ? ' is-geometry-preselected' : ''}${drawingGeometrySelectionClass(selectedGeometry, { kind: 'arc', arcId: entity.id })}${activeArcDragId === entity.id ? ' is-geometry-dragging' : ''}`}
                 d={drawingArcPath(entity)} fill="none" vectorEffect="non-scaling-stroke" />)}
@@ -1609,7 +1679,7 @@ export function DrawingWorkspace({
               data-selection-mode={selectionBoxMode} x={selectionBoxRect.minX} y={selectionBoxRect.minY}
               width={selectionBoxRect.maxX - selectionBoxRect.minX} height={selectionBoxRect.maxY - selectionBoxRect.minY} />}
           </svg>
-          <svg ref={overlaySvgRef} className="drawing-label-overlay" viewBox={`0 0 ${viewport.width} ${viewport.height}`} aria-label="Model coordinate scale">
+          {activeSketch && <svg ref={overlaySvgRef} className="drawing-label-overlay" viewBox={`0 0 ${viewport.width} ${viewport.height}`} aria-label="Model coordinate scale">
             {editingDimension && editorAnchor && <foreignObject className="drawing-dimension-editor-frame" x={editorAnchor.x - editorWidth / 2} y={editorAnchor.y - DIMENSION_EDITOR_HEIGHT_PX + 2} width={editorWidth} height={DIMENSION_EDITOR_HEIGHT_PX}><input ref={dimensionEditorInputRef} className="drawing-dimension-editor" value={dimensionDraft} aria-label={editingDimension.kind === 'LINE_TO_LINE_ANGLE' ? 'Dimension value in degrees' : 'Dimension value in millimetres'} onChange={(event) => { setDimensionDraft(event.target.value); setDimensionEditError(null); }} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingDimensionId(null); setDimensionEditError(null); } if (event.key === 'Enter') commitDimensionEdit(); }} /></foreignObject>}
             {overlayGeometry && overlayGeometry.origin.y >= 0 && overlayGeometry.origin.y <= viewport.height && overlayGeometry.xLabels.filter(({ value }) => value !== 0).map((label) => (
               <text className="drawing-coordinate-label drawing-x-coordinate" data-label-side="below" key={`x-${label.value}`} x={label.anchor.x} y={label.anchor.y + 15} textAnchor="middle">{label.value}</text>
@@ -1648,9 +1718,9 @@ export function DrawingWorkspace({
               </g>
               </g>
             )}
-          </svg>
+          </svg>}
         </div>
       </section>
-    </WorkspaceShell>
+    </>
   );
 }

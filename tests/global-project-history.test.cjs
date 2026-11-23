@@ -20,7 +20,7 @@ test('runtime guard distinguishes sessions and publications even when a stored r
   assert.equal(service.isCurrent(attempt),false); assert.equal(service.isCurrentBoxImport(importToken),false);
   assert.equal(staleUI.transact('old blur',edit).outcome,'rejected');
   const redo = service.getHistory();
-  assert.equal(api.createDrawingTransactionAdapter(service).transact('invalid',doc=>({...doc,activeSketchId:'absent'})).outcome,'rejected');
+  assert.equal(api.projectDrawingActions(service).transact('invalid',doc=>({...doc,activeSketchId:'absent'})).outcome,'rejected');
   assert.equal(service.getHistory(),redo); assert.equal(service.getSnapshot(),original);
   const resetAttempt=service.getAttempt();
   service.clearProject(); assert.equal(service.isCurrent(resetAttempt),false);
@@ -48,16 +48,13 @@ test('Clear publishes the canonical empty project, empty stacks and fresh sessio
   service.subscribe(() => {
     notifications++;
     const { project, history, session, epoch, revision } = service.getPublication();
-    assert.equal(service.getPublication().activeWorkspace, 'construction');
+    assert.equal(service.getPublication().activeWorkspace, 'drawing');
+    assert.equal(service.getPublication().editingSketchId, null);
     assert.equal(project, service.getSnapshot());
     assert.equal(history, service.getHistory());
     assertCompleteFrame(history.current, project);
-    const [fresh] = project.constructionOperations;
-    assert.ok(fresh.id && fresh.definitionRevision);
-    assert.ok(before.project.constructionOperations.every(op => op.id !== fresh.id));
-    assert.deepEqual(project, { ...expected, constructionOperations: [
-      { ...expected.constructionOperations[0], id: fresh.id, definitionRevision: fresh.definitionRevision },
-    ] });
+    assert.deepEqual(project.constructionOperations, []);
+    assert.deepEqual(project, expected);
     assert.deepEqual(history.undo, []);
     assert.deepEqual(history.redo, []);
     assert.notEqual(session, before.session);
@@ -96,7 +93,7 @@ test('alternating real adapter edits retain 30 transitions with exact shared sou
   initial.box.svgModel.content += '<!--' + 'x'.repeat(2*1024*1024) + '-->';
   initial.box.generatedGeometrySnapshot={...initial.box.generatedGeometrySnapshot,
     generatedGeometry:Array.from({length:5000},(_,index)=>({...baseItem,id:'item-'+index}))};
-  const service=api.createGlobalProjectHistory(initial), drawing=api.createDrawingTransactionAdapter(service);
+  const service=api.createGlobalProjectHistory(initial), drawing=api.projectDrawingActions(service);
   const box=api.createBoxTransactionAdapter(service);
   const {svgModel,generatedGeometrySnapshot}=service.getSnapshot().box;
   const ids=new WeakMap(); let serial=0;
@@ -136,7 +133,7 @@ test('alternating real adapter edits retain 30 transitions with exact shared sou
 });
 
 test('rapid navigation, context changes and edits use the latest published position', () => {
-  const service = api.createGlobalProjectHistory();
+  const service = api.createGlobalProjectHistory(api.makeEmptyProjectState());
   const positions = [];
   service.subscribe(() => positions.push(service.getPublication()));
   const root = service.getSnapshot(), frame = service.getHistory().current;
@@ -166,7 +163,7 @@ test('rapid navigation, context changes and edits use the latest published posit
   assert.equal(undo(), 'construction');
   assert.ok(service.navigate('drawing'));
   assert.equal(redo(), null);
-  const drawing = api.createDrawingTransactionAdapter(service);
+  const drawing = api.projectDrawingActions(service);
   assert.equal(drawing.transact('Line', doc => api.appendEntityToActiveSketch(doc, {
     type:'line', id:'L', start:{x:0,y:0}, end:{x:1,y:1}, startPointId:'A', endPointId:'B',
   })).outcome, 'accepted');
@@ -207,12 +204,18 @@ test('navigation and traversal share large project data at full capacity', t => 
 
 test('default bootstrap and pre-C.2 populated Drawing bind complete current Sketches in stored order', () => {
   const fresh = api.createGlobalProjectHistory();
-  const [initial] = api.readSketchDefinitions(fresh.getSnapshot());
+  assert.deepEqual(api.readSketchDefinitions(fresh.getSnapshot()), []);
   assert.equal(fresh.getHistory().undo.length, 0);
-  assert.equal(fresh.getSnapshot().constructionOperations.length, 1);
-  assert.equal(initial.operation.sketchId, 'sketch-1');
-  assert.ok(initial.operation.id && initial.operation.definitionRevision);
-  assert.equal(initial.sketch, fresh.getSnapshot().drawingDocument.sketches['sketch-1']);
+  assert.equal(fresh.getSnapshot().drawingDocument.activeSketchId, null);
+
+  const legacy = api.makeEmptyProjectState();
+  const retained = api.createGlobalProjectHistory(legacy);
+  retained.navigate('drawing');
+  assert.equal(retained.getPublication().editingSketchId,null);
+  assert.ok(retained.openSketch('sketch-1'));
+  retained.finishSketch();
+  assert.equal(retained.getSnapshot().constructionOperations[0],legacy.constructionOperations[0]);
+  assert.equal(retained.getSnapshot().drawingDocument.sketches['sketch-1'],legacy.drawingDocument.sketches['sketch-1']);
 
   const { drawingDocument, box } = api.makePopulatedProjectState();
   const before = structuredClone(drawingDocument);
@@ -250,7 +253,7 @@ test('bootstrap refuses incomplete indexing and unknown or inconsistent supplied
 
 test('Undo restores a removed lifetime and recreating the same local Sketch ID allocates a new one', () => {
   const owner = api.createGlobalProjectHistory(api.makePopulatedProjectState());
-  const edit = api.createDrawingTransactionAdapter(owner);
+  const edit = api.projectDrawingActions(owner);
   const start = owner.getSnapshot(), [beta, alpha] = start.constructionOperations;
   const remove = doc => {
     const { beta: removed, ...sketches } = doc.sketches;
@@ -279,7 +282,7 @@ test('current definitions have no tape quota and untouched Sketches retain their
   const sketches = Object.fromEntries(order.map(id => [id, { ...doc.sketches.alpha, id }]));
   const owner = api.createGlobalProjectHistory({ drawingDocument: { ...doc, sketches, sketchOrder: order, activeSketchId: order[0] }, box });
   const initial = owner.getSnapshot().constructionOperations;
-  const adapter = api.createDrawingTransactionAdapter(owner);
+  const adapter = api.projectDrawingActions(owner);
   for (let i = 0; i < 36; i++) {
     const result = adapter.transact('Line', doc => api.appendEntityToActiveSketch(doc, {
       id: 'L' + i, type: 'line', start: { x: 0, y: i }, end: { x: 10, y: i }, startPointId: 'a' + i, endPointId: 'b' + i,
@@ -299,8 +302,8 @@ test('current definitions have no tape quota and untouched Sketches retain their
 });
 
 test('rejected publication, invalid Sketch changes and direct operation writes preserve the Redo branch', () => {
-  const owner = api.createGlobalProjectHistory();
-  const adapter = api.createDrawingTransactionAdapter(owner);
+  const owner = api.createGlobalProjectHistory(api.makeEmptyProjectState());
+  const adapter = api.projectDrawingActions(owner);
   const rename = doc => ({ ...doc, sketches: { ...doc.sketches,
     [doc.activeSketchId]: { ...doc.sketches[doc.activeSketchId], name: 'Edited' } } });
   assert.equal(adapter.transact('Rename', rename).outcome, 'accepted');
@@ -321,4 +324,119 @@ test('rejected publication, invalid Sketch changes and direct operation writes p
   assert.equal(owner.getPublication(), position);
   assert.equal(notifications, 0);
   assert.equal(owner.getHistory().redo.length, 1);
+});
+
+test('Sketch creation, edits and navigation restore exact frames while session changes preserve history', () => {
+  const owner = api.createGlobalProjectHistory();
+  const position = owner.getPublication;
+  const project = owner.getSnapshot;
+  const line = doc => api.appendEntityToActiveSketch(doc, {
+    id:'member', type:'line', start:{x:0,y:0}, end:{x:12,y:3}, startPointId:'a', endPointId:'b',
+  });
+  const circle = doc => api.appendCircleToActiveSketch(doc, {id:'member', type:'circle', center:{x:4,y:6},radius:3});
+  const initial = project();
+  assert.equal(owner.newSketch(), false);
+  assert.ok(owner.navigate('drawing'));
+  const neutral = api.createDrawingTransactionAdapter(owner);
+  assert.equal(neutral.transact('Line',line).outcome,'rejected');
+  const published = [];
+  owner.subscribe(() => published.push(position()));
+  assert.ok(owner.newSketch());
+  const a = position().editingSketchId;
+  const first = project();
+  assert.equal(published.length,1);
+  assert.equal(published[0].editingSketchId,a);
+  assert.equal(owner.getHistory().undo.length,2);
+  const editA = api.createDrawingTransactionAdapter(owner);
+  assert.equal(editA.transact('Line',line).outcome,'accepted');
+  const withLine = project();
+  assert.ok(owner.finishSketch());
+  assert.equal(project(),withLine);
+  assert.ok(owner.newSketch());
+  const b = position().editingSketchId;
+  const second = project();
+  assert.notEqual(a,b);
+  assert.notEqual(second.constructionOperations[0].id,second.constructionOperations[1].id);
+  assert.deepEqual(second.drawingDocument.sketchOrder,[a,b]);
+  assert.deepEqual(second.drawingDocument.sketches[b].entities,{});
+  assert.equal(second.drawingDocument.sketches[a],withLine.drawingDocument.sketches[a]);
+  assert.equal(editA.transact('stale',line).outcome,'rejected');
+  const editB = api.createDrawingTransactionAdapter(owner);
+  assert.equal(editB.transact('foreign member',doc => ({...doc,sketches:{...doc.sketches,
+    [a]:{...doc.sketches[a],name:'Wrong target'}}})).outcome,'noop');
+  assert.equal(project(),second);
+  assert.equal(editB.transact('Circle',circle).outcome,'accepted');
+  const complete = project();
+  assert.equal(complete.constructionOperations[0],withLine.constructionOperations[0]);
+  owner.traverse('undo');
+  const redoPosition = position();
+  assert.equal(owner.navigate('construction',() => assert.fail('settled blocked navigation')),false);
+  assert.equal(owner.openSketch(a),false);
+  assert.equal(owner.newSketch(),false);
+  assert.equal(owner.isCurrentBoxImport(owner.beginBoxImport()),false);
+  assert.equal(position(),redoPosition);
+  owner.traverse('redo');
+  assert.ok(owner.finishSketch());
+  const history = owner.getHistory();
+  assert.equal(owner.openSketch('missing'),false);
+  assert.ok(owner.openSketch(a));
+  assert.equal(project(),complete);
+  assert.equal(owner.getHistory(),history);
+  const reopened = api.createDrawingTransactionAdapter(owner);
+  assert.equal(reopened.documentRef.current.activeSketchId,a);
+  assert.equal(editA.transact('expired session',line).outcome,'rejected');
+  assert.equal(reopened.transact('Edit Sketch 1',doc => ({...doc, sketches:{...doc.sketches,
+    [a]:{...doc.sketches[a], name:'Renamed'}}})).outcome,'accepted');
+  const renamed = project();
+  assert.equal(renamed.constructionOperations[0].id,first.constructionOperations[0].id);
+  assert.notEqual(renamed.constructionOperations[0].definitionRevision,complete.constructionOperations[0].definitionRevision);
+  assert.equal(renamed.constructionOperations[1],complete.constructionOperations[1]);
+  assert.ok(owner.finishSketch());
+  assert.ok(owner.navigate('construction'));
+  const frames = [initial, initial, first, withLine, second, complete, renamed, renamed];
+  for (let i=frames.length-2;i>=0;i--) {
+    assert.ok(owner.traverse('undo'));
+    assert.equal(project(),frames[i]);
+    assert.equal(owner.getHistory().current.drawingDocument,frames[i].drawingDocument);
+    assert.equal(position().editingSketchId,null);
+  }
+  for (const frame of frames.slice(1)) {
+    assert.ok(owner.traverse('redo'));
+    assert.equal(project(),frame);
+    assert.equal(owner.getHistory().current.constructionOperations,frame.constructionOperations);
+  }
+  assert.equal(owner.traverse('undo'),'drawing');
+  assert.ok(owner.openSketch(b));
+  assert.equal(owner.traverse('redo'),'construction');
+  assert.equal(position().editingSketchId,null);
+});
+
+test('Undo creation invalidates editing, a branch gets new identities, and V2 reopen preserves legacy definitions', () => {
+  const seed = api.makePopulatedProjectState();
+  const owner = api.createGlobalProjectHistory(seed);
+  const original = owner.getSnapshot();
+  owner.navigate('drawing');
+  for (const id of original.drawingDocument.sketchOrder) {
+    assert.ok(owner.openSketch(id));
+    assert.equal(api.createDrawingTransactionAdapter(owner).documentRef.current.sketches[id],original.drawingDocument.sketches[id]);
+    assert.ok(owner.finishSketch());
+    assert.equal(owner.getSnapshot(),original);
+    assert.equal(owner.getHistory().undo.length,1);
+  }
+  owner.newSketch();
+  const beforeUndo = owner.getSnapshot();
+  const oldId = owner.getPublication().editingSketchId;
+  owner.traverse('undo');
+  assert.equal(owner.getSnapshot(),original);
+  assert.equal(owner.getPublication().editingSketchId,null);
+  assert.ok(owner.newSketch());
+  const branched = owner.getSnapshot();
+  assert.notEqual(owner.getPublication().editingSketchId,oldId);
+  assert.notEqual(branched.constructionOperations.at(-1).id,beforeUndo.constructionOperations.at(-1).id);
+  assert.equal(owner.traverse('redo'),null);
+  assert.ok(owner.clearProject());
+  assert.deepEqual(owner.getSnapshot().drawingDocument.sketchOrder,[]);
+  assert.deepEqual(owner.getSnapshot().constructionOperations,[]);
+  assert.equal(owner.getPublication().editingSketchId,null);
+  assert.equal(owner.getPublication().activeWorkspace,'drawing');
 });

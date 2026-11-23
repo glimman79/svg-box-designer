@@ -1,5 +1,9 @@
 # SVG Box Designer — Project History
 
+## Stage C.2 PR 2 — Explicit finish before BOX (2026-11-23)
+
+PR #643 established global edit history. The user verified reversible navigation after #644, and #645 merged one permanent operation per Sketch. On November 23 the user narrowed the November 20 switching rule so a deliberate switch cannot interrupt Sketch editing. Finish Sketch now preserves the definition and returns to neutral Drawing. A subsequent switch occupies one history step. Restoration can still open BOX without recording another switch. This PR implements and tests the new behavior. User browser acceptance is pending. [Runtime policy](docs/SKETCH_OPERATION_FOUNDATION.md#editing-context)
+
 ## Stage C.2 PR 1 — Sketch operation foundation (2026-11-20)
 
 Drawing member edits now maintain the existing Sketch operation through the shared project owner. Populated V2 documents enter with one current baseline definition per ordered Sketch. The existing global timeline restores each operation together with its Sketch. [Sketch operation contract](docs/SKETCH_OPERATION_FOUNDATION.md)

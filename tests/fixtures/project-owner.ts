@@ -27,3 +27,11 @@ export * from '../../src/app/connectionViewModel';
 export * from '../../src/app/globalProjectHistory';
 export * from '../../src/app/projectDataEqual';
 export * from '../../src/app/constructionOperations';
+
+import { stageDrawingAction, type DrawingAction } from '../../src/app/drawingTransactionAdapter';
+import type { GlobalProjectHistory } from '../../src/app/globalProjectHistory';
+
+/** Exercise whole-document admission and staging independently of the mounted CAD editing session. */
+export const projectDrawingActions = (owner: GlobalProjectHistory) => ({
+  transact: (label: string, action: DrawingAction) => owner.transact('drawing', label, tx => stageDrawingAction(tx, action)),
+});

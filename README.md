@@ -11,7 +11,9 @@ SVG Box Designer is a browser-based React application for drawing semantic 2D sk
 One compact bottom History region is shared by Drawing and BOX. BOX retains its workflow-group
 navigation; Drawing shows that persistent operation history is not yet available.
 
-Drawing and BOX share one 30-step Undo/Redo history. PR #644 added reversible Drawing/BOX switches. For example, after drawing a Line and opening BOX, Undo returns to Drawing with the Line visible. Undo again removes the Line. A new switch after Undo starts a new branch. Replacing an SVG is a BOX edit. Clear Without Saving empties both workspaces and starts a fresh history in BOX. [Manual checks](docs/GLOBAL_HISTORY_CUTOVER.md#user-testing--user-visible-changes)
+**Sketch editing (pending user browser acceptance).** Open 2D Drawing to see the grid. Choose **New Sketch** to draw with axes, dimensions and constraints. **Finish Sketch** keeps the geometry on the canvas and enables BOX. Use **Reopen Sketch** to edit an earlier Sketch. Other Sketches remain visible as references. [Editing and compatibility](docs/SKETCH_OPERATION_FOUNDATION.md#editing-context)
+
+Drawing and BOX share one 30-step Undo/Redo history. PR #644 added reversible Drawing/BOX switches. For example, after drawing a Line, finishing its Sketch and opening BOX, Undo returns to Drawing with the Line visible. Undo again removes the Line. A new switch after Undo starts a new branch. Replacing an SVG is a BOX edit. Clear Without Saving empties both workspaces and starts a fresh history in neutral Drawing. [Manual checks](docs/GLOBAL_HISTORY_CUTOVER.md#user-testing--user-visible-changes)
 
 **Approved future direction — not implemented:** an optional connected workflow of
 **3D Modeling → Unfold → 2D Drawing → BOX / Construction**, with BOX/Puzzle as parallel destinations
@@ -31,12 +33,7 @@ The asynchronous action lifecycle, other construction operation kinds, native pe
 [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) and
 [proposed development stages](ROADMAP.md#4-connected-product-development).
 
-The [Multi-Sketch / Unfold / BOX specification](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md) details future
-New Sketch / Finish Sketch, metadata continuity
-and selective export of one or multiple eligible Sketch groups. BOX input recognition
-uses relevant visible canvas geometry; export selection is separate. Direct
-**2D Drawing → BOX / Construction** remains supported without 3D or Unfold.
-These capabilities are not implemented; compatibility and grouping design remain open.
+The Drawing editing context also supports projects authored entirely in 2D. The connected-product plan covers future BOX input recognition, metadata continuity and selective export of eligible Sketch groups. [Multi-Sketch / Unfold / BOX specification](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md)
 
 The locked Arc contract—including three-point creation, endpoint-pivot semantics, and
 the shared Circle/Arc foundation—is authoritative in
