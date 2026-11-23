@@ -33,16 +33,24 @@ const assert = require('node:assert/strict');
       await route.fulfill({contentType:'text/javascript',body:`
         import { createGlobalProjectHistory as create } from ${JSON.stringify(url.href)};
         export function createGlobalProjectHistory() {
-          const service = create(), ids = new WeakMap();
+          const service = create(), ids = new WeakMap(), boundSketches = new WeakMap();
           let sequence = 0;
           const id = node => { if (!ids.has(node)) ids.set(node,++sequence); return ids.get(node); };
           const inspect = () => {
             const {current, undo, redo} = service.getHistory(), root = service.getSnapshot();
-            if (current.drawingDocument !== root.drawingDocument ||
+            const ops = root.constructionOperations;
+            if (current.constructionOperations !== ops || ops.length !== 1 ||
+                ops[0].sketchId !== root.drawingDocument.activeSketchId ||
+                !root.drawingDocument.sketches[ops[0].sketchId] || current.drawingDocument !== root.drawingDocument ||
                 Object.entries({...current.box.data,...current.box.context}).some(([key,value])=>root.box[key] !== value))
               throw Error('Owner and cursor have diverged');
+            const sketch = root.drawingDocument.sketches[ops[0].sketchId];
+            if (boundSketches.has(ops[0]) && boundSketches.get(ops[0]) !== sketch)
+              throw Error('Published operation still describes the previous Sketch');
+            boundSketches.set(ops[0], sketch);
             const {session,revision,epoch,history,activeWorkspace} = service.getPublication();
             return { activeWorkspace, session:id(session), revision, epoch, history:id(history), frame:id(current), root:id(root), output:id(root.box.generatedGeometrySnapshot),
+              operations:id(ops), operationId:ops[0].id, definition:ops[0].definitionRevision,
               drawing:id(root.drawingDocument), undo:undo.length, redo:redo.length,
               action:undo.at(-1)?.transaction, label:undo.at(-1)?.transaction.label };
           };
@@ -82,6 +90,8 @@ const assert = require('node:assert/strict');
       const current = await state();
       assert.equal(current.frame,snapshot.frame);
       assert.equal(current.root,snapshot.root);
+      assert.equal(current.operations,snapshot.operations);
+      assert.equal(current.definition,snapshot.definition);
       assert.equal(current.activeWorkspace,workspace === box ? 'construction' : 'drawing');
       assert.equal(await button(workspace).getAttribute('aria-pressed'),'true');
     };
@@ -167,6 +177,10 @@ const assert = require('node:assert/strict');
     await input.fill('120'); await input.press('Control+z'); assert.deepEqual(await state(),dimension);
     await input.fill('120'); await input.press('Enter');
     const solved=await state(); assert.equal(solved.label,'Edit Dimension'); assert.notEqual(solved.drawing,baseLine.drawing);
+    assert.equal(circle.operationId, initialPosition.operationId);
+    assert.equal(solved.operationId, circle.operationId);
+    assert.notEqual(circle.definition, initialPosition.definition);
+    assert.notEqual(solved.definition, dimension.definition);
     const appliedCalls=await calls();
     for(const name of Object.values(monitored).flat()) assert.ok(appliedCalls[name]>0,name+' exercised before restore');
     await undo.click(); await expectFrame(dimension,drawing); await undo.click(); await expectFrame(applied,drawing);
@@ -299,7 +313,10 @@ const assert = require('node:assert/strict');
     // Each canonical factory call timestamps its empty manufacturing snapshot.
     assert.ok(Number.isFinite(Date.parse(cleared.box.generatedGeometrySnapshot.metadata.createdTimestamp)));
     initial.box.generatedGeometrySnapshot.metadata.createdTimestamp = cleared.box.generatedGeometrySnapshot.metadata.createdTimestamp;
-    assert.deepEqual(cleared, initial);
+    assert.notEqual(cleared.constructionOperations[0].id, initial.constructionOperations[0].id);
+    assert.notEqual(cleared.constructionOperations[0].definitionRevision, initial.constructionOperations[0].definitionRevision);
+    assert.deepEqual(cleared, { ...initial, constructionOperations: [{ ...initial.constructionOperations[0],
+      id: cleared.constructionOperations[0].id, definitionRevision: cleared.constructionOperations[0].definitionRevision }] });
     assert.equal(await button(box).getAttribute('aria-pressed'), 'true');
     assert.equal(await undo.isDisabled(), true); assert.equal(await redo.isDisabled(), true);
     assert.equal(await clear.evaluate(el => el === document.activeElement), true);

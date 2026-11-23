@@ -22,7 +22,7 @@ const stage = (transaction: ProjectTransaction, action: DrawingAction): ProjectT
   const next = action(current);
   if (next === null) return 'reject';
   if (next === current) return 'noop';
-  transaction.update(() => ({ drawingDocument: next, box: frame.box }));
+  transaction.update(() => ({ ...frame, drawingDocument: next }));
   return 'accept';
 };
 

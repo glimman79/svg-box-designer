@@ -1,8 +1,12 @@
 # SVG Box Designer — Project Master
 
-## Stage C PR 8 — Reversible workspace navigation in review
+## Stage C.2 PR 1 — Sketch operation foundation
 
-Drawing and BOX share one timeline of 30 transitions. Each deliberate switch records its source and destination. Undo of a switch opens its source with the same project data. Redo opens its destination. An edit restores its complete project frame and activates its associated module. SVG import remains a BOX edit. Clear Without Saving starts a fresh empty session in BOX. Personal browser acceptance of PR 8 follows merge. [Runtime architecture and validation](docs/GLOBAL_HISTORY_CUTOVER.md)
+Each current Sketch has one permanent operation, including the initial Sketch. Member edits update its bound Drawing definition and revision in one global transaction. This internal slice prepares the data for future Sketch controls, UI-4 and native persistence. [Sketch operation contract](docs/SKETCH_OPERATION_FOUNDATION.md)
+
+## Stage C PR 8 — Reversible workspace navigation
+
+Drawing and BOX share one timeline of 30 transitions. Each deliberate switch records its source and destination. Undo of a switch opens its source with the same project data. Redo opens its destination. An edit restores its complete project frame and activates its associated module. SVG import remains a BOX edit. Clear Without Saving starts a fresh empty session in BOX. PR #644 merged and the user verified its navigation behavior. [Runtime architecture and validation](docs/GLOBAL_HISTORY_CUTOVER.md)
 
 ## Stage C PR 6 construction checkpoint
 
@@ -37,21 +41,19 @@ and permanent operations/native persistence/dependencies remain deferred.
 ## Approved target update (2026-11-17)
 
 **APPROVED TARGET — NOT IMPLEMENTED:** independent visible Sketches with explicit
-New Sketch / Finish Sketch and one editable context; one permanent operation per Sketch;
+New Sketch / Finish Sketch and one editable context;
 optional **3D Modeling → Unfold → 2D Drawing → BOX / Construction**, alongside direct
 **2D Drawing → BOX / Construction**. BOX recognizes relevant visible canvas geometry;
 export separately selects one or multiple eligible Sketch groups. Thickness, material,
 panel identity/provenance and validity must survive the 3D-derived downstream path.
 The [scoped future specification](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md) owns the full requirements,
-classification, source baseline and open design questions. Exact grouping, migration,
-metadata schema and 2D-edit/upstream policy remain undecided.
+classification, source baseline and open design questions. Export grouping, native migration, metadata schema and 2D-edit/upstream policy remain undecided.
 
-Current Drawing initializes a Sketch for immediate authoring. Sketch maps/IDs are
-implemented foundations, not the planned multi-Sketch interaction. PR #635 is merged
-at verified main `99550ece086ab5c88d6380d594288a7af62f74aa`; it supplies the shared History
-presentation only. Permanent operations, global Undo, native persistence, 3D/Unfold and
-selective Sketch-group export remain unavailable. Existing module-local Undo/Redo,
-BOX behavior, A–G statuses and accepted CAD evidence are unchanged.
+Current Drawing initializes a Sketch for immediate authoring. The project owns an
+ordered operation for each Sketch. The shared History region introduced by #635
+continues to present BOX workflow groups and the Drawing availability message.
+Global Undo/Redo is available in both workspaces. Native persistence, 3D/Unfold and
+selective Sketch-group export remain future work.
 
 ## UI-3 — Unified Construction History (2026-11-13)
 
@@ -254,9 +256,9 @@ UI-3/UI-4 and all A–G stage statuses remain unchanged.
 
 Construction uses `SvgDocumentModel`, which preserves SVG root information, source edges, panels, contours, containment, dimensions, and diagnostics. Panel Manager adds panel identity/thickness authority needed by construction.
 
-Drawing uses a separate versioned `DrawingDocumentV2`. It contains ordered sketches, stable points and entities, dimensions, and geometric constraints. On the PR 7 branch, the application subscribes to one project owner through `useSyncExternalStore`. Both adapters publish accepted Drawing and BOX data with the global cursor. Restoration reuses the stored SVG, generated operations, authority metadata and manufacturing settings. Native persistence and permanent operations remain future work. [Global execution history](docs/GLOBAL_HISTORY_CUTOVER.md).
+Drawing uses a separate versioned `DrawingDocumentV2`. It contains ordered sketches, stable points and entities, dimensions, and geometric constraints. The application subscribes to one project owner through `useSyncExternalStore`. Both adapters publish accepted Drawing and BOX data with the global cursor. Restoration reuses the stored SVG, generated operations, authority metadata and manufacturing settings. Permanent Sketch definitions are included in those project frames. Native persistence remains future work. [Global execution history](docs/GLOBAL_HISTORY_CUTOVER.md).
 
-UI-1 keeps the workspace shells mounted across navigation. On the PR 7 branch, the toolbar and keyboard traverse the same application-level history from either workspace. The mounted Drawing and BOX workspaces delegate every accepted edit to their adapters. PR 8 records ordinary switches in that timeline.
+UI-1 keeps the workspace shells mounted across navigation. The toolbar and keyboard traverse the same application-level history from either workspace. The mounted Drawing and BOX workspaces delegate every accepted edit to their adapters. PR 8 records ordinary switches in that timeline.
 
 A versioned native project format, persisted operation definitions and cross-workspace references remain planned. Native Open is intended to start a fresh execution history. Decisions about serializing the active module, selection and viewport remain open.
 
@@ -797,7 +799,7 @@ remain planned; algorithms, joint types, manufacturing settings and UI require d
 ## 8. Current limitations and documentation boundaries
 
 - Multi-Sketch authoring, 3D Modeling, Unfold, selective Sketch-group export, Puzzle, native Save/Open and cross-module transfer/dependencies remain future work.
-- The PR 7 global execution history awaits review, merge and manual acceptance. The previously deferred Arc empty/blind Undo case remains open.
+- PR #643 merged global execution history and #644 added user-verified reversible workspace navigation. The previously deferred Arc empty/blind Undo case remains open.
 - Drawing supports accepted Profile, standalone Line, Circle Stage 1, and Arc Stage 1 workflows; it does not yet provide the full prospective CAD tool catalog.
 - The Constraints panel intentionally displays disabled future choices alongside implemented ones.
 - Box v1.2 remains the locked release baseline; post-v1.2 Drawing features are implemented without a new declared product release.

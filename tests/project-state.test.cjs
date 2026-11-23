@@ -212,20 +212,15 @@ test('captures freeze the complete detached graph', () => {
 
 test('runtime/UI fields supplied beside the explicit source fields are not captured', () => {
   const source = makeEmptyProjectState();
+  const expected = structuredClone(source);
   source.activeWorkspace = 'drawing';
   source.box.activeTool = 'TB';
   source.box.hoveredProfileOffsetProfileId = 'hover';
   source.box.timer = () => { throw new Error('runtime handle must not be cloned'); };
   source.box.selectedLabelId = 'legacy alias';
   const restored = projectProjectState(captureProjectState(source));
-  assert.deepEqual(restored, makeEmptyProjectWithSnapshot(source.box.generatedGeometrySnapshot));
+  assert.deepEqual(restored, expected);
 });
-
-function makeEmptyProjectWithSnapshot(snapshot) {
-  const source = makeEmptyProjectState();
-  source.box.generatedGeometrySnapshot = snapshot;
-  return source;
-}
 
 test('capture/projection execute with all runtime imports, clocks and generators unavailable', () => {
   const forbidden = () => { throw new Error('capture/projection invoked an external service'); };

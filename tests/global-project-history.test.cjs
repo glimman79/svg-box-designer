@@ -52,7 +52,12 @@ test('Clear publishes the canonical empty project, empty stacks and fresh sessio
     assert.equal(project, service.getSnapshot());
     assert.equal(history, service.getHistory());
     assertCompleteFrame(history.current, project);
-    assert.deepEqual(project, expected);
+    const [fresh] = project.constructionOperations;
+    assert.ok(fresh.id && fresh.definitionRevision);
+    assert.ok(before.project.constructionOperations.every(op => op.id !== fresh.id));
+    assert.deepEqual(project, { ...expected, constructionOperations: [
+      { ...expected.constructionOperations[0], id: fresh.id, definitionRevision: fresh.definitionRevision },
+    ] });
     assert.deepEqual(history.undo, []);
     assert.deepEqual(history.redo, []);
     assert.notEqual(session, before.session);
@@ -198,4 +203,122 @@ test('navigation and traversal share large project data at full capacity', t => 
     assert.equal(measured.traverse(direction), null);
   }
   t.diagnostic(`10000 switches ${navigationMs.toFixed(2)} ms, 60 traversals ${(performance.now()-traversing).toFixed(2)} ms, retained heap delta ${retained} bytes (explicit GC ${!!global.gc})`);
+});
+
+test('default bootstrap and pre-C.2 populated Drawing bind complete current Sketches in stored order', () => {
+  const fresh = api.createGlobalProjectHistory();
+  const [initial] = api.readSketchDefinitions(fresh.getSnapshot());
+  assert.equal(fresh.getHistory().undo.length, 0);
+  assert.equal(fresh.getSnapshot().constructionOperations.length, 1);
+  assert.equal(initial.operation.sketchId, 'sketch-1');
+  assert.ok(initial.operation.id && initial.operation.definitionRevision);
+  assert.equal(initial.sketch, fresh.getSnapshot().drawingDocument.sketches['sketch-1']);
+
+  const { drawingDocument, box } = api.makePopulatedProjectState();
+  const before = structuredClone(drawingDocument);
+  const service = api.createGlobalProjectHistory({ drawingDocument, box });
+  const project = service.getSnapshot();
+  assert.deepEqual(project.drawingDocument, before);
+  assert.equal(project.drawingDocument, drawingDocument);
+  assert.deepEqual(service.getHistory().undo, []);
+  const definitions = api.readSketchDefinitions(project);
+  assert.deepEqual(definitions.map(d => d.operation.sketchId), ['beta', 'alpha']);
+  assert.equal(new Set(definitions.map(d => d.operation.id)).size, 2);
+  for (const { operation, sketch } of definitions) {
+    assert.equal(sketch, drawingDocument.sketches[operation.sketchId]);
+    assert.equal(operation.kind, 'sketch');
+    assert.equal(operation.module, 'drawing');
+    assert.equal(operation.kindVersion, 1);
+  }
+  const existing = JSON.parse(JSON.stringify(project));
+  assert.deepEqual(api.createGlobalProjectHistory(existing).getSnapshot().constructionOperations, project.constructionOperations);
+});
+
+test('bootstrap refuses incomplete indexing and unknown or inconsistent supplied operations', () => {
+  assert.throws(() => api.createGlobalProjectHistory(null), TypeError);
+  const { drawingDocument, box, constructionOperations } = api.makePopulatedProjectState();
+  for (const order of [['alpha'], ['alpha', 'alpha'], ['alpha', 'other']]) {
+    assert.throws(() => api.createGlobalProjectHistory({ drawingDocument: { ...drawingDocument, sketchOrder: order }, box }));
+  }
+  for (const patch of [{ kind: 'future' }, { kindVersion: 2 }, { id: constructionOperations[1].id }, { sketchId: 'missing' }]) {
+    assert.throws(() => api.createGlobalProjectHistory({ drawingDocument, box,
+      constructionOperations: [{ ...constructionOperations[0], ...patch }, constructionOperations[1]] }));
+  }
+  assert.throws(() => api.createGlobalProjectHistory({ drawingDocument, box, constructionOperations: [] }));
+  assert.throws(() => api.createGlobalProjectHistory({ drawingDocument: { ...drawingDocument, schemaVersion: 1 }, box }));
+});
+
+test('Undo restores a removed lifetime and recreating the same local Sketch ID allocates a new one', () => {
+  const owner = api.createGlobalProjectHistory(api.makePopulatedProjectState());
+  const edit = api.createDrawingTransactionAdapter(owner);
+  const start = owner.getSnapshot(), [beta, alpha] = start.constructionOperations;
+  const remove = doc => {
+    const { beta: removed, ...sketches } = doc.sketches;
+    return { ...doc, sketches, sketchOrder: ['alpha'] };
+  };
+  assert.equal(edit.transact('Remove Sketch', remove).outcome, 'accepted');
+  assert.deepEqual(owner.getSnapshot().constructionOperations, [alpha]);
+  owner.traverse('undo');
+  assert.equal(owner.getSnapshot(), start);
+  owner.traverse('redo');
+  const recreate = doc => ({ ...doc, sketches: { ...doc.sketches, beta: start.drawingDocument.sketches.beta },
+    sketchOrder: [...doc.sketchOrder, 'beta'] });
+  assert.equal(edit.transact('Create Sketch', recreate).outcome, 'accepted');
+  const [survivor, replacement] = owner.getSnapshot().constructionOperations;
+  assert.equal(survivor, alpha);
+  assert.equal(replacement.sketchId, beta.sketchId);
+  assert.notEqual(replacement.id, beta.id);
+  owner.traverse('undo');
+  assert.equal(edit.transact('Create Sketch on new branch', recreate).outcome, 'accepted');
+  assert.notEqual(owner.getSnapshot().constructionOperations[1].id, replacement.id);
+});
+
+test('current definitions have no tape quota and untouched Sketches retain their operation objects', () => {
+  const { drawingDocument: doc, box } = api.makePopulatedProjectState();
+  const order = Array.from({ length: 260 }, (_, i) => 'sketch-' + i);
+  const sketches = Object.fromEntries(order.map(id => [id, { ...doc.sketches.alpha, id }]));
+  const owner = api.createGlobalProjectHistory({ drawingDocument: { ...doc, sketches, sketchOrder: order, activeSketchId: order[0] }, box });
+  const initial = owner.getSnapshot().constructionOperations;
+  const adapter = api.createDrawingTransactionAdapter(owner);
+  for (let i = 0; i < 36; i++) {
+    const result = adapter.transact('Line', doc => api.appendEntityToActiveSketch(doc, {
+      id: 'L' + i, type: 'line', start: { x: 0, y: i }, end: { x: 10, y: i }, startPointId: 'a' + i, endPointId: 'b' + i,
+    }));
+    assert.equal(result.outcome, 'accepted');
+  }
+  assert.equal(owner.getHistory().undo.length, 30);
+  const final = owner.getSnapshot().constructionOperations;
+  assert.deepEqual(final.map(op => op.id), initial.map(op => op.id));
+  assert.notEqual(final[0].definitionRevision, initial[0].definitionRevision);
+  for (let i = 1; i < final.length; i++) assert.equal(final[i], initial[i]);
+  for (const workspace of ['drawing', 'construction', 'drawing']) assert.ok(owner.navigate(workspace));
+  for (const direction of ['undo', 'undo', 'redo', 'redo']) {
+    owner.traverse(direction);
+    assert.equal(owner.getSnapshot().constructionOperations, final);
+  }
+});
+
+test('rejected publication, invalid Sketch changes and direct operation writes preserve the Redo branch', () => {
+  const owner = api.createGlobalProjectHistory();
+  const adapter = api.createDrawingTransactionAdapter(owner);
+  const rename = doc => ({ ...doc, sketches: { ...doc.sketches,
+    [doc.activeSketchId]: { ...doc.sketches[doc.activeSketchId], name: 'Edited' } } });
+  assert.equal(adapter.transact('Rename', rename).outcome, 'accepted');
+  owner.traverse('undo');
+  const position = owner.getPublication();
+  let notifications = 0;
+  owner.subscribe(() => notifications++);
+  assert.equal(adapter.transact('Same document', doc => doc).outcome, 'noop');
+  assert.equal(adapter.transact('Missing order', doc => ({ ...doc, sketchOrder: [] })).outcome, 'rejected');
+  assert.equal(owner.transact('drawing', 'Expired attempt', tx => {
+    tx.update(frame => ({ ...frame, drawingDocument: rename(frame.drawingDocument) }));
+    return 'accept';
+  }, () => false).outcome, 'rejected');
+  assert.equal(owner.transact('drawing', 'Replace lifetime', tx => {
+    tx.update(frame => ({ ...frame, constructionOperations: [] }));
+    return 'accept';
+  }).outcome, 'rejected');
+  assert.equal(owner.getPublication(), position);
+  assert.equal(notifications, 0);
+  assert.equal(owner.getHistory().redo.length, 1);
 });

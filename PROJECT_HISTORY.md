@@ -1,8 +1,12 @@
 # SVG Box Designer — Project History
 
+## Stage C.2 PR 1 — Sketch operation foundation (2026-11-20)
+
+Drawing member edits now maintain the existing Sketch operation through the shared project owner. Populated V2 documents enter with one current baseline definition per ordered Sketch. The existing global timeline restores each operation together with its Sketch. [Sketch operation contract](docs/SKETCH_OPERATION_FOUNDATION.md)
+
 ## Stage C PR 8 — Navigation policy revision (2026-11-20)
 
-The user verified Line Undo/Redo on merged #643 and revised the November 9 policy for deliberate Drawing/BOX switches. PR 8 records both ends of each switch on the shared timeline. Earlier entries below describe the policy in effect at their dates. Permanent Sketch operations and Drawing-to-BOX transfer remain future work. [Contract and manual acceptance](docs/GLOBAL_HISTORY_CUTOVER.md)
+The user verified Line Undo/Redo on merged #643 and revised the November 9 policy for deliberate Drawing/BOX switches. PR #644 merged and the user verified both directions of workspace navigation on the shared timeline. Earlier entries below describe the policy in effect at their dates. At that checkpoint, permanent Sketch operations and Drawing-to-BOX transfer were deferred. [Contract and manual acceptance](docs/GLOBAL_HISTORY_CUTOVER.md)
 
 ## Stage C PR 7 — Global execution cutover (2026-11-19, in review)
 
