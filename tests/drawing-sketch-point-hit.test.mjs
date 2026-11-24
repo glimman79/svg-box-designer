@@ -22,7 +22,7 @@ const document = { schemaVersion: 2, unit: 'mm', activeSketchId: 's', sketchOrde
 } } };
 
 const markup = renderToStaticMarkup(React.createElement(DrawingWorkspace, {
-  document, setDocument() {}, viewBox: { x: -400, y: -300, width: 800, height: 600 }, setViewBox() {},
+  document, editingSketchId: document.activeSketchId, ownedDocumentRef: {current: document}, getEpoch: () => 0, setDocument() {}, viewBox: { x: -400, y: -300, width: 800, height: 600 }, setViewBox() {},
   constraintsPanelOpen: true, setConstraintsPanelOpen() {},
 }));
 
@@ -48,7 +48,7 @@ arcSketch.points.arcCenter = { id: 'arcCenter', x: 50, y: 0 };
 arcSketch.entities = { arc: { id: 'arc', type: 'arc', centerPointId: 'arcCenter', radius: 50, startPointId: 'shared', endPointId: 'p2', orientation: 'CCW' } };
 arcSketch.entityOrder = ['arc'];
 const arcMarkup = renderToStaticMarkup(React.createElement(DrawingWorkspace, {
-  document: arcDocument, setDocument() {}, viewBox: { x: -400, y: -300, width: 800, height: 600 }, setViewBox() {},
+  document: arcDocument, editingSketchId: arcDocument.activeSketchId, ownedDocumentRef: {current: arcDocument}, getEpoch: () => 0, setDocument() {}, viewBox: { x: -400, y: -300, width: 800, height: 600 }, setViewBox() {},
   constraintsPanelOpen: false, setConstraintsPanelOpen() {},
 }));
 for (const pointId of ['shared', 'p2', 'arcCenter']) assert.match(arcMarkup, new RegExp(`data-sketch-point-id="${pointId}"`));
@@ -137,7 +137,7 @@ assert.match(source, /r=\{DRAWING_SKETCH_POINT_HIT_RADIUS_PX \/ pixelsPerMm\}/, 
 assert.match(css, /--drawing-selected-point:\s*#1d4ed8;/i);
 assert.match(css, /\.drawing-geometry-point-selected \{ fill: var\(--drawing-selected-point\); stroke: none; \}/, 'selected Point uses only the compact dark-blue presentation authority');
 assert.match(source, /closest<SVGCircleElement>\('\[data-sketch-point-id\]'\)\?\.dataset\.sketchPointId/, 'the real root pointer handler acquires semantic identity from the DOM target');
-assert.match(source, /resolveDrawingPointerOwner\(documentRef\.current, startModel, semantic, evidence, selectedEntityIds\)/, 'DOM and semantic evidence enter one deterministic owner resolver');
+assert.match(source, /resolveDrawingPointerOwner\(source, startModel, semantic, evidence, selectedEntityIds\)/, 'DOM and semantic evidence enter one deterministic owner resolver');
 assert.match(source, /routeDrawingGeometryPointerSelection\(selectedGeometry, owner\.selection, event\.ctrlKey, constraintsPanelOpen\)/, 'the resolved owner uses the shared production selection route');
 assert.doesNotMatch(source, /event\.shiftKey/, 'Shift is not a semantic geometry multi-selection modifier');
 assert.match(source, /if \(route\.beginDrag && owner\.target\) \{[\s\S]*setGeometryDrag/, 'only an ordinary replacing Select click may begin direct manipulation');

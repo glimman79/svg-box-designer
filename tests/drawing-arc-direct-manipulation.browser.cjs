@@ -14,7 +14,7 @@ let currentContext;
  async function setup({orientation='CCW',major=false}={}) {
   const page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
-  await page.goto(baseURL);await page.getByRole('button',{name:'2D Drawing',exact:true}).click();
+  await page.goto(baseURL);await page.getByRole('button',{name:'2D Drawing',exact:true}).click();await page.getByRole('button',{name:'New Sketch',exact:true}).click();
   await page.getByRole('button',{name:'Arc',exact:true}).click();
   const sign=(orientation==='CCW'?1:-1)*(major?-1:1);
   await click(page,{x:100,y:0});await click(page,{x:0,y:sign*100});

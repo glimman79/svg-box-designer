@@ -1,5 +1,9 @@
 # Application Architecture and Box / Construction Pipeline Map
 
+## Stage C.2 PR 2 — Sketch editing sessions
+
+The runtime publication adds a transient Sketch ID alongside the workspace. BOX and neutral Drawing carry a null editing target. Populated V2 documents retain their original model and operation records at admission. Only the bound editing adapter can submit mounted CAD changes for its Sketch and interaction epoch. The canvas paints other ordered Sketches through the same world transform with passive Line, Circle and Arc primitives. [Ownership and restoration](docs/SKETCH_OPERATION_FOUNDATION.md#editing-context)
+
 > **Status: current orientation and future-boundary map.** [PROJECT_MASTER.md](PROJECT_MASTER.md) is the authority for current architecture. [Product Architecture Vision](docs/PRODUCT_ARCHITECTURE_VISION.md) owns the detailed approved future requirements; its target is not implemented. Historical pipeline snapshots and investigations are indexed in [docs/README.md](docs/README.md).
 
 ## Project-owned Sketch operations
@@ -8,7 +12,7 @@ The project stores one ordered, versioned operation per Drawing Sketch. Each ope
 
 ## Stage C global execution history
 
-The global runtime publishes the active workspace, history position, immutable project root, revision and session together. Project-edit entries retain an admitted frame and the originating module. Workspace-navigation entries carry only the source and destination. Traversal of navigation reuses the live frame and owner root, including current BOX inspection context. Both transition kinds share one combined capacity of 30. Clear Without Saving publishes the canonical empty project and its default BOX workspace in a fresh session. [Publication and restore contract](docs/GLOBAL_HISTORY_CUTOVER.md)
+The global runtime publishes the active workspace, history position, immutable project root, revision and session together. Project-edit entries retain an admitted frame and the originating module. Workspace-navigation entries carry only the source and destination. Traversal of navigation reuses the live frame and owner root, including current BOX inspection context. Both transition kinds share one combined capacity of 30. Clear Without Saving publishes the canonical empty project and neutral Drawing in a fresh session. [Publication and restore contract](docs/GLOBAL_HISTORY_CUTOVER.md)
 
 ## Stage C PR 6 construction publication boundary
 

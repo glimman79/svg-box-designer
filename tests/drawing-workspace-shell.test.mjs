@@ -44,7 +44,7 @@ assert.deepEqual(anchored, { x: 100, y: 75, width: 400, height: 300 }, 'wheel zo
 
 const appSource = fs.readFileSync('src/App.tsx', 'utf8');
 assert.match(appSource, /\{ project, history, activeWorkspace, .* \} = position/);
-assert.match(appSource, /<DrawingWorkspace isActive=\{activeWorkspace === 'drawing'\} document=\{drawingDocument\} viewBox=\{drawingViewBox\}/);
+assert.match(appSource, /<DrawingWorkspace editingSketchId=\{editingSketchId\}[\s\S]*?isActive=\{activeWorkspace === 'drawing'\} document=\{drawingDocument\} viewBox=\{drawingViewBox\}/);
 assert.match(appSource, /<WorkspaceShell active=\{activeWorkspace === 'construction'\} className="workspace"/);
 assert.match(appSource, /aria-label="Active Tool overlay"/);
 assert.match(appSource, /onClick=\{fitCanvasToScreen\}>Fit/);
@@ -58,7 +58,7 @@ assert.doesNotMatch(appSource, /type ActiveTool = [^;]*(drawing|puzzle)/);
 
 const drawingSource = fs.readFileSync('src/app/DrawingWorkspace.tsx', 'utf8');
 assert.doesNotMatch(drawingSource, /(generatedGeometry|FinalGeometry|ManufacturingGeometry|SvgDocumentModel|selectedEdgeId|undoStack)/);
-assert.match(drawingSource, /<WorkspaceShell active=\{isActive\} className="drawing-workspace"/);
+assert.match(drawingSource, /<WorkspaceShell active=\{props.isActive \?\? true\} className="drawing-workspace"/);
 assert.match(drawingSource, /patternUnits="userSpaceOnUse"/);
 assert.match(drawingSource, /DRAWING_ORIGIN\.x/);
 assert.match(drawingSource, /drawing-label-overlay/);

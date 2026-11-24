@@ -1,5 +1,9 @@
 # Laser Program — Global Workspace UI Specification
 
+## Current Sketch controls (Stage C.2 PR 2)
+
+**Approved requirement, implemented and tested, pending user browser acceptance.** The neutral Drawing canvas shows the grid, completed Sketch geometry and viewport controls. New Sketch and the Reopen Sketch selector occupy the canvas corner. Editing restores the axes, origin, status and CAD tools. Finish Sketch shares the corner with the BOX restriction explanation. BOX has a disabled navigation button and a runtime guard until Finish. This supersedes the earlier unrestricted module-switch requirement because a Sketch now has an explicit editing lifetime. The bottom History row retains its BOX workflow behavior. UI-4 Sketch symbols remain planned. [Session contract](SKETCH_OPERATION_FOUNDATION.md#editing-context)
+
 **Status: APPROVED PRODUCT REQUIREMENTS; UI-1 IMPLEMENTED / browser-checked (2026-11-10),
 pending user review/acceptance. UI-2 IMPLEMENTED / browser-checked (2026-11-11),
 pending user review/acceptance. UI-2.1 IMPLEMENTED / browser-checked (2026-11-11),
@@ -201,8 +205,7 @@ the Drawing Constraints implementation is unchanged.
 
 ## Multi-Sketch interaction refinement (2026-11-17)
 
-**APPROVED TARGET — NOT IMPLEMENTED.** The
-[scoped specification](MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md) owns these new behaviors:
+The November 17 targets below are now partially implemented. PR 2 covers Sketch creation, editing, finishing and reopening. UI-4 and connected manufacturing remain planned. [Scoped specification](MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md)
 
 - New Sketch creates an empty independent Sketch, keeping existing Sketches on the canvas
   and previously visible Sketches visible by default; only the new Sketch is editable.
@@ -210,7 +213,7 @@ the Drawing Constraints implementation is unchanged.
   Dimensions, Constraints and stable identities.
 - Finish Sketch exits the active editing context. Reopening an existing Sketch reuses
   its identity; it creates neither a replacement Sketch nor another permanent operation.
-  Exact placement, unfinished-tool handling and legacy transition require design.
+  PR 2 defines control placement, interruption and in-memory V2 compatibility.
 - One Sketch is one permanent timeline operation; member primitives, Dimensions and
   Constraints do not automatically add top-level entries. Double-click opens that
   Sketch's current definition; edits update its existing entry. Undo boundaries remain
@@ -222,10 +225,7 @@ the Drawing Constraints implementation is unchanged.
   groups and an explicit scope, excluding unselected output and validating manufacturing
   results/metadata. It is not a mandatory BOX input selector or TB/W/S group selector.
 
-Current Drawing's immediate authoring and initialized Sketch are preserved until explicit
-compatibility design. Migration must preserve geometry, references, Constraints,
-Dimensions and Undo. Current BOX navigation/import/export and local histories stay intact.
-No widget layout, grouping schema, migration mechanism or packaging behavior is selected.
+C.2 PR 2 supersedes immediate authoring into an initialized Sketch. A new project enters Drawing with an empty grid. Finish returns to neutral Drawing and enables BOX. Native persistence and manufacturing input remain planned. [Sketch session contract](SKETCH_OPERATION_FOUNDATION.md#editing-context)
 
 ## 4. Construction history, Undo/Redo and dependencies
 

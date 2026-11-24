@@ -1,5 +1,9 @@
 # Product Architecture Vision
 
+## Current implementation checkpoint — 2026-11-23
+
+**Implemented and tested, pending user browser acceptance.** The first working multi-Sketch flow now covers neutral Drawing, New Sketch, Finish Sketch and reopening. The user requires an explicit finish before deliberate BOX navigation. Global history may restore BOX and clears the editing target on that transition. PR #645 supplies the permanent Sketch lifetimes. Native Save/Open, Drawing-to-BOX geometry transfer, Unfold and the permanent History UI remain planned. Earlier baseline and decision sections record their original dates. [Editing contract](SKETCH_OPERATION_FOUNDATION.md#editing-context)
+
 **Decision date: 2026-11-03; history requirements revised 2026-11-09; multi-Sketch/Unfold/export refined 2026-11-17. Status: APPROVED FUTURE PRODUCT REQUIREMENTS — NOT IMPLEMENTED.**
 
 This document owns the detailed approved long-term requirements for a connected,
@@ -136,13 +140,11 @@ for geometry derived from 3D. Its geometry can become source material for either
 Puzzle. The future project model must distinguish original 2D authoring geometry,
 3D-derived geometry, and downstream construction/manufacturing geometry.
 
-**APPROVED TARGET — NOT IMPLEMENTED:** New Sketch creates an empty independent Sketch,
+**Implemented and tested in C.2 PR 2, pending user browser acceptance.** New Sketch creates an empty independent Sketch,
 retains existing visible Sketches and makes only the new one editable. Other visible
 Sketches remain non-editable references. Finish Sketch exits editing; reopening an
 existing Sketch reuses its identity and history entry. Each Sketch independently owns
-geometry, Dimensions and Constraints. Current immediate Drawing into an initialized
-Sketch must transition deliberately: compatibility must preserve existing geometry,
-references, Constraints, Dimensions and Undo; the migration mechanism remains open.
+geometry, Dimensions and Constraints. Populated in-memory V2 documents retain their Sketches, references and supplied operation identities. New projects start empty. Native file migration remains open.
 
 The accepted Circle/Arc model is preserved: Circle has persistent `centerPointId` and
 radius; Arc has persistent center, radius, P1/P2 and CW/CCW orientation, with derived

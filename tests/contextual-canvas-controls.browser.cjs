@@ -185,9 +185,11 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
       }, point);
       await page.mouse.click(p.x, p.y);
     };
+    await page.getByRole('button',{name:'New Sketch',exact:true}).click();
     await drawingTool('Line').click(); await drawPoint({ x: -120, y: -70 }); await drawPoint({ x: -20, y: -70 });
     await drawingTool('Circle').click(); await drawPoint({ x: 60, y: -50 }); await drawPoint({ x: 90, y: -50 });
     await drawingTool('Constraints').click();
+    await page.getByRole('button',{name:'Finish Sketch',exact:true}).click();
     await box();
     for (const size of [{ width: 1920, height: 1080 }, { width: 1366, height: 768 }, { width: 1024, height: 768 }]) {
       await page.setViewportSize(size); await assertActionsVisible();

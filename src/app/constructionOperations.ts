@@ -20,20 +20,20 @@ function checkSketchOrder(doc: DrawingStateCapture) {
   }
   const ids = new Set(doc.sketchOrder);
   if (ids.size !== doc.sketchOrder.length || ids.size !== Object.keys(doc.sketches).length
-    || !ids.has(doc.activeSketchId) || !Array.from(ids).every(id =>
+    || (ids.size === 0 ? doc.activeSketchId !== null : doc.activeSketchId === null || !ids.has(doc.activeSketchId)) || !Array.from(ids).every(id =>
       typeof id === 'string' && id.length > 0 && Object.hasOwn(doc.sketches, id) && doc.sketches[id]?.id === id)) {
     throw new TypeError('Expected a complete, ordered DrawingDocumentV2 Sketch map');
   }
 }
 
 // getRandomValues also works when the application is served over local-network HTTP.
-function newToken(): string {
+export function newIdentityToken(): string {
   return Array.from(crypto.getRandomValues(new Uint32Array(4)), word => word.toString(16).padStart(8, '0')).join('');
 }
 
 function createSketchOperation(sketchId: SketchId): SketchOperation {
-  return { id: newToken(), kind: 'sketch', kindVersion: 1, module: 'drawing',
-    sketchId, definitionRevision: newToken() };
+  return { id: newIdentityToken(), kind: 'sketch', kindVersion: 1, module: 'drawing',
+    sketchId, definitionRevision: newIdentityToken() };
 }
 
 /** Admit current Drawing data once. Existing operation records must agree with it. */
@@ -64,7 +64,7 @@ export function updateSketchOperations(operations: ConstructionOperations, befor
   const next = after.sketchOrder.map(id => {
     const op = prior.get(id);
     if (!op) return createSketchOperation(id);
-    return before.sketches[id] === after.sketches[id] ? op : { ...op, definitionRevision: newToken() };
+    return before.sketches[id] === after.sketches[id] ? op : { ...op, definitionRevision: newIdentityToken() };
   });
   return next.length === operations.length && next.every((op, i) => op === operations[i]) ? operations : next;
 }

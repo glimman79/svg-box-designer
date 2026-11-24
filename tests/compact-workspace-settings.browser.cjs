@@ -26,7 +26,7 @@ const output = process.env.UI21_BROWSER_OUTPUT;
   await settings().click(); await category().click(); await page.keyboard.press('Escape'); assert.equal(await menu().isVisible(),true);assert.equal(await page.getByRole('menu',{name:'Icon size',exact:true}).count(),0);
   await page.keyboard.press('Escape');assert.equal(await menu().count(),0);
   await settings().click();await page.keyboard.press('Tab');assert.equal(await menu().count(),0);assert.equal(await page.evaluate(()=>document.activeElement===document.body),false);
-  await settings().click();await button('2D Drawing').click();assert.equal(await menu().count(),0);
+  await settings().click();await button('2D Drawing').click();await button('New Sketch').click();assert.equal(await menu().count(),0);
   for(const name of ['Select','Line','Circle','Arc','Profile']) assert.equal(await page.getByLabel('Drawing tools',{exact:true}).getByRole('button',{name,exact:true}).count(),1);
   for(const name of ['Dimension','Constraints']) {assert.equal(await page.getByLabel('Drawing tools',{exact:true}).getByRole('button',{name,exact:true}).count(),0);assert.equal(await page.getByRole('toolbar',{name:'Drawing header tools'}).getByRole('button',{name,exact:true}).count(),1);}
   await button('Dimension').focus();await page.keyboard.press('Enter');assert.equal(await button('Dimension').getAttribute('aria-pressed'),'true');assert.match(await button('Dimension').getAttribute('class'),/is-active/);await page.keyboard.press('Escape');assert.equal(await button('Select').getAttribute('aria-pressed'),'true');
@@ -43,7 +43,9 @@ const output = process.env.UI21_BROWSER_OUTPUT;
    for(const size of ['Small','Normal','Large']) {
     await choose(size);
     for(const module of ['2D Drawing','Box / Construction']) {
+     if (module === 'Box / Construction') await button('Finish Sketch').click();
      await button(module).click();
+     if (module === '2D Drawing' && await page.getByLabel('Reopen Sketch').isVisible()) await page.getByLabel('Reopen Sketch').selectOption({label:'Sketch 1'});
      const layout=await page.locator('.top-toolbar').evaluate(e=>{const rs=[...e.children].map(e=>e.getBoundingClientRect());return {height:e.getBoundingClientRect().height,rows:[...new Set(rs.map(r=>Math.round(r.top+r.height/2)))],overflow:document.documentElement.scrollWidth>innerWidth,overlap:rs.some((r,i)=>rs.some((q,j)=>i<j&&Math.min(r.right,q.right)-Math.max(r.left,q.left)>1&&Math.min(r.bottom,q.bottom)-Math.max(r.top,q.top)>1)),outside:rs.some(r=>r.left<0||r.right>innerWidth)};});
      assert.equal(layout.overflow,false,JSON.stringify({width,size,module,layout}));assert.equal(layout.overlap,false);assert.equal(layout.outside,false);
      const headerControls=await page.locator('.top-toolbar').evaluate(e=>{const rs=[...e.querySelectorAll('button,label.toolbar-button')].map(e=>e.getBoundingClientRect()).filter(r=>r.width>0);return {outside:rs.some(r=>r.left<0||r.right>innerWidth||r.bottom>innerHeight),overlap:rs.some((r,i)=>rs.some((q,j)=>i<j&&Math.min(r.right,q.right)-Math.max(r.left,q.left)>1&&Math.min(r.bottom,q.bottom)-Math.max(r.top,q.top)>1))}});assert.deepEqual(headerControls,{outside:false,overlap:false});

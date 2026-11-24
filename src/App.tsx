@@ -530,9 +530,9 @@ function ProjectWorkspace({ projectOwner, position }: {
   projectOwner: GlobalProjectHistory;
   position: ReturnType<GlobalProjectHistory['getPublication']>;
 }) {
-  const [drawingTransactions] = useState(() => createDrawingTransactionAdapter(projectOwner));
   const importLock = useSvgImportLock(projectOwner);
-  const { project, history, activeWorkspace, epoch: renderEpoch, session } = position;
+  const { project, history, activeWorkspace, editingSketchId, epoch: renderEpoch, session } = position;
+  const drawingTransactions = useMemo(() => createDrawingTransactionAdapter(projectOwner), [projectOwner, renderEpoch]);
   const { drawingDocument, box } = project;
   const boxTransactions = useMemo(() => createBoxTransactionAdapter(projectOwner, renderEpoch), [projectOwner, renderEpoch]);
   const drawingInteraction = useRef<DrawingInteractionBoundary | null>(null);
@@ -801,7 +801,7 @@ function ProjectWorkspace({ projectOwner, position }: {
     // Capture first, reset immediately: every outcome permits the same file again,
     // and late cleanup cannot clear the selection belonging to a newer import.
     input.value = '';
-    if (!file) return;
+    if (!file || projectOwner.getPublication().activeWorkspace !== 'construction') return;
     const token = importLock.acquire();
     if (!token) return;
     try {
@@ -1051,7 +1051,9 @@ function ProjectWorkspace({ projectOwner, position }: {
     if (isClearDialogOpen || importLock.isImporting) return;
     drawingInteraction.current?.settle();
     const source = projectOwner.getSnapshot().box.svgModel;
+    const priorSketch = projectOwner.getPublication().editingSketchId;
     if (!projectOwner.traverse(direction)) return;
+    if (priorSketch !== projectOwner.getPublication().editingSketchId) setDrawingConstraintsPanelOpen(false);
     invalidateInteractions();
     const restored = projectOwner.getSnapshot().box;
     if (source !== restored.svgModel) {
@@ -1638,7 +1640,7 @@ function ProjectWorkspace({ projectOwner, position }: {
     {isClearDialogOpen && <ClearProjectDialog onCancel={cancelClearProject} onConfirm={clearProject} />}
     <main className="app-shell" inert={importLock.isImporting} aria-busy={importLock.isImporting}>
       <WorkspaceTopBar
-        activeWorkspace={activeWorkspace}
+        activeWorkspace={activeWorkspace} editingSketch={editingSketchId !== null}
         onSelectWorkspace={(workspace) => {
           if (isClearDialogOpen || importLock.isImporting || session !== projectOwner.getPublication().session) return;
           flushSync(() => projectOwner.navigate(workspace, source => {
@@ -1680,7 +1682,14 @@ function ProjectWorkspace({ projectOwner, position }: {
 
       {errorMessage && <div className="notice">{errorMessage}</div>}
 
-      <DrawingWorkspace isActive={activeWorkspace === 'drawing'} document={drawingDocument} viewBox={drawingViewBox} publishDrawingEdit={drawingTransactions.transact} ownedDocumentRef={projectOwner.drawingDocumentRef} setViewBox={setDrawingViewBox} constraintsPanelOpen={drawingConstraintsPanelOpen} setConstraintsPanelOpen={setDrawingConstraintsPanelOpen} interactionRef={drawingInteraction} onPendingSegment={setPendingProfileSegment} getEpoch={projectOwner.getEpoch} headerToolsHost={drawingToolsHost} />
+      <DrawingWorkspace editingSketchId={editingSketchId}
+        onNewSketch={() => projectOwner.newSketch()} onOpenSketch={id => projectOwner.openSketch(id)}
+        onFinishSketch={() => {
+          drawingInteraction.current?.leaveWorkspace();
+          setDrawingConstraintsPanelOpen(false);
+          projectOwner.finishSketch();
+        }}
+        isActive={activeWorkspace === 'drawing'} document={drawingDocument} viewBox={drawingViewBox} publishDrawingEdit={drawingTransactions.transact} ownedDocumentRef={drawingTransactions.documentRef} setViewBox={setDrawingViewBox} constraintsPanelOpen={drawingConstraintsPanelOpen} setConstraintsPanelOpen={setDrawingConstraintsPanelOpen} interactionRef={drawingInteraction} onPendingSegment={setPendingProfileSegment} getEpoch={projectOwner.getEpoch} headerToolsHost={drawingToolsHost} />
       <WorkspaceShell active={activeWorkspace === 'construction'} className="workspace" label="SVG connection workspace">
         <aside className="tool-sidebar" aria-label="Tool sidebar">
           {([

@@ -1,5 +1,10 @@
 # Unreleased
 
+## Stage C.2 PR 2 — Sketch creation and editing (pending user browser acceptance)
+
+- Added New Sketch, Finish Sketch and Reopen Sketch on a shared 2D grid. Each Sketch keeps independent geometry, dimensions, constraints and its permanent operation from merged PR #645.
+- BOX becomes available after Finish Sketch. The rejected switch leaves Undo and Redo intact. Clear Without Saving returns to an empty neutral Drawing.
+
 ## Stage C.2 PR 1 — Persistent Sketch operation foundation
 
 - Each Drawing Sketch has one project-owned operation. Its identity survives member edits, Undo eviction and workspace switches. Global Undo/Redo restores its exact definition with the geometry. The change is internal.

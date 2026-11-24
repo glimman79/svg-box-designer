@@ -16,7 +16,7 @@ const results=[];
   const name=`manual ${type} point-point Coincidence at Line ${end}`;
   const page=await browser.newPage({viewport:{width:1440,height:1000}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   try{
-   await page.goto(process.env.COINCIDENCE_BROWSER_URL||'http://127.0.0.1:5173/');await page.getByRole('button',{name:'2D Drawing',exact:true}).click();
+   await page.goto(process.env.COINCIDENCE_BROWSER_URL||'http://127.0.0.1:5173/');await page.getByRole('button',{name:'2D Drawing',exact:true}).click();await page.getByRole('button',{name:'New Sketch',exact:true}).click();
    await page.getByRole('button',{name:type==='arc'?'Arc':type==='circle'?'Circle':'Line',exact:true}).click();
    if(type==='arc'){await click(page,{x:100,y:0});await click(page,{x:0,y:100});await click(page,{x:Math.SQRT1_2*100,y:Math.SQRT1_2*100});}
    if(type==='circle'){await click(page,{x:0,y:100});await click(page,{x:30,y:100});}
@@ -44,7 +44,7 @@ const results=[];
   if(process.env.COINCIDENCE_BROWSER_FILTER&&!`${type} curve ${end}`.includes(process.env.COINCIDENCE_BROWSER_FILTER))continue;
   const name=`${type} point-curve at Line ${end}`,page=await browser.newPage({viewport:{width:1440,height:1000}});
   try{
-   await page.goto(process.env.COINCIDENCE_BROWSER_URL||'http://127.0.0.1:5173/');await page.getByRole('button',{name:'2D Drawing',exact:true}).click();
+   await page.goto(process.env.COINCIDENCE_BROWSER_URL||'http://127.0.0.1:5173/');await page.getByRole('button',{name:'2D Drawing',exact:true}).click();await page.getByRole('button',{name:'New Sketch',exact:true}).click();
    const p={x:Math.SQRT1_2*100,y:Math.SQRT1_2*100},q={x:150,y:140};
    await page.getByRole('button',{name:'Line',exact:true}).click();await page.keyboard.down('Control');await click(page,end==='start'?p:q);await click(page,end==='end'?p:q);await page.keyboard.up('Control');await page.keyboard.press('Escape');
    const lineBefore=await pose(page),pid=Object.keys(lineBefore.points).sort((a,b)=>Math.hypot(lineBefore.points[a].x-p.x,lineBefore.points[a].y-p.y)-Math.hypot(lineBefore.points[b].x-p.x,lineBefore.points[b].y-p.y))[0];

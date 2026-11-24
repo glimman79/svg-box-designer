@@ -1,5 +1,24 @@
 # Stage C.2 PR 1 — Persistent Sketch operations
 
+## Editing context
+
+**Approved requirement (2026-11-23).** Finish the active Sketch before deliberately switching to BOX. This supersedes unrestricted switching during unfinished Drawing authoring. Automatic workspace activation during history traversal remains available.
+
+**Implemented and tested in PR 2. Pending user browser acceptance.** The application initially opens BOX. Entering Drawing shows the neutral grid. New projects have an empty Sketch map, empty Sketch order, null document `activeSketchId` and zero permanent operations. Clear Without Saving publishes that empty project in neutral Drawing with fresh history. Cancel preserves the editing session.
+
+- The existing global history runtime publishes `activeWorkspace` and transient `editingSketchId` atomically with the project and cursor. Only Drawing can hold an editing target. Neither the captured project nor a permanent operation stores the open editor.
+- New Sketch creates an empty record with a random local ID and a readable sequential name. The accepted transaction adds one operation through PR 1 maintenance and publishes the target in the same notification. Undoing creation removes both records. Redo restores both identities.
+- Populated V2 admission still requires the stored document pointer to resolve to an ordered Sketch. It preserves all member records, including canonical circles/arcs, dimensions, constraints, extensions and existing operation lifetimes. Opening an existing definition uses a transient targeted view for CAD commands. The legacy pointer in project data can differ from the editing target. Opening and finishing preserve the full project frame, operation order, revisions and both history stacks.
+- Rendering uses the shared viewBox for all Sketches. Only the active definition supplies CAD hit surfaces, selection, snap/inference candidates, dimensions and constraints. Reference geometry uses the same Line/Circle/Arc resolution functions. Neutral Drawing retains zoom, pan and the existing Fit control.
+- Finish flushes an accepted pending Profile click against its original definition. A resulting segment has its ordinary Undo step. Finish releases pointer captures and discards remaining previews, unfinished numeric drafts and tool-local state. A new session binds its adapter to the target and interaction epoch. Delayed events from an earlier editor cannot write into the new one.
+- Deliberate navigation checks the current runtime target before any interaction settlement. Rejection leaves the publication and Redo branch intact. Traversal restores the stored frame and module directly. It retains an open editor only when Drawing still owns the same operation lifetime. Restoring BOX or removing the target returns the editor to neutral. Restoration never reopens a closed editor. The 30-transition total capacity applies to global execution history. The current operation list grows with project Sketches.
+
+**Planned / not implemented.** Permanent Sketch symbols and opening the current definition from the shared History row are the proposed next slice. Native Save/Open, BOX transfer, cross-Sketch constraints and dependency evaluation are later work.
+
+## PR 1 checkpoint (merged in #645)
+
+The following sections record the PR 1 baseline. PR 2 supersedes its initial-Sketch and future-editing-control descriptions.
+
 Each Drawing Sketch has one construction operation in the shared editable project. Lines, Profiles, Circles, Arcs, SketchPoints, Dimensions and Constraints belong to its current definition. For example, setting a Line length to 30, 50 and 70 mm produces three accepted edits with one operation ID. The bottom History row still presents the existing workspace UI.
 
 ## Identity, binding and order
@@ -10,7 +29,7 @@ The Sketch binding resolves to `drawingDocument.sketches[sketchId]` in the **sam
 
 ## Admission and existing data
 
-A new project initializes the existing `sketch-1`. An in-memory project predating C.2 can enter the owner with its existing V2 Drawing document and BOX state. Admission checks a one-to-one correspondence between the Sketch map, local IDs and order, including a valid active Sketch. With no supplied operation list, admission allocates one lifetime for each current Sketch. With a list, it checks the supported kind/version, owner, order, unique IDs and bindings and preserves the supplied identities. An inconsistent list or unsupported operation version fails admission.
+At the PR 1 checkpoint, a new project initialized `sketch-1`. An in-memory project predating C.2 can enter the owner with its existing V2 Drawing document and BOX state. Admission checks a one-to-one correspondence between the Sketch map, local IDs and order, including a valid active Sketch. With no supplied operation list, admission allocates one lifetime for each current Sketch. With a list, it checks the supported kind/version, owner, order, unique IDs and bindings and preserves the supplied identities. An inconsistent list or unsupported operation version fails admission.
 
 Bootstrap describes only the definitions present at admission. It creates zero Undo steps and makes no claim about past authors, dates, edit order or former values. It passes Drawing records through intact, including extension data and canonical Circle/Arc records. This boundary accepts V2 only. It performs no V1 conversion, geometry repair, solver replay or native-file loading.
 
@@ -22,7 +41,7 @@ Both transaction adapters preserve the rest of the frame. Operation maintenance 
 
 ## Follow-on scope
 
-This slice resolves Sketch grouping in Stage B decision D3 and in-memory V2 Sketch admission in D11. The November 17 decision supersedes Stage B's earlier standalone primitive operation examples. Operation-to-operation bindings, the BOX catalog, native Save/Open, cross-module transfer, regeneration and repair need separate contracts. New Sketch, Finish Sketch, multiple visible Sketches, reopening and History row symbols remain future work. The next proposed slice is explicit Sketch creation and finish at the Drawing transaction boundary, with the active editing context defined before UI-4.
+This slice resolves Sketch grouping in Stage B decision D3 and in-memory V2 Sketch admission in D11. The November 17 decision supersedes Stage B's earlier standalone primitive operation examples. Operation-to-operation bindings, the BOX catalog, native Save/Open, cross-module transfer, regeneration and repair need separate contracts. At the PR 1 checkpoint, explicit creation, finishing and reopening on a shared canvas were the next proposed slice. PR 2 implements these controls. History row symbols remain planned.
 
 ## Validation
 

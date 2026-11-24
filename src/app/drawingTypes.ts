@@ -180,6 +180,20 @@ export type DrawingDocumentV2 = Omit<DrawingDocumentV1, 'schemaVersion' | 'sketc
   schemaVersion: 2;
   sketches: Record<SketchId, DrawingSketchV2>;
 };
+/** Project storage admits zero Sketches. CAD algorithms receive a populated, targeted V2 view. */
+export type ProjectDrawingDocument = Omit<DrawingDocumentV2, 'activeSketchId'> & {
+  activeSketchId: SketchId | null;
+};
+
+export const createEmptyDrawingDocument = (): ProjectDrawingDocument => ({
+  schemaVersion: 2, unit: 'mm', sketches: {}, sketchOrder: [], activeSketchId: null,
+});
+
+export const createEmptySketch = (id: SketchId, name: string): DrawingSketchV2 => ({
+  id, name, points: {}, entities: {}, entityOrder: [], dimensions: {}, dimensionOrder: [],
+  geometricConstraints: {}, geometricConstraintOrder: [],
+});
+
 /** Runtime input also accepts historical schema-v2 coordinate-embedded lines. */
 export type DrawingDocument = DrawingDocumentV1 | DrawingDocumentV2;
 

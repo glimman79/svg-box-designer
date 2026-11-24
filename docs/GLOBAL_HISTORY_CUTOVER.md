@@ -1,5 +1,9 @@
 # Stage C — Global Undo/Redo and reversible workspace navigation
 
+## PR 2 supersession — November 23, 2026
+
+PR #645 merged the Sketch operation foundation. Stage C.2 PR 2 keeps #643's global edit history and #644's user-verified reversible navigation. The approved Finish requirement supersedes the PR 8 descriptions below of leaving Drawing with unfinished tools. A user switch from neutral Drawing still takes one step. A switch attempted during Sketch editing takes zero. New Sketch takes one edit. Opening or finishing an editor takes zero. Clear now opens neutral Drawing with no operations. The PR 7/8 instructions and measurements below record their dated checkpoints. [Current runtime and compatibility contract](SKETCH_OPERATION_FOUNDATION.md#editing-context)
+
 PR 7 merged in #643. The user verified Line restoration and changed the navigation policy on November 20, 2026. PR 8 is based on verified GitHub main `22d9323db0e2965f9dedbdcf94e7c933cae3aa7f`. PR #644 merged at `691a4dfaa4e130ca344e37f5220484cb10ddeb2d` and the user verified reversible workspace navigation.
 
 ## One publication per accepted action

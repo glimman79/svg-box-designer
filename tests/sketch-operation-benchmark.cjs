@@ -11,6 +11,8 @@ function measure() {
   initial.box.generatedGeometrySnapshot = { ...output, generatedGeometry:
     Array.from({ length: 5000 }, (_, i) => ({ ...output.generatedGeometry[0], id: 'item-' + i })) };
   const owner = api.createGlobalProjectHistory(initial);
+  owner.navigate('drawing');
+  owner.openSketch?.(owner.getSnapshot().drawingDocument.activeSketchId);
   const adapter = api.createDrawingTransactionAdapter(owner);
   global.gc();
   const heap = process.memoryUsage().heapUsed;
@@ -33,6 +35,7 @@ function measure() {
   }
   const traverseMs = performance.now() - traversing;
   assert.equal(owner.getSnapshot(), tip);
+  owner.finishSketch?.();
   const navigating = performance.now();
   for (let i = 0; i < 10000; i++) owner.navigate(i % 2 ? 'drawing' : 'construction');
   const navigateMs = performance.now() - navigating;
