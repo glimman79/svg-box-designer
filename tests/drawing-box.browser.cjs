@@ -62,11 +62,56 @@ const assert = require('node:assert/strict');
       await press('2D Drawing');
     }
     await page.setViewportSize({width:1366,height:768});
-    await box(); await pm(); await press('Accept default thickness');
-    await inputs.nth(1).fill('6'); await apply();
-    assert.match(await page.locator('.box-source-indicator').innerText(),/Working on Sketch 1/);
+    await press('New Sketch'); await rectangle(-180,25); await rectangle(-55,25); await finish();
+    const drawingColors = await drawing.locator('.drawing-reference-sketch').evaluateAll(es=>es.map(e=>getComputedStyle(e.firstElementChild).stroke));
+    const canvas = page.locator('svg.design-svg:not(.drawing-svg)');
+    const camera = () => canvas.getAttribute('viewBox');
+    const tool = name => rail.getByRole('button',{name,exact:true}).click();
+    const history = page.getByLabel('Construction history',{exact:true});
+    const entries = history.locator('[data-operation-id]');
+    const names = () => entries.allTextContents();
+    const ids = () => entries.evaluateAll(es=>es.map(e=>e.dataset.operationId));
+    const paths = n => refs.nth(n-1).locator('.final-panel-path,.final-slot-path').evaluateAll(es=>es.map(e=>e.getAttribute('d')));
+    const working = async n => assert.match(await page.locator('.box-source-indicator').innerText(),new RegExp('Working on Sketch '+n));
+    async function boxPoint(x,y,action='click',dy=0) {
+      const p = await canvas.evaluate((el,[x,y])=>{
+        const v = new DOMPoint(x,y).matrixTransform(el.getScreenCTM()); return [v.x,v.y];
+      },[x,y]);
+      await page.mouse[action](p[0],p[1]+dy);
+    }
+    await box(); await pm(); await page.locator('.canvas-zoom-controls:visible').getByText('Fit').click();
+    await press('Accept default thickness'); await inputs.nth(1).fill('6'); await apply(); await working(1);
+    await boxPoint(-140,50); assert.equal(await select.locator('option:checked').innerText(),'Sketch 2');
+    assert.deepEqual(await tools(),['PM']);
+    await press('Accept default thickness'); await apply(); await working(2);
     assert.ok((await tools()).includes('TB'));
-    await rail.getByRole('button',{name:'TB',exact:true}).click();
+    const initialNames = ['Sketch 1','Sketch 2','Panel Manager (Sketch 1)','Panel Manager (Sketch 2)'];
+    assert.deepEqual(await names(),initialNames);
+    const normalColors = () => refs.evaluateAll(es=>es.map(e=>getComputedStyle(e.querySelector('.final-panel-path')).stroke));
+    await page.mouse.move(0,0); assert.deepEqual(await normalColors(),drawingColors);
+    const zoom = page.locator('.canvas-zoom-controls:visible');
+    // Six screen pixels outside a closed edge at two different scales.
+    for (const scale of [0,1]) {
+      if (scale) await zoom.getByRole('button',{name:'Zoom out'}).click();
+      await boxPoint(-140,-80,'move',-6);
+      assert.equal(await page.getByRole('tooltip').innerText(),'Sketch 1'); await working(2);
+      const highlighted = refs.nth(0).locator('.final-panel-path,.box-reference-members > :is(circle,path)').filter({visible:true});
+      assert.ok(await highlighted.count() >= 4);
+      assert.ok(await refs.nth(0).evaluate(e=>[...e.querySelectorAll('.final-panel-path,:scope > .box-reference-members > *')]
+        .every(child=>getComputedStyle(child).stroke==='rgb(18, 71, 86)')));
+      await boxPoint(-140,-80,'click',-6); await working(1);
+      assert.equal(await select.count(),0);
+      await boxPoint(-140,50); await working(2);
+      await page.mouse.move(0,0); assert.deepEqual(await normalColors(),drawingColors);
+    }
+    const beforePan = await camera();
+    await boxPoint(-140,0,'move'); await page.mouse.down({button:'right'});
+    await boxPoint(-130,4,'move'); await page.mouse.up({button:'right'});
+    const userView = await camera(); assert.notEqual(userView,beforePan);
+    const sameCamera = async () => assert.equal(await camera(),userView);
+    await boxPoint(-140,-55); await working(1); await sameCamera();
+    const sourcePaths = [await paths(1),await paths(2)];
+    await tool('TB'); await sameCamera(); assert.deepEqual(await names(),initialNames);
     const edges = page.locator('.edge-hitbox');
     async function edge(n) {
       const p = await edges.nth(n).evaluate(el=>{
@@ -77,37 +122,76 @@ const assert = require('node:assert/strict');
       assert.equal(p[2],'','edge '+n+' at '+p.slice(0,2));
       await page.mouse.click(p[0],p[1]);
     }
-    await edge(2); await edge(6);
-    assert.ok(await inspector.getByRole('button',{name:'TB1 2 edges'}).isVisible(),await inspector.innerText());
-    await apply();
-    const accepted = await page.locator('.final-contour-kerf-layer').innerHTML();
-    const download = page.waitForEvent('download');
-    await page.getByRole('button',{name:/export/i}).click();
-    assert.match((await download).suggestedFilename(),/applied/);
-    await press('2D Drawing'); await press('New Sketch');
-    await rectangle(-180,25); await rectangle(-55,25); await finish();
-    await press('New Sketch'); await rectangle(-165,-60); await finish(); await box();
+    const ok = () => inspector.getByRole('button',{name:'OK',exact:true}).click();
+    const undo = () => press('Undo (Ctrl+Z)'), redo = () => press('Redo (Ctrl+Y)');
+    await edge(2); await edge(6); await sameCamera();
+    assert.ok(await inspector.getByRole('button',{name:'TB1 2 edges'}).isVisible());
+    await apply(); await sameCamera(); await ok(); await sameCamera();
+    const tb1 = await paths(1); assert.notDeepEqual(tb1,sourcePaths[0]);
+    await boxPoint(-140,50); await working(2); await sameCamera();
+    await tool('TB'); await edge(2); await edge(6); await apply(); await ok();
+    const tb2 = await paths(2); assert.notDeepEqual(tb2,sourcePaths[1]);
+    for (const n of [1,2]) {
+      await boxPoint(-140,n===1 ? -55 : 50); await working(n); await sameCamera();
+      assert.deepEqual(await paths(1),tb1); assert.deepEqual(await paths(2),tb2);
+      const download = page.waitForEvent('download'); await press('Export');
+      const file = await download; assert.match(file.suggestedFilename(),/applied/);
+      const contents = require('node:fs').readFileSync(await file.path(),'utf8');
+      assert.deepEqual([...contents.matchAll(/<path d="([^"]+)"/g)].map(m=>m[1]),n===1 ? tb1 : tb2);
+    }
+    await boxPoint(-140,-55); await tool('TB'); await edge(0); await edge(4); await apply(); await ok();
+    await boxPoint(-140,50); await tool('W'); await edge(1);
+    const expected = [...initialNames,'TB1 (Sketch 1)','TB1 (Sketch 2)','TB2 (Sketch 1)','W1 (Sketch 2)'];
+    assert.deepEqual(await names(),expected);
+    const permanentIds = await ids();
+    await undo(); assert.deepEqual(await ids(),permanentIds.slice(0,-1)); await sameCamera();
+    await boxPoint(-140,-55); await working(1); assert.ok(await button('Redo (Ctrl+Y)').isEnabled());
+    await redo(); assert.deepEqual(await ids(),permanentIds); await sameCamera();
+    await press('2D Drawing'); assert.deepEqual(await names(),expected);
+    await history.getByRole('button',{name:'TB1 (Sketch 1)',exact:true}).click();
+    await working(1); assert.equal(await inspector.locator('.active-label-card strong').innerText(),'TB1');
+    await page.locator('#compact-edge-tab-size').fill('12'); await apply();
+    assert.deepEqual(await ids(),permanentIds); await sameCamera();
+    await pm(); await sameCamera();
+    const inspectorWidth = (await inspector.boundingBox()).width;
+    await page.setViewportSize({width:680,height:768});
+    assert.notEqual((await inspector.boundingBox()).width,inspectorWidth); await sameCamera();
+    await page.setViewportSize({width:1366,height:768}); await sameCamera();
+    await select.selectOption({label:'Sketch 2'}); await working(2);
+    assert.equal(await select.count(),0); await sameCamera();
+    await boxPoint(-140,-55); await tool('TB'); await edge(1);
+    assert.deepEqual(await names(),[...expected,'TB3 (Sketch 1)']); await sameCamera();
+    await zoom.getByText('Fit').click(); assert.notEqual(await camera(),userView);
+    await press('2D Drawing'); await press('New Sketch'); await rectangle(-165,-60); await finish();
+    await box(); await tool('Select'); await boxPoint(-140,-50);
+    const choices = page.getByRole('group',{name:'Choose a BOX source'});
+    assert.deepEqual((await choices.getByRole('button').allTextContents()).sort(),['Sketch 1','Sketch 3']);
+    await choices.getByRole('button',{name:'Sketch 3'}).click();
+    assert.equal(await select.locator('option:checked').innerText(),'Sketch 3');
     assert.deepEqual(await tools(),['PM']);
-    await pm(); await select.selectOption({label:'Sketch 2'}); await press('Accept default thickness'); await apply();
-    assert.deepEqual(await tools(),['PM']); await press('Work on Sketch 2');
-    assert.ok((await tools()).includes('W'));
-    await pm(); await select.selectOption({label:'Sketch 1'}); await press('Work on Sketch 1');
-    assert.equal(await page.locator('.final-contour-kerf-layer').innerHTML(),accepted);
-    await press('2D Drawing'); await reopen('Sketch 1');
-    await line(-160,105,-100,120); await finish(); await box();
+    await select.selectOption({label:'Sketch 1'}); await working(1);
+    await press('2D Drawing'); await reopen('Sketch 1'); await line(-160,105,-100,120); await finish(); await box();
     assert.deepEqual(await tools(),['PM']);
     assert.deepEqual(await refs.evaluateAll(es=>es.map(e=>e.dataset.status)),['Changed · needs review','Approved','Needs Panel Manager']);
-    await pm();
-    assert.match(await inspector.innerText(),/3 open, invalid or unsupported/);
+    assert.deepEqual(await paths(1),[]); assert.deepEqual(await paths(2),tb2);
+    await pm(); assert.match(await inspector.innerText(),/3 open, invalid or unsupported/);
     assert.deepEqual(await inputs.evaluateAll(es=>es.map(e=>Number(e.value))),[3,6]);
-    await press('Undo (Ctrl+Z)'); await press('Undo (Ctrl+Z)');
-    await press('Redo (Ctrl+Y)'); await press('Redo (Ctrl+Y)');
-    await pm(); await apply(); await press('Work on Sketch 1');
-    assert.ok(await page.getByRole('button',{name:/export/i}).isDisabled());
-    assert.match(await page.locator('.box-source-indicator').innerText(),/Apply geometry/);
-    await pm(); await select.selectOption({label:'Sketch 2'}); await press('Work on Sketch 2');
-    assert.match(await page.locator('.box-source-indicator').innerText(),/Sketch 2/);
+    await undo(); await undo(); await redo(); await redo(); await pm(); await apply();
+    await working(1); assert.ok(await button('Export').isDisabled());
+    assert.deepEqual(await paths(1),sourcePaths[0]); assert.deepEqual(await paths(2),tb2);
+    assert.equal(await page.getByRole('button',{name:/Work on Sketch/}).count(),0);
+    // Evict the creation frames with real edits and verify the interleaved DOM order and IDs.
+    const older = await ids();
+    await tool('MFG');
+    const kerf = page.locator('#manufacturing-kerf');
+    for (let i=0;i<33;i++) {
+      await kerf.fill(((21+i)/100).toFixed(2)); await kerf.press('Enter');
+    }
+    assert.deepEqual((await ids()).slice(0,-1),older);
+    assert.equal((await names()).at(-1),'MFG (Sketch 1)');
+    await press('2D Drawing'); assert.deepEqual((await ids()).slice(0,-1),older);
+    await press('Clear'); await press('Clear Without Saving'); assert.deepEqual(await ids(),[]);
     assert.deepEqual(errors,[]);
-    console.log('PASS mounted Drawing panels, hover and three viewport widths, PM, TB, manufacturing export, source switching, review and traversal');
+    console.log('PASS multi-source hit targets, hover, activation, colors, two applied TB outputs, scoped exports, interleaved History, traversal, zoom/pan, overlap and invalidation');
   } finally { await browser.close(); }
 })().catch(e=>{console.error(e);process.exitCode=1;});

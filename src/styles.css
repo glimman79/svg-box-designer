@@ -2409,15 +2409,8 @@ button:disabled {
   gap: var(--ui-gap);
   overscroll-behavior-x: contain;
 }
-.workflow-history-content {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: var(--ui-gap);
-}
-.workflow-history-content[hidden], .shared-history-region [hidden] { display: none; }
 .shared-history-region .workflow-history-item {
-  width: calc(var(--ui-control-height) + var(--ui-control-padding));
+  width: auto; flex-shrink: 0; padding-inline: var(--ui-control-padding);
   min-width: calc(var(--ui-control-height) + var(--ui-control-padding));
   height: var(--ui-control-height);
   font-size: var(--ui-font);
@@ -2431,16 +2424,6 @@ button:disabled {
 
 .workspace-shell .drawing-tool-sidebar .sketch-new { padding-block: 0; line-height: 1; }
 .sketch-reopen-select { appearance: none; text-align: center; }
-.sketch-history-items {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: var(--ui-gap);
-}
-.workflow-history-content:not([hidden]) + .sketch-history-items {
-  border-left: 1px solid #cbd5e1;
-  padding-left: var(--ui-control-padding);
-}
 .shared-history-region .sketch-history-item {
   width: auto;
   padding-inline: var(--ui-control-padding);
@@ -2475,5 +2458,15 @@ button:disabled {
 .box-source-selector select { max-width: 100%; }
 .box-source-indicator { position: absolute; bottom: .5rem; left: .6rem; z-index: 1; pointer-events: none; background: white; padding: .2rem .45rem; border-radius: .2rem; }
 
-.box-reference-members { pointer-events: stroke; cursor: pointer; }
 .box-import-reference { fill: none; stroke: #71828c; vector-effect: non-scaling-stroke; cursor: pointer; }
+
+.box-reference .box-reference-members,
+.box-reference :is(.final-slot-path, .final-panel-path) { stroke: currentColor; pointer-events: none; }
+.box-reference[data-highlighted] { color: #124756; }
+.box-reference[data-highlighted] :is(.box-reference-members, .final-slot-path, .final-panel-path) { stroke-width: 3; }
+.box-source-hit .box-reference-members > *, .box-panel-hit {
+  fill: none; stroke: transparent; stroke-width: 16; stroke-linecap: round;
+  vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: pointer;
+}
+.box-panel-hit, .box-import-reference { fill: transparent; pointer-events: all; }
+.box-hover-label { position: absolute; bottom: 2.5rem; left: .6rem; z-index: 1; pointer-events: none; background: white; padding: .2rem .45rem; }

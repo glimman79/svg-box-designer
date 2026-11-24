@@ -1,10 +1,12 @@
 # Laser Program — Global Workspace UI Specification
 
-## Panel Manager and Sketch feedback (Stage C.2 PR 4)
+## BOX selection, History and camera
 
-Hover a completed Sketch in neutral Drawing to highlight its Lines, Circles and Arcs together and show its name and double-click hint. Overlap keeps the explicit owner chooser. History uses the same stable color assignment as the neutral grid. While editing, other Sketches have lighter grey strokes.
+PR 5 implements the user-approved corrections on the review branch. Inactive Sketches highlight as a whole and show their names on hover. Invisible 16-screen-pixel stroke targets and closed-panel interiors support single-click selection. Overlapping sources offer a named choice. The active construction tool retains its edge targets. Approved Sketches use the neutral Drawing palette. Grey indicates missing approval or a changed geometry revision. Selecting an approved source activates its rail. Selecting a source that requires review opens its Panel Manager. The inspector selector uses the same rule.
 
-The neutral BOX rail shows Panel Manager. Its inspector lists sources with their review status and per-panel thicknesses. An approved sole eligible Sketch activates construction immediately. With several eligible Sketches, use **Work on** to select one. The canvas identifies the working source and keeps other sources available for inspection. Choosing a BOX source keeps the user in BOX. The History entry retains its separate double-click action to edit in Drawing.
+Drawing and BOX show one horizontally scrollable row in global creation order. It interleaves Sketches, PM approvals, individual connections and manufacturing settings across sources. Source, tool, module and display labels never regroup or reorder the entries. A single click on a BOX entry opens its current source and tool. Double-click or keyboard activation on a Sketch reopens its Drawing editor. Finish an active Sketch before navigating to a different operation.
+
+The first visible BOX content can initialize the camera once. A user camera action on the empty canvas also settles initialization. Thereafter only wheel zoom, the zoom buttons, pan and explicit Fit change the BOX viewBox. Opening an inspector, assigning edges, applying geometry and traversing Undo/Redo preserve the view.
 
 ## Current Sketch controls (Stage C.2 PR 3)
 
@@ -12,7 +14,7 @@ The neutral BOX rail shows Panel Manager. Its inspector lists sources with their
 
 **Implemented and automatically tested. Pending user browser acceptance.** In neutral Drawing the left rail offers New Sketch and a compact Open selector. Double-click a named Sketch entry in either workspace, or double-click a Line, Circle or finite Arc on the neutral grid. Overlap presents the eligible names in construction order. Keyboard users can activate a History entry with Enter or Space. A BOX request records one deliberate navigation step. Each entry uses its project-owned identity throughout edits, restores and Undo eviction.
 
-Neutral references and their History icons use a restrained eight-color palette. During editing, other Sketches become non-interactive grey references and the active Sketch retains every established CAD color. The right inspector identifies the Sketch, provides Finish and explains the BOX restriction. Finish also enables reopening other Sketches. BOX workflow controls remain a separate group on the same scroll track. [Session contract](SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
+Neutral references and their History icons use a restrained eight-color palette. During editing, other Sketches become non-interactive grey references and the active Sketch retains every established CAD color. The right inspector identifies the Sketch, provides Finish and explains the BOX restriction. Finish also enables reopening other Sketches. The PR 5 chronology above supersedes the former separate BOX group. [Session contract](SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
 
 **Status: APPROVED PRODUCT REQUIREMENTS; UI-1 IMPLEMENTED / browser-checked (2026-11-10),
 pending user review/acceptance. UI-2 IMPLEMENTED / browser-checked (2026-11-11),
@@ -343,7 +345,7 @@ foundation is implemented while Open starts a fresh Undo tape.
 | A — Shared toolbar | UI-1/UI-2 refine placement; Fit moves to canvas. Placement never proves command functionality. |
 | B — Global project/history architecture design | Merged Stage B document remains the technical reference; preserve its separation of requirements and proposals. |
 | C — Global history implementation | Shared project foundation and global Undo/Redo; required for UI-4 synchronization. UI-1 placement can precede it. |
-| C.2 — permanent construction-history foundation | PR 1 supplies ordered, project-owned Sketch operations. PR 3 binds visible Sketch entries to their current definitions. |
+| C.2 — permanent construction-history foundation | PR 1 supplies ordered, project-owned Sketch operations. PR 3 binds visible Sketch entries to their current definitions. PR 5 integrates individual BOX operations across sources in creation order. |
 | D — Native Save/Open | Preserve complete editable operations/relationships; saved-history acceptance requires this stage. Coordinate with C.2 before format freeze. |
 | E — Geometry transfer and dependencies | Affected propagation/regeneration, diagnostics and repair for UI-4; not part of early layout work. |
 | F — Simple 3D Modeling | Optional future module; extend the shared shell when implemented. Not a prerequisite for Drawing-first UI work. |

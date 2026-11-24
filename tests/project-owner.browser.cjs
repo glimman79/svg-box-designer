@@ -31,7 +31,7 @@ const assert=require('node:assert/strict');
       await action('Apply').click();assert.equal(await page.locator('.notice:not(.inline-notice)').count(),0);
       const output=await contours();assert.match(output,/<path/);
       await action('OK').click();
-      await undo().click();await history.getByRole('button',{name:new RegExp(`^${name} Group 1,`)}).click();
+      await undo().click();await history.getByRole('button',{name:new RegExp(`^${name}1$`)}).click();
       assert.equal(await action('OK').count(),1,'Undo reopens the authored workflow');
       await redo().click();assert.equal(await action('OK').count(),0,'Redo restores completed state');assert.equal(await contours(),output);
       await tool('MFG').click();await edit('#manufacturing-kerf','0.25');await action('Apply').click();

@@ -1,8 +1,12 @@
 # SVG Box Designer — Project History
 
+## Stage C.2 PR 5 — Corrections after acceptance of #648
+
+Hands-on use after acceptance exposed hidden constructions, source-local History and unexpected refitting. PR 5 keeps the per-Sketch authority from #648, projects each current approved result onto the same canvas and records operation creation when the project accepts the edit. Source selection and hover preserve the Undo and Redo stacks. Manual acceptance of these corrections is pending.
+
 ## Stage C.2 PR 4 — First native Drawing panel source (2026-11-24)
 
-The earlier transfer deferral ended for closed Line profiles. The project owner now publishes each affected Sketch’s BOX projection with its Drawing edit. Selecting a construction source preserves the imported SVG and each other Sketch’s authored work. This introduces source-scoped review before the planned Stage E dependency repair work. User browser review is pending.
+The earlier transfer deferral ended for closed Line profiles. The project owner now publishes each affected Sketch’s BOX projection with its Drawing edit. Selecting a construction source preserves the imported SVG and each other Sketch’s authored work. This introduces source-scoped review before the planned Stage E dependency repair work. The user accepted the six PR #648 scenarios.
 
 ## Stage C.2 PR 3 — Review of the Sketch editor (2026-11-24)
 

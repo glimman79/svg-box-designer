@@ -26,7 +26,7 @@ export function createBoxTransactionAdapter(owner: GlobalProjectHistory, renderE
           sketches: { ...frame.boxSources!.sketches, [scope.id]: next } } }));
       } else {
         tx.update(frame => ({ ...frame, box: boxStateFields(next),
-          ...(token && frame.boxSources && { boxSources: { ...frame.boxSources, selection: { id: IMPORTED_SOURCE, working: true } } }) }));
+          ...(token && frame.boxSources && { boxSources: { ...frame.boxSources, selection: { id: IMPORTED_SOURCE } } }) }));
       }
       return 'accept';
     }, current);

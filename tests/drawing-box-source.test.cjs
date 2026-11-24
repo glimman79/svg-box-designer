@@ -55,8 +55,7 @@ test('source review, native TB/W, isolated authority, rejected cross-Sketch even
   const [first, second] = owner.getSnapshot().constructionOperations.map(op => op.id);
   const current = () => owner.getBoxScope().box;
   const sources = () => owner.getSnapshot().boxSources.sketches;
-  const inspect = id => assert.equal(owner.selectBoxSource(id,false),true);
-  const work = id => assert.equal(owner.selectBoxSource(id,true),true);
+  const inspect = id => assert.equal(owner.selectBoxSource(id),true);
   for (const id of [first,second]) {
     inspect(id);
     assert.equal(current().svgModel.panels.length,2);
@@ -64,8 +63,7 @@ test('source review, native TB/W, isolated authority, rejected cross-Sketch even
     c.updatePanelThickness(current().svgModel.panels[1].id,6);
     c.applyPanelManager();
     assert.equal(isSourceApproved(current()),true,c.errorMessage);
-    assert.equal(owner.getBoxScope().working,false);
-    work(id);
+    assert.equal(owner.getBoxScope().working,true);
     const [a,b] = current().svgModel.panels;
     const foreign = sources()[id === first ? second : first].svgModel.edges[0].id;
     for (const [tool,index1,index2] of [['TB',0,0],['W',1,3]]) {
@@ -128,7 +126,7 @@ test('source review, native TB/W, isolated authority, rejected cross-Sketch even
   c.applyPanelManager();
   assert.equal(isSourceApproved(current()),true,c.errorMessage);
   assert.equal(current().panelManager.needsGeometryApply,true);
-  work(first); c.applyPanelPaths();
+  c.applyPanelPaths();
   assert.equal(current().panelManager.needsGeometryApply,false,c.errorMessage);
   assert.equal(sources()[second],approved[second]);
   const stale = api.createBoxTransactionAdapter(owner,owner.getEpoch());
@@ -152,9 +150,80 @@ test('SVG replacement preserves independent Drawing work and invalidates old sou
   c.acceptDefaultPanelThickness(); c.applyPanelManager();
   const imported = owner.getBoxScope();
   assert.ok(imported.working);
-  owner.selectBoxSource(drawing.id,true);
+  owner.selectBoxSource(drawing.id);
   assert.equal(owner.getBoxScope().box,drawing.box);
   assert.equal(owner.getSnapshot().box,imported.box);
-  owner.selectBoxSource(imported.id,true);
+  owner.selectBoxSource(imported.id);
   assert.equal(owner.getBoxScope().box,imported.box);
+});
+
+test('chronology survives source context, branching, admission, and eviction of its creation frames', () => {
+  const {projectOwner: owner, context: c} = harness(initial({one:pair('one'),two:pair('two')}));
+  const [one,two] = owner.getSnapshot().constructionOperations.map(op => op.id);
+  const entries = () => owner.getSnapshot().chronology;
+  const select = id => {
+    const {undo, redo} = owner.getHistory();
+    assert.equal(owner.selectBoxSource(id),true);
+    assert.equal(owner.getHistory().undo,undo);
+    assert.equal(owner.getHistory().redo,redo);
+  };
+  const start = (id,tool,edge) => {
+    select(id);
+    const before = entries();
+    c.handleToolClick(tool);
+    assert.equal(entries(),before, 'opening a group only prepares a draft');
+    const box = owner.getBoxScope().box;
+    c.assignSelectedLabelToEdge(box.svgModel.panels[0].outerEdgeIds[edge]);
+    assert.equal(entries().length,before.length+1,c.errorMessage);
+  };
+  for (const id of [one,two]) { select(id); c.acceptDefaultPanelThickness(); c.applyPanelManager(); }
+  start(one,'TB',0);
+  const box = owner.getBoxScope().box;
+  c.assignSelectedLabelToEdge(box.svgModel.panels[1].outerEdgeIds[0]);
+  start(two,'TB',0); start(one,'TB',2); start(two,'W',1);
+  const ordered = entries();
+  assert.deepEqual(ordered.map(e=>[e.sourceId,e.connectionId ?? e.kind]),[
+    [one,'sketch'],[two,'sketch'],[one,'PM'],[two,'PM'],[one,'TB1'],[two,'TB1'],[one,'TB2'],[two,'W1']]);
+  assert.equal(new Set(ordered.map(e=>e.id)).size, ordered.length);
+  owner.traverse('undo'); assert.deepEqual(entries(),ordered.slice(0,-1));
+  select(one); select(two); owner.traverse('redo'); assert.equal(entries(),ordered);
+  c.openManufacturing();
+  assert.equal(entries(),ordered);
+  for (let i=0;i<38;i++) c.updateProjectSettings({kerfMm:.21+i/100});
+  assert.equal(owner.getHistory().undo.length,30);
+  assert.deepEqual(entries().slice(0,-1),ordered);
+  assert.equal(entries().at(-1).kind,'manufacturing');
+  const admitted = api.createGlobalProjectHistory(owner.getSnapshot());
+  assert.deepEqual(admitted.getSnapshot().chronology,entries());
+  const {chronology, ...legacy} = owner.getSnapshot();
+  const migrated = api.createGlobalProjectHistory(legacy).getSnapshot();
+  assert.deepEqual(migrated.boxSources,legacy.boxSources);
+  assert.deepEqual(migrated.chronology.slice(0,2),ordered.slice(0,2));
+  assert.ok(migrated.chronology.some(e=>e.sourceId===one && e.connectionId==='TB2'));
+  assert.ok(migrated.chronology.some(e=>e.sourceId===two && e.connectionId==='W1'));
+  owner.clearProject(); assert.deepEqual(entries(),[]);
+});
+
+test('one atomic batch records its authored connection order and rolls back abandoned child work', () => {
+  const {projectOwner: owner, context: c} = harness();
+  c.finishGroup('TB'); c.finishGroup('S');
+  c.startGroup('TB'); c.startGroup('S');
+  const [tb, slot] = [owner.getSnapshot().box.activeTBGroup,owner.getSnapshot().box.activeSGroup].map(g=>g.connectionIds[0]);
+  const before = owner.getSnapshot().chronology;
+  const author = (tx,id,edgeId) => tx.update(frame=>{
+    const box = {...frame.box.data,...frame.box.context,assignmentTargetConnectionId:id};
+    const authored = api.assignConstructionEdge(box,edgeId,id);
+    return {...frame,box:{...frame.box,data:{...frame.box.data,edgeAssignments:authored.edgeAssignments}}};
+  });
+  const [first, second] = owner.getSnapshot().box.svgModel.panels.slice(2,4).map(p=>p.edgeIds[2]);
+  const result = owner.transact('box','Batch authoring',tx=>{
+    tx.nest(child=>{ author(child,tb,second); return 'noop'; });
+    author(tx,slot,second); author(tx,tb,first);
+    return 'accept';
+  });
+  assert.equal(result.outcome,'accepted',result.error?.message);
+  const after = owner.getSnapshot().chronology;
+  assert.deepEqual(after.slice(before.length).map(e=>e.connectionId),[slot,tb]);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot().chronology,before);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot().chronology,after);
 });

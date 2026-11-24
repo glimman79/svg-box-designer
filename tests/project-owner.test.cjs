@@ -438,7 +438,7 @@ test('manufacturing navigation preserves Redo and records workflow order with an
   c.updateProjectSettings({kerfMm:0.7}); c.undoLastEdit();
   const before = owner.getSnapshot(), tape=owner.getHistory();
   c.openManufacturing(); c.openManufacturing();
-  assert.equal(c.activeTool,'manufacturing'); assert.equal(c.visitedManufacturingOrder,5);
+  assert.equal(c.activeTool,'manufacturing'); assert.ok(!owner.getSnapshot().chronology.some(e => e.kind === 'manufacturing'));
   assert.equal(owner.getHistory(),tape); assert.equal(owner.getSnapshot(),before);
   c.updateProjectSettings({kerfMm:0.8});
   assert.equal(owner.getSnapshot().box.workflowGroupOrder.manufacturing,5);

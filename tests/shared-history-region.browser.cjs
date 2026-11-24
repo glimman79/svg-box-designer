@@ -58,7 +58,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
       window.ui3Box = document.querySelector('.workspace:not(.drawing-workspace)');
     });
     await drawing();
-    assert.match(await history.innerText(), /No sketches yet/);
+    assert.match(await history.innerText(), /No operations yet/);
     assert.equal(await history.getByRole('button').count(), 0);
     assert.equal(await undo().isEnabled(), true);
     assert.equal(await redo().isEnabled(), false);
@@ -104,17 +104,18 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     await page.getByRole('dialog', { name: 'Panel Manager', exact: true }).getByRole('button', { name: 'OK', exact: true }).click();
     await overlay.getByRole('button', { name: 'Accept default thickness', exact: true }).click();
     await overlay.getByRole('button', { name: 'Apply', exact: true }).click();
+    await page.getByLabel('Canvas zoom controls',{exact:true}).getByRole('button',{name:'Fit'}).click();
     await overlay.getByRole('button', { name: 'OK', exact: true }).click();
     for (const [name, edges] of [['TB', [0, 4]], ['W', [2, 6]]]) {
       await boxTool(name).click(); for (const i of edges) await edge(i);
       await overlay.getByRole('button', { name: 'Apply', exact: true }).click();
       assert.equal(await page.locator('.notice:not(.inline-notice)').count(), 0);
       await overlay.getByRole('button', { name: 'OK', exact: true }).click();
-      await history.getByRole('button', { name: new RegExp(`^${name} Group 1,`) }).waitFor();
+      await history.getByRole('button', { name: new RegExp(`^${name}1$`) }).waitFor();
     }
     const manufacturedBefore = await contours();
-    const tb = history.getByRole('button', { name: /^TB Group 1,/ });
-    const wall = history.getByRole('button', { name: /^W Group 1,/ });
+    const tb = history.getByRole('button', { name: /^TB1$/ });
+    const wall = history.getByRole('button', { name: /^W1$/ });
     await undo().click(); // undo Finish W; navigation must retain this exact Redo
     const boxBefore = await contours(), boxView = await boxSvg.getAttribute('viewBox');
     await tb.click(); assert.equal(await boxTool('TB').getAttribute('class').then(s => s.includes('active')), true);
@@ -125,7 +126,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     assert.equal(await redo().isEnabled(), true, 'workflow inspection preserves Finish Redo');
     const unfinishedWall = await overlay.innerText();
     for (let n = 0; n < 2; n++) {
-      await drawing(); assert.equal(await history.getByRole('button').count(), 1);
+      await drawing(); assert.equal(await history.getByRole('button').count(), 4);
       await box(); assert.equal(await redo().isEnabled(), false);
       assert.equal(await overlay.innerText(), unfinishedWall);
       assert.equal(await wall.getAttribute('aria-pressed'), 'true');
@@ -168,7 +169,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
           assert.equal(layout.bottom, height); assert.ok(layout.canvasHeight >= 600); assert.ok(layout.height <= 42);
           assert.deepEqual(layout.tokens, { Small: ['20px', '4px', '2px', '10px', '12px', '44px'], Normal: ['24px', '5px', '3px', '11px', '14px', '48px'], Large: ['28px', '7px', '4px', '12px', '16px', '52px'] }[size]);
           if (module === 'box') { assert.equal(layout.controlHeight, { Small: 20, Normal: 24, Large: 28 }[size]); assert.equal(await tb.isVisible(), true); assert.equal(await wall.isVisible(), true); await wall.click(); assert.equal(await wall.getAttribute('aria-pressed'), 'true'); }
-          else assert.equal(await history.getByRole('button').count(), 1);
+          else assert.equal(await history.getByRole('button').count(), 4);
           matrix.push({ viewport: { width, height }, size, module, ...layout });
           if ((size === 'Normal' && width >= 1366) || (width === 1024 && size !== 'Normal')) await capture(`${module}-${width}-${size.toLowerCase()}`);
         }
@@ -178,7 +179,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
 
     await page.setViewportSize({ width: 1366, height: 768 }); await chooseSize('Normal'); await box(); await wall.click();
     const beforeScroll = { contours: await contours(), view: await boxSvg.getAttribute('viewBox'), capabilities: await capabilities(), overlay: await overlay.innerText() };
-    await page.locator('.workflow-history-content').evaluate(e => {
+    await track.evaluate(e => {
       for (let i = 0; i < 150; i++) {
         const b = document.createElement('button'); b.type = 'button'; b.className = 'workflow-history-item';
         b.dataset.ui3Fixture = 'true'; b.textContent = `T${i + 1}`; b.setAttribute('aria-label', `Test-only presentation ${i + 1}`); e.append(b);
@@ -192,7 +193,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     await page.waitForTimeout(250);
     const scroll = await track.evaluate(e => e.scrollLeft);
     assert.ok(scroll > 0); await capture('long-test-only-track');
-    await drawing(); assert.equal(await history.getByRole('button').count(), 1);
+    await drawing(); assert.equal(await history.getByRole('button').count(), 154);
     await box(); assert.equal(await track.evaluate(e => e.scrollLeft), scroll, 'BOX scroll context survives Drawing');
     assert.deepEqual({ contours: await contours(), view: await boxSvg.getAttribute('viewBox'), capabilities: await capabilities(), overlay: await overlay.innerText() }, beforeScroll);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth || scrollX !== 0), false);

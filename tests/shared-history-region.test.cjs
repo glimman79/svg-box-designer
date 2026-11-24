@@ -14,24 +14,25 @@ function fixture(count) {
   return readSketchDefinitions({ drawingDocument, constructionOperations: initializeSketchOperations(drawingDocument) });
 }
 
-const render = (workspace, definitions, editingSketchId = null) => renderToStaticMarkup(React.createElement(SharedHistoryRegion, {
-  workspace, definitions, editingSketchId, workflowNavigation: React.createElement('button', { 'aria-pressed': true }, 'TB'),
-}));
+const sketchEntries = definitions => definitions.map(({operation:{id}}) => ({kind:'sketch',id,sourceId:id}));
+const render = (workspace, definitions, editingSketchId = null, chronology = sketchEntries(definitions)) =>
+  renderToStaticMarkup(React.createElement(SharedHistoryRegion, {workspace, definitions, chronology, editingSketchId}));
 
-test('one scroll track groups permanent Sketches separately from the original BOX navigation', () => {
-  const html = render('construction', fixture(1));
-  assert.equal((html.match(/<aside/g) || []).length, 1);
-  assert.match(html, /aria-label="Construction history"/);
-  assert.match(html, /aria-label="BOX workflow groups"/);
-  assert.match(html, /<button aria-pressed="true">TB<\/button>/);
-  assert.match(html, /aria-label="Sketch operations"/);
-  assert.doesNotMatch(html, /hidden="" inert=""/);
+test('one row uses project order across modules and sources', () => {
+  const defs = fixture(2), [first, second] = sketchEntries(defs);
+  const order = [first, {kind:'PM',id:'approval',sourceId:first.id}, second,
+    {kind:'TB',id:'connection',sourceId:first.id,connectionId:'TB1'}];
+  for (const workspace of ['construction','drawing']) {
+    const html = render(workspace, defs, null, order);
+    assert.equal((html.match(/<aside/g) || []).length, 1);
+    assert.deepEqual([...html.matchAll(/data-operation-id="([^"]+)"/g)].map(m=>m[1]),order.map(e=>e.id));
+    assert.match(html,/TB1 \(Sketch 1\)/);
+  }
 });
 
-test('empty Drawing hides BOX actions and explains the empty state', () => {
+test('empty History is keyboard reachable', () => {
   const html = render('drawing', []);
-  assert.match(html, /workflow-history-content" hidden="" inert=""/);
-  assert.match(html, /No sketches yet/);
+  assert.match(html, /No operations yet/);
   assert.match(html, /tabindex="0"/);
 });
 

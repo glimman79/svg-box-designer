@@ -1,3 +1,4 @@
+import { reconcileChronology } from './operationChronology';
 import { initializeSketchOperations } from './constructionOperations';
 import { createEmptyDrawingDocument } from './drawingTypes';
 import type { ProjectStateSource } from './projectState';
@@ -20,7 +21,7 @@ function admitInitialProject(initial: InitialProject): ProjectStateSource {
 
 export const createInitialProjectState = (): ProjectStateSource => {
   const drawingDocument = createEmptyDrawingDocument();
-  return { drawingDocument, box: createInitialBoxState(), constructionOperations: initializeSketchOperations(drawingDocument) };
+  return { drawingDocument, chronology: [], box: createInitialBoxState(), constructionOperations: initializeSketchOperations(drawingDocument) };
 };
 
 /**
@@ -42,7 +43,9 @@ export const createProjectOwner = (initial?: InitialProject) => {
   };
   const admitted = initial === undefined ? createInitialProjectState() : admitInitialProject(initial);
   const boxSources = reconcileDrawingSources(admitted.boxSources, admitted.drawingDocument, admitted.constructionOperations);
-  let committed = freeze(boxSources ? { ...admitted, boxSources } : admitted);
+  const sources = boxSources ? { ...admitted, boxSources } : admitted;
+  const chronology = admitted.chronology ?? reconcileChronology([], sources);
+  let committed: ProjectStateSource = freeze({ ...sources, chronology });
   const importOwner = Symbol('import owner');
   let importSequence = 0;
   let boxRevision = 0;
