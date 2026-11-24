@@ -1,21 +1,9 @@
 import { initializeSketchOperations } from './constructionOperations';
 import { createEmptyDrawingDocument } from './drawingTypes';
-import { createBoxDocumentV1 } from './boxDocument';
-import { defaultPanelManagerState } from './panelManagerModel';
-import { DEFAULT_PROJECT_SETTINGS } from './projectDefaults';
-import { createGeneratedGeometrySnapshot } from './generatedGeometrySnapshot';
-import type { BoxStateSource, ProjectStateSource } from './projectState';
-
-export const createInitialBoxState = (): BoxStateSource => ({
-  svgModel: createBoxDocumentV1(), edgeAssignments: {}, connections: {},
-  panelManager: structuredClone(defaultPanelManagerState),
-  projectSettings: { ...DEFAULT_PROJECT_SETTINGS, selectedProfileOffsetIds: [] },
-  lastAppliedManufacturingSettings: null,
-  generatedGeometrySnapshot: createGeneratedGeometrySnapshot({ generatedGeometry: [] }),
-  activeSGroup: null, activeTBGroup: null, completedTBGroups: [],
-  activeWallGroup: null, completedWallGroups: [], workflowGroupOrder: {},
-  assignmentTargetConnectionId: null, displayConnectionId: null, selectedEdgeId: null,
-});
+import type { ProjectStateSource } from './projectState';
+import { createInitialBoxState } from './initialBoxState';
+import { reconcileDrawingSources } from './boxSources';
+export { createInitialBoxState } from './initialBoxState';
 
 /** Pre-C.2 in-memory projects supply Drawing and BOX only. */
 type PreOperationProject = Pick<ProjectStateSource, 'drawingDocument' | 'box'>;
@@ -52,7 +40,9 @@ export const createProjectOwner = (initial?: InitialProject) => {
     }
     return value;
   };
-  let committed = freeze(initial === undefined ? createInitialProjectState() : admitInitialProject(initial));
+  const admitted = initial === undefined ? createInitialProjectState() : admitInitialProject(initial);
+  const boxSources = reconcileDrawingSources(admitted.boxSources, admitted.drawingDocument, admitted.constructionOperations);
+  let committed = freeze(boxSources ? { ...admitted, boxSources } : admitted);
   const importOwner = Symbol('import owner');
   let importSequence = 0;
   let boxRevision = 0;

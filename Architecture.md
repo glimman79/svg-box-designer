@@ -1,5 +1,11 @@
 # Application Architecture and Box / Construction Pipeline Map
 
+## BOX source authority
+
+The imported SVG retains its existing BOX state. Each Drawing Sketch operation can supply another independent BOX state with a derived millimetre geometry model. Drawing owns all editable entities and solved positions. The adapter directs Panel Manager, construction, manufacturing settings and output to the inspected or working source. The generators, composition, FinalGeometry and compensation operate on that source only.
+
+The project transaction validates changes to Sketch-owned assignments against current panel edges. A Drawing edit updates the permanent operation and its derived source in the same frame. A previous generated snapshot survives for Undo and diagnosis. A changed source requires review and explicit Geometry Apply before stale output can be exported. [Panel provenance and limitations](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#drawing-panel-sources)
+
 ## Sketch navigation in the shared History row
 
 `ProjectWorkspace` reads ordered operation/Sketch pairs from the current project frame. The row, left Open selector and neutral geometry picker all pass the same operation lifetime ID to the runtime. A BOX request uses the existing workspace navigation command before opening the Drawing editor. Member edits replace the current definition while retaining the entry. Hover, opening and finishing need no solver or geometry regeneration. [Editing and restoration contract](docs/SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)

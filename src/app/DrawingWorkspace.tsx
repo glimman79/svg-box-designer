@@ -1,9 +1,10 @@
 import type { SketchDefinition } from './constructionOperations';
-import { findSketchOwners, neutralSketchColor, resolveSketchMember } from './sketchPresentation';
+import { ReferenceSketch } from './ReferenceSketch';
+import { findSketchOwners, neutralSketchColor } from './sketchPresentation';
 import { WorkspaceShell } from './WorkspaceShell';
 import { createPortal } from 'react-dom';
 import { routeDrawingGeometryPointerSelection } from './drawingGeometrySelection.js';
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type RefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type MouseEvent, type PointerEvent, type RefObject, type SetStateAction } from 'react';
 import type { DrawingSketchV2, DrawingDimension, DrawingDocumentV2, ProjectDrawingDocument, DrawingPoint } from './drawingTypes';
 import { applyResolvedProfileClick } from './drawingProfileTool';
 import { applyResolvedLineClick } from './drawingLineTool';
@@ -193,23 +194,6 @@ export function DrawingWorkspace(props: DrawingWorkspaceProps) {
   </WorkspaceShell>;
 }
 
-const ReferenceSketch = memo(function ReferenceSketch({ sketch, color }: {
-  sketch: DrawingSketchV2; color?: string;
-}) {
-  return <g className="drawing-reference-sketch" data-reference-sketch={sketch.id} aria-label={sketch.name}
-    style={color ? { stroke: color } : undefined}>
-    {sketch.entityOrder.map(id => {
-      const member = resolveSketchMember(sketch, id);
-      if (!member) return null;
-      switch (member.type) {
-        case 'line': return <line key={id} x1={member.start.x} y1={member.start.y} x2={member.end.x} y2={member.end.y} />;
-        case 'circle': return <circle key={id} cx={member.center.x} cy={member.center.y} r={member.radius} />;
-        case 'arc': return <path key={id} d={drawingArcPath(member)} />;
-      }
-    })}
-  </g>;
-});
-
 function DrawingCanvas({
   document, definitions, commandRef, editingSketchId, onNewSketch, onFinishSketch, onOpenSketch,
   ownedDocumentRef,
@@ -222,6 +206,7 @@ function DrawingCanvas({
   headerToolsHost,
   isActive = true,
 }: DrawingWorkspaceProps & { commandRef: RefObject<HTMLButtonElement | null> }) {
+  const [hoveredOwner, setHoveredOwner] = useState<string | null>(null);
   const [overlapIds, setOverlapIds] = useState<readonly string[]>([]);
   const toolSidebarRef = useRef<HTMLElement>(null);
   const canvasFrameRef = useRef<HTMLDivElement>(null);
@@ -773,12 +758,16 @@ function DrawingCanvas({
   };
   useCadEscapeToolExit(() => { if (isActive && activeSketch) exitActiveTool(); });
 
-  const openSketchAtPointer = (event: MouseEvent<SVGSVGElement>) => {
+  const ownersAtPointer = (event: MouseEvent<SVGSVGElement>) => {
     const matrix = event.currentTarget.getScreenCTM();
-    if (!isActive || event.button !== CAD_PRIMARY_BUTTON || !matrix) return;
+    if (!isActive || !matrix) return [];
     const point = clientToModelPoint({ x: event.clientX, y: event.clientY }, matrix);
-    if (!point) return;
-    const owners = findSketchOwners(definitions, point, Math.hypot(matrix.a, matrix.b));
+    return point ? findSketchOwners(definitions, point, Math.hypot(matrix.a, matrix.b)) : [];
+  };
+
+  const openSketchAtPointer = (event: MouseEvent<SVGSVGElement>) => {
+    if (event.button !== CAD_PRIMARY_BUTTON) return;
+    const owners = ownersAtPointer(event);
     if (owners.length === 1) onOpenSketch(owners[0].operation.id);
     else setOverlapIds(owners.map(({ operation }) => operation.id));
   };
@@ -1019,6 +1008,12 @@ function DrawingCanvas({
 
   const handleDrawingMouseDown = (event: MouseEvent<SVGSVGElement>) => {
     if (event.button === CAD_PRIMARY_BUTTON) event.preventDefault();
+  };
+
+  const handleNeutralMove = (event: PointerEvent<SVGSVGElement>) => {
+    if (panHandlers.onPointerMove(event)) { setHoveredOwner(null); return; }
+    const owners = ownersAtPointer(event);
+    setHoveredOwner(owners.length === 1 ? owners[0].operation.id : owners.length ? 'overlap' : null);
   };
 
   const handlePointerMove = (event: PointerEvent<SVGSVGElement>) => {
@@ -1459,6 +1454,10 @@ function DrawingCanvas({
           <button type="button" className={`cad-tool-button drawing-utility-tool${constraintsPanelOpen ? ' is-active' : ''}`} aria-pressed={constraintsPanelOpen} onPointerDown={(event) => { if (event.button === 0) { event.preventDefault(); setConstraintsPanelOpen((open) => !open); } }} onClick={(event) => { if (event.detail === 0) setConstraintsPanelOpen((open) => !open); }}>Constraints</button>
         </div>, headerToolsHost)}
         <div ref={canvasFrameRef} className="canvas-frame">
+          {hoveredOwner && !overlapIds.length && <div className="drawing-status sketch-hover-label" role="tooltip">
+            {hoveredOwner === 'overlap' ? 'Overlapping Sketches · double-click to choose' :
+              definitions.find(d => d.operation.id === hoveredOwner)?.sketch.name + ' · double-click to edit'}
+          </div>}
           {overlapIds.length > 1 && <div className="sketch-overlap-choices panel" role="group" aria-label="Choose a Sketch to open"
             onKeyDown={event => { if (event.key === 'Escape') { setOverlapIds([]); commandRef.current?.focus(); } }}>
             <strong>Open overlapping Sketch</strong>
@@ -1493,12 +1492,12 @@ function DrawingCanvas({
             onMouseDown={handleDrawingMouseDown}
             onPointerDownCapture={overlapIds.length ? () => setOverlapIds([]) : undefined}
             onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
+            onPointerMove={editingSketchId === null ? handleNeutralMove : handlePointerMove}
             onPointerUp={(event) => { if (boxSelectionRef.current) finishBoxSelection(event); else if (geometryDragRef.current) finishGeometryDrag(event); else if (dimensionDragRef.current) finishDimensionDrag(event); else panHandlers.onPointerUp(event); }}
             onPointerCancel={(event) => { if (boxSelectionRef.current?.pointerId === event.pointerId) endBoxSelection(); else if (geometryDragRef.current?.pointerId === event.pointerId) cancelGeometryDrag(event.pointerId); else if (!cancelDimensionDrag(event.pointerId)) panHandlers.onPointerCancel(event); }}
             onLostPointerCapture={(event) => { if (boxSelectionRef.current?.pointerId === event.pointerId) endBoxSelection(false); else if (geometryDragRef.current?.pointerId === event.pointerId) cancelGeometryDrag(event.pointerId); else cancelDimensionDrag(event.pointerId); }}
             onContextMenu={panHandlers.onContextMenu}
-            onPointerLeave={clearSegmentCursor}
+            onPointerLeave={() => { setHoveredOwner(null); clearSegmentCursor(); }}
             onDoubleClickCapture={activeSketch ? undefined : openSketchAtPointer}
             onDoubleClick={() => { if (activeTool === 'profile') finishProfile(); }}
           >
@@ -1514,7 +1513,7 @@ function DrawingCanvas({
             <rect className="drawing-grid-plane" x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#drawing-grid)" />
             {gridHierarchy.majorSpacing !== null && <rect className="drawing-grid-plane drawing-major-grid-plane" x={viewBox.x} y={viewBox.y} width={viewBox.width} height={viewBox.height} fill="url(#drawing-major-grid)" />}
             {definitions.filter(({ sketch }) => sketch.id !== editingSketchId).map(({ operation, sketch }) =>
-              <ReferenceSketch key={operation.id} sketch={sketch} color={editingSketchId === null ? neutralSketchColor(operation) : undefined} />)}
+              <ReferenceSketch key={operation.id} sketch={sketch} highlighted={operation.id === hoveredOwner} color={editingSketchId === null ? neutralSketchColor(operation) : undefined} />)}
             {activeSketch && <g className="drawing-coordinate-plane" aria-label="Drawing axes and origin">
               <line className="drawing-axis drawing-x-axis" aria-label="X axis" x1={viewBox.x} y1={DRAWING_ORIGIN.y} x2={viewBox.x + viewBox.width} y2={DRAWING_ORIGIN.y} />
               <line className="drawing-axis drawing-y-axis" aria-label="Y axis" x1={DRAWING_ORIGIN.x} y1={viewBox.y} x2={DRAWING_ORIGIN.x} y2={viewBox.y + viewBox.height} />

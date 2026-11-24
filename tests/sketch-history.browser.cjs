@@ -30,7 +30,7 @@ const { chromium } = require('playwright');
       const p = await client(x, y);
       await page.mouse[action](p.x, p.y);
     }
-    const references = page.locator('.drawing-reference-sketch');
+    const references = svg.locator('.drawing-reference-sketch');
     const colors = () => references.evaluateAll(groups => groups.map(g => getComputedStyle(g.firstElementChild).stroke));
     const color = locator => locator.evaluate(el => getComputedStyle(el).stroke);
     const activeName = () => inspector.getByRole('heading').innerText();
@@ -97,7 +97,7 @@ const { chromium } = require('playwright');
     for (const [x, y, n] of [[-130, -60, 1], [95, 15, 2], [0, 60, 3]]) {
       await pointer(x, y, 'dblclick');
       assert.equal(await activeName(), 'Sketch ' + n);
-      assert.deepEqual(await colors(), ['rgb(133, 133, 133)', 'rgb(133, 133, 133)']);
+      assert.deepEqual(await colors(), ['rgb(185, 191, 197)', 'rgb(185, 191, 197)']);
       assert.ok(await references.evaluateAll(groups => groups.every(g => getComputedStyle(g.firstElementChild).pointerEvents === 'none')));
       if (n === 1) {
         assert.equal(await color(line), constrained);

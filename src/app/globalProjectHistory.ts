@@ -1,6 +1,8 @@
 import { createProjectHistory, recordWorkspaceNavigation, redoProjectHistory, transactProjectHistory, undoProjectHistory,
   type ProjectHistory, type ProjectTransaction, type ProjectTransactionAction,
   type ProjectTransactionMetadata, type ProjectTransactionResult } from './projectHistory';
+import { getBoxScope, IMPORTED_SOURCE, isSourceApproved, reconcileDrawingSources, sameSketchRequired, validateSourceEdit } from './boxSources';
+import type { BoxSources } from './projectState';
 import { newIdentityToken, updateSketchOperations } from './constructionOperations';
 import { createInitialProjectState, createProjectOwner, type InitialProject } from './projectOwner';
 import { boxStateFields, type BoxRestorationContext, type BoxStateCapture, type BoxStateSource,
@@ -56,8 +58,8 @@ function restorableContext(context: BoxStateCapture['context']) {
     .every(value => value === null || typeof value === 'string');
 }
 
-function initialHistoryFor({ drawingDocument, constructionOperations, box }: ProjectStateSource) {
-  return createProjectHistory({ drawingDocument, constructionOperations, box: boxStateFields(box) });
+function initialHistoryFor({ drawingDocument, constructionOperations, box, boxSources }: ProjectStateSource) {
+  return createProjectHistory({ drawingDocument, constructionOperations, ...(boxSources && { boxSources }), box: boxStateFields(box) });
 }
 
 /** Only this facade can write the mounted project owner. All roots reachable
@@ -84,13 +86,17 @@ export function createGlobalProjectHistory(initial?: InitialProject) {
     if (!root) {
       if ((frame.drawingDocument !== publication.history.current.drawingDocument && !restorableDrawing(frame.drawingDocument))
         || (frame.box.data !== publication.history.current.box.data && !restorableBox(frame.box.data, publication.history.current.box.data))
-        || !restorableContext(frame.box.context)) throw new TypeError('Incomplete project frame');
+        || !restorableContext(frame.box.context)
+        || (frame.boxSources !== publication.history.current.boxSources && Object.entries(frame.boxSources?.sketches ?? {}).some(([id, box]) => {
+          const prior = publication.history.current.boxSources?.sketches[id];
+          return box !== prior && (!restorableBox(box, prior) || !restorableContext(box));
+        }))) throw new TypeError('Incomplete project frame');
       let box = boxes.get(frame.box);
       if (!box) {
         box = { ...frame.box.data, ...frame.box.context } as BoxStateSource;
         boxes.set(frame.box, box);
       }
-      root = { drawingDocument: frame.drawingDocument as ProjectDrawingDocument, constructionOperations: frame.constructionOperations, box };
+      root = { ...(frame.boxSources && { boxSources: frame.boxSources as BoxSources }), drawingDocument: frame.drawingDocument as ProjectDrawingDocument, constructionOperations: frame.constructionOperations, box };
       roots.set(frame, root);
     }
     return root;
@@ -106,7 +112,9 @@ export function createGlobalProjectHistory(initial?: InitialProject) {
       if (!previous || !root.constructionOperations.some(op => op.id === previous.id)) editingSketchId = null;
     }
     const invalidate = editingSketchId !== before.editingSketchId || operation === 'restore' || operation === 'reset'
-      || before.project.box.svgModel !== root.box.svgModel;
+      || before.project.box.svgModel !== root.box.svgModel
+      || (activeWorkspace === 'construction' && (getBoxScope(before.project).box.svgModel !== getBoxScope(root).box.svgModel
+        || getBoxScope(before.project).working !== getBoxScope(root).working));
     const position = Object.freeze({ project: root, history: next, activeWorkspace, editingSketchId, revision: before.revision + 1,
       epoch: before.epoch + Number(invalidate), session: operation === 'reset' ? Object.freeze({ startRevision: before.revision + 1 }) : before.session });
     // New position identity also wakes React when two same-event traversals
@@ -134,9 +142,18 @@ export function createGlobalProjectHistory(initial?: InitialProject) {
         if (after.constructionOperations !== before.constructionOperations) {
           throw new TypeError('Operation maintenance belongs to the project');
         }
+        if (after.boxSources !== before.boxSources) {
+          validateSourceEdit(publication.project, after.boxSources?.sketches as BoxSources['sketches'] | undefined);
+        }
+        if (after.box.data.edgeAssignments !== before.box.data.edgeAssignments
+          && Object.keys(after.box.data.edgeAssignments).some(id => id.startsWith('sketch-'))) throw new Error(sameSketchRequired);
         if (after.drawingDocument !== before.drawingDocument) {
-          const operations = updateSketchOperations(before.constructionOperations, before.drawingDocument, after.drawingDocument);
-          if (operations !== before.constructionOperations) tx.update(frame => ({ ...frame, constructionOperations: operations }));
+          const operations = updateSketchOperations(before.constructionOperations, before.drawingDocument as ProjectDrawingDocument, after.drawingDocument as ProjectDrawingDocument);
+          if (operations !== before.constructionOperations) {
+            const boxSources = reconcileDrawingSources(before.boxSources as BoxSources | undefined,
+              after.drawingDocument as ProjectDrawingDocument, operations);
+            tx.update(frame => ({ ...frame, constructionOperations: operations, boxSources }));
+          }
         }
         return decision;
       } finally { staging = undefined; }
@@ -213,17 +230,32 @@ export function createGlobalProjectHistory(initial?: InitialProject) {
     return publish(result.history, root, 'restore', workspace) ? workspace : null;
   }
 
+  function selectBoxSource(id: string, working: boolean) {
+    const { project: root, history } = publication;
+    const sources = root.boxSources;
+    if (!sources || staging || publication.activeWorkspace !== 'construction') return false;
+    if (sources.selection?.id === id && sources.selection.working === working) return true;
+    const box = id === IMPORTED_SOURCE ? root.box : sources.sketches[id];
+    if (!box || (working && !isSourceApproved(box))) return false;
+    const current = Object.freeze({ ...history.current, boxSources: Object.freeze({ ...sources, selection: Object.freeze({ id, working }) }) });
+    return publish(Object.freeze({ ...history, current }), project(current), 'context');
+  }
+
   function setBoxContext(patch: Partial<BoxRestorationContext>) {
     const history = publication.history;
     const frame = history.current;
-    const previous = frame.box.context;
+    const scope = getBoxScope(publication.project);
+    const previous = scope.id === IMPORTED_SOURCE ? frame.box.context : scope.box;
     const { selectedEdgeId = previous.selectedEdgeId, displayConnectionId = previous.displayConnectionId,
       assignmentTargetConnectionId = previous.assignmentTargetConnectionId } = patch;
     if (selectedEdgeId === previous.selectedEdgeId && displayConnectionId === previous.displayConnectionId
       && assignmentTargetConnectionId === previous.assignmentTargetConnectionId) return;
     const context = { selectedEdgeId, displayConnectionId, assignmentTargetConnectionId };
     // Only three primitive interaction IDs change. Both stacks and all data are shared.
-    const current = Object.freeze({ ...frame, box: Object.freeze({ data: frame.box.data, context: Object.freeze(context) }) });
+    const sources = publication.project.boxSources;
+    const current = sources && scope.id !== IMPORTED_SOURCE
+      ? Object.freeze({ ...frame, boxSources: { ...sources, sketches: { ...sources.sketches, [scope.id]: { ...scope.box, ...context } } } })
+      : Object.freeze({ ...frame, box: Object.freeze({ data: frame.box.data, context: Object.freeze(context) }) });
     publish(Object.freeze({ ...history, current }), project(current), 'context');
   }
 
@@ -236,7 +268,7 @@ export function createGlobalProjectHistory(initial?: InitialProject) {
   return { getSnapshot: owner.getSnapshot, subscribe: owner.subscribe, getHistory: () => publication.history,
     getPublication: () => publication,
     drawingDocumentRef: { get current() { return owner.getSnapshot().drawingDocument; } },
-    getEpoch: () => publication.epoch, getAttempt, isCurrent, transact, navigate, newSketch, openSketch, openSketchOperation, finishSketch, traverse, clearProject, setBoxContext,
+    getEpoch: () => publication.epoch, getAttempt, isCurrent, transact, navigate, newSketch, openSketch, openSketchOperation, finishSketch, traverse, clearProject, setBoxContext, selectBoxSource, getBoxScope: () => getBoxScope(publication.project),
     beginBoxImport: owner.beginBoxImport, isCurrentBoxImport: (token: ReturnType<typeof owner.beginBoxImport>) => publication.activeWorkspace === 'construction' && owner.isCurrentBoxImport(token), invalidateBoxImports: owner.invalidateBoxImports };
 }
 export type GlobalProjectHistory = ReturnType<typeof createGlobalProjectHistory>;

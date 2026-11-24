@@ -1,6 +1,7 @@
 export * from './project-state';
 export * from '../../src/app/projectOwner';
 export * from '../../src/app/boxTransactionAdapter';
+export * from '../../src/app/boxSources';
 export * from '../../src/app/drawingDocumentMutation';
 export * from '../../src/app/drawingHistory';
 export * from '../../src/app/drawingTransactionAdapter';

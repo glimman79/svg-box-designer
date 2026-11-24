@@ -4,7 +4,15 @@
 
 **Implemented and automatically tested. Pending user browser acceptance.** PR #646 merged the shared grid and explicit editing lifetime. PR 3 adds stable neutral colors for Sketches, grey reference geometry while editing and direct reopening from History or neutral geometry. Overlap requires an explicit choice. The active Sketch alone supplies Dimensions, Constraints and authoring input.
 
-**Planned / not implemented.** Native Save/Open, permanent BOX operations, dependency evaluation, Drawing-to-BOX transfer and Unfold. The following dated baseline and target sections record the original decisions. [Sketch integration](SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
+**Planned / not implemented.** Native Save/Open, permanent BOX operations, full dependency evaluation, curved Drawing panel transfer and Unfold. The following dated baseline and target sections record the original decisions. [Sketch integration](SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
+
+## Drawing panel sources
+
+Stage C.2 PR 4 connects the existing multi-shape Sketch to BOX. Rectangles and simple closed Line polygons use solved SketchPoints and semantic endpoint membership. BOX checks closure, branching, intersections and nonzero area before using the existing panel and hole containment pipeline. Independent loops can produce separate panels in the same Sketch. Open geometry, Circles and mixed Line/Arc boundaries remain visible references. Panel Manager reports excluded members.
+
+The permanent operation ID identifies the source, the sorted outer Line IDs identify a contour, and each BOX edge identifies its owning contour and Drawing Line. Panel Manager approval binds positive per-panel thicknesses to that source’s current geometry revision. Adding a Line, moving a point, changing a curve or deleting geometry makes the Sketch light grey. Existing thicknesses survive for recognized panels and new panels start at zero. Other approved Sketches retain their constructions and applied output.
+
+BOX displays the sources together. TB, W, S, Apply and export run on one working source at a time. The imported SVG retains its independent assignments, groups and settings when a Sketch is inspected or selected. Foreign TB/W edge assignments are rejected before publication. Reapproval preserves authored records. Missing assigned edges block approval until the geometry is restored. Previously generated output requires an explicit Geometry Apply after review. Multi-source manufacturing export and automatic dependency repair remain future work.
 
 **Decision date: 2026-11-17. APPROVED TARGET — NOT IMPLEMENTED.**
 

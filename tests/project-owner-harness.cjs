@@ -33,7 +33,7 @@ function harness(initial=api.makePopulatedProjectState()) {
     formatAuthorityBlockingDecision:(_,d)=>d.reason,
   });
   for(const key of Object.keys(initial.box)) {
-    Object.defineProperty(context,key,{get:()=>projectOwner.getSnapshot().box[key],configurable:true});
+    Object.defineProperty(context,key,{get:()=>projectOwner.getBoxScope().box[key],configurable:true});
   }
   Object.defineProperty(context,'isProjectLocked',{get:()=>!context.panelManager.isApplied});
   Object.defineProperty(context,'generatedGeometryItems',{get:()=>context.generatedGeometrySnapshot.generatedGeometry});

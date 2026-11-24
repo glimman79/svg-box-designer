@@ -1,5 +1,9 @@
 # SVG Box Designer — Project History
 
+## Stage C.2 PR 4 — First native Drawing panel source (2026-11-24)
+
+The earlier transfer deferral ended for closed Line profiles. The project owner now publishes each affected Sketch’s BOX projection with its Drawing edit. Selecting a construction source preserves the imported SVG and each other Sketch’s authored work. This introduces source-scoped review before the planned Stage E dependency repair work. User browser review is pending.
+
 ## Stage C.2 PR 3 — Review of the Sketch editor (2026-11-24)
 
 PR #646 merged explicit creation, Finish and reopening of multiple Sketches on a shared grid. After reviewing its controls, the user approved moving New Sketch and Open to the rail, putting Finish in the existing inspector layout and using History and geometry as direct routes to an editor. PR 3 binds those routes to the lifetime introduced in #645. A color identifies each reference in neutral Drawing. Only an open Sketch receives CAD interaction. Implementation and automated checks are complete for this slice. User browser acceptance is pending. [UI contract](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md#current-sketch-controls-stage-c2-pr-3)

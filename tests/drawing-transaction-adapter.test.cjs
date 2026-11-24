@@ -196,7 +196,9 @@ test('repeated production edits share BOX source and applied geometry without re
   const define = Object.defineProperty;
   let boxFieldCopies = 0;
   Object.defineProperty = (target, key, descriptor) => {
-    if (key === 'innerMarkup' || key === 'generatedGeometry') boxFieldCopies++;
+    // Native Drawing projections also have innerMarkup. Probe the original imported payload.
+    if ((key === 'innerMarkup' && descriptor.value === initial.box.svgModel.innerMarkup)
+      || (key === 'generatedGeometry' && descriptor.value === initial.box.generatedGeometrySnapshot.generatedGeometry)) boxFieldCopies++;
     return define(target, key, descriptor);
   };
   let first;

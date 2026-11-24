@@ -75,6 +75,7 @@ const getAccumulatedMatrixTransform = (element: Element, rootElement: SVGSVGElem
 };
 
 export type SvgEdge = {
+  drawingEntityId?: string;
   id: string;
   source: string;
   start: Point;
@@ -271,6 +272,7 @@ export const getEdgeAssignmentDisplayLabel = (assignment: EdgeAssignment | EdgeA
 );
 
 export type SvgDocumentModel = {
+  drawingSource?: { operationId: string; sketchId: string; geometryRevision: string; excludedMembers: number };
   content: string;
   innerMarkup: string;
   rootAttributes: {
@@ -363,7 +365,7 @@ const getPointsBounds = (points: Point[]): SourceBounds | undefined => {
   });
 };
 
-const getPanelFigureBounds = (points: Point[]): SourceBounds | undefined => {
+export const getPanelFigureBounds = (points: Point[]): SourceBounds | undefined => {
   const bounds = getPointsBounds(points);
 
   if (!bounds) {
@@ -529,7 +531,7 @@ const distanceBetweenPoints = (first: Point, second: Point): number => Math.hypo
 
 const pointsWithinEndpointTolerance = (first: Point, second: Point) => distanceBetweenPoints(first, second) <= IMPORT_REPAIR_CANDIDATE_TOLERANCE_MM;
 
-const linesIntersect = (a: SvgEdge | TopologySegment, b: SvgEdge | TopologySegment): boolean => {
+export const linesIntersect = (a: SvgEdge | TopologySegment, b: SvgEdge | TopologySegment): boolean => {
   const cross = (p: Point, q: Point, r: Point) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
   const between = (p: Point, q: Point, r: Point) => Math.min(p.x, r.x) - closedLoopTolerance <= q.x && q.x <= Math.max(p.x, r.x) + closedLoopTolerance
     && Math.min(p.y, r.y) - closedLoopTolerance <= q.y && q.y <= Math.max(p.y, r.y) + closedLoopTolerance;
@@ -801,7 +803,7 @@ type ClosedLoop = {
   diagnostics: string[];
 };
 
-const getSignedArea = (contour: Point[]): number => (
+export const getSignedArea = (contour: Point[]): number => (
   contour.reduce((total, point, index) => {
     const next = contour[(index + 1) % contour.length];
     return total + (point.x * next.y - next.x * point.y);
@@ -953,7 +955,7 @@ const buildPanelsFromClosedLoops = (loops: ClosedLoop[]): SvgPanel[] => {
   return panels;
 };
 
-const createSvgPanelsFromClosedContours = (rawGeometry: RawImportedGeometry): SvgPanel[] => {
+export const createSvgPanelsFromClosedContours = (rawGeometry: RawImportedGeometry): SvgPanel[] => {
   const loops: ClosedLoop[] = [];
   const addLoop = (contour: Point[], bounds: SourceBounds | undefined, edgeIds: string[]) => {
     if (!bounds) return;

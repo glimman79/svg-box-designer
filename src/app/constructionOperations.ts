@@ -1,5 +1,7 @@
 import type { DrawingSketchV2, ProjectDrawingDocument, SketchId } from './drawingTypes';
 
+import { projectDataEqual } from './projectDataEqual';
+
 type OrderedSketches = Pick<ProjectDrawingDocument, 'schemaVersion' | 'unit' | 'activeSketchId'> & {
   sketchOrder: readonly SketchId[];
   sketches: Readonly<Record<SketchId, { readonly id: SketchId }>>;
@@ -13,6 +15,8 @@ export type SketchOperation = Readonly<{
   module: 'drawing';
   sketchId: SketchId;
   definitionRevision: string;
+  /** Absent on older frames until the first edit. */
+  geometryRevision?: string;
   /** Allocated once per lifetime. Older in-memory records acquire this on admission. */
   presentationIndex?: number;
 }>;
@@ -73,9 +77,14 @@ export function initializeSketchOperations(doc: OrderedSketches, existing?: Cons
   return existing.map(op => op.presentationIndex === undefined ? { ...op, presentationIndex: allocate() } : op);
 }
 
+export function coincidentPairs(sketch: DrawingSketchV2) {
+  return Object.values(sketch.geometricConstraints ?? {}).flatMap(c => c.kind === 'COINCIDENT' && c.variant === 'point-point'
+    ? [c.references.map(ref => ref.pointId).sort()] : []).sort((a, b) => a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+}
+
 /** Called once on the complete accepted candidate, including grouped member edits. */
-export function updateSketchOperations(operations: ConstructionOperations, before: OrderedSketches,
-  after: OrderedSketches): ConstructionOperations {
+export function updateSketchOperations(operations: ConstructionOperations, before: ProjectDrawingDocument,
+  after: ProjectDrawingDocument): ConstructionOperations {
   if (before.sketches === after.sketches && before.sketchOrder === after.sketchOrder) return operations;
   checkSketchOrder(after);
   const prior = new Map(operations.map(op => [op.sketchId, op]));
@@ -86,7 +95,12 @@ export function updateSketchOperations(operations: ConstructionOperations, befor
       allocate ??= nextPresentationIndex(operations);
       return createSketchOperation(id, allocate());
     }
-    return before.sketches[id] === after.sketches[id] ? op : { ...op, definitionRevision: newIdentityToken() };
+    const previous = before.sketches[id], current = after.sketches[id];
+    if (previous === current) return op;
+    const definitionRevision = newIdentityToken();
+    const sameGeometry = projectDataEqual(previous.points, current.points) && projectDataEqual(previous.entities, current.entities)
+      && (previous.geometricConstraints === current.geometricConstraints || projectDataEqual(coincidentPairs(previous), coincidentPairs(current)));
+    return { ...op, definitionRevision, geometryRevision: sameGeometry ? op.geometryRevision ?? op.definitionRevision : definitionRevision };
   });
   return next.length === operations.length && next.every((op, i) => op === operations[i]) ? operations : next;
 }

@@ -1,5 +1,11 @@
 # Unreleased
 
+## Stage C.2 PR 4 — Drawing-to-BOX panels
+
+- Use Panel Manager in BOX to assign thickness to one or more closed Line panels from a finished Sketch. Choose the working Sketch when several are eligible.
+- Editing geometry returns that Sketch to light grey for review. Undo restores its prior approval and manufacturing state.
+- Hover a completed Sketch to highlight all its members. Blue, rust and green distinguish the first three Sketches. Inactive references are lighter during editing.
+
 ## Stage C.2 PR 3 — Sketch History and UI consistency
 
 - Open an existing Sketch by double-clicking its named History entry or its geometry on the neutral grid. Overlapping Sketches offer a choice.

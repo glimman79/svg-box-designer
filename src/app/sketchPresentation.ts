@@ -5,7 +5,7 @@ import { DRAWING_SEMANTIC_CURVE_TOLERANCE_PX } from './drawingPointerArbitration
 import { resolveArc, resolveCircle, resolveLine } from './drawingTopology.js';
 import type { DrawingEntity, DrawingPoint, DrawingSketchV2 } from './drawingTypes';
 
-const neutralPalette = ['#386b92', '#995a33', '#76598b', '#36776d', '#866c32', '#9a526c', '#546984', '#617442'];
+const neutralPalette = ['#2163a1', '#ac491d', '#267443', '#36776d', '#866c32', '#9a526c', '#546984', '#617442'];
 
 export function neutralSketchColor(operation: SketchOperation) {
   return neutralPalette[(operation.presentationIndex ?? 0) % neutralPalette.length];

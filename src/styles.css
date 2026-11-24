@@ -2466,5 +2466,14 @@ button:disabled {
   padding: var(--ui-control-padding);
   font-size: var(--ui-font);
 }
-.drawing-reference-sketch { fill: none; stroke: #858585; stroke-width: 1.45; pointer-events: none; }
-.drawing-reference-sketch > * { vector-effect: non-scaling-stroke; }
+.drawing-reference-sketch, .box-reference-members { fill: none; stroke: #b9bfc5; stroke-width: 1.45; pointer-events: none; }
+.drawing-reference-sketch > *, .box-reference-members > * { vector-effect: non-scaling-stroke; }
+
+.drawing-reference-sketch[data-highlighted] { stroke: #124756 !important; stroke-width: 3.2; }
+.sketch-hover-label { pointer-events: none; }
+.box-source-selector { display: grid; gap: .45rem; }
+.box-source-selector select { max-width: 100%; }
+.box-source-indicator { position: absolute; bottom: .5rem; left: .6rem; z-index: 1; pointer-events: none; background: white; padding: .2rem .45rem; border-radius: .2rem; }
+
+.box-reference-members { pointer-events: stroke; cursor: pointer; }
+.box-import-reference { fill: none; stroke: #71828c; vector-effect: non-scaling-stroke; cursor: pointer; }
