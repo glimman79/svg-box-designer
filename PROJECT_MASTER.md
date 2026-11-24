@@ -1,5 +1,11 @@
 # SVG Box Designer — Project Master
 
+## Stage C.2 PR 3 — Sketch History and editing
+
+**Approved requirement.** Each Sketch has one named, permanent entry in the shared History row across Drawing and BOX. Double-clicking opens its current definition. A deliberate switch from BOX contributes one global navigation step. Inside Drawing, opening and finishing preserve both stacks.
+
+**Implemented and automatically tested. Pending user browser acceptance.** PR #646 merged the neutral grid and explicit Sketch editor. PR 3 moves creation and secondary reopening to the left rail, with Finish in a BOX-style inspector. Neutral Sketches have individual colors. The editor shows other Sketches in grey and retains the active Sketch’s CAD states. The UI-3 availability message and deferred Sketch navigation in the earlier checkpoints below are superseded. [Sketch contract](docs/SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
+
 ## Stage C.2 PR 2 — Drawing editing context
 
 **Approved requirement.** Drawing opens neutral. New Sketch starts an independent definition. Finish Sketch returns to the shared grid. Reopen Sketch selects an existing definition by ID. Completed geometry stays visible, with one editable Sketch at a time. The user requires an explicit finish before entering BOX.
@@ -142,7 +148,7 @@ the connected product; it does not describe implemented capabilities.
 approved seven-region layout and interactions; UI-1 is implemented and browser-checked
 (2026-11-10), pending user review/acceptance. UI-2 is implemented and browser-checked
 (2026-11-11), pending user review/acceptance. UI-3 is implemented/browser-checked
-(2026-11-13), pending user acceptance; UI-4 remains unimplemented.
+(2026-11-13), pending user acceptance. The Sketch navigation slice of UI-4 is implemented and automatically tested. BOX operation definitions and dependency diagnostics remain planned.
 
 ## 2. Product organization
 

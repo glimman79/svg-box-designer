@@ -1,14 +1,18 @@
 # Laser Program — Global Workspace UI Specification
 
-## Current Sketch controls (Stage C.2 PR 2)
+## Current Sketch controls (Stage C.2 PR 3)
 
-**Approved requirement, implemented and tested, pending user browser acceptance.** The neutral Drawing canvas shows the grid, completed Sketch geometry and viewport controls. New Sketch and the Reopen Sketch selector occupy the canvas corner. Editing restores the axes, origin, status and CAD tools. Finish Sketch shares the corner with the BOX restriction explanation. BOX has a disabled navigation button and a runtime guard until Finish. This supersedes the earlier unrestricted module-switch requirement because a Sketch now has an explicit editing lifetime. The bottom History row retains its BOX workflow behavior. UI-4 Sketch symbols remain planned. [Session contract](SKETCH_OPERATION_FOUNDATION.md#editing-context)
+**Approved requirement.** Drawing uses the same left tool rail, right inspector and single shared bottom History as BOX. PR #646 merged explicit Sketch editing. This section supersedes its floating controls and the UI-3 availability placeholder.
+
+**Implemented and automatically tested. Pending user browser acceptance.** In neutral Drawing the left rail offers New Sketch and a compact Open selector. Double-click a named Sketch entry in either workspace, or double-click a Line, Circle or finite Arc on the neutral grid. Overlap presents the eligible names in construction order. Keyboard users can activate a History entry with Enter or Space. A BOX request records one deliberate navigation step. Each entry uses its project-owned identity throughout edits, restores and Undo eviction.
+
+Neutral references and their History icons use a restrained eight-color palette. During editing, other Sketches become non-interactive grey references and the active Sketch retains every established CAD color. The right inspector identifies the Sketch, provides Finish and explains the BOX restriction. Finish also enables reopening other Sketches. BOX workflow controls remain a separate group on the same scroll track. [Session contract](SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
 
 **Status: APPROVED PRODUCT REQUIREMENTS; UI-1 IMPLEMENTED / browser-checked (2026-11-10),
 pending user review/acceptance. UI-2 IMPLEMENTED / browser-checked (2026-11-11),
 pending user review/acceptance. UI-2.1 IMPLEMENTED / browser-checked (2026-11-11),
 pending user review/acceptance. UI-3 IMPLEMENTED / browser-checked (2026-11-13),
-pending user acceptance. UI-4 remains PROPOSED / NOT IMPLEMENTED.**
+pending user acceptance. The Sketch portion of UI-4 is implemented and automatically tested, pending user browser acceptance.**
 
 ## 1. Purpose, scope and authority
 
@@ -205,7 +209,7 @@ the Drawing Constraints implementation is unchanged.
 
 ## Multi-Sketch interaction refinement (2026-11-17)
 
-The November 17 targets below are now partially implemented. PR 2 covers Sketch creation, editing, finishing and reopening. UI-4 and connected manufacturing remain planned. [Scoped specification](MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md)
+The November 17 targets below are now partially implemented. PR 2 covers Sketch creation, editing, finishing and reopening. PR 3 adds visible Sketch operations. Broader UI-4 and connected manufacturing remain planned. [Scoped specification](MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md)
 
 - New Sketch creates an empty independent Sketch, keeping existing Sketches on the canvas
   and previously visible Sketches visible by default; only the new Sketch is editable.
@@ -256,7 +260,7 @@ does not select a scheduler. See the authoritative
 
 UI-1 and UI-2 are **IMPLEMENTED / browser-checked**, pending user review/acceptance.
 UI-3 is **IMPLEMENTED / browser-checked (2026-11-13), pending user acceptance**;
-UI-4 remains **PROPOSED / NOT IMPLEMENTED**. These slices complement the existing A–G roadmap
+UI-4 has a tested Sketch navigation slice. The remaining operation catalog, diagnostics and repair are planned. These slices complement the existing A–G roadmap
 without renumbering it or changing any stage's status.
 
 ### UI-1 — Shared workspace shell
@@ -308,6 +312,8 @@ their real model and adapters exist.
 
 ### UI-4 — Construction-history integration
 
+**Partial delivery.** The current Sketch controls above implement the first navigation slice. The UI-3 section records its November 13 checkpoint.
+
 **Prerequisites:** C shared project/global Undo, proposed C.2 persistent operations and
 parameter/current-settings bindings, D native persistence for saved-history behavior,
 and the necessary E evaluation/diagnostic/repair foundations. Deliver incrementally
@@ -331,7 +337,7 @@ foundation is implemented while Open starts a fresh Undo tape.
 | A — Shared toolbar | UI-1/UI-2 refine placement; Fit moves to canvas. Placement never proves command functionality. |
 | B — Global project/history architecture design | Merged Stage B document remains the technical reference; preserve its separation of requirements and proposals. |
 | C — Global history implementation | Shared project foundation and global Undo/Redo; required for UI-4 synchronization. UI-1 placement can precede it. |
-| C.2 — permanent construction-history foundation | PR 1 supplies ordered, project-owned Sketch operations. Current-settings navigation and visible Sketch symbols remain planned for UI-4. |
+| C.2 — permanent construction-history foundation | PR 1 supplies ordered, project-owned Sketch operations. PR 3 binds visible Sketch entries to their current definitions. |
 | D — Native Save/Open | Preserve complete editable operations/relationships; saved-history acceptance requires this stage. Coordinate with C.2 before format freeze. |
 | E — Geometry transfer and dependencies | Affected propagation/regeneration, diagnostics and repair for UI-4; not part of early layout work. |
 | F — Simple 3D Modeling | Optional future module; extend the shared shell when implemented. Not a prerequisite for Drawing-first UI work. |

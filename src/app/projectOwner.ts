@@ -24,8 +24,8 @@ export type InitialProject = PreOperationProject | ProjectStateSource;
 function admitInitialProject(initial: InitialProject): ProjectStateSource {
   if ('constructionOperations' in initial) {
     if (!Array.isArray(initial.constructionOperations)) throw new TypeError('Expected a construction operation list');
-    initializeSketchOperations(initial.drawingDocument, initial.constructionOperations);
-    return initial;
+    const constructionOperations = initializeSketchOperations(initial.drawingDocument, initial.constructionOperations);
+    return constructionOperations === initial.constructionOperations ? initial : { ...initial, constructionOperations };
   }
   return { ...initial, constructionOperations: initializeSketchOperations(initial.drawingDocument) };
 }

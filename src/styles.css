@@ -832,7 +832,7 @@ button:disabled {
   background: #fff;
 }
 
-.drawing-tool-sidebar button {
+.drawing-tool-sidebar :is(button, select) {
   width: 48px;
   min-height: 34px;
   padding: 4px 2px;
@@ -2225,7 +2225,7 @@ button:disabled {
   overflow-y: auto;
 }
 
-.workspace-shell .drawing-tool-sidebar button {
+.workspace-shell .drawing-tool-sidebar :is(button, select) {
   width: 100%;
 }
 
@@ -2367,7 +2367,7 @@ button:disabled {
 .settings-gear { font-size: var(--ui-icon); line-height: 1; margin-right: var(--ui-gap); }
 .workspace-shell { grid-template-columns: var(--ui-tool-width) minmax(0, 1fr); }
 .workspace-shell :is(.tool-sidebar, .drawing-tool-sidebar) { width: var(--ui-tool-width); gap: var(--ui-gap); padding: var(--ui-gap) 3px; }
-.workspace-shell :is(.tool-sidebar, .drawing-tool-sidebar) button { min-height: var(--ui-control-height); padding: 2px 0; font-size: var(--ui-font); border-radius: 5px; }
+.workspace-shell :is(.tool-sidebar, .drawing-tool-sidebar) :is(button, select) { min-height: var(--ui-control-height); padding: 2px 0; font-size: var(--ui-font); border-radius: 5px; }
 .drawing-canvas-card { grid-template-rows: minmax(0, 1fr); }
 .drawing-header-slot { flex: 0 0 auto; }
 .drawing-header-tools button { color: #e5e7eb; background: #1f2937; border: 1px solid #374151; }
@@ -2429,28 +2429,42 @@ button:disabled {
   outline-offset: -2px;
 }
 
-.sketch-context-controls {
-  position: absolute;
-  z-index: 3;
-  right: 12px;
-  top: 12px;
+.workspace-shell .drawing-tool-sidebar .sketch-new { padding-block: 0; line-height: 1; }
+.sketch-reopen-select { appearance: none; text-align: center; }
+.sketch-history-items {
   display: flex;
+  flex: 0 0 auto;
+  align-items: center;
   gap: var(--ui-gap);
 }
-.sketch-context-controls :is(button, select) {
-  min-height: var(--ui-control-height);
-  padding: 2px 8px;
-  border: 1px solid #94a3b8;
-  border-radius: 5px;
-  background: #fff;
-  color: #172033;
-  font: inherit;
+.workflow-history-content:not([hidden]) + .sketch-history-items {
+  border-left: 1px solid #cbd5e1;
+  padding-left: var(--ui-control-padding);
 }
-.drawing-reference-sketch { fill: none; stroke: #738297; stroke-width: 1.45; pointer-events: none; }
+.shared-history-region .sketch-history-item {
+  width: auto;
+  padding-inline: var(--ui-control-padding);
+  gap: var(--ui-gap);
+}
+.sketch-history-item:disabled {
+  cursor: default;
+  opacity: 1;
+  color: #596779;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+.sketch-history-item[aria-current="true"] { color: #134e4a; background: #ccfbf1; border-color: #0f766e; }
+.sketch-overlap-choices {
+  position: absolute;
+  z-index: 4;
+  left: 10px;
+  top: 50px;
+  display: grid;
+  gap: var(--ui-gap);
+  max-height: calc(100% - 60px);
+  overflow-y: auto;
+  padding: var(--ui-control-padding);
+  font-size: var(--ui-font);
+}
+.drawing-reference-sketch { fill: none; stroke: #858585; stroke-width: 1.45; pointer-events: none; }
 .drawing-reference-sketch > * { vector-effect: non-scaling-stroke; }
-
-.sketch-context-controls:has(#box-sketch-restriction) { flex-direction: column; align-items: flex-end; }
-#box-sketch-restriction { color: #475569; background: #fff; font-size: .72rem; }
-@media (max-width: 700px) {
-  .sketch-context-controls { top: auto; bottom: 10px; }
-}

@@ -56,6 +56,8 @@ import { useSvgImportLock } from './app/useSvgImportLock';
 import { ClearProjectDialog } from './app/ClearProjectDialog';
 import { WorkspaceTopBar } from './app/WorkspaceTopBar';
 import { WorkspaceShell } from './app/WorkspaceShell';
+import { readSketchDefinitions } from './app/constructionOperations';
+import type { SupportedWorkspace } from './app/drawingTypes';
 import { SharedHistoryRegion } from './app/SharedHistoryRegion';
 import type { ActiveSGroup, ActiveTBGroup, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, TBConnectionDefinition, TBConnectionProperties } from './app/connectionTypes';
 import { getNextConnectionLabel, parseConnectionLabel } from './app/connectionLabels';
@@ -533,7 +535,9 @@ function ProjectWorkspace({ projectOwner, position }: {
   const importLock = useSvgImportLock(projectOwner);
   const { project, history, activeWorkspace, editingSketchId, epoch: renderEpoch, session } = position;
   const drawingTransactions = useMemo(() => createDrawingTransactionAdapter(projectOwner), [projectOwner, renderEpoch]);
-  const { drawingDocument, box } = project;
+  const { drawingDocument, constructionOperations, box } = project;
+  const sketchDefinitions = useMemo(() => readSketchDefinitions({ drawingDocument, constructionOperations }),
+    [drawingDocument, constructionOperations]);
   const boxTransactions = useMemo(() => createBoxTransactionAdapter(projectOwner, renderEpoch), [projectOwner, renderEpoch]);
   const drawingInteraction = useRef<DrawingInteractionBoundary | null>(null);
   const [pendingProfileSegment, setPendingProfileSegment] = useState(false);
@@ -1629,6 +1633,18 @@ function ProjectWorkspace({ projectOwner, position }: {
     </div>
   );
 
+  const canNavigate = () => !isClearDialogOpen && !importLock.isImporting && session === projectOwner.getPublication().session;
+  const leaveWorkspace = (source: SupportedWorkspace) => {
+    if (source === 'drawing') drawingInteraction.current?.leaveWorkspace();
+    else {
+      cancelCanvasPan();
+      pointerEpoch.current = -1;
+    }
+  };
+  const openSketchOperation = (id: string) => {
+    if (canNavigate()) flushSync(() => projectOwner.openSketchOperation(id, leaveWorkspace));
+  };
+
   return (
     <>
     <dialog ref={importLock.dialogRef} className="svg-import-dialog" aria-modal="true"
@@ -1642,14 +1658,7 @@ function ProjectWorkspace({ projectOwner, position }: {
       <WorkspaceTopBar
         activeWorkspace={activeWorkspace} editingSketch={editingSketchId !== null}
         onSelectWorkspace={(workspace) => {
-          if (isClearDialogOpen || importLock.isImporting || session !== projectOwner.getPublication().session) return;
-          flushSync(() => projectOwner.navigate(workspace, source => {
-            if (source === 'drawing') drawingInteraction.current?.leaveWorkspace();
-            else {
-              cancelCanvasPan();
-              pointerEpoch.current = -1;
-            }
-          }));
+          if (canNavigate()) flushSync(() => projectOwner.navigate(workspace, leaveWorkspace));
         }}
         onImport={handleImportWithError}
         onExport={exportSvg}
@@ -1683,7 +1692,7 @@ function ProjectWorkspace({ projectOwner, position }: {
       {errorMessage && <div className="notice">{errorMessage}</div>}
 
       <DrawingWorkspace editingSketchId={editingSketchId}
-        onNewSketch={() => projectOwner.newSketch()} onOpenSketch={id => projectOwner.openSketch(id)}
+        definitions={sketchDefinitions} onNewSketch={() => projectOwner.newSketch()} onOpenSketch={openSketchOperation}
         onFinishSketch={() => {
           drawingInteraction.current?.leaveWorkspace();
           setDrawingConstraintsPanelOpen(false);
@@ -2095,7 +2104,7 @@ function ProjectWorkspace({ projectOwner, position }: {
         </section>
       </WorkspaceShell>
       <SharedHistoryRegion
-        presentation={activeWorkspace === 'construction' ? 'workflow-navigation' : 'operations-unavailable'}
+        workspace={activeWorkspace} definitions={sketchDefinitions} editingSketchId={editingSketchId} onOpenSketch={openSketchOperation}
         workflowNavigation={<>
             {workflowHistoryItems.length > 0 ? workflowHistoryItems.map((item) => (
               <button

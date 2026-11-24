@@ -1,10 +1,16 @@
 # SVG Box Designer roadmap
 
+## Stage C.2 PR 3 — Permanent Sketch entries and editor navigation
+
+**Implemented and automatically tested. Pending user browser acceptance.** Merged #646 established the editor lifecycle. PR 3 delivers the Sketch portion of UI-4, including one entry per current operation, double-click reopening, individual neutral colors, grey references, left-rail commands and the right-side Finish inspector.
+
+**Planned / not implemented.** Native Save/Open, the permanent BOX operation catalog, dependency evaluation and repair, and Drawing-to-BOX transfer remain open. The dated UI-3 and PR 1–2 checkpoints below describe the earlier shell. [Current UI contract](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md#current-sketch-controls-stage-c2-pr-3)
+
 ## Stage C.2 PR 2 — Explicit Sketch authoring
 
 **Implemented and tested, pending user browser acceptance.** The neutral grid, New Sketch, Finish Sketch and reopening use the operations merged in #645. One Sketch receives CAD input while prior geometry remains visible. Finish is required before a deliberate switch to BOX. Global Undo/Redo and the shared navigation history from #643 and user-verified #644 remain in service.
 
-**Planned / not implemented.** The next C.2 slice can expose existing Sketch operations in the shared History row and reopen their current definitions. UI-4, native persistence, cross-Sketch constraints and Drawing-to-BOX transfer remain open. [Sketch contract](docs/SKETCH_OPERATION_FOUNDATION.md#editing-context)
+PR 3 delivers the Sketch History entry proposed at this checkpoint. Broader UI-4, native persistence, cross-Sketch constraints and Drawing-to-BOX transfer remain open. [Sketch contract](docs/SKETCH_OPERATION_FOUNDATION.md#editing-context)
 
 ## Stage C.2 PR 1 — Sketch model implemented
 
@@ -1332,7 +1338,7 @@ R1–R3 and unimplemented R5 retain their recorded status.
 **Approved UI requirements: UI-1 IMPLEMENTED / browser-checked (2026-11-10), pending user
 review/acceptance; UI-2 IMPLEMENTED / browser-checked (2026-11-11), pending user
 review/acceptance; UI-3 IMPLEMENTED / browser-checked (2026-11-13), pending user
-acceptance; UI-4 NOT IMPLEMENTED.**
+acceptance. UI-4 Sketch entry navigation is implemented and automatically tested, pending user browser acceptance.**
 The [Global Workspace UI Specification](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md)
 owns the seven regions, interaction requirements and detailed acceptance criteria.
 These slices complement A–G without renumbering or changing any existing stage status.
@@ -1343,8 +1349,8 @@ functionality and all accepted tool/Undo behavior must be preserved.
 | --- | --- | --- |
 | UI-1 — Shared workspace shell | **IMPLEMENTED / browser-checked; pending user acceptance.** Shared top/module navigation, scoped project commands, active-module Undo/Redo, left toolbars and mounted shell boundaries. | Drawing/BOX state and local history survive switches; unavailable commands/modules stay disabled. No global ownership, native persistence or transaction changes. [Validation](docs/UI1_SHARED_WORKSPACE_SHELL_VALIDATION.md). |
 | UI-2 — Contextual canvas controls | **IMPLEMENTED / browser-checked; pending user acceptance.** Fit only beside canvas zoom; Apply/Finish integrated into the existing BOX tool overlay for PM, TB/W/S and Manufacturing as appropriate. | Existing handlers/validation, incomplete and multi-step workflows, module state and Undo boundaries preserved. Select/placeholders have no workflow actions. [Validation and screenshots](docs/UI2_CONTEXTUAL_CANVAS_CONTROLS_VALIDATION.md). UI-3/UI-4 and A–G remain unchanged. |
-| UI-3 — Construction-history timeline shell | **IMPLEMENTED / browser-checked; pending user acceptance.** One shared application-level region reuses the existing BOX row; Drawing shows an accurate empty state. | Original BOX navigation/state/handlers preserved; scroll context survives switches. Opaque future reference presentation type only, with no permanent operations or parallel store. [UI-3 validation](docs/UI3_UNIFIED_CONSTRUCTION_HISTORY_VALIDATION.md). C.2/UI-4 integration remains deferred. |
-| UI-4 — Construction-history integration | Persistent operations, in-place/current-settings editing, diagnostics/repair and Undo/dependency synchronization. | Requires C shared project/global Undo, proposed C.2 operations/bindings and appropriate E foundations; D is required for native saved-history behavior. New operations add entries; edits retain identity; invalid/blocked definitions remain accessible; native Open retains operations with a fresh Undo tape. |
+| UI-3 — Construction-history timeline shell | **IMPLEMENTED / browser-checked; pending user acceptance.** One shared application-level region reuses the existing BOX row; Drawing shows an accurate empty state. | Original BOX navigation/state/handlers preserved; scroll context survives switches. Opaque future reference presentation type only, with no permanent operations or parallel store. [UI-3 validation](docs/UI3_UNIFIED_CONSTRUCTION_HISTORY_VALIDATION.md). PR 3 supersedes the empty Drawing placeholder with actual Sketch operations. |
+| UI-4 — Construction-history integration | Sketch entries and current-definition reopening are automatically tested, pending user acceptance. The broader catalog, diagnostics, repair and dependency evaluation remain planned. | Requires C shared project/global Undo, proposed C.2 operations/bindings and appropriate E foundations; D is required for native saved-history behavior. New operations add entries; edits retain identity; invalid/blocked definitions remain accessible; native Open retains operations with a fresh Undo tape. |
 
 F — Simple 3D Modeling remains optional future integration, and G — Puzzle uses the
 same workspace when implemented. Neither is made available by a UI shell. UI-4 cannot

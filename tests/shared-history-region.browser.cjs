@@ -58,7 +58,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
       window.ui3Box = document.querySelector('.workspace:not(.drawing-workspace)');
     });
     await drawing();
-    assert.match(await history.innerText(), /persistent operations are available/);
+    assert.match(await history.innerText(), /No sketches yet/);
     assert.equal(await history.getByRole('button').count(), 0);
     assert.equal(await undo().isEnabled(), true);
     assert.equal(await redo().isEnabled(), false);
@@ -79,7 +79,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
       assert.equal(await button('Select').getAttribute('aria-pressed'), 'true');
       assert.deepEqual(await geometry(), drawingBefore);
       assert.equal(await drawingSvg.getAttribute('viewBox'), drawingView);
-      assert.equal(await history.getByRole('button').count(), 0);
+      assert.equal(await history.getByRole('button').count(), 1);
     }
     await track.click(); await track.dblclick();
     assert.deepEqual(await capabilities(), [true, false]);
@@ -125,7 +125,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     assert.equal(await redo().isEnabled(), true, 'workflow inspection preserves Finish Redo');
     const unfinishedWall = await overlay.innerText();
     for (let n = 0; n < 2; n++) {
-      await drawing(); assert.equal(await history.getByRole('button').count(), 0);
+      await drawing(); assert.equal(await history.getByRole('button').count(), 1);
       await box(); assert.equal(await redo().isEnabled(), false);
       assert.equal(await overlay.innerText(), unfinishedWall);
       assert.equal(await wall.getAttribute('aria-pressed'), 'true');
@@ -168,7 +168,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
           assert.equal(layout.bottom, height); assert.ok(layout.canvasHeight >= 600); assert.ok(layout.height <= 42);
           assert.deepEqual(layout.tokens, { Small: ['20px', '4px', '2px', '10px', '12px', '44px'], Normal: ['24px', '5px', '3px', '11px', '14px', '48px'], Large: ['28px', '7px', '4px', '12px', '16px', '52px'] }[size]);
           if (module === 'box') { assert.equal(layout.controlHeight, { Small: 20, Normal: 24, Large: 28 }[size]); assert.equal(await tb.isVisible(), true); assert.equal(await wall.isVisible(), true); await wall.click(); assert.equal(await wall.getAttribute('aria-pressed'), 'true'); }
-          else assert.equal(await history.getByRole('button').count(), 0);
+          else assert.equal(await history.getByRole('button').count(), 1);
           matrix.push({ viewport: { width, height }, size, module, ...layout });
           if ((size === 'Normal' && width >= 1366) || (width === 1024 && size !== 'Normal')) await capture(`${module}-${width}-${size.toLowerCase()}`);
         }
@@ -192,12 +192,12 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     await page.waitForTimeout(250);
     const scroll = await track.evaluate(e => e.scrollLeft);
     assert.ok(scroll > 0); await capture('long-test-only-track');
-    await drawing(); assert.equal(await history.getByRole('button').count(), 0);
+    await drawing(); assert.equal(await history.getByRole('button').count(), 1);
     await box(); assert.equal(await track.evaluate(e => e.scrollLeft), scroll, 'BOX scroll context survives Drawing');
     assert.deepEqual({ contours: await contours(), view: await boxSvg.getAttribute('viewBox'), capabilities: await capabilities(), overlay: await overlay.innerText() }, beforeScroll);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth || scrollX !== 0), false);
     await page.locator('[data-ui3-fixture]').evaluateAll(es => es.forEach(e => e.remove()));
-    assert.equal(await history.getByRole('button').count(), 3);
+    assert.equal(await history.getByRole('button').count(), 4);
     await drawing();
     const drawingViewBefore = await drawingSvg.getAttribute('viewBox'); const drawingGeometryBefore = await geometry(); const drawingHistoryBefore = await capabilities();
     await track.hover(); await page.mouse.wheel(600, 300); await track.click(); await track.dblclick();

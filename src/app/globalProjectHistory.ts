@@ -171,6 +171,15 @@ export function createGlobalProjectHistory(initial?: InitialProject) {
     return publish(history, project, 'context', 'drawing', id);
   }
 
+  /** Resolve an opaque lifetime against the current frame, including after navigation. */
+  function openSketchOperation(operationId: string, leave?: (source: SupportedWorkspace) => void) {
+    const resolve = () => publication.project.constructionOperations.find(op => op.id === operationId);
+    if (staging || publication.editingSketchId !== null || !resolve()) return false;
+    if (publication.activeWorkspace !== 'drawing' && !navigate('drawing', leave)) return false;
+    const operation = resolve();
+    return operation !== undefined && openSketch(operation.sketchId);
+  }
+
   function finishSketch() {
     if (staging || publication.editingSketchId === null) return false;
     return publish(publication.history, publication.project, 'context', 'drawing', null);
@@ -227,7 +236,7 @@ export function createGlobalProjectHistory(initial?: InitialProject) {
   return { getSnapshot: owner.getSnapshot, subscribe: owner.subscribe, getHistory: () => publication.history,
     getPublication: () => publication,
     drawingDocumentRef: { get current() { return owner.getSnapshot().drawingDocument; } },
-    getEpoch: () => publication.epoch, getAttempt, isCurrent, transact, navigate, newSketch, openSketch, finishSketch, traverse, clearProject, setBoxContext,
+    getEpoch: () => publication.epoch, getAttempt, isCurrent, transact, navigate, newSketch, openSketch, openSketchOperation, finishSketch, traverse, clearProject, setBoxContext,
     beginBoxImport: owner.beginBoxImport, isCurrentBoxImport: (token: ReturnType<typeof owner.beginBoxImport>) => publication.activeWorkspace === 'construction' && owner.isCurrentBoxImport(token), invalidateBoxImports: owner.invalidateBoxImports };
 }
 export type GlobalProjectHistory = ReturnType<typeof createGlobalProjectHistory>;

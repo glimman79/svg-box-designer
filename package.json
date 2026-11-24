@@ -156,6 +156,7 @@
     "test:shared-history:browser": "node tests/shared-history-region.browser.cjs",
     "test:project-state": "rm -rf .test-build/project-state && tsc --ignoreConfig tests/fixtures/project-state.ts tests/types/project-state.ts --target es2022 --module commonjs --outDir .test-build/project-state --skipLibCheck --esModuleInterop --strict && node -e 'require(\"fs\").writeFileSync(\".test-build/project-state/package.json\", JSON.stringify({type:\"commonjs\"}))' && node --test tests/project-state.test.cjs",
     "test:project-owner": "rm -rf .test-build/project-owner && tsc --ignoreConfig tests/fixtures/project-owner.ts --target es2022 --module commonjs --outDir .test-build/project-owner --skipLibCheck --esModuleInterop --strict && node -e 'require(\"fs\").writeFileSync(\".test-build/project-owner/package.json\", JSON.stringify({type:\"commonjs\"}))' && node --expose-gc --test tests/project-owner.test.cjs tests/box-construction.test.cjs tests/global-project-history.test.cjs",
+    "test:sketch-history:browser": "node tests/sketch-history.browser.cjs",
     "test:sketch-editing-context:browser": "node tests/sketch-editing-context.browser.cjs",
     "test:global-project-history:browser": "node tests/global-project-history.browser.cjs",
     "test:box-construction:browser": "node tests/box-construction.browser.cjs",

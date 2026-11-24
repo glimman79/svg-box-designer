@@ -1,5 +1,15 @@
 # Stage C.2 PR 1 — Persistent Sketch operations
 
+## History and visualization
+
+**Approved requirement. Implemented and automatically tested. Pending user browser acceptance.** PR #646 merged the editor lifetime described below. PR 3 presents `readSketchDefinitions(project)` in construction order. The row renders one button per operation ID in either workspace. It reads the current Sketch name and does not enumerate members or past transactions. The separate BOX workflow group retains PM, TB, W, S and manufacturing navigation.
+
+History double-click, keyboard activation and the left Open selector resolve the operation ID against the live project. A neutral geometry double-click converts the client point through the Drawing viewport transform and tests resolved finite members using a screen-space tolerance. A single eligible owner opens directly. Multiple owners appear as named choices in construction order. The runtime rejects stale lifetimes and requests during editing. Coming from BOX uses the existing deliberate navigation transaction. Within Drawing, opening and finishing preserve the frame and both history stacks. Finishing settles an already accepted pending Profile segment under the ordinary edit rules.
+
+Each operation receives an immutable `presentationIndex` at creation. Admission fills a missing index on older in-memory records while retaining the ID, revision and Drawing definition. A member edit, rename, reorder, removal of another Sketch or Undo/Redo preserves the assignment. The renderer derives the stroke and History icon color from this index modulo eight. Colors repeat on larger projects. Names and explicit overlap choices identify Sketches that share a color. No visual change adds a transaction or requires a native file format.
+
+All reference members use the same viewport and topology resolution as the editor. Opening a Sketch makes the other reference strokes neutral grey. Their SVG surfaces remain pointer-transparent. The active Sketch uses its original CAD rendering for solving state, selection, hover, Dimensions, inference and dragging. Finish restores the individual neutral colors. [UI controls](GLOBAL_WORKSPACE_UI_SPECIFICATION.md#current-sketch-controls-stage-c2-pr-3)
+
 ## Editing context
 
 **Approved requirement (2026-11-23).** Finish the active Sketch before deliberately switching to BOX. This supersedes unrestricted switching during unfinished Drawing authoring. Automatic workspace activation during history traversal remains available.
@@ -13,7 +23,7 @@
 - Finish flushes an accepted pending Profile click against its original definition. A resulting segment has its ordinary Undo step. Finish releases pointer captures and discards remaining previews, unfinished numeric drafts and tool-local state. A new session binds its adapter to the target and interaction epoch. Delayed events from an earlier editor cannot write into the new one.
 - Deliberate navigation checks the current runtime target before any interaction settlement. Rejection leaves the publication and Redo branch intact. Traversal restores the stored frame and module directly. It retains an open editor only when Drawing still owns the same operation lifetime. Restoring BOX or removing the target returns the editor to neutral. Restoration never reopens a closed editor. The 30-transition total capacity applies to global execution history. The current operation list grows with project Sketches.
 
-**Planned / not implemented.** Permanent Sketch symbols and opening the current definition from the shared History row are the proposed next slice. Native Save/Open, BOX transfer, cross-Sketch constraints and dependency evaluation are later work.
+PR 3 delivers the permanent Sketch symbols and current-definition reopening proposed at the PR 2 checkpoint. Native Save/Open, BOX transfer, cross-Sketch constraints and dependency evaluation are later work.
 
 ## PR 1 checkpoint (merged in #645)
 
@@ -41,7 +51,7 @@ Both transaction adapters preserve the rest of the frame. Operation maintenance 
 
 ## Follow-on scope
 
-This slice resolves Sketch grouping in Stage B decision D3 and in-memory V2 Sketch admission in D11. The November 17 decision supersedes Stage B's earlier standalone primitive operation examples. Operation-to-operation bindings, the BOX catalog, native Save/Open, cross-module transfer, regeneration and repair need separate contracts. At the PR 1 checkpoint, explicit creation, finishing and reopening on a shared canvas were the next proposed slice. PR 2 implements these controls. History row symbols remain planned.
+This slice resolves Sketch grouping in Stage B decision D3 and in-memory V2 Sketch admission in D11. The November 17 decision supersedes Stage B's earlier standalone primitive operation examples. Operation-to-operation bindings, the BOX catalog, native Save/Open, cross-module transfer, regeneration and repair need separate contracts. At the PR 1 checkpoint, explicit creation, finishing and reopening on a shared canvas were the next proposed slice. Merged PR #646 implements these controls. PR 3 adds the Sketch History symbols.
 
 ## Validation
 
