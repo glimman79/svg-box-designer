@@ -440,3 +440,45 @@ test('Undo creation invalidates editing, a branch gets new identities, and V2 re
   assert.equal(owner.getPublication().editingSketchId,null);
   assert.equal(owner.getPublication().activeWorkspace,'drawing');
 });
+
+test('History opens only live operation identities, preserving the current frame and deliberate navigation policy', () => {
+  const owner = api.createGlobalProjectHistory(api.makePopulatedProjectState());
+  const start = owner.getSnapshot();
+  const [a, b] = start.constructionOperations;
+  assert.equal(owner.openSketchOperation(a.sketchId), false);
+  assert.equal(owner.getHistory().undo.length, 0);
+  assert.ok(owner.openSketchOperation(b.id));
+  assert.equal(owner.getPublication().editingSketchId, b.sketchId);
+  assert.equal(owner.getSnapshot(), start);
+  assert.equal(owner.getHistory().undo.length, 1);
+  assert.ok(owner.finishSketch());
+  const edit = api.projectDrawingActions(owner);
+  assert.equal(edit.transact('Rename and reorder', doc => ({ ...doc, sketchOrder: [...doc.sketchOrder].reverse(),
+    sketches: { ...doc.sketches, [a.sketchId]: { ...doc.sketches[a.sketchId], name: 'Renamed' } } })).outcome, 'accepted');
+  assert.deepEqual(owner.getSnapshot().constructionOperations.map(op => [op.id, op.presentationIndex]),
+    [b, a].map(op => [op.id, op.presentationIndex]));
+  owner.traverse('undo');
+  const cursor = owner.getHistory();
+  assert.ok(owner.openSketchOperation(a.id));
+  assert.equal(owner.openSketchOperation(b.id), false);
+  assert.ok(owner.finishSketch());
+  assert.equal(owner.getSnapshot(), start);
+  assert.equal(owner.getHistory(), cursor);
+  assert.equal(cursor.redo.length, 1);
+  owner.traverse('redo');
+  assert.equal(owner.getSnapshot().drawingDocument.sketches[a.sketchId].name, 'Renamed');
+  owner.clearProject();
+  assert.equal(owner.openSketchOperation(a.id), false);
+  assert.equal(owner.getHistory().undo.length, 0);
+});
+
+test('pre-color operation records gain stable presentation indices without modifying their lifetimes or definitions', () => {
+  const initial = api.makePopulatedProjectState();
+  const legacy = initial.constructionOperations.map(({ presentationIndex, ...op }) => op);
+  const owner = api.createGlobalProjectHistory({ ...initial, constructionOperations: legacy });
+  const restored = owner.getSnapshot().constructionOperations;
+  assert.deepEqual(restored.map(({ presentationIndex, ...op }) => op), legacy);
+  assert.deepEqual(restored.map(op => op.presentationIndex), [0, 1]);
+  assert.equal(owner.getSnapshot().drawingDocument, initial.drawingDocument);
+  assert.equal(owner.getHistory().undo.length, 0);
+});

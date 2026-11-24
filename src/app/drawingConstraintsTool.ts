@@ -155,7 +155,8 @@ export const initialConstraintsPanelPosition = (
   bounds: Readonly<{ width: number; height: number }>,
   panel: Readonly<{ width: number; height: number }>,
   rightMargin = 32,
-) => clampConstraintsPanelPosition({ x: bounds.width - panel.width - rightMargin, y: 58 }, bounds, panel);
+  top = 58,
+) => clampConstraintsPanelPosition({ x: bounds.width - panel.width - rightMargin, y: top }, bounds, panel);
 
 export const constraintsPanelGrabOffset = (
   pointerClient: Readonly<{ x: number; y: number }>,

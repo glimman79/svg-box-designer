@@ -1,5 +1,9 @@
 # SVG Box Designer — Project History
 
+## Stage C.2 PR 3 — Review of the Sketch editor (2026-11-24)
+
+PR #646 merged explicit creation, Finish and reopening of multiple Sketches on a shared grid. After reviewing its controls, the user approved moving New Sketch and Open to the rail, putting Finish in the existing inspector layout and using History and geometry as direct routes to an editor. PR 3 binds those routes to the lifetime introduced in #645. A color identifies each reference in neutral Drawing. Only an open Sketch receives CAD interaction. Implementation and automated checks are complete for this slice. User browser acceptance is pending. [UI contract](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md#current-sketch-controls-stage-c2-pr-3)
+
 ## Stage C.2 PR 2 — Explicit finish before BOX (2026-11-23)
 
 PR #643 established global edit history. The user verified reversible navigation after #644, and #645 merged one permanent operation per Sketch. On November 23 the user narrowed the November 20 switching rule so a deliberate switch cannot interrupt Sketch editing. Finish Sketch now preserves the definition and returns to neutral Drawing. A subsequent switch occupies one history step. Restoration can still open BOX without recording another switch. This PR implements and tests the new behavior. User browser acceptance is pending. [Runtime policy](docs/SKETCH_OPERATION_FOUNDATION.md#editing-context)

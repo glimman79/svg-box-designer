@@ -1,8 +1,10 @@
 # Product Architecture Vision
 
-## Current implementation checkpoint — 2026-11-23
+## Current implementation checkpoint — 2026-11-24
 
-**Implemented and tested, pending user browser acceptance.** The first working multi-Sketch flow now covers neutral Drawing, New Sketch, Finish Sketch and reopening. The user requires an explicit finish before deliberate BOX navigation. Global history may restore BOX and clears the editing target on that transition. PR #645 supplies the permanent Sketch lifetimes. Native Save/Open, Drawing-to-BOX geometry transfer, Unfold and the permanent History UI remain planned. Earlier baseline and decision sections record their original dates. [Editing contract](SKETCH_OPERATION_FOUNDATION.md#editing-context)
+**Implemented and automatically tested. Pending user browser acceptance.** PR #646 merged neutral Drawing and explicit Sketch editor sessions. PR 3 connects the first real permanent operations to the application-wide History row. In either module a Sketch entry opens its current definition. BOX workflow buttons retain their own navigation semantics. The 30-transition global history continues to govern edits and workspace switches.
+
+**Planned / not implemented.** Native Save/Open, permanent BOX operations, dependency evaluation, Drawing-to-BOX transfer and Unfold. The following dated baseline and target sections record the original decisions. [Sketch integration](SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
 
 **Decision date: 2026-11-03; history requirements revised 2026-11-09; multi-Sketch/Unfold/export refined 2026-11-17. Status: APPROVED FUTURE PRODUCT REQUIREMENTS — NOT IMPLEMENTED.**
 
@@ -251,7 +253,7 @@ project. The previous Stage B bounded session-journal proposal is explicitly sup
 as a solution for construction history; an optional descriptive event journal is not an
 approved requirement.
 
-C.2 PR 1 implements one stable Sketch operation per Sketch. Its visible timeline entry remains part of the November 17 target. Sketch Lines, Circles, Arcs, Dimensions and
+C.2 PR 1 implements one stable Sketch operation per Sketch. PR 3 displays its named entry in the shared History row. Sketch Lines, Circles, Arcs, Dimensions and
 Constraints remain editable members, without automatic top-level primitive entries.
 Double-click reopens that Sketch; editing updates the existing definition, not a
 replacement entry. This supersedes the earlier per-primitive catalog for Sketch contents. [Sketch operation contract](SKETCH_OPERATION_FOUNDATION.md)

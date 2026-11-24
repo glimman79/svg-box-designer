@@ -1,5 +1,12 @@
 # Unreleased
 
+## Stage C.2 PR 3 — Sketch History and UI consistency
+
+- Open an existing Sketch by double-clicking its named History entry or its geometry on the neutral grid. Overlapping Sketches offer a choice.
+- Use New Sketch and Open on the left Drawing rail. Finish Sketch appears in the right inspector. BOX becomes available after finishing.
+- Match each neutral Sketch to its History icon by color. Editing shows the other Sketches in grey. The original active CAD colors apply.
+- Implemented and automatically tested, pending user browser acceptance. The underlying editing context merged in PR #646.
+
 ## Stage C.2 PR 2 — Sketch creation and editing (pending user browser acceptance)
 
 - Added New Sketch, Finish Sketch and Reopen Sketch on a shared 2D grid. Each Sketch keeps independent geometry, dimensions, constraints and its permanent operation from merged PR #645.

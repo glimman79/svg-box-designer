@@ -124,7 +124,7 @@ const { chromium } = require('playwright');
       assert.ok(await button('New Sketch').isVisible());
       await reopen('Sketch 2');
       assert.equal(await count('[data-sketch-circle-id]'),1);
-      const controls = await page.locator('.sketch-context-controls').boundingBox();
+      const controls = await page.getByRole('complementary',{name:'Active Sketch',exact:true}).boundingBox();
       const status = await page.locator('.drawing-status').boundingBox();
       assert.ok(controls.x >= status.x+status.width && controls.x+controls.width <= width);
       await enter('Finish Sketch');

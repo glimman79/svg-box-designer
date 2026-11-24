@@ -1,5 +1,11 @@
 # Application Architecture and Box / Construction Pipeline Map
 
+## Sketch navigation in the shared History row
+
+`ProjectWorkspace` reads ordered operation/Sketch pairs from the current project frame. The row, left Open selector and neutral geometry picker all pass the same operation lifetime ID to the runtime. A BOX request uses the existing workspace navigation command before opening the Drawing editor. Member edits replace the current definition while retaining the entry. Hover, opening and finishing need no solver or geometry regeneration. [Editing and restoration contract](docs/SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
+
+PR #646 merged the explicit editor sessions described below. The PR 3 presentation supersedes the UI-3 empty Drawing row described in the dated checkpoint.
+
 ## Stage C.2 PR 2 — Sketch editing sessions
 
 The runtime publication adds a transient Sketch ID alongside the workspace. BOX and neutral Drawing carry a null editing target. Populated V2 documents retain their original model and operation records at admission. Only the bound editing adapter can submit mounted CAD changes for its Sketch and interaction epoch. The canvas paints other ordered Sketches through the same world transform with passive Line, Circle and Arc primitives. [Ownership and restoration](docs/SKETCH_OPERATION_FOUNDATION.md#editing-context)
@@ -136,7 +142,7 @@ controls onto the canvas, with shared permanent construction history at the bott
 UI-1/UI-2 are implemented and browser-checked, pending user acceptance. UI-2 retains
 existing handlers and places Fit only beside canvas zoom, with relevant Apply/Finish
 in the existing BOX tool overlay. UI-3 now shares the existing bottom History region
-(see checkpoint below); UI-4 remains unimplemented and requires C/C.2, D for saved
+(see checkpoint below). C.2 PR 3 binds Sketch operations to this region. Broader UI-4 delivery requires D for saved
 history and E for dependency diagnostics/repair. Placement changes preserve accepted
 tool/Undo semantics and do not implement global ownership or native commands.
 Clear is a permanent project-wide session reset with Save and Clear / Clear Without

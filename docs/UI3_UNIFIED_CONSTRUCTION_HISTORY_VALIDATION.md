@@ -1,5 +1,9 @@
 # UI-3 — Unified Construction History validation
 
+## Subsequent Sketch integration
+
+This report records the November 13 UI-3 shell and its original screenshots. Stage C.2 PR 3 supersedes the availability message and proposed presentation type with real Sketch operations from the project. The BOX workflow group and the single shared scroll track remain in use. [Current contract](SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
+
 **IMPLEMENTED / Chromium-checked (2026-11-13); pending user acceptance and separate merge.**
 **READY TO MERGE for implementation review.** The PR must remain open and unmerged.
 

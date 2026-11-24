@@ -205,6 +205,7 @@ assert.equal(deriveParallelMarkers(geometricOnlyPair.sketches['sketch-1']).lengt
   'geometrically Parallel Lines without stored semantic intent do not manufacture markers');
 
 const markup = renderToStaticMarkup(createElement(DrawingWorkspace, {
+  definitions: [],
   document: authoredDocument, editingSketchId: authoredDocument.activeSketchId, ownedDocumentRef: {current: authoredDocument}, getEpoch: () => 0, setDocument: () => {}, viewBox: initialDrawingViewBox, setViewBox: () => {},
 }));
 const parallelGroups = [...markup.matchAll(/<g class="drawing-geometric-constraint-marker drawing-parallel-marker"[^>]*>(.*?)<\/g>/g)];

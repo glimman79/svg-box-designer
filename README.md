@@ -8,10 +8,9 @@ SVG Box Designer is a browser-based React application for drawing semantic 2D sk
 - **Box / Construction** imports or starts an SVG document, identifies panels and selectable straight edges, and applies Panel Manager, TB (Top/Bottom finger-joint), W (Wall), and S (Slot) workflows. Generated geometry is composed, reconciled, manufacturing-compensated for clearances and kerf, previewed, and exported as SVG.
 - **Puzzle** is reserved in the workspace selector but is **not implemented**.
 
-One compact bottom History region is shared by Drawing and BOX. BOX retains its workflow-group
-navigation; Drawing shows that persistent operation history is not yet available.
+**Sketch History (pending user browser acceptance).** In neutral 2D Drawing, choose **New Sketch** on the left toolbar to start a Sketch. Choose **Finish Sketch** in the right inspector to return to the grid and enable BOX. Each completed Sketch has its own subdued color and a matching named entry in the shared bottom History row.
 
-**Sketch editing (pending user browser acceptance).** Open 2D Drawing to see the grid. Choose **New Sketch** to draw with axes, dimensions and constraints. **Finish Sketch** keeps the geometry on the canvas and enables BOX. Use **Reopen Sketch** to edit an earlier Sketch. Other Sketches remain visible as references. [Editing and compatibility](docs/SKETCH_OPERATION_FOUNDATION.md#editing-context)
+Double-click the entry or a Line, Circle or Arc to edit its current Sketch. Choose a name if several Sketches meet at the pointer. The left **Open** selector also lists existing Sketches. While editing, other Sketches appear grey and the active Sketch retains its selection, constraint and Dimension colors. BOX keeps its workflow-group controls beside the Sketch entries. [Sketch navigation and colors](docs/SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
 
 Drawing and BOX share one 30-step Undo/Redo history. PR #644 added reversible Drawing/BOX switches. For example, after drawing a Line, finishing its Sketch and opening BOX, Undo returns to Drawing with the Line visible. Undo again removes the Line. A new switch after Undo starts a new branch. Replacing an SVG is a BOX edit. Clear Without Saving empties both workspaces and starts a fresh history in neutral Drawing. [Manual checks](docs/GLOBAL_HISTORY_CUTOVER.md#user-testing--user-visible-changes)
 

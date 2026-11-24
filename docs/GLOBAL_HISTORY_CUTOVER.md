@@ -1,5 +1,9 @@
 # Stage C — Global Undo/Redo and reversible workspace navigation
 
+## Sketch navigation update
+
+Merged #646 introduced the editor lifetime. The Sketch History entries now open current definitions. Opening or finishing within Drawing preserves the cursor and Redo. Opening from BOX contributes exactly one deliberate workspace switch. The availability message below describes the UI-3 checkpoint. [Current contract](SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
+
 ## PR 2 supersession — November 23, 2026
 
 PR #645 merged the Sketch operation foundation. Stage C.2 PR 2 keeps #643's global edit history and #644's user-verified reversible navigation. The approved Finish requirement supersedes the PR 8 descriptions below of leaving Drawing with unfinished tools. A user switch from neutral Drawing still takes one step. A switch attempted during Sketch editing takes zero. New Sketch takes one edit. Opening or finishing an editor takes zero. Clear now opens neutral Drawing with no operations. The PR 7/8 instructions and measurements below record their dated checkpoints. [Current runtime and compatibility contract](SKETCH_OPERATION_FOUNDATION.md#editing-context)

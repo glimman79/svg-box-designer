@@ -1,8 +1,10 @@
 # Laser Program – Multi-Sketch, 3D/Unfold & BOX Architecture Documentation
 
-## Current implementation checkpoint — 2026-11-23
+## Current implementation checkpoint — 2026-11-24
 
-**Implemented and tested, pending user browser acceptance.** Geometry for completed Sketches shares one grid. Only the opened Sketch receives authoring, dimension, constraint or drag input. Finish preserves it and enables BOX. The neutral selector reopens the existing operation definition. PR #645 supplies the permanent Sketch lifetimes. Native Save/Open, Drawing-to-BOX geometry transfer, Unfold and the permanent History UI remain planned. Earlier baseline and decision sections record their original dates. [Editing contract](SKETCH_OPERATION_FOUNDATION.md#editing-context)
+**Implemented and automatically tested. Pending user browser acceptance.** PR #646 merged the shared grid and explicit editing lifetime. PR 3 adds stable neutral colors for Sketches, grey reference geometry while editing and direct reopening from History or neutral geometry. Overlap requires an explicit choice. The active Sketch alone supplies Dimensions, Constraints and authoring input.
+
+**Planned / not implemented.** Native Save/Open, permanent BOX operations, dependency evaluation, Drawing-to-BOX transfer and Unfold. The following dated baseline and target sections record the original decisions. [Sketch integration](SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
 
 **Decision date: 2026-11-17. APPROVED TARGET — NOT IMPLEMENTED.**
 

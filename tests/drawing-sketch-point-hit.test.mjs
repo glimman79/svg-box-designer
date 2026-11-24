@@ -22,6 +22,7 @@ const document = { schemaVersion: 2, unit: 'mm', activeSketchId: 's', sketchOrde
 } } };
 
 const markup = renderToStaticMarkup(React.createElement(DrawingWorkspace, {
+  definitions: [],
   document, editingSketchId: document.activeSketchId, ownedDocumentRef: {current: document}, getEpoch: () => 0, setDocument() {}, viewBox: { x: -400, y: -300, width: 800, height: 600 }, setViewBox() {},
   constraintsPanelOpen: true, setConstraintsPanelOpen() {},
 }));
@@ -48,6 +49,7 @@ arcSketch.points.arcCenter = { id: 'arcCenter', x: 50, y: 0 };
 arcSketch.entities = { arc: { id: 'arc', type: 'arc', centerPointId: 'arcCenter', radius: 50, startPointId: 'shared', endPointId: 'p2', orientation: 'CCW' } };
 arcSketch.entityOrder = ['arc'];
 const arcMarkup = renderToStaticMarkup(React.createElement(DrawingWorkspace, {
+  definitions: [],
   document: arcDocument, editingSketchId: arcDocument.activeSketchId, ownedDocumentRef: {current: arcDocument}, getEpoch: () => 0, setDocument() {}, viewBox: { x: -400, y: -300, width: 800, height: 600 }, setViewBox() {},
   constraintsPanelOpen: false, setConstraintsPanelOpen() {},
 }));
