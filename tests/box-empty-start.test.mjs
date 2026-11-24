@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { createBoxDocumentV1, initialBoxViewBox } from '../.test-build/box-empty-start/app/boxDocument.js';
 
 const app = fs.readFileSync('src/App.tsx', 'utf8');
-const owner = fs.readFileSync('src/app/projectOwner.ts', 'utf8');
+const owner = fs.readFileSync('src/app/initialBoxState.ts', 'utf8');
 const panelManager = fs.readFileSync('src/app/panelManagerModel.ts', 'utf8');
 const emptyDocument = createBoxDocumentV1();
 

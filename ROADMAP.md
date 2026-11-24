@@ -1,5 +1,9 @@
 # SVG Box Designer roadmap
 
+## Stage C.2 PR 4 — Drawing-to-BOX vertical integration
+
+**Partially implemented, pending user browser acceptance.** The first transfer covers closed Line panels, source-scoped Panel Manager, and BOX construction and export for the working source. This supersedes the transfer deferral in the PR 3 checkpoint below. Native curved panel boundaries, joint export across sources, dependency repair and full Stage E regeneration remain future work. [Supported scope](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#drawing-panel-sources)
+
 ## Stage C.2 PR 3 — Permanent Sketch entries and editor navigation
 
 **Implemented and automatically tested. Pending user browser acceptance.** Merged #646 established the editor lifecycle. PR 3 delivers the Sketch portion of UI-4, including one entry per current operation, double-click reopening, individual neutral colors, grey references, left-rail commands and the right-side Finish inspector.

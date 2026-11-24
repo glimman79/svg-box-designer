@@ -1,5 +1,11 @@
 # SVG Box Designer — Project Master
 
+## Stage C.2 PR 4 — Drawing panels in BOX
+
+A Sketch already holds many shapes. BOX discovers each Sketch from the project and identifies its supported closed Line contours. Panel Manager assigns thickness per panel and approves the current geometry of one Sketch. TB and W connect panels only within that Sketch. Neutral BOX offers Panel Manager on the tool rail. One eligible Sketch becomes the working source on approval. With several eligible Sketches, choose an approved source in Panel Manager.
+
+Every accepted geometric edit requires fresh approval for that Sketch, including a new open Line. Existing panel thicknesses and construction records survive when their identities still resolve. Other Sketches and imported SVG retain their own BOX state. Source review and Drawing geometry travel together through global Undo/Redo. User browser acceptance is pending. [Source and export boundaries](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#drawing-panel-sources)
+
 ## Stage C.2 PR 3 — Sketch History and editing
 
 **Approved requirement.** Each Sketch has one named, permanent entry in the shared History row across Drawing and BOX. Double-clicking opens its current definition. A deliberate switch from BOX contributes one global navigation step. Inside Drawing, opening and finishing preserve both stacks.

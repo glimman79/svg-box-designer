@@ -1,5 +1,6 @@
 import type { EdgeAssignmentBucket, EdgeRole, SlotRole } from '../svgUtils';
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './assignmentBuckets';
+import { isSourceApproved, sameSketchRequired } from './boxSources';
 import { collectSourceEdgeAuthoringClaims, deriveCanvasEdgeRelationshipState, sourceEdgeRelationshipKey } from './canvasEdgeRelationships';
 import { parseConnectionLabel } from './connectionLabels';
 import { propertiesChanged, type ConnectionPropertiesByPrefix } from './connectionTypes';
@@ -57,6 +58,12 @@ function requireReplacementAvailable(box: BoxStateSource, edgeId: string, connec
 }
 
 export function assignConstructionEdge(box: BoxStateSource, edgeId: string, id: string): BoxStateSource {
+  if (box.svgModel.drawingSource || edgeId.startsWith('sketch-')) {
+    if (!box.svgModel.edges.some(e => e.id === edgeId)) throw new Error(sameSketchRequired);
+    if (box.svgModel.drawingSource && !box.svgModel.panels.some(p => p.outerEdgeIds.includes(edgeId)))
+      throw new Error('Select an outer panel edge for construction.');
+    if (!isSourceApproved(box)) throw new Error('Review this Sketch in Panel Manager before assigning edges.');
+  }
   requireSourceEdge(box, edgeId);
   const { edgeAssignments, connections, activeWallGroup, activeSGroup } = box;
   const connection = connections[id];

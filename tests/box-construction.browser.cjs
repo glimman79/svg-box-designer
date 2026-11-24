@@ -94,6 +94,11 @@ const assert = require('node:assert/strict');
     await button(actions,'Apply').click();
     assert.equal(await notice.count(),0,await notice.allTextContents());
     const mixed = await contours(); assert.match(mixed,/<path/); assert.notEqual(mixed,imported);
+    const [exported] = await Promise.all([page.waitForEvent('download'), button(page,'Export').click()]);
+    assert.equal(exported.suggestedFilename(),'svg-box-designer-applied.svg');
+    const output = require('node:fs').readFileSync(await exported.path(),'utf8');
+    assert.match(output,/<path/);
+    assert.doesNotMatch(output,/svg-box-designer-labels/);
 
     await tool('S'); await edge(3); await edge(0); // S-B references a TB replacement.
     await undo.click(); await button(actions,'Apply').click();

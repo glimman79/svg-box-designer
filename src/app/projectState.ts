@@ -45,7 +45,13 @@ export type BoxStateCapture = CapturedData<{
 
 export type DrawingStateCapture = CapturedData<ProjectDrawingDocument>;
 
+export type BoxSources = {
+  sketches: Record<string, BoxStateSource>;
+  selection?: { id: string; working: boolean };
+};
+
 export type ProjectStateSource = {
+  boxSources?: BoxSources;
   constructionOperations: ConstructionOperations;
   drawingDocument: ProjectDrawingDocument;
   box: BoxStateSource;
@@ -53,6 +59,7 @@ export type ProjectStateSource = {
 
 /** Complete existing editable data, not an execution-history frame or runtime owner. */
 export type ProjectStateCapture = Readonly<{
+  boxSources?: CapturedData<BoxSources>;
   constructionOperations: ConstructionOperations;
   drawingDocument: DrawingStateCapture;
   box: BoxStateCapture;
@@ -118,6 +125,7 @@ export const projectBoxState = (capture: BoxStateCapture): BoxStateSource => (
 );
 
 export const captureProjectState = (source: ProjectStateSource): ProjectStateCapture => Object.freeze({
+  ...(source.boxSources && { boxSources: captureData(source.boxSources) }),
   constructionOperations: captureData(source.constructionOperations),
   drawingDocument: captureDrawingState(source.drawingDocument),
   box: captureBoxState(source.box),
@@ -125,6 +133,7 @@ export const captureProjectState = (source: ProjectStateSource): ProjectStateCap
 
 /** Projection returns independent data; lifecycle/atomic React restoration is deferred. */
 export const projectProjectState = (capture: ProjectStateCapture): ProjectStateSource => ({
+  ...(capture.boxSources && { boxSources: structuredClone(capture.boxSources) as BoxSources }),
   constructionOperations: structuredClone(capture.constructionOperations),
   drawingDocument: projectDrawingState(capture.drawingDocument),
   box: projectBoxState(capture.box),

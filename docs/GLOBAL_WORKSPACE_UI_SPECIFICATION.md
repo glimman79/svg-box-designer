@@ -1,5 +1,11 @@
 # Laser Program — Global Workspace UI Specification
 
+## Panel Manager and Sketch feedback (Stage C.2 PR 4)
+
+Hover a completed Sketch in neutral Drawing to highlight its Lines, Circles and Arcs together and show its name and double-click hint. Overlap keeps the explicit owner chooser. History uses the same stable color assignment as the neutral grid. While editing, other Sketches have lighter grey strokes.
+
+The neutral BOX rail shows Panel Manager. Its inspector lists sources with their review status and per-panel thicknesses. An approved sole eligible Sketch activates construction immediately. With several eligible Sketches, use **Work on** to select one. The canvas identifies the working source and keeps other sources available for inspection. Choosing a BOX source keeps the user in BOX. The History entry retains its separate double-click action to edit in Drawing.
+
 ## Current Sketch controls (Stage C.2 PR 3)
 
 **Approved requirement.** Drawing uses the same left tool rail, right inspector and single shared bottom History as BOX. PR #646 merged explicit Sketch editing. This section supersedes its floating controls and the UI-3 availability placeholder.

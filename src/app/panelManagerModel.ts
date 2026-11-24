@@ -2,7 +2,7 @@ import type { Point, SvgDocumentModel } from '../svgUtils';
 import { pointsToClosedPathD } from './sharedGeometry';
 
 export type PanelMetadata = { panelId: string; thicknessMm: number };
-export type PanelManagerState = { panels: Record<string, PanelMetadata>; defaultThicknessMm: number; isApplied: boolean; isDirty: boolean };
+export type PanelManagerState = { panels: Record<string, PanelMetadata>; defaultThicknessMm: number; isApplied: boolean; isDirty: boolean; approvedGeometryRevision?: string; needsGeometryApply?: boolean };
 
 export const DEFAULT_PANEL_THICKNESS_MM = 3;
 
@@ -17,7 +17,7 @@ export const createPanelManagerStateFromModel = (svgModel: SvgDocumentModel, def
 
 export const validatePanelManagerState = (panelManager: PanelManagerState): string | null => {
   const panels = Object.values(panelManager.panels);
-  if (panels.length === 0) return 'No panels were detected. Import a file with closed panels before using workflow tools.';
+  if (panels.length === 0) return 'No panels were detected. Choose a source with a supported closed contour.';
   return panels.every((panel) => Number.isFinite(panel.thicknessMm) && panel.thicknessMm > 0)
     ? null
     : 'Set thickness for all panels before applying Panel Manager.';

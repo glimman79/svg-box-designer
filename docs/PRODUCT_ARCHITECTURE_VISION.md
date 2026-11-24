@@ -4,7 +4,9 @@
 
 **Implemented and automatically tested. Pending user browser acceptance.** PR #646 merged neutral Drawing and explicit Sketch editor sessions. PR 3 connects the first real permanent operations to the application-wide History row. In either module a Sketch entry opens its current definition. BOX workflow buttons retain their own navigation semantics. The 30-transition global history continues to govern edits and workspace switches.
 
-**Planned / not implemented.** Native Save/Open, permanent BOX operations, dependency evaluation, Drawing-to-BOX transfer and Unfold. The following dated baseline and target sections record the original decisions. [Sketch integration](SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
+PR 4 connects Drawing-owned closed Line profiles to BOX through one source per permanent Sketch operation. Geometry revisions, Panel Manager approval and downstream state share the global project frame. The working source bounds construction and export. [Drawing panel sources](MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#drawing-panel-sources)
+
+**Planned / not implemented.** Native Save/Open, permanent BOX operations, full dependency evaluation and Unfold. The following dated baseline and target sections record the original decisions. [Sketch integration](SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
 
 **Decision date: 2026-11-03; history requirements revised 2026-11-09; multi-Sketch/Unfold/export refined 2026-11-17. Status: APPROVED FUTURE PRODUCT REQUIREMENTS — NOT IMPLEMENTED.**
 

@@ -1,12 +1,14 @@
 # SVG Box Designer
 
-SVG Box Designer is a browser-based React application for drawing semantic 2D sketch geometry and turning imported SVG panels into fabrication-ready box geometry. It combines a constraint-aware Drawing workspace with SVG panel, connection, composition, compensation, preview, and export workflows.
+SVG Box Designer is a browser-based React application for drawing semantic 2D sketch geometry and turning Drawing and imported SVG panels into fabrication-ready box geometry. It combines a constraint-aware Drawing workspace with SVG panel, connection, composition, compensation, preview, and export workflows.
 
 ## Application areas
 
 - **2D Drawing** provides a constraint-aware SVG CAD canvas. Line/Profile use shared persistent `SketchPoint` topology; Circle persists `centerPointId + radius`; Arc now canonically persists `centerPointId + radius + startPointId + endPointId + orientation`. Arc authoring remains Start → End → Form Point, with the form point discarded after deriving the circumcircle and directed branch. Restore validates canonical Arc records; obsolete Arc formats and derived-center references are no longer supported after Stage 5.3A. Circle and Arc share Circular Support and circular-radius solver infrastructure; Circle dimensions present diameter Ø while Arc dimensions present radius R. Arc own-grip Direct Manipulation was restored by merged Stage 4 PR #613; Stage 4, including 4.2 Coincidence and 4.3 performance, is ACCEPTED after Mikael’s manual browser tests.
 - **Box / Construction** imports or starts an SVG document, identifies panels and selectable straight edges, and applies Panel Manager, TB (Top/Bottom finger-joint), W (Wall), and S (Slot) workflows. Generated geometry is composed, reconciled, manufacturing-compensated for clearances and kerf, previewed, and exported as SVG.
 - **Puzzle** is reserved in the workspace selector but is **not implemented**.
+
+**Drawing panels in BOX.** Finish a Sketch containing closed Line profiles, open BOX and choose **Panel Manager**. Assign a positive thickness to each panel and click **Apply**. With several eligible Sketches, use **Work on** to choose an approved source for construction. Any geometry edit, including a new open Line, sends that Sketch back for review. Imported SVGs retain their independent workflow. [Geometry support and source review](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#drawing-panel-sources)
 
 **Sketch History (pending user browser acceptance).** In neutral 2D Drawing, choose **New Sketch** on the left toolbar to start a Sketch. Choose **Finish Sketch** in the right inspector to return to the grid and enable BOX. Each completed Sketch has its own subdued color and a matching named entry in the shared bottom History row.
 

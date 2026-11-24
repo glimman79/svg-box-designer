@@ -1,5 +1,9 @@
 # Stage C.2 PR 1 — Persistent Sketch operations
 
+## BOX source binding (Stage C.2 PR 4)
+
+Each permanent Sketch operation can contribute zero, one or several BOX panels. The operation lifetime scopes contour and edge identity even when local Sketch or entity IDs recur. A geometric change receives a new source revision. Names, hover, zoom, opening and finishing preserve the current approval. A solved point move or addition of an open Line invalidates the approval in the same global edit as the Drawing change. Undo restores the previous Sketch, source revision, assignments, thicknesses and generated snapshot. [Geometry mapping and review](MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#drawing-panel-sources)
+
 ## History and visualization
 
 **Approved requirement. Implemented and automatically tested. Pending user browser acceptance.** PR #646 merged the editor lifetime described below. PR 3 presents `readSketchDefinitions(project)` in construction order. The row renders one button per operation ID in either workspace. It reads the current Sketch name and does not enumerate members or past transactions. The separate BOX workflow group retains PM, TB, W, S and manufacturing navigation.

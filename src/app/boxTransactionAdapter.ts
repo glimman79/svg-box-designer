@@ -1,6 +1,7 @@
 import type { GlobalEditResult, GlobalProjectHistory } from './globalProjectHistory';
 import { projectDataEqual } from './projectDataEqual';
 import { retainEquivalentSnapshot } from './generatedGeometrySnapshot';
+import { getBoxScope, IMPORTED_SOURCE, sameSketchRequired } from './boxSources';
 import { createInitialBoxState } from './projectOwner';
 import { boxStateFields, type BoxStateSource } from './projectState';
 
@@ -10,14 +11,23 @@ export function createBoxTransactionAdapter(owner: GlobalProjectHistory, renderE
   type ImportToken = ReturnType<typeof owner.beginBoxImport>;
   function transact(label: string, prepare: (before: BoxStateSource) => BoxStateSource, token?: ImportToken) {
     const current = () => (renderEpoch === undefined || renderEpoch === owner.getEpoch())
+      && (renderEpoch === undefined || owner.getPublication().activeWorkspace === 'construction')
       && (!token || owner.isCurrentBoxImport(token));
-    if (!current()) return { outcome: 'rejected' as const };
+    if (!current()) return { outcome: 'rejected' as const, error: new Error('Select the current source. ' + sameSketchRequired) };
     return owner.transact('box', label, tx => {
-      const before = owner.getSnapshot().box;
+      const project = owner.getSnapshot();
+      const scope = getBoxScope(project);
+      const before = token ? project.box : scope.box;
       const next = prepare(before);
-      if (next === before) return 'noop';
+      if (next === before && (!token || scope.id === IMPORTED_SOURCE)) return 'noop';
       if (!next || Object.keys(before).some(key => !Object.hasOwn(next, key))) throw new TypeError('Incomplete BOX candidate');
-      tx.update(frame => ({ ...frame, box: boxStateFields(next) }));
+      if (!token && before.svgModel.drawingSource) {
+        tx.update(frame => ({ ...frame, boxSources: { ...frame.boxSources,
+          sketches: { ...frame.boxSources!.sketches, [scope.id]: next } } }));
+      } else {
+        tx.update(frame => ({ ...frame, box: boxStateFields(next),
+          ...(token && frame.boxSources && { boxSources: { ...frame.boxSources, selection: { id: IMPORTED_SOURCE, working: true } } }) }));
+      }
       return 'accept';
     }, current);
   }

@@ -58,7 +58,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
   try {
     await page.goto(url); await box(); await noTopActions();
     assert.equal(await actions.count(), 0, 'idle BOX has no workflow controls');
-    assert.equal(await tool('TB').isDisabled(), true);
+    assert.equal(await tool('TB').count(), 0);
     for (const select of [box, drawing]) {
       await select(); await noTopActions();
       const scope = page.locator('.workspace-shell:not([hidden])');
@@ -90,7 +90,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     await redo().click();
     await finish('OK').focus(); await page.keyboard.press('Space');
     assert.equal(await actions.count(), 0);
-    await undo().click(); assert.equal(await tool('TB').isDisabled(), true, 'Finish PM adds no new Undo action');
+    await undo().click(); assert.equal(await tool('TB').count(), 0, 'Finish PM adds no new Undo action');
     await redo().click();
     for (const name of ['J', 'P', 'Select']) { await tool(name).click(); assert.equal(await actions.count(), 0); }
     passed.push('PM validation, keyboard Apply/Finish exactly once, existing PM Undo boundary and placeholder/Select absence');
