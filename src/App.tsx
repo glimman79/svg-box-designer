@@ -818,7 +818,6 @@ function ProjectWorkspace({ projectOwner, position }: {
   useCadEscapeToolExit(activeWorkspace === 'construction' && !importLock.isImporting && !isClearDialogOpen, () => {
     if (isPanelManagerModalOpen) { setIsPanelManagerModalOpen(false); setActiveTool('PM'); return; }
     if (sourceChoices.length) { setSourceChoices([]); setHoverSources([]); return; }
-    if (activeTool === 'PM') return;
     closeBoxTool();
   });
 
