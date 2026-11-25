@@ -5,7 +5,7 @@ import { createGeneratedGeometrySnapshot, retainEquivalentSnapshot } from './gen
 import { validateGeometryAuthoring } from './authoringRelationships';
 import { validateWallAuthoringForApply } from './wallAuthoring';
 import { recalculateAutomaticSSlotLengths, buildGeneratedSGeometryItems } from './sGeometry';
-import { recalculateAutomaticTBFingerWidths, buildGeneratedTBGeometryItems } from './tbGeometry';
+import { recalculateAutomaticTBFingerWidths, buildGeneratedTBGeometryItems, validateCurrentTBEdgeCompatibility, validateGeneratedTBContributions } from './tbGeometry';
 import { buildGeneratedWGeometryItems } from './wallGeometry';
 import type { GeneratedGeometrySnapshot } from './generatedGeometrySnapshot';
 import type { SvgDocumentModel } from '../svgUtils';
@@ -19,7 +19,9 @@ export function evaluateAppliedGeometry(box: BoxStateSource, mode: PanelComposit
   const connections = recalculateAutomaticTBFingerWidths(svgModel, edgeAssignments, slots, panelManager);
   validateGeometryAuthoring(svgModel, edgeAssignments, connections, mode);
   validateWallAuthoringForApply(svgModel, edgeAssignments, connections, box.activeWallGroup);
+  validateCurrentTBEdgeCompatibility(svgModel, edgeAssignments, connections);
   const tbGeneratedItems = buildGeneratedTBGeometryItems(svgModel, edgeAssignments, connections, panelManager);
+  validateGeneratedTBContributions(edgeAssignments, connections, tbGeneratedItems);
   const wGeneratedItems = buildGeneratedWGeometryItems(svgModel, edgeAssignments, connections, panelManager);
   const sGeneratedItems = buildGeneratedSGeometryItems(svgModel, edgeAssignments, connections, panelManager);
   const items = [...tbGeneratedItems, ...wGeneratedItems, ...sGeneratedItems];

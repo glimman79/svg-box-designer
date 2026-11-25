@@ -6,6 +6,7 @@ import { createBoxDocumentV1 } from './boxDocument';
 import { validatePanelManagerState } from './panelManagerModel';
 import type { BoxSources, BoxStateSource, ProjectStateSource } from './projectState';
 import { evaluateAppliedGeometry } from './appliedGeometry';
+import { TBGeometryError } from './tbGeometry';
 import { connectionGroups } from './connectionGroups';
 import { projectDataEqual } from './projectDataEqual';
 import { toEdgeAssignmentBucket } from './assignmentBuckets';
@@ -58,6 +59,16 @@ function blockedDefinitions(box: BoxStateSource, sourceId: string,
     sourceId, ...reference, panelIds, edgeIds, message }));
 }
 
+function blockedTBConnection(box: BoxStateSource, sourceId: string, error: TBGeometryError) {
+  const group = connectionGroups(box, 'TB').find(group => group.connectionIds.includes(error.connectionId));
+  const edgeIds = Object.entries(box.edgeAssignments).filter(([, bucket]) =>
+    toEdgeAssignmentBucket(bucket)?.edgeAssignment?.connectionId === error.connectionId).map(([id]) => id);
+  const panelIds = [...new Set(box.svgModel.edges.filter(edge => edgeIds.includes(edge.id)).map(edge => edge.source))];
+  return [{ code: error.code, severity: 'error' as const, sourceId,
+    ...(group && { groupId: group.groupId }), connectionId: error.connectionId,
+    panelIds, edgeIds, message: error.message }];
+}
+
 /** Run inside the accepted Drawing edit. Untouched source authorities retain their identity. */
 export function reconcileDrawingSources(previous: BoxSources | undefined,
   after: ProjectDrawingDocument, operations: ConstructionOperations, mode: PanelCompositionAuthorityMode = 'mixed'): BoxSources | undefined {
@@ -87,7 +98,8 @@ export function reconcileDrawingSources(previous: BoxSources | undefined,
       next = { ...next, dependencyDiagnostics: blockedDefinitions(next, op.id, 'DRAWING_TOPOLOGY_CHANGED',
         'Drawing panel topology changed. Review Panel Manager and reapply geometry.') };
     } else if (geometryChanged && base.panelManager.isApplied
-      && (!base.panelManager.needsGeometryApply || base.dependencyDiagnostics?.some(d => d.code === 'BOX_REGENERATION_FAILED'))
+      && (!base.panelManager.needsGeometryApply || base.dependencyDiagnostics?.some(d =>
+        d.code === 'BOX_REGENERATION_FAILED' || d.code === 'TB_EDGE_LENGTH_MISMATCH' || d.code === 'TB_GEOMETRY_GENERATION_FAILED'))
       && base.generatedGeometrySnapshot.generatedGeometry.length) {
       let pending: boolean;
       if (base.appliedGeometryInputs) {
@@ -108,8 +120,10 @@ export function reconcileDrawingSources(previous: BoxSources | undefined,
             panelManager: { ...panelManager, needsGeometryApply: false } };
         } catch (error) {
           next = { ...next, panelManager: { ...panelManager, needsGeometryApply: true },
-            dependencyDiagnostics: blockedDefinitions(next, op.id, 'BOX_REGENERATION_FAILED',
-              `BOX construction could not regenerate: ${error instanceof Error ? error.message : String(error)}`) };
+            dependencyDiagnostics: error instanceof TBGeometryError
+              ? blockedTBConnection(next, op.id, error)
+              : blockedDefinitions(next, op.id, 'BOX_REGENERATION_FAILED',
+                `BOX construction could not regenerate: ${error instanceof Error ? error.message : String(error)}`) };
         }
       }
     }
