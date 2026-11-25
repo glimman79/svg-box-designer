@@ -20,6 +20,13 @@ export type BoxProjectData = {
   lastAppliedManufacturingSettings: ProjectSettings | null;
   /** Already selected/applied output and composition marker; never regenerate it. */
   generatedGeometrySnapshot: GeneratedGeometrySnapshot;
+  /** BOX inputs at the last successful Apply or automatic regeneration. */
+  appliedGeometryInputs?: {
+    edgeAssignments: BoxProjectData['edgeAssignments'];
+    connections: ConnectionMap;
+    panels: PanelManagerState['panels'];
+    activeWallGroup: ActiveWallGroup | null;
+  };
   activeSGroup: ActiveSGroup | null;
   completedSGroups?: ActiveSGroup[];
   activeTBGroup: ActiveTBGroup | null;
@@ -107,6 +114,7 @@ export const boxStateFields = (source: BoxStateSource) => ({
     projectSettings: source.projectSettings,
     lastAppliedManufacturingSettings: source.lastAppliedManufacturingSettings,
     generatedGeometrySnapshot: source.generatedGeometrySnapshot,
+    ...(source.appliedGeometryInputs && { appliedGeometryInputs: source.appliedGeometryInputs }),
     activeSGroup: source.activeSGroup,
     ...(source.completedSGroups && { completedSGroups: source.completedSGroups }),
     activeTBGroup: source.activeTBGroup,

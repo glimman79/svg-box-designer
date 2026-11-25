@@ -1,9 +1,9 @@
 'use strict';
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {api, harness} = require('./project-owner-harness.cjs');
+const {api, harness, production} = require('./project-owner-harness.cjs');
 const {drawingPanelModel} = require('../.test-build/project-owner/src/app/drawingPanelSource.js');
-const {isSourceApproved} = require('../.test-build/project-owner/src/app/boxSources.js');
+const {isSourceApproved,sourceStatus} = require('../.test-build/project-owner/src/app/boxSources.js');
 const {createEmptySketch} = require('../.test-build/project-owner/src/app/drawingTypes.js');
 
 function polygon(sketch, name, coords, close = true) {
@@ -380,4 +380,84 @@ test('a later compatible edit can restore a blocked TB batch without another App
   assert.equal(restored.panelManager.needsGeometryApply,false);
   assert.deepEqual(restored.dependencyDiagnostics,[]);
   assert.equal(isSourceApproved(restored),true);
+});
+
+test('unrelated open Line preserves blocked TB until repaired, with one history step per Drawing edit', () => {
+  const {owner,first,second,edit} = appliedTBProject();
+  const original = owner.getSnapshot();
+  const ids = original.chronology.map(entry=>[entry.id,entry.groupId]);
+  edit(s=>resizeRectangle(s,'b',0.5));
+  const blocked = owner.getSnapshot();
+  const failure = blocked.boxSources.sketches[first].dependencyDiagnostics;
+  assert.equal(failure?.[0]?.code,'BOX_REGENERATION_FAILED');
+  assert.equal(sourceStatus(blocked.boxSources.sketches[first]),'Blocked · needs repair');
+  const count = owner.getHistory().undo.length;
+  edit(s=>polygon(s,'open',[[300,0],[320,10]],false));
+  const unrelated = owner.getSnapshot();
+  const box = unrelated.boxSources.sketches[first];
+  assert.equal(owner.getHistory().undo.length,Math.min(count+1,30));
+  assert.equal(box.generatedGeometrySnapshot,blocked.boxSources.sketches[first].generatedGeometrySnapshot);
+  assert.deepEqual(box.dependencyDiagnostics,failure);
+  assert.equal(box.panelManager.needsGeometryApply,true);
+  assert.equal(sourceStatus(box),'Blocked · needs repair');
+  assert.equal(unrelated.boxSources.sketches[second],original.boxSources.sketches[second]);
+  assert.deepEqual(unrelated.chronology.map(entry=>[entry.id,entry.groupId]),ids);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),blocked);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot(),unrelated);
+  edit(s=>resizeRectangle(s,'b',100));
+  const repaired = owner.getSnapshot();
+  assert.deepEqual(repaired.boxSources.sketches[first].dependencyDiagnostics,[]);
+  assert.equal(repaired.boxSources.sketches[first].panelManager.needsGeometryApply,false);
+  assert.equal(sourceStatus(repaired.boxSources.sketches[first]),'Approved');
+  assert.deepEqual(repaired.chronology.map(entry=>[entry.id,entry.groupId]),ids);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),unrelated);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot(),repaired);
+});
+
+test('blocked recovery keeps pending BOX width behind explicit Apply', () => {
+  const {owner,c,first,second,edit} = appliedTBProject();
+  const original = owner.getSnapshot();
+  edit(s=>resizeRectangle(s,'b',0.5));
+  const blocked = owner.getSnapshot();
+  c.selectConnectionForDisplayAndAssignment('TB1');
+  c.updateConnectionProperties('TB1',{prefix:'TB',updates:{fingerWidthMm:10}});
+  const pending = owner.getSnapshot();
+  assert.equal(c.errorMessage,'');
+  assert.equal(pending.boxSources.sketches[first].connections.TB1.properties.fingerWidthMm,10);
+  edit(s=>resizeRectangle(s,'b',100));
+  const repaired = owner.getSnapshot();
+  const box = repaired.boxSources.sketches[first];
+  assert.equal(box.connections.TB1.properties.fingerWidthMm,10);
+  assert.equal(box.panelManager.needsGeometryApply,true);
+  assert.equal(sourceStatus(box),'Blocked · needs repair');
+  assert.equal(box.generatedGeometrySnapshot,pending.boxSources.sketches[first].generatedGeometrySnapshot);
+  assert.deepEqual(box.dependencyDiagnostics,blocked.boxSources.sketches[first].dependencyDiagnostics);
+  assert.equal(repaired.boxSources.sketches[second],original.boxSources.sketches[second]);
+  assert.deepEqual(repaired.chronology,original.chronology);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),pending);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot(),repaired);
+  c.applyPanelPaths();
+  assert.equal(c.errorMessage,'');
+  const applied = owner.getSnapshot().boxSources.sketches[first];
+  assert.equal(applied.connections.TB1.properties.fingerWidthMm,10);
+  assert.equal(applied.panelManager.needsGeometryApply,false);
+  assert.deepEqual(applied.dependencyDiagnostics,[]);
+  assert.notDeepEqual(applied.generatedGeometrySnapshot.generatedGeometry,
+    original.boxSources.sketches[first].generatedGeometrySnapshot.generatedGeometry);
+});
+
+test('export command rejects a diagnostic even if Apply state alone would permit export', () => {
+  const {owner,first,edit} = appliedTBProject();
+  edit(s=>resizeRectangle(s,'b',0.5));
+  const blocked = owner.getSnapshot();
+  const prior = blocked.boxSources.sketches[first];
+  const box = {...prior,panelManager:{...prior.panelManager,needsGeometryApply:false}};
+  const {projectOwner:exportOwner,context:c} = harness({...blocked,
+    boxSources:{...blocked.boxSources,sketches:{...blocked.boxSources.sketches,[first]:box}}});
+  Object.defineProperty(c,'box',{get:()=>exportOwner.getBoxScope().box});
+  c.downloadRef={current:{click:()=>assert.fail('Blocked geometry was downloaded')}};
+  c.URL={createObjectURL:()=>assert.fail('Blocked geometry was serialized')};
+  production('exportSvg',c)();
+  assert.match(c.errorMessage,/Repair blocked BOX geometry/);
+  assert.equal(sourceStatus(exportOwner.getBoxScope().box),'Blocked · needs repair');
 });

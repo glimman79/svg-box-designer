@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ChangeEvent, PointerEvent } from 'react';
 import { BoxSketchLayer, previewContours, sourceHits } from './app/BoxSketchLayer';
-import { getBoxScope, hasImportedSource, IMPORTED_SOURCE, isSourceApproved, sourceStatus, validateDrawingApproval } from './app/boxSources';
+import { appliedGeometryInputs, getBoxScope, hasImportedSource, IMPORTED_SOURCE, isSourceApproved, sourceStatus, validateDrawingApproval } from './app/boxSources';
 import { flushSync } from 'react-dom';
 import { exportLabeledSvg, formatImportDiagnosticMessage, getEdgeAssignmentDisplayLabels, parseSvgDocument } from './svgUtils';
 import { layoutPanelLabels } from './app/labelLayout';
@@ -925,12 +925,15 @@ function ProjectWorkspace({ projectOwner, position }: {
         });
       }
       const snapshot = generated.snapshot;
+      const appliedInputs = appliedGeometryInputs(before, nextConnections);
       const settings = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings)
         ? projectSettings : lastAppliedManufacturingSettings;
-      if (!panelManager.needsGeometryApply && !before.dependencyDiagnostics?.length
+      if (!panelManager.needsGeometryApply && !before.dependencyDiagnostics?.length && before.appliedGeometryInputs
+        && projectDataEqual(appliedInputs, before.appliedGeometryInputs)
         && snapshot === before.generatedGeometrySnapshot && settings === lastAppliedManufacturingSettings
         && projectDataEqual(nextConnections, before.connections)) return before;
       return { ...before, connections: nextConnections, generatedGeometrySnapshot: snapshot, lastAppliedManufacturingSettings: settings,
+        appliedGeometryInputs: appliedInputs,
         dependencyDiagnostics: [],
         ...(panelManager.needsGeometryApply && { panelManager: { ...panelManager, needsGeometryApply: false } }) };
     });
@@ -1101,6 +1104,10 @@ function ProjectWorkspace({ projectOwner, position }: {
     }
     if (box.panelManager.needsGeometryApply) {
       setErrorMessage('Apply geometry for the current Sketch before exporting.');
+      return;
+    }
+    if (box.dependencyDiagnostics?.some(d => d.severity === 'error')) {
+      setErrorMessage('Repair blocked BOX geometry before exporting.');
       return;
     }
     const output = hasAppliedGeometry

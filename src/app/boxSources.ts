@@ -19,6 +19,11 @@ export const sameSketchRequired = 'TB/W connections are limited to panels within
 const cyclic = (a: readonly string[], b: readonly string[]) => a.length === b.length && (!a.length ||
   [b, [...b].reverse()].some(order => order.some((_, offset) => a.every((id, i) => id === order[(i + offset) % order.length]))));
 
+export function appliedGeometryInputs(box: BoxStateSource, connections = box.connections): NonNullable<BoxStateSource['appliedGeometryInputs']> {
+  return structuredClone({ edgeAssignments: box.edgeAssignments, connections,
+    panels: box.panelManager.panels, activeWallGroup: box.activeWallGroup });
+}
+
 /** Membership, winding-independent contour adjacency, nesting and assigned references. */
 function compatiblePanels(prior: BoxStateSource['svgModel'], next: BoxStateSource['svgModel']) {
   if (prior.panels.length !== next.panels.length) return false;
@@ -77,15 +82,18 @@ export function reconcileDrawingSources(previous: BoxSources | undefined,
       ...(compatible && base.panelManager.isApplied && { approvedGeometryRevision: svgModel.drawingSource!.geometryRevision }),
       needsGeometryApply: Boolean(base.panelManager.needsGeometryApply || (!compatible &&
         (Object.keys(base.edgeAssignments).length || base.generatedGeometrySnapshot.generatedGeometry.length))) };
-    let next: BoxStateSource = { ...base, svgModel, panelManager, dependencyDiagnostics: [] };
+    let next: BoxStateSource = { ...base, svgModel, panelManager };
     if (!compatible) {
       next = { ...next, dependencyDiagnostics: blockedDefinitions(next, op.id, 'DRAWING_TOPOLOGY_CHANGED',
         'Drawing panel topology changed. Review Panel Manager and reapply geometry.') };
     } else if (geometryChanged && base.panelManager.isApplied
       && (!base.panelManager.needsGeometryApply || base.dependencyDiagnostics?.some(d => d.code === 'BOX_REGENERATION_FAILED'))
       && base.generatedGeometrySnapshot.generatedGeometry.length) {
-      let pending = false;
-      if (!base.dependencyDiagnostics?.length) {
+      let pending: boolean;
+      if (base.appliedGeometryInputs) {
+        pending = !projectDataEqual(appliedGeometryInputs(base), base.appliedGeometryInputs);
+      } else {
+        // Older in-memory sources have no Apply boundary. A failed evaluation cannot prove approval.
         try { pending = evaluateAppliedGeometry(base, mode).snapshot !== base.generatedGeometrySnapshot; }
         catch { pending = true; }
       }
@@ -96,6 +104,7 @@ export function reconcileDrawingSources(previous: BoxSources | undefined,
         try {
           const result = evaluateAppliedGeometry(next, mode);
           next = { ...next, connections: result.connections, generatedGeometrySnapshot: result.snapshot,
+            appliedGeometryInputs: appliedGeometryInputs(next, result.connections), dependencyDiagnostics: [],
             panelManager: { ...panelManager, needsGeometryApply: false } };
         } catch (error) {
           next = { ...next, panelManager: { ...panelManager, needsGeometryApply: true },
@@ -136,6 +145,8 @@ export function getBoxScope(project: Pick<ProjectStateSource, 'box' | 'boxSource
 }
 
 export function sourceStatus(box: BoxStateSource) {
+  if (box.dependencyDiagnostics?.some(d => d.severity === 'error')) return 'Blocked · needs repair';
+  if (box.panelManager.needsGeometryApply && isSourceApproved(box)) return 'BOX changes · needs Apply';
   if (isSourceApproved(box)) return 'Approved';
   if (box.panelManager.approvedGeometryRevision) return 'Changed · needs review';
   if (!box.svgModel.panels.length) return 'No supported closed Line panels';
