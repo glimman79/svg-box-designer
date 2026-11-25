@@ -24,6 +24,15 @@ export type SketchOperation = Readonly<{
 /** Construction order. No separate mutable index, parameter values or member copies. */
 export type ConstructionOperations = readonly SketchOperation[];
 
+export type BoxChronologyEntry = Readonly<{
+  id: string;
+  sourceId: string;
+  kind: 'PM' | 'TB' | 'W' | 'S' | 'manufacturing';
+  connectionId?: string;
+}>;
+export type ChronologyEntry = Readonly<{ kind: 'sketch'; id: string; sourceId: string }> | BoxChronologyEntry;
+export type OperationChronology = readonly ChronologyEntry[];
+
 function checkSketchOrder(doc: OrderedSketches) {
   if (doc.schemaVersion !== 2 || doc.unit !== 'mm' || !Array.isArray(doc.sketchOrder)) {
     throw new TypeError('Expected an ordered DrawingDocumentV2 in millimetres');

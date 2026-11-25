@@ -6,6 +6,16 @@ The imported SVG retains its existing BOX state. Each Drawing Sketch operation c
 
 The project transaction validates changes to Sketch-owned assignments against current panel edges. A Drawing edit updates the permanent operation and its derived source in the same frame. A previous generated snapshot survives for Undo and diagnosis. A changed source requires review and explicit Geometry Apply before stale output can be exported. [Panel provenance and limitations](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#drawing-panel-sources)
 
+### Canvas presentation and export
+
+PR 5 projects each approved Sketch through its own stored composition snapshot, FinalGeometry and manufacturing settings. The active preview also supplies its export. Other Sketches contribute read-only canvas paths. A changed Sketch shows its current Drawing members in grey. Reapproval restores eligibility and explicit Apply restores its manufacturing output.
+
+## Project-owned operation chronology
+
+The project owner appends stable references inside the transaction that creates a Sketch, first approves PM, authors a connection or records manufacturing settings. Array position gives global creation order. A BOX entry has an opaque lifetime ID, a source operation ID (or the imported SVG authority), and a connection ID where applicable. Groups continue to own authoring sessions. Editing a definition preserves its entry. The shared row traverses this array directly in Drawing and BOX. Every global frame captures it. Undoing creation removes the entry and Redo restores the same lifetime and position. Evicting an executable transition leaves the current project's operation references intact.
+
+For an older in-memory project without this array, admission takes the stored Sketch order first, then imported BOX, then Sketch sources in stored Sketch order. Within a source it admits recorded approval, existing TB/W/S definitions in map insertion order, and recorded manufacturing settings. The prefix is a deterministic inventory because exact historical interleaving is unavailable. Existing groups, assignments, settings and generated output keep their original authorities. Subsequent creations append in exact order. Clear starts a fresh project with an empty row.
+
 ## Sketch navigation in the shared History row
 
 `ProjectWorkspace` reads ordered operation/Sketch pairs from the current project frame. The row, left Open selector and neutral geometry picker all pass the same operation lifetime ID to the runtime. A BOX request uses the existing workspace navigation command before opening the Drawing editor. Member edits replace the current definition while retaining the entry. Hover, opening and finishing need no solver or geometry regeneration. [Editing and restoration contract](docs/SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)

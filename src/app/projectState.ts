@@ -1,6 +1,6 @@
 import type { EdgeAssignmentBucket, SvgDocumentModel } from '../svgUtils';
 import type { ActiveSGroup, ActiveTBGroup, ConnectionMap } from './connectionTypes';
-import type { ConstructionOperations } from './constructionOperations';
+import type { ConstructionOperations, OperationChronology } from './constructionOperations';
 import type { ProjectDrawingDocument } from './drawingTypes';
 import type { GeneratedGeometrySnapshot } from './generatedGeometrySnapshot';
 import type { PanelManagerState } from './panelManagerModel';
@@ -47,11 +47,12 @@ export type DrawingStateCapture = CapturedData<ProjectDrawingDocument>;
 
 export type BoxSources = {
   sketches: Record<string, BoxStateSource>;
-  selection?: { id: string; working: boolean };
+  selection?: { id: string };
 };
 
 export type ProjectStateSource = {
   boxSources?: BoxSources;
+  chronology?: OperationChronology;
   constructionOperations: ConstructionOperations;
   drawingDocument: ProjectDrawingDocument;
   box: BoxStateSource;
@@ -60,6 +61,7 @@ export type ProjectStateSource = {
 /** Complete existing editable data, not an execution-history frame or runtime owner. */
 export type ProjectStateCapture = Readonly<{
   boxSources?: CapturedData<BoxSources>;
+  chronology?: OperationChronology;
   constructionOperations: ConstructionOperations;
   drawingDocument: DrawingStateCapture;
   box: BoxStateCapture;
@@ -125,6 +127,7 @@ export const projectBoxState = (capture: BoxStateCapture): BoxStateSource => (
 );
 
 export const captureProjectState = (source: ProjectStateSource): ProjectStateCapture => Object.freeze({
+  ...(source.chronology && { chronology: captureData(source.chronology) }),
   ...(source.boxSources && { boxSources: captureData(source.boxSources) }),
   constructionOperations: captureData(source.constructionOperations),
   drawingDocument: captureDrawingState(source.drawingDocument),
@@ -133,6 +136,7 @@ export const captureProjectState = (source: ProjectStateSource): ProjectStateCap
 
 /** Projection returns independent data; lifecycle/atomic React restoration is deferred. */
 export const projectProjectState = (capture: ProjectStateCapture): ProjectStateSource => ({
+  ...(capture.chronology && { chronology: structuredClone(capture.chronology) }),
   ...(capture.boxSources && { boxSources: structuredClone(capture.boxSources) as BoxSources }),
   constructionOperations: structuredClone(capture.constructionOperations),
   drawingDocument: projectDrawingState(capture.drawingDocument),

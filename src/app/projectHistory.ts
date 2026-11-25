@@ -120,6 +120,7 @@ export const transactProjectHistory = (
   history: ProjectHistory,
   metadata: ProjectTransactionMetadata,
   action: ProjectTransactionAction,
+  maintainFrame?: (before: ProjectStateCapture, after: ProjectStateCapture) => ProjectStateCapture,
 ): ProjectTransactionResult => {
   let candidate = history.current;
   let failure: ProjectTransactionOutcome | undefined;
@@ -138,7 +139,8 @@ export const transactProjectHistory = (
           const next = change(candidate);
           // A reentrant child failure must not allow its caller to stage new data.
           assertActive();
-          candidate = snapshot(next);
+          const captured = snapshot(next);
+          candidate = maintainFrame && captured !== candidate ? snapshot(maintainFrame(candidate, captured)) : captured;
         } catch (error) {
           failure ??= Object.freeze({ outcome: 'rejected', error });
           throw error;

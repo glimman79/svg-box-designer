@@ -1,8 +1,12 @@
 # SVG Box Designer roadmap
 
+## Stage C.2 PR 5 — BOX interaction and permanent chronological History
+
+**Correction implemented on the PR branch, pending manual acceptance.** The approved scope adds direct source selection, simultaneous read-only display of other approved constructions, a user-controlled BOX camera and one creation-ordered History for Sketch, PM, TB, W, S and manufacturing settings. Native project files, multi-source export, curved manufacturing profiles and Stage E regeneration remain planned. [Source boundaries](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#drawing-panel-sources)
+
 ## Stage C.2 PR 4 — Drawing-to-BOX vertical integration
 
-**Partially implemented, pending user browser acceptance.** The first transfer covers closed Line panels, source-scoped Panel Manager, and BOX construction and export for the working source. This supersedes the transfer deferral in the PR 3 checkpoint below. Native curved panel boundaries, joint export across sources, dependency repair and full Stage E regeneration remain future work. [Supported scope](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#drawing-panel-sources)
+**PR #648 merged and accepted for its six original scenarios.** The first transfer covers closed Line panels, source-scoped Panel Manager, and BOX construction and export for the working source. This supersedes the transfer deferral in the PR 3 checkpoint below. Native curved panel boundaries, joint export across sources, dependency repair and full Stage E regeneration remain future work. [Supported scope](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#drawing-panel-sources)
 
 ## Stage C.2 PR 3 — Permanent Sketch entries and editor navigation
 

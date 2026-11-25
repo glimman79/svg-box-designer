@@ -20,7 +20,7 @@ const assert = require('node:assert/strict');
     const notice = page.locator('.notice:not(.inline-notice)');
     const contours = () => page.locator('.final-contour-kerf-layer').innerHTML();
     const history = page.getByRole('complementary', {name:'Construction history'});
-    const revisit = name => history.getByRole('button', { name: new RegExp(`^${name} Group 1,`) }).click();
+    const revisit = name => history.getByRole('button', { name: new RegExp(`^${name}1$`) }).click();
     const edge = async index => {
       const point = await page.locator('.edge-hitbox').nth(index).evaluate(line => {
         const x = (+line.getAttribute('x1') + +line.getAttribute('x2')) / 2;

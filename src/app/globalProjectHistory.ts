@@ -1,8 +1,9 @@
+import { reconcileChronology } from './operationChronology';
 import { createProjectHistory, recordWorkspaceNavigation, redoProjectHistory, transactProjectHistory, undoProjectHistory,
   type ProjectHistory, type ProjectTransaction, type ProjectTransactionAction,
   type ProjectTransactionMetadata, type ProjectTransactionResult } from './projectHistory';
-import { getBoxScope, IMPORTED_SOURCE, isSourceApproved, reconcileDrawingSources, sameSketchRequired, validateSourceEdit } from './boxSources';
-import type { BoxSources } from './projectState';
+import { getBoxScope, IMPORTED_SOURCE, hasImportedSource, reconcileDrawingSources, sameSketchRequired, validateSourceEdit } from './boxSources';
+import type { BoxProjectData, BoxSources } from './projectState';
 import { newIdentityToken, updateSketchOperations } from './constructionOperations';
 import { createInitialProjectState, createProjectOwner, type InitialProject } from './projectOwner';
 import { boxStateFields, type BoxRestorationContext, type BoxStateCapture, type BoxStateSource,
@@ -58,8 +59,14 @@ function restorableContext(context: BoxStateCapture['context']) {
     .every(value => value === null || typeof value === 'string');
 }
 
-function initialHistoryFor({ drawingDocument, constructionOperations, box, boxSources }: ProjectStateSource) {
-  return createProjectHistory({ drawingDocument, constructionOperations, ...(boxSources && { boxSources }), box: boxStateFields(box) });
+const chronologyDefinitions = (frame: ProjectStateCapture) => ({
+  constructionOperations: frame.constructionOperations,
+  box: frame.box.data as BoxProjectData,
+  boxSources: frame.boxSources as BoxSources | undefined,
+});
+
+function initialHistoryFor({ chronology, drawingDocument, constructionOperations, box, boxSources }: ProjectStateSource) {
+  return createProjectHistory({ chronology, drawingDocument, constructionOperations, ...(boxSources && { boxSources }), box: boxStateFields(box) });
 }
 
 /** Only this facade can write the mounted project owner. All roots reachable
@@ -96,7 +103,7 @@ export function createGlobalProjectHistory(initial?: InitialProject) {
         box = { ...frame.box.data, ...frame.box.context } as BoxStateSource;
         boxes.set(frame.box, box);
       }
-      root = { ...(frame.boxSources && { boxSources: frame.boxSources as BoxSources }), drawingDocument: frame.drawingDocument as ProjectDrawingDocument, constructionOperations: frame.constructionOperations, box };
+      root = { chronology: frame.chronology, ...(frame.boxSources && { boxSources: frame.boxSources as BoxSources }), drawingDocument: frame.drawingDocument as ProjectDrawingDocument, constructionOperations: frame.constructionOperations, box };
       roots.set(frame, root);
     }
     return root;
@@ -125,6 +132,30 @@ export function createGlobalProjectHistory(initial?: InitialProject) {
     });
   }
 
+  // Maintain each staged update in order, including nested updates. The transaction
+  // engine discards these references together with the definitions on rollback.
+  function maintainFrame(before: ProjectStateCapture, after: ProjectStateCapture): ProjectStateCapture {
+    if (after.chronology !== before.chronology || after.constructionOperations !== before.constructionOperations) {
+      throw new TypeError('Operation maintenance belongs to the project');
+    }
+    if (after.boxSources !== before.boxSources) {
+      validateSourceEdit(publication.project, after.boxSources?.sketches as BoxSources['sketches'] | undefined);
+    }
+    if (after.box.data.edgeAssignments !== before.box.data.edgeAssignments
+      && Object.keys(after.box.data.edgeAssignments).some(id => id.startsWith('sketch-'))) throw new Error(sameSketchRequired);
+    let candidate = after;
+    if (after.drawingDocument !== before.drawingDocument) {
+      const drawing = after.drawingDocument as ProjectDrawingDocument;
+      const operations = updateSketchOperations(before.constructionOperations, before.drawingDocument as ProjectDrawingDocument, drawing);
+      if (operations !== before.constructionOperations) {
+        const boxSources = reconcileDrawingSources(before.boxSources as BoxSources | undefined, drawing, operations);
+        candidate = { ...after, constructionOperations: operations, boxSources };
+      }
+    }
+    const chronology = reconcileChronology(before.chronology!, chronologyDefinitions(candidate), chronologyDefinitions(before));
+    return chronology === before.chronology ? candidate : { ...candidate, chronology };
+  }
+
   function commit(module: Module, label: string, action: ProjectTransactionAction,
     admit = () => true, editTarget = publication.editingSketchId): GlobalEditResult {
     if (staging) {
@@ -134,30 +165,9 @@ export function createGlobalProjectHistory(initial?: InitialProject) {
     const attempt = getAttempt();
     const result = transactProjectHistory(publication.history, { module, label, id: String(++sequence) }, tx => {
       staging = tx;
-      try {
-        const before = tx.getCandidate();
-        const decision = action(tx);
-        if (decision !== 'accept') return decision;
-        const after = tx.getCandidate();
-        if (after.constructionOperations !== before.constructionOperations) {
-          throw new TypeError('Operation maintenance belongs to the project');
-        }
-        if (after.boxSources !== before.boxSources) {
-          validateSourceEdit(publication.project, after.boxSources?.sketches as BoxSources['sketches'] | undefined);
-        }
-        if (after.box.data.edgeAssignments !== before.box.data.edgeAssignments
-          && Object.keys(after.box.data.edgeAssignments).some(id => id.startsWith('sketch-'))) throw new Error(sameSketchRequired);
-        if (after.drawingDocument !== before.drawingDocument) {
-          const operations = updateSketchOperations(before.constructionOperations, before.drawingDocument as ProjectDrawingDocument, after.drawingDocument as ProjectDrawingDocument);
-          if (operations !== before.constructionOperations) {
-            const boxSources = reconcileDrawingSources(before.boxSources as BoxSources | undefined,
-              after.drawingDocument as ProjectDrawingDocument, operations);
-            tx.update(frame => ({ ...frame, constructionOperations: operations, boxSources }));
-          }
-        }
-        return decision;
-      } finally { staging = undefined; }
-    });
+      try { return action(tx); }
+      finally { staging = undefined; }
+    }, maintainFrame);
     if (result.outcome !== 'accepted') return result;
     if (!admit() || !isCurrent(attempt)) return { outcome: 'rejected' };
     let root: ProjectStateSource;
@@ -230,14 +240,16 @@ export function createGlobalProjectHistory(initial?: InitialProject) {
     return publish(result.history, root, 'restore', workspace) ? workspace : null;
   }
 
-  function selectBoxSource(id: string, working: boolean) {
+  function selectBoxSource(id: string) {
     const { project: root, history } = publication;
     const sources = root.boxSources;
-    if (!sources || staging || publication.activeWorkspace !== 'construction') return false;
-    if (sources.selection?.id === id && sources.selection.working === working) return true;
+    if (staging || publication.activeWorkspace !== 'construction') return false;
+    if (id === IMPORTED_SOURCE && !hasImportedSource(root.box)) return false;
+    if (!sources) return id === IMPORTED_SOURCE;
     const box = id === IMPORTED_SOURCE ? root.box : sources.sketches[id];
-    if (!box || (working && !isSourceApproved(box))) return false;
-    const current = Object.freeze({ ...history.current, boxSources: Object.freeze({ ...sources, selection: Object.freeze({ id, working }) }) });
+    if (!box || (id !== IMPORTED_SOURCE && box.svgModel?.drawingSource?.operationId !== id)) return false;
+    if (sources.selection?.id === id) return true;
+    const current = Object.freeze({ ...history.current, boxSources: Object.freeze({ ...sources, selection: Object.freeze({ id }) }) });
     return publish(Object.freeze({ ...history, current }), project(current), 'context');
   }
 

@@ -1,5 +1,11 @@
 # Unreleased
 
+## Stage C.2 PR 5 — Pending manual acceptance
+
+- Click a Sketch inside a closed panel or near its outline. Hover identifies the entire Sketch. Approved sources activate immediately and unapproved sources open Panel Manager.
+- Keep applied constructions visible across Sketches in their Drawing colors. Zoom and pan persist through tool changes, Apply and source selection.
+- Open individual BOX operations from the shared chronological History row in either workspace. Editing preserves the entry’s original position.
+
 ## Stage C.2 PR 4 — Drawing-to-BOX panels
 
 - Use Panel Manager in BOX to assign thickness to one or more closed Line panels from a finished Sketch. Choose the working Sketch when several are eligible.

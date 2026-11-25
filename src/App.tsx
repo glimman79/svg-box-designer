@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ChangeEvent, PointerEvent } from 'react';
-import { ReferenceSketch } from './app/ReferenceSketch';
-import { getBoxScope, hasImportedSource, IMPORTED_SOURCE, isSourceApproved, sameSketchRequired, sourceStatus, validateDrawingApproval } from './app/boxSources';
+import { BoxSketchLayer, previewContours, sourceHits } from './app/BoxSketchLayer';
+import { getBoxScope, hasImportedSource, IMPORTED_SOURCE, isSourceApproved, sourceStatus, validateDrawingApproval } from './app/boxSources';
 import { flushSync } from 'react-dom';
 import { exportLabeledSvg, formatImportDiagnosticMessage, getEdgeAssignmentDisplayLabels, parseSvgDocument } from './svgUtils';
 import { layoutPanelLabels } from './app/labelLayout';
@@ -10,7 +10,6 @@ import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBuck
 import { exportManufacturingGeometrySvg } from './app/exportFinalGeometrySvg';
 import { buildGeneratedSGeometryItems, recalculateAutomaticSSlotLengths, resolveSSlotLengthMm, resolveSThickness } from './app/sGeometry';
 import { getConnectionViewModel, resolveAssignedTBOrSConnectionIdForEdge } from './app/connectionViewModel';
-import { processManufacturingGeometry } from './app/manufacturingCompensation';
 import { DEFAULT_PROJECT_SETTINGS } from './app/projectDefaults';
 import type { ProjectSettings } from './app/projectSettings';
 import { normalizeProjectSettings } from './app/projectSettings';
@@ -32,7 +31,7 @@ import { validateGeometryAuthoring } from './app/authoringRelationships';
 import { buildGeneratedWGeometryItems } from './app/wallGeometry';
 import { shouldShowFingerJointTabControl } from './app/tabSizeControl';
 import { getWallAssignments, resolveTBRoleForPanel, validateWallAuthoringForApply } from './app/wallAuthoring';
-import { buildWallWorkflowGroups, finishWallGroupWithTrailingCleanup, startWallGroupWorkflow } from './app/wallWorkflow';
+import { finishWallGroupWithTrailingCleanup, startWallGroupWorkflow } from './app/wallWorkflow';
 import { finishSGroupWithTrailingCleanup, getDefaultSlotRole, manualAddSWorkflow, startSGroupWorkflow } from './app/sWorkflow';
 import { buildTBDisplayLabelAliasMap, finishTBGroupWithTrailingCleanup, getSharedTBEdgeProperties, startTBGroupWorkflow } from './app/tbWorkflow';
 import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildGeneratedTBGeometryItems, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/tbGeometry';
@@ -58,7 +57,7 @@ import { useSvgImportLock } from './app/useSvgImportLock';
 import { ClearProjectDialog } from './app/ClearProjectDialog';
 import { WorkspaceTopBar } from './app/WorkspaceTopBar';
 import { WorkspaceShell } from './app/WorkspaceShell';
-import { readSketchDefinitions } from './app/constructionOperations';
+import { readSketchDefinitions, type BoxChronologyEntry } from './app/constructionOperations';
 import type { SupportedWorkspace } from './app/drawingTypes';
 import { SharedHistoryRegion } from './app/SharedHistoryRegion';
 import type { ActiveSGroup, ActiveTBGroup, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, TBConnectionDefinition, TBConnectionProperties } from './app/connectionTypes';
@@ -147,88 +146,6 @@ type LabelGroup = {
 export type ActiveTool = 'select' | 'PM' | 'TB' | 'W' | 'S' | 'J' | 'P' | 'manufacturing';
 
 type WorkflowHistoryGroup = { id: string; labels: string[]; isActive: boolean; orderIndex?: number };
-
-type WorkflowHistoryItem = {
-  id: string;
-  kind: 'PM' | 'TB' | 'W' | 'S' | 'manufacturing';
-  name: string;
-  labels: string[];
-  isActive: boolean;
-  childCount: number;
-};
-
-export const buildWorkflowHistoryItems = (
-  tbGroups: WorkflowHistoryGroup[],
-  wallGroups: WorkflowHistoryGroup[],
-  sGroups: WorkflowHistoryGroup[],
-  manufacturingOrderIndex?: number,
-  includePanelManager = false,
-): WorkflowHistoryItem[] => {
-  const manufacturingItem = Number.isFinite(manufacturingOrderIndex) ? [{
-      id: 'workflow-history-manufacturing',
-      kind: 'manufacturing' as const,
-      name: 'MFG',
-      labels: [],
-      isActive: false,
-      childCount: 0,
-      orderIndex: manufacturingOrderIndex,
-    }] : [];
-  const panelManagerItem = includePanelManager ? [{
-      id: 'workflow-history-panel-manager',
-      kind: 'PM' as const,
-      name: 'Panel Manager',
-      labels: [],
-      isActive: false,
-      childCount: 0,
-      orderIndex: -1,
-    }] : [];
-  const orderedItems = [
-    ...panelManagerItem,
-    ...manufacturingItem,
-    ...tbGroups.map((group, groupIndex) => ({
-      id: group.id,
-      kind: 'TB' as const,
-      name: `TB Group ${groupIndex + 1}`,
-      labels: group.labels,
-      isActive: group.isActive,
-      childCount: group.labels.length,
-      orderIndex: group.orderIndex,
-    })),
-    ...wallGroups.map((group, groupIndex) => ({
-      id: group.id, kind: 'W' as const, name: `W Group ${groupIndex + 1}`, labels: group.labels,
-      isActive: group.isActive, childCount: group.labels.length, orderIndex: group.orderIndex,
-    })),
-    ...sGroups.map((group, groupIndex) => ({
-      id: group.id,
-      kind: 'S' as const,
-      name: `S Group ${groupIndex + 1}`,
-      labels: group.labels,
-      isActive: group.isActive,
-      childCount: group.labels.length,
-      orderIndex: group.orderIndex,
-    })),
-  ];
-
-  return orderedItems
-    .map((item, fallbackIndex) => ({ item, fallbackIndex }))
-    .sort((first, second) => {
-      const firstOrder = first.item.orderIndex ?? Number.POSITIVE_INFINITY;
-      const secondOrder = second.item.orderIndex ?? Number.POSITIVE_INFINITY;
-
-      if (firstOrder !== secondOrder) {
-        return firstOrder - secondOrder;
-      }
-
-      return first.fallbackIndex - second.fallbackIndex;
-    })
-    .map(({ item }) => {
-      const { orderIndex: _orderIndex, ...historyItem } = item;
-      return historyItem;
-    });
-};
-
-
-export const getWorkflowHistoryTool = (item: WorkflowHistoryItem): ActiveTool => item.kind === 'manufacturing' ? 'manufacturing' : item.kind;
 
 export const getToolClickGroupStartKind = (
   tool: ActiveTool,
@@ -545,7 +462,9 @@ function ProjectWorkspace({ projectOwner, position }: {
   const boxTransactions = useMemo(() => createBoxTransactionAdapter(projectOwner, renderEpoch), [projectOwner, renderEpoch]);
   const drawingInteraction = useRef<DrawingInteractionBoundary | null>(null);
   const [pendingProfileSegment, setPendingProfileSegment] = useState(false);
-  const [visitedManufacturingOrder, setVisitedManufacturingOrder] = useState<number>();
+  const [hoverSources, setHoverSources] = useState<string[]>([]);
+  const [sourceChoices, setSourceChoices] = useState<string[]>([]);
+  const cameraInitialized = useRef(false);
   const [drawingViewBox, setDrawingViewBox] = useState(initialDrawingViewBox);
   const [drawingConstraintsPanelOpen, setDrawingConstraintsPanelOpen] = useState(false);
   const [drawingToolsHost, setDrawingToolsHost] = useState<HTMLDivElement | null>(null);
@@ -567,6 +486,7 @@ function ProjectWorkspace({ projectOwner, position }: {
   const [canvasViewportSize, setCanvasViewportSize] = useState({ width: 1, height: 1 });
   const [expandedSGroups, setExpandedSGroups] = useState<Record<string, boolean>>({});
   const [expandedTBGroups, setExpandedTBGroups] = useState<Record<string, boolean>>({});
+  const [revealConnection, setRevealConnection] = useState<string | null>(null);
   const [requestedTool, setActiveTool] = useState<ActiveTool>('select');
   const activeTool = working || requestedTool === 'PM' ? requestedTool : 'select';
   const [isPanelManagerModalOpen, setIsPanelManagerModalOpen] = useState(false);
@@ -712,6 +632,17 @@ function ProjectWorkspace({ projectOwner, position }: {
     return groups.sort((first, second) => getLabelNumber(first.labels[0] ?? 'TB0') - getLabelNumber(second.labels[0] ?? 'TB0'));
   }, [activeTBGroup, availableLabels, completedTBGroups, workflowGroupOrder]);
 
+  useLayoutEffect(() => {
+    if (!revealConnection) return;
+    const slot = revealConnection.startsWith('S');
+    const group = (slot ? sLabelGroups : tbLabelGroups).find(g => g.labels.includes(revealConnection));
+    if (group) {
+      const expand = slot ? setExpandedSGroups : setExpandedTBGroups;
+      expand(current => ({ ...current, [group.id]: true }));
+    }
+    setRevealConnection(null);
+  }, [revealConnection, sLabelGroups, tbLabelGroups]);
+
   const tbDisplayLabelAliases = useMemo(() => buildTBDisplayLabelAliasMap(tbLabelGroups), [tbLabelGroups]);
   const formatTBDisplayLabel = (label: string | null | undefined) => (label ? tbDisplayLabelAliases[label] ?? label : 'None');
 
@@ -724,7 +655,7 @@ function ProjectWorkspace({ projectOwner, position }: {
   );
 
   const kerfCompensatedAppliedPreview = useMemo(
-    () => processManufacturingGeometry(finalGeometry, projectSettings.kerfMm, projectSettings.slotClearanceMm, projectSettings.profileOffsetMm, projectSettings.selectedProfileOffsetIds, projectSettings.tapClearanceMm),
+    () => previewContours(finalGeometry, projectSettings),
     [finalGeometry, projectSettings],
   );
   const selectableProfileOffsetProfiles = useMemo(() => {
@@ -775,7 +706,6 @@ function ProjectWorkspace({ projectOwner, position }: {
     });
     return names;
   }, [svgModel]);
-  const workingLineIds = useMemo(() => new Set(svgModel.edges.map(e => e.drawingEntityId)), [svgModel]);
   const edgeName = (id: string) => drawingEdgeNames.get(id) ?? id;
   const panelContainmentTree = useMemo(() => buildPanelContainmentTree(svgModel), [svgModel]);
   const panelTreeHoleItems = useMemo(() => {
@@ -787,29 +717,8 @@ function ProjectWorkspace({ projectOwner, position }: {
   }, [panelContainmentTree]);
   const panelManagerValidationMessage = validatePanelManagerState(panelManager);
   const canApplyPanelManager = !panelManager.isApplied && panelManagerValidationMessage === null;
-  const wallLabelGroups = useMemo(() => {
-    return buildWallWorkflowGroups(connections, activeWallGroup, completedWallGroups, workflowGroupOrder);
-  }, [activeWallGroup, completedWallGroups, connections, workflowGroupOrder]);
-  const workflowHistoryItems = useMemo(() => buildWorkflowHistoryItems(tbLabelGroups, wallLabelGroups, sLabelGroups, workflowGroupOrder.manufacturing ?? visitedManufacturingOrder, panelManager.isApplied), [visitedManufacturingOrder, panelManager.isApplied, sLabelGroups, tbLabelGroups, wallLabelGroups, workflowGroupOrder]);
   const hasPendingManufacturingSettings = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings);
   const hasApplyInputs = needsGeometryApply || hasPendingManufacturingSettings || Object.keys(edgeAssignments).length > 0;
-  const navigateToWorkflowHistoryItem = (item: WorkflowHistoryItem) => {
-    const firstLabel = item.labels[0] ?? null;
-    setActiveTool(getWorkflowHistoryTool(item));
-    selectConnectionForDisplayAndAssignment(firstLabel);
-    setErrorMessage('');
-
-    if (item.kind === 'TB') {
-      setExpandedTBGroups((currentGroups) => ({ ...currentGroups, [item.id]: true }));
-      return;
-    }
-
-    if (item.kind === 'S') {
-      setExpandedSGroups((currentGroups) => ({ ...currentGroups, [item.id]: true }));
-      return;
-    }
-  };
-
   const hasAssignedTBEdges = useMemo(() => {
     return Object.values(edgeAssignments).some((assignment) => getBucketEdgeAssignment(assignment)?.connectionId.startsWith('TB'));
   }, [edgeAssignments]);
@@ -828,16 +737,13 @@ function ProjectWorkspace({ projectOwner, position }: {
       if (!importLock.isCurrent(token)) return;
       const parsedSvg = parseSvgDocument(text);
       const nextPanelManager = createPanelManagerStateFromModel(parsedSvg);
-      const nextViewBox = parseViewBox(parsedSvg.viewBox);
       const diagnosticMessage = formatImportDiagnosticMessage(parsedSvg);
       const result = boxTransactions.replaceSource(token, parsedSvg, nextPanelManager);
       if (result.outcome === 'rejected') {
         if (importLock.isCurrent(token)) setErrorMessage(result.error instanceof Error ? result.error.message : 'Unable to replace the SVG source.');
         return;
       }
-      setVisitedManufacturingOrder(undefined);
       geometryRuntimeDebugCaptureRef.current = null;
-      setCanvasViewBox(nextViewBox);
       setActivePanelId(null);
       setActiveHoleId(null);
       setIsPanelManagerModalOpen(parsedSvg.panels.length > 0);
@@ -886,7 +792,7 @@ function ProjectWorkspace({ projectOwner, position }: {
       return { ...before, [field]: group, connections: next.connections,
         displayConnectionId: next.selectedLabelId, assignmentTargetConnectionId: next.selectedLabelId,
         workflowGroupOrder: { ...before.workflowGroupOrder,
-          [group.groupId]: before.workflowGroupOrder[group.groupId] ?? Math.max(getNextWorkflowGroupOrderIndex(before.workflowGroupOrder), (visitedManufacturingOrder ?? -1) + 1) },
+          [group.groupId]: before.workflowGroupOrder[group.groupId] ?? getNextWorkflowGroupOrderIndex(before.workflowGroupOrder) },
       };
     });
     if (!accepted) return;
@@ -919,13 +825,10 @@ function ProjectWorkspace({ projectOwner, position }: {
   };
 
   const openManufacturing = () => {
-    const { panelManager, workflowGroupOrder } = projectOwner.getBoxScope().box;
+    const { panelManager } = projectOwner.getBoxScope().box;
     if (!panelManager.isApplied) {
       setErrorMessage('Apply Panel Manager before using workflow tools.');
       return;
-    }
-    if (workflowGroupOrder.manufacturing === undefined && visitedManufacturingOrder === undefined) {
-      setVisitedManufacturingOrder(getNextWorkflowGroupOrderIndex(workflowGroupOrder));
     }
     setActiveTool('manufacturing');
   };
@@ -965,7 +868,8 @@ function ProjectWorkspace({ projectOwner, position }: {
       setErrorMessage('Select a current source edge.');
       return;
     }
-    const id = current.assignmentTargetConnectionId;
+    const id = current.svgModel.drawingSource && (activeTool === 'select' || activeTool === 'PM')
+      ? null : current.assignmentTargetConnectionId;
     const assigned = activeTool === 'W' ? getBucketEdgeAssignment(current.edgeAssignments[edgeId])?.connectionId
       : resolveAssignedTBOrSConnectionIdForEdge(current.edgeAssignments, edgeId, activeTool === 'S' ? 'S' : activeTool === 'TB' ? 'TB' : undefined);
     if (id && !current.connections[id]) {
@@ -1056,6 +960,8 @@ function ProjectWorkspace({ projectOwner, position }: {
   };
 
   const invalidateInteractions = () => {
+    setHoverSources([]);
+    setSourceChoices([]);
     cancelCanvasPan();
     drawingInteraction.current?.invalidate();
     setActivePanelId(null);
@@ -1076,8 +982,6 @@ function ProjectWorkspace({ projectOwner, position }: {
     invalidateInteractions();
     const restored = projectOwner.getBoxScope().box;
     if (source !== restored.svgModel) {
-      setVisitedManufacturingOrder(undefined);
-      setCanvasViewBox(parseViewBox(restored.svgModel.viewBox));
       setActiveTool(restored.panelManager.isApplied || !restored.svgModel.panels.length ? 'select' : 'PM');
     }
     setIsPanelManagerModalOpen(false);
@@ -1199,8 +1103,8 @@ function ProjectWorkspace({ projectOwner, position }: {
       const { settings } = normalizeProjectSettings({ ...current, ...patch });
       if (!haveProjectSettingsChanged(settings, current)) return before;
       const order = before.workflowGroupOrder;
-      const workflowGroupOrder = order.manufacturing !== undefined || visitedManufacturingOrder === undefined ? order
-        : { ...order, manufacturing: visitedManufacturingOrder };
+      const workflowGroupOrder = order.manufacturing !== undefined ? order
+        : { ...order, manufacturing: getNextWorkflowGroupOrderIndex(order) };
       return { ...before, projectSettings: settings, workflowGroupOrder };
     });
     reportBoxResult(result, 'Unable to update manufacturing settings.');
@@ -1260,6 +1164,7 @@ function ProjectWorkspace({ projectOwner, position }: {
     x: canvasViewBox.x + canvasViewBox.width / 2,
     y: canvasViewBox.y + canvasViewBox.height / 2,
   }) => {
+    cameraInitialized.current = true;
     const originalViewBox = parseViewBox(svgModel.viewBox);
     setCanvasViewBox((currentViewBox) => zoomViewBox(currentViewBox, factor, center, originalViewBox));
   };
@@ -1327,7 +1232,7 @@ function ProjectWorkspace({ projectOwner, position }: {
     const paddedWidth = contentWidth * 1.2;
     const paddedHeight = contentHeight * 1.2;
     const viewportSize = getCanvasViewportSize(fallbackViewBox);
-    const inspector = svgModel.drawingSource && canvasFrameRef.current?.closest('.workspace')?.querySelector('.active-tool-panel');
+    const inspector = sketchDefinitions.length > 0 && canvasFrameRef.current?.closest('.workspace')?.querySelector('.active-tool-panel');
     const inspectorWidth = inspector ? Math.min(viewportSize.width / 2, inspector.getBoundingClientRect().width + 24) : 0;
     const visibleWidth = viewportSize.width - inspectorWidth;
     const canvasAspectRatio = visibleWidth / viewportSize.height;
@@ -1353,14 +1258,15 @@ function ProjectWorkspace({ projectOwner, position }: {
   };
 
   const fitCanvasToScreen = () => {
+    cameraInitialized.current = true;
     setCanvasViewBox(getFittedCanvasViewBox(true));
   };
 
-  const drawingInspectorVisible = !!svgModel.drawingSource && (activeTool !== 'select' || !!selectedEdge);
-  const visibleDefinitions = svgModel.drawingSource && activeWorkspace === 'construction' ? sketchDefinitions : null;
+  // Frame the first visible content once, unless the user already moved the empty canvas.
+  const hasBoxContent = hasImportedSource(project.box) || sketchDefinitions.some(d => d.sketch.entityOrder.length);
   useLayoutEffect(() => {
-    setCanvasViewBox(getFittedCanvasViewBox());
-  }, [svgModel, visibleDefinitions, drawingInspectorVisible]);
+    if (activeWorkspace === 'construction' && hasBoxContent && !cameraInitialized.current) fitCanvasToScreen();
+  }, [activeWorkspace, hasBoxContent]);
 
   useCadWheelCapture(svgRef, (event) => {
     const center = getSvgPointFromClient(event.clientX, event.clientY);
@@ -1370,6 +1276,7 @@ function ProjectWorkspace({ projectOwner, position }: {
   const { isPanning: isCanvasPanning, panHandlers: canvasPanHandlers, cancelPan: cancelCanvasPan } = useCadPanGesture({
     viewportRef: svgRef,
     onPan: ({ dx, dy }) => {
+      cameraInitialized.current = true;
       const screenMatrix = svgRef.current?.getScreenCTM();
       if (!screenMatrix) return;
       const scaleX = Math.hypot(screenMatrix.a, screenMatrix.b);
@@ -1669,15 +1576,29 @@ function ProjectWorkspace({ projectOwner, position }: {
   );
 
   const inspectSource = (id: string) => {
-    if (projectOwner.selectBoxSource(id, false)) {
-      invalidateInteractions();
-      setVisitedManufacturingOrder(undefined);
-      setActiveTool('PM');
-    }
+    if (!projectOwner.selectBoxSource(id)) return;
+    invalidateInteractions();
+    setActiveTool(projectOwner.getBoxScope().working ? 'select' : 'PM');
+  };
+  const sourceLabel = (id: string) => sketchDefinitions.find(d => d.operation.id === id)?.sketch.name ?? 'Imported SVG';
+  const selectedBoxEntry = project.chronology?.find(entry => entry.kind === activeTool && entry.sourceId === sourceId
+    && (!entry.connectionId || entry.connectionId === displayConnectionId))?.id;
+  const openBoxEntry = (entry: BoxChronologyEntry) => {
+    if (!canNavigate() || !projectOwner.getSnapshot().chronology?.some(e => e.id === entry.id)) return;
+    if (activeWorkspace !== 'construction' && !projectOwner.navigate('construction', leaveWorkspace)) return;
+    if (!projectOwner.selectBoxSource(entry.sourceId)) return;
+    invalidateInteractions();
+    const scope = projectOwner.getBoxScope();
+    setActiveTool(scope.working ? entry.kind : 'PM');
+    if (!scope.working) return;
+    selectConnectionForDisplayAndAssignment(entry.connectionId ?? null);
+    if (entry.kind === 'TB' || entry.kind === 'S') setRevealConnection(entry.connectionId ?? null);
   };
 
   const canNavigate = () => !isClearDialogOpen && !importLock.isImporting && session === projectOwner.getPublication().session;
   const leaveWorkspace = (source: SupportedWorkspace) => {
+    setHoverSources([]);
+    setSourceChoices([]);
     if (source === 'drawing') drawingInteraction.current?.leaveWorkspace();
     else {
       cancelCanvasPan();
@@ -1783,10 +1704,6 @@ function ProjectWorkspace({ projectOwner, position }: {
             </select></label>
             <span>{sourceStatus(box)}</span>
             {svgModel.drawingSource?.excludedMembers ? <small>{svgModel.drawingSource.excludedMembers} open, invalid or unsupported members excluded. Panels require closed Line contours.</small> : null}
-            {!working && isSourceApproved(box) && <button type="button" className="toolbar-button" onClick={() => {
-              projectOwner.selectBoxSource(sourceId, true);
-              setActiveTool('select');
-            }}>Work on {sourceName}</button>}
           </div>}
           {(activeTool === 'PM' || hasContextualGeometryActions) && (
             <div className="contextual-tool-actions" role="group" aria-label="Active workflow actions">
@@ -2039,6 +1956,10 @@ function ProjectWorkspace({ projectOwner, position }: {
             </div>
             {boxSources && <div className="box-source-indicator" role="status">{working ? 'Working on ' + sourceName : 'Panel Manager review'}
               {needsGeometryApply && working && ' · Apply geometry before export'}</div>}
+            {hoverSources.length > 0 && <div className="box-hover-label" role="tooltip">{hoverSources.map(sourceLabel).join(' · ')}</div>}
+            {sourceChoices.length > 1 && <div className="sketch-overlap-choices panel" role="group" aria-label="Choose a BOX source">
+              {sourceChoices.map(id => <button key={id} type="button" onClick={() => inspectSource(id)}>{sourceLabel(id)}</button>)}
+            </div>}
             <svg
               ref={svgRef}
               className={`design-svg cad-viewport-interaction${isCanvasPanning ? ' is-panning' : ''}`}
@@ -2047,30 +1968,40 @@ function ProjectWorkspace({ projectOwner, position }: {
               aria-label="Imported SVG with selectable edges"
               onPointerDownCapture={() => { pointerEpoch.current = projectOwner.getEpoch(); }}
               onClickCapture={(event) => {
-                if (event.detail && pointerEpoch.current !== projectOwner.getEpoch()) event.stopPropagation();
+                if (event.detail && pointerEpoch.current !== projectOwner.getEpoch()) { event.stopPropagation(); return; }
+                if (!boxSources) return;
+                const target = event.target as Element;
+                if (target.closest('.profile-offset-profile-hitbox') || (hasContextualGeometryActions && target.closest('.edge-hitbox'))) return;
+                const hits = sourceHits(event.clientX, event.clientY);
+                setSourceChoices(hits.length > 1 ? hits : []);
+                if (hits.length > 1) { event.stopPropagation(); return; }
+                if (hits.length && (hits[0] !== sourceId || !working)) {
+                  event.stopPropagation();
+                  inspectSource(hits[0]);
+                }
               }}
               onPointerDown={canvasPanHandlers.onPointerDown}
-              onPointerMove={canvasPanHandlers.onPointerMove}
+              onPointerLeave={() => setHoverSources([])}
+              onPointerMove={event => {
+                if (canvasPanHandlers.onPointerMove(event) || !boxSources || event.buttons) return;
+                const edge = (event.target as Element).closest('.edge-hitbox,.profile-offset-profile-hitbox');
+                const hits = edge && hasContextualGeometryActions ? [] : sourceHits(event.clientX, event.clientY);
+                const hovered = hits.filter(id => !working || id !== sourceId);
+                setHoverSources(current => current.length === hovered.length && current.every((id, i) => id === hovered[i]) ? current : hovered);
+              }}
               onPointerUp={canvasPanHandlers.onPointerUp}
               onPointerCancel={canvasPanHandlers.onPointerCancel}
               onContextMenu={canvasPanHandlers.onContextMenu}
             >
               {activeWorkspace === 'construction' && boxSources && <>
-                {sourceId !== IMPORTED_SOURCE && project.box.svgModel.panels.map(panel =>
-                  <path className="box-import-reference" key={panel.id} d={getPanelPathD(panel)} onClick={() => inspectSource(IMPORTED_SOURCE)}><title>Imported SVG</title></path>)}
-                {sketchDefinitions.map(({ operation, sketch }) => {
-                  const other = boxSources.sketches[operation.id];
-                  if (!other) return null;
-                  const status = sourceStatus(other);
-                  return <g key={operation.id} className="box-reference" data-source-id={operation.id} data-status={status}
-                    onClick={() => {
-                      if (sourceId !== operation.id && (activeTool === 'TB' || activeTool === 'W')) setErrorMessage(sameSketchRequired);
-                      else if (sourceId !== operation.id || !working) inspectSource(operation.id);
-                    }}>
-                    <title>{sketch.name} · {status}</title>
-                    <ReferenceSketch inBox sketch={sketch} excludeIds={working && sourceId === operation.id ? workingLineIds : undefined} color={isSourceApproved(other) ? '#52758b' : '#b9bfc5'} />
-                  </g>;
-                })}
+                {hasImportedSource(project.box) && <g data-source-id={IMPORTED_SOURCE}>
+                  {project.box.svgModel.panels.map(panel => <path key={panel.id} className="box-import-reference"
+                    style={{ stroke: sourceId === IMPORTED_SOURCE ? 'transparent' : '#71828c' }} d={getPanelPathD(panel)} />)}
+                </g>}
+                {sketchDefinitions.map(definition => <BoxSketchLayer key={definition.operation.id}
+                  definition={definition} box={boxSources.sketches[definition.operation.id]}
+                  activePreview={working && sourceId === definition.operation.id ? kerfCompensatedAppliedPreview : undefined}
+                  highlighted={hoverSources.includes(definition.operation.id)} />)}
               </>}
               {isProfileOffsetProfileSelectionActive && (
                 <g className="profile-offset-profile-underlays" aria-hidden="true">
@@ -2083,7 +2014,7 @@ function ProjectWorkspace({ projectOwner, position }: {
                   ))}
                 </g>
               )}
-              <g className="final-contour-kerf-layer" visibility={svgModel.drawingSource && !working ? 'hidden' : undefined}>
+              {!svgModel.drawingSource && <g className="final-contour-kerf-layer">
                 {kerfCompensatedAppliedPreview.contours.map((contour) => (
                   <path
                     key={contour.id}
@@ -2091,7 +2022,7 @@ function ProjectWorkspace({ projectOwner, position }: {
                     d={contour.pathD}
                   />
                 ))}
-              </g>
+              </g>}
               {isPanelManagerVisible && (
                 <g className="panel-manager-overlays" aria-hidden="true">
                   {panelTreeHoleItems.map((hole) => (
@@ -2105,7 +2036,7 @@ function ProjectWorkspace({ projectOwner, position }: {
                   ))}
                 </g>
               )}
-              <g className="edge-overlays" visibility={svgModel.drawingSource && !working ? 'hidden' : undefined}>
+              {(!svgModel.drawingSource || working) && <g className="edge-overlays" data-source-id={sourceId}>
                   {svgModel.edges.map((edge) => {
                   const assignment = displayEdgeAssignments[edge.id];
                   const labels = getEdgeAssignmentDisplayLabels(assignment);
@@ -2138,7 +2069,7 @@ function ProjectWorkspace({ projectOwner, position }: {
                         x2={edge.end.x}
                         y2={edge.end.y}
                         onPointerDown={(event) => {
-                          event.stopPropagation();
+                          if (event.button === 0) event.stopPropagation();
                         }}
                         onClick={(event) => {
                           event.stopPropagation();
@@ -2160,7 +2091,7 @@ function ProjectWorkspace({ projectOwner, position }: {
                     </g>
                   );
                   })}
-                </g>
+                </g>}
               {isProfileOffsetProfileSelectionActive && (
                 <g className="profile-offset-profile-hit-targets">
                   {selectableProfileOffsetProfiles.map((profile) => (
@@ -2182,23 +2113,7 @@ function ProjectWorkspace({ projectOwner, position }: {
       </WorkspaceShell>
       <SharedHistoryRegion
         workspace={activeWorkspace} definitions={sketchDefinitions} editingSketchId={editingSketchId} onOpenSketch={openSketchOperation}
-        workflowNavigation={<>
-            {workflowHistoryItems.length > 0 ? workflowHistoryItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`workflow-history-item${item.isActive ? ' active' : ''}`}
-                aria-label={item.kind === 'PM' ? 'Panel Manager, opens Panel Manager panel' : item.kind === 'manufacturing' ? 'MFG, opens Manufacturing panel' : `${item.name}, ${item.isActive ? 'active' : 'inactive'}, ${item.childCount} ${item.childCount === 1 ? 'child connection' : 'child connections'}`}
-                aria-pressed={item.kind === 'PM' ? activeTool === 'PM' : item.kind === 'manufacturing' ? activeTool === 'manufacturing' : item.labels.includes(selectedLabelId ?? '')}
-                title={item.kind === 'PM' ? 'Panel Manager' : item.kind === 'manufacturing' ? 'MFG · Manufacturing' : `${item.name} · ${item.isActive ? 'Active' : 'Inactive'} · ${item.childCount} ${item.childCount === 1 ? 'child' : 'children'}`}
-                onClick={() => navigateToWorkflowHistoryItem(item)}
-              >
-                <span className="history-item-icon" aria-hidden="true">{item.kind === 'PM' ? '▤' : item.kind === 'manufacturing' ? 'MFG' : item.kind}</span>
-              </button>
-            )) : (
-              <p className="workflow-history-empty muted">No workflow groups yet.</p>
-            )}
-        </>}
+        chronology={project.chronology!} onOpenBox={openBoxEntry} selectedBoxEntry={selectedBoxEntry}
       />
     </main>
     </>

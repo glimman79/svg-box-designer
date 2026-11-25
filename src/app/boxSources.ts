@@ -35,7 +35,6 @@ export function reconcileDrawingSources(previous: BoxSources | undefined,
   let selection = previous?.selection;
   if (selection && selection.id !== IMPORTED_SOURCE) {
     if (!sketches[selection.id]) selection = undefined;
-    else if (selection.working && !sketches[selection.id].panelManager.isApplied) selection = { ...selection, working: false };
   }
   return { sketches, selection };
 }
@@ -52,10 +51,11 @@ export function getBoxScope(project: Pick<ProjectStateSource, 'box' | 'boxSource
   const imported = hasImportedSource(project.box);
   const firstDrawing = eligible[0] ?? sketches.find(([, box]) => box.svgModel.drawingSource?.excludedMembers);
   const defaultId = imported || !firstDrawing ? IMPORTED_SOURCE : firstDrawing[0];
-  const id = sources?.selection?.id ?? defaultId;
+  const selected = sources?.selection?.id;
+  const id = selected && (selected === IMPORTED_SOURCE ? imported : sources?.sketches[selected]?.svgModel?.drawingSource?.operationId === selected)
+    ? selected : defaultId;
   const box = sources?.sketches[id] ?? project.box;
-  const automatic = id === IMPORTED_SOURCE ? eligible.length === 0 : eligible.length === 1;
-  const working = isSourceApproved(box) && (automatic || sources?.selection?.working === true);
+  const working = isSourceApproved(box);
   return { id, box, working };
 }
 

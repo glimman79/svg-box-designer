@@ -4,7 +4,7 @@
 
 **Implemented and automatically tested. Pending user browser acceptance.** PR #646 merged the shared grid and explicit editing lifetime. PR 3 adds stable neutral colors for Sketches, grey reference geometry while editing and direct reopening from History or neutral geometry. Overlap requires an explicit choice. The active Sketch alone supplies Dimensions, Constraints and authoring input.
 
-**Planned / not implemented.** Native Save/Open, permanent BOX operations, full dependency evaluation, curved Drawing panel transfer and Unfold. The following dated baseline and target sections record the original decisions. [Sketch integration](SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
+**Planned / not implemented.** Native Save/Open, the wider parametric operation catalog, full dependency evaluation, curved Drawing panel transfer and Unfold. The following dated baseline and target sections record the original decisions. [Sketch integration](SKETCH_OPERATION_FOUNDATION.md#history-and-visualization)
 
 ## Drawing panel sources
 
@@ -13,6 +13,8 @@ Stage C.2 PR 4 connects the existing multi-shape Sketch to BOX. Rectangles and s
 The permanent operation ID identifies the source, the sorted outer Line IDs identify a contour, and each BOX edge identifies its owning contour and Drawing Line. Panel Manager approval binds positive per-panel thicknesses to that source’s current geometry revision. Adding a Line, moving a point, changing a curve or deleting geometry makes the Sketch light grey. Existing thicknesses survive for recognized panels and new panels start at zero. Other approved Sketches retain their constructions and applied output.
 
 BOX displays the sources together. TB, W, S, Apply and export run on one working source at a time. The imported SVG retains its independent assignments, groups and settings when a Sketch is inspected or selected. Foreign TB/W edge assignments are rejected before publication. Reapproval preserves authored records. Missing assigned edges block approval until the geometry is restored. Previously generated output requires an explicit Geometry Apply after review. Multi-source manufacturing export and automatic dependency repair remain future work.
+
+PR 5 keeps applied TB, W and S geometry from every approved Sketch visible during source switches. The canvas reads each source's current snapshot and manufacturing settings independently. The active source alone exposes construction edge hitboxes, edits and export. Selecting another Sketch preserves per-panel thickness, source identity, assigned edges and the stored result. Workflow entries for either Sketch navigate to its current definition through the global row. A Drawing edit blocks that Sketch's generated display until review and Apply. Other Sketches retain their valid output. [Chronology and compatibility admission](../Architecture.md#project-owned-operation-chronology)
 
 **Decision date: 2026-11-17. APPROVED TARGET — NOT IMPLEMENTED.**
 

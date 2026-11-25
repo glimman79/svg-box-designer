@@ -1,10 +1,16 @@
 # SVG Box Designer — Project Master
 
+## Stage C.2 PR 5 — BOX source selection and operation history
+
+PR #648 passed the user's six Drawing-to-BOX acceptance scenarios. This correction is ready for manual review. Click an approved Sketch to work on it immediately. A Sketch requiring review opens its Panel Manager. All approved Sketches show their own applied construction in their Drawing colors. Only the working source accepts assignments or supplies manufacturing export.
+
+Drawing and BOX share one permanent History row. Each entry retains its creation position and points to the current Sketch or BOX definition. Zoom, pan and Fit belong to the user after the initial framing. [Interaction contract](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md#box-selection-history-and-camera)
+
 ## Stage C.2 PR 4 — Drawing panels in BOX
 
-A Sketch already holds many shapes. BOX discovers each Sketch from the project and identifies its supported closed Line contours. Panel Manager assigns thickness per panel and approves the current geometry of one Sketch. TB and W connect panels only within that Sketch. Neutral BOX offers Panel Manager on the tool rail. One eligible Sketch becomes the working source on approval. With several eligible Sketches, choose an approved source in Panel Manager.
+A Sketch already holds many shapes. BOX discovers each Sketch from the project and identifies its supported closed Line contours. Panel Manager assigns thickness per panel and approves the current geometry of one Sketch. TB and W connect panels only within that Sketch. Neutral BOX offers Panel Manager on the tool rail. One eligible Sketch becomes the working source on approval. PR 5 also supports selecting among eligible Sketches directly on the canvas.
 
-Every accepted geometric edit requires fresh approval for that Sketch, including a new open Line. Existing panel thicknesses and construction records survive when their identities still resolve. Other Sketches and imported SVG retain their own BOX state. Source review and Drawing geometry travel together through global Undo/Redo. User browser acceptance is pending. [Source and export boundaries](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#drawing-panel-sources)
+Every accepted geometric edit requires fresh approval for that Sketch, including a new open Line. Existing panel thicknesses and construction records survive when their identities still resolve. Other Sketches and imported SVG retain their own BOX state. Source review and Drawing geometry travel together through global Undo/Redo. PR #648 received user browser acceptance. [Source and export boundaries](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#drawing-panel-sources)
 
 ## Stage C.2 PR 3 — Sketch History and editing
 
