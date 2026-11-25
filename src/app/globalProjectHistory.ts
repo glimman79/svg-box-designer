@@ -44,6 +44,7 @@ function restorableBox(data: BoxStateCapture['data'], previous?: BoxStateCapture
         && Array.isArray(p.edgeIds) && Array.isArray(p.innerContours))))
     && record(data.connections) && record(data.edgeAssignments) && record(data.workflowGroupOrder)
     && [data.activeTBGroup, data.activeWallGroup, data.activeSGroup].every(g => g === null || Array.isArray(g.connectionIds))
+    && (data.completedSGroups === undefined || Array.isArray(data.completedSGroups))
     && Array.isArray(data.completedTBGroups) && Array.isArray(data.completedWallGroups)
     && record(data.panelManager.panels) && typeof data.panelManager.isApplied === 'boolean'
     && Number.isFinite(data.panelManager.defaultThicknessMm) && typeof data.panelManager.isDirty === 'boolean'

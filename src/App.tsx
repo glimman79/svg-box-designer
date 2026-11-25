@@ -45,7 +45,8 @@ import { getContourEdgePoints, validateClosedPanel } from './app/sharedPanelGeom
 import type { EdgeAssignmentBucket, EdgeRole, Point, SlotRole, SourceBounds, SvgDocumentModel, SvgEdge } from './svgUtils';
 import { DrawingWorkspace, initialDrawingViewBox, type DrawingInteractionBoundary } from './app/DrawingWorkspace';
 import { useCadWheelCapture } from './app/useCadWheelCapture';
-import { useCadPanGesture } from './app/cadInteraction';
+import { connectionGroups, constructionGroupField, type GroupTool } from './app/connectionGroups';
+import { useCadEscapeToolExit, useCadPanGesture } from './app/cadInteraction';
 import { projectDataEqual } from './app/projectDataEqual';
 import { createDrawingTransactionAdapter } from './app/drawingTransactionAdapter';
 import { assignConstructionEdge, changeConstructionRole, defaultConnectionProperties, editConstructionProperties, removeConstructionAssignment, type ConstructionPropertyEdit } from './app/boxConstruction';
@@ -145,8 +146,6 @@ type LabelGroup = {
 
 export type ActiveTool = 'select' | 'PM' | 'TB' | 'W' | 'S' | 'J' | 'P' | 'manufacturing';
 
-type WorkflowHistoryGroup = { id: string; labels: string[]; isActive: boolean; orderIndex?: number };
-
 export const getToolClickGroupStartKind = (
   tool: ActiveTool,
   activeTBGroup: ActiveTBGroup | null,
@@ -165,8 +164,6 @@ export const getToolClickGroupStartKind = (
 
 export const defaultProjectSettings: ProjectSettings = { ...DEFAULT_PROJECT_SETTINGS, selectedProfileOffsetIds: [] };
 
-const constructionGroupField = { TB: 'activeTBGroup', W: 'activeWallGroup', S: 'activeSGroup' } as const;
-
 export const haveProjectSettingsChanged = (currentSettings: ProjectSettings, appliedSettings: ProjectSettings | null): boolean => {
   const baseline = appliedSettings ?? defaultProjectSettings;
   return currentSettings.kerfMm !== baseline.kerfMm
@@ -182,6 +179,17 @@ const recalculateBoxConnections = (box: BoxStateSource, panelManager: PanelManag
   const slots = recalculateAutomaticSSlotLengths(svgModel, edgeAssignments, connections, panelManager);
   return recalculateAutomaticTBFingerWidths(svgModel, edgeAssignments, slots, panelManager);
 };
+
+function inspectorGroups(box: BoxStateSource, tool: GroupTool) {
+  const groups = connectionGroups(box, tool).map(group => ({
+    id: group.groupId, labels: group.connectionIds.filter(id => box.connections[id]?.prefix === tool), isActive: group.isActive,
+  })).filter(group => group.labels.length);
+  const members = new Set(groups.flatMap(group => group.labels));
+  for (const id of Object.keys(box.connections)) {
+    if (box.connections[id].prefix === tool && !members.has(id)) groups.push({ id, labels: [id], isActive: false });
+  }
+  return groups.sort((a, b) => getLabelNumber(a.labels[0]) - getLabelNumber(b.labels[0]));
+}
 
 const getNextWorkflowGroupOrderIndex = (workflowGroupOrder: Record<string, number>) => {
   const orderIndexes = Object.values(workflowGroupOrder).filter((value) => Number.isFinite(value));
@@ -400,6 +408,7 @@ const FixedPrecisionNumericField = ({ value, precision = 2, ...props }: NumericF
         onKeyDown={(event) => {
           if (event.key === 'Enter') event.currentTarget.blur();
           if (event.key === 'Escape') {
+            event.preventDefault();
             cancelledRef.current = true;
             setDisplayValue(formatValue(value));
             event.currentTarget.blur();
@@ -470,7 +479,7 @@ function ProjectWorkspace({ projectOwner, position }: {
   const [drawingToolsHost, setDrawingToolsHost] = useState<HTMLDivElement | null>(null);
   const { svgModel, edgeAssignments, connections, projectSettings, lastAppliedManufacturingSettings,
     assignmentTargetConnectionId, displayConnectionId, selectedEdgeId, activeSGroup, activeTBGroup,
-    completedTBGroups, activeWallGroup, completedWallGroups, workflowGroupOrder, panelManager,
+    activeWallGroup, panelManager,
     generatedGeometrySnapshot } = box;
   const needsGeometryApply = panelManager.needsGeometryApply === true;
   const generatedGeometryItems = needsGeometryApply ? [] : generatedGeometrySnapshot.generatedGeometry;
@@ -486,6 +495,7 @@ function ProjectWorkspace({ projectOwner, position }: {
   const [canvasViewportSize, setCanvasViewportSize] = useState({ width: 1, height: 1 });
   const [expandedSGroups, setExpandedSGroups] = useState<Record<string, boolean>>({});
   const [expandedTBGroups, setExpandedTBGroups] = useState<Record<string, boolean>>({});
+  const [inspectedEntryId, setInspectedEntryId] = useState<string | null>(null);
   const [revealConnection, setRevealConnection] = useState<string | null>(null);
   const [requestedTool, setActiveTool] = useState<ActiveTool>('select');
   const activeTool = working || requestedTool === 'PM' ? requestedTool : 'select';
@@ -564,73 +574,8 @@ function ProjectWorkspace({ projectOwner, position }: {
   }, [availableLabels]);
 
 
-  const sLabelGroups = useMemo(() => {
-    const sLabels = availableLabels
-      .filter((label) => getLabelPrefix(label) === 'S')
-      .sort((first, second) => getLabelNumber(first) - getLabelNumber(second));
-
-    if (sLabels.length === 0) {
-      return [];
-    }
-
-    const groups: WorkflowHistoryGroup[] = [];
-    const activeIds = activeSGroup?.connectionIds ?? [];
-    const firstActiveId = activeIds[0];
-    const firstActiveNumber = firstActiveId ? getLabelNumber(firstActiveId) : Number.POSITIVE_INFINITY;
-    const previousLabels = sLabels.filter((label) => getLabelNumber(label) < firstActiveNumber);
-    const activeLabels = activeIds.filter((label) => sLabels.includes(label));
-    const laterLabels = sLabels.filter((label) => getLabelNumber(label) > getLabelNumber(activeIds.at(-1) ?? 'S0'));
-
-    if (previousLabels.length > 0) {
-      groups.push({ id: `s-group-${previousLabels[0]}`, labels: previousLabels, isActive: false, orderIndex: workflowGroupOrder[`s-group-${previousLabels[0]}`] });
-    }
-
-    if (activeLabels.length > 0) {
-      const id = activeSGroup?.groupId ?? `s-group-${activeLabels[0]}`;
-      groups.push({ id, labels: activeLabels, isActive: activeSGroup?.isActive ?? false, orderIndex: workflowGroupOrder[id] });
-    } else if (previousLabels.length === 0) {
-      groups.push({ id: `s-group-${sLabels[0]}`, labels: sLabels, isActive: activeSGroup?.isActive ?? false, orderIndex: workflowGroupOrder[`s-group-${sLabels[0]}`] });
-    }
-
-    if (laterLabels.length > 0 && activeLabels.length > 0) {
-      groups.push({ id: `s-group-${laterLabels[0]}`, labels: laterLabels, isActive: false, orderIndex: workflowGroupOrder[`s-group-${laterLabels[0]}`] });
-    }
-
-    return groups;
-  }, [activeSGroup, availableLabels, workflowGroupOrder]);
-
-  const tbLabelGroups = useMemo(() => {
-    const tbLabels = availableLabels
-      .filter((label) => getLabelPrefix(label) === 'TB')
-      .sort((first, second) => getLabelNumber(first) - getLabelNumber(second));
-
-    if (tbLabels.length === 0) {
-      return [];
-    }
-
-    const finishedGroups = completedTBGroups.map((group) => ({
-      id: group.groupId,
-      labels: group.connectionIds.filter((label) => tbLabels.includes(label)),
-      isActive: false,
-      orderIndex: workflowGroupOrder[group.groupId],
-    })).filter((group) => group.labels.length > 0);
-    const shouldUseActiveTBGroup = !!activeTBGroup && (activeTBGroup.isActive || !finishedGroups.some((group) => group.id === activeTBGroup.groupId));
-    const activeIds = shouldUseActiveTBGroup ? activeTBGroup.connectionIds : [];
-    const activeLabels = activeIds.filter((label) => tbLabels.includes(label));
-    const groupedActive = new Set([...finishedGroups.flatMap((group) => group.labels), ...activeLabels]);
-    const standalontbLabels = tbLabels.filter((label) => !groupedActive.has(label));
-    const groups = [
-      ...finishedGroups,
-      ...standalontbLabels.map((label) => ({ id: `tb-group-${label}`, labels: [label], isActive: false, orderIndex: workflowGroupOrder[`tb-group-${label}`] })),
-    ];
-
-    if (activeLabels.length > 0) {
-      const id = activeTBGroup?.groupId ?? `tb-group-${activeLabels[0]}`;
-      groups.push({ id, labels: activeLabels, isActive: activeTBGroup?.isActive ?? false, orderIndex: workflowGroupOrder[id] });
-    }
-
-    return groups.sort((first, second) => getLabelNumber(first.labels[0] ?? 'TB0') - getLabelNumber(second.labels[0] ?? 'TB0'));
-  }, [activeTBGroup, availableLabels, completedTBGroups, workflowGroupOrder]);
+  const sLabelGroups = useMemo(() => inspectorGroups(box, 'S'), [box]);
+  const tbLabelGroups = useMemo(() => inspectorGroups(box, 'TB'), [box]);
 
   useLayoutEffect(() => {
     if (!revealConnection) return;
@@ -789,7 +734,10 @@ function ProjectWorkspace({ projectOwner, position }: {
       const next = tool === 'TB' ? startTBGroupWorkflow(before.connections, defaultConnectionProperties.TB)
         : tool === 'S' ? startSGroupWorkflow(before.connections) : startWallGroupWorkflow(before.connections);
       const group = 'activeTBGroup' in next ? next.activeTBGroup : 'activeWallGroup' in next ? next.activeWallGroup : next.activeSGroup;
-      return { ...before, [field]: group, connections: next.connections,
+      const previousS = before.activeSGroup;
+      const completedSGroups = tool === 'S' && previousS?.connectionIds.length
+        ? [...(before.completedSGroups ?? []).filter(g => g.groupId !== previousS.groupId), previousS] : before.completedSGroups;
+      return { ...before, ...(completedSGroups && { completedSGroups }), [field]: group, connections: next.connections,
         displayConnectionId: next.selectedLabelId, assignmentTargetConnectionId: next.selectedLabelId,
         workflowGroupOrder: { ...before.workflowGroupOrder,
           [group.groupId]: before.workflowGroupOrder[group.groupId] ?? getNextWorkflowGroupOrderIndex(before.workflowGroupOrder) },
@@ -834,6 +782,7 @@ function ProjectWorkspace({ projectOwner, position }: {
   };
 
   const handleToolClick = (tool: ActiveTool) => {
+    setInspectedEntryId(null);
     const current = projectOwner.getBoxScope().box;
     if (!current.panelManager.isApplied && !['select', 'PM'].includes(tool)) {
       setErrorMessage('Apply Panel Manager before using workflow tools.');
@@ -852,8 +801,38 @@ function ProjectWorkspace({ projectOwner, position }: {
     setActiveTool(tool);
   };
 
-  const activeWorkflowFinish = (activeTool === 'TB' || activeTool === 'W' || activeTool === 'S') && box[constructionGroupField[activeTool]]?.isActive
-    ? { label: 'OK', onClick: () => finishGroup(activeTool) } : null;
+  const closeBoxTool = () => {
+    pointerEpoch.current = -1;
+    cancelCanvasPan();
+    setInspectedEntryId(null);
+    setActiveTool('select');
+    projectOwner.setBoxContext({ assignmentTargetConnectionId: null, displayConnectionId: null, selectedEdgeId: null });
+    setActivePanelId(null);
+    setActiveHoleId(null);
+    setHoveredProfileOffsetProfileId(null);
+    setIsProfileOffsetProfileSelectionActive(false);
+    setHoverSources([]);
+    setErrorMessage('');
+  };
+
+  useCadEscapeToolExit(activeWorkspace === 'construction' && !importLock.isImporting && !isClearDialogOpen, () => {
+    if (isPanelManagerModalOpen) { setIsPanelManagerModalOpen(false); setActiveTool('PM'); return; }
+    if (sourceChoices.length) { setSourceChoices([]); setHoverSources([]); return; }
+    closeBoxTool();
+  });
+
+  const groupTool = activeTool === 'TB' || activeTool === 'W' || activeTool === 'S' ? activeTool : null;
+  const displayedGroup = groupTool && displayConnectionId
+    ? connectionGroups(box, groupTool).find(group => group.connectionIds.includes(displayConnectionId)) : undefined;
+  const selectedBoxEntry = project.chronology?.find(entry => entry.kind === activeTool && entry.sourceId === sourceId
+    && (entry.groupId ? entry.groupId === displayedGroup?.groupId : !entry.connectionId || entry.connectionId === displayConnectionId));
+  const inspecting = selectedBoxEntry && inspectedEntryId === selectedBoxEntry.id && groupTool ? selectedBoxEntry : undefined;
+  const inspectorMembers = inspecting ? new Set(displayedGroup?.connectionIds ?? [displayConnectionId]) : null;
+  // Outside History, standalone Add may be selected while a session is still open.
+  const finishAuthoring = displayedGroup ? displayedGroup.isActive : !inspecting && groupTool && box[constructionGroupField[groupTool]]?.isActive;
+  const activeWorkflowFinish = groupTool && finishAuthoring
+    ? { label: 'OK', onClick: () => finishGroup(groupTool) }
+    : groupTool && (inspecting || displayedGroup) ? { label: 'OK', onClick: closeBoxTool } : null;
 
   // Placement only: keep the existing command availability and acceptance boundaries.
   const hasContextualGeometryActions = activeTool === 'TB' || activeTool === 'W'
@@ -1581,18 +1560,21 @@ function ProjectWorkspace({ projectOwner, position }: {
     setActiveTool(projectOwner.getBoxScope().working ? 'select' : 'PM');
   };
   const sourceLabel = (id: string) => sketchDefinitions.find(d => d.operation.id === id)?.sketch.name ?? 'Imported SVG';
-  const selectedBoxEntry = project.chronology?.find(entry => entry.kind === activeTool && entry.sourceId === sourceId
-    && (!entry.connectionId || entry.connectionId === displayConnectionId))?.id;
-  const openBoxEntry = (entry: BoxChronologyEntry) => {
-    if (!canNavigate() || !projectOwner.getSnapshot().chronology?.some(e => e.id === entry.id)) return;
+  const openBoxEntry = (requested: BoxChronologyEntry) => {
+    const entry = projectOwner.getSnapshot().chronology?.find(e => e.id === requested.id);
+    if (!entry || entry.kind === 'sketch' || !canNavigate()) return;
     if (activeWorkspace !== 'construction' && !projectOwner.navigate('construction', leaveWorkspace)) return;
     if (!projectOwner.selectBoxSource(entry.sourceId)) return;
     invalidateInteractions();
     const scope = projectOwner.getBoxScope();
     setActiveTool(scope.working ? entry.kind : 'PM');
     if (!scope.working) return;
-    selectConnectionForDisplayAndAssignment(entry.connectionId ?? null);
-    if (entry.kind === 'TB' || entry.kind === 'S') setRevealConnection(entry.connectionId ?? null);
+    const group = (entry.kind === 'TB' || entry.kind === 'W' || entry.kind === 'S')
+      && connectionGroups(scope.box, entry.kind).find(g => g.groupId === entry.groupId);
+    const member = group ? group.connectionIds.find(id => scope.box.connections[id]) : entry.connectionId;
+    projectOwner.setBoxContext({ assignmentTargetConnectionId: member ?? null, displayConnectionId: member ?? null, selectedEdgeId: null });
+    setInspectedEntryId(entry.id);
+    if (entry.kind === 'TB' || entry.kind === 'S') setRevealConnection(member ?? null);
   };
 
   const canNavigate = () => !isClearDialogOpen && !importLock.isImporting && session === projectOwner.getPublication().session;
@@ -1828,6 +1810,7 @@ function ProjectWorkspace({ projectOwner, position }: {
                   prefix === 'TB' ? (
                     <ul className="label-list s-group-list">
                       {tbLabelGroups.map((tbGroup, groupIndex) => {
+                        if (inspectorMembers && !tbGroup.labels.some(id => inspectorMembers.has(id))) return null;
                         const isExpanded = tbGroup.isActive || expandedTBGroups[tbGroup.id] === true;
                         const groupCount = tbGroup.labels.length;
 
@@ -1868,6 +1851,7 @@ function ProjectWorkspace({ projectOwner, position }: {
                   ) : prefix === 'S' ? (
                     <ul className="label-list s-group-list">
                       {sLabelGroups.map((sGroup, groupIndex) => {
+                        if (inspectorMembers && !sGroup.labels.some(id => inspectorMembers.has(id))) return null;
                         const isExpanded = sGroup.isActive || expandedSGroups[sGroup.id] === true;
                         const groupName = getSGroupDisplayName(groupIndex);
                         const groupCount = sGroup.labels.length;
@@ -1908,7 +1892,7 @@ function ProjectWorkspace({ projectOwner, position }: {
                     </ul>
                   ) : (
                     <ul className="label-list">
-                      {groupLabels.map((label) => (
+                      {groupLabels.filter(id => !inspectorMembers || inspectorMembers.has(id)).map((label) => (
                         <li key={label}>
                           <button
                             type="button"
@@ -2113,7 +2097,7 @@ function ProjectWorkspace({ projectOwner, position }: {
       </WorkspaceShell>
       <SharedHistoryRegion
         workspace={activeWorkspace} definitions={sketchDefinitions} editingSketchId={editingSketchId} onOpenSketch={openSketchOperation}
-        chronology={project.chronology!} onOpenBox={openBoxEntry} selectedBoxEntry={selectedBoxEntry}
+        chronology={project.chronology!} onOpenBox={openBoxEntry} selectedBoxEntry={selectedBoxEntry?.id}
       />
     </main>
     </>

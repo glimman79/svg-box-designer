@@ -10,7 +10,7 @@ export const createInitialBoxState = (): BoxStateSource => ({
   projectSettings: { ...DEFAULT_PROJECT_SETTINGS, selectedProfileOffsetIds: [] },
   lastAppliedManufacturingSettings: null,
   generatedGeometrySnapshot: createGeneratedGeometrySnapshot({ generatedGeometry: [] }),
-  activeSGroup: null, activeTBGroup: null, completedTBGroups: [],
+  activeSGroup: null, completedSGroups: [], activeTBGroup: null, completedTBGroups: [],
   activeWallGroup: null, completedWallGroups: [], workflowGroupOrder: {},
   assignmentTargetConnectionId: null, displayConnectionId: null, selectedEdgeId: null,
 });

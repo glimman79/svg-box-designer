@@ -20,6 +20,7 @@ export function SharedHistoryRegion({ workspace, definitions, chronology, editin
     if (trackRef.current) trackRef.current.scrollLeft = scrollPositions.current[workspace];
   }, [workspace]);
 
+  const groupCounts = new Map<string, number>();
   return <aside className="workflow-history-panel shared-history-region panel" aria-label="Construction history">
     <span className="workflow-history-label">History</span>
     <div ref={trackRef} className="workflow-history-items" role="group" aria-label="History entries" tabIndex={0}
@@ -27,7 +28,10 @@ export function SharedHistoryRegion({ workspace, definitions, chronology, editin
       {chronology.length ? chronology.map(entry => {
         const definition = byId.get(entry.sourceId);
         if (entry.kind !== 'sketch') {
-          const label = entry.connectionId ?? (entry.kind === 'PM' ? 'Panel Manager' : 'MFG');
+          const key = entry.sourceId + '/' + entry.kind;
+          const number = (groupCounts.get(key) ?? 0) + 1;
+          if (entry.groupId) groupCounts.set(key, number);
+          const label = entry.groupId ? `${entry.kind} Group ${number}` : entry.connectionId ?? (entry.kind === 'PM' ? 'Panel Manager' : 'MFG');
           const name = definition ? label + ' (' + definition.sketch.name + ')' : label;
           return <button key={entry.id} className="workflow-history-item" type="button" data-operation-id={entry.id}
             disabled={editingSketchId !== null} aria-pressed={workspace === 'construction' && entry.id === selectedBoxEntry}

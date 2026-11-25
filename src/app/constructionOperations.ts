@@ -28,6 +28,8 @@ export type BoxChronologyEntry = Readonly<{
   id: string;
   sourceId: string;
   kind: 'PM' | 'TB' | 'W' | 'S' | 'manufacturing';
+  /** Group membership lives on the source. Standalone definitions retain a connection reference. */
+  groupId?: string;
   connectionId?: string;
 }>;
 export type ChronologyEntry = Readonly<{ kind: 'sketch'; id: string; sourceId: string }> | BoxChronologyEntry;

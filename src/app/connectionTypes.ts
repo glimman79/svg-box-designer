@@ -72,26 +72,26 @@ export type PatternConnectionDefinition = {
   properties: PatternConnectionProperties;
 };
 
-export type ConnectionDefinition =
+export type ConnectionDefinition = (
   | TBConnectionDefinition
   | WallConnectionDefinition
   | SlotConnectionDefinition
   | CornerConnectionDefinition
-  | PatternConnectionDefinition;
+  | PatternConnectionDefinition
+) & {
+  /** Explicit parameter edits survive cleanup of unassigned group drafts. */
+  hasAuthoredParameters?: true;
+};
 
 export type ConnectionMap = Record<string, ConnectionDefinition>;
 
-export type ActiveSGroup = {
+export type ConnectionGroup = {
   groupId: string;
   connectionIds: string[];
   isActive: boolean;
 };
-
-export type ActiveTBGroup = {
-  groupId: string;
-  connectionIds: string[];
-  isActive: boolean;
-};
+export type ActiveSGroup = ConnectionGroup;
+export type ActiveTBGroup = ConnectionGroup;
 
 /** Connection properties are flat scalar records. Compare only supplied fields, including manual flags. */
 export const propertiesChanged = <T extends object>(current: T, patch: Partial<T>) =>

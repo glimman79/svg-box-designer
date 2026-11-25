@@ -2,9 +2,9 @@
 
 ## Approved correction target — History groups, diagnostics, OK and Escape (2026-11-25)
 
-**APPROVED REQUIREMENT — NOT YET IMPLEMENTED**
+**Grouped History and tool exit are implemented and automatically tested on the review branch. User browser acceptance is pending. Per-operation diagnostics and dependency regeneration remain planned.**
 
-These requirements define the planned replacement for the PR #649 **per-connection** History presentation and incomplete tool-exit behavior. Existing shared project chronology and exact global creation order must be preserved.
+Group entries use the existing project chronology. Completed-group OK closes inspection. Escape returns to Select and leaves active BOX groups available from their tool buttons. An editor or open choice handles Escape first.
 
 ### One History entry per meaningful authoring session
 
@@ -34,7 +34,7 @@ These requirements define the planned replacement for the PR #649 **per-connecti
 2. Create a later TB group in another Sketch and return to the first. Expect a second entry at its true creation position; the first group stays where it was.
 3. Reopen the first group from History. Expect OK and an unchanged History ID/order after closing.
 4. With an edge selected, press Escape. Expect selection cleared, no accepted work lost, no Undo/Redo mutation. Repeat for Drawing's active Line tool without leaving Sketch mode.
-5. Produce an intentionally invalid dependent operation and an incomplete contour candidate. Expect a red error marker on the affected History item and an explanatory warning in Panel Manager, respectively.
+5. **Future dependency slice.** Produce an intentionally invalid dependent operation and an incomplete contour candidate. Expect a red error marker on the affected History item and an explanatory warning in Panel Manager, respectively.
 
 ## BOX selection, History and camera
 

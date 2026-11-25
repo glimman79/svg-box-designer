@@ -741,7 +741,16 @@ function DrawingCanvas({
       setSelectedGeometry([]);
       return;
     }
-    if (activeToolRef.current === 'select') return;
+    setSelectedGeometry([]);
+    setSelectedDimensionId(null);
+    setSelectedGeometricConstraintId(null);
+    setHoveredDimensionId(null);
+    setHoveredGeometricConstraintId(null);
+    setGeometryPreselection(null);
+    setArcFormCandidate(null); arcFormCandidateRef.current = null;
+    setCircleCurveCandidate(null); circleCurveCandidateRef.current = null;
+    setCirclePointCandidate(null); circlePointCandidateRef.current = null;
+    lastPointerClientRef.current = null;
     cancelDrawingProfileCommit(pendingProfileClickRef, window);
     onPendingSegment(false);
     const empty = EMPTY_LINE_SEGMENT_INTERACTION;
@@ -756,7 +765,10 @@ function DrawingCanvas({
     setToolLifecycle(activateDrawingTool('select'));
     setDimensionTool({ phase: 'inactive' });
   };
-  useCadEscapeToolExit(() => { if (isActive && activeSketch) exitActiveTool(); });
+  useCadEscapeToolExit(isActive, () => {
+    if (overlapIds.length) { setOverlapIds([]); commandRef.current?.focus(); return; }
+    if (activeSketch) exitActiveTool();
+  });
 
   const ownersAtPointer = (event: MouseEvent<SVGSVGElement>) => {
     const matrix = event.currentTarget.getScreenCTM();
@@ -1459,7 +1471,7 @@ function DrawingCanvas({
               definitions.find(d => d.operation.id === hoveredOwner)?.sketch.name + ' · double-click to edit'}
           </div>}
           {overlapIds.length > 1 && <div className="sketch-overlap-choices panel" role="group" aria-label="Choose a Sketch to open"
-            onKeyDown={event => { if (event.key === 'Escape') { setOverlapIds([]); commandRef.current?.focus(); } }}>
+            onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); setOverlapIds([]); commandRef.current?.focus(); } }}>
             <strong>Open overlapping Sketch</strong>
             {definitions.filter(({ operation }) => overlapIds.includes(operation.id)).map(({ sketch, operation }, index) =>
               <button type="button" className="toolbar-button" key={operation.id} autoFocus={index === 0}
@@ -1713,7 +1725,7 @@ function DrawingCanvas({
               width={selectionBoxRect.maxX - selectionBoxRect.minX} height={selectionBoxRect.maxY - selectionBoxRect.minY} />}
           </svg>
           {activeSketch && <svg ref={overlaySvgRef} className="drawing-label-overlay" viewBox={`0 0 ${viewport.width} ${viewport.height}`} aria-label="Model coordinate scale">
-            {editingDimension && editorAnchor && <foreignObject className="drawing-dimension-editor-frame" x={editorAnchor.x - editorWidth / 2} y={editorAnchor.y - DIMENSION_EDITOR_HEIGHT_PX + 2} width={editorWidth} height={DIMENSION_EDITOR_HEIGHT_PX}><input ref={dimensionEditorInputRef} className="drawing-dimension-editor" value={dimensionDraft} aria-label={editingDimension.kind === 'LINE_TO_LINE_ANGLE' ? 'Dimension value in degrees' : 'Dimension value in millimetres'} onChange={(event) => { setDimensionDraft(event.target.value); setDimensionEditError(null); }} onKeyDown={(event) => { if (event.key === 'Escape') { setEditingDimensionId(null); setDimensionEditError(null); } if (event.key === 'Enter') commitDimensionEdit(); }} /></foreignObject>}
+            {editingDimension && editorAnchor && <foreignObject className="drawing-dimension-editor-frame" x={editorAnchor.x - editorWidth / 2} y={editorAnchor.y - DIMENSION_EDITOR_HEIGHT_PX + 2} width={editorWidth} height={DIMENSION_EDITOR_HEIGHT_PX}><input ref={dimensionEditorInputRef} className="drawing-dimension-editor" value={dimensionDraft} aria-label={editingDimension.kind === 'LINE_TO_LINE_ANGLE' ? 'Dimension value in degrees' : 'Dimension value in millimetres'} onChange={(event) => { setDimensionDraft(event.target.value); setDimensionEditError(null); }} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); setEditingDimensionId(null); setDimensionEditError(null); } if (event.key === 'Enter') commitDimensionEdit(); }} /></foreignObject>}
             {overlayGeometry && overlayGeometry.origin.y >= 0 && overlayGeometry.origin.y <= viewport.height && overlayGeometry.xLabels.filter(({ value }) => value !== 0).map((label) => (
               <text className="drawing-coordinate-label drawing-x-coordinate" data-label-side="below" key={`x-${label.value}`} x={label.anchor.x} y={label.anchor.y + 15} textAnchor="middle">{label.value}</text>
             ))}

@@ -21,6 +21,7 @@ export type BoxProjectData = {
   /** Already selected/applied output and composition marker; never regenerate it. */
   generatedGeometrySnapshot: GeneratedGeometrySnapshot;
   activeSGroup: ActiveSGroup | null;
+  completedSGroups?: ActiveSGroup[];
   activeTBGroup: ActiveTBGroup | null;
   completedTBGroups: ActiveTBGroup[];
   activeWallGroup: ActiveWallGroup | null;
@@ -102,6 +103,7 @@ export const boxStateFields = (source: BoxStateSource) => ({
     lastAppliedManufacturingSettings: source.lastAppliedManufacturingSettings,
     generatedGeometrySnapshot: source.generatedGeometrySnapshot,
     activeSGroup: source.activeSGroup,
+    ...(source.completedSGroups && { completedSGroups: source.completedSGroups }),
     activeTBGroup: source.activeTBGroup,
     completedTBGroups: source.completedTBGroups,
     activeWallGroup: source.activeWallGroup,

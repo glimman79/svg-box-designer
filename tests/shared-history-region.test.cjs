@@ -21,12 +21,18 @@ const render = (workspace, definitions, editingSketchId = null, chronology = ske
 test('one row uses project order across modules and sources', () => {
   const defs = fixture(2), [first, second] = sketchEntries(defs);
   const order = [first, {kind:'PM',id:'approval',sourceId:first.id}, second,
-    {kind:'TB',id:'connection',sourceId:first.id,connectionId:'TB1'}];
+    {kind:'TB',id:'first-group',sourceId:first.id,groupId:'group-a'},
+    {kind:'TB',id:'connection',sourceId:first.id,connectionId:'TB3'},
+    {kind:'TB',id:'second-source-group',sourceId:second.id,groupId:'group-b'},
+    {kind:'TB',id:'later-group',sourceId:first.id,groupId:'group-c'}];
   for (const workspace of ['construction','drawing']) {
     const html = render(workspace, defs, null, order);
     assert.equal((html.match(/<aside/g) || []).length, 1);
     assert.deepEqual([...html.matchAll(/data-operation-id="([^"]+)"/g)].map(m=>m[1]),order.map(e=>e.id));
-    assert.match(html,/TB1 \(Sketch 1\)/);
+    assert.match(html,/TB Group 1 \(Sketch 1\)/);
+    assert.match(html,/TB3 \(Sketch 1\)/);
+    assert.match(html,/TB Group 1 \(Sketch 2\)/);
+    assert.match(html,/TB Group 2 \(Sketch 1\)/);
   }
 });
 

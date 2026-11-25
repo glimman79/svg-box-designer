@@ -2,7 +2,7 @@ import type { EdgeAssignmentBucket, EdgeRole, SlotRole } from '../svgUtils';
 import { getBucketEdgeAssignment, getBucketSlotAssignments, toEdgeAssignmentBucket } from './assignmentBuckets';
 import { isSourceApproved, sameSketchRequired } from './boxSources';
 import { collectSourceEdgeAuthoringClaims, deriveCanvasEdgeRelationshipState, sourceEdgeRelationshipKey } from './canvasEdgeRelationships';
-import { parseConnectionLabel } from './connectionLabels';
+import { getNextConnectionLabel, parseConnectionLabel } from './connectionLabels';
 import { propertiesChanged, type ConnectionPropertiesByPrefix } from './connectionTypes';
 import type { BoxStateSource } from './projectState';
 import { applyFingerWidthUpdate } from './tabSizeControl';
@@ -98,7 +98,13 @@ export function assignConstructionEdge(box: BoxStateSource, edgeId: string, id: 
     } } };
     const parsed = parseConnectionLabel(id);
     if (prior.length !== 1 || parsed?.prefix !== 'TB') return next;
-    const nextId = `TB${parsed.number + 1}`;
+    const group = box.activeTBGroup;
+    // A historical member must never acquire a continuation in a different session.
+    if (box.completedTBGroups.some(g => g.connectionIds.includes(id))
+      || (group && !group.isActive && group.connectionIds.includes(id))) return next;
+    const following = `TB${parsed.number + 1}`;
+    const nextId = connections[following] && group?.isActive && group.connectionIds.includes(id) && !group.connectionIds.includes(following)
+      ? getNextConnectionLabel('TB', Object.keys(connections)) : following;
     return { ...next, assignmentTargetConnectionId: nextId,
       connections: connections[nextId] ? connections : { ...connections,
         [nextId]: createTBConnectionDefinition(nextId, getSharedTBEdgeProperties(connections, defaultConnectionProperties.TB)) },
@@ -209,5 +215,9 @@ export function editConstructionProperties(box: BoxStateSource, id: string | nul
     if (propertiesChanged(selected.properties, edit.updates)) connections = { ...connections,
       [selected.id]: { ...selected, properties: { ...selected.properties, ...edit.updates } } };
   }
-  return connections === box.connections ? box : { ...box, connections };
+  if (connections === box.connections) return box;
+  if (selected.prefix === 'TB' || selected.prefix === 'W' || selected.prefix === 'S') {
+    connections = { ...connections, [selected.id]: { ...connections[selected.id], hasAuthoredParameters: true } };
+  }
+  return { ...box, connections };
 }
