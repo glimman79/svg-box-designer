@@ -1,8 +1,16 @@
 # SVG Box Designer — Project Master
 
+## Current review checkpoint — merged PR #649, user-reported gaps (2026-11-25)
+
+**MERGED, PARTIALLY USER-VERIFIED; NOT FULLY ACCEPTED.** PR #649 provided global chronological source entries, source hover/direct activation, simultaneous approved canvas construction and stable user zoom/pan. The user confirmed hover/source selection, chronology order and camera preservation, but further manual testing exposed (a) one top-level History item per TB connection rather than per TB *authoring session*, (b) absent OK when inspecting completed TB work, and (c) Drawing Dimension changes causing blanket BOX approval invalidation and hiding downstream output instead of selective compatible recomputation. Escape is not yet consistent across modules. These are **confirmed user observations**, not fixed functionality.
+
+**APPROVED REQUIREMENT — NOT YET IMPLEMENTED**
+
+The target is documented in [History/UI correction contract](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md#approved-correction-target--history-groups-diagnostics-ok-and-escape-2026-11-25) and [Sketch-to-BOX dependency contract](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#approved-update-target--sketch-to-box-dependency-continuity-and-panel-manager-diagnostics-2026-11-25). Existing Sketch, Line, panel and edge IDs form the starting provenance; do not introduce a disconnected identity system. Future invalid dependents remain stored and diagnosable (red `!`/triangle on their History entries), while Panel Manager warns about incomplete potential panels. Do not claim full Stage E dependency regeneration is implemented.
+
 ## Stage C.2 PR 5 — BOX source selection and operation history
 
-PR #648 passed the user's six Drawing-to-BOX acceptance scenarios. This correction is ready for manual review. Click an approved Sketch to work on it immediately. A Sketch requiring review opens its Panel Manager. All approved Sketches show their own applied construction in their Drawing colors. Only the working source accepts assignments or supplies manufacturing export.
+PR #648 passed the user's six Drawing-to-BOX acceptance scenarios. PR #649 merged and was partially user-verified as described above. Click an approved Sketch to work on it immediately. A Sketch requiring review opens its Panel Manager. All approved Sketches show their own applied construction in their Drawing colors. Only the working source accepts assignments or supplies manufacturing export.
 
 Drawing and BOX share one permanent History row. Each entry retains its creation position and points to the current Sketch or BOX definition. Zoom, pan and Fit belong to the user after the initial framing. [Interaction contract](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md#box-selection-history-and-camera)
 
