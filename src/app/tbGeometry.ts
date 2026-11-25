@@ -100,7 +100,7 @@ type TBConnectionThickness = {
 type AssignedTBEdge = { edgeId: string; role: EdgeRole };
 
 export class TBGeometryError extends Error {
-  constructor(readonly code: 'TB_EDGE_LENGTH_MISMATCH' | 'TB_GEOMETRY_GENERATION_FAILED',
+  constructor(readonly code: 'TB_EDGE_LENGTH_MISMATCH' | 'TB_GEOMETRY_GENERATION_FAILED' | 'TB_INVALID_EDGE_ASSIGNMENT_COUNT',
     readonly connectionId: string, message: string) {
     super(message);
     this.name = 'TBGeometryError';
@@ -116,7 +116,11 @@ export const validateCurrentTBEdgeCompatibility = (svgModel: SvgDocumentModel,
     const assigned = getAssignedTBEdges(assignments, connection.id);
     const a = assigned.filter(edge => edge.role === 'A');
     const b = assigned.filter(edge => edge.role === 'B');
-    if (a.length !== 1 || b.length !== 1) continue; // Drafts remain editable.
+    if (assigned.length === 0 || (assigned.length === 1 && (a.length === 1 || b.length === 1))) continue;
+    if (a.length !== 1 || b.length !== 1 || assigned.length !== 2) {
+      throw new TBGeometryError('TB_INVALID_EDGE_ASSIGNMENT_COUNT', connection.id,
+        `TB_INVALID_EDGE_ASSIGNMENT_COUNT: TB connection ${connection.id} requires exactly one A edge and one B edge; found ${a.length} A and ${b.length} B.`);
+    }
     const edgeA = edges.get(a[0].edgeId);
     const edgeB = edges.get(b[0].edgeId);
     if (!edgeA || !edgeB) continue; // Missing source edges have their own approval check.

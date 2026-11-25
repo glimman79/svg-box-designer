@@ -17,9 +17,9 @@ export function evaluateAppliedGeometry(box: BoxStateSource, mode: PanelComposit
   const { svgModel, edgeAssignments, panelManager } = box;
   const slots = recalculateAutomaticSSlotLengths(svgModel, edgeAssignments, box.connections, panelManager);
   const connections = recalculateAutomaticTBFingerWidths(svgModel, edgeAssignments, slots, panelManager);
+  validateCurrentTBEdgeCompatibility(svgModel, edgeAssignments, connections);
   validateGeometryAuthoring(svgModel, edgeAssignments, connections, mode);
   validateWallAuthoringForApply(svgModel, edgeAssignments, connections, box.activeWallGroup);
-  validateCurrentTBEdgeCompatibility(svgModel, edgeAssignments, connections);
   const tbGeneratedItems = buildGeneratedTBGeometryItems(svgModel, edgeAssignments, connections, panelManager);
   validateGeneratedTBContributions(edgeAssignments, connections, tbGeneratedItems);
   const wGeneratedItems = buildGeneratedWGeometryItems(svgModel, edgeAssignments, connections, panelManager);

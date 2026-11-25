@@ -99,7 +99,7 @@ export function reconcileDrawingSources(previous: BoxSources | undefined,
         'Drawing panel topology changed. Review Panel Manager and reapply geometry.') };
     } else if (geometryChanged && base.panelManager.isApplied
       && (!base.panelManager.needsGeometryApply || base.dependencyDiagnostics?.some(d =>
-        d.code === 'BOX_REGENERATION_FAILED' || d.code === 'TB_EDGE_LENGTH_MISMATCH' || d.code === 'TB_GEOMETRY_GENERATION_FAILED'))
+        d.code === 'BOX_REGENERATION_FAILED' || d.code === 'TB_EDGE_LENGTH_MISMATCH' || d.code === 'TB_GEOMETRY_GENERATION_FAILED' || d.code === 'TB_INVALID_EDGE_ASSIGNMENT_COUNT'))
       && base.generatedGeometrySnapshot.generatedGeometry.length) {
       let pending: boolean;
       if (base.appliedGeometryInputs) {

@@ -35,7 +35,7 @@ export type BoxProjectData = {
   completedWallGroups: ActiveWallGroup[];
   workflowGroupOrder: Record<string, number>;
   dependencyDiagnostics?: ReadonlyArray<{
-    code: 'DRAWING_TOPOLOGY_CHANGED' | 'BOX_REGENERATION_FAILED' | 'TB_EDGE_LENGTH_MISMATCH' | 'TB_GEOMETRY_GENERATION_FAILED';
+    code: 'DRAWING_TOPOLOGY_CHANGED' | 'BOX_REGENERATION_FAILED' | 'TB_EDGE_LENGTH_MISMATCH' | 'TB_GEOMETRY_GENERATION_FAILED' | 'TB_INVALID_EDGE_ASSIGNMENT_COUNT';
     severity: 'error'; sourceId: string; groupId?: string; connectionId?: string;
     panelIds: readonly string[]; edgeIds: readonly string[]; message: string;
   }>;

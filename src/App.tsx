@@ -34,7 +34,7 @@ import { getWallAssignments, resolveTBRoleForPanel, validateWallAuthoringForAppl
 import { finishWallGroupWithTrailingCleanup, startWallGroupWorkflow } from './app/wallWorkflow';
 import { finishSGroupWithTrailingCleanup, getDefaultSlotRole, manualAddSWorkflow, startSGroupWorkflow } from './app/sWorkflow';
 import { buildTBDisplayLabelAliasMap, finishTBGroupWithTrailingCleanup, getSharedTBEdgeProperties, startTBGroupWorkflow } from './app/tbWorkflow';
-import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildGeneratedTBGeometryItems, recalculateAutomaticTBFingerWidths, resolveTBThickness } from './app/tbGeometry';
+import { applyTabsToContour, buildInsetPanelContour, buildPanelGeometry, buildTabSegmentPlansByConnectionId, getPanelEdgeOperations, buildGeneratedTBGeometryItems, recalculateAutomaticTBFingerWidths, resolveTBThickness, validateCurrentTBEdgeCompatibility, validateGeneratedTBContributions } from './app/tbGeometry';
 import { buildPanelContainmentTree, createPanelManagerStateFromModel, DEFAULT_PANEL_THICKNESS_MM, validatePanelManagerState } from './app/panelManagerModel';
 import type { PanelEdgeOperation, TabSegmentPlan } from './app/tbGeometry';
 import type { PanelContour } from './app/sharedGeometry';
@@ -1055,14 +1055,17 @@ function ProjectWorkspace({ projectOwner, position }: {
           needsGeometryApply: Boolean(panelManager.needsGeometryApply || before.generatedGeometrySnapshot.generatedGeometry.length) } };
       }
       const connections = recalculateBoxConnections(before, applied);
+      validateCurrentTBEdgeCompatibility(svgModel, edgeAssignments, connections);
       const toolsToRebuild = new Set(before.generatedGeometrySnapshot.generatedGeometry.map(item => item.toolType));
       for (const bucket of Object.values(edgeAssignments)) {
         const edge = getBucketEdgeAssignment(bucket);
         const prefix = edge && connections[edge.connectionId]?.prefix;
         if (prefix === 'TB' || prefix === 'W') toolsToRebuild.add(prefix);
       }
+      const tbItems = toolsToRebuild.has('TB') ? buildGeneratedTBGeometryItems(svgModel, edgeAssignments, connections, applied) : [];
+      validateGeneratedTBContributions(edgeAssignments, connections, tbItems);
       const items = [
-        ...(toolsToRebuild.has('TB') ? buildGeneratedTBGeometryItems(svgModel, edgeAssignments, connections, applied) : []),
+        ...tbItems,
         ...(toolsToRebuild.has('W') ? buildGeneratedWGeometryItems(svgModel, edgeAssignments, connections, applied) : []),
         ...(toolsToRebuild.has('S') ? buildGeneratedSGeometryItems(svgModel, edgeAssignments, connections, applied) : []),
       ];

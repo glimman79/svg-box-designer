@@ -159,6 +159,33 @@ test('rejections preserve the exact owner, both global stacks and accepted outpu
   c.redoLastEdit(); assert.equal(owner.getSnapshot().box.projectSettings.kerfMm,.8);
 });
 
+test('TB rejects a third authored edge; malformed persisted counts fail Apply while one-edge drafts remain valid', () => {
+  const initial=api.makePopulatedProjectState();
+  const extra='panel-c-edge-1';
+  const {context:c,projectOwner:owner}=harness(initial);
+  c.selectConnectionForDisplayAndAssignment('TB1');
+  const before=owner.getSnapshot(), history=owner.getHistory();
+  c.assignSelectedLabelToEdge(extra);
+  assert.match(c.errorMessage,/TB_INVALID_EDGE_ASSIGNMENT_COUNT.*TB1/);
+  assert.equal(owner.getSnapshot(),before);
+  assert.equal(owner.getHistory(),history);
+
+  const malformed=api.makePopulatedProjectState();
+  malformed.box.edgeAssignments[extra]={edgeAssignment:{connectionId:'TB1',edgeRole:'A'}};
+  assert.throws(()=>api.validateCurrentTBEdgeCompatibility(malformed.box.svgModel,
+    malformed.box.edgeAssignments,malformed.box.connections),error=>
+    error.code==='TB_INVALID_EDGE_ASSIGNMENT_COUNT'&&error.connectionId==='TB1');
+  const {context:badContext,projectOwner:badOwner}=harness(malformed);
+  const badBefore=badOwner.getSnapshot();
+  badContext.applyPanelPaths();
+  assert.match(badContext.errorMessage,/TB_INVALID_EDGE_ASSIGNMENT_COUNT/);
+  assert.equal(badOwner.getSnapshot(),badBefore);
+  const draft=api.makePopulatedProjectState();
+  delete draft.box.edgeAssignments['panel-b-edge-2'];
+  assert.doesNotThrow(()=>api.validateCurrentTBEdgeCompatibility(draft.box.svgModel,
+    draft.box.edgeAssignments,draft.box.connections));
+});
+
 test('Wall second-edge and failed helper roll back complete candidates including automatic W continuation', () => {
   const initial = api.makePopulatedProjectState();
   delete initial.box.edgeAssignments[edge('d',0)];
