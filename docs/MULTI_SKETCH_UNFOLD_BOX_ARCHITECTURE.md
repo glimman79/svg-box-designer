@@ -1,5 +1,42 @@
 # Laser Program – Multi-Sketch, 3D/Unfold & BOX Architecture Documentation
 
+## Approved update target — Sketch-to-BOX dependency continuity and Panel Manager diagnostics (2026-11-25)
+
+**APPROVED REQUIREMENT — NOT YET IMPLEMENTED**
+
+PR #649 is merged, but the user has found downstream-regeneration and history-grouping defects during manual testing. The current implementation generally invalidates an entire changed Sketch's Panel Manager approval, hides its applied construction and requires reapproval. This contract supersedes that behavior as the **future target**, not as a claim that regeneration exists today.
+
+### Identity and valid updates
+
+- Keep the current permanent Sketch operation identity and stable Drawing entity/point IDs. BOX already derives panel identity from the contour's member Line IDs and edge identity from panel and Drawing Line IDs. Do not invent a second mutable 'invisible stamp' or identify objects by screen position, length, display label or current array position.
+- A driving Dimension or Constraint edit that changes **coordinates or lengths but preserves the same panel membership, stable Line/edge references, closed contour topology and supported manufacturing semantics** should update the existing BOX panels, thickness metadata and affected TB/W/S operations **without requiring Panel Manager reapproval** solely because the geometry revision changed.
+- Re-evaluate the affected downstream operations against current geometry. Keep their original operation identities, authored parameters and History positions. Recompute valid generated results and their compensation within the existing authority pipeline; never replace a source edge with an unrelated one by geometric guesswork.
+- A valid Drawing edit stays accepted even when an affected downstream operation fails. Preserve the failed definition, its references and previously authored work as **blocked/stale**, not current manufacturing output. Show a diagnostic and prevent invalid export. Unaffected Sketches and compatible operations remain usable.
+- The accepted source edit and all automatic successful/failed dependent outcomes belong to **one global Undo/Redo action**. Do not emit a second asynchronous history step for regeneration. Full Stage E dependency scheduling/repair remains future work; prefer a small, safe first vertical slice.
+
+### When Panel Manager review is required
+
+- Addition, deletion or replacement of a **panel/figure**, changed contour membership, broken/missing source references, or changed topology/hole relationships requires targeted Panel Manager review before that changed or new panel becomes construction-eligible. Preserve thickness and assignments of unchanged identifiable panels where safe.
+- Merely resizing or moving an **existing supported panel** while preserving its semantic contour/edge identity should **not** reset its Panel Manager approval. Validation/regeneration may still block an incompatible TB/W/S operation.
+- An **open contour candidate**, for example a connected partial rectangle or Line chain that could represent an unfinished panel, must appear in Panel Manager as an explicit warning with an identifiable source/chain and explanation that it is **not a valid closed panel**. Do not silently discard it or treat it as eligible for thickness/production.
+- A standalone open Line may be an intentional CAD reference. Do not automatically claim every open Line is a broken panel. Distinguish unclassified/open geometry from a detected incomplete panel candidate; when intent cannot be inferred, show an informative unclassified-geometry status rather than inventing a manufactured panel. New potentially panel-forming geometry may put its affected source into a review-required state, but it must not silently invalidate unrelated approved panels.
+- A warning for an incomplete contour does not by itself prove every other closed panel in the Sketch is invalid. The validation boundary decides exactly which source, panel and downstream operations are blocked.
+
+### Diagnostics and warning indicators
+
+- Every failed or blocked operation must have a stable machine-readable diagnostic **code**, severity, human-readable reason, affected operation ID, owning Sketch/source, and implicated panel/edge IDs when known. Preserve these references even if the operation cannot currently regenerate.
+- Display a **red `!` / warning-triangle marker directly on each affected operation's History entry**, regardless of the currently active Sketch. Clicking or focusing it identifies the failure and offers relevant inspection/repair context. Do not remove the operation from History, move it to the end, or turn it into an Undo step.
+- Distinguish a hard invalid/blocked result (red error) from a nonblocking incomplete-panel warning in Panel Manager (warning level). Never show stale generated geometry as valid current output or allow unsafe export.
+
+### Minimum target scenario (not a current acceptance claim)
+
+1. Draw two closed Line panels in Sketch 1; approve thicknesses and author TB on their existing edges.
+2. Reopen Sketch 1 in Drawing; add/modify driving Dimensions so the same panels acquire matching edge lengths. Their panel/Line IDs and contour membership remain stable.
+3. Return to BOX: existing panels, thicknesses and TB definition remain. Valid TB regenerates against the new lengths and remains visible; no unnecessary Panel Manager step is required.
+4. If the relationship becomes invalid, keep TB and its History entry, show a red diagnostic `!` with code/reason and block only invalid output.
+5. Add a **new partial contour**: Panel Manager warns that it is unfinished; adding a new complete panel or changing topology requires review. Unchanged independent Sketch 2 remains intact.
+6. Verify that Undo/Redo atomically restores both edited Drawing and downstream valid/blocked states.
+
 ## Current implementation checkpoint — 2026-11-24
 
 **Implemented and automatically tested. Pending user browser acceptance.** PR #646 merged the shared grid and explicit editing lifetime. PR 3 adds stable neutral colors for Sketches, grey reference geometry while editing and direct reopening from History or neutral geometry. Overlap requires an explicit choice. The active Sketch alone supplies Dimensions, Constraints and authoring input.

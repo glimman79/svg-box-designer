@@ -1,8 +1,44 @@
 # Laser Program — Global Workspace UI Specification
 
+## Approved correction target — History groups, diagnostics, OK and Escape (2026-11-25)
+
+**APPROVED REQUIREMENT — NOT YET IMPLEMENTED**
+
+These requirements define the planned replacement for the PR #649 **per-connection** History presentation and incomplete tool-exit behavior. Existing shared project chronology and exact global creation order must be preserved.
+
+### One History entry per meaningful authoring session
+
+- One TB authoring **group/session** may create TB1, TB2 and additional individual connections before its Finish/OK. It contributes **ONE permanent History entry**, representing that whole session. W and S follow the same group-level rule for their authoring sessions. Individual connections remain editable children in the tool inspector; they are not separate top-level History entries merely because another automatic connection was allocated.
+- Anchor the group's place in the global History when its **first meaningful authoring action is accepted**, not from an unused empty tool draft. Once created, its stable group-operation ID and original global position remain fixed even as TB1/TB2 are changed or the group is reopened.
+- All Sketch, Panel Manager and BOX group/operation entries remain on **one shared row in exact global creation order**, even when work alternates between Sketch 1 and Sketch 2. Never group or sort by source, type, tool or selected module. A genuinely new later TB session appends a distinct entry; editing a previous session never moves it.
+- The current per-connection chronology must be migrated/reconciled without losing authored TB/W/S connections, assignments, Undo/Redo identities or user work. Do not pretend that an older project without group timestamps has a reconstructible historical order.
+
+### Per-operation warning/error navigation
+
+- A failed or blocked operation remains in the row at its original position and displays a conspicuous **red warning triangle or `!`**. Use the operation's diagnostic status, not whether its source is the selected Sketch.
+- Clicking the operation presents its **error code**, reason, originating Sketch, affected panel/edge identities and available next action (edit source, inspect PM, retry/revalidate or repair where supported). Do not suggest a repair is already implemented when it is not.
+- A Panel Manager panel/contour that appears to be an unfinished closed profile must receive a visible **warning** explaining the missing closure/invalid chain. Purely open reference Lines must not be silently interpreted as complete panels. Severity must distinguish review information from failed downstream geometry.
+- No blocked/stale operation may be counted as valid current manufacturing output or allowed through the export gate.
+
+### Consistent tool exit
+
+- **OK** must be available when a previously finished TB/W/S group is reopened from History; it closes its editing/inspection context without creating a new group, changing the original History position, discarding accepted assignments or needlessly adding an Undo action.
+- For a newly active authoring group, **OK** keeps its established Finish semantics and safely settles accepted work. Existing UI style must match the BOX Active Tool inspector.
+- **Escape** must work consistently in Drawing and BOX: dismiss the topmost transient choice/popover/editor where appropriate, cancel unfinished geometry previews, clear pending edge selections and exit the active tool to Select. Multiple Escape presses must be safe. It must not undo already accepted geometry or assignments, delete permanent operations, fabricate Undo entries or unexpectedly destroy Redo.
+- In Drawing, Escape exits a geometry tool/selection, **not the Sketch editing session itself**; only Finish Sketch exits the Sketch. An active numerical text field keeps the established Escape-to-cancel-draft behavior before a global Escape handler runs.
+- Tool exit and history reopening must remain safe with stale pointer releases, delayed Profile clicks and global Undo/Redo restoration.
+
+### Manual user acceptance — short and focused
+
+1. Create TB1 and TB2 in ONE TB group, then Finish. Expect exactly **one** top-level TB entry.
+2. Create a later TB group in another Sketch and return to the first. Expect a second entry at its true creation position; the first group stays where it was.
+3. Reopen the first group from History. Expect OK and an unchanged History ID/order after closing.
+4. With an edge selected, press Escape. Expect selection cleared, no accepted work lost, no Undo/Redo mutation. Repeat for Drawing's active Line tool without leaving Sketch mode.
+5. Produce an intentionally invalid dependent operation and an incomplete contour candidate. Expect a red error marker on the affected History item and an explanatory warning in Panel Manager, respectively.
+
 ## BOX selection, History and camera
 
-PR 5 implements the user-approved corrections on the review branch. Inactive Sketches highlight as a whole and show their names on hover. Invisible 16-screen-pixel stroke targets and closed-panel interiors support single-click selection. Overlapping sources offer a named choice. The active construction tool retains its edge targets. Approved Sketches use the neutral Drawing palette. Grey indicates missing approval or a changed geometry revision. Selecting an approved source activates its rail. Selecting a source that requires review opens its Panel Manager. The inspector selector uses the same rule.
+PR 5 merged in #649. The following describes its behavior at merge. Inactive Sketches highlight as a whole and show their names on hover. Invisible 16-screen-pixel stroke targets and closed-panel interiors support single-click selection. Overlapping sources offer a named choice. The active construction tool retains its edge targets. Approved Sketches use the neutral Drawing palette. Grey indicates missing approval or a changed geometry revision. Selecting an approved source activates its rail. Selecting a source that requires review opens its Panel Manager. The inspector selector uses the same rule.
 
 Drawing and BOX show one horizontally scrollable row in global creation order. It interleaves Sketches, PM approvals, individual connections and manufacturing settings across sources. Source, tool, module and display labels never regroup or reorder the entries. A single click on a BOX entry opens its current source and tool. Double-click or keyboard activation on a Sketch reopens its Drawing editor. Finish an active Sketch before navigating to a different operation.
 

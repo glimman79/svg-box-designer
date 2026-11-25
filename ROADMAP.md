@@ -1,8 +1,19 @@
 # SVG Box Designer roadmap
 
+## Approved next corrections — user findings after merged PR #649 (2026-11-25)
+
+**APPROVED REQUIREMENT — NOT YET IMPLEMENTED**
+
+The user verified interleaved chronology, source hover/activation and viewport stability, but reported material gaps in the current BOX/Sketch contract. Plan the work as two focused slices rather than another all-in-one rewrite:
+
+1. **History and tool lifecycle:** one History entry per meaningful TB/W/S authoring **group** (not per TB1/TB2 connection), globally interleaved by actual creation; preserve stable IDs and Undo/Redo. Reopened historical groups must expose OK. Escape cancels transient selections/tools consistently in Drawing and BOX.
+2. **Narrow Stage E dependency continuation:** Dimension/Constraint edits to the *same* supported panel topology preserve Panel Manager approval, panel/edge identity and TB/W/S definitions, re-evaluate compatible output, and show a **red `!`/triangle and diagnostic code on affected History entries** when updates fail. New/replaced/removed panels or topology changes require PM review; incomplete panel candidates receive PM warnings, not fabricated panel eligibility. Unchanged Sketches and valid manufacturing output remain intact.
+
+Details and acceptance boundaries: [multi-Sketch dependency contract](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#approved-update-target--sketch-to-box-dependency-continuity-and-panel-manager-diagnostics-2026-11-25) and [History/UI contract](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md#approved-correction-target--history-groups-diagnostics-ok-and-escape-2026-11-25). Current PR #649 behavior must not be marked user-accepted as a whole. Native Save/Open, general Stage E scheduling/repair, curved manufacturing profiles and multi-source export remain separate future stages.
+
 ## Stage C.2 PR 5 — BOX interaction and permanent chronological History
 
-**Correction implemented on the PR branch, pending manual acceptance.** The approved scope adds direct source selection, simultaneous read-only display of other approved constructions, a user-controlled BOX camera and one creation-ordered History for Sketch, PM, TB, W, S and manufacturing settings. Native project files, multi-source export, curved manufacturing profiles and Stage E regeneration remain planned. [Source boundaries](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#drawing-panel-sources)
+**PR #649 merged; manual acceptance is partial.** The approved scope adds direct source selection, simultaneous read-only display of other approved constructions, a user-controlled BOX camera and one creation-ordered History for Sketch, PM, TB, W, S and manufacturing settings. Native project files, multi-source export, curved manufacturing profiles and Stage E regeneration remain planned. [Source boundaries](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#drawing-panel-sources)
 
 ## Stage C.2 PR 4 — Drawing-to-BOX vertical integration
 

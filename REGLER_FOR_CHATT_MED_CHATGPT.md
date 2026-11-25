@@ -423,3 +423,41 @@ Den systematiska cykeln är:
 Dokumentationen får inte i förväg påstå att en funktion är implementerad. Under aktiv utveckling kan Roadmap fortsätta visa `PLANNED` eller `PARTIALLY IMPLEMENTED`. Synkroniseringen sker efter merge, webbläsarverifiering och acceptans, så att dokumentationen beskriver accepterad verklighet i stället för en avsikt.
 
 Dokumentationssynkronisering kan med fördel göras som en separat, fokuserad dokumentations-PR efter att den funktionella PR:en har mergats, webbläsartestats och accepterats. Den ska inte tvingas in i en funktionell PR om acceptans ännu saknas.
+
+## 18. Kostnadsmedveten och riskbaserad utveckling med Codex (2026-11-25)
+
+**Beslutad samarbetsregel.** Kvalitet, säkerhet och projektets integritet har företräde framför lägre förbrukning, men Codex ska inte förbruka användningsbudget på analys, testning eller dokumentarbete som lika säkert kan göras här eller av användaren.
+
+### 18.1 Förbered och avgränsa innan implementation
+
+- ChatGPT Chat granskar relevant kod och dokumentation i **READ ONLY**, förklarar sannolik orsak, identifierar beroenden, jämför rimliga alternativ och föreslår minsta sammanhängande PR. Repositoryts regler om skrivåtkomst påverkas inte.
+- Codex får en konkret implementation med fil- och gränsreferenser när de är verifierade, i stället för att uppmanas att själv ompröva hela projektarkitekturen. Codex måste fortfarande själv verifiera aktuell baseline och tekniska antaganden.
+- En PR ska ha ett tydligt huvudmål. Oberoende mindre UI-fel skiljs normalt från större förändringar i projektägare, global historik och beroendegraf. Dela inte artificiellt upp en atomär ändring så att halvfärdiga projektgränser lämnas mellan PR:ar.
+- Undvik orelaterad refaktorering, upprepade fullständiga utredningar, omotiverade benchmarksviter och bred dokumentomskrivning.
+- Nytt Codex-uppdrag startas i en ny tråd. Ett **avbrutet pågående uppdrag** ska däremot i första hand fortsättas i samma tråd, gren och arbetskopia där det slutade; börja inte om eller skapa en ny PR utan anledning.
+- Codex-prompt får fortfarande **inte** skrivas eller skickas av ChatGPT utan uttrycklig begäran från användaren.
+
+### 18.2 Välj modell OCH tänkandenivå efter verklig komplexitet
+
+- **Obligatoriskt för varje Codex-prompt från ChatGPT:** I början av svaret ska ChatGPT tydligt ange föreslagen **Codex-trådtitel**, exakt rekommenderat **GPT-modellnamn inklusive version** och rekommenderad **tänkandenivå**.
+- För en avgränsad dokumentations- eller UI-ändring kan t.ex. **GPT-6.2 Sol — Medium** rekommenderas när modellen finns i användarens Codex-väljare. För större arkitekturarbete väljs modell och nivå separat efter verkliga behov. Detta exempel är inte en permanent låsning till en viss modellversion.
+- Välj modell och tänkandenivå efter uppgiftens komplexitet, aktuellt modellutbud och effektiv användning av användarens förbrukningsgränser. Uppge en rimlig reservmodell om förstahandsvalet saknas. Användaren väljer själv den faktiska modellen och tänkandenivån i Codex.
+
+- **Medium** som utgångspunkt för avgränsad UI, CSS och mindre logikbuggar.
+- **Hög** när flera moduler, tillståndsövergångar eller integrationsgränser berörs.
+- **Extra hög** endast vid verkligt svåra arkitektur-, solver-, historik- eller dataintegritetsproblem som motiverar det.
+- Högre tänkandenivå ska inte väljas av vana. Någon garanterad kreditbesparing utlovas inte.
+
+### 18.3 Testansvar och billig verifiering utan sämre säkerhet
+
+**Codex ska före PR automatiskt verifiera** tekniskt kritiska kontrakt: domänvalidering, referens-/operationsidentitet, atomiska transaktioner, Undo/Redo, avvisning utan Redo-förlust, källisolering, export-/tillverkningssäkerhet och nödvändiga regressioner. Relevanta fokuserade tester körs först; bredare tester, build och diff-kontroll körs när de behövs som leveransgrind, inte upprepat utan orsak.
+
+**Användaren får efter PR/merge kontrollera** enkla, korta och visuellt observerbara beteenden: färger, hover, klick/dubbelklick, verktygsplacering, panelvisning, tydliga varningssymboler samt att kamera/zoom/pan inte flyttas. Ge normalt **3–6 konkreta steg**, förväntat resultat och uppgift om vilken funktion som testas. Manuella tester får inte ersätta riskkritiska automatiska tester eller tvinga Codex att stanna mitt i implementationen när de säkert kan göras efteråt.
+
+Rapportera separat: (1) automatiskt testat, (2) kodgranskat, (3) användartestat, (4) ännu ej verifierat. Ett manuellt fel analyseras först av ChatGPT i READ ONLY innan ny Codex-ändring planeras. Ändra aldrig testkrav för att dölja fel.
+
+### 18.4 Dokumentation och användningsgränser
+
+- ChatGPT får förbereda exakta dokumentationsförslag/patchar utanför repositoryt. Endast Codex får genomföra godkända repositoryändringar.
+- Uppdatera endast de dokument som blir inaktuella och skilj **beslutade krav**, **implementerat**, **testat** och **användaraccepterat** åt. Framtida krav hör främst till Roadmap och detaljerad specifikation, inte som redan levererad funktion i Changelog.
+- Förbrukningsgränser är en planeringsbegränsning, inte en ursäkt för ofullständig validering. Förbered arbete och manuell testlista i ChatGPT, återanvänd befintlig verifiering och fortsätt avbrutna uppdrag utan omstart när det går.

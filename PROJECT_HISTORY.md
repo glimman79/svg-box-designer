@@ -1,8 +1,16 @@
 # SVG Box Designer — Project History
 
+## User acceptance findings after merged PR #649 (2026-11-25)
+
+The user tested the global History/canvas corrections. Source hover, direct Sketch activation, interleaved entry order, and persistent zoom/pan behaved as requested. Further testing uncovered that TB1/TB2 created during one TB authoring session appear as separate top-level History entries; reopening a completed TB session does not expose OK; and a Driving Dimension change to an existing Sketch invalidates Panel Manager broadly and hides existing TB/W output rather than recomputing compatible panel/edge relationships.
+
+**APPROVED REQUIREMENT — NOT YET IMPLEMENTED**
+
+The user also approved a consistent Escape-to-cancel-tool/selection contract, red error markers with codes on failed dependent History operations, and warnings for incomplete panel candidates in Panel Manager. These are **decisions and observed gaps, not implemented fixes**. Plan two focused PR slices; do not use Codex for an unnecessary full-architecture rediscovery. [UI contract](docs/GLOBAL_WORKSPACE_UI_SPECIFICATION.md#approved-correction-target--history-groups-diagnostics-ok-and-escape-2026-11-25) · [Dependency contract](docs/MULTI_SKETCH_UNFOLD_BOX_ARCHITECTURE.md#approved-update-target--sketch-to-box-dependency-continuity-and-panel-manager-diagnostics-2026-11-25).
+
 ## Stage C.2 PR 5 — Corrections after acceptance of #648
 
-Hands-on use after acceptance exposed hidden constructions, source-local History and unexpected refitting. PR 5 keeps the per-Sketch authority from #648, projects each current approved result onto the same canvas and records operation creation when the project accepts the edit. Source selection and hover preserve the Undo and Redo stacks. Manual acceptance of these corrections is pending.
+Hands-on use after acceptance exposed hidden constructions, source-local History and unexpected refitting. PR 5 keeps the per-Sketch authority from #648, projects each current approved result onto the same canvas and records operation creation when the project accepts the edit. Source selection and hover preserve the Undo and Redo stacks. At that checkpoint, manual acceptance of these corrections was pending.
 
 ## Stage C.2 PR 4 — First native Drawing panel source (2026-11-24)
 
