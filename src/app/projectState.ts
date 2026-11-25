@@ -20,6 +20,13 @@ export type BoxProjectData = {
   lastAppliedManufacturingSettings: ProjectSettings | null;
   /** Already selected/applied output and composition marker; never regenerate it. */
   generatedGeometrySnapshot: GeneratedGeometrySnapshot;
+  /** BOX inputs at the last successful Apply or automatic regeneration. */
+  appliedGeometryInputs?: {
+    edgeAssignments: BoxProjectData['edgeAssignments'];
+    connections: ConnectionMap;
+    panels: PanelManagerState['panels'];
+    activeWallGroup: ActiveWallGroup | null;
+  };
   activeSGroup: ActiveSGroup | null;
   completedSGroups?: ActiveSGroup[];
   activeTBGroup: ActiveTBGroup | null;
@@ -27,6 +34,11 @@ export type BoxProjectData = {
   activeWallGroup: ActiveWallGroup | null;
   completedWallGroups: ActiveWallGroup[];
   workflowGroupOrder: Record<string, number>;
+  dependencyDiagnostics?: ReadonlyArray<{
+    code: 'DRAWING_TOPOLOGY_CHANGED' | 'BOX_REGENERATION_FAILED';
+    severity: 'error'; sourceId: string; groupId?: string; connectionId?: string;
+    panelIds: readonly string[]; edgeIds: readonly string[]; message: string;
+  }>;
 };
 
 /** Retained for current BOX authoring parity, without promoting selection to content. */
@@ -102,6 +114,7 @@ export const boxStateFields = (source: BoxStateSource) => ({
     projectSettings: source.projectSettings,
     lastAppliedManufacturingSettings: source.lastAppliedManufacturingSettings,
     generatedGeometrySnapshot: source.generatedGeometrySnapshot,
+    ...(source.appliedGeometryInputs && { appliedGeometryInputs: source.appliedGeometryInputs }),
     activeSGroup: source.activeSGroup,
     ...(source.completedSGroups && { completedSGroups: source.completedSGroups }),
     activeTBGroup: source.activeTBGroup,
@@ -109,6 +122,7 @@ export const boxStateFields = (source: BoxStateSource) => ({
     activeWallGroup: source.activeWallGroup,
     completedWallGroups: source.completedWallGroups,
     workflowGroupOrder: source.workflowGroupOrder,
+    ...(source.dependencyDiagnostics && { dependencyDiagnostics: source.dependencyDiagnostics }),
   },
   context: {
     assignmentTargetConnectionId: source.assignmentTargetConnectionId,

@@ -9,6 +9,7 @@ import { createInitialProjectState, createProjectOwner, type InitialProject } fr
 import { boxStateFields, type BoxRestorationContext, type BoxStateCapture, type BoxStateSource,
   type ProjectStateCapture, type ProjectStateSource } from './projectState';
 import { createEmptySketch, DEFAULT_WORKSPACE, selectWorkspace, type ProjectDrawingDocument, type SupportedWorkspace, type WorkspaceId } from './drawingTypes';
+import type { PanelCompositionAuthorityMode } from './generatedGeometryAuthority';
 
 type Module = ProjectTransactionMetadata['module'];
 export const workspaceForEdit = (module: Module) => module === 'box' ? 'construction' : 'drawing';
@@ -72,7 +73,7 @@ function initialHistoryFor({ chronology, drawingDocument, constructionOperations
 
 /** Only this facade can write the mounted project owner. All roots reachable
  * from the tape have already passed admission and are immutable. */
-export function createGlobalProjectHistory(initial?: InitialProject) {
+export function createGlobalProjectHistory(initial?: InitialProject, mode: PanelCompositionAuthorityMode = 'mixed') {
   const owner = createProjectOwner(initial);
   const first = owner.getSnapshot();
   const initialHistory = initialHistoryFor(first);
@@ -149,7 +150,7 @@ export function createGlobalProjectHistory(initial?: InitialProject) {
       const drawing = after.drawingDocument as ProjectDrawingDocument;
       const operations = updateSketchOperations(before.constructionOperations, before.drawingDocument as ProjectDrawingDocument, drawing);
       if (operations !== before.constructionOperations) {
-        const boxSources = reconcileDrawingSources(before.boxSources as BoxSources | undefined, drawing, operations);
+        const boxSources = reconcileDrawingSources(before.boxSources as BoxSources | undefined, drawing, operations, mode);
         candidate = { ...after, constructionOperations: operations, boxSources };
       }
     }

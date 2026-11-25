@@ -2,9 +2,9 @@
 
 ## Approved update target — Sketch-to-BOX dependency continuity and Panel Manager diagnostics (2026-11-25)
 
-**APPROVED REQUIREMENT — NOT YET IMPLEMENTED**
+**Stage E.1 first slice implemented on the review branch and automatically tested; user acceptance is pending.** Full Stage E scheduling, repair and incomplete-contour Panel Manager warnings remain planned.
 
-PR #649 is merged, but the user has found downstream-regeneration and history-grouping defects during manual testing. The current implementation generally invalidates an entire changed Sketch's Panel Manager approval, hides its applied construction and requires reapproval. This contract supersedes that behavior as the **future target**, not as a claim that regeneration exists today.
+PR #649 is merged. Stage E.1 continues supported closed Line panels through compatible coordinate edits in the accepted Drawing transaction. Failed TB/W/S batches retain their definitions and receive History diagnostics while stale output is blocked. The broader contract below remains the target for later slices.
 
 ### Identity and valid updates
 
@@ -47,11 +47,11 @@ PR #649 is merged, but the user has found downstream-regeneration and history-gr
 
 Stage C.2 PR 4 connects the existing multi-shape Sketch to BOX. Rectangles and simple closed Line polygons use solved SketchPoints and semantic endpoint membership. BOX checks closure, branching, intersections and nonzero area before using the existing panel and hole containment pipeline. Independent loops can produce separate panels in the same Sketch. Open geometry, Circles and mixed Line/Arc boundaries remain visible references. Panel Manager reports excluded members.
 
-The permanent operation ID identifies the source, the sorted outer Line IDs identify a contour, and each BOX edge identifies its owning contour and Drawing Line. Panel Manager approval binds positive per-panel thicknesses to that source’s current geometry revision. Adding a Line, moving a point, changing a curve or deleting geometry makes the Sketch light grey. Existing thicknesses survive for recognized panels and new panels start at zero. Other approved Sketches retain their constructions and applied output.
+The permanent operation ID identifies the source, the sorted outer Line IDs identify a contour, and each BOX edge identifies its owning contour and Drawing Line. Panel Manager approval binds positive per-panel thicknesses to that source’s current geometry revision. Stage E.1 keeps approval and regenerates applied construction when solved coordinates change but supported panel membership, contour adjacency and nesting remain stable. A changed panel topology requires review. Existing thicknesses survive for recognized panels and new panels start at zero. Other approved Sketches retain their constructions and applied output.
 
 BOX displays the sources together. TB, W, S, Apply and export run on one working source at a time. The imported SVG retains its independent assignments, groups and settings when a Sketch is inspected or selected. Foreign TB/W edge assignments are rejected before publication. Reapproval preserves authored records. Missing assigned edges block approval until the geometry is restored. Previously generated output requires an explicit Geometry Apply after review. Multi-source manufacturing export and automatic dependency repair remain future work.
 
-PR 5 keeps applied TB, W and S geometry from every approved Sketch visible during source switches. The canvas reads each source's current snapshot and manufacturing settings independently. The active source alone exposes construction edge hitboxes, edits and export. Selecting another Sketch preserves per-panel thickness, source identity, assigned edges and the stored result. Workflow entries for either Sketch navigate to its current definition through the global row. A Drawing edit blocks that Sketch's generated display until review and Apply. Other Sketches retain their valid output. [Chronology and compatibility admission](../Architecture.md#project-owned-operation-chronology)
+PR 5 keeps applied TB, W and S geometry from every approved Sketch visible during source switches. The canvas reads each source's current snapshot and manufacturing settings independently. The active source alone exposes construction edge hitboxes, edits and export. Selecting another Sketch preserves per-panel thickness, source identity, assigned edges and the stored result. Workflow entries for either Sketch navigate to its current definition through the global row. Stage E.1 regenerates compatible coordinate edits; changed topology or blocked regeneration hides stale output. Other Sketches retain their valid output. [Chronology and compatibility admission](../Architecture.md#project-owned-operation-chronology)
 
 **Decision date: 2026-11-17. APPROVED TARGET — NOT IMPLEMENTED.**
 

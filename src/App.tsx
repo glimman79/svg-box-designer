@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ChangeEvent, PointerEvent } from 'react';
 import { BoxSketchLayer, previewContours, sourceHits } from './app/BoxSketchLayer';
-import { getBoxScope, hasImportedSource, IMPORTED_SOURCE, isSourceApproved, sourceStatus, validateDrawingApproval } from './app/boxSources';
+import { appliedGeometryInputs, getBoxScope, hasImportedSource, IMPORTED_SOURCE, isSourceApproved, sourceStatus, validateDrawingApproval } from './app/boxSources';
 import { flushSync } from 'react-dom';
 import { exportLabeledSvg, formatImportDiagnosticMessage, getEdgeAssignmentDisplayLabels, parseSvgDocument } from './svgUtils';
 import { layoutPanelLabels } from './app/labelLayout';
@@ -61,6 +61,7 @@ import { WorkspaceShell } from './app/WorkspaceShell';
 import { readSketchDefinitions, type BoxChronologyEntry } from './app/constructionOperations';
 import type { SupportedWorkspace } from './app/drawingTypes';
 import { SharedHistoryRegion } from './app/SharedHistoryRegion';
+import { evaluateAppliedGeometry } from './app/appliedGeometry';
 import type { ActiveSGroup, ActiveTBGroup, ConnectionDefinition, ConnectionMap, ConnectionPropertiesByPrefix, TBConnectionDefinition, TBConnectionProperties } from './app/connectionTypes';
 import { getNextConnectionLabel, parseConnectionLabel } from './app/connectionLabels';
 export { createTabSegmentPlan, pointsToClosedPathD } from './app/sharedGeometry';
@@ -449,7 +450,7 @@ const SelectField = ({ id, label, value, options, onChange }: SelectFieldProps) 
 );
 
 function App() {
-  const [projectOwner] = useState(createGlobalProjectHistory);
+  const [projectOwner] = useState(() => createGlobalProjectHistory(undefined, requestedPanelCompositionAuthorityMode));
   const position = useSyncExternalStore(projectOwner.subscribe,
     projectOwner.getPublication, projectOwner.getPublication);
   return <ProjectWorkspace key={position.session.startRevision} projectOwner={projectOwner} position={position} />;
@@ -903,13 +904,9 @@ function ProjectWorkspace({ projectOwner, position }: {
         activeSGroup, assignmentTargetConnectionId, displayConnectionId, selectedEdgeId, workflowGroupOrder,
         projectSettings, lastAppliedManufacturingSettings } = before;
       if (!panelManager.isApplied) throw new Error('Apply Panel Manager before applying or exporting workflow geometry.');
-      const nextConnections = recalculateBoxConnections(before, panelManager);
-      validateGeometryAuthoring(svgModel, edgeAssignments, nextConnections, panelCompositionAuthorityMode);
-      validateWallAuthoringForApply(svgModel, edgeAssignments, nextConnections, activeWallGroup);
-      const tbGeneratedItems = buildGeneratedTBGeometryItems(svgModel, edgeAssignments, nextConnections, panelManager);
-      const wGeneratedItems = buildGeneratedWGeometryItems(svgModel, edgeAssignments, nextConnections, panelManager);
-      const sGeneratedItems = buildGeneratedSGeometryItems(svgModel, edgeAssignments, nextConnections, panelManager);
-      const nextGeneratedGeometryItems = [...tbGeneratedItems, ...wGeneratedItems, ...sGeneratedItems];
+      const generated = evaluateAppliedGeometry(before, panelCompositionAuthorityMode, selectAppliedSnapshot);
+      const { connections: nextConnections, tbGeneratedItems, wGeneratedItems, sGeneratedItems,
+        items: nextGeneratedGeometryItems } = generated;
       const panelCompositionModel = before.generatedGeometrySnapshot.metadata.panelCompositionModel ?? 'legacy';
       if (import.meta.env.DEV) {
         geometryRuntimeDebugCaptureRef.current = new WeakRef(before);
@@ -927,12 +924,17 @@ function ProjectWorkspace({ projectOwner, position }: {
           downstreamExceptions: probeGeometryDownstreamExceptions(svgModel, nextGeneratedGeometryItems),
         });
       }
-      const snapshot = selectAppliedSnapshot(svgModel, nextGeneratedGeometryItems, before.generatedGeometrySnapshot);
+      const snapshot = generated.snapshot;
+      const appliedInputs = appliedGeometryInputs(before, nextConnections);
       const settings = haveProjectSettingsChanged(projectSettings, lastAppliedManufacturingSettings)
         ? projectSettings : lastAppliedManufacturingSettings;
-      if (!panelManager.needsGeometryApply && snapshot === before.generatedGeometrySnapshot && settings === lastAppliedManufacturingSettings
+      if (!panelManager.needsGeometryApply && !before.dependencyDiagnostics?.length && before.appliedGeometryInputs
+        && projectDataEqual(appliedInputs, before.appliedGeometryInputs)
+        && snapshot === before.generatedGeometrySnapshot && settings === lastAppliedManufacturingSettings
         && projectDataEqual(nextConnections, before.connections)) return before;
       return { ...before, connections: nextConnections, generatedGeometrySnapshot: snapshot, lastAppliedManufacturingSettings: settings,
+        appliedGeometryInputs: appliedInputs,
+        dependencyDiagnostics: [],
         ...(panelManager.needsGeometryApply && { panelManager: { ...panelManager, needsGeometryApply: false } }) };
     });
     reportBoxResult(result, 'Unable to apply geometry.');
@@ -1102,6 +1104,10 @@ function ProjectWorkspace({ projectOwner, position }: {
     }
     if (box.panelManager.needsGeometryApply) {
       setErrorMessage('Apply geometry for the current Sketch before exporting.');
+      return;
+    }
+    if (box.dependencyDiagnostics?.some(d => d.severity === 'error')) {
+      setErrorMessage('Repair blocked BOX geometry before exporting.');
       return;
     }
     const output = hasAppliedGeometry
@@ -1566,6 +1572,7 @@ function ProjectWorkspace({ projectOwner, position }: {
     if (activeWorkspace !== 'construction' && !projectOwner.navigate('construction', leaveWorkspace)) return;
     if (!projectOwner.selectBoxSource(entry.sourceId)) return;
     invalidateInteractions();
+    setInspectedEntryId(entry.id);
     const scope = projectOwner.getBoxScope();
     setActiveTool(scope.working ? entry.kind : 'PM');
     if (!scope.working) return;
@@ -1611,7 +1618,7 @@ function ProjectWorkspace({ projectOwner, position }: {
         onClear={requestClearProject}
         focusClearOnMount={session.startRevision > 0}
         onDrawingToolsHostChange={setDrawingToolsHost}
-        canExport={!isProjectLocked && !needsGeometryApply && Object.keys(edgeAssignments).length > 0}
+        canExport={!isProjectLocked && !needsGeometryApply && !box.dependencyDiagnostics?.length && Object.keys(edgeAssignments).length > 0}
         history={{ canUndo: history.undo.length > 0 || pendingProfileSegment, canRedo: history.redo.length > 0,
           onUndo: () => runHistoryCommand('undo'), onRedo: () => runHistoryCommand('redo') }}
       />
@@ -2098,6 +2105,7 @@ function ProjectWorkspace({ projectOwner, position }: {
       <SharedHistoryRegion
         workspace={activeWorkspace} definitions={sketchDefinitions} editingSketchId={editingSketchId} onOpenSketch={openSketchOperation}
         chronology={project.chronology!} onOpenBox={openBoxEntry} selectedBoxEntry={selectedBoxEntry?.id}
+        sources={project.boxSources} imported={project.box} inspectedEntryId={inspectedEntryId}
       />
     </main>
     </>

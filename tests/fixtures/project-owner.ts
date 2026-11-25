@@ -10,6 +10,7 @@ export * from '../../src/app/panelManagerModel';
 export * from '../../src/app/projectSettings';
 export * from '../../src/app/projectDefaults';
 export * from '../../src/app/generatedGeometrySnapshot';
+export * from '../../src/app/appliedGeometry';
 export * from '../../src/app/generatedGeometryAuthority';
 export * from '../../src/app/assignmentBuckets';
 export * from '../../src/app/sGeometry';

@@ -1,9 +1,9 @@
 'use strict';
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {api, harness} = require('./project-owner-harness.cjs');
+const {api, harness, production} = require('./project-owner-harness.cjs');
 const {drawingPanelModel} = require('../.test-build/project-owner/src/app/drawingPanelSource.js');
-const {isSourceApproved} = require('../.test-build/project-owner/src/app/boxSources.js');
+const {isSourceApproved,sourceStatus} = require('../.test-build/project-owner/src/app/boxSources.js');
 const {createEmptySketch} = require('../.test-build/project-owner/src/app/drawingTypes.js');
 
 function polygon(sketch, name, coords, close = true) {
@@ -106,9 +106,9 @@ test('source review, native TB/W, isolated authority, rejected cross-Sketch even
   const undoLength = owner.getHistory().undo.length;
   edit(s=>polygon(s,'open',[[300,0],[310,20]],false));
   assert.equal(owner.getHistory().undo.length,Math.min(undoLength+1,30));
-  assert.equal(sources()[first].panelManager.isApplied,false);
+  assert.equal(sources()[first].panelManager.isApplied,true);
   assert.equal(sources()[first].svgModel.panels.length,2);
-  assert.equal(sources()[first].panelManager.needsGeometryApply,true);
+  assert.equal(sources()[first].panelManager.needsGeometryApply,false);
   assert.equal(sources()[first].generatedGeometrySnapshot,approved[first].generatedGeometrySnapshot);
   assert.equal(sources()[second],approved[second]);
   const changed = sources()[first];
@@ -275,4 +275,189 @@ test('replacing an imported source and readmitting it never promote untouched gr
   assert.deepEqual(replaced.chronology.filter(e => ['W','TB'].includes(e.kind)),[standalone]);
   assert.deepEqual(api.createGlobalProjectHistory(replaced).getSnapshot().chronology,replaced.chronology);
   owner.traverse('undo'); assert.equal(owner.getSnapshot(),before);
+});
+
+function appliedTBProject() {
+  const {projectOwner:owner,context:c} = harness(initial({one:pair('one'),two:pair('two')}));
+  const [first,second] = owner.getSnapshot().constructionOperations.map(op=>op.id);
+  owner.selectBoxSource(first);
+  c.acceptDefaultPanelThickness(); c.applyPanelManager();
+  const [a,b] = owner.getBoxScope().box.svgModel.panels;
+  c.startGroup('TB');
+  c.assignSelectedLabelToEdge(a.outerEdgeIds[0]);
+  c.assignSelectedLabelToEdge(b.outerEdgeIds[0]);
+  c.finishGroup('TB'); c.applyPanelPaths();
+  assert.equal(c.errorMessage,'');
+  assert.ok(owner.getBoxScope().box.generatedGeometrySnapshot.generatedGeometry.length);
+  const edit = change => api.projectDrawingActions(owner).transact('Drawing resize',doc=>({...doc,
+    sketches:{...doc.sketches,one:change(doc.sketches.one)}}));
+  return {owner,c,first,second,edit};
+}
+
+function resizeRectangle(sketch,name,width) {
+  const points = {...sketch.points};
+  for (const i of [1,2]) points[name+'p'+i] = {...points[name+'p'+i],x:points[name+'p0'].x+width};
+  return {...sketch,points};
+}
+
+test('compatible Drawing resize regenerates applied TB in its single global history step', () => {
+  const {owner,first,second,edit} = appliedTBProject();
+  const before = owner.getSnapshot();
+  const prior = before.boxSources.sketches[first];
+  const ids = before.chronology.filter(e=>e.sourceId===first).map(e=>e.id);
+  const oldEdges = prior.svgModel.edges.map(e=>e.id);
+  const result = edit(s=>resizeRectangle(resizeRectangle(s,'a',120),'b',120));
+  assert.equal(result.outcome,'accepted',result.error?.message);
+  const after = owner.getSnapshot();
+  const current = after.boxSources.sketches[first];
+  assert.equal(isSourceApproved(current),true);
+  assert.equal(current.panelManager.needsGeometryApply,false);
+  assert.deepEqual(current.svgModel.panels.map(p=>p.id),prior.svgModel.panels.map(p=>p.id));
+  assert.deepEqual(current.svgModel.edges.map(e=>e.id),oldEdges);
+  assert.deepEqual(Object.values(current.panelManager.panels).map(p=>p.thicknessMm),Object.values(prior.panelManager.panels).map(p=>p.thicknessMm));
+  assert.equal(current.edgeAssignments,prior.edgeAssignments);
+  assert.deepEqual(after.chronology.filter(e=>e.sourceId===first).map(e=>e.id),ids);
+  assert.notDeepEqual(current.generatedGeometrySnapshot.generatedGeometry,prior.generatedGeometrySnapshot.generatedGeometry);
+  assert.equal(after.boxSources.sketches[second],before.boxSources.sketches[second]);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),before);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot(),after);
+});
+
+test('incompatible TB resize accepts Drawing and blocks stale output with group diagnostic', () => {
+  const {owner,first,edit} = appliedTBProject();
+  const before = owner.getSnapshot();
+  const prior = before.boxSources.sketches[first];
+  const result = edit(s=>resizeRectangle(s,'b',0.5));
+  assert.equal(result.outcome,'accepted',result.error?.message);
+  const after = owner.getSnapshot();
+  const current = after.boxSources.sketches[first];
+  assert.equal(current.edgeAssignments,prior.edgeAssignments);
+  assert.equal(current.panelManager.isApplied,true);
+  assert.equal(current.panelManager.needsGeometryApply,true);
+  assert.equal(current.dependencyDiagnostics?.[0]?.code,'BOX_REGENERATION_FAILED');
+  assert.equal(current.dependencyDiagnostics?.[0]?.severity,'error');
+  assert.equal(current.dependencyDiagnostics?.[0]?.sourceId,first);
+  assert.equal(current.dependencyDiagnostics?.[0]?.groupId,after.chronology.find(e=>e.sourceId===first&&e.kind==='TB').groupId);
+  assert.equal(current.generatedGeometrySnapshot,prior.generatedGeometrySnapshot);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),before);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot(),after);
+});
+
+test('new panel requires Panel Manager review without changing independent source', () => {
+  const {owner,first,second,edit} = appliedTBProject();
+  const before = owner.getSnapshot();
+  const result = edit(s=>rectangle(s,'c',300));
+  assert.equal(result.outcome,'accepted',result.error?.message);
+  const next = owner.getSnapshot();
+  assert.equal(next.boxSources.sketches[first].panelManager.isApplied,false);
+  assert.equal(next.boxSources.sketches[first].panelManager.needsGeometryApply,true);
+  assert.equal(next.boxSources.sketches[first].panelManager.panels[before.boxSources.sketches[first].svgModel.panels[0].id].thicknessMm,3);
+  assert.equal(next.boxSources.sketches[second],before.boxSources.sketches[second]);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),before);
+});
+
+test('pending BOX authoring is not silently included in Drawing regeneration', () => {
+  const {owner,c,first,edit} = appliedTBProject();
+  c.selectConnectionForDisplayAndAssignment('TB1');
+  c.updateConnectionProperties('TB1',{prefix:'TB',updates:{fingerWidthMm:10}});
+  const pending = owner.getSnapshot().boxSources.sketches[first];
+  const result = edit(s=>resizeRectangle(resizeRectangle(s,'a',120),'b',120));
+  assert.equal(result.outcome,'accepted',result.error?.message);
+  const next = owner.getSnapshot().boxSources.sketches[first];
+  assert.equal(next.panelManager.isApplied,true);
+  assert.equal(next.panelManager.needsGeometryApply,true);
+  assert.equal(next.generatedGeometrySnapshot,pending.generatedGeometrySnapshot);
+  assert.deepEqual(next.dependencyDiagnostics,[]);
+});
+
+test('a later compatible edit can restore a blocked TB batch without another Apply', () => {
+  const {owner,first,edit} = appliedTBProject();
+  edit(s=>resizeRectangle(s,'b',0.5));
+  assert.equal(owner.getSnapshot().boxSources.sketches[first].dependencyDiagnostics?.[0]?.code,'BOX_REGENERATION_FAILED');
+  const result = edit(s=>resizeRectangle(s,'b',100));
+  assert.equal(result.outcome,'accepted',result.error?.message);
+  const restored = owner.getSnapshot().boxSources.sketches[first];
+  assert.equal(restored.panelManager.needsGeometryApply,false);
+  assert.deepEqual(restored.dependencyDiagnostics,[]);
+  assert.equal(isSourceApproved(restored),true);
+});
+
+test('unrelated open Line preserves blocked TB until repaired, with one history step per Drawing edit', () => {
+  const {owner,first,second,edit} = appliedTBProject();
+  const original = owner.getSnapshot();
+  const ids = original.chronology.map(entry=>[entry.id,entry.groupId]);
+  edit(s=>resizeRectangle(s,'b',0.5));
+  const blocked = owner.getSnapshot();
+  const failure = blocked.boxSources.sketches[first].dependencyDiagnostics;
+  assert.equal(failure?.[0]?.code,'BOX_REGENERATION_FAILED');
+  assert.equal(sourceStatus(blocked.boxSources.sketches[first]),'Blocked · needs repair');
+  const count = owner.getHistory().undo.length;
+  edit(s=>polygon(s,'open',[[300,0],[320,10]],false));
+  const unrelated = owner.getSnapshot();
+  const box = unrelated.boxSources.sketches[first];
+  assert.equal(owner.getHistory().undo.length,Math.min(count+1,30));
+  assert.equal(box.generatedGeometrySnapshot,blocked.boxSources.sketches[first].generatedGeometrySnapshot);
+  assert.deepEqual(box.dependencyDiagnostics,failure);
+  assert.equal(box.panelManager.needsGeometryApply,true);
+  assert.equal(sourceStatus(box),'Blocked · needs repair');
+  assert.equal(unrelated.boxSources.sketches[second],original.boxSources.sketches[second]);
+  assert.deepEqual(unrelated.chronology.map(entry=>[entry.id,entry.groupId]),ids);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),blocked);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot(),unrelated);
+  edit(s=>resizeRectangle(s,'b',100));
+  const repaired = owner.getSnapshot();
+  assert.deepEqual(repaired.boxSources.sketches[first].dependencyDiagnostics,[]);
+  assert.equal(repaired.boxSources.sketches[first].panelManager.needsGeometryApply,false);
+  assert.equal(sourceStatus(repaired.boxSources.sketches[first]),'Approved');
+  assert.deepEqual(repaired.chronology.map(entry=>[entry.id,entry.groupId]),ids);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),unrelated);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot(),repaired);
+});
+
+test('blocked recovery keeps pending BOX width behind explicit Apply', () => {
+  const {owner,c,first,second,edit} = appliedTBProject();
+  const original = owner.getSnapshot();
+  edit(s=>resizeRectangle(s,'b',0.5));
+  const blocked = owner.getSnapshot();
+  c.selectConnectionForDisplayAndAssignment('TB1');
+  c.updateConnectionProperties('TB1',{prefix:'TB',updates:{fingerWidthMm:10}});
+  const pending = owner.getSnapshot();
+  assert.equal(c.errorMessage,'');
+  assert.equal(pending.boxSources.sketches[first].connections.TB1.properties.fingerWidthMm,10);
+  edit(s=>resizeRectangle(s,'b',100));
+  const repaired = owner.getSnapshot();
+  const box = repaired.boxSources.sketches[first];
+  assert.equal(box.connections.TB1.properties.fingerWidthMm,10);
+  assert.equal(box.panelManager.needsGeometryApply,true);
+  assert.equal(sourceStatus(box),'Blocked · needs repair');
+  assert.equal(box.generatedGeometrySnapshot,pending.boxSources.sketches[first].generatedGeometrySnapshot);
+  assert.deepEqual(box.dependencyDiagnostics,blocked.boxSources.sketches[first].dependencyDiagnostics);
+  assert.equal(repaired.boxSources.sketches[second],original.boxSources.sketches[second]);
+  assert.deepEqual(repaired.chronology,original.chronology);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),pending);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot(),repaired);
+  c.applyPanelPaths();
+  assert.equal(c.errorMessage,'');
+  const applied = owner.getSnapshot().boxSources.sketches[first];
+  assert.equal(applied.connections.TB1.properties.fingerWidthMm,10);
+  assert.equal(applied.panelManager.needsGeometryApply,false);
+  assert.deepEqual(applied.dependencyDiagnostics,[]);
+  assert.notDeepEqual(applied.generatedGeometrySnapshot.generatedGeometry,
+    original.boxSources.sketches[first].generatedGeometrySnapshot.generatedGeometry);
+});
+
+test('export command rejects a diagnostic even if Apply state alone would permit export', () => {
+  const {owner,first,edit} = appliedTBProject();
+  edit(s=>resizeRectangle(s,'b',0.5));
+  const blocked = owner.getSnapshot();
+  const prior = blocked.boxSources.sketches[first];
+  const box = {...prior,panelManager:{...prior.panelManager,needsGeometryApply:false}};
+  const {projectOwner:exportOwner,context:c} = harness({...blocked,
+    boxSources:{...blocked.boxSources,sketches:{...blocked.boxSources.sketches,[first]:box}}});
+  Object.defineProperty(c,'box',{get:()=>exportOwner.getBoxScope().box});
+  c.downloadRef={current:{click:()=>assert.fail('Blocked geometry was downloaded')}};
+  c.URL={createObjectURL:()=>assert.fail('Blocked geometry was serialized')};
+  production('exportSvg',c)();
+  assert.match(c.errorMessage,/Repair blocked BOX geometry/);
+  assert.equal(sourceStatus(exportOwner.getBoxScope().box),'Blocked · needs repair');
 });
