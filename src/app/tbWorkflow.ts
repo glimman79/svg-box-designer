@@ -1,3 +1,4 @@
+import { newIdentityToken } from './constructionOperations';
 import { getBucketEdgeAssignment } from './assignmentBuckets';
 import type { EdgeAssignmentRecord } from '../svgUtils';
 import type { ActiveTBGroup, ConnectionMap, TBConnectionDefinition, TBConnectionProperties } from './connectionTypes';
@@ -41,7 +42,7 @@ export const startTBGroupWorkflow = (
     ),
   };
   const activeTBGroup: ActiveTBGroup = {
-    groupId: `tb-group-${connectionId}`,
+    groupId: newIdentityToken(),
     connectionIds: [connectionId],
     isActive: true,
   };
@@ -88,7 +89,7 @@ export const finishTBGroupWithTrailingCleanup = (
   const lastAssignmentCount = lastConnectionId
     ? Object.values(assignments).filter((assignment) => getBucketEdgeAssignment(assignment)?.connectionId === lastConnectionId).length
     : 0;
-  const shouldRemoveTrailingConnection = !!lastConnectionId && lastAssignmentCount === 0;
+  const shouldRemoveTrailingConnection = !!lastConnectionId && !connections[lastConnectionId]?.hasAuthoredParameters && lastAssignmentCount === 0;
   const nextConnectionIds = shouldRemoveTrailingConnection
     ? activeTBGroup.connectionIds.slice(0, -1)
     : activeTBGroup.connectionIds;

@@ -1,3 +1,4 @@
+export * from '../../src/app/connectionGroups';
 export * from './project-state';
 export * from '../../src/app/projectOwner';
 export * from '../../src/app/boxTransactionAdapter';

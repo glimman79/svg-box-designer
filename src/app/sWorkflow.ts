@@ -1,3 +1,4 @@
+import { newIdentityToken } from './constructionOperations';
 import { propertiesChanged } from './connectionTypes';
 import type { SlotRole } from '../svgUtils';
 import type { EdgeAssignmentRecord } from '../svgUtils';
@@ -109,7 +110,7 @@ export const startSGroupWorkflow = (connections: ConnectionMap) => {
   return {
     connections: { ...connections, [connectionId]: connection },
     selectedLabelId: connectionId,
-    activeSGroup: { groupId: `s-group-${connectionId}`, connectionIds: [connectionId], isActive: true } satisfies ActiveSGroup,
+    activeSGroup: { groupId: newIdentityToken(), connectionIds: [connectionId], isActive: true } satisfies ActiveSGroup,
   };
 };
 
@@ -129,7 +130,7 @@ export const finishSGroupWithTrailingCleanup = (
       .flatMap((assignment) => getBucketSlotAssignments(assignment))
       .filter((assignment) => assignment.connectionId === lastConnectionId).length
     : 0;
-  const shouldRemoveTrailingConnection = !!lastConnectionId && lastAssignmentCount === 0;
+  const shouldRemoveTrailingConnection = !!lastConnectionId && !connections[lastConnectionId]?.hasAuthoredParameters && lastAssignmentCount === 0;
   const nextConnections = shouldRemoveTrailingConnection
     ? Object.fromEntries(Object.entries(connections).filter(([connectionId]) => connectionId !== lastConnectionId)) as ConnectionMap
     : connections;

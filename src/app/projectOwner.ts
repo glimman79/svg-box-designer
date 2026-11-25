@@ -44,7 +44,7 @@ export const createProjectOwner = (initial?: InitialProject) => {
   const admitted = initial === undefined ? createInitialProjectState() : admitInitialProject(initial);
   const boxSources = reconcileDrawingSources(admitted.boxSources, admitted.drawingDocument, admitted.constructionOperations);
   const sources = boxSources ? { ...admitted, boxSources } : admitted;
-  const chronology = admitted.chronology ?? reconcileChronology([], sources);
+  const chronology = reconcileChronology(admitted.chronology ?? [], sources);
   let committed: ProjectStateSource = freeze({ ...sources, chronology });
   const importOwner = Symbol('import owner');
   let importSequence = 0;

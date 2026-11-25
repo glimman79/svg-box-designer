@@ -1,10 +1,11 @@
+import { newIdentityToken } from './constructionOperations';
 import { getBucketEdgeAssignment, toEdgeAssignmentBucket } from './assignmentBuckets';
 import { getNextConnectionLabel, parseConnectionLabel } from './connectionLabels';
-import type { ConnectionMap } from './connectionTypes';
+import type { ConnectionGroup, ConnectionMap } from './connectionTypes';
 import { complementaryWallRole, getWallAssignments, normalizeWallConnection } from './wallAuthoring';
 import type { EdgeAssignmentRecord, SvgDocumentModel } from '../svgUtils';
 
-export type ActiveWallGroup = { groupId: string; connectionIds: string[]; isActive: boolean };
+export type ActiveWallGroup = ConnectionGroup;
 export const buildWallWorkflowGroups = (connections: ConnectionMap, active: ActiveWallGroup | null,
   completed: ActiveWallGroup[], order: Record<string, number>) => {
   const finished = completed.map((group) => ({ id: group.groupId,
@@ -22,7 +23,7 @@ export const startWallGroupWorkflow = (connections: ConnectionMap) => {
   return {
     connections: { ...connections, [connectionId]: createWall(connectionId) },
     selectedLabelId: connectionId,
-    activeWallGroup: { groupId: `w-group-${connectionId}`, connectionIds: [connectionId], isActive: true } as ActiveWallGroup,
+    activeWallGroup: { groupId: newIdentityToken(), connectionIds: [connectionId], isActive: true } as ActiveWallGroup,
   };
 };
 
@@ -40,7 +41,9 @@ export const authorWallEdge = (model: SvgDocumentModel, assignments: EdgeAssignm
   }, connections, connectionId);
   const complete = getWallAssignments(model, nextAssignments, connectionId).length === 2;
   if (!complete) return { assignments: nextAssignments, connections, activeWallGroup: group, selectedLabelId: connectionId };
-  const nextId = following(connectionId)!;
+  const candidate = following(connectionId)!;
+  const nextId = connections[candidate] && !group.connectionIds.includes(candidate)
+    ? getNextConnectionLabel('W', Object.keys(connections)) : candidate;
   const nextConnections = connections[nextId] ? connections : {
     ...connections, [nextId]: createWall(nextId),
   };
@@ -55,7 +58,7 @@ export const authorWallEdge = (model: SvgDocumentModel, assignments: EdgeAssignm
 export const finishWallGroupWithTrailingCleanup = (group: ActiveWallGroup, connections: ConnectionMap,
   assignments: EdgeAssignmentRecord) => {
   const trailing = group.connectionIds.at(-1);
-  const empty = !!trailing && !Object.values(assignments).some((bucket) => getBucketEdgeAssignment(bucket)?.connectionId === trailing);
+  const empty = !!trailing && !connections[trailing]?.hasAuthoredParameters && !Object.values(assignments).some((bucket) => getBucketEdgeAssignment(bucket)?.connectionId === trailing);
   return {
     connections: empty ? Object.fromEntries(Object.entries(connections).filter(([id]) => id !== trailing)) as ConnectionMap : connections,
     activeWallGroup: { ...group, connectionIds: empty ? group.connectionIds.slice(0, -1) : group.connectionIds, isActive: false },

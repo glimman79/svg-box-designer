@@ -31,9 +31,36 @@ const assert=require('node:assert/strict');
       await action('Apply').click();assert.equal(await page.locator('.notice:not(.inline-notice)').count(),0);
       const output=await contours();assert.match(output,/<path/);
       await action('OK').click();
-      await undo().click();await history.getByRole('button',{name:new RegExp(`^${name}1$`)}).click();
+      await undo().click();await history.getByRole('button',{name:new RegExp(`^${name} Group 1$`)}).click();
       assert.equal(await action('OK').count(),1,'Undo reopens the authored workflow');
       await redo().click();assert.equal(await action('OK').count(),0,'Redo restores completed state');assert.equal(await contours(),output);
+      const first = history.getByRole('button',{name:name+' Group 1',exact:true});
+      const firstId = await first.getAttribute('data-operation-id');
+      await tool(name).click(); await edge(2);
+      const later = history.getByRole('button',{name:name+' Group 2',exact:true});
+      const laterId = await later.getAttribute('data-operation-id');
+      assert.notEqual(laterId,firstId);
+      await undo().click(); // Redo holds the first assignment in the second group.
+      await first.click();
+      assert.equal(await overlay.locator('.active-label-card strong').innerText(),name+'1');
+      assert.ok(await overlay.getByText(name+'1',{exact:true}).count() >= 1);
+      assert.equal(await overlay.locator('.label-list').getByText(name+'2',{exact:true}).count(),0);
+      await action('OK').click();
+      assert.equal(await tool('Select').getAttribute('aria-pressed'),'true');
+      assert.ok(await redo().isEnabled());
+      await redo().click();
+      assert.equal(await later.getAttribute('data-operation-id'),laterId);
+      await later.click(); await edge(2); // Inspect the already accepted edge.
+      await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+      assert.equal(await overlay.count(),0);
+      await tool(name).click(); // Explicitly resume the existing active group.
+      assert.ok(await overlay.getByRole('button',{name:name+'2 1 edge',exact:true}).isVisible());
+      await first.click(); await page.keyboard.press('Escape');
+      assert.equal(await overlay.count(),0);
+      assert.equal(await first.getAttribute('data-operation-id'),firstId);
+      await undo().click(); assert.equal(await later.count(),0,'inspection/OK/Escape add zero Undo steps');
+      await undo().click(); // Return to the state before the second session.
+      assert.equal(await contours(),output);
       await tool('MFG').click();await edit('#manufacturing-kerf','0.25');await action('Apply').click();
       assert.notEqual(await contours(),output);await undo().click();assert.notEqual(await contours(),output);
       await undo().click();assert.equal(await contours(),output);
@@ -46,6 +73,8 @@ const assert=require('node:assert/strict');
       await kerf.fill(previousKerf+'0');await kerf.press('Enter');
       assert.equal(await redo().isEnabled(),true,'cancel and equivalent normalized commit preserve Redo');
       await redo().click();assert.equal(await kerf.inputValue(),'0.25');
+      await page.keyboard.press('Escape'); assert.equal(await overlay.count(),0);
+      await tool('MFG').click(); assert.equal(await kerf.inputValue(),'0.25');
 
       if(name==='S'){
         await tool('S').click();await edge(2);await edge(6);

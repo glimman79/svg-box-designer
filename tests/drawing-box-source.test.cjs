@@ -180,10 +180,16 @@ test('chronology survives source context, branching, admission, and eviction of 
   start(one,'TB',0);
   const box = owner.getBoxScope().box;
   c.assignSelectedLabelToEdge(box.svgModel.panels[1].outerEdgeIds[0]);
-  start(two,'TB',0); start(one,'TB',2); start(two,'W',1);
+  start(two,'TB',0);
+  select(one);
+  const beforeContinuation = entries();
+  c.handleToolClick('TB');
+  c.assignSelectedLabelToEdge(box.svgModel.panels[0].outerEdgeIds[2]);
+  assert.equal(entries(),beforeContinuation, 'TB2 belongs to the first session');
+  c.finishGroup('TB'); start(one,'TB',1); start(two,'W',1);
   const ordered = entries();
-  assert.deepEqual(ordered.map(e=>[e.sourceId,e.connectionId ?? e.kind]),[
-    [one,'sketch'],[two,'sketch'],[one,'PM'],[two,'PM'],[one,'TB1'],[two,'TB1'],[one,'TB2'],[two,'W1']]);
+  assert.deepEqual(ordered.map(e=>[e.sourceId,e.kind]),[
+    [one,'sketch'],[two,'sketch'],[one,'PM'],[two,'PM'],[one,'TB'],[two,'TB'],[one,'TB'],[two,'W']]);
   assert.equal(new Set(ordered.map(e=>e.id)).size, ordered.length);
   owner.traverse('undo'); assert.deepEqual(entries(),ordered.slice(0,-1));
   select(one); select(two); owner.traverse('redo'); assert.equal(entries(),ordered);
@@ -199,8 +205,8 @@ test('chronology survives source context, branching, admission, and eviction of 
   const migrated = api.createGlobalProjectHistory(legacy).getSnapshot();
   assert.deepEqual(migrated.boxSources,legacy.boxSources);
   assert.deepEqual(migrated.chronology.slice(0,2),ordered.slice(0,2));
-  assert.ok(migrated.chronology.some(e=>e.sourceId===one && e.connectionId==='TB2'));
-  assert.ok(migrated.chronology.some(e=>e.sourceId===two && e.connectionId==='W1'));
+  assert.ok(migrated.chronology.some(e=>e.sourceId===one && e.groupId===box.activeTBGroup.groupId));
+  assert.ok(migrated.chronology.some(e=>e.sourceId===two && e.groupId===legacy.boxSources.sketches[two].activeWallGroup.groupId));
   owner.clearProject(); assert.deepEqual(entries(),[]);
 });
 
@@ -223,7 +229,50 @@ test('one atomic batch records its authored connection order and rolls back aban
   });
   assert.equal(result.outcome,'accepted',result.error?.message);
   const after = owner.getSnapshot().chronology;
-  assert.deepEqual(after.slice(before.length).map(e=>e.connectionId),[slot,tb]);
+  assert.deepEqual(after.slice(before.length).map(e=>e.groupId),[owner.getSnapshot().box.activeSGroup.groupId,owner.getSnapshot().box.activeTBGroup.groupId]);
   owner.traverse('undo'); assert.equal(owner.getSnapshot().chronology,before);
   owner.traverse('redo'); assert.equal(owner.getSnapshot().chronology,after);
+});
+
+test('per-connection admission keeps the earliest group row across other sources and preserves orphan definitions', () => {
+  const {projectOwner:owner,context:c} = harness(initial({one:pair('one'),two:pair('two')}));
+  const [one,two] = owner.getSnapshot().constructionOperations.map(op=>op.id);
+  owner.selectBoxSource(one); c.acceptDefaultPanelThickness(); c.applyPanelManager();
+  c.startGroup('TB');
+  const [a,b] = owner.getBoxScope().box.svgModel.panels;
+  c.assignSelectedLabelToEdge(a.edgeIds[0]); c.assignSelectedLabelToEdge(b.edgeIds[0]);
+  c.assignSelectedLabelToEdge(a.edgeIds[1]); c.finishGroup('TB');
+  c.createLabel('S'); // Legacy S definitions with no retained session stay separate.
+  owner.selectBoxSource(two); c.acceptDefaultPanelThickness(); c.applyPanelManager(); c.startGroup('W');
+  const saved = owner.getSnapshot();
+  const pm2 = saved.chronology.find(e=>e.sourceId===two && e.kind==='PM');
+  const group = saved.chronology.find(e=>e.kind==='TB');
+  const slot = saved.chronology.find(e=>e.kind==='S');
+  const legacy = (id,connectionId) => ({kind:'TB',sourceId:one,id,connectionId});
+  const chronology = [...saved.chronology.slice(0,3),legacy('earliest','TB1'),pm2,legacy('later','TB2'),slot];
+  const admitted = api.createGlobalProjectHistory({...saved,chronology}).getSnapshot();
+  assert.deepEqual(admitted.chronology,[...chronology.slice(0,3),{...group,id:'earliest'},pm2,slot]);
+  assert.deepEqual(admitted.boxSources,saved.boxSources);
+  assert.equal(admitted.boxSources.sketches[one].edgeAssignments,saved.boxSources.sketches[one].edgeAssignments);
+  assert.equal(admitted.boxSources.sketches[two].activeWallGroup.connectionIds[0],'W1');
+  assert.deepEqual(api.createGlobalProjectHistory(admitted).getSnapshot().chronology,admitted.chronology);
+});
+
+test('replacing an imported source and readmitting it never promote untouched group drafts', () => {
+  const initial = api.makePopulatedProjectState();
+  initial.box = {...api.createInitialBoxState(),svgModel:initial.box.svgModel,panelManager:initial.box.panelManager};
+  const {projectOwner:owner,context:c} = harness(initial);
+  c.startGroup('TB'); c.startGroup('W');
+  c.createLabel('W');
+  const before = owner.getSnapshot();
+  const [standalone] = before.chronology.filter(e => e.kind==='W');
+  const adapter = api.createBoxTransactionAdapter(owner);
+  const result = adapter.replaceSource(owner.beginBoxImport(),
+    {...before.box.svgModel,content:'<svg/>'},api.createInitialBoxState().panelManager);
+  assert.equal(result.outcome,'accepted');
+  const replaced = owner.getSnapshot();
+  assert.equal(replaced.box.connections,before.box.connections);
+  assert.deepEqual(replaced.chronology.filter(e => ['W','TB'].includes(e.kind)),[standalone]);
+  assert.deepEqual(api.createGlobalProjectHistory(replaced).getSnapshot().chronology,replaced.chronology);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),before);
 });

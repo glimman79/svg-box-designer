@@ -2,7 +2,7 @@
 
 ## Approved next corrections — user findings after merged PR #649 (2026-11-25)
 
-**APPROVED REQUIREMENT — NOT YET IMPLEMENTED**
+**History and tool lifecycle implemented on the review branch. Automated tests cover the correction. User browser acceptance is pending. The dependency continuation remains planned.**
 
 The user verified interleaved chronology, source hover/activation and viewport stability, but reported material gaps in the current BOX/Sketch contract. Plan the work as two focused slices rather than another all-in-one rewrite:
 

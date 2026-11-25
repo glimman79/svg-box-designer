@@ -95,12 +95,17 @@ export function useCadCtrlSnapOverride(onChange?: (held: boolean) => void) {
 }
 
 /** One Escape invokes workspace-owned tool cleanup and exit. */
-export function useCadEscapeToolExit(onExit: () => void) {
+export function useCadEscapeToolExit(enabled: boolean, onExit: () => void) {
   const callbackRef = useRef(onExit);
   callbackRef.current = onExit;
   useEffect(() => {
-    const keydown = (event: KeyboardEvent) => { if (event.key === 'Escape') callbackRef.current(); };
+    if (!enabled) return;
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.repeat) return;
+      if (event.target instanceof Element && event.target.closest('select, textarea, [contenteditable="true"], [role="textbox"]')) return;
+      callbackRef.current();
+    };
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
-  }, []);
+  }, [enabled]);
 }

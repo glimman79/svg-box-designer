@@ -327,3 +327,79 @@ test('duplicate TB owner and redundant Finish do not consume a global step or di
   assert.equal(owner.getSnapshot(),before); assert.equal(c.undoStack,undo); assert.equal(c.redoStack,redo);
   c.redoLastEdit(); assert.equal(owner.getSnapshot().box.connections.TB2.properties.fingerWidthMm,8);
 });
+
+for (const tool of ['TB','W','S']) {
+  test(`${tool} groups retain two accepted children, restore their operation, and leave standalone Add independent`, () => {
+    const initial = api.makePopulatedProjectState();
+    const {svgModel,panelManager} = initial.box;
+    initial.box = {...api.createInitialBoxState(),svgModel,panelManager};
+    const {context:c, projectOwner:owner} = harness(initial);
+    const root = () => owner.getSnapshot();
+    const entries = () => root().chronology.filter(e => e.kind === tool);
+    c.handleToolClick(tool);
+    assert.deepEqual(entries(), []);
+    const field = api.constructionGroupField[tool];
+    const groupId = root().box[field].groupId;
+    c.assignSelectedLabelToEdge(edge('a',0));
+    const [operation] = entries();
+    assert.equal(operation.groupId,groupId);
+    c.assignSelectedLabelToEdge(edge('b',0));
+    c.assignSelectedLabelToEdge(edge('c',0));
+    const partial = root();
+    c.assignSelectedLabelToEdge(edge('d',0));
+    assert.deepEqual(entries(),[operation]);
+    const complete = root();
+    assert.deepEqual(complete.box[field].connectionIds,[tool+'1',tool+'2',tool+'3']);
+    c.finishGroup(tool);
+    const finished = root();
+    assert.deepEqual(finished.box[field].connectionIds,[tool+'1',tool+'2']);
+    assert.equal(finished.box.edgeAssignments,complete.box.edgeAssignments);
+    owner.traverse('undo'); assert.equal(root(),complete);
+    owner.traverse('undo'); assert.equal(root(),partial);
+    owner.traverse('redo'); owner.traverse('redo'); assert.equal(root(),finished);
+    c.startGroup(tool);
+    assert.notEqual(root().box[field].groupId,groupId);
+    assert.equal(root().box[field].connectionIds[0],tool+'3');
+    c.assignSelectedLabelToEdge(edge('a',1));
+    const later = entries()[1];
+    assert.notEqual(later.id,operation.id);
+    c.selectConnectionForDisplayAndAssignment(tool+'1');
+    edit(c,tool+'1',tool, tool==='S' ? {slotOffsetMm:4} : {fingerWidthMm:4});
+    assert.deepEqual(entries(),[operation,later]);
+    c.createLabel(tool);
+    const standalone = entries()[2];
+    assert.equal(standalone.connectionId,tool+'4');
+    assert.equal(standalone.groupId,undefined);
+    if (tool !== 'S') {
+      c.selectConnectionForDisplayAndAssignment(tool+'3');
+      c.assignSelectedLabelToEdge(edge('b',1));
+      assert.deepEqual(root().box[field].connectionIds,[tool+'3',tool+'5']);
+      assert.deepEqual(entries(),[operation,later,standalone]);
+    }
+  });
+}
+
+test('parameter-only S work survives Finish and an abandoned lifetime can reuse its label', () => {
+  const initial = api.makePopulatedProjectState();
+  initial.box = {...api.createInitialBoxState(),svgModel:initial.box.svgModel,panelManager:initial.box.panelManager};
+  const {context:c,projectOwner:owner} = harness(initial);
+  const source = () => owner.getSnapshot();
+  const rows = () => source().chronology.filter(e => e.kind==='S');
+  c.startGroup('S'); c.finishGroup('S');
+  assert.deepEqual(rows(),[]);
+  c.startGroup('S');
+  c.updateConnectionProperties('S1',{prefix:'S',updates:{slotOffsetMm:3}});
+  const [first] = rows();
+  c.finishGroup('S');
+  assert.deepEqual(source().box.activeSGroup.connectionIds,['S1']);
+  assert.equal(source().box.connections.S1.properties.slotOffsetMm,3);
+  owner.traverse('undo'); owner.traverse('undo'); owner.traverse('undo');
+  assert.deepEqual(rows(),[]);
+  assert.equal(source().box.connections.S1,undefined);
+  c.startGroup('S'); c.assignSelectedLabelToEdge(edge('a',0));
+  const [replacement] = rows();
+  assert.deepEqual(source().box.activeSGroup.connectionIds,['S1']);
+  assert.notEqual(first.id,replacement.id);
+  assert.notEqual(first.groupId,replacement.groupId);
+  assert.equal(owner.getHistory().redo.length,0);
+});

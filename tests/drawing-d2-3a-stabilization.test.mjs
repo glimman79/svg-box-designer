@@ -150,7 +150,7 @@ assert.match(workspace, /useEffect\(\(\) => \(\) => \{\s*cancelDrawingProfileCom
 // Profile acceptance is on primary down; the 4px drag threshold belongs to
 // Select geometry/box sessions, not a retired delayed Profile drag gesture.
 assert.match(workspace, /onPointerDown=\{handlePointerDown\}/);
-assert.match(workspace, /onPointerMove=\{handlePointerMove\}/);
+assert.match(workspace, /onPointerMove=\{editingSketchId === null \? handleNeutralMove : handlePointerMove\}/);
 assert.match(workspace, /onPointerUp=\{\(event\) => \{ if \(boxSelectionRef.current\) finishBoxSelection\(event\); else if \(geometryDragRef.current\) finishGeometryDrag\(event\); else if \(dimensionDragRef.current\) finishDimensionDrag\(event\); else panHandlers.onPointerUp\(event\); \}\}/);
 const move = vm.runInNewContext(extracted('handlePointerMove'), {
   documentRef: context.documentRef, activeSketch: context.activeSketch,

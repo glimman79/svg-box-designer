@@ -111,11 +111,11 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
       await overlay.getByRole('button', { name: 'Apply', exact: true }).click();
       assert.equal(await page.locator('.notice:not(.inline-notice)').count(), 0);
       await overlay.getByRole('button', { name: 'OK', exact: true }).click();
-      await history.getByRole('button', { name: new RegExp(`^${name}1$`) }).waitFor();
+      await history.getByRole('button', { name: new RegExp(`^${name} Group 1$`) }).waitFor();
     }
     const manufacturedBefore = await contours();
-    const tb = history.getByRole('button', { name: /^TB1$/ });
-    const wall = history.getByRole('button', { name: /^W1$/ });
+    const tb = history.getByRole('button', { name: /^TB Group 1$/ });
+    const wall = history.getByRole('button', { name: /^W Group 1$/ });
     await undo().click(); // undo Finish W; navigation must retain this exact Redo
     const boxBefore = await contours(), boxView = await boxSvg.getAttribute('viewBox');
     await tb.click(); assert.equal(await boxTool('TB').getAttribute('class').then(s => s.includes('active')), true);

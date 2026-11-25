@@ -39,14 +39,14 @@ function harness(initial=api.makePopulatedProjectState()) {
   Object.defineProperty(context,'generatedGeometryItems',{get:()=>context.generatedGeometrySnapshot.generatedGeometry});
   Object.defineProperty(context,'undoStack',{get:()=>projectOwner.getHistory().undo});
   Object.defineProperty(context,'redoStack',{get:()=>projectOwner.getHistory().redo});
-  for(const key of ['errorMessage','activeTool','canvasViewBox','activePanelId','activeHoleId','isPanelManagerModalOpen','expandedTBGroups','expandedSGroups','isClearDialogOpen','hoverSources','sourceChoices','isProfileOffsetProfileSelectionActive','hoveredProfileOffsetProfileId','activeWorkspace']) {
+  for(const key of ['inspectedEntryId','errorMessage','activeTool','canvasViewBox','activePanelId','activeHoleId','isPanelManagerModalOpen','expandedTBGroups','expandedSGroups','isClearDialogOpen','hoverSources','sourceChoices','isProfileOffsetProfileSelectionActive','hoveredProfileOffsetProfileId','activeWorkspace']) {
     Object.defineProperty(context,key,{get:()=>state[key],configurable:true});
     context[`set${key[0].toUpperCase()+key.slice(1)}`]=change=>{
       state[key]=typeof change==='function'?change(state[key]):change;
     };
   }
   context.parseViewBox=()=>({x:0,y:0,width:100,height:100});
-  for(const name of ['constructionGroupField','getNextWorkflowGroupOrderIndex','reportBoxResult','recalculateBoxConnections','selectAppliedSnapshot','acceptDefaultPanelThickness','openManufacturing','toggleProfileOffsetProfile','haveProjectSettingsChanged','invalidateInteractions','traverse','updateProjectSettings','updatePanelThickness','applyPanelManager','applyPanelPaths','selectConnectionForDisplayAndAssignment','commitConstruction','startGroup','finishGroup','handleToolClick','getNextLabel',
+  for(const name of ['getNextWorkflowGroupOrderIndex','reportBoxResult','recalculateBoxConnections','selectAppliedSnapshot','acceptDefaultPanelThickness','openManufacturing','toggleProfileOffsetProfile','haveProjectSettingsChanged','invalidateInteractions','traverse','updateProjectSettings','updatePanelThickness','applyPanelManager','applyPanelPaths','selectConnectionForDisplayAndAssignment','commitConstruction','startGroup','finishGroup','handleToolClick','getNextLabel',
     'cloneDefaultProperties','createConnectionDefinition','createLabel','assignSelectedLabelToEdge','clearEdgeLabel','updateAssignedRole','updateConnectionProperties','handleImport']) context[name]=production(name,context);
   context.undoLastEdit=()=>context.traverse('undo');
   context.redoLastEdit=()=>context.traverse('redo');
