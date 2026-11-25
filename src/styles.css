@@ -2470,3 +2470,6 @@ button:disabled {
 }
 .box-panel-hit, .box-import-reference { fill: transparent; pointer-events: all; }
 .box-hover-label { position: absolute; bottom: 2.5rem; left: .6rem; z-index: 1; pointer-events: none; background: white; padding: .2rem .45rem; }
+
+.history-diagnostic-marker { color: #d02424; font-weight: 800; margin-right: .35em; }
+.history-diagnostic-detail { color: #a51616; font-size: var(--ui-font); padding: .25rem .5rem; }

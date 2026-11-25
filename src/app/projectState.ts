@@ -27,6 +27,11 @@ export type BoxProjectData = {
   activeWallGroup: ActiveWallGroup | null;
   completedWallGroups: ActiveWallGroup[];
   workflowGroupOrder: Record<string, number>;
+  dependencyDiagnostics?: ReadonlyArray<{
+    code: 'DRAWING_TOPOLOGY_CHANGED' | 'BOX_REGENERATION_FAILED';
+    severity: 'error'; sourceId: string; groupId?: string; connectionId?: string;
+    panelIds: readonly string[]; edgeIds: readonly string[]; message: string;
+  }>;
 };
 
 /** Retained for current BOX authoring parity, without promoting selection to content. */
@@ -109,6 +114,7 @@ export const boxStateFields = (source: BoxStateSource) => ({
     activeWallGroup: source.activeWallGroup,
     completedWallGroups: source.completedWallGroups,
     workflowGroupOrder: source.workflowGroupOrder,
+    ...(source.dependencyDiagnostics && { dependencyDiagnostics: source.dependencyDiagnostics }),
   },
   context: {
     assignmentTargetConnectionId: source.assignmentTargetConnectionId,

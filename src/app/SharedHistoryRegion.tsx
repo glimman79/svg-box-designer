@@ -2,8 +2,9 @@ import { useLayoutEffect, useRef } from 'react';
 import type { BoxChronologyEntry, OperationChronology, SketchDefinition } from './constructionOperations';
 import { neutralSketchColor } from './sketchPresentation';
 import type { SupportedWorkspace } from './drawingTypes';
+import type { BoxSources, BoxStateSource } from './projectState';
 
-export function SharedHistoryRegion({ workspace, definitions, chronology, editingSketchId, onOpenSketch, onOpenBox, selectedBoxEntry }: {
+export function SharedHistoryRegion({ workspace, definitions, chronology, editingSketchId, onOpenSketch, onOpenBox, selectedBoxEntry, sources, imported, inspectedEntryId }: {
   workspace: SupportedWorkspace;
   definitions: readonly SketchDefinition[];
   chronology: OperationChronology;
@@ -11,6 +12,9 @@ export function SharedHistoryRegion({ workspace, definitions, chronology, editin
   onOpenSketch: (operationId: string) => void;
   onOpenBox: (entry: BoxChronologyEntry) => void;
   selectedBoxEntry?: string;
+  sources?: BoxSources;
+  imported: BoxStateSource;
+  inspectedEntryId: string | null;
 }) {
   const byId = new Map(definitions.map(definition => [definition.operation.id, definition]));
   const trackRef = useRef<HTMLDivElement>(null);
@@ -21,6 +25,12 @@ export function SharedHistoryRegion({ workspace, definitions, chronology, editin
   }, [workspace]);
 
   const groupCounts = new Map<string, number>();
+  const diagnosticFor = (entry: BoxChronologyEntry) => (entry.sourceId === 'imported-svg'
+    ? imported : sources?.sketches[entry.sourceId])?.dependencyDiagnostics?.find(diagnostic =>
+    (entry.groupId && diagnostic.groupId === entry.groupId)
+    || (entry.connectionId && diagnostic.connectionId === entry.connectionId));
+  const inspected = chronology.find(entry => entry.id === inspectedEntryId);
+  const inspectedDiagnostic = inspected?.kind !== 'sketch' && inspected ? diagnosticFor(inspected) : undefined;
   return <aside className="workflow-history-panel shared-history-region panel" aria-label="Construction history">
     <span className="workflow-history-label">History</span>
     <div ref={trackRef} className="workflow-history-items" role="group" aria-label="History entries" tabIndex={0}
@@ -28,6 +38,7 @@ export function SharedHistoryRegion({ workspace, definitions, chronology, editin
       {chronology.length ? chronology.map(entry => {
         const definition = byId.get(entry.sourceId);
         if (entry.kind !== 'sketch') {
+          const diagnostic = diagnosticFor(entry);
           const key = entry.sourceId + '/' + entry.kind;
           const number = (groupCounts.get(key) ?? 0) + 1;
           if (entry.groupId) groupCounts.set(key, number);
@@ -36,7 +47,8 @@ export function SharedHistoryRegion({ workspace, definitions, chronology, editin
           return <button key={entry.id} className="workflow-history-item" type="button" data-operation-id={entry.id}
             disabled={editingSketchId !== null} aria-pressed={workspace === 'construction' && entry.id === selectedBoxEntry}
             aria-label={!definition && entry.kind === 'PM' ? 'Panel Manager, opens Panel Manager panel' : undefined}
-            title={name} onClick={() => onOpenBox(entry)}>{name}</button>;
+            title={diagnostic ? `${diagnostic.code}: ${diagnostic.message}` : name}
+            onClick={() => onOpenBox(entry)}>{diagnostic && <span className="history-diagnostic-marker" aria-label="Blocked output">!</span>}{name}</button>;
         }
         if (!definition) return null;
         const { operation, sketch } = definition;
@@ -55,5 +67,8 @@ export function SharedHistoryRegion({ workspace, definitions, chronology, editin
         </button>;
       }) : <p className="workflow-history-empty muted">No operations yet.</p>}
     </div>
+    {inspectedDiagnostic && <div className="history-diagnostic-detail" role="alert">
+      <strong>{inspectedDiagnostic.code}</strong>: {inspectedDiagnostic.message}
+    </div>}
   </aside>;
 }
