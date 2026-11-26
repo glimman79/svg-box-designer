@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { api, harness, observeBoxActions, assertCompleteFrame } = require('./project-owner-harness.cjs');
+const { api, harness, production, observeBoxActions, assertCompleteFrame } = require('./project-owner-harness.cjs');
 const { undoProjectHistory, redoProjectHistory } = require('../.test-build/project-owner/src/app/projectHistory.js');
 
 const edge = (panel, index) => `panel-${panel}-edge-${index}`;
@@ -42,7 +42,7 @@ function acceptedActions(c, owner) {
   };
 }
 
-for (const tool of ['TB', 'W', 'S']) {
+for (const tool of ['W', 'S']) {
   test(`${tool}: start, assignment with continuation, property and Finish publish complete frames and restore in one global step each`, () => {
     const initial = api.makePopulatedProjectState();
     const { svgModel, panelManager, generatedGeometrySnapshot } = initial.box;
@@ -355,7 +355,7 @@ test('duplicate TB owner and redundant Finish do not consume a global step or di
   c.redoLastEdit(); assert.equal(owner.getSnapshot().box.connections.TB2.properties.fingerWidthMm,8);
 });
 
-for (const tool of ['TB','W','S']) {
+for (const tool of ['W','S']) {
   test(`${tool} groups retain two accepted children, restore their operation, and leave standalone Add independent`, () => {
     const initial = api.makePopulatedProjectState();
     const {svgModel,panelManager} = initial.box;
@@ -429,4 +429,145 @@ test('parameter-only S work survives Finish and an abandoned lifetime can reuse 
   assert.notEqual(first.id,replacement.id);
   assert.notEqual(first.groupId,replacement.groupId);
   assert.equal(owner.getHistory().redo.length,0);
+});
+
+function newTBHarness() {
+  const initial = api.makePopulatedProjectState();
+  const {svgModel,panelManager,generatedGeometrySnapshot} = initial.box;
+  initial.box = {...api.createInitialBoxState(),svgModel,panelManager,generatedGeometrySnapshot};
+  return harness(initial);
+}
+
+test('TB empty and one-edge Escape cancellation preserve accepted definitions, chronology and both stacks exactly', () => {
+  const {context:c,projectOwner:owner} = newTBHarness();
+  c.updateProjectSettings({kerfMm:.8}); c.undoLastEdit();
+  const accepted=owner.getSnapshot(), tape=owner.getHistory();
+  for (let attempt=0;attempt<4;attempt++) {
+    c.handleToolClick('TB');
+    assert.equal(c.activeTool,'TB');
+    assert.ok(Object.isFrozen(owner.getBoxScope().box));
+    assert.deepEqual(owner.getBoxScope().box.activeTBGroup.connectionIds,['TB1']);
+    if (attempt%2) {
+      c.assignSelectedLabelToEdge(edge('a',0));
+      edit(c,'TB1','TB',{fingerWidthMm:12});
+      assert.equal(Object.keys(owner.getBoxScope().box.edgeAssignments).length,1);
+    }
+    assert.equal(owner.getSnapshot(),accepted);
+    assert.equal(owner.getHistory(),tape);
+    c.closeBoxTool(); c.closeBoxTool();
+    assert.equal(c.activeTool,'select');
+    assert.equal(owner.getPublication().tbDraft,null);
+    assert.equal(owner.getSnapshot(),accepted);
+    assert.equal(owner.getBoxScope().box,accepted.box);
+    assert.equal(owner.getHistory(),tape);
+  }
+  c.redoLastEdit(); assert.equal(owner.getSnapshot().box.projectSettings.kerfMm,.8);
+  c.undoLastEdit(); assert.equal(owner.getSnapshot(),accepted);
+});
+
+test('TB Finish rejects empty, one-edge, duplicate-role and incompatible pairs atomically; correction commits one stable group', () => {
+  const {context:c,projectOwner:owner} = newTBHarness();
+  const accepted=owner.getSnapshot(), tape=owner.getHistory();
+  c.startGroup('TB');
+  c.finishGroup('TB'); assert.match(c.errorMessage,/one A edge and one B edge/);
+  c.assignSelectedLabelToEdge(edge('a',0));
+  let draft=owner.getPublication().tbDraft;
+  c.finishGroup('TB'); assert.match(c.errorMessage,/TB1 is incomplete/);
+  assert.equal(owner.getPublication().tbDraft,draft);
+  c.applyPanelPaths(); assert.match(c.errorMessage,/TB1 is incomplete/);
+  assert.equal(owner.getSnapshot(),accepted); assert.equal(owner.getHistory(),tape);
+  c.assignSelectedLabelToEdge(edge('b',0));
+  c.selectConnectionForDisplayAndAssignment('TB1');
+  c.updateAssignedRole(edge('b',0),'TB1','A');
+  draft=owner.getPublication().tbDraft;
+  c.finishGroup('TB'); assert.match(c.errorMessage,/TB1 is incomplete/);
+  assert.equal(owner.getPublication().tbDraft,draft);
+  c.updateAssignedRole(edge('b',0),'TB1','B');
+  const complete=owner.getBoxScope().box, groupId=complete.activeTBGroup.groupId;
+  edit(c,'TB1','TB',{fingerWidthMm:12});
+  c.finishGroup('TB'); assert.equal(c.errorMessage,'');
+  const finished=owner.getSnapshot();
+  assert.equal(owner.getPublication().tbDraft,null);
+  assert.deepEqual(finished.box.activeTBGroup.connectionIds,['TB1']);
+  assert.equal(finished.box.activeTBGroup.groupId,groupId);
+  assert.equal(finished.box.activeTBGroup.isActive,false);
+  assert.deepEqual(finished.box.edgeAssignments,complete.edgeAssignments);
+  assert.equal(finished.box.connections.TB1.properties.fingerWidthMm,12);
+  assert.equal(finished.box.connections.TB2,undefined);
+  assert.equal(finished.box.generatedGeometrySnapshot,accepted.box.generatedGeometrySnapshot);
+  const rows=finished.chronology.filter(e=>e.kind==='TB');
+  assert.equal(rows.length,1); assert.equal(rows[0].groupId,groupId);
+  assert.equal(owner.getHistory().undo.length,tape.undo.length+1);
+  c.undoLastEdit(); assert.equal(owner.getSnapshot(),accepted);
+  assert.equal(owner.getPublication().tbDraft,null);
+  c.redoLastEdit(); assert.equal(owner.getSnapshot(),finished);
+  assert.equal(owner.getSnapshot().chronology.find(e=>e.kind==='TB'),rows[0]);
+});
+
+test('TB multiple connections and unused authored trailing definition finish as one group; partial next connection blocks Finish', () => {
+  const {context:c,projectOwner:owner} = newTBHarness();
+  const accepted=owner.getSnapshot();
+  c.startGroup('TB'); c.assignSelectedLabelToEdge(edge('a',0)); c.assignSelectedLabelToEdge(edge('b',0));
+  c.assignSelectedLabelToEdge(edge('c',0));
+  const partial=owner.getPublication().tbDraft;
+  c.finishGroup('TB'); assert.match(c.errorMessage,/TB2 is incomplete/);
+  assert.equal(owner.getPublication().tbDraft,partial);
+  assert.equal(owner.getSnapshot(),accepted);
+  c.assignSelectedLabelToEdge(edge('d',0));
+  c.selectConnectionForDisplayAndAssignment('TB3'); edit(c,'TB3','TB',{fingerWidthMm:14});
+  c.finishGroup('TB'); assert.equal(c.errorMessage,'');
+  assert.deepEqual(owner.getSnapshot().box.activeTBGroup.connectionIds,['TB1','TB2']);
+  assert.equal(owner.getSnapshot().box.connections.TB3,undefined);
+  assert.equal(owner.getSnapshot().chronology.filter(e=>e.kind==='TB').length,1);
+});
+
+test('TB Apply before OK is staged and cancellable; OK accepts staged output; older accepted groups and History reopening survive Escape', () => {
+  const {context:c,projectOwner:owner} = newTBHarness();
+  const accepted=owner.getSnapshot(), tape=owner.getHistory();
+  c.startGroup('TB'); c.assignSelectedLabelToEdge(edge('a',0)); c.assignSelectedLabelToEdge(edge('b',0));
+  c.applyPanelPaths(); assert.equal(c.errorMessage,'');
+  assert.notEqual(owner.getBoxScope().box.generatedGeometrySnapshot,accepted.box.generatedGeometrySnapshot);
+  assert.equal(owner.getSnapshot(),accepted); assert.equal(owner.getHistory(),tape);
+  c.closeBoxTool(); assert.equal(owner.getSnapshot(),accepted);
+  c.startGroup('TB'); c.assignSelectedLabelToEdge(edge('a',0)); c.assignSelectedLabelToEdge(edge('b',0));
+  c.applyPanelPaths(); assert.equal(c.errorMessage,'');
+  const output=owner.getBoxScope().box.generatedGeometrySnapshot;
+  c.finishGroup('TB'); assert.equal(c.errorMessage,'');
+  assert.equal(owner.getSnapshot().box.generatedGeometrySnapshot,output);
+  assert.deepEqual(owner.getSnapshot().box.appliedGeometryInputs,api.appliedGeometryInputs(owner.getSnapshot().box));
+  const finished=owner.getSnapshot(), row=finished.chronology.find(e=>e.kind==='TB');
+  const finishedTape=owner.getHistory();
+  c.startGroup('TB'); c.assignSelectedLabelToEdge(edge('c',0));
+  c.closeBoxTool();
+  assert.equal(owner.getSnapshot(),finished); assert.equal(owner.getHistory(),finishedTape);
+  owner.selectBoxSource('imported-svg');
+  c.selectConnectionForDisplayAndAssignment('TB1');
+  c.setActiveTool('TB'); c.closeBoxTool();
+  assert.equal(owner.getSnapshot().box.connections,finished.box.connections);
+  assert.equal(owner.getSnapshot().box.edgeAssignments,finished.box.edgeAssignments);
+  assert.equal(owner.getSnapshot().box.completedTBGroups,finished.box.completedTBGroups);
+  assert.equal(owner.getSnapshot().box.generatedGeometrySnapshot,output);
+  assert.equal(owner.getSnapshot().chronology.find(e=>e.kind==='TB'),row);
+});
+
+test('TB incompatible edge lengths reject Finish without accepting the temporary definitions', () => {
+  const {context:c,projectOwner:owner}=newTBHarness();
+  const before=owner.getSnapshot(), tape=owner.getHistory();
+  c.startGroup('TB'); c.assignSelectedLabelToEdge(edge('a',0)); c.assignSelectedLabelToEdge(edge('b',1));
+  const draft=owner.getPublication().tbDraft;
+  c.finishGroup('TB'); assert.match(c.errorMessage,/incompatible source edge lengths/);
+  assert.equal(owner.getPublication().tbDraft,draft);
+  assert.equal(owner.getSnapshot(),before); assert.equal(owner.getHistory(),tape);
+  c.closeBoxTool(); assert.equal(owner.getSnapshot(),before);
+});
+
+test('TB cancelled inspector callbacks cannot leave dangling draft targets', () => {
+  const {context:c,projectOwner:owner}=newTBHarness();
+  c.startGroup('TB');
+  const stale=production('selectConnectionForDisplayAndAssignment',{projectOwner:owner,renderEpoch:owner.getEpoch()});
+  c.closeBoxTool();
+  const accepted=owner.getSnapshot(), tape=owner.getHistory();
+  stale('TB1');
+  assert.equal(owner.getSnapshot(),accepted); assert.equal(owner.getHistory(),tape);
+  assert.equal(owner.getSnapshot().box.assignmentTargetConnectionId,null);
 });

@@ -2,7 +2,11 @@
 
 Base: `eea45842586ba96b522162356a9b20b1f7692b04` (#641), verified directly with GitHub on 19 November 2026. Review and personal acceptance are pending.
 
-## Production mutation inventory
+## Current TB lifecycle correction (2026-11-26)
+
+The [current approved TB contract](GLOBAL_WORKSPACE_UI_SPECIFICATION.md#consistent-tool-exit) supersedes the historical inventory below for new TB sessions. Start, assignments, parameters and Apply are staged in the project owner’s temporary frame. Escape discards the frame without changing accepted definitions or either global stack. Finish validates complete A/B connections, removes the unused trailing definition and commits one group/History entry in one global transition. Apply before OK stages output; OK accepts it, and cancellation restores the previous accepted output. Existing completed or legacy accepted groups are preserved. Review and user browser acceptance remain pending. W/S boundaries are unchanged.
+
+## Historical production mutation inventory
 
 Every construction row below edits authoring data. All retain the last applied geometry until a separate Apply. Geometry Apply retains its PR 5 local-history policy. “Target” is the connection for the next edge click. The displayed connection can differ.
 

@@ -1,7 +1,7 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {performance} = require('node:perf_hooks');
-const {api, assertCompleteFrame} = require('./project-owner-harness.cjs');
+const {api, harness, assertCompleteFrame} = require('./project-owner-harness.cjs');
 
 test('runtime guard distinguishes sessions and publications even when a stored root returns', () => {
   const service = api.createGlobalProjectHistory(), other = api.createGlobalProjectHistory();
@@ -481,4 +481,92 @@ test('pre-color operation records gain stable presentation indices without modif
   assert.deepEqual(restored.map(op => op.presentationIndex), [0, 1]);
   assert.equal(owner.getSnapshot().drawingDocument, initial.drawingDocument);
   assert.equal(owner.getHistory().undo.length, 0);
+});
+
+function draftOwner() {
+  const initial=api.makePopulatedProjectState();
+  initial.box={...api.createInitialBoxState(),svgModel:initial.box.svgModel,panelManager:initial.box.panelManager};
+  return harness(initial);
+}
+
+test('TB draft cancellation preserves the full 30-transition tape, Redo, Sketch/PM lifetimes and stale-event guards', () => {
+  const {context:c,projectOwner:owner}=draftOwner();
+  for(let i=1;i<=34;i++) c.updateProjectSettings({kerfMm:i/100});
+  c.undoLastEdit();
+  const accepted=owner.getSnapshot(), tape=owner.getHistory();
+  assert.equal(tape.undo.length,29); assert.equal(tape.redo.length,1);
+  c.startGroup('TB'); c.assignSelectedLabelToEdge('panel-a-edge-0');
+  const stale=api.createBoxTransactionAdapter(owner,owner.getEpoch());
+  const attempt=owner.getAttempt();
+  owner.cancelTBDraft();
+  assert.equal(owner.isCurrent(attempt),false);
+  assert.equal(stale.transact('late edge',b=>api.assignConstructionEdge(b,'panel-b-edge-0','TB1')).outcome,'rejected');
+  assert.equal(stale.finishTBDraft(b=>({...b})).outcome,'rejected');
+  assert.equal(owner.getSnapshot(),accepted); assert.equal(owner.getHistory(),tape);
+  assert.equal(owner.getSnapshot().chronology,accepted.chronology);
+  c.redoLastEdit(); assert.equal(owner.getSnapshot().box.projectSettings.kerfMm,.34);
+  c.undoLastEdit(); assert.equal(owner.getSnapshot(),accepted);
+  c.startGroup('TB'); c.assignSelectedLabelToEdge('panel-a-edge-0'); c.assignSelectedLabelToEdge('panel-b-edge-0');
+  const groupId=owner.getBoxScope().box.activeTBGroup.groupId;
+  c.finishGroup('TB'); assert.equal(c.errorMessage,'');
+  const finished=owner.getSnapshot();
+  assert.equal(owner.getHistory().undo.length,30); assert.equal(owner.getHistory().redo.length,0);
+  assert.equal(finished.chronology.at(-1).groupId,groupId);
+  assert.deepEqual(finished.chronology.slice(0,-1),accepted.chronology);
+  assert.equal(finished.constructionOperations,accepted.constructionOperations);
+  c.undoLastEdit(); assert.equal(owner.getSnapshot(),accepted);
+  c.redoLastEdit(); assert.equal(owner.getSnapshot(),finished);
+});
+
+test('TB drafts cannot survive workspace navigation, source selection, restore, import, tool change or Clear', () => {
+  for (const exit of ['navigation','source','restore','import','tool','clear']) {
+    const {context:c,projectOwner:owner}=draftOwner();
+    c.updateProjectSettings({kerfMm:.9});
+    c.startGroup('TB'); c.assignSelectedLabelToEdge('panel-a-edge-0');
+    const before=owner.getSnapshot();
+    if(exit==='navigation') { owner.navigate('drawing'); owner.navigate('construction'); }
+    if(exit==='source') owner.selectBoxSource(api.IMPORTED_SOURCE);
+    if(exit==='restore') { owner.traverse('undo'); owner.traverse('redo'); }
+    if(exit==='import') owner.beginBoxImport();
+    if(exit==='tool') c.handleToolClick('W');
+    if(exit==='clear') owner.clearProject();
+    assert.equal(owner.getPublication().tbDraft,null,exit);
+    assert.equal(owner.getSnapshot().box.connections.TB1,undefined,exit);
+    assert.equal(owner.getSnapshot().chronology.some(e=>e.kind==='TB'),false,exit);
+    if(exit==='source') assert.equal(owner.getSnapshot().box,before.box,exit);
+    else if(!['tool','clear'].includes(exit)) assert.equal(owner.getSnapshot(),before,exit);
+    c.handleToolClick('TB');
+    if(exit!=='clear') assert.equal(Object.keys(owner.getBoxScope().box.edgeAssignments).length,0,exit);
+  }
+});
+
+test('legacy accepted active TB rows retain their original identities on admission and inspection', () => {
+  const initial=api.makePopulatedProjectState();
+  const owner=api.createGlobalProjectHistory(initial);
+  const saved=owner.getSnapshot(), row=saved.chronology.find(e=>e.kind==='TB');
+  assert.ok(row);
+  const admitted=api.createGlobalProjectHistory(saved);
+  assert.equal(admitted.getSnapshot().chronology.find(e=>e.id===row.id),row);
+  assert.equal(admitted.cancelTBDraft(),false);
+  assert.equal(admitted.getSnapshot().box,saved.box);
+});
+
+
+test('source replacement after accepted TB Apply resets its input stamp and traverses without reviving cancelled drafts', () => {
+  const {context:c,projectOwner:owner}=draftOwner();
+  c.startGroup('TB'); c.assignSelectedLabelToEdge('panel-a-edge-0'); c.assignSelectedLabelToEdge('panel-b-edge-0');
+  c.applyPanelPaths(); c.finishGroup('TB'); assert.equal(c.errorMessage,'');
+  const accepted=owner.getSnapshot();
+  assert.ok(accepted.box.appliedGeometryInputs);
+  c.startGroup('TB'); c.assignSelectedLabelToEdge('panel-c-edge-0');
+  const token=owner.beginBoxImport();
+  const result=api.createBoxTransactionAdapter(owner,owner.getEpoch()).replaceSource(token,
+    {...accepted.box.svgModel,content:'<svg/>'},accepted.box.panelManager);
+  assert.equal(result.outcome,'accepted',result.error?.message);
+  assert.equal(owner.getPublication().tbDraft,null);
+  assert.equal(owner.getSnapshot().box.connections.TB2,undefined);
+  assert.equal(owner.getSnapshot().box.appliedGeometryInputs,undefined);
+  assert.equal(owner.getSnapshot().box.dependencyDiagnostics,undefined);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),accepted);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot().box.connections.TB2,undefined);
 });

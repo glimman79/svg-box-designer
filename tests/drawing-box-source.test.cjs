@@ -199,19 +199,18 @@ test('chronology survives source context, branching, admission, and eviction of 
     assert.equal(entries(),before, 'opening a group only prepares a draft');
     const box = owner.getBoxScope().box;
     c.assignSelectedLabelToEdge(box.svgModel.panels[0].outerEdgeIds[edge]);
+    if (tool === 'TB') {
+      assert.equal(entries(),before, 'TB assignments remain transient until Finish');
+      c.assignSelectedLabelToEdge(box.svgModel.panels[1].outerEdgeIds[edge]);
+      c.finishGroup('TB');
+    }
     assert.equal(entries().length,before.length+1,c.errorMessage);
   };
   for (const id of [one,two]) { select(id); c.acceptDefaultPanelThickness(); c.applyPanelManager(); }
   start(one,'TB',0);
   const box = owner.getBoxScope().box;
-  c.assignSelectedLabelToEdge(box.svgModel.panels[1].outerEdgeIds[0]);
   start(two,'TB',0);
-  select(one);
-  const beforeContinuation = entries();
-  c.handleToolClick('TB');
-  c.assignSelectedLabelToEdge(box.svgModel.panels[0].outerEdgeIds[2]);
-  assert.equal(entries(),beforeContinuation, 'TB2 belongs to the first session');
-  c.finishGroup('TB'); start(one,'TB',1); start(two,'W',1);
+  start(one,'TB',1); start(two,'W',1);
   const ordered = entries();
   assert.deepEqual(ordered.map(e=>[e.sourceId,e.kind]),[
     [one,'sketch'],[two,'sketch'],[one,'PM'],[two,'PM'],[one,'TB'],[two,'TB'],[one,'TB'],[two,'W']]);
@@ -235,28 +234,28 @@ test('chronology survives source context, branching, admission, and eviction of 
   owner.clearProject(); assert.deepEqual(entries(),[]);
 });
 
-test('one atomic batch records its authored connection order and rolls back abandoned child work', () => {
-  const {projectOwner: owner, context: c} = harness();
+test('one atomic batch admits completed TB in order and rolls back abandoned child work', () => {
+  const {projectOwner:owner,context:c} = harness();
   c.finishGroup('TB'); c.finishGroup('S');
-  c.startGroup('TB'); c.startGroup('S');
-  const [tb, slot] = [owner.getSnapshot().box.activeTBGroup,owner.getSnapshot().box.activeSGroup].map(g=>g.connectionIds[0]);
-  const before = owner.getSnapshot().chronology;
-  const author = (tx,id,edgeId) => tx.update(frame=>{
-    const box = {...frame.box.data,...frame.box.context,assignmentTargetConnectionId:id};
-    const authored = api.assignConstructionEdge(box,edgeId,id);
-    return {...frame,box:{...frame.box,data:{...frame.box.data,edgeAssignments:authored.edgeAssignments}}};
-  });
-  const [first, second] = owner.getSnapshot().box.svgModel.panels.slice(2,4).map(p=>p.edgeIds[2]);
-  const result = owner.transact('box','Batch authoring',tx=>{
-    tx.nest(child=>{ author(child,tb,second); return 'noop'; });
-    author(tx,slot,second); author(tx,tb,first);
+  c.startGroup('S');
+  const before=owner.getSnapshot(), groupId='batch-tb', id='TB2';
+  const result=owner.transact('box','Batch authoring',tx=>{
+    tx.nest(child=>{ child.update(frame=>({...frame,box:{...frame.box,data:{...frame.box.data,
+      connections:{...frame.box.data.connections,abandoned:{...frame.box.data.connections.TB1,id:'abandoned'}}}}})); return 'noop'; });
+    tx.update(frame=>({...frame,box:{...frame.box,data:{...frame.box.data,
+      connections:{...frame.box.data.connections,[id]:{...frame.box.data.connections.TB1,id}},
+      edgeAssignments:{...frame.box.data.edgeAssignments,'panel-c-edge-2':{edgeAssignment:{connectionId:id,edgeRole:'A'}},
+        'panel-d-edge-2':{edgeAssignment:{connectionId:id,edgeRole:'B'}}},
+      completedTBGroups:[...frame.box.data.completedTBGroups,{groupId,connectionIds:[id],isActive:false}],
+    }}}));
     return 'accept';
   });
   assert.equal(result.outcome,'accepted',result.error?.message);
-  const after = owner.getSnapshot().chronology;
-  assert.deepEqual(after.slice(before.length).map(e=>e.groupId),[owner.getSnapshot().box.activeSGroup.groupId,owner.getSnapshot().box.activeTBGroup.groupId]);
-  owner.traverse('undo'); assert.equal(owner.getSnapshot().chronology,before);
-  owner.traverse('redo'); assert.equal(owner.getSnapshot().chronology,after);
+  const after=owner.getSnapshot();
+  assert.equal(after.box.connections.abandoned,undefined);
+  assert.equal(after.chronology.at(-1).groupId,groupId);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),before);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot(),after);
 });
 
 test('per-connection admission keeps the earliest group row across other sources and preserves orphan definitions', () => {
@@ -266,7 +265,7 @@ test('per-connection admission keeps the earliest group row across other sources
   c.startGroup('TB');
   const [a,b] = owner.getBoxScope().box.svgModel.panels;
   c.assignSelectedLabelToEdge(a.edgeIds[0]); c.assignSelectedLabelToEdge(b.edgeIds[0]);
-  c.assignSelectedLabelToEdge(a.edgeIds[1]); c.finishGroup('TB');
+  c.assignSelectedLabelToEdge(a.edgeIds[1]); c.assignSelectedLabelToEdge(b.edgeIds[1]); c.finishGroup('TB');
   c.createLabel('S'); // Legacy S definitions with no retained session stay separate.
   owner.selectBoxSource(two); c.acceptDefaultPanelThickness(); c.applyPanelManager(); c.startGroup('W');
   const saved = owner.getSnapshot();

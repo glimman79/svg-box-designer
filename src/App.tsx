@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ChangeEvent, PointerEvent } from 'react';
 import { BoxSketchLayer, previewContours, sourceHits } from './app/BoxSketchLayer';
-import { appliedGeometryInputs, getBoxScope, hasImportedSource, IMPORTED_SOURCE, isSourceApproved, sourceStatus, validateDrawingApproval } from './app/boxSources';
+import { appliedGeometryInputs, hasImportedSource, IMPORTED_SOURCE, isSourceApproved, sourceStatus, validateDrawingApproval } from './app/boxSources';
 import { flushSync } from 'react-dom';
 import { exportLabeledSvg, formatImportDiagnosticMessage, getEdgeAssignmentDisplayLabels, parseSvgDocument } from './svgUtils';
 import { layoutPanelLabels } from './app/labelLayout';
@@ -465,7 +465,7 @@ function ProjectWorkspace({ projectOwner, position }: {
   const { project, history, activeWorkspace, editingSketchId, epoch: renderEpoch, session } = position;
   const drawingTransactions = useMemo(() => createDrawingTransactionAdapter(projectOwner), [projectOwner, renderEpoch]);
   const { drawingDocument, constructionOperations, boxSources } = project;
-  const { box, id: sourceId, working } = getBoxScope(project);
+  const { box, id: sourceId, working } = projectOwner.getBoxScope();
   const sourceName = project.drawingDocument.sketches[box.svgModel.drawingSource?.sketchId ?? '']?.name ?? 'Imported SVG';
   const sketchDefinitions = useMemo(() => readSketchDefinitions({ drawingDocument, constructionOperations }),
     [drawingDocument, constructionOperations]);
@@ -512,6 +512,7 @@ function ProjectWorkspace({ projectOwner, position }: {
   const selectedLabelId = displayConnectionId;
   const selectedConnection = displayConnectionId ? connections[displayConnectionId] ?? null : null;
   const selectConnectionForDisplayAndAssignment = (connectionId: string | null) => {
+    if (renderEpoch !== projectOwner.getEpoch()) return;
     projectOwner.setBoxContext({ assignmentTargetConnectionId: connectionId, displayConnectionId: connectionId });
   };
   const selectedEdge = svgModel.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
@@ -678,13 +679,16 @@ function ProjectWorkspace({ projectOwner, position }: {
     if (!file || projectOwner.getPublication().activeWorkspace !== 'construction') return;
     const token = importLock.acquire();
     if (!token) return;
+    // Acquiring import cancels a TB draft and invalidates its old input handlers.
+    const transactions = renderEpoch === projectOwner.getEpoch() ? boxTransactions
+      : createBoxTransactionAdapter(projectOwner, projectOwner.getEpoch());
     try {
       const text = await file.text();
       if (!importLock.isCurrent(token)) return;
       const parsedSvg = parseSvgDocument(text);
       const nextPanelManager = createPanelManagerStateFromModel(parsedSvg);
       const diagnosticMessage = formatImportDiagnosticMessage(parsedSvg);
-      const result = boxTransactions.replaceSource(token, parsedSvg, nextPanelManager);
+      const result = transactions.replaceSource(token, parsedSvg, nextPanelManager);
       if (result.outcome === 'rejected') {
         if (importLock.isCurrent(token)) setErrorMessage(result.error instanceof Error ? result.error.message : 'Unable to replace the SVG source.');
         return;
@@ -706,8 +710,10 @@ function ProjectWorkspace({ projectOwner, position }: {
 
   const handleImportWithError = (event: ChangeEvent<HTMLInputElement>) => { void handleImport(event); };
 
-  const commitConstruction = (label: string, prepare: (before: BoxStateSource) => BoxStateSource) => {
-    const result = boxTransactions.transact(label, before => {
+  const commitConstruction = (label: string, prepare: (before: BoxStateSource) => BoxStateSource, boundary?: 'beginTB' | 'finishTB', transactions = boxTransactions) => {
+    const transact = boundary === 'beginTB' ? transactions.beginTBDraft : boundary === 'finishTB' ? transactions.finishTBDraft
+      : (prepare: (before: BoxStateSource) => BoxStateSource) => transactions.transact(label, prepare);
+    const result = transact(before => {
       if (before.svgModel !== svgModel) throw new Error('Select a current SVG source.');
       if (!projectOwner.getBoxScope().working) throw new Error('Apply Panel Manager and choose an approved source before using workflow tools.');
       return prepare(before);
@@ -729,6 +735,8 @@ function ProjectWorkspace({ projectOwner, position }: {
   });
 
   const startGroup = (tool: 'TB' | 'W' | 'S') => {
+    const transactions = tool !== 'TB' && projectOwner.cancelTBDraft()
+      ? createBoxTransactionAdapter(projectOwner, projectOwner.getEpoch()) : boxTransactions;
     const accepted = commitConstruction(`Start ${tool} group`, before => {
       const field = constructionGroupField[tool];
       if (before[field]?.isActive) return before;
@@ -743,7 +751,7 @@ function ProjectWorkspace({ projectOwner, position }: {
         workflowGroupOrder: { ...before.workflowGroupOrder,
           [group.groupId]: before.workflowGroupOrder[group.groupId] ?? getNextWorkflowGroupOrderIndex(before.workflowGroupOrder) },
       };
-    });
+    }, tool === 'TB' ? 'beginTB' : undefined, transactions);
     if (!accepted) return;
     setActiveTool(tool);
     const group = projectOwner.getBoxScope().box.activeTBGroup;
@@ -762,18 +770,22 @@ function ProjectWorkspace({ projectOwner, position }: {
       }
       if (tool === 'TB') {
         if (!before.activeTBGroup?.isActive) return before;
-        const next = finishTBGroupWithTrailingCleanup(before.activeTBGroup, connections, edgeAssignments, assignmentTargetConnectionId);
-        return { ...before, ...cleared, connections: next.connections, activeTBGroup: next.activeTBGroup,
+        const next = finishTBGroupWithTrailingCleanup(before.activeTBGroup, connections, edgeAssignments, assignmentTargetConnectionId, before.svgModel);
+        const appliedGeometryInputs = before.appliedGeometryInputs && next.removedConnectionId
+          ? { ...before.appliedGeometryInputs, connections: Object.fromEntries(Object.entries(before.appliedGeometryInputs.connections)
+            .filter(([id]) => id !== next.removedConnectionId)) } : before.appliedGeometryInputs;
+        return { ...before, ...cleared, connections: next.connections, activeTBGroup: next.activeTBGroup, appliedGeometryInputs,
           completedTBGroups: [...before.completedTBGroups.filter(group => group.groupId !== next.activeTBGroup.groupId), next.activeTBGroup] };
       }
       if (!before.activeSGroup?.isActive) return before;
       const next = finishSGroupWithTrailingCleanup(before.activeSGroup, connections, edgeAssignments, assignmentTargetConnectionId);
       return { ...before, ...cleared, connections: next.connections, activeSGroup: next.activeSGroup };
-    });
+    }, tool === 'TB' ? 'finishTB' : undefined);
     if (accepted) setActiveTool('select');
   };
 
   const openManufacturing = () => {
+    projectOwner.cancelTBDraft();
     const { panelManager } = projectOwner.getBoxScope().box;
     if (!panelManager.isApplied) {
       setErrorMessage('Apply Panel Manager before using workflow tools.');
@@ -784,6 +796,7 @@ function ProjectWorkspace({ projectOwner, position }: {
 
   const handleToolClick = (tool: ActiveTool) => {
     setInspectedEntryId(null);
+    if (tool !== 'TB' && tool !== 'W' && tool !== 'S') projectOwner.cancelTBDraft();
     const current = projectOwner.getBoxScope().box;
     if (!current.panelManager.isApplied && !['select', 'PM'].includes(tool)) {
       setErrorMessage('Apply Panel Manager before using workflow tools.');
@@ -795,7 +808,10 @@ function ProjectWorkspace({ projectOwner, position }: {
         startGroup(tool);
         return;
       }
-      selectConnectionForDisplayAndAssignment(group.connectionIds.at(-1) ?? null);
+      const cancelled = tool !== 'TB' && projectOwner.cancelTBDraft();
+      const target = group.connectionIds.at(-1) ?? null;
+      if (cancelled) projectOwner.setBoxContext({ assignmentTargetConnectionId: target, displayConnectionId: target });
+      else selectConnectionForDisplayAndAssignment(target);
       if (tool === 'TB') setExpandedTBGroups(current => ({ ...current, [group.groupId]: true }));
       setErrorMessage('');
     }
@@ -803,6 +819,7 @@ function ProjectWorkspace({ projectOwner, position }: {
   };
 
   const closeBoxTool = () => {
+    projectOwner.cancelTBDraft();
     pointerEpoch.current = -1;
     cancelCanvasPan();
     setInspectedEntryId(null);
@@ -904,6 +921,9 @@ function ProjectWorkspace({ projectOwner, position }: {
         activeSGroup, assignmentTargetConnectionId, displayConnectionId, selectedEdgeId, workflowGroupOrder,
         projectSettings, lastAppliedManufacturingSettings } = before;
       if (!panelManager.isApplied) throw new Error('Apply Panel Manager before applying or exporting workflow geometry.');
+      if (projectOwner.getPublication().tbDraft && activeTBGroup?.isActive) {
+        finishTBGroupWithTrailingCleanup(activeTBGroup, before.connections, edgeAssignments, assignmentTargetConnectionId, svgModel);
+      }
       const generated = evaluateAppliedGeometry(before, panelCompositionAuthorityMode, selectAppliedSnapshot);
       const { connections: nextConnections, tbGeneratedItems, wGeneratedItems, sGeneratedItems,
         items: nextGeneratedGeometryItems } = generated;
@@ -1098,6 +1118,10 @@ function ProjectWorkspace({ projectOwner, position }: {
     commitConstruction(`Edit ${id} properties`, before => editConstructionProperties(before, id, edit));
 
   const exportSvg = () => {
+    if (projectOwner.getPublication().tbDraft) {
+      setErrorMessage('Finish the TB group with OK or cancel it before exporting.');
+      return;
+    }
     // Export after Apply is clean laser geometry; export before Apply remains label/reference export.
     const hasAppliedGeometry = generatedGeometryItems.length > 0;
     const current = projectOwner.getBoxScope();
@@ -1621,7 +1645,7 @@ function ProjectWorkspace({ projectOwner, position }: {
         onClear={requestClearProject}
         focusClearOnMount={session.startRevision > 0}
         onDrawingToolsHostChange={setDrawingToolsHost}
-        canExport={!isProjectLocked && !needsGeometryApply && !box.dependencyDiagnostics?.length && Object.keys(edgeAssignments).length > 0}
+        canExport={!projectOwner.getPublication().tbDraft && !isProjectLocked && !needsGeometryApply && !box.dependencyDiagnostics?.length && Object.keys(edgeAssignments).length > 0}
         history={{ canUndo: history.undo.length > 0 || pendingProfileSegment, canRedo: history.redo.length > 0,
           onUndo: () => runHistoryCommand('undo'), onRedo: () => runHistoryCommand('redo') }}
       />
@@ -1707,6 +1731,7 @@ function ProjectWorkspace({ projectOwner, position }: {
                 {activeWorkflowFinish && <button className="toolbar-button" type="button"
                   onClick={activeWorkflowFinish.onClick} disabled={isProjectLocked}
                   title={`OK · ${activeTool} Group`}>{activeWorkflowFinish.label}</button>}
+                {activeTool === 'TB' && <button className="toolbar-button" type="button" onClick={closeBoxTool}>Cancel</button>}
               </>}
             </div>
           )}

@@ -160,6 +160,7 @@
     "test:sketch-editing-context:browser": "node tests/sketch-editing-context.browser.cjs",
     "test:global-project-history:browser": "node tests/global-project-history.browser.cjs",
     "test:drawing-box:browser": "node tests/drawing-box.browser.cjs",
+    "test:tb-draft-lifecycle:browser": "node tests/tb-draft-lifecycle.browser.cjs",
     "test:box-construction:browser": "node tests/box-construction.browser.cjs",
     "test:project-owner:browser": "node tests/project-owner.browser.cjs",
     "test:svg-import-lock:browser": "node tests/svg-import-lock.browser.cjs",

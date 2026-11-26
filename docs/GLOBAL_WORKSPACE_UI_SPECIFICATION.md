@@ -1,15 +1,15 @@
 # Laser Program — Global Workspace UI Specification
 
-## Approved correction target — History groups, diagnostics, OK and Escape (2026-11-25)
+## Approved correction target — History groups, diagnostics, OK and Escape (updated 2026-11-26)
 
 **Grouped History and tool exit are implemented and automatically tested on the review branch. User browser acceptance is pending. Per-operation diagnostics and dependency regeneration remain planned.**
 
-Group entries use the existing project chronology. Completed-group OK closes inspection. Escape returns to Select and leaves active BOX groups available from their tool buttons. An editor or open choice handles Escape first.
+Group entries use the existing project chronology. Completed-group OK closes inspection. For a new TB session, Escape discards all unfinished authoring and staged Apply output, then returns to Select. W/S retain their existing resumable behavior. An editor or open choice handles Escape first. The TB correction below supersedes the earlier resumable-TB and first-assignment promotion rules; user browser acceptance is pending.
 
 ### One History entry per meaningful authoring session
 
 - One TB authoring **group/session** may create TB1, TB2 and additional individual connections before its Finish/OK. It contributes **ONE permanent History entry**, representing that whole session. W and S follow the same group-level rule for their authoring sessions. Individual connections remain editable children in the tool inspector; they are not separate top-level History entries merely because another automatic connection was allocated.
-- Anchor the group's place in the global History when its **first meaningful authoring action is accepted**, not from an unused empty tool draft. Once created, its stable group-operation ID and original global position remain fixed even as TB1/TB2 are changed or the group is reopened.
+- A new TB group enters permanent History only on explicit **Finish/OK**, after every retained connection has exactly one valid A edge and one valid B edge with compatible lengths. Unused automatically allocated trailing connections are excluded. Empty and one-edge groups reject Finish with an explanation and remain available for correction or cancellation. W/S keep their first-meaningful-action boundary. Once accepted, the stable History ID and original global position remain fixed when the group is edited or reopened.
 - All Sketch, Panel Manager and BOX group/operation entries remain on **one shared row in exact global creation order**, even when work alternates between Sketch 1 and Sketch 2. Never group or sort by source, type, tool or selected module. A genuinely new later TB session appends a distinct entry; editing a previous session never moves it.
 - The current per-connection chronology must be migrated/reconciled without losing authored TB/W/S connections, assignments, Undo/Redo identities or user work. Do not pretend that an older project without group timestamps has a reconstructible historical order.
 
@@ -23,17 +23,17 @@ Group entries use the existing project chronology. Completed-group OK closes ins
 ### Consistent tool exit
 
 - **OK** must be available when a previously finished TB/W/S group is reopened from History; it closes its editing/inspection context without creating a new group, changing the original History position, discarding accepted assignments or needlessly adding an Undo action.
-- For a newly active authoring group, **OK** keeps its established Finish semantics and safely settles accepted work. Existing UI style must match the BOX Active Tool inspector.
-- **Escape** must work consistently in Drawing and BOX: dismiss the topmost transient choice/popover/editor where appropriate, cancel unfinished geometry previews, clear pending edge selections and exit the active tool to Select. Multiple Escape presses must be safe. It must not undo already accepted geometry or assignments, delete permanent operations, fabricate Undo entries or unexpectedly destroy Redo.
+- For a new TB authoring group, **OK** atomically accepts the complete group as one global Undo transition and one permanent History entry. Authoring completion does not require Geometry Apply: a completed group awaiting Apply is valid authored work. Apply while TB is open validates the complete draft and stages output; OK accepts that output with the definitions, while Escape discards both. Later edits still require normal Apply. W/S keep their existing Finish semantics. Existing UI style must match the BOX Active Tool inspector.
+- **Escape** must work consistently in Drawing and BOX: dismiss the topmost transient choice/popover/editor where appropriate, cancel unfinished geometry previews, clear pending edge selections and exit the active tool to Select. Multiple Escape presses must be safe. A newly cancelled TB draft leaves no connection, assignment, group, group-order record or History entry in the accepted project. Cancellation preserves the exact global Undo/Redo stacks, including an existing Redo branch. Opening an already completed TB from History and pressing Escape only closes its inspector; accepted assignments, geometry, History ID and chronology remain intact.
 - In Drawing, Escape exits a geometry tool/selection, **not the Sketch editing session itself**; only Finish Sketch exits the Sketch. An active numerical text field keeps the established Escape-to-cancel-draft behavior before a global Escape handler runs.
-- Tool exit and history reopening must remain safe with stale pointer releases, delayed Profile clicks and global Undo/Redo restoration.
+- Tool exit and history reopening must remain safe with stale pointer releases, delayed Profile clicks and global Undo/Redo restoration. New TB drafts live only in a session-scoped runtime frame under the project owner; the accepted project and 30-transition tape never contain them. Source/tool/module changes, import, restore and Clear discard this temporary frame. Old events cannot publish a discarded draft. Existing legacy accepted definitions/History identities are preserved without destructive cleanup.
 
 ### Manual user acceptance — short and focused
 
 1. Create TB1 and TB2 in ONE TB group, then Finish. Expect exactly **one** top-level TB entry.
 2. Create a later TB group in another Sketch and return to the first. Expect a second entry at its true creation position; the first group stays where it was.
 3. Reopen the first group from History. Expect OK and an unchanged History ID/order after closing.
-4. With an edge selected, press Escape. Expect selection cleared, no accepted work lost, no Undo/Redo mutation. Repeat for Drawing's active Line tool without leaving Sketch mode.
+4. Click TB and Escape, then repeat after assigning one edge. Expect no new History row, no leftover connection and unchanged Undo/Redo availability. Finish a valid A/B pair, reopen its History entry and press Escape; expect the completed operation to remain. Repeat tool exit for Drawing's active Line without leaving Sketch mode.
 5. **Future dependency slice.** Produce an intentionally invalid dependent operation and an incomplete contour candidate. Expect a red error marker on the affected History item and an explanatory warning in Panel Manager, respectively.
 
 ## BOX selection, History and camera

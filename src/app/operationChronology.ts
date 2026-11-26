@@ -95,7 +95,8 @@ export function reconcileChronology(entries: OperationChronology, next: Definiti
       if (kind !== 'TB' && kind !== 'W' && kind !== 'S') continue;
       const group = byConnection.get(id);
       if (group) {
-        if (meaningful.has(group.groupId)) append({ kind, groupId: group.groupId });
+        // Existing legacy rows keep their identities; new TB sessions enter only at Finish.
+        if (meaningful.has(group.groupId) && (kind !== 'TB' || !group.isActive || !previous)) append({ kind, groupId: group.groupId });
       } else if (assigned.has(id) || (!previous && next.chronology === undefined)
         || (prior && box.edgeAssignments === prior.edgeAssignments && !prior.connections[id])
         || previouslyAssigned?.has(id) || box.connections[id].hasAuthoredParameters) {

@@ -82,8 +82,9 @@ export function createGlobalProjectHistory(initial?: InitialProject, mode: Panel
     || !restorableContext(baseline.box.context)) throw new TypeError('Incomplete initial project');
   const roots = new WeakMap<ProjectStateCapture, ProjectStateSource>([[baseline, first]]);
   const boxes = new WeakMap<BoxStateCapture, BoxStateSource>([[baseline.box, first.box]]);
-  let publication: Readonly<{ project: ProjectStateSource; history: ProjectHistory; activeWorkspace: SupportedWorkspace; editingSketchId: string | null; epoch: number; revision: number; session: Readonly<{ startRevision: number }> }>
-    = Object.freeze({ project: first, history: initialHistory, activeWorkspace: DEFAULT_WORKSPACE, editingSketchId: null, epoch: 0, revision: 0, session: Object.freeze({ startRevision: 0 }) });
+  type TBDraft = Readonly<{ frame: ProjectStateCapture }>;
+  let publication: Readonly<{ tbDraft: TBDraft | null; project: ProjectStateSource; history: ProjectHistory; activeWorkspace: SupportedWorkspace; editingSketchId: string | null; epoch: number; revision: number; session: Readonly<{ startRevision: number }> }>
+    = Object.freeze({ tbDraft: null, project: first, history: initialHistory, activeWorkspace: DEFAULT_WORKSPACE, editingSketchId: null, epoch: 0, revision: 0, session: Object.freeze({ startRevision: 0 }) });
   let sequence = 0;
   let staging: ProjectTransaction | undefined;
   const getAttempt = () => ({ session: publication.session, revision: publication.revision });
@@ -120,11 +121,11 @@ export function createGlobalProjectHistory(initial?: InitialProject, mode: Panel
       const previous = before.project.constructionOperations.find(op => op.sketchId === editingSketchId);
       if (!previous || !root.constructionOperations.some(op => op.id === previous.id)) editingSketchId = null;
     }
-    const invalidate = editingSketchId !== before.editingSketchId || operation === 'restore' || operation === 'reset'
+    const invalidate = before.tbDraft !== null || editingSketchId !== before.editingSketchId || operation === 'restore' || operation === 'reset'
       || before.project.box.svgModel !== root.box.svgModel
       || (activeWorkspace === 'construction' && (getBoxScope(before.project).box.svgModel !== getBoxScope(root).box.svgModel
         || getBoxScope(before.project).working !== getBoxScope(root).working));
-    const position = Object.freeze({ project: root, history: next, activeWorkspace, editingSketchId, revision: before.revision + 1,
+    const position = Object.freeze({ tbDraft: null, project: root, history: next, activeWorkspace, editingSketchId, revision: before.revision + 1,
       epoch: before.epoch + Number(invalidate), session: operation === 'reset' ? Object.freeze({ startRevision: before.revision + 1 }) : before.session });
     // New position identity also wakes React when two same-event traversals
     // return to the same project root before a component can render.
@@ -179,8 +180,60 @@ export function createGlobalProjectHistory(initial?: InitialProject, mode: Panel
     return publish(result.history, root, 'edit', publication.activeWorkspace, editTarget) ? result : { outcome: 'rejected' };
   }
 
+  // A TB draft is a runtime projection, never the owner's accepted root or tape.
+  // Reuse transaction admission/capture without publishing its speculative stacks.
+  function publishDraft(tbDraft: TBDraft | null, invalidate = false) {
+    const before = publication;
+    return owner.publishFrame(before.project, before.project, () => {
+      publication = Object.freeze({ ...before, tbDraft, revision: before.revision + 1,
+        epoch: before.epoch + Number(invalidate) });
+      if (invalidate) owner.invalidateBoxImports();
+    });
+  }
+
+  function stageTBDraft(label: string, action: ProjectTransactionAction, admit = () => true, begin = false): GlobalEditResult {
+    if (staging) {
+      staging.nest(() => 'reject');
+      return { outcome: 'rejected' };
+    }
+    if (begin && publication.tbDraft) return { outcome: 'rejected' };
+    const attempt = getAttempt();
+    const history = publication.history;
+    const result = transactProjectHistory({ ...history, current: publication.tbDraft?.frame ?? history.current },
+      { module: 'box', label, id: 'draft' }, tx => {
+        staging = tx;
+        try { return action(tx); } finally { staging = undefined; }
+      });
+    if (result.outcome !== 'accepted') return { ...result, history, frame: history.current };
+    if (!admit() || !isCurrent(attempt)) return { outcome: 'rejected' };
+    try {
+      const candidate = project(result.frame);
+      Object.freeze(candidate.box);
+      Object.freeze(candidate);
+    } catch (error) { return { outcome: 'rejected', error }; }
+    if (!publishDraft(Object.freeze({ frame: result.frame }), begin)) return { outcome: 'rejected' };
+    return { outcome: 'accepted', history, frame: history.current };
+  }
+
+  function cancelTBDraft() {
+    return publication.tbDraft !== null && !staging && publishDraft(null, true);
+  }
+
+  function acceptTBDraft(label: string, action: ProjectTransactionAction, admit?: () => boolean) {
+    const draft = publication.tbDraft;
+    if (!draft) return commit('box', label, action, admit);
+    return commit('box', label, tx => {
+      tx.update(() => draft.frame);
+      return action(tx);
+    }, admit);
+  }
+
   function transact(module: Module, label: string, action: ProjectTransactionAction, admit?: () => boolean) {
-    return commit(module, label, action, admit);
+    return module === 'box' && publication.tbDraft ? stageTBDraft(label, action, admit) : commit(module, label, action, admit);
+  }
+
+  function currentBoxScope() {
+    return getBoxScope(publication.tbDraft ? project(publication.tbDraft.frame) : publication.project);
   }
 
   function navigate(requested: WorkspaceId, leave?: (source: SupportedWorkspace) => void) {
@@ -232,6 +285,7 @@ export function createGlobalProjectHistory(initial?: InitialProject, mode: Panel
 
   function traverse(direction: 'undo' | 'redo') {
     if (staging) return null;
+    cancelTBDraft();
     const history = publication.history;
     const result = direction === 'undo' ? undoProjectHistory(history) : redoProjectHistory(history);
     const root = roots.get(result.frame);
@@ -243,6 +297,7 @@ export function createGlobalProjectHistory(initial?: InitialProject, mode: Panel
   }
 
   function selectBoxSource(id: string) {
+    cancelTBDraft();
     const { project: root, history } = publication;
     const sources = root.boxSources;
     if (staging || publication.activeWorkspace !== 'construction') return false;
@@ -256,6 +311,17 @@ export function createGlobalProjectHistory(initial?: InitialProject, mode: Panel
   }
 
   function setBoxContext(patch: Partial<BoxRestorationContext>) {
+    if (publication.tbDraft) {
+      stageTBDraft('TB selection', tx => {
+        const frame = tx.getCandidate(), scope = currentBoxScope();
+        const next = { ...scope.box, ...patch };
+        if (Object.entries(patch).every(([key, value]) => scope.box[key as keyof BoxRestorationContext] === value)) return 'noop';
+        tx.update(() => scope.id === IMPORTED_SOURCE ? { ...frame, box: boxStateFields(next) }
+          : { ...frame, boxSources: { ...frame.boxSources!, sketches: { ...frame.boxSources!.sketches, [scope.id]: next } } });
+        return 'accept';
+      });
+      return;
+    }
     const history = publication.history;
     const frame = history.current;
     const scope = getBoxScope(publication.project);
@@ -282,7 +348,9 @@ export function createGlobalProjectHistory(initial?: InitialProject, mode: Panel
   return { getSnapshot: owner.getSnapshot, subscribe: owner.subscribe, getHistory: () => publication.history,
     getPublication: () => publication,
     drawingDocumentRef: { get current() { return owner.getSnapshot().drawingDocument; } },
-    getEpoch: () => publication.epoch, getAttempt, isCurrent, transact, navigate, newSketch, openSketch, openSketchOperation, finishSketch, traverse, clearProject, setBoxContext, selectBoxSource, getBoxScope: () => getBoxScope(publication.project),
-    beginBoxImport: owner.beginBoxImport, isCurrentBoxImport: (token: ReturnType<typeof owner.beginBoxImport>) => publication.activeWorkspace === 'construction' && owner.isCurrentBoxImport(token), invalidateBoxImports: owner.invalidateBoxImports };
+    getEpoch: () => publication.epoch, getAttempt, isCurrent, transact, navigate, newSketch, openSketch, openSketchOperation, finishSketch, traverse, clearProject, setBoxContext, selectBoxSource, getBoxScope: currentBoxScope,
+    beginTBDraft: (action: ProjectTransactionAction, admit?: () => boolean) => stageTBDraft('Start TB group', action, admit, true),
+    acceptTBDraft, cancelTBDraft,
+    beginBoxImport: () => { cancelTBDraft(); return owner.beginBoxImport(); }, isCurrentBoxImport: (token: ReturnType<typeof owner.beginBoxImport>) => publication.activeWorkspace === 'construction' && owner.isCurrentBoxImport(token), invalidateBoxImports: owner.invalidateBoxImports };
 }
 export type GlobalProjectHistory = ReturnType<typeof createGlobalProjectHistory>;
