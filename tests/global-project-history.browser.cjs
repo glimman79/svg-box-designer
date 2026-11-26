@@ -161,18 +161,20 @@ const assert = require('node:assert/strict');
       [...document.querySelectorAll('.tool-sidebar button')].find(b => b.textContent.trim() === 'TB').click();
       return [switched, window.inspectHistory()];
     });
-    assert.equal(sameEvent[1].undo,sameEvent[0].undo+1);
+    assert.equal(sameEvent[1].undo,sameEvent[0].undo,'TB activation is transient');
     const group = await state(); assert.equal(group.activeWorkspace,'construction');
-    assert.equal(group.action.kind,'edit'); assert.equal(group.action.module,'box');
-    await edge(0); const assigned = await state();
+    await edge(0); await expectFrame(group,box);
     await edge(4,true); await page.keyboard.press('Control+z'); await page.keyboard.press('Control+y');
-    await page.mouse.up(); await expectFrame(assigned,box);
+    await page.mouse.up(); await expectFrame(group,box);
+    // Traversal cancels the old draft and invalidates its captured pointer release.
+    await tool('TB'); await edge(0); await edge(4); await action('OK');
+    const assigned = await state();
     await navigate(drawing); await line(70); const secondLine = await state();
     await undo.click(); await expectFrame(assigned,drawing); await undo.click(); await expectFrame(assigned,box);
     await undo.click(); await expectFrame(group,box);
     await redo.click(); await expectFrame(assigned,box); await redo.click(); await expectFrame(assigned,drawing);
     await redo.click(); await expectFrame(secondLine,drawing);
-    await navigate(box); await edge(4); await action('OK');
+    await navigate(box);
     await tool('W'); await edge(1); await edge(7); await action('OK');
     await tool('S'); await edge(2); await edge(6); await action('OK');
     const history = page.getByRole('complementary',{name:'Construction history'});
@@ -351,11 +353,9 @@ const assert = require('node:assert/strict');
     await action('Accept default thickness');
     const newBoxEdit = await state();
     await action('Apply'); const newPM = await state(); await action('OK');
-    await tool('TB'); const freshGroup = await state();
-    await edge(0); const firstEdge = await state();
-    await edge(4); const pair = await state();
-    await undo.click(); await expectFrame(firstEdge,box);
-    await undo.click(); await expectFrame(freshGroup,box);
+    await tool('TB'); await expectFrame(newPM,box);
+    await edge(0); await expectFrame(newPM,box);
+    await edge(4); await action('OK'); const pair = await state();
     await undo.click(); await expectFrame(newPM,box);
     await undo.click(); await expectFrame(newBoxEdit,box);
     await undo.click(); await expectFrame(newImport,box);
@@ -366,7 +366,7 @@ const assert = require('node:assert/strict');
     assert.equal(await page.locator('[data-sketch-line-id]').count(),0);
     await undo.click(); await expectFrame(empty,drawing); assert.ok(await undo.isDisabled());
     for (const [snapshot,workspace] of [[freshSketch,drawing],[freshLine,drawing],[freshLine,box],[newImport,box],
-      [newBoxEdit,box],[newPM,box],[freshGroup,box],[firstEdge,box],[pair,box]]) {
+      [newBoxEdit,box],[newPM,box],[pair,box]]) {
       await redo.click(); await expectFrame(snapshot,workspace);
     }
 

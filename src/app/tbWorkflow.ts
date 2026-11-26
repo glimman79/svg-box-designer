@@ -1,6 +1,7 @@
 import { newIdentityToken } from './constructionOperations';
 import { getBucketEdgeAssignment } from './assignmentBuckets';
-import type { EdgeAssignmentRecord } from '../svgUtils';
+import type { EdgeAssignmentRecord, SvgDocumentModel } from '../svgUtils';
+import { validateCurrentTBEdgeCompatibility } from './tbGeometry';
 import type { ActiveTBGroup, ConnectionMap, TBConnectionDefinition, TBConnectionProperties } from './connectionTypes';
 import { getNextConnectionLabel } from './connectionLabels';
 
@@ -84,18 +85,30 @@ export const finishTBGroupWithTrailingCleanup = (
   connections: ConnectionMap,
   assignments: EdgeAssignmentRecord,
   selectedLabelId: string | null,
+  svgModel?: SvgDocumentModel,
 ) => {
   const lastConnectionId = activeTBGroup.connectionIds.at(-1);
   const lastAssignmentCount = lastConnectionId
     ? Object.values(assignments).filter((assignment) => getBucketEdgeAssignment(assignment)?.connectionId === lastConnectionId).length
     : 0;
-  const shouldRemoveTrailingConnection = !!lastConnectionId && !connections[lastConnectionId]?.hasAuthoredParameters && lastAssignmentCount === 0;
+  const shouldRemoveTrailingConnection = !!lastConnectionId && lastAssignmentCount === 0;
   const nextConnectionIds = shouldRemoveTrailingConnection
     ? activeTBGroup.connectionIds.slice(0, -1)
     : activeTBGroup.connectionIds;
   const nextConnections = shouldRemoveTrailingConnection
     ? Object.fromEntries(Object.entries(connections).filter(([connectionId]) => connectionId !== lastConnectionId)) as ConnectionMap
     : connections;
+  if (!nextConnectionIds.length) throw new Error('Assign one A edge and one B edge before finishing the TB group.');
+  for (const id of nextConnectionIds) {
+    const edges = Object.entries(assignments).filter(([, bucket]) => getBucketEdgeAssignment(bucket)?.connectionId === id);
+    const roles = edges.map(([, bucket]) => getBucketEdgeAssignment(bucket)?.edgeRole);
+    if (connections[id]?.prefix !== 'TB' || edges.length !== 2 || !roles.includes('A') || !roles.includes('B')
+      || (svgModel && edges.some(([edgeId]) => !svgModel.edges.some(edge => edge.id === edgeId)))) {
+      throw new Error(`${id} is incomplete. Assign exactly one valid A edge and one valid B edge before finishing or applying the TB group, or press Escape to discard it.`);
+    }
+  }
+  if (svgModel) validateCurrentTBEdgeCompatibility(svgModel, assignments,
+    Object.fromEntries(nextConnectionIds.map(id => [id, connections[id]])));
   const activeTBGroupWithoutTrailing = {
     ...activeTBGroup,
     connectionIds: nextConnectionIds,

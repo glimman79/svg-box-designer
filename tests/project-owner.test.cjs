@@ -124,9 +124,9 @@ test('production TB/W/S completion, workflow creation and restoration retain aut
   c.finishGroup('S'); assert.equal(owner.getSnapshot().box.activeSGroup.isActive,false);
   c.finishGroup('W'); assert.equal(owner.getSnapshot().box.activeWallGroup.isActive,false);
   assert.equal(owner.getSnapshot().box.completedWallGroups.at(-1).groupId,'w-current');
-  c.startGroup('TB'); assert.equal(owner.getSnapshot().box.activeTBGroup.isActive,true);
-  const group=owner.getSnapshot().box.activeTBGroup; assert.ok(owner.getSnapshot().box.connections[group.connectionIds[0]]);
-  assert.ok(Number.isFinite(owner.getSnapshot().box.workflowGroupOrder[group.groupId]));
+  c.startGroup('TB'); assert.equal(owner.getBoxScope().box.activeTBGroup.isActive,true);
+  const group=owner.getBoxScope().box.activeTBGroup; assert.ok(owner.getBoxScope().box.connections[group.connectionIds[0]]);
+  assert.ok(Number.isFinite(owner.getBoxScope().box.workflowGroupOrder[group.groupId]));
   c.startGroup('S'); assert.equal(owner.getSnapshot().box.activeSGroup.isActive,true);
   assert.equal(owner.getSnapshot().box.generatedGeometrySnapshot,generated);
   c.undoLastEdit(); c.redoLastEdit(); assert.equal(owner.getSnapshot().box.activeSGroup.isActive,true);

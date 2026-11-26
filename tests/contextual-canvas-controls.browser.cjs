@@ -95,7 +95,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     for (const name of ['J', 'P', 'Select']) { await tool(name).click(); assert.equal(await actions.count(), 0); }
     passed.push('PM validation, keyboard Apply/Finish exactly once, existing PM Undo boundary and placeholder/Select absence');
 
-    for (const name of ['TB', 'W', 'S']) {
+    for (const name of ['W', 'S']) {
       await prepare(); await tool(name).click();
       assert.equal(await apply().isDisabled(), true, `${name} has no Apply inputs yet`);
       assert.equal(await finish('OK').isEnabled(), true, 'preserve existing incomplete-group Finish availability');
@@ -119,7 +119,7 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
       assert.equal(await finish('OK').isVisible(), true, 'one Undo restores group');
       await redo().click(); assert.equal(await finish('OK').count(), 0, 'one Redo finishes group');
     }
-    passed.push('TB/W/S incomplete Finish, tool exit/reopen, module switch isolation and single-step Finish Undo/Redo');
+    passed.push('W/S incomplete Finish, tool exit/reopen, module switch isolation and single-step Finish Undo/Redo');
 
     await prepare(); await tool('TB').click();
     await edge(0); await edge(4);
@@ -190,8 +190,9 @@ const panels = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 100"><r
     await drawingTool('Circle').click(); await drawPoint({ x: 60, y: -50 }); await drawPoint({ x: 90, y: -50 });
     await drawingTool('Constraints').click();
     await page.getByRole('button',{name:'Finish Sketch',exact:true}).click();
-    await box();
+    await box(); await tool('TB').click(); // Navigation discarded the previous unfinished TB.
     for (const size of [{ width: 1920, height: 1080 }, { width: 1366, height: 768 }, { width: 1024, height: 768 }]) {
+      await tool('TB').click();
       await page.setViewportSize(size); await assertActionsVisible();
       await apply().evaluate(e => e.scrollIntoView());
       await finish('OK').focus();
