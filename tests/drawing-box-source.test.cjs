@@ -5,6 +5,7 @@ const {api, harness, production} = require('./project-owner-harness.cjs');
 const {drawingPanelModel} = require('../.test-build/project-owner/src/app/drawingPanelSource.js');
 const {isSourceApproved,sourceStatus} = require('../.test-build/project-owner/src/app/boxSources.js');
 const {createEmptySketch} = require('../.test-build/project-owner/src/app/drawingTypes.js');
+const {validateCurrentTBEdgeCompatibility,buildGeneratedTBGeometryItems} = require('../.test-build/project-owner/src/app/tbGeometry.js');
 
 function polygon(sketch, name, coords, close = true) {
   const points = {...sketch.points}, entities = {...sketch.entities};
@@ -22,6 +23,30 @@ function polygon(sketch, name, coords, close = true) {
 }
 const rectangle = (s, name, x) => polygon(s,name,[[x,0],[x+100,0],[x+100,80],[x,80]]);
 const pair = id => rectangle(rectangle(createEmptySketch(id,id),'a',0),'b',130);
+
+test('TB length compatibility is scoped to each connection, even within one group', () => {
+  const sketch = rectangle(rectangle(pair('four'),'c',260),'d',390);
+  const model = drawingPanelModel(sketch,{id:'four',definitionRevision:'revision'});
+  const edges = model.panels.map(panel=>panel.outerEdgeIds[0]);
+  const assignments = Object.fromEntries(edges.slice(0,4).map((edgeId,index)=>
+    [edgeId,{edgeAssignment:{connectionId:index<2?'TB1':'TB2',edgeRole:index%2?'B':'A'}}]));
+  const connections = Object.fromEntries(['TB1','TB2'].map(id=>[id,{id,prefix:'TB',properties:{fingerWidthMm:10,isFingerWidthManual:true}}]));
+  assert.doesNotThrow(()=>validateCurrentTBEdgeCompatibility(model,assignments,connections));
+  const mismatch = drawingPanelModel(resizeRectangle(sketch,'d',120),{id:'four',definitionRevision:'revision'});
+  assert.throws(()=>validateCurrentTBEdgeCompatibility(mismatch,assignments,connections),
+    error=>error.code==='TB_EDGE_LENGTH_MISMATCH'&&error.connectionId==='TB2'&&/100\.000 mm, B 120\.000 mm/.test(error.message));
+});
+
+test('a complete TB connection cannot silently discard a failed panel contour', () => {
+  const model = drawingPanelModel(pair('invalid'),{id:'invalid',definitionRevision:'revision'});
+  const assignments = Object.fromEntries(model.panels.map((panel,index)=>
+    [panel.outerEdgeIds[0],{edgeAssignment:{connectionId:'TB1',edgeRole:index?'B':'A'}}]));
+  const connections = {TB1:{id:'TB1',prefix:'TB',properties:{fingerWidthMm:10,isFingerWidthManual:true}}};
+  const panels = Object.fromEntries(model.panels.map(panel=>[panel.id,{panelId:panel.id,thicknessMm:3}]));
+  const broken = {...model,panels:[{...model.panels[0],contour:model.panels[0].contour.slice(0,2)},model.panels[1]]};
+  assert.throws(()=>buildGeneratedTBGeometryItems(broken,assignments,connections,{panels}),
+    error=>error.code==='TB_GEOMETRY_GENERATION_FAILED'&&error.connectionId==='TB1');
+});
 function initial(sketches) {
   const ids = Object.keys(sketches);
   return api.makeEmptyProjectState({schemaVersion:2,unit:'mm',activeSketchId:ids[0],sketchOrder:ids,sketches});
@@ -300,6 +325,38 @@ function resizeRectangle(sketch,name,width) {
   return {...sketch,points};
 }
 
+test('ordinary unequal TB edges block automatic and manual Apply, then recover atomically', () => {
+  const {owner,c,first,second,edit} = appliedTBProject();
+  const before = owner.getSnapshot();
+  const prior = before.boxSources.sketches[first];
+  const profiles = prior.generatedGeometrySnapshot.generatedGeometry.flatMap(item=>item.generatedProfiles??[]);
+  assert.equal(profiles.filter(profile=>profile.operationId==='operation:TB:TB1').length,2);
+  const result = edit(s=>resizeRectangle(s,'b',120));
+  assert.equal(result.outcome,'accepted',result.error?.message);
+  const blocked = owner.getSnapshot();
+  const box = blocked.boxSources.sketches[first];
+  assert.equal(box.dependencyDiagnostics?.[0]?.code,'TB_EDGE_LENGTH_MISMATCH');
+  assert.match(box.dependencyDiagnostics[0].message,/TB1.*A 100\.000 mm, B 120\.000 mm/);
+  assert.equal(box.dependencyDiagnostics[0].groupId,blocked.chronology.find(e=>e.kind==='TB'&&e.sourceId===first).groupId);
+  assert.equal(box.generatedGeometrySnapshot,prior.generatedGeometrySnapshot);
+  assert.equal(box.edgeAssignments,prior.edgeAssignments);
+  assert.equal(box.connections,prior.connections);
+  assert.equal(blocked.boxSources.sketches[second],before.boxSources.sketches[second]);
+  assert.equal(box.panelManager.needsGeometryApply,true);
+  const beforeApply = owner.getSnapshot();
+  c.applyPanelPaths();
+  assert.match(c.errorMessage,/TB_EDGE_LENGTH_MISMATCH|incompatible source edge lengths/);
+  assert.equal(owner.getSnapshot(),beforeApply);
+  const repaired = edit(s=>resizeRectangle(s,'b',100));
+  assert.equal(repaired.outcome,'accepted',repaired.error?.message);
+  const restored = owner.getSnapshot();
+  assert.deepEqual(restored.boxSources.sketches[first].dependencyDiagnostics,[]);
+  assert.equal(restored.boxSources.sketches[first].panelManager.needsGeometryApply,false);
+  assert.equal(restored.boxSources.sketches[first].generatedGeometrySnapshot,prior.generatedGeometrySnapshot);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),blocked);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot(),restored);
+});
+
 test('compatible Drawing resize regenerates applied TB in its single global history step', () => {
   const {owner,first,second,edit} = appliedTBProject();
   const before = owner.getSnapshot();
@@ -334,7 +391,7 @@ test('incompatible TB resize accepts Drawing and blocks stale output with group 
   assert.equal(current.edgeAssignments,prior.edgeAssignments);
   assert.equal(current.panelManager.isApplied,true);
   assert.equal(current.panelManager.needsGeometryApply,true);
-  assert.equal(current.dependencyDiagnostics?.[0]?.code,'BOX_REGENERATION_FAILED');
+  assert.equal(current.dependencyDiagnostics?.[0]?.code,'TB_EDGE_LENGTH_MISMATCH');
   assert.equal(current.dependencyDiagnostics?.[0]?.severity,'error');
   assert.equal(current.dependencyDiagnostics?.[0]?.sourceId,first);
   assert.equal(current.dependencyDiagnostics?.[0]?.groupId,after.chronology.find(e=>e.sourceId===first&&e.kind==='TB').groupId);
@@ -373,7 +430,7 @@ test('pending BOX authoring is not silently included in Drawing regeneration', (
 test('a later compatible edit can restore a blocked TB batch without another Apply', () => {
   const {owner,first,edit} = appliedTBProject();
   edit(s=>resizeRectangle(s,'b',0.5));
-  assert.equal(owner.getSnapshot().boxSources.sketches[first].dependencyDiagnostics?.[0]?.code,'BOX_REGENERATION_FAILED');
+  assert.equal(owner.getSnapshot().boxSources.sketches[first].dependencyDiagnostics?.[0]?.code,'TB_EDGE_LENGTH_MISMATCH');
   const result = edit(s=>resizeRectangle(s,'b',100));
   assert.equal(result.outcome,'accepted',result.error?.message);
   const restored = owner.getSnapshot().boxSources.sketches[first];
@@ -389,7 +446,7 @@ test('unrelated open Line preserves blocked TB until repaired, with one history 
   edit(s=>resizeRectangle(s,'b',0.5));
   const blocked = owner.getSnapshot();
   const failure = blocked.boxSources.sketches[first].dependencyDiagnostics;
-  assert.equal(failure?.[0]?.code,'BOX_REGENERATION_FAILED');
+  assert.equal(failure?.[0]?.code,'TB_EDGE_LENGTH_MISMATCH');
   assert.equal(sourceStatus(blocked.boxSources.sketches[first]),'Blocked · needs repair');
   const count = owner.getHistory().undo.length;
   edit(s=>polygon(s,'open',[[300,0],[320,10]],false));

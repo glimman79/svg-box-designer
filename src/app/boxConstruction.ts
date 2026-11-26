@@ -92,6 +92,7 @@ export function assignConstructionEdge(box: BoxStateSource, edgeId: string, id: 
     requireReplacementAvailable(box, edgeId, id);
     if (bucket.edgeAssignment) throw new Error('This edge already has a TB assignment.');
     const prior = Object.values(edgeAssignments).map(getBucketEdgeAssignment).filter(assignment => assignment?.connectionId === id);
+    if (prior.length >= 2) throw new Error(`TB_INVALID_EDGE_ASSIGNMENT_COUNT: ${id} already has two assigned edges.`);
     const role: EdgeRole = prior.some(a => a?.edgeRole === 'A') && !prior.some(a => a?.edgeRole === 'B') ? 'B' : 'A';
     const next = { ...box, ...context, edgeAssignments: { ...edgeAssignments, [edgeId]: {
       ...bucket, edgeAssignment: { connectionId: id, edgeRole: role },

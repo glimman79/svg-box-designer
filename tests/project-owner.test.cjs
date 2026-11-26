@@ -91,6 +91,33 @@ test('Panel Manager pending state retains accepted output and TB/S source proper
   c.redoLastEdit(); assert.deepEqual(owner.getSnapshot().box.generatedGeometrySnapshot,applied.box.generatedGeometrySnapshot);
 });
 
+test('imported SVG Panel Manager rejects unequal TB edges without publishing and accepts matching edges',()=>{
+  const initial=api.makePopulatedProjectState();
+  const b=initial.box.svgModel.edges.find(edge=>edge.id==='panel-b-edge-2');
+  b.end={...b.end,x:b.end.x+20};
+  const {projectOwner:owner,context:c}=harness(initial);
+  c.updatePanelThickness('panel-a',5);
+  const before=owner.getSnapshot(), history=owner.getHistory();
+  let publications=0;
+  const unsubscribe=owner.subscribe(()=>publications++);
+  c.applyPanelManager();
+  assert.match(c.errorMessage,/TB1.*incompatible source edge lengths/);
+  assert.equal(owner.getSnapshot(),before);
+  assert.equal(owner.getHistory(),history);
+  assert.equal(publications,0);
+  assert.equal(owner.getSnapshot().box.generatedGeometrySnapshot,before.box.generatedGeometrySnapshot);
+  unsubscribe();
+
+  const valid=api.makePopulatedProjectState();
+  const {projectOwner:validOwner,context:validContext}=harness(valid);
+  validContext.updatePanelThickness('panel-a',5);
+  validContext.applyPanelManager();
+  assert.equal(validContext.errorMessage,'');
+  assert.equal(validOwner.getSnapshot().box.panelManager.isApplied,true);
+  assert.equal(validOwner.getSnapshot().box.generatedGeometrySnapshot.generatedGeometry.flatMap(item=>item.generatedProfiles??[])
+    .filter(profile=>profile.operationId==='operation:TB:TB1').length,2);
+});
+
 test('production TB/W/S completion, workflow creation and restoration retain authoring/order without implicit geometry Apply',()=>{
   const {projectOwner:owner,context:c}=harness(); const before=owner.getSnapshot(), generated=before.box.generatedGeometrySnapshot;
   c.finishGroup('TB'); assert.equal(owner.getSnapshot().box.activeTBGroup.isActive,false);
