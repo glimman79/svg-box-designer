@@ -1118,6 +1118,10 @@ function ProjectWorkspace({ projectOwner, position }: {
     commitConstruction(`Edit ${id} properties`, before => editConstructionProperties(before, id, edit));
 
   const exportSvg = () => {
+    if (projectOwner.getPublication().tbDraft) {
+      setErrorMessage('Finish the TB group with OK or cancel it before exporting.');
+      return;
+    }
     // Export after Apply is clean laser geometry; export before Apply remains label/reference export.
     const hasAppliedGeometry = generatedGeometryItems.length > 0;
     const current = projectOwner.getBoxScope();
@@ -1641,7 +1645,7 @@ function ProjectWorkspace({ projectOwner, position }: {
         onClear={requestClearProject}
         focusClearOnMount={session.startRevision > 0}
         onDrawingToolsHostChange={setDrawingToolsHost}
-        canExport={!isProjectLocked && !needsGeometryApply && !box.dependencyDiagnostics?.length && Object.keys(edgeAssignments).length > 0}
+        canExport={!projectOwner.getPublication().tbDraft && !isProjectLocked && !needsGeometryApply && !box.dependencyDiagnostics?.length && Object.keys(edgeAssignments).length > 0}
         history={{ canUndo: history.undo.length > 0 || pendingProfileSegment, canRedo: history.redo.length > 0,
           onUndo: () => runHistoryCommand('undo'), onRedo: () => runHistoryCommand('redo') }}
       />
@@ -1727,6 +1731,7 @@ function ProjectWorkspace({ projectOwner, position }: {
                 {activeWorkflowFinish && <button className="toolbar-button" type="button"
                   onClick={activeWorkflowFinish.onClick} disabled={isProjectLocked}
                   title={`OK · ${activeTool} Group`}>{activeWorkflowFinish.label}</button>}
+                {activeTool === 'TB' && <button className="toolbar-button" type="button" onClick={closeBoxTool}>Cancel</button>}
               </>}
             </div>
           )}
