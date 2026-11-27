@@ -4,6 +4,9 @@ import type { GeometryRelationshipKind, SourceGeometryRelationship } from './geo
 import { buildGeometryRelationshipIndex } from './geometryRelationships';
 import type { PanelCompositionAuthorityMode } from './generatedGeometryAuthority';
 import type { EdgeAssignmentRecord, EdgeRole, SlotRole, SvgDocumentModel } from '../svgUtils';
+import { GeometryDependencyError } from './geometryDependencyError';
+
+const rejectAuthoring = (error: GeometryDependencyError): void => { throw error; };
 
 export type SourceEdgeAuthoringClaim = SourceGeometryRelationship & Readonly<{
   contributorId: string;
@@ -47,26 +50,32 @@ export const collectSourceEdgeAuthoringClaims = (model: SvgDocumentModel, assign
 };
 
 /** Generic exclusive-REPLACES validation, keyed only by stable panel and source-edge identity. */
-export const validateSourceEdgeReplacementClaims = (claims: ReadonlyArray<SourceEdgeAuthoringClaim>): void => {
-  const index = buildGeometryRelationshipIndex(claims);
-  const conflict = index.diagnostics.find((diagnostic) => diagnostic.kind === 'replacement-conflict');
-  if (!conflict) return;
-  const source = index.sources.find((view) => view.replacementClaimants.length > 1
-    && view.replacementClaimants.every((operationId) => conflict.operationIds.includes(operationId)));
-  throw new Error(`Source edge ${source?.source.sourceEdgeId ?? conflict.key} on panel ${source?.source.panelId ?? 'unknown'} already has replacement operations: ${conflict.operationIds.join(', ')}.`);
+export const validateSourceEdgeReplacementClaims = (claims: ReadonlyArray<SourceEdgeAuthoringClaim>,
+  onFailure = rejectAuthoring): void => {
+  const connectionByOperation = new Map(claims.map(claim => [claim.operationId, claim.connectionId]));
+  for (const { source, replacementClaimants } of buildGeometryRelationshipIndex(claims).sources) {
+    if (replacementClaimants.length < 2) continue;
+    const connectionIds = replacementClaimants.map(id => connectionByOperation.get(id)!);
+    onFailure(new GeometryDependencyError(connectionIds,
+      `Source edge ${source.sourceEdgeId} on panel ${source.panelId} already has replacement operations: ${replacementClaimants.join(', ')}.`));
+  }
 };
 
 /** Migration eligibility is separate from semantic ownership validity and has no tool-pair policy. */
 export const validateAuthorityModeForAuthoringClaims = (claims: ReadonlyArray<SourceEdgeAuthoringClaim>,
-  mode: PanelCompositionAuthorityMode): void => {
+  mode: PanelCompositionAuthorityMode, onFailure = rejectAuthoring): void => {
   if (mode === 'mixed') return;
-  const contributorsByPanel = new Map<string, Set<string>>();
-  claims.filter((value) => value.kind === 'replaces').forEach((value) => {
-    const contributors = contributorsByPanel.get(value.panelId) ?? new Set<string>();
-    contributors.add(value.contributorId); contributorsByPanel.set(value.panelId, contributors);
-  });
-  const mixedPanel = [...contributorsByPanel].find(([, contributors]) => contributors.size > 1);
-  if (mixedPanel) throw new Error(`Panel ${mixedPanel[0]} uses multiple replacement contributors; mixed panel composition requires mixed authority mode.`);
+  const byPanel = new Map<string, SourceEdgeAuthoringClaim[]>();
+  for (const value of claims.filter(claim => claim.kind === 'replaces')) {
+    const replacements = byPanel.get(value.panelId) ?? [];
+    replacements.push(value);
+    byPanel.set(value.panelId, replacements);
+  }
+  for (const [panelId, replacements] of byPanel) {
+    if (new Set(replacements.map(value => value.contributorId)).size < 2) continue;
+    onFailure(new GeometryDependencyError([...new Set(replacements.map(value => value.connectionId))],
+      `Panel ${panelId} uses multiple replacement contributors; mixed panel composition requires mixed authority mode.`));
+  }
 };
 
 export const validateGeometryAuthoring = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord,

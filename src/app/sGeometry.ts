@@ -1,6 +1,7 @@
 import { getBucketSlotAssignments } from './assignmentBuckets';
 import type { ConnectionMap, SlotConnectionDefinition } from './connectionTypes';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
+import { GeometryDependencyError } from './geometryDependencyError';
 import { createBoundaryProfileGroup, createGeneratedProfile } from './generatedProfiles';
 import { createGeneratedTapId } from './generatedTaps';
 import type { GeneratedTapGroup, GeneratedTapSegmentRole } from './generatedTaps';
@@ -338,7 +339,7 @@ export const buildGeneratedSGeometryItems = (
     const bEdges = assignedEdges.filter(([, assignment]) => assignment.slotRole === 'B');
 
     if (aEdges.length !== 1 || bEdges.length !== 1) {
-      throw new Error(`${connection.id} must have exactly one S-A edge and one S-B edge.`);
+      throw new GeometryDependencyError([connection.id], `${connection.id} must have exactly one S-A edge and one S-B edge.`);
     }
 
     const [sourceAEdgeId] = aEdges[0];
@@ -349,21 +350,21 @@ export const buildGeneratedSGeometryItems = (
     const bPanel = findPanelContainingEdge(svgModel, sourceBEdgeId);
 
     if (!sourceAEdge || !sourceBEdge || !panel) {
-      throw new Error(`${connection.id} S-A edge must be part of a valid closed panel.`);
+      throw new GeometryDependencyError([connection.id], `${connection.id} S-A edge must be part of a valid closed panel.`);
     }
 
     if (!bPanel) {
-      throw new Error(`${connection.id} S-B edge must be part of a valid closed panel so slot offset direction can be determined.`);
+      throw new GeometryDependencyError([connection.id], `${connection.id} S-B edge must be part of a valid closed panel so slot offset direction can be determined.`);
     }
 
     const validation = validateClosedPanel(panel, edgesById);
     if (!validation.valid) {
-      throw new Error(`${connection.id} S-A edge is not part of a valid closed panel: ${validation.reason}`);
+      throw new GeometryDependencyError([connection.id], `${connection.id} S-A edge is not part of a valid closed panel: ${validation.reason}`);
     }
 
     const bValidation = validateClosedPanel(bPanel, edgesById);
     if (!bValidation.valid) {
-      throw new Error(`${connection.id} S-B edge must be part of a valid closed panel so slot offset direction can be determined.`);
+      throw new GeometryDependencyError([connection.id], `${connection.id} S-B edge must be part of a valid closed panel so slot offset direction can be determined.`);
     }
 
     const sideIndex = panel.edgeIds.findIndex((edgeId) => edgeId === sourceAEdgeId);
@@ -371,7 +372,7 @@ export const buildGeneratedSGeometryItems = (
     const sideLength = getContourSideLength(originalSide);
     const sThickness = resolveSThickness(svgModel, assignments, connection, panelThicknessState);
     if (!sThickness.isComplete || sThickness.panelAThicknessMm === null || sThickness.panelBThicknessMm === null) {
-      throw new Error(`${connection.id} incomplete connection: S-A and S-B panels must both resolve PM thickness.`);
+      throw new GeometryDependencyError([connection.id], `${connection.id} incomplete connection: S-A and S-B panels must both resolve PM thickness.`);
     }
 
     const wallThicknessMm = sThickness.panelAThicknessMm;
@@ -379,7 +380,7 @@ export const buildGeneratedSGeometryItems = (
     const slotLengthMm = resolveSSlotLengthMm(connection, sThickness);
 
     if (slotLengthMm === null) {
-      throw new Error(`${connection.id} incomplete connection: S tab/slot length cannot be resolved without PM thickness.`);
+      throw new GeometryDependencyError([connection.id], `${connection.id} incomplete connection: S tab/slot length cannot be resolved without PM thickness.`);
     }
     const planSegments = createTabSegmentPlan(sideLength, slotLengthMm);
     const aSegments = getTabSegmentsForRole(planSegments, 'A');
@@ -389,12 +390,12 @@ export const buildGeneratedSGeometryItems = (
     const bInwardNormal = getContourSideInwardNormal(bOriginalSide, bPanel.contour);
 
     if (!bInwardNormal) {
-      throw new Error(`${connection.id} S-B edge must be part of a valid closed panel so slot offset direction can be determined.`);
+      throw new GeometryDependencyError([connection.id], `${connection.id} S-B edge must be part of a valid closed panel so slot offset direction can be determined.`);
     }
 
     aSegments.forEach((segment) => {
       if (segment.startDistance < -cornerTouchTolerance || segment.endDistance > bLength + cornerTouchTolerance || segment.endDistance <= segment.startDistance + cornerTouchTolerance) {
-        throw new Error(`${connection.id} S-B slot pattern extends outside the S-B edge.`);
+        throw new GeometryDependencyError([connection.id], `${connection.id} S-B slot pattern extends outside the S-B edge.`);
       }
     });
 
@@ -417,7 +418,7 @@ export const buildGeneratedSGeometryItems = (
       const pathD = buildSlotPathD(bOriginalSide, placementSegment.startDistance, placementSegment.endDistance, wallThicknessMm, bInwardNormal, slotOffsetMm);
 
       if (!pathD) {
-        throw new Error(`${connection.id} S-B edge cannot receive slots because its length is invalid.`);
+        throw new GeometryDependencyError([connection.id], `${connection.id} S-B edge cannot receive slots because its length is invalid.`);
       }
 
       const operationId = `operation:S:${connection.id}`;
@@ -444,7 +445,8 @@ export const buildGeneratedSGeometryItems = (
       });
     });
     if (!panelResult.ok) {
-      throw new Error(`${operations.map((operation) => operation.connectionId).join(', ')} S-A geometry failed: ${panelResult.reason}`);
+      const connectionIds = operations.map(operation => operation.connectionId);
+      throw new GeometryDependencyError(connectionIds, `${connectionIds.join(', ')} S-A geometry failed: ${panelResult.reason}`);
     }
 
     const ownerConnectionId = operations

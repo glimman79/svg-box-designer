@@ -32,3 +32,9 @@ export const getBucketEdgeAssignment = (assignment: EdgeAssignment | EdgeAssignm
 export const getBucketSlotAssignments = (assignment: EdgeAssignment | EdgeAssignmentBucket | undefined) => (
   toEdgeAssignmentBucket(assignment)?.slotAssignments ?? []
 );
+
+export function assignedConnectionIds(assignment: EdgeAssignment | EdgeAssignmentBucket | undefined) {
+  const bucket = toEdgeAssignmentBucket(assignment);
+  return [bucket?.edgeAssignment?.connectionId, ...(bucket?.slotAssignments ?? []).map(slot => slot.connectionId)]
+    .filter((id): id is string => Boolean(id));
+}

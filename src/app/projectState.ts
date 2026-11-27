@@ -20,6 +20,8 @@ export type BoxProjectData = {
   lastAppliedManufacturingSettings: ProjectSettings | null;
   /** Already selected/applied output and composition marker; never regenerate it. */
   generatedGeometrySnapshot: GeneratedGeometrySnapshot;
+  /** The Sketch revision this accepted snapshot was evaluated against, including partial results. */
+  generatedGeometryDrawingRevision?: string;
   /** BOX inputs at the last successful Apply or automatic regeneration. */
   appliedGeometryInputs?: {
     edgeAssignments: BoxProjectData['edgeAssignments'];
@@ -114,6 +116,7 @@ export const boxStateFields = (source: BoxStateSource) => ({
     projectSettings: source.projectSettings,
     lastAppliedManufacturingSettings: source.lastAppliedManufacturingSettings,
     generatedGeometrySnapshot: source.generatedGeometrySnapshot,
+    ...(source.generatedGeometryDrawingRevision !== undefined && { generatedGeometryDrawingRevision: source.generatedGeometryDrawingRevision }),
     ...(source.appliedGeometryInputs && { appliedGeometryInputs: source.appliedGeometryInputs }),
     activeSGroup: source.activeSGroup,
     ...(source.completedSGroups && { completedSGroups: source.completedSGroups }),

@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ChangeEvent, PointerEvent } from 'react';
 import { BoxSketchLayer, previewContours, sourceHits } from './app/BoxSketchLayer';
-import { appliedGeometryInputs, hasImportedSource, IMPORTED_SOURCE, isSourceApproved, sourceStatus, validateDrawingApproval } from './app/boxSources';
+import { appliedGeometryInputs, currentBoxGeometrySnapshot, hasImportedSource, IMPORTED_SOURCE, isSourceApproved,
+  needsBoxGeometryApply, sourceStatus, validateDrawingApproval } from './app/boxSources';
 import { flushSync } from 'react-dom';
 import { exportLabeledSvg, formatImportDiagnosticMessage, getEdgeAssignmentDisplayLabels, parseSvgDocument } from './svgUtils';
 import { layoutPanelLabels } from './app/labelLayout';
@@ -480,10 +481,10 @@ function ProjectWorkspace({ projectOwner, position }: {
   const [drawingToolsHost, setDrawingToolsHost] = useState<HTMLDivElement | null>(null);
   const { svgModel, edgeAssignments, connections, projectSettings, lastAppliedManufacturingSettings,
     assignmentTargetConnectionId, displayConnectionId, selectedEdgeId, activeSGroup, activeTBGroup,
-    activeWallGroup, panelManager,
-    generatedGeometrySnapshot } = box;
-  const needsGeometryApply = panelManager.needsGeometryApply === true;
-  const generatedGeometryItems = needsGeometryApply ? [] : generatedGeometrySnapshot.generatedGeometry;
+    activeWallGroup, panelManager } = box;
+  const needsGeometryApply = needsBoxGeometryApply(box);
+  const currentGeometry = currentBoxGeometrySnapshot(box);
+  const generatedGeometryItems = currentGeometry?.generatedGeometry ?? [];
   // Debug evidence expires with its source frame, even when the user never applies again.
   const [debugCaptures] = useState(() => new WeakMap<BoxStateSource, GeometryRuntimeDebugCapture>());
   const geometryRuntimeDebugCaptureRef = useRef<WeakRef<BoxStateSource> | null>(null);
@@ -597,8 +598,8 @@ function ProjectWorkspace({ projectOwner, position }: {
 
   const panelCompositionAuthorityMode: PanelCompositionAuthorityMode = requestedPanelCompositionAuthorityMode;
   const finalGeometry = useMemo(
-    () => buildNativeFinalGeometry(svgModel, needsGeometryApply ? [] : generatedGeometrySnapshot),
-    [generatedGeometrySnapshot, svgModel, needsGeometryApply],
+    () => buildNativeFinalGeometry(svgModel, currentGeometry ?? []),
+    [currentGeometry, svgModel],
   );
 
   const kerfCompensatedAppliedPreview = useMemo(
@@ -953,6 +954,7 @@ function ProjectWorkspace({ projectOwner, position }: {
         && snapshot === before.generatedGeometrySnapshot && settings === lastAppliedManufacturingSettings
         && projectDataEqual(nextConnections, before.connections)) return before;
       return { ...before, connections: nextConnections, generatedGeometrySnapshot: snapshot, lastAppliedManufacturingSettings: settings,
+        ...(svgModel.drawingSource && { generatedGeometryDrawingRevision: svgModel.drawingSource.geometryRevision }),
         appliedGeometryInputs: appliedInputs,
         dependencyDiagnostics: [],
         ...(panelManager.needsGeometryApply && { panelManager: { ...panelManager, needsGeometryApply: false } }) };
@@ -1072,7 +1074,7 @@ function ProjectWorkspace({ projectOwner, position }: {
         if (isSourceApproved(before) && !panelManager.isDirty) return before;
         validateDrawingApproval(before);
         return { ...before, panelManager: { ...applied, approvedGeometryRevision: svgModel.drawingSource.geometryRevision,
-          needsGeometryApply: Boolean(panelManager.needsGeometryApply || before.generatedGeometrySnapshot.generatedGeometry.length) } };
+          needsGeometryApply: needsBoxGeometryApply(before) || before.generatedGeometrySnapshot.generatedGeometry.length > 0 } };
       }
       const connections = recalculateBoxConnections(before, applied);
       validateCurrentTBEdgeCompatibility(svgModel, edgeAssignments, connections);
@@ -1129,12 +1131,12 @@ function ProjectWorkspace({ projectOwner, position }: {
       setErrorMessage('Choose an approved source in Panel Manager before exporting.');
       return;
     }
-    if (box.panelManager.needsGeometryApply) {
-      setErrorMessage('Apply geometry for the current Sketch before exporting.');
-      return;
-    }
     if (box.dependencyDiagnostics?.some(d => d.severity === 'error')) {
       setErrorMessage('Repair blocked BOX geometry before exporting.');
+      return;
+    }
+    if (needsBoxGeometryApply(box)) {
+      setErrorMessage('Apply geometry for the current Sketch before exporting.');
       return;
     }
     const output = hasAppliedGeometry
@@ -1645,7 +1647,7 @@ function ProjectWorkspace({ projectOwner, position }: {
         onClear={requestClearProject}
         focusClearOnMount={session.startRevision > 0}
         onDrawingToolsHostChange={setDrawingToolsHost}
-        canExport={!projectOwner.getPublication().tbDraft && !isProjectLocked && !needsGeometryApply && !box.dependencyDiagnostics?.length && Object.keys(edgeAssignments).length > 0}
+        canExport={!projectOwner.getPublication().tbDraft && working && !isProjectLocked && !needsGeometryApply && !box.dependencyDiagnostics?.length && Object.keys(edgeAssignments).length > 0}
         history={{ canUndo: history.undo.length > 0 || pendingProfileSegment, canRedo: history.redo.length > 0,
           onUndo: () => runHistoryCommand('undo'), onRedo: () => runHistoryCommand('redo') }}
       />

@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react';
-import { isSourceApproved, sourceStatus } from './boxSources';
+import { currentBoxGeometrySnapshot, isSourceApproved, sourceStatus } from './boxSources';
 import type { SketchDefinition } from './constructionOperations';
 import { buildFinalGeometry } from './finalGeometry';
 import { processManufacturingGeometry } from './manufacturingCompensation';
@@ -18,13 +18,14 @@ export const BoxSketchLayer = memo(function BoxSketchLayer({ definition, box, ac
   definition: SketchDefinition; box: BoxStateSource; activePreview?: ManufacturingGeometry; highlighted: boolean;
 }) {
   const { sketch, operation } = definition;
-  const { svgModel, generatedGeometrySnapshot, projectSettings, panelManager } = box;
+  const { svgModel, projectSettings } = box;
   const approved = isSourceApproved(box);
+  const currentGeometry = currentBoxGeometrySnapshot(box);
   const preview = useMemo(() => {
     if (!approved) return undefined;
     return activePreview ?? previewContours(buildFinalGeometry(svgModel,
-      panelManager.needsGeometryApply ? [] : generatedGeometrySnapshot), projectSettings);
-  }, [approved, activePreview, svgModel, generatedGeometrySnapshot, panelManager.needsGeometryApply, projectSettings]);
+      currentGeometry ?? []), projectSettings);
+  }, [approved, activePreview, svgModel, currentGeometry, projectSettings]);
   const panelLines = useMemo(() => new Set(svgModel.edges.map(edge => edge.drawingEntityId)), [svgModel]);
   const panelHitPath = useMemo(() => preview ? preview.contours.map(c => c.pathD).join(' ')
     : svgModel.panels.flatMap(p => [p.outerContour, ...p.innerContours].map(pointsToClosedPathD)).join(' '), [preview, svgModel]);
