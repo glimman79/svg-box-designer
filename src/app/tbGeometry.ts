@@ -29,6 +29,7 @@ import { clonePanelContour, segmentLiesOnPanelBoundary, validateClosedPanel, val
 import type { PanelGeometryBuildResult } from './sharedPanelGeometry';
 import { getPanelThickness } from './panelThickness';
 import type { PanelThicknessState } from './panelThickness';
+import { GeometryDependencyError } from './geometryDependencyError';
 
 const getPanelContourSidePoints = (panel: SvgPanel, contourIndex: number) => ({
   start: panel.contour[contourIndex],
@@ -99,17 +100,24 @@ type TBConnectionThickness = {
 
 type AssignedTBEdge = { edgeId: string; role: EdgeRole };
 
-export class TBGeometryError extends Error {
+export class TBGeometryError extends GeometryDependencyError {
   constructor(readonly code: 'TB_EDGE_LENGTH_MISMATCH' | 'TB_GEOMETRY_GENERATION_FAILED' | 'TB_INVALID_EDGE_ASSIGNMENT_COUNT',
-    readonly connectionId: string, message: string) {
-    super(message);
+    readonly connectionId: string, message: string, affectedConnectionIds: readonly string[] = [connectionId]) {
+    super(affectedConnectionIds, message);
     this.name = 'TBGeometryError';
   }
 }
 
+function tbPanelGeometryError(panelId: string, connectionIds: string[], reason: string) {
+  const subject = connectionIds.length === 1 ? 'connection' : 'connections';
+  return new TBGeometryError('TB_GEOMETRY_GENERATION_FAILED', connectionIds[0],
+    `TB ${subject} ${connectionIds.join(', ')} on panel ${panelId} cannot generate geometry: ${reason}`, connectionIds);
+}
+
 /** Current TB placement has no authored anchor or offset for unequal edges. */
 export const validateCurrentTBEdgeCompatibility = (svgModel: SvgDocumentModel,
-  assignments: EdgeAssignmentRecord, connections: ConnectionMap): void => {
+  assignments: EdgeAssignmentRecord, connections: ConnectionMap,
+  onFailure: (error: TBGeometryError) => void = error => { throw error; }): void => {
   const edges = new Map(svgModel.edges.map(edge => [edge.id, edge]));
   for (const connection of Object.values(connections)) {
     if (connection.prefix !== 'TB') continue;
@@ -118,8 +126,9 @@ export const validateCurrentTBEdgeCompatibility = (svgModel: SvgDocumentModel,
     const b = assigned.filter(edge => edge.role === 'B');
     if (assigned.length === 0 || (assigned.length === 1 && (a.length === 1 || b.length === 1))) continue;
     if (a.length !== 1 || b.length !== 1 || assigned.length !== 2) {
-      throw new TBGeometryError('TB_INVALID_EDGE_ASSIGNMENT_COUNT', connection.id,
-        `TB_INVALID_EDGE_ASSIGNMENT_COUNT: TB connection ${connection.id} requires exactly one A edge and one B edge; found ${a.length} A and ${b.length} B.`);
+      onFailure(new TBGeometryError('TB_INVALID_EDGE_ASSIGNMENT_COUNT', connection.id,
+        `TB_INVALID_EDGE_ASSIGNMENT_COUNT: TB connection ${connection.id} requires exactly one A edge and one B edge; found ${a.length} A and ${b.length} B.`));
+      continue;
     }
     const edgeA = edges.get(a[0].edgeId);
     const edgeB = edges.get(b[0].edgeId);
@@ -129,8 +138,8 @@ export const validateCurrentTBEdgeCompatibility = (svgModel: SvgDocumentModel,
     const lengthB = length(edgeB);
     if (!Number.isFinite(lengthA) || !Number.isFinite(lengthB)
       || Math.abs(lengthA - lengthB) > cornerTouchTolerance) {
-      throw new TBGeometryError('TB_EDGE_LENGTH_MISMATCH', connection.id,
-        `TB connection ${connection.id} has incompatible source edge lengths: A ${lengthA.toFixed(3)} mm, B ${lengthB.toFixed(3)} mm. Current TB placement requires matching lengths; repair the Sketch dimensions before Apply.`);
+      onFailure(new TBGeometryError('TB_EDGE_LENGTH_MISMATCH', connection.id,
+        `TB connection ${connection.id} has incompatible source edge lengths: A ${lengthA.toFixed(3)} mm, B ${lengthB.toFixed(3)} mm. Current TB placement requires matching lengths; repair the Sketch dimensions before Apply.`));
     }
   }
 };
@@ -272,8 +281,9 @@ export const buildGeneratedFingerJointGeometryItems = (
       return [];
     }
     const fail = (reason: string) => {
-      if (toolType === 'TB') throw new TBGeometryError('TB_GEOMETRY_GENERATION_FAILED', operations[0].connectionId,
-        `TB connection ${operations[0].connectionId} on panel ${panel.id} cannot generate geometry: ${reason}`);
+      if (toolType === 'TB') {
+        throw tbPanelGeometryError(panel.id, [...new Set(operations.map(operation => operation.connectionId))], reason);
+      }
     };
     if (!validation.valid) {
       fail('the source panel contour is invalid');
@@ -316,8 +326,7 @@ export const buildGeneratedFingerJointGeometryItems = (
     );
 
     if (!result.ok) {
-      if (toolType === 'TB') throw new TBGeometryError('TB_GEOMETRY_GENERATION_FAILED', connectionIds[0],
-        `TB connection ${connectionIds[0]} on panel ${panel.id} cannot generate geometry: ${result.reason}`);
+      if (toolType === 'TB') throw tbPanelGeometryError(panel.id, connectionIds, result.reason);
       return [];
     }
 
@@ -327,8 +336,7 @@ export const buildGeneratedFingerJointGeometryItems = (
     const roleEffectiveGeometry = buildRoleEffectiveJunctionGeometry(insetContour, operationsBySideIndex, panel.contour);
 
     if (!roleEffectiveGeometry.ok) {
-      if (toolType === 'TB') throw new TBGeometryError('TB_GEOMETRY_GENERATION_FAILED', connectionIds[0],
-        `TB connection ${connectionIds[0]} on panel ${panel.id} cannot generate geometry: ${roleEffectiveGeometry.reason}`);
+      if (toolType === 'TB') throw tbPanelGeometryError(panel.id, connectionIds, roleEffectiveGeometry.reason);
       return [];
     }
 

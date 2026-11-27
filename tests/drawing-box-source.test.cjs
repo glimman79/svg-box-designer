@@ -5,6 +5,7 @@ const {api, harness, production} = require('./project-owner-harness.cjs');
 const {drawingPanelModel} = require('../.test-build/project-owner/src/app/drawingPanelSource.js');
 const {isSourceApproved,sourceStatus} = require('../.test-build/project-owner/src/app/boxSources.js');
 const {createEmptySketch} = require('../.test-build/project-owner/src/app/drawingTypes.js');
+const {evaluateDrawingGeometry} = require('../.test-build/project-owner/src/app/drawingGeometryDependencies.js');
 const {validateCurrentTBEdgeCompatibility,buildGeneratedTBGeometryItems} = require('../.test-build/project-owner/src/app/tbGeometry.js');
 
 function polygon(sketch, name, coords, close = true) {
@@ -151,6 +152,7 @@ test('source review, native TB/W, isolated authority, rejected cross-Sketch even
   c.applyPanelManager();
   assert.equal(isSourceApproved(current()),true,c.errorMessage);
   assert.equal(current().panelManager.needsGeometryApply,true);
+  assert.equal(api.currentBoxGeometrySnapshot(current()),undefined);
   c.applyPanelPaths();
   assert.equal(current().panelManager.needsGeometryApply,false,c.errorMessage);
   assert.equal(sources()[second],approved[second]);
@@ -301,21 +303,38 @@ test('replacing an imported source and readmitting it never promote untouched gr
   owner.traverse('undo'); assert.equal(owner.getSnapshot(),before);
 });
 
-function appliedTBProject() {
-  const {projectOwner:owner,context:c} = harness(initial({one:pair('one'),two:pair('two')}));
+function drawingBoxProject(one = pair('one')) {
+  const {projectOwner:owner,context:c} = harness(initial({one,two:pair('two')}));
   const [first,second] = owner.getSnapshot().constructionOperations.map(op=>op.id);
   owner.selectBoxSource(first);
   c.acceptDefaultPanelThickness(); c.applyPanelManager();
-  const [a,b] = owner.getBoxScope().box.svgModel.panels;
-  c.startGroup('TB');
-  c.assignSelectedLabelToEdge(a.outerEdgeIds[0]);
-  c.assignSelectedLabelToEdge(b.outerEdgeIds[0]);
-  c.finishGroup('TB'); c.applyPanelPaths();
-  assert.equal(c.errorMessage,'');
-  assert.ok(owner.getBoxScope().box.generatedGeometrySnapshot.generatedGeometry.length);
+  const current = () => owner.getSnapshot().boxSources.sketches[first];
+  const author = (tool, ...lines) => {
+    const edges = new Map(current().svgModel.edges.map(edge => [edge.drawingEntityId,edge.id]));
+    c.startGroup(tool);
+    for (const line of lines) {
+      assert.ok(edges.has(line),line);
+      c.assignSelectedLabelToEdge(edges.get(line));
+      assert.equal(c.errorMessage,'');
+    }
+    c.finishGroup(tool);
+    assert.equal(c.errorMessage,'');
+  };
+  const apply = () => {
+    c.applyPanelPaths();
+    assert.equal(c.errorMessage,'');
+    assert.ok(current().generatedGeometrySnapshot.generatedGeometry.length);
+  };
   const edit = change => api.projectDrawingActions(owner).transact('Drawing resize',doc=>({...doc,
     sketches:{...doc.sketches,one:change(doc.sketches.one)}}));
-  return {owner,c,first,second,edit};
+  return {owner,c,first,second,edit,current,author,apply};
+}
+
+function appliedTBProject() {
+  const project = drawingBoxProject();
+  project.author('TB','ae0','be0');
+  project.apply();
+  return project;
 }
 
 function resizeRectangle(sketch,name,width) {
@@ -323,6 +342,143 @@ function resizeRectangle(sketch,name,width) {
   for (const i of [1,2]) points[name+'p'+i] = {...points[name+'p'+i],x:points[name+'p0'].x+width};
   return {...sketch,points};
 }
+
+const generatedProfiles = box => box.generatedGeometrySnapshot.generatedGeometry.flatMap(item => item.generatedProfiles ?? []);
+const profileConnections = box => [...new Set(generatedProfiles(box).map(profile => profile.operationId.split(':').at(-1)))].sort();
+
+test('a failed TB relationship regenerates the valid neighbor on the current shared panel', () => {
+  const {owner,c,first,second,edit,current,author,apply} = drawingBoxProject(rectangle(pair('one'),'c',260));
+  author('TB','ae0','be2');
+  author('TB','be0','ce0');
+  apply();
+  const original = owner.getSnapshot();
+  const prior = current();
+  const group = original.chronology.filter(entry=>entry.kind==='TB'&&entry.sourceId===first);
+  const shared = generatedProfiles(prior).find(profile=>profile.operationId==='operation:TB:TB2'&&
+    generatedProfiles(prior).some(other=>other.operationId==='operation:TB:TB1'&&other.panelId===profile.panelId)).panelId;
+  const priorSharedPath = prior.generatedGeometrySnapshot.generatedGeometry.find(item=>item.behaviour.replacesPanelId===shared).pathD;
+  assert.deepEqual(profileConnections(prior),['TB1','TB2']);
+  const undoCount = owner.getHistory().undo.length;
+  assert.equal(edit(s=>{
+    const resized = resizeRectangle(s,'c',120);
+    for (const id of ['bp2','bp3']) resized.points[id] = {...resized.points[id], y:95};
+    return resized;
+  }).outcome,'accepted');
+  const partial = owner.getSnapshot(), box = current();
+  assert.equal(owner.getHistory().undo.length,undoCount+1);
+  assert.equal(isSourceApproved(box),true);
+  assert.equal(box.panelManager.needsGeometryApply,false);
+  assert.deepEqual(box.panelManager.panels,prior.panelManager.panels);
+  assert.equal(box.edgeAssignments,prior.edgeAssignments);
+  assert.equal(box.connections,prior.connections);
+  assert.equal(box.appliedGeometryInputs,prior.appliedGeometryInputs);
+  assert.deepEqual(partial.chronology,original.chronology);
+  assert.equal(partial.box,original.box);
+  assert.equal(partial.boxSources.sketches[second],original.boxSources.sketches[second]);
+  assert.equal(box.dependencyDiagnostics.length,1);
+  assert.deepEqual(box.dependencyDiagnostics[0],{
+    code:'TB_EDGE_LENGTH_MISMATCH',severity:'error',sourceId:first,groupId:group[1].groupId,connectionId:'TB2',
+    edgeIds:Object.keys(prior.edgeAssignments).filter(id=>prior.edgeAssignments[id].edgeAssignment?.connectionId==='TB2'),
+    panelIds:generatedProfiles(prior).filter(profile=>profile.operationId==='operation:TB:TB2').map(profile=>profile.panelId),
+    message:box.dependencyDiagnostics[0].message,
+  });
+  assert.match(box.dependencyDiagnostics[0].message,/TB2.*A 100\.000 mm, B 120\.000 mm/);
+  const expected = api.evaluateAppliedGeometry({...box,
+    edgeAssignments:Object.fromEntries(Object.entries(box.edgeAssignments).filter(([,bucket])=>bucket.edgeAssignment?.connectionId==='TB1')),
+    connections:{TB1:box.connections.TB1},
+  },'mixed').snapshot;
+  assert.equal(api.currentBoxGeometrySnapshot(box),box.generatedGeometrySnapshot);
+  assert.deepEqual(box.generatedGeometrySnapshot.generatedGeometry,expected.generatedGeometry);
+  assert.deepEqual(api.buildFinalGeometry(box.svgModel,box.generatedGeometrySnapshot),api.buildFinalGeometry(box.svgModel,expected));
+  assert.equal(generatedProfiles(box).filter(profile=>profile.operationId==='operation:TB:TB1').length,2);
+  assert.notEqual(box.generatedGeometrySnapshot.generatedGeometry.find(item=>item.behaviour.replacesPanelId===shared).pathD,priorSharedPath);
+  c.applyPanelPaths();
+  assert.match(c.errorMessage,/TB2 has incompatible source edge lengths/);
+  assert.equal(owner.getSnapshot(),partial);
+  assert.equal(edit(s=>resizeRectangle(s,'c',100)).outcome,'accepted');
+  const repaired = owner.getSnapshot();
+  assert.equal(owner.getHistory().undo.length,undoCount+2);
+  assert.deepEqual(current().dependencyDiagnostics,[]);
+  assert.deepEqual(profileConnections(current()),['TB1','TB2']);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),partial);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),original);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot(),partial);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot(),repaired);
+});
+
+test('independent TB failures in one History group preserve a valid sibling on separate panels', () => {
+  let sketch = pair('one');
+  for (const [name,x] of [['c',260],['d',390],['e',520],['f',650]]) sketch = rectangle(sketch,name,x);
+  const {edit,current,author,apply} = drawingBoxProject(sketch);
+  author('TB','ae0','be0','ce0','de0','ee0','fe0');
+  apply();
+  const prior = current();
+  assert.deepEqual(profileConnections(prior),['TB1','TB2','TB3']);
+  assert.equal(edit(s=>resizeRectangle(resizeRectangle(s,'b',120),'d',90)).outcome,'accepted');
+  const partial = current();
+  assert.deepEqual(partial.dependencyDiagnostics.map(d=>[d.connectionId,d.code,d.groupId]),
+    ['TB1','TB2'].map(id=>[id,'TB_EDGE_LENGTH_MISMATCH',prior.completedTBGroups[0].groupId]));
+  assert.deepEqual(profileConnections(partial),['TB3']);
+  assert.deepEqual(partial.generatedGeometrySnapshot.generatedGeometry,
+    prior.generatedGeometrySnapshot.generatedGeometry.filter(item=>item.source.connectionIds.includes('TB3')));
+  assert.equal(edit(s=>resizeRectangle(s,'b',100)).outcome,'accepted');
+  assert.deepEqual(current().dependencyDiagnostics.map(d=>d.connectionId),['TB2']);
+  assert.deepEqual(profileConnections(current()),['TB1','TB3']);
+});
+
+test('Drawing continuation honors Wall TB-role inheritance and S original-edge references', () => {
+  let sketch = pair('one');
+  for (const [name,x] of [['c',260],['d',390],['e',520],['f',650],['g',780]]) sketch = rectangle(sketch,name,x);
+  const {edit,current,author,apply} = drawingBoxProject(sketch);
+  author('TB','ae0','be0');
+  author('TB','ce0','be2');
+  author('W','ce1','ee3');
+  author('W','de1','ee1');
+  author('S','de0','ce0');
+  author('S','fe0','ge0');
+  apply();
+  const prior = current();
+  assert.deepEqual(profileConnections(prior),['S1','S2','TB1','TB2','W1','W2']);
+  assert.equal(edit(s=>resizeRectangle(resizeRectangle(s,'c',120),'g',40)).outcome,'accepted');
+  const partial = current();
+  assert.deepEqual(profileConnections(partial),['S1','TB1','W2']);
+  const diagnostics = Object.fromEntries(partial.dependencyDiagnostics.map(d=>[d.connectionId,d]));
+  assert.deepEqual(Object.keys(diagnostics).sort(),['S2','TB2','W1']);
+  assert.match(diagnostics.W1.message,/authored Wall roles while TB2 is blocked/);
+  assert.match(diagnostics.S2.message,/extends outside the S-B edge/);
+  assert.equal(diagnostics.W1.groupId,prior.completedWallGroups[0].groupId);
+  const slotGroup = api.connectionGroups(prior,'S').find(group=>group.connectionIds.includes('S2'));
+  assert.equal(diagnostics.S2.groupId,slotGroup.groupId);
+  const slot = partial.generatedGeometrySnapshot.generatedGeometry.find(item=>item.kind==='SLOT_PATH'&&item.source.connectionIds.includes('S1'));
+  assert.equal(slot.sourceRelationships[0].kind,'references');
+  assert.ok(diagnostics.TB2.edgeIds.includes(slot.sourceRelationships[0].sourceEdgeId));
+  assert.equal(edit(s=>resizeRectangle(s,'c',100)).outcome,'accepted');
+  assert.deepEqual(profileConnections(current()),['S1','TB1','TB2','W1','W2']);
+  assert.deepEqual(current().dependencyDiagnostics.map(d=>d.connectionId),['S2']);
+});
+
+test('ambiguous replacement ownership blocks both claims and retains independent TB output', () => {
+  let sketch = pair('one');
+  for (const [name,x] of [['c',260],['d',390],['e',520]]) sketch = rectangle(sketch,name,x);
+  const {first,current,author,apply} = drawingBoxProject(sketch);
+  author('TB','ae0','be0');
+  author('TB','ce0','de0');
+  author('S','ae2','ee0');
+  apply();
+  const prior = current();
+  const byLine = new Map(prior.svgModel.edges.map(edge=>[edge.drawingEntityId,edge.id]));
+  const contested = byLine.get('ae0'), oldSlotEdge = byLine.get('ae2');
+  const assignments = {...prior.edgeAssignments,
+    [contested]:{...prior.edgeAssignments[contested],slotAssignments:prior.edgeAssignments[oldSlotEdge].slotAssignments}};
+  delete assignments[oldSlotEdge];
+  const malformed = {...prior,edgeAssignments:assignments};
+  assert.throws(()=>api.evaluateAppliedGeometry(malformed,'mixed'),/already has replacement operations/);
+  const {snapshot,diagnostics} = evaluateDrawingGeometry(malformed,first,'mixed');
+  assert.deepEqual(diagnostics.map(d=>d.connectionId).sort(),['S1','TB1']);
+  assert.ok(diagnostics.every(d=>d.edgeIds.includes(contested)&&d.message.includes('already has replacement operations')));
+  assert.deepEqual(profileConnections({...prior,generatedGeometrySnapshot:snapshot}),['TB2']);
+  assert.ok(snapshot.generatedGeometry.every(item=>item.kind!=='SLOT_PATH'));
+});
 
 test('ordinary unequal TB edges block automatic and manual Apply, then recover atomically', () => {
   const {owner,c,first,second,edit} = appliedTBProject();
@@ -337,11 +493,13 @@ test('ordinary unequal TB edges block automatic and manual Apply, then recover a
   assert.equal(box.dependencyDiagnostics?.[0]?.code,'TB_EDGE_LENGTH_MISMATCH');
   assert.match(box.dependencyDiagnostics[0].message,/TB1.*A 100\.000 mm, B 120\.000 mm/);
   assert.equal(box.dependencyDiagnostics[0].groupId,blocked.chronology.find(e=>e.kind==='TB'&&e.sourceId===first).groupId);
-  assert.equal(box.generatedGeometrySnapshot,prior.generatedGeometrySnapshot);
+  assert.deepEqual(box.generatedGeometrySnapshot.generatedGeometry,[]);
+  assert.equal(api.currentBoxGeometrySnapshot(box),box.generatedGeometrySnapshot);
+  assert.equal(box.appliedGeometryInputs,prior.appliedGeometryInputs);
   assert.equal(box.edgeAssignments,prior.edgeAssignments);
   assert.equal(box.connections,prior.connections);
   assert.equal(blocked.boxSources.sketches[second],before.boxSources.sketches[second]);
-  assert.equal(box.panelManager.needsGeometryApply,true);
+  assert.equal(box.panelManager.needsGeometryApply,false);
   const beforeApply = owner.getSnapshot();
   c.applyPanelPaths();
   assert.match(c.errorMessage,/TB_EDGE_LENGTH_MISMATCH|incompatible source edge lengths/);
@@ -351,7 +509,7 @@ test('ordinary unequal TB edges block automatic and manual Apply, then recover a
   const restored = owner.getSnapshot();
   assert.deepEqual(restored.boxSources.sketches[first].dependencyDiagnostics,[]);
   assert.equal(restored.boxSources.sketches[first].panelManager.needsGeometryApply,false);
-  assert.equal(restored.boxSources.sketches[first].generatedGeometrySnapshot,prior.generatedGeometrySnapshot);
+  assert.deepEqual(restored.boxSources.sketches[first].generatedGeometrySnapshot.generatedGeometry,prior.generatedGeometrySnapshot.generatedGeometry);
   owner.traverse('undo'); assert.equal(owner.getSnapshot(),blocked);
   owner.traverse('redo'); assert.equal(owner.getSnapshot(),restored);
 });
@@ -389,12 +547,13 @@ test('incompatible TB resize accepts Drawing and blocks stale output with group 
   const current = after.boxSources.sketches[first];
   assert.equal(current.edgeAssignments,prior.edgeAssignments);
   assert.equal(current.panelManager.isApplied,true);
-  assert.equal(current.panelManager.needsGeometryApply,true);
+  assert.equal(current.panelManager.needsGeometryApply,false);
   assert.equal(current.dependencyDiagnostics?.[0]?.code,'TB_EDGE_LENGTH_MISMATCH');
   assert.equal(current.dependencyDiagnostics?.[0]?.severity,'error');
   assert.equal(current.dependencyDiagnostics?.[0]?.sourceId,first);
   assert.equal(current.dependencyDiagnostics?.[0]?.groupId,after.chronology.find(e=>e.sourceId===first&&e.kind==='TB').groupId);
-  assert.equal(current.generatedGeometrySnapshot,prior.generatedGeometrySnapshot);
+  assert.deepEqual(current.generatedGeometrySnapshot.generatedGeometry,[]);
+  assert.equal(current.appliedGeometryInputs,prior.appliedGeometryInputs);
   owner.traverse('undo'); assert.equal(owner.getSnapshot(),before);
   owner.traverse('redo'); assert.equal(owner.getSnapshot(),after);
 });
@@ -422,7 +581,11 @@ test('pending BOX authoring is not silently included in Drawing regeneration', (
   const next = owner.getSnapshot().boxSources.sketches[first];
   assert.equal(next.panelManager.isApplied,true);
   assert.equal(next.panelManager.needsGeometryApply,true);
-  assert.equal(next.generatedGeometrySnapshot,pending.generatedGeometrySnapshot);
+  assert.equal(next.appliedGeometryInputs,pending.appliedGeometryInputs);
+  assert.equal(next.connections.TB1.properties.fingerWidthMm,10);
+  assert.notDeepEqual(next.generatedGeometrySnapshot.generatedGeometry,pending.generatedGeometrySnapshot.generatedGeometry);
+  const accepted = api.evaluateAppliedGeometry({...next,connections:next.appliedGeometryInputs.connections},'mixed');
+  assert.deepEqual(next.generatedGeometrySnapshot.generatedGeometry,accepted.snapshot.generatedGeometry);
   assert.deepEqual(next.dependencyDiagnostics,[]);
 });
 
@@ -436,6 +599,26 @@ test('a later compatible edit can restore a blocked TB batch without another App
   assert.equal(restored.panelManager.needsGeometryApply,false);
   assert.deepEqual(restored.dependencyDiagnostics,[]);
   assert.equal(isSourceApproved(restored),true);
+});
+
+test('an equivalent legacy snapshot establishes approved inputs before an empty blocked result', () => {
+  const {owner,first} = appliedTBProject();
+  const project = owner.getSnapshot();
+  const {appliedGeometryInputs,generatedGeometryDrawingRevision,...legacyBox} = project.boxSources.sketches[first];
+  const legacy = api.createGlobalProjectHistory({...project,
+    boxSources:{...project.boxSources,sketches:{...project.boxSources.sketches,[first]:legacyBox}}});
+  const resize = width => api.projectDrawingActions(legacy).transact('Drawing resize',doc=>({...doc,
+    sketches:{...doc.sketches,one:resizeRectangle(doc.sketches.one,'b',width)}}));
+  assert.equal(resize(120).outcome,'accepted');
+  const blocked = legacy.getSnapshot().boxSources.sketches[first];
+  assert.deepEqual(blocked.appliedGeometryInputs,appliedGeometryInputs);
+  assert.notEqual(blocked.generatedGeometryDrawingRevision,generatedGeometryDrawingRevision);
+  assert.deepEqual(blocked.generatedGeometrySnapshot.generatedGeometry,[]);
+  assert.equal(blocked.dependencyDiagnostics[0].code,'TB_EDGE_LENGTH_MISMATCH');
+  assert.equal(resize(100).outcome,'accepted');
+  const recovered = legacy.getSnapshot().boxSources.sketches[first];
+  assert.deepEqual(recovered.generatedGeometrySnapshot.generatedGeometry,legacyBox.generatedGeometrySnapshot.generatedGeometry);
+  assert.deepEqual(recovered.dependencyDiagnostics,[]);
 });
 
 test('unrelated open Line preserves blocked TB until repaired, with one history step per Drawing edit', () => {
@@ -454,7 +637,7 @@ test('unrelated open Line preserves blocked TB until repaired, with one history 
   assert.equal(owner.getHistory().undo.length,Math.min(count+1,30));
   assert.equal(box.generatedGeometrySnapshot,blocked.boxSources.sketches[first].generatedGeometrySnapshot);
   assert.deepEqual(box.dependencyDiagnostics,failure);
-  assert.equal(box.panelManager.needsGeometryApply,true);
+  assert.equal(box.panelManager.needsGeometryApply,false);
   assert.equal(sourceStatus(box),'Blocked · needs repair');
   assert.equal(unrelated.boxSources.sketches[second],original.boxSources.sketches[second]);
   assert.deepEqual(unrelated.chronology.map(entry=>[entry.id,entry.groupId]),ids);
@@ -485,13 +668,18 @@ test('blocked recovery keeps pending BOX width behind explicit Apply', () => {
   const box = repaired.boxSources.sketches[first];
   assert.equal(box.connections.TB1.properties.fingerWidthMm,10);
   assert.equal(box.panelManager.needsGeometryApply,true);
-  assert.equal(sourceStatus(box),'Blocked · needs repair');
-  assert.equal(box.generatedGeometrySnapshot,pending.boxSources.sketches[first].generatedGeometrySnapshot);
-  assert.deepEqual(box.dependencyDiagnostics,blocked.boxSources.sketches[first].dependencyDiagnostics);
+  assert.equal(sourceStatus(box),'BOX changes · needs Apply');
+  assert.deepEqual(box.generatedGeometrySnapshot.generatedGeometry,original.boxSources.sketches[first].generatedGeometrySnapshot.generatedGeometry);
+  assert.equal(box.appliedGeometryInputs,blocked.boxSources.sketches[first].appliedGeometryInputs);
+  assert.deepEqual(box.dependencyDiagnostics,[]);
   assert.equal(repaired.boxSources.sketches[second],original.boxSources.sketches[second]);
   assert.deepEqual(repaired.chronology,original.chronology);
   owner.traverse('undo'); assert.equal(owner.getSnapshot(),pending);
   owner.traverse('redo'); assert.equal(owner.getSnapshot(),repaired);
+  Object.defineProperty(c,'box',{get:()=>owner.getBoxScope().box});
+  c.URL={createObjectURL:()=>assert.fail('Pending geometry was serialized')};
+  production('exportSvg',c)();
+  assert.match(c.errorMessage,/Apply geometry for the current Sketch before exporting/);
   c.applyPanelPaths();
   assert.equal(c.errorMessage,'');
   const applied = owner.getSnapshot().boxSources.sketches[first];
@@ -506,10 +694,8 @@ test('export command rejects a diagnostic even if Apply state alone would permit
   const {owner,first,edit} = appliedTBProject();
   edit(s=>resizeRectangle(s,'b',0.5));
   const blocked = owner.getSnapshot();
-  const prior = blocked.boxSources.sketches[first];
-  const box = {...prior,panelManager:{...prior.panelManager,needsGeometryApply:false}};
-  const {projectOwner:exportOwner,context:c} = harness({...blocked,
-    boxSources:{...blocked.boxSources,sketches:{...blocked.boxSources.sketches,[first]:box}}});
+  assert.equal(blocked.boxSources.sketches[first].panelManager.needsGeometryApply,false);
+  const {projectOwner:exportOwner,context:c} = harness(blocked);
   Object.defineProperty(c,'box',{get:()=>exportOwner.getBoxScope().box});
   c.downloadRef={current:{click:()=>assert.fail('Blocked geometry was downloaded')}};
   c.URL={createObjectURL:()=>assert.fail('Blocked geometry was serialized')};

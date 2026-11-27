@@ -6,10 +6,10 @@ import { createBoxDocumentV1 } from './boxDocument';
 import { validatePanelManagerState } from './panelManagerModel';
 import type { BoxSources, BoxStateSource, ProjectStateSource } from './projectState';
 import { evaluateAppliedGeometry } from './appliedGeometry';
-import { TBGeometryError } from './tbGeometry';
+import { evaluateDrawingGeometry } from './drawingGeometryDependencies';
+import { assignedConnectionIds } from './assignmentBuckets';
 import { connectionGroups } from './connectionGroups';
 import { projectDataEqual } from './projectDataEqual';
-import { toEdgeAssignmentBucket } from './assignmentBuckets';
 import type { PanelCompositionAuthorityMode } from './generatedGeometryAuthority';
 
 export const IMPORTED_SOURCE = 'imported-svg';
@@ -25,6 +25,32 @@ export function appliedGeometryInputs(box: BoxStateSource, connections = box.con
     panels: box.panelManager.panels, activeWallGroup: box.activeWallGroup });
 }
 
+function hasUnappliedAuthoring(box: BoxStateSource, inputs: NonNullable<BoxStateSource['appliedGeometryInputs']>) {
+  return !projectDataEqual(box.edgeAssignments, inputs.edgeAssignments)
+    || !projectDataEqual(box.panelManager.panels, inputs.panels)
+    || Object.values(box.edgeAssignments).some(bucket => assignedConnectionIds(bucket)
+      .some(id => !projectDataEqual(box.connections[id], inputs.connections[id])));
+}
+
+export function needsBoxGeometryApply(box: BoxStateSource) {
+  if (box.panelManager.needsGeometryApply) return true;
+  const source = box.svgModel.drawingSource;
+  if (!source) return false;
+  if (box.generatedGeometryDrawingRevision !== undefined && box.generatedGeometryDrawingRevision !== source.geometryRevision) return true;
+  return box.appliedGeometryInputs ? hasUnappliedAuthoring(box, box.appliedGeometryInputs)
+    : !box.generatedGeometrySnapshot.generatedGeometry.length && Object.keys(box.edgeAssignments).length > 0;
+}
+
+export function currentBoxGeometrySnapshot(box: BoxStateSource) {
+  const source = box.svgModel.drawingSource;
+  if (source && !isSourceApproved(box)) return undefined;
+  if (source && box.generatedGeometryDrawingRevision !== undefined) {
+    return box.generatedGeometryDrawingRevision === source.geometryRevision
+      && projectDataEqual(box.panelManager.panels, box.appliedGeometryInputs?.panels) ? box.generatedGeometrySnapshot : undefined;
+  }
+  return box.panelManager.needsGeometryApply ? undefined : box.generatedGeometrySnapshot;
+}
+
 /** Membership, winding-independent contour adjacency, nesting and assigned references. */
 function compatiblePanels(prior: BoxStateSource['svgModel'], next: BoxStateSource['svgModel']) {
   if (prior.panels.length !== next.panels.length) return false;
@@ -38,16 +64,11 @@ function compatiblePanels(prior: BoxStateSource['svgModel'], next: BoxStateSourc
   });
 }
 
-function blockedDefinitions(box: BoxStateSource, sourceId: string,
-  code: 'DRAWING_TOPOLOGY_CHANGED' | 'BOX_REGENERATION_FAILED', message: string) {
+function topologyDiagnostics(box: BoxStateSource, sourceId: string) {
   const edgeIds = Object.keys(box.edgeAssignments);
   const panelIds = [...new Set(box.svgModel.edges.filter(edge => edgeIds.includes(edge.id))
     .map(edge => edge.source))];
-  const assigned = new Set(Object.values(box.edgeAssignments).flatMap(value => {
-    const bucket = toEdgeAssignmentBucket(value);
-    return [bucket?.edgeAssignment?.connectionId, ...(bucket?.slotAssignments ?? []).map(slot => slot.connectionId)]
-      .filter((id): id is string => Boolean(id));
-  }));
+  const assigned = new Set(Object.values(box.edgeAssignments).flatMap(assignedConnectionIds));
   const groups = (['TB', 'W', 'S'] as const).flatMap(kind => connectionGroups(box, kind)
     .filter(group => group.connectionIds.some(id => assigned.has(id)))
     .map(group => ({ groupId: group.groupId })));
@@ -55,18 +76,18 @@ function blockedDefinitions(box: BoxStateSource, sourceId: string,
     .flatMap(group => group.connectionIds)));
   const standalone = Object.keys(box.connections).filter(id => !groupedIds.has(id) && assigned.has(id))
     .map(connectionId => ({ connectionId }));
-  return [...groups, ...standalone].map(reference => ({ code, severity: 'error' as const,
-    sourceId, ...reference, panelIds, edgeIds, message }));
+  return [...groups, ...standalone].map(reference => ({ code: 'DRAWING_TOPOLOGY_CHANGED' as const, severity: 'error' as const,
+    sourceId, ...reference, panelIds, edgeIds, message: 'Drawing panel topology changed. Review Panel Manager and reapply geometry.' }));
 }
 
-function blockedTBConnection(box: BoxStateSource, sourceId: string, error: TBGeometryError) {
-  const group = connectionGroups(box, 'TB').find(group => group.connectionIds.includes(error.connectionId));
-  const edgeIds = Object.entries(box.edgeAssignments).filter(([, bucket]) =>
-    toEdgeAssignmentBucket(bucket)?.edgeAssignment?.connectionId === error.connectionId).map(([id]) => id);
-  const panelIds = [...new Set(box.svgModel.edges.filter(edge => edgeIds.includes(edge.id)).map(edge => edge.source))];
-  return [{ code: error.code, severity: 'error' as const, sourceId,
-    ...(group && { groupId: group.groupId }), connectionId: error.connectionId,
-    panelIds, edgeIds, message: error.message }];
+function previouslyAppliedInputs(box: BoxStateSource, mode: PanelCompositionAuthorityMode) {
+  if (box.appliedGeometryInputs) return box.appliedGeometryInputs;
+  // A legacy in-memory frame has no Apply stamp. Require evidence of equivalent accepted output.
+  if (box.panelManager.needsGeometryApply || !box.generatedGeometrySnapshot.generatedGeometry.length) return undefined;
+  try {
+    if (evaluateAppliedGeometry(box, mode).snapshot === box.generatedGeometrySnapshot) return appliedGeometryInputs(box);
+  } catch { /* The existing output cannot establish approval if validation fails. */ }
+  return undefined;
 }
 
 /** Run inside the accepted Drawing edit. Untouched source authorities retain their identity. */
@@ -85,7 +106,7 @@ export function reconcileDrawingSources(previous: BoxSources | undefined,
     const base = current ?? createInitialBoxState();
     const svgModel = drawingPanelModel(sketch, op);
     const panels = Object.fromEntries(svgModel.panels.map(p => [p.id, base.panelManager.panels[p.id] ?? { panelId: p.id, thicknessMm: 0 }]));
-    const compatible = current && compatiblePanels(current.svgModel, svgModel);
+    const compatible = current && compatiblePanels(current.svgModel, svgModel) && hasAllConstructionEdges(svgModel, base.edgeAssignments);
     const geometryChanged = !current || !projectDataEqual(current.svgModel.edges, svgModel.edges)
       || !projectDataEqual(current.svgModel.panels, svgModel.panels);
     const panelManager = { ...base.panelManager, panels,
@@ -95,36 +116,22 @@ export function reconcileDrawingSources(previous: BoxSources | undefined,
         (Object.keys(base.edgeAssignments).length || base.generatedGeometrySnapshot.generatedGeometry.length))) };
     let next: BoxStateSource = { ...base, svgModel, panelManager };
     if (!compatible) {
-      next = { ...next, dependencyDiagnostics: blockedDefinitions(next, op.id, 'DRAWING_TOPOLOGY_CHANGED',
-        'Drawing panel topology changed. Review Panel Manager and reapply geometry.') };
-    } else if (geometryChanged && base.panelManager.isApplied
-      && (!base.panelManager.needsGeometryApply || base.dependencyDiagnostics?.some(d =>
-        d.code === 'BOX_REGENERATION_FAILED' || d.code === 'TB_EDGE_LENGTH_MISMATCH' || d.code === 'TB_GEOMETRY_GENERATION_FAILED' || d.code === 'TB_INVALID_EDGE_ASSIGNMENT_COUNT'))
-      && base.generatedGeometrySnapshot.generatedGeometry.length) {
-      let pending: boolean;
-      if (base.appliedGeometryInputs) {
-        pending = !projectDataEqual(appliedGeometryInputs(base), base.appliedGeometryInputs);
-      } else {
-        // Older in-memory sources have no Apply boundary. A failed evaluation cannot prove approval.
-        try { pending = evaluateAppliedGeometry(base, mode).snapshot !== base.generatedGeometrySnapshot; }
-        catch { pending = true; }
-      }
-      if (pending) {
-        // An authored BOX edit is waiting for Apply. Do not fold it into a Drawing edit.
+      next.dependencyDiagnostics = topologyDiagnostics(next, op.id);
+    } else if (!geometryChanged && current.generatedGeometryDrawingRevision !== undefined
+      && current.generatedGeometryDrawingRevision === current.svgModel.drawingSource?.geometryRevision) {
+      next.generatedGeometryDrawingRevision = svgModel.drawingSource!.geometryRevision;
+    } else if (geometryChanged && panelManager.isApplied
+      && !base.dependencyDiagnostics?.some(d => d.code === 'DRAWING_TOPOLOGY_CHANGED')) {
+      const inputs = previouslyAppliedInputs(base, mode);
+      if (inputs && projectDataEqual(inputs.panels, panels)) {
+        const approved = { ...next, edgeAssignments: inputs.edgeAssignments, connections: inputs.connections,
+          activeWallGroup: inputs.activeWallGroup };
+        const { snapshot, diagnostics } = evaluateDrawingGeometry(approved, op.id, mode);
+        next = { ...next, generatedGeometrySnapshot: snapshot, dependencyDiagnostics: diagnostics,
+          generatedGeometryDrawingRevision: svgModel.drawingSource!.geometryRevision, appliedGeometryInputs: inputs,
+          panelManager: { ...panelManager, needsGeometryApply: hasUnappliedAuthoring(next, inputs) } };
+      } else if (base.generatedGeometrySnapshot.generatedGeometry.length || needsBoxGeometryApply(base)) {
         next = { ...next, panelManager: { ...panelManager, needsGeometryApply: true } };
-      } else {
-        try {
-          const result = evaluateAppliedGeometry(next, mode);
-          next = { ...next, connections: result.connections, generatedGeometrySnapshot: result.snapshot,
-            appliedGeometryInputs: appliedGeometryInputs(next, result.connections), dependencyDiagnostics: [],
-            panelManager: { ...panelManager, needsGeometryApply: false } };
-        } catch (error) {
-          next = { ...next, panelManager: { ...panelManager, needsGeometryApply: true },
-            dependencyDiagnostics: error instanceof TBGeometryError
-              ? blockedTBConnection(next, op.id, error)
-              : blockedDefinitions(next, op.id, 'BOX_REGENERATION_FAILED',
-                `BOX construction could not regenerate: ${error instanceof Error ? error.message : String(error)}`) };
-        }
       }
     }
     sketches[op.id] = next;
@@ -167,14 +174,18 @@ export function sourceStatus(box: BoxStateSource) {
   return 'Needs Panel Manager';
 }
 
+function hasAllConstructionEdges(model: BoxStateSource['svgModel'], assignments: BoxStateSource['edgeAssignments']) {
+  const edges = new Set(model.panels.flatMap(panel => panel.outerEdgeIds));
+  return Object.keys(assignments).every(id => edges.has(id));
+}
+
 export function validateDrawingApproval(box: BoxStateSource) {
   const ids = box.svgModel.panels.map(p => p.id);
   if (Object.keys(box.panelManager.panels).length !== ids.length || ids.some(id => box.panelManager.panels[id]?.panelId !== id))
     throw new Error('Panel membership changed. Review the current Sketch.');
   const error = validatePanelManagerState(box.panelManager);
   if (error) throw new Error(error);
-  const edges = new Set(box.svgModel.panels.flatMap(panel => panel.outerEdgeIds));
-  if (Object.keys(box.edgeAssignments).some(id => !edges.has(id)))
+  if (!hasAllConstructionEdges(box.svgModel, box.edgeAssignments))
     throw new Error('A construction edge is missing. Restore the Sketch geometry before reapplying Panel Manager.');
 }
 

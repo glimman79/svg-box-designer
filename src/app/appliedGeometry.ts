@@ -1,5 +1,5 @@
 import type { BoxStateSource } from './projectState';
-import type { PanelCompositionAuthorityMode } from './generatedGeometryAuthority';
+import type { GeneratedGeometryAuthoritySelection, PanelCompositionAuthorityMode } from './generatedGeometryAuthority';
 import { selectGeneratedGeometryAuthority } from './generatedGeometryAuthority';
 import { createGeneratedGeometrySnapshot, retainEquivalentSnapshot } from './generatedGeometrySnapshot';
 import { validateGeometryAuthoring } from './authoringRelationships';
@@ -10,6 +10,14 @@ import { buildGeneratedWGeometryItems } from './wallGeometry';
 import type { GeneratedGeometrySnapshot } from './generatedGeometrySnapshot';
 import type { SvgDocumentModel } from '../svgUtils';
 import type { GeneratedGeometryItem } from './generatedGeometryTypes';
+import { GeometryDependencyError } from './geometryDependencyError';
+
+export class AppliedGeometryCompositionError extends Error {
+  constructor(readonly selection: GeneratedGeometryAuthoritySelection) {
+    const reasons = selection.blockingDecisions.map(decision => `${decision.panelId}: ${decision.reason}`).join('; ');
+    super(`Unable to compose panel geometry: ${reasons}`);
+  }
+}
 
 /** The same complete, same-panel batches are evaluated for Apply and Drawing continuation. */
 export function evaluateAppliedGeometry(box: BoxStateSource, mode: PanelCompositionAuthorityMode,
@@ -18,18 +26,22 @@ export function evaluateAppliedGeometry(box: BoxStateSource, mode: PanelComposit
   const slots = recalculateAutomaticSSlotLengths(svgModel, edgeAssignments, box.connections, panelManager);
   const connections = recalculateAutomaticTBFingerWidths(svgModel, edgeAssignments, slots, panelManager);
   validateCurrentTBEdgeCompatibility(svgModel, edgeAssignments, connections);
-  validateGeometryAuthoring(svgModel, edgeAssignments, connections, mode);
+  const claims = validateGeometryAuthoring(svgModel, edgeAssignments, connections, mode);
   validateWallAuthoringForApply(svgModel, edgeAssignments, connections, box.activeWallGroup);
   const tbGeneratedItems = buildGeneratedTBGeometryItems(svgModel, edgeAssignments, connections, panelManager);
   validateGeneratedTBContributions(edgeAssignments, connections, tbGeneratedItems);
   const wGeneratedItems = buildGeneratedWGeometryItems(svgModel, edgeAssignments, connections, panelManager);
   const sGeneratedItems = buildGeneratedSGeometryItems(svgModel, edgeAssignments, connections, panelManager);
   const items = [...tbGeneratedItems, ...wGeneratedItems, ...sGeneratedItems];
-  const authority = selectSnapshot ? undefined : selectGeneratedGeometryAuthority(svgModel, items, mode);
-  if (authority && !authority.ok) {
-    const reasons = authority.blockingDecisions.map(decision => `${decision.panelId}: ${decision.reason}`).join('; ');
-    throw new Error(`Unable to compose panel geometry: ${reasons}`);
+  const profiles = items.flatMap(item => item.generatedProfiles ?? []);
+  const missingReplacements = claims.filter(claim => claim.kind === 'replaces' && claim.contributorId !== 'TB'
+    && !profiles.some(profile => profile.operationId === claim.operationId && profile.sourceEdgeId === claim.sourceEdgeId));
+  if (missingReplacements.length) {
+    throw new GeometryDependencyError([...new Set(missingReplacements.map(claim => claim.connectionId))],
+      `Could not generate assigned source-edge profiles for ${missingReplacements.map(claim => `${claim.connectionId} / ${claim.sourceEdgeId}`).join(', ')}.`);
   }
+  const authority = selectSnapshot ? undefined : selectGeneratedGeometryAuthority(svgModel, items, mode);
+  if (authority && !authority.ok) throw new AppliedGeometryCompositionError(authority);
   const snapshot = selectSnapshot ? selectSnapshot(svgModel, items, box.generatedGeometrySnapshot)
     : retainEquivalentSnapshot(box.generatedGeometrySnapshot, createGeneratedGeometrySnapshot({
       generatedGeometry: [...authority!.generatedGeometry], panelCompositionModel: authority!.panelCompositionModel,

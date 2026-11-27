@@ -2,6 +2,7 @@ import { getBucketEdgeAssignment, toEdgeAssignmentBucket } from './assignmentBuc
 import type { ConnectionMap } from './connectionTypes';
 import type { ActiveWallGroup } from './wallWorkflow';
 import type { EdgeAssignmentRecord, EdgeRole, SvgDocumentModel } from '../svgUtils';
+import { GeometryDependencyError } from './geometryDependencyError';
 
 export type TBPanelRole = 'NO_TB_ROLE' | 'TB_ROLE_A' | 'TB_ROLE_B' | 'AMBIGUOUS_TB_ROLE';
 
@@ -47,7 +48,7 @@ const requiredFirstWallRole = (first: TBPanelRole, second: TBPanelRole): EdgeRol
   return 'B';
 };
 
-const wallRequiredRole = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord,
+export const wallRequiredRole = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord,
   connections: ConnectionMap, firstPanelId: string, secondPanelId: string) => requiredFirstWallRole(
   resolveTBRoleForPanel(firstPanelId, assignments, connections, model),
   resolveTBRoleForPanel(secondPanelId, assignments, connections, model));
@@ -70,27 +71,31 @@ export const normalizeWallConnection = (model: SvgDocumentModel, assignments: Ed
 };
 
 export const validateWallConnection = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord,
-  connections: ConnectionMap, connectionId: string): void => {
+  connections: ConnectionMap, connectionId: string,
+  onFailure: (error: GeometryDependencyError) => void = error => { throw error; }): void => {
   if (connections[connectionId]?.prefix !== 'W') return;
   const wall = getWallAssignments(model, assignments, connectionId);
+  const fail = (message: string) => onFailure(new GeometryDependencyError([connectionId], message));
   if (wall.length !== 2 || wall.filter((item) => item.role === 'A').length !== 1
     || wall.filter((item) => item.role === 'B').length !== 1 || wall[0].panelId === wall[1].panelId) {
-    throw new Error(`${connectionId} is incomplete: Wall requires exactly one W-A and one W-B assignment on two panels.`);
+    fail(`${connectionId} is incomplete: Wall requires exactly one W-A and one W-B assignment on two panels.`);
+    return;
   }
   const required = wallRequiredRole(model, assignments, connections, wall[0].panelId, wall[1].panelId);
-  if (required === 'INVALID') throw new Error(`${connectionId} has ambiguous or incompatible per-panel TB role evidence.`);
-  if (required && wall[0].role !== required) throw new Error(`${connectionId} does not match its per-panel TB roles.`);
+  if (required === 'INVALID') fail(`${connectionId} has ambiguous or incompatible per-panel TB role evidence.`);
+  else if (required && wall[0].role !== required) fail(`${connectionId} does not match its per-panel TB roles.`);
 };
 
 export const validateWallAuthoringForApply = (model: SvgDocumentModel, assignments: EdgeAssignmentRecord,
-  connections: ConnectionMap, activeWallGroup: ActiveWallGroup | null = null): void => {
+  connections: ConnectionMap, activeWallGroup: ActiveWallGroup | null = null,
+  onFailure?: (error: GeometryDependencyError) => void): void => {
   const walls = Object.values(connections).filter((connection) => connection.prefix === 'W');
   if (walls.length === 0) return;
   const trailing = activeWallGroup?.isActive && activeWallGroup.connectionIds.length > 1
     ? activeWallGroup.connectionIds.at(-1) : undefined;
   for (const connection of walls) {
     if (connection.id === trailing && getWallAssignments(model, assignments, connection.id).length === 0) continue;
-    validateWallConnection(model, assignments, connections, connection.id);
+    validateWallConnection(model, assignments, connections, connection.id, onFailure);
   }
   // Complete Walls are consumed by the native Wall geometry adapter.
 };
