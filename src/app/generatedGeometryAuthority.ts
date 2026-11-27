@@ -17,7 +17,7 @@ export type PanelAuthorityDecision = Readonly<{ panelId: string; relationshipOwn
   cohort: PanelAuthorityCohort; authority: 'LEGACY' | 'COMPOSED';
   reason: 'MODE_LEGACY' | 'SINGLE_TOOL_APPROVED' | 'MIXED_NOT_ENABLED' | 'UNSUPPORTED_CONTRIBUTOR'
     | 'MIXED_APPROVED' | 'REPLACEMENT_CONFLICT' | 'MISSING_CONTRIBUTION' | 'INVALID_JUNCTION'
-    | 'LEGACY_MISMATCH' | 'DOWNSTREAM_DIAGNOSTIC_FAILURE' | 'RECONCILIATION_FAILURE';
+    | 'MIXED_GATE_NOT_EVALUATED' | 'LEGACY_MISMATCH' | 'DOWNSTREAM_DIAGNOSTIC_FAILURE' | 'RECONCILIATION_FAILURE';
   candidateStatus: PanelAssemblyComparisonStatus;
   legacyComparisonStatus: 'SINGLE_TOOL_MATCH' | 'SINGLE_TOOL_MISMATCH' | 'NOT_ORACLE' | 'BLOCKED';
   downstreamEquivalenceGate: 'APPROVED' | 'NOT_APPROVED' | 'FAILED'; snapshotMarker: PanelCompositionModel }>;
@@ -82,7 +82,8 @@ export const selectGeneratedGeometryAuthority = (svgModel: SvgDocumentModel,
       : cohort === 'UNSUPPORTED' ? 'UNSUPPORTED_CONTRIBUTOR' : reconciliationFailed ? 'RECONCILIATION_FAILURE'
         : mixedCandidate && mode !== 'mixed' ? 'MIXED_NOT_ENABLED'
         : mixedCandidate && downstreamGate === 'FAILED' ? 'DOWNSTREAM_DIAGNOSTIC_FAILURE'
-          : mixedCandidate ? 'MIXED_APPROVED' : !match ? 'LEGACY_MISMATCH' : 'SINGLE_TOOL_APPROVED';
+        : mixedCandidate && downstreamGate === 'NOT_APPROVED' ? 'MIXED_GATE_NOT_EVALUATED'
+        : mixedCandidate ? 'MIXED_APPROVED' : !match ? 'LEGACY_MISMATCH' : 'SINGLE_TOOL_APPROVED';
     const authority = ((mode === 'single-tool' && approved && singleToolApproved) || (mode === 'mixed' && approved)) ? 'COMPOSED' : 'LEGACY';
     if (authority === 'COMPOSED') {
       if (!candidate) throw new Error(`Approved panel ${panel.panelId} has no composed candidate.`);

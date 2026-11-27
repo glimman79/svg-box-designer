@@ -91,7 +91,7 @@ export function evaluateDrawingGeometry(box: BoxStateSource, sourceId: string, m
         else if (error instanceof AppliedGeometryCompositionError) {
           // The downstream gate is project-wide. Resolve localized failures before treating it as a blocker.
           for (const decision of error.selection.blockingDecisions) {
-            if (decision.reason === 'DOWNSTREAM_DIAGNOSTIC_FAILURE') continue;
+            if (decision.reason === 'DOWNSTREAM_DIAGNOSTIC_FAILURE' || decision.reason === 'MIXED_GATE_NOT_EVALUATED') continue;
             const affected = [...new Set(claims.filter(claim => claim.panelId === decision.panelId
               && !blocked.has(claim.connectionId)).map(claim => claim.connectionId))];
             report(new GeometryDependencyError(affected, `Cannot compose panel ${decision.panelId}: ${decision.reason}.`));

@@ -6,6 +6,7 @@ const {drawingPanelModel} = require('../.test-build/project-owner/src/app/drawin
 const {isSourceApproved,sourceStatus} = require('../.test-build/project-owner/src/app/boxSources.js');
 const {createEmptySketch} = require('../.test-build/project-owner/src/app/drawingTypes.js');
 const {evaluateDrawingGeometry} = require('../.test-build/project-owner/src/app/drawingGeometryDependencies.js');
+const {selectGeneratedGeometryAuthority} = require('../.test-build/project-owner/src/app/generatedGeometryAuthority.js');
 const {validateCurrentTBEdgeCompatibility,buildGeneratedTBGeometryItems} = require('../.test-build/project-owner/src/app/tbGeometry.js');
 
 function polygon(sketch, name, coords, close = true) {
@@ -703,3 +704,151 @@ test('export command rejects a diagnostic even if Apply state alone would permit
   assert.match(c.errorMessage,/Repair blocked BOX geometry/);
   assert.equal(sourceStatus(exportOwner.getBoxScope().box),'Blocked · needs repair');
 });
+
+test('adjacent TB and Wall edges compose on three Drawing panels', () => {
+  const upper = polygon(createEmptySketch('one','one'),'a',[[0,0],[100,0],[100,80],[0,80]]);
+  const middle = polygon(upper,'b',[[0,110],[100,110],[100,190],[0,190]]);
+  const right = polygon(middle,'c',[[130,110],[210,110],[210,190],[130,190]]);
+  const {owner,c,second,current,author,apply,edit} = drawingBoxProject(right);
+  const sourceEdge = line => current().svgModel.edges.find(edge=>edge.drawingEntityId===line).id;
+  for (const [line,thickness] of [['be0',13],['ce0',15]]) {
+    const panel = current().svgModel.panels.find(panel=>panel.outerEdgeIds.includes(sourceEdge(line)));
+    c.updatePanelThickness(panel.id,thickness);
+    assert.equal(c.errorMessage,'');
+  }
+  c.applyPanelManager();
+  assert.equal(c.errorMessage,'');
+  const tab = (prefix,id,width) => {
+    c.selectConnectionForDisplayAndAssignment(id);
+    c.updateConnectionProperties(id,{prefix,updates:{fingerWidthMm:width,isFingerWidthManual:true}});
+    assert.equal(c.errorMessage,'');
+  };
+  author('TB','ae2','be0');
+  tab('TB','TB1',10);
+  apply();
+  author('TB','be1','ce3');
+  tab('TB','TB2',10);
+  apply();
+  author('W','ae1','ce0');
+  tab('W','W1',9);
+  for (const [line,role] of [['ae1','A'],['ce0','B']]) {
+    assert.deepEqual(current().edgeAssignments[sourceEdge(line)].edgeAssignment,{connectionId:'W1',edgeRole:role});
+  }
+  apply();
+  const original = owner.getSnapshot();
+  const prior = current();
+  const evaluated = api.evaluateAppliedGeometry(prior,'mixed');
+  const {authority} = evaluated;
+  assert.deepEqual(authority.reconciliationDiagnostics,[]);
+  assert.equal(authority.decisions.filter(d=>d.reason==='MIXED_APPROVED').length,2);
+  assert.ok(authority.decisions.every(d=>d.authority==='COMPOSED'));
+  assert.equal(authority.downstreamDiagnostics.length,3);
+  assert.ok(authority.downstreamDiagnostics.every(d=>d.firstFailure===null&&d.manufacturing.contourCount===3));
+  assert.deepEqual(profileConnections(prior),['TB1','TB2','W1']);
+
+  const rawTB = evaluated.items.flatMap(item=>item.generatedProfiles??[]).find(profile=>profile.sourceEdgeId===sourceEdge('ae2'));
+  const terminal = rawTB.geometryProjections[0];
+  assert.deepEqual([terminal.start,terminal.end],[{x:100,y:67},{x:85,y:67}]);
+  const upperCandidate = authority.diagnostics.panelCandidates.find(panel=>panel.panelId===rawTB.panelId);
+  assert.ok(upperCandidate.nonphysicalProjectionLineage.some(entry=>entry.projectionId===terminal.id
+    &&entry.disposition==='TERMINAL_RUN_CLIPPED_TO_JUNCTION'));
+  assert.ok(upperCandidate.segments.every((segment,index)=> {
+    const next = upperCandidate.segments[(index+1)%upperCandidate.segments.length];
+    return segment.end.x===next.start.x && segment.end.y===next.start.y;
+  }));
+  const invalid = selectGeneratedGeometryAuthority(prior.svgModel,evaluated.items,'mixed',{
+    ...authority.diagnostics,
+    panelCandidates:authority.diagnostics.panelCandidates.map(panel=>panel===upperCandidate
+      ? {...panel,nonphysicalProjectionLineage:[]} : panel),
+  });
+  assert.equal(invalid.ok,false);
+  assert.deepEqual(invalid.generatedGeometry,[]);
+  assert.deepEqual(invalid.downstreamDiagnostics,[]);
+  assert.deepEqual(invalid.blockingDecisions.map(d=>d.reason).sort(),['MIXED_GATE_NOT_EVALUATED','RECONCILIATION_FAILURE']);
+  assert.equal(invalid.reconciliationDiagnostics[0].code,'RECONCILIATION_REQUIRED_PHYSICAL_MAPPING_MISSING');
+  assert.equal(invalid.reconciliationDiagnostics[0].projectionId,terminal.id);
+
+  const reconciledTB = generatedProfiles(prior).find(profile=>profile.id===rawTB.id);
+  assert.deepEqual(reconciledTB.orderedTaps,rawTB.orderedTaps);
+  assert.deepEqual(reconciledTB.orderedElements,rawTB.orderedElements);
+  assert.equal(reconciledTB.geometryProjections.length,rawTB.geometryProjections.length-1);
+  assert.ok(!reconciledTB.geometryProjections.some(projection=>projection.id===terminal.id));
+  const final = api.buildFinalGeometry(prior.svgModel,prior.generatedGeometrySnapshot);
+  assert.deepEqual(final.diagnostics,[]);
+  assert.equal(final.contours.length,3);
+  const upperContour = final.contours.find(contour=>contour.panelId===rawTB.panelId);
+  assert.ok(upperContour.segmentProfileIds.includes(rawTB.id));
+  assert.ok(upperContour.segmentTapIds.includes(rawTB.orderedTaps[0].id));
+
+  const resizeMiddle = (sketch,y) => ({...sketch,points:{...sketch.points,
+    bp2:{...sketch.points.bp2,y},bp3:{...sketch.points.bp3,y}}});
+  const count = owner.getHistory().undo.length;
+  assert.equal(edit(sketch=>resizeMiddle(sketch,200)).outcome,'accepted');
+  const partial = owner.getSnapshot(), box = current();
+  assert.equal(owner.getHistory().undo.length,count+1);
+  // TB1 still supplies the same Wall orientation after TB2 fails.
+  assert.deepEqual(profileConnections(box),['TB1','W1']);
+  assert.deepEqual(box.dependencyDiagnostics.map(d=>d.connectionId),['TB2']);
+  assert.equal(box.edgeAssignments,prior.edgeAssignments);
+  assert.equal(box.connections,prior.connections);
+  assert.equal(box.appliedGeometryInputs,prior.appliedGeometryInputs);
+  assert.deepEqual(box.panelManager.panels,prior.panelManager.panels);
+  assert.equal(isSourceApproved(box),true);
+  assert.deepEqual(partial.chronology,original.chronology);
+  assert.equal(partial.boxSources.sketches[second],original.boxSources.sketches[second]);
+  assert.equal(partial.box,original.box);
+  assert.equal(api.currentBoxGeometrySnapshot(box),box.generatedGeometrySnapshot);
+  const middlePanel = final.contours.find(contour=>contour.points.some(point=>point.y===190&&point.x===0));
+  const partialMiddle = api.buildFinalGeometry(box.svgModel,box.generatedGeometrySnapshot).contours.find(contour=>contour.id===middlePanel.id);
+  assert.ok(partialMiddle.points.some(point=>point.y===200));
+  c.applyPanelPaths();
+  assert.match(c.errorMessage,/TB2 has incompatible source edge lengths/);
+  assert.equal(owner.getSnapshot(),partial);
+  assert.equal(edit(sketch=>resizeMiddle(sketch,190)).outcome,'accepted');
+  const repaired = owner.getSnapshot();
+  assert.equal(owner.getHistory().undo.length,count+2);
+  assert.deepEqual(current().dependencyDiagnostics,[]);
+  assert.deepEqual(current().generatedGeometrySnapshot.generatedGeometry,prior.generatedGeometrySnapshot.generatedGeometry);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),partial);
+  owner.traverse('undo'); assert.equal(owner.getSnapshot(),original);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot(),partial);
+  owner.traverse('redo'); assert.equal(owner.getSnapshot(),repaired);
+});
+
+for (const [fingerJoint,extraTB] of [['TB',false],['W',false],['W',true]]) {
+  const tools = extraTB ? 'TB + W + S' : `${fingerJoint} + S`;
+  test(`an adjacent Slot inset can consume a terminal run in ${tools}`, () => {
+    const middle = rectangle(createEmptySketch('one','one'),'b',0);
+    const right = polygon(middle,'c',[[130,0],[210,0],[210,80],[130,80]]);
+    const slotReceiver = rectangle(right,'d',240);
+    const sketch = extraTB ? polygon(slotReceiver,'e',[[370,0],[450,0],[450,80],[370,80]]) : slotReceiver;
+    const {c,current,author,apply} = drawingBoxProject(sketch);
+    const receiverEdge = current().svgModel.edges.find(edge=>edge.drawingEntityId==='de0').id;
+    const receiver = current().svgModel.panels.find(panel=>panel.outerEdgeIds.includes(receiverEdge)).id;
+    c.updatePanelThickness(receiver,15);
+    c.applyPanelManager();
+    if (extraTB) author('TB','ce2','ee0');
+    author(fingerJoint,'ce3','be1');
+    const jointId = fingerJoint+'1';
+    c.selectConnectionForDisplayAndAssignment(jointId);
+    c.updateConnectionProperties(jointId,{prefix:fingerJoint,updates:{fingerWidthMm:10}});
+    if (fingerJoint==='W' && !extraTB) {
+      apply();
+      assert.deepEqual(profileConnections(current()),['W1']);
+      assert.ok(api.evaluateAppliedGeometry(current(),'mixed').authority.decisions.every(d=>d.authority==='COMPOSED'));
+    }
+    author('S','ce0','de0');
+    c.selectConnectionForDisplayAndAssignment('S1');
+    c.updateConnectionProperties('S1',{prefix:'S',updates:{slotOffsetMm:10}});
+    apply();
+    const {authority} = api.evaluateAppliedGeometry(current(),'mixed');
+    const mixed = authority.decisions.find(d=>d.cohort==='MIXED');
+    assert.equal(mixed.reason,'MIXED_APPROVED');
+    assert.equal(mixed.relationshipOwners.length,extraTB?3:2);
+    const candidate = authority.diagnostics.panelCandidates.find(panel=>panel.panelId===mixed.panelId);
+    assert.ok(candidate.nonphysicalProjectionLineage.some(entry=>entry.operationId===`operation:${fingerJoint}:${jointId}`
+      &&entry.disposition==='TERMINAL_RUN_CLIPPED_TO_JUNCTION'));
+    assert.deepEqual(authority.reconciliationDiagnostics,[]);
+    assert.ok(authority.downstreamDiagnostics.every(d=>d.firstFailure===null&&d.manufacturing.contourCount>sketch.entityOrder.length/4));
+  });
+}

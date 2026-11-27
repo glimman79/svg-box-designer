@@ -156,7 +156,10 @@ export const reconcileComposedPanelMetadata = (input: ReconcileComposedPanelMeta
         if (nonphysical.length === 1 && pointsMatch(nonphysical[0].start, projection.start)
           && pointsMatch(nonphysical[0].end, projection.end) && nonphysical[0].tapId === (element.tapId ?? null)
           && nonphysical[0].tapRole === (element.segmentTapRole ?? null)
-          && nonphysical[0].disposition === 'TERMINAL_INVERSE_PAIR_NONPHYSICAL') {
+          && (nonphysical[0].disposition === 'TERMINAL_INVERSE_PAIR_NONPHYSICAL'
+            || (nonphysical[0].disposition === 'TERMINAL_RUN_CLIPPED_TO_JUNCTION' && element.kind === 'boundary-run'
+              && (element.id === profile.leadingBoundaryRun || element.id === profile.trailingBoundaryRun)
+              && element.tapId === undefined && element.segmentTapRole === undefined))) {
           addMapping('DROPPED_NONPHYSICAL', [], { ...baseEvidence, startMoved: false, endMoved: false,
             nonphysicalDisposition: nonphysical[0].disposition }); return;
         }
